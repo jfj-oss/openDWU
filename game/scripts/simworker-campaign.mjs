@@ -238,6 +238,32 @@ const waitGame = (prev = null) => page.waitForFunction((prevId) => {
     if (d?.time === undefined || d?.view === undefined || d?.game?.playerEmpire == null) return false;
     return prevId === null || d.__campaignId !== prevId;
 }, prev, { timeout: 900000, polling: 500 });
+/**
+ * page.waitForSelector without keeping the element: the ElementHandle it returns pins its DOM node (and everything the
+ * node's listeners reach: a closed screen's whole game) in the page until it is disposed, so every screen the session
+ * opened kept its game alive across the restarts. False on a timeout; `throws`: a timeout throws (a bare wait).
+ */
+async function waitShown(sel, opts, { throws = false } = {}) {
+    try {
+        const h = await page.waitForSelector(sel, opts);
+        await h?.dispose();
+        return true;
+    } catch (err) {
+        if (throws) throw err;
+        return false;
+    }
+}
+/** waitShown, then the element's text (null on a timeout). */
+async function waitShownText(sel, opts) {
+    try {
+        const h = await page.waitForSelector(sel, opts);
+        const text = await h?.textContent();
+        await h?.dispose();
+        return text ?? null;
+    } catch {
+        return null;
+    }
+}
 /** Tag the current game view (a load or restart builds a new one). */
 const tagView = () => ev(() => (window.__dwu.__campaignId = Math.random().toString(36).slice(2)));
 
@@ -443,10 +469,10 @@ const NEWGAME = {
 async function boot() {
     if (kind === 'standard' || kind === 'intro') {
         await page.goto(`${base}?${sw}`);
-        await page.waitForSelector('button[data-id="startNewGame"]', { timeout: 120000 });
+        await waitShown('button[data-id="startNewGame"]', { timeout: 120000 }, { throws: true });
         await shot('main-menu');
         await page.click('button[data-id="startNewGame"]');
-        await page.waitForSelector('.wizard-type-page .wizard-type-btn', { timeout: 60000 });
+        await waitShown('.wizard-type-page .wizard-type-btn', { timeout: 60000 }, { throws: true });
         await page.waitForFunction(() => !document.querySelector('.wizard-race-loading'), null, { timeout: 30000 }).catch(() => {});
         if (kind === 'intro') {
             await page.click('.wizard-type-btn[data-type="Introductory"]');
@@ -500,7 +526,7 @@ async function openHud(hudId, sel) {
     const btn = page.locator(`[data-hud="${hudId}"]`).first();
     if ((await btn.count()) === 0) return false;
     await btn.click();
-    return page.waitForSelector(sel, { timeout: 20000 }).then(() => true, () => false);
+    return waitShown(sel, { timeout: 20000 });
 }
 
 async function stepColonies() {
@@ -627,7 +653,7 @@ async function stepFleets() {
     const add = page.locator('[data-ow="fleets"] .ow-glass', { hasText: 'Add Design' });
     if ((await add.count()) > 0 && (await add.isEnabled())) {
         await add.click();
-        const shown = await page.waitForSelector('[data-ow="fleets"] button.fl-step', { timeout: 10000 }).then(() => true, () => false);
+        const shown = await waitShown('[data-ow="fleets"] button.fl-step', { timeout: 10000 });
         const entries = await ev(() => {
             const t = window.__dwu.game.playerEmpire.fleetDesigns?.templates;
             return t?.[t.length - 1]?.entries?.length ?? null;
@@ -663,7 +689,7 @@ async function stepDesigns() {
     await page.locator('[data-ow="designs"] .ow-glass', { hasText: 'Copy As New' }).click();
     const prompt = page.locator('[data-ow="msgbox"] .ow-glass', { hasText: 'Turn off automation' });
     await prompt.waitFor({ timeout: 3000 }).then(() => prompt.click(), () => {});
-    if (!check(await page.waitForSelector('[data-ow="design-editor"]', { timeout: 15000 }).then(() => true, () => false), 'design editor opens')) return closeAll();
+    if (!check(await waitShown('[data-ow="design-editor"]', { timeout: 15000 }), 'design editor opens')) return closeAll();
     await wait(1200);
     await page.locator('[data-ow="design-editor"] .ow-glass', { hasText: /^Save$/ }).first().click();
     const yes = page.locator('[data-ow="msgbox"] .ow-glass', { hasText: /^(Yes|OK)$/ });
@@ -760,7 +786,7 @@ async function stepYards() {
 
 async function stepTroops() {
     await page.click('[data-hud="tbtnTroops"]');
-    if (!check(await page.waitForSelector('[data-ow="troops"]', { timeout: 15000 }).then(() => true, () => false), 'troops screen opens')) return;
+    if (!check(await waitShown('[data-ow="troops"]', { timeout: 15000 }), 'troops screen opens')) return;
     await wait(1000);
     const btn = page.locator('[data-ow="troops"] .tr-recruit-btn').first();
     if ((await btn.count()) === 0) return void (note('troops: no recruit button'), await closeAll());
@@ -949,7 +975,7 @@ async function stepSummary() {
 
 async function stepPolicy() {
     await page.click('[data-hud="btnEmpirePolicy"]');
-    if (!check(await page.waitForSelector('.policy-window', { timeout: 15000 }).then(() => true, () => false), 'empire policy opens')) return;
+    if (!check(await waitShown('.policy-window', { timeout: 15000 }), 'empire policy opens')) return;
     await wait(1000);
     // A policy combo (not an automation one): pick another option → setPolicy.
     const changed = await ev(() => {
@@ -1001,7 +1027,7 @@ async function stepPolicy() {
 
 async function stepDiplomacy() {
     await page.keyboard.press('F5');
-    if (!check(await page.waitForSelector('[data-ow="diplomacy"] .ow-grid-row', { timeout: 20000 }).then(() => true, () => false), 'diplomacy opens')) return;
+    if (!check(await waitShown('[data-ow="diplomacy"] .ow-grid-row', { timeout: 20000 }), 'diplomacy opens')) return;
     await wait(1200);
     const rows = page.locator('[data-ow="diplomacy"] .dip-list .ow-grid-row');
     const n = await rows.count();
@@ -1020,7 +1046,7 @@ async function stepDiplomacy() {
         const speak = page.locator('[data-ow="diplomacy"] .ow-glass', { hasText: 'Speak with' });
         if ((await speak.count()) > 0 && (await speak.isEnabled())) {
             await speak.click();
-            const got = await page.waitForSelector('[data-ow="diplomacy-talk"] .dip-talk-link', { timeout: 20000 }).then(() => true, () => false);
+            const got = await waitShown('[data-ow="diplomacy-talk"] .dip-talk-link', { timeout: 20000 });
             check(got, 'diplomacy: the talk panel lists its options');
             const gift = page.locator('[data-ow="diplomacy-talk"] .dip-talk-link', { hasText: 'Send a gift' });
             if ((await gift.count()) > 0) {
@@ -1029,7 +1055,7 @@ async function stepDiplomacy() {
                 const small = page.locator('[data-ow="diplomacy-talk"] .dip-talk-link', { hasText: 'small gift' });
                 if (await small.waitFor({ timeout: 10000 }).then(() => true, () => false)) {
                     await small.click();
-                    const reply = await page.waitForSelector('[data-ow="diplomacy-talk"] .diplomacy-reply', { timeout: 20000 }).then((e) => e.textContent(), () => null);
+                    const reply = await waitShownText('[data-ow="diplomacy-talk"] .diplomacy-reply', { timeout: 20000 });
                     check(reply !== null, `diplomacy: the gift is answered (${String(reply).replace(/\s+/g, ' ').slice(0, 80)})`);
                     const spent = await page.waitForFunction((m0) => window.__dwu.game.playerEmpire.stateMoney < m0, m0, { timeout: 15000 }).then(() => true, () => false);
                     check(spent, 'diplomacy: the gift leaves the treasury');
@@ -1051,7 +1077,7 @@ async function stepDiplomacy() {
         const speak = page.locator('[data-ow="diplomacy"] .ow-glass', { hasText: 'Speak with' });
         if ((await speak.count()) > 0 && (await speak.isEnabled())) {
             await speak.click();
-            await page.waitForSelector('[data-ow="diplomacy-talk"] .dip-talk-link', { timeout: 20000 }).catch(() => {});
+            await waitShown('[data-ow="diplomacy-talk"] .dip-talk-link', { timeout: 20000 });
             const links = await page.locator('[data-ow="diplomacy-talk"] .dip-talk-link').allInnerTexts();
             note(`pirate talk: ${links.join(' / ').slice(0, 300)}`);
             const prot = page.locator('[data-ow="diplomacy-talk"] .dip-talk-link', { hasText: /protection|truce|tribute/i }).first();
@@ -1061,7 +1087,7 @@ async function stepDiplomacy() {
                 await wait(1000);
                 const sub = page.locator('[data-ow="diplomacy-talk"] .dip-talk-link', { hasText: /protection|truce|pay|accept/i }).first();
                 if ((await sub.count()) > 0) await sub.click().catch(() => {});
-                const reply = await page.waitForSelector('[data-ow="diplomacy-talk"] .diplomacy-reply', { timeout: 20000 }).then((e) => e.textContent(), () => null);
+                const reply = await waitShownText('[data-ow="diplomacy-talk"] .diplomacy-reply', { timeout: 20000 });
                 check(reply !== null, `pirate: protection proposal answered (${String(reply).replace(/\s+/g, ' ').slice(0, 100)})`);
                 await wait(2000);
                 note(`pirate: money ${m0.toFixed(0)} → ${(await ev(() => window.__dwu.game.playerEmpire.stateMoney)).toFixed(0)}`);
@@ -1084,7 +1110,7 @@ async function stepOtherScreens() {
             continue;
         }
         await btn.click();
-        const ok = await page.waitForSelector(sel, { timeout: 15000 }).then(() => true, () => false);
+        const ok = await waitShown(sel, { timeout: 15000 });
         check(ok, `${id} opens`);
         await wait(1500);
         await shot(id);
@@ -1128,7 +1154,7 @@ async function stepOtherScreens() {
     // Galactopedia (F1), and F1 again closes it.
     await page.mouse.move(800, 450);
     await page.keyboard.press('F1');
-    const gp = await page.waitForSelector('#galactopedia', { timeout: 10000 }).then(() => true, () => false);
+    const gp = await waitShown('#galactopedia', { timeout: 10000 });
     check(gp, 'F1 opens the Galactopedia');
     await wait(1500);
     await shot('galactopedia');
@@ -1142,7 +1168,7 @@ async function stepOtherScreens() {
     // Galaxy map (G) and back.
     await page.mouse.move(800, 450);
     await page.keyboard.press('g');
-    check(await page.waitForSelector('.gmap-overlay', { timeout: 10000 }).then(() => true, () => false), 'galaxy map opens (G)');
+    check(await waitShown('.gmap-overlay', { timeout: 10000 }), 'galaxy map opens (G)');
     await wait(2000);
     await shot('galaxy-map');
     await page.keyboard.press('Escape');
@@ -1184,7 +1210,16 @@ async function stepLeftSidebar() {
     await shot('left-sidebar');
 }
 
+/** The orders step; the ship it keeps in window.__orderShip is dropped after it (it would keep that game alive). */
 async function stepOrders() {
+    try {
+        await stepOrdersOn();
+    } finally {
+        await ev(() => { window.__orderShip = null; }).catch(() => {});
+    }
+}
+
+async function stepOrdersOn() {
     // An exploration ship: the selection panel's Explore button.
     const ex = await selectExpr(`${shipOf('ExplorationShip')} ?? ${shipOf('ColonyShip')}`);
     if (ex) {
@@ -1241,14 +1276,14 @@ async function stepOrders() {
     await page.keyboard.down('Control');
     await page.mouse.click(at2.x, at2.y, { button: 'right' });
     await page.keyboard.up('Control');
-    let menu = await page.waitForSelector('.order-menu-root .order-menu-item, .pick-menu .pick-menu-row', { timeout: 10000 }).then(() => true, () => false);
+    let menu = await waitShown('.order-menu-root .order-menu-item, .pick-menu .pick-menu-row', { timeout: 10000 });
     // Objects stacked under the cursor: the pick popup first (mainView.ts tryPickMenu), then the order menu on the pick.
     if (menu && (await page.locator('.pick-menu .pick-menu-row').count()) > 0) {
         const rowsText = await page.locator('.pick-menu .pick-menu-row').allInnerTexts();
         note(`pick popup: ${rowsText.map((t) => t.replace(/\s+/g, ' ')).join(' / ')}`);
         const row = page.locator('.pick-menu .pick-menu-row', { hasText: at2.name }).first();
         await ((await row.count()) > 0 ? row : page.locator('.pick-menu .pick-menu-row').first()).click();
-        menu = await page.waitForSelector('.order-menu-root .order-menu-item', { timeout: 10000 }).then(() => true, () => false);
+        menu = await waitShown('.order-menu-root .order-menu-item', { timeout: 10000 });
     }
     check(menu, 'Ctrl-right-click opens the action menu');
     if (menu) {
@@ -1314,7 +1349,7 @@ async function stepKeys() {
     if (!hasColony) {
         await wait(800);
         check((await page.locator('[data-ow="groundReport"]').count()) === 0, 'ground report: no colony, nothing opens ([)');
-    } else check(await page.waitForSelector('[data-ow="groundReport"]', { timeout: 10000 }).then(() => true, () => false), 'ground report opens ([)');
+    } else check(await waitShown('[data-ow="groundReport"]', { timeout: 10000 }), 'ground report opens ([)');
     await wait(1000);
     const img = page.locator('[data-ow="groundReport"] .gr-img').first();
     if ((await img.count()) > 0) {
@@ -1347,7 +1382,7 @@ async function stepKeys() {
     }
     await shot('d-cycle');
     await page.keyboard.press('h');
-    check(await page.waitForSelector('.galactic-history-window', { timeout: 10000 }).then(() => true, () => false), 'H opens the message history');
+    check(await waitShown('.galactic-history-window', { timeout: 10000 }), 'H opens the message history');
     await wait(1000);
     const tabs = page.locator('.galactic-history-tab');
     for (let i = 0; i < (await tabs.count()); i++) {
@@ -1361,11 +1396,11 @@ async function stepKeys() {
 async function stepGameOptions() {
     await page.mouse.move(800, 450);
     await page.keyboard.press('o');
-    if (!check(await page.waitForSelector('[data-ow="gameoptions"]', { timeout: 10000 }).then(() => true, () => false), 'game options open (O)')) return;
+    if (!check(await waitShown('[data-ow="gameoptions"]', { timeout: 10000 }), 'game options open (O)')) return;
     await wait(600);
     // Empire Settings: a combo (setEmpireSetting).
     await page.locator('[data-ow="gameoptions"] button', { hasText: 'Empire Settings' }).click();
-    if (await page.waitForSelector('[data-ow="gameoptions-empire"]', { timeout: 10000 }).then(() => true, () => false)) {
+    if (await waitShown('[data-ow="gameoptions-empire"]', { timeout: 10000 })) {
         const s = page.locator('[data-ow="gameoptions-empire"] select').first();
         const cur = await s.inputValue();
         await s.selectOption(cur === '1' ? '0' : '1');
@@ -1378,7 +1413,7 @@ async function stepGameOptions() {
     const msgBtn = page.locator('[data-ow="gameoptions"] button', { hasText: 'Message Settings' });
     if ((await msgBtn.count()) > 0) {
         await msgBtn.click();
-        if (await page.waitForSelector('[data-ow="gameoptions-messages"]', { timeout: 10000 }).then(() => true, () => false)) {
+        if (await waitShown('[data-ow="gameoptions-messages"]', { timeout: 10000 })) {
             const cb = page.locator('[data-ow="gameoptions-messages"] input[type="checkbox"]').nth(2);
             if ((await cb.count()) > 0) {
                 await cb.click();
@@ -1427,9 +1462,9 @@ async function stepSaveLoad() {
     const name = `campaign-${kind}-${mode}`;
     await page.mouse.move(800, 450);
     await page.keyboard.press('Escape');
-    await page.waitForSelector('#game-menu-overlay .game-menu-btn', { timeout: 10000 });
+    await waitShown('#game-menu-overlay .game-menu-btn', { timeout: 10000 }, { throws: true });
     await page.locator('.game-menu-btn', { hasText: /^Save Game$/ }).click();
-    await page.waitForSelector('#save-load-overlay .save-load-name-input', { timeout: 10000 });
+    await waitShown('#save-load-overlay .save-load-name-input', { timeout: 10000 }, { throws: true });
     await page.fill('.save-load-name-input', name);
     const t1 = Date.now();
     await page.locator('#save-load-overlay button.save-load-btn', { hasText: /^Save$/ }).click();
@@ -1446,7 +1481,7 @@ async function stepSaveLoad() {
     }
     await page.locator('.game-menu-btn', { hasText: 'Exit to Main Menu' }).click();
     await page.locator('[data-ow="msgbox"] button', { hasText: 'Yes' }).click();
-    const menu = await page.waitForSelector('.main-menu-item[data-id="loadGame"]', { timeout: 30000 }).then(() => true, () => false);
+    const menu = await waitShown('.main-menu-item[data-id="loadGame"]', { timeout: 30000 });
     check(menu, 'Main Menu returns to the main menu');
     await shot('main-menu-again');
     const prev = await ev(() => window.__dwu?.__campaignId ?? null);
@@ -1498,6 +1533,8 @@ async function stepCrash(kindOfCrash) {
     const old = await ev((k) => {
         const d = window.__dwu;
         window.__oldSimWorker = d.simWorker;
+        // Weak references to the old game's big objects: after the restart and a GC none may still be alive.
+        window.__oldGameRefs = Object.entries({ galaxy: d.galaxy, game: d.game, view: d.view, app: d.app, camera: d.camera, client: d.simWorker, empire: d.game.playerEmpire }).filter(([, o]) => o != null).map(([name, o]) => ({ name, ref: new WeakRef(o) }));
         const p = d.game.playerEmpire;
         window.__inFlight = '(no reply)';
         d.commands.issue(d.galaxy, p, 'empireRename', [`In Flight ${k}`], (r) => { window.__inFlight = r; });
@@ -1530,6 +1567,12 @@ async function stepCrash(kindOfCrash) {
         return Math.round((performance.memory?.usedJSHeapSize ?? 0) / 1048576);
     });
     note(`${kindOfCrash} restart: main-thread JS heap after a GC ${heap} MB (before the crash ${heapBeforeCrash} MB)`);
+    const alive = await ev(() => {
+        const names = (window.__oldGameRefs ?? []).filter((r) => r.ref.deref() !== undefined).map((r) => r.name);
+        window.__oldGameRefs = null;
+        return names;
+    });
+    check(alive.length === 0, `${kindOfCrash} restart: nothing of the old game is still alive after a GC${alive.length > 0 ? ` (alive: ${alive.join(', ')})` : ''}`);
     // --snapshot-after-crash=<file>: a heap snapshot here (diagnosis of what the old game is still held by).
     if (opt('snapshot-after-crash', '') !== '' && kindOfCrash === 'fatal') {
         const { openSync, writeSync, closeSync } = await import('node:fs');

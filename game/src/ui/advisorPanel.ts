@@ -57,9 +57,16 @@ export function toggleAdvisorPanel(opts: AdvisorPanelOptions): void {
     else open = createAdvisorPanel(opts);
 }
 
-/** Close the advisor chat (no-op when closed; game teardown). */
+/**
+ * Close the advisor chat (no-op when closed) and forget its conversation: game teardown. The next game has another
+ * player empire, so the history was cleared on the next open anyway; kept until then, `historyOwner` held the old
+ * empire, and through it the whole old game (a late galaxy's replica, ~600 MB), after a load or a sim-worker restart.
+ */
 export function closeAdvisorPanel(): void {
     open?.close();
+    history = [];
+    lines = [];
+    historyOwner = null;
 }
 
 // The conversation survives closing / reopening the panel within one game (cleared when the player changes).
