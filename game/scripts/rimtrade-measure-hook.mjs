@@ -46,7 +46,7 @@ export async function start(ctx) {
     m.cur = newYear();
     m.designs = concordDesigns(g, r);
     // Contracts: rim goods to the Concord, rare goods from it.
-    off.push(hooks.registerScenarioEvent({ id: 'measure.contract', event: 'contractInitiated', run: (gg, ev) => {
+    off.push(hooks.registerScenarioEvent({ id: 'measure.contract', flag: 'rimTrader', event: 'contractInitiated', run: (gg, ev) => {
         const rr = common.rimTraderEmpire(gg);
         if (rr === null || ev.resourceId < 0) return;
         const tr = treasureShips(gg);
@@ -71,7 +71,7 @@ export async function start(ctx) {
             x.rareColonies[name] = (x.rareColonies[name] ?? 0) + ev.amount;
         }
     } }));
-    off.push(hooks.registerScenarioEvent({ id: 'measure.kill', event: 'builtObjectKilledBy', run: (gg, ev) => {
+    off.push(hooks.registerScenarioEvent({ id: 'measure.kill', flag: 'rimTrader', event: 'builtObjectKilledBy', run: (gg, ev) => {
         const rr = common.rimTraderEmpire(gg);
         if (rr === null) return;
         if (ev.builtObject.actualEmpire === rr || ev.builtObject.empire === rr) m.cur.combat.concordLost++;
@@ -241,7 +241,7 @@ export async function chunk(ctx) {
         if (g.scenario !== null && 'rimRaids' in g.scenario.state) { const rs = mods.raids.raidState(g); m.raidLog = rs.log; m.losses = rs.losses; }
         printYear(m.years.at(-1));
         // RIM_SAVE_YEARS=10,20,...: a checkpoint save (serializeGame text) after those game years, under the --out dir.
-        if (SAVE_YEARS.has(yearIdx)) {
+        if (SAVE_YEARS.has(yearIdx) && (process.env.RIM_SAVE_ALL === '1' || String(ctx.report.name).includes('long'))) {
             const { serializeGame } = await ctx.load('save');
             writeFileSync(resolve(process.env.RIM_SAVE_DIR ?? '.', `${ctx.report.name}-y${yearIdx}.save`), serializeGame(ctx.game));
             console.log(`= checkpoint y${yearIdx}`);
