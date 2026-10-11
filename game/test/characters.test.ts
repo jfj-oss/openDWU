@@ -36,6 +36,8 @@ import { spawnEnforcers } from '../src/sim/scenario/charactersVictory/diet/dietE
 import { councilState, type Council } from '../src/sim/scenario/emergent/council';
 import { blockadeFor } from '../src/sim/fleets/blockades';
 import { BuiltObjectStance } from '../src/sim/design';
+import { colonyNeglectOf, governorBribeScale } from '../src/sim/scenario/governors';
+import { autonomyDrift } from '../src/sim/scenario/frontier/frontier';
 
 import {
     CharacterEventType,
@@ -534,6 +536,40 @@ describe('Characters & Victory add-on', () => {
         scenarioEmit(g, 'intelMissionCompleted', { empire: spy, mission: { type: IntelligenceMissionType.StealOperationsMap, targetEmpire: e }, outcome: IntelligenceMissionOutcome.SucceedNotDetect });
         expect(t.revealedTo).toContain(spy.empireId);
         expect(new Set(labels()).size).toBe(2);
+    }, 600000);
+
+    it('C4 / C5: the coup bribe chance is scaled to the stock governor count; neglect is frontier-autonomy\'s "No governor" drift', () => {
+        const game = cvGame();
+        const g = game.galaxy;
+        const e = g.playerEmpire!;
+        const stock = 0.27 * e.colonies.length;
+        expect(governorBribeScale(g, e, 0)).toBe(1);
+        expect(governorBribeScale(g, e, 1)).toBeCloseTo(Math.min(1, stock), 9);
+        expect(governorBribeScale(g, e, 4)).toBeCloseTo(Math.min(1, stock / 4), 9);
+        // Neglect → the frontier drift cause (scaled), and no vacancy approval term of our own while frontier-autonomy runs.
+        const h = e.capital!;
+        for (const c of getEmpireCharacters(e).filter((x) => x.active && x.role === CharacterRole.ColonyGovernor)) c.kill(g);
+        reviewGovernors(g, e);
+        const r = peekCvState(g)!.colonies.find((x) => x.colony === h)!;
+        r.vacantSince -= (180 + 720) * (YEAR_LENGTH / 360);
+        r.updated -= 720 * (YEAR_LENGTH / 360);
+        r.riseAt = -1;
+        reviewGovernors(g, e);
+        expect(colonyNeglectOf(g, h)).toBeCloseTo(r.neglect, 9);
+        e.capital = null; // autonomyDrift treats the capital as autonomy-free; ask it for an ordinary colony
+        try {
+            const d = autonomyDrift(g, h, undefined);
+            expect(d.causes.find((c) => c.cause === 'No governor')!.amount).toBeCloseTo(4 * r.neglect, 6);
+        } finally {
+            e.capital = h;
+        }
+        expect(stabilityTermValues(g, h).some((x) => x.cause === 'vacancy')).toBe(true);
+        g.scenario!.flags['frontierAutonomy'] = true;
+        try {
+            expect(stabilityTermValues(g, h).some((x) => x.cause === 'vacancy')).toBe(false);
+        } finally {
+            delete g.scenario!.flags['frontierAutonomy'];
+        }
     }, 600000);
 
     it('a CV game with trips in flight saves and reloads identically', () => {

@@ -23,8 +23,12 @@ import { galaxyStarDate } from '../../tick/simTime';
 import { isHumanEmpire } from '../../humanEmpires';
 import { registerScenarioEvent, registerScenarioQuery, registerScenarioYearly } from '../hooks';
 import { registerStabilityTerm } from '../stability';
+import { scenarioFlag } from '../state';
+
+/** frontier-autonomy's master flag (not imported: no dependency on that package). */
+const FRONTIER_FLAG = 'frontierAutonomy';
 import { scenarioMessage, scenarioText } from '../messages';
-import { colonyGovernor, registerGovernorSpawner } from '../governors';
+import { colonyGovernor, registerColonyNeglect, registerGovernorBribeScale, registerGovernorSpawner } from '../governors';
 import {
     CV_FLAG,
     CV_GOV_FLAG,
@@ -369,7 +373,8 @@ function reviewTraining(galaxy: Galaxy, e: Empire, now: number): void {
     for (const s of sites) {
         if (total >= cap) break;
         if (ce.training.some((t) => t.site === s)) continue;
-        if (e.stateMoney < cost) break;
+        // Only from a comfortable treasury (ten times the cost): early on, training must not starve the colony ships.
+        if (e.stateMoney < cost * 10) break;
         e.stateMoney -= cost;
         ce.training.push({ site: s, until: now + cvParam(galaxy, 'cvTrainDays') * DAY });
         total++;
@@ -715,7 +720,9 @@ registerStabilityTerm({
     cause: 'vacancy',
     label: 'No governor',
     run: (g, h, e) => {
-        if (!govOn(g, e)) return null;
+        // With frontier-autonomy on, the neglect feeds its autonomy drift instead (its 'frontier' term and its
+        // breakaway path), so the unrest has one route; off, it is this term (the stock / ledger revolt reads it).
+        if (!govOn(g, e) || scenarioFlag(g, FRONTIER_FLAG)) return null;
         const n = colonyNeglect(g, h);
         return n > 0 ? -20 * n : null;
     },
@@ -745,4 +752,16 @@ registerScenarioYearly({
         if (st === null) return;
         for (const e of g.empires) if (isCvEmpire(g, e) && st.empires[e.empireId]?.design != null) reviewVipDesign(g, e);
     },
+});
+
+// frontier-autonomy reads the neglect as its "No governor" drift cause (the breakaway is frontier's own path).
+registerColonyNeglect((g, h) => (govOn(g, h.empire) ? colonyNeglect(g, h) : 0));
+/** Governors per colony in the faithful game: 25-27 % of colonies have one (the cv-off soaks: 73-75 % vacant). */
+export const STOCK_GOVERNOR_COVERAGE = 0.27;
+// corporatecoup (C4): with a governor on every colony there are 3-10x more to bribe; the per-governor chance is
+// scaled to the governor count of the faithful game (STOCK_GOVERNOR_COVERAGE x colonies), so the expected bribes
+// per year stay about the same.
+registerGovernorBribeScale((g, e, n) => {
+    if (!govOn(g, e) || n <= 0) return 1;
+    return Math.min(1, (STOCK_GOVERNOR_COVERAGE * e.colonies.length) / n);
 });

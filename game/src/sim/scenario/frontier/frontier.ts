@@ -57,7 +57,7 @@ import { radiusFraction, registerScenarioPeriodic, registerScenarioQuery, regist
 import { scenarioFlag, scenarioParam, scenarioState } from '../state';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
 import { registerStabilityTerm } from '../stability';
-import { colonyGovernor, spawnGovernorFor } from '../governors';
+import { colonyGovernor, colonyNeglectOf, spawnGovernorFor } from '../governors';
 import { POLITICS_FLAG, governedColony, initialLoyalty, isPoliticalEmpire, peekPoliticsState, politicsEntry } from '../emergent/politics';
 import { grantAutonomy, runPoliticsAction } from '../emergent/politicsActions';
 import { COURT_FLAG, houseOf, rulingHouse } from '../court/court';
@@ -85,6 +85,7 @@ export const FRONTIER_PARAMS = {
     raceDrift: p('frontierRaceDrift', 3),
     approvalDrift: p('frontierApprovalDrift', 3),
     rulingGovernorDrift: p('frontierRulingGovernorDrift', 4),
+    noGovernorDrift: p('frontierNoGovernorDrift', 4),
     looseDrift: p('frontierLooseDrift', 2),
     tightDrift: p('frontierTightDrift', 2),
     dealDrift: p('frontierDealDrift', 1),
@@ -327,6 +328,9 @@ export function autonomyDrift(galaxy: Galaxy, h: Habitat, entry: FrontierColony 
     }
     const a = P.approvalDrift(galaxy);
     add('Approval', -clamp(empireApprovalRating(galaxy, h) / 10, -a, a));
+    // Characters & Victory (when on): a colony left without a governor drifts with its neglect (scenario/governors.ts).
+    const neglect = colonyNeglectOf(galaxy, h);
+    if (neglect > 0) add('No governor', P.noGovernorDrift(galaxy) * neglect);
     const gov = colonyGovernorOf(h);
     if (gov !== null && scenarioFlag(galaxy, COURT_FLAG)) {
         const ruling = rulingHouse(galaxy, empire);

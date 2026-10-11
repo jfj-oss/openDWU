@@ -43,3 +43,34 @@ export function spawnGovernorFor(galaxy: Galaxy, empire: Empire, colony: Habitat
     const c = spawner != null ? spawner(galaxy, empire, colony) : null;
     return c ?? generateNewCharacter(galaxy, empire, CharacterRole.ColonyGovernor, colony).character;
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Governor neglect and bribe scale (provided by Characters & Victory; inert without it)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** 0..1: how neglected a colony is for want of a governor (Characters & Victory's vacancy decline). */
+export type ColonyNeglectProvider = (galaxy: Galaxy, colony: Habitat) => number;
+/** Factor on a per-governor bribe chance so the expected bribes stay those of the stock governor count. */
+export type GovernorBribeScale = (galaxy: Galaxy, empire: Empire, governorsAtColonies: number) => number;
+
+// eslint-disable-next-line no-var
+var neglectProvider: ColonyNeglectProvider | null | undefined;
+// eslint-disable-next-line no-var
+var bribeScaleProvider: GovernorBribeScale | null | undefined;
+
+export function registerColonyNeglect(fn: ColonyNeglectProvider | null): void {
+    neglectProvider = fn;
+}
+export function registerGovernorBribeScale(fn: GovernorBribeScale | null): void {
+    bribeScaleProvider = fn;
+}
+
+/** The colony's neglect (0 when no package provides one, or its package is off). Pure. */
+export function colonyNeglectOf(galaxy: Galaxy, colony: Habitat): number {
+    return neglectProvider != null ? neglectProvider(galaxy, colony) : 0;
+}
+
+/** The bribe-chance factor for `empire` (1 when no package provides one, or its package is off). Pure. */
+export function governorBribeScale(galaxy: Galaxy, empire: Empire, governorsAtColonies: number): number {
+    return bribeScaleProvider != null ? bribeScaleProvider(galaxy, empire, governorsAtColonies) : 1;
+}

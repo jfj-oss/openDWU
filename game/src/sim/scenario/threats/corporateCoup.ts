@@ -24,7 +24,7 @@ import type { Galaxy } from '../../galaxy';
 import type { Empire } from '../../empire';
 import type { Habitat } from '../../types';
 import { Character, CharacterRole, CharacterTraitType, generateNewCharacter, getEmpireCharacters, isBuiltObjectLocation, stellarObjectCharacters } from '../../characters';
-import { spawnGovernorFor } from '../governors';
+import { governorBribeScale, spawnGovernorFor } from '../governors';
 import { IntelligenceMissionType, completeIntelligenceMission, newIntelligenceMissionAgainstHabitat } from '../../espionage';
 import { YEAR_LENGTH } from '../../galaxyTime';
 import { galaxyStarDate } from '../../tick/simTime';
@@ -139,11 +139,14 @@ export function coupBribeYearly(galaxy: Galaxy): void {
     for (const company of st.companies) {
         if (company.triggered || !company.empire.active || !company.holder.active) continue;
         const pct = P.bribePerMille(galaxy);
-        for (const gov of holderGovernors(company.holder)) {
+        const govs = holderGovernors(company.holder);
+        // Characters & Victory (when on): the chance scaled back to the stock governor count (scenario/governors.ts).
+        const scale = governorBribeScale(galaxy, company.holder, govs.length);
+        for (const gov of govs) {
             if (company.bought.includes(gov)) continue;
             const mult = bribeMultiplier(gov);
             if (mult <= 0) continue;
-            if (galaxy.rnd.next(0, 1000) < pct * mult) {
+            if (galaxy.rnd.next(0, 1000) < pct * mult * scale) {
                 company.bought.push(gov);
                 // 19m (flag-gated): the bought governor hides in the holder; the company record carries the knowledge.
                 registerHiddenThing(galaxy, { kind: 'boughtGovernor', concealment: 55, empire: company.holder, target: gov, package: '19f.corporateCoup', site: company });

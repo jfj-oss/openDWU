@@ -17,6 +17,7 @@
     { "name": "frontierRaceDrift", "label": "Yearly drift of a colony whose race differs from the empire's", "default": 3, "min": 0, "max": 20 },
     { "name": "frontierApprovalDrift", "label": "Largest yearly drift from approval (either way)", "default": 3, "min": 0, "max": 20 },
     { "name": "frontierRulingGovernorDrift", "label": "Yearly drift removed by a governor of the ruling house", "default": 4, "min": 0, "max": 20 },
+    { "name": "frontierNoGovernorDrift", "label": "Yearly drift of a colony fully neglected for want of a governor (Characters & Victory)", "default": 4, "min": 0, "max": 20 },
     { "name": "frontierLooseDrift", "label": "Yearly drift removed by loose rule", "default": 2, "min": 0, "max": 20 },
     { "name": "frontierTightDrift", "label": "Yearly drift added by tight rule", "default": 2, "min": 0, "max": 20 },
     { "name": "frontierDealDrift", "label": "Yearly drift after a trade compact", "default": 1, "min": 0, "max": 20 },
