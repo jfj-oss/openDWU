@@ -4,6 +4,54 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+## 0.1.17
+
+### The Voidbloom War (new add-on in The Rim)
+
+- An Opium-War-style arc around the Oranthi Concord. Voidbloom, a narcotic spore, grows only on deadly rim worlds worked
+  by forced labour and held down by garrisons, and is smuggled into the Concord's closed market. Addiction spreads, the
+  Concord's treasury bleeds and its commissioner cracks down with blockades, raids, burned fields, freed workers,
+  freighter hunts and occupations. Tolerate it or go to war: a late war can end in an unequal treaty (ceded worlds,
+  indemnities, treaty ports, legal Voidbloom), followed by one of five aftermaths. The Interstellar Diet can ban it,
+  sanction either side or force the Concord's ports open.
+
+### The Rim
+
+- **A wild rim:** the AI rarely settles it, its planets are poorer, rim pirates are many and strong, and derelict
+  high-tech warships wait to be claimed.
+- **Concord patrols** around its colonies and stations, escorts for its construction ships, new listening posts.
+- **Faster, deadlier creatures** that can catch ships, and about 2.5× more wildlife in the rim.
+- **Rim Herders** earn money from their goods plus a small yearly stipend.
+- **Ordinary empires no longer start inside the rim**, and that check no longer stalls "Founding empires".
+
+### Galactic Threats
+
+- **Generation Ships:** an early-game crisis. A world ship and a fleet about 1.3× its target's strength arrive at the
+  galaxy edge, make contact and, 18 months later, demand a world: Pilgrims, Heirs, Ark Faith or the silent Quiet Ship.
+- **Archive Cores:** lost tech to study (four yearly boosts) or seal for one large payoff.
+- **The Dead Probe Swarm:** self-replicating machines that mine outward from their Mothercore and attack any ship in
+  their systems, shown as a dark-brown presence on the map.
+
+### Dark themes
+
+- **Slavery:** penal colonies worked by enslaved peoples, with output up to 6× and tax up to 2× by staffing, at the price
+  of garrisons, revolts and reputation; AI use depends on species and government.
+- **Scorched earth** (Living Galaxy) and **War crimes remembered** (Politics & Characters) add-ons.
+
+### Map, look and menus
+
+- **Deep (DW2-style) backdrop,** the new default for new games: the original image darkened, with slowly drifting rust and
+  teal dust, glows and faint godrays.
+- **Influence borders** (Advanced Display Settings): angular empire regions from colonies and stations, optional empire
+  names, and pulses flowing out from each capital along the link lines.
+- **One Multiplayer entry** on the main menu, with Host, Join and Resume inside.
+- The Diet map icon stays sharp at any zoom.
+
+### Options
+
+- **Arrival** (new-game wizard): Early / Normal / Late for the Return of the Shakturi refugees.
+- **Auto-rebuild lost ships / stations** on the Build Order screen (off by default).
+
 ### Multiplayer
 
 - **Join a game in progress.** A new player can join a running LAN or Internet game: the host offers a free empire and
