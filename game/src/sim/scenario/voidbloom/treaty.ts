@@ -13,14 +13,14 @@ import type { Habitat } from '../../types';
 import { IndustryType } from '../../types';
 import { ColonyResourceEffect } from '../../developmentLevel';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../../diplomacy';
-import { changeDiplomaticRelation, declareWar, militaryPotency } from '../../diplomacyTick';
+import { changeDiplomaticRelation, declareWar, militaryPotency, processEndOfWarWithEmpire, resetAttitudeLevelsAtEndOfWar } from '../../diplomacyTick';
 import { initiateEmpireSplitAt } from '../../empireEvents';
 import { CharacterTraitType } from '../../characters';
 import { calculateWarValueHabitat } from '../../combat/damage';
 import { TradeableItem, TradeableItemType, giveTradeableItem } from '../../tradeItems';
 import { galaxyStarDate } from '../../tick/simTime';
 import { YEAR_LENGTH } from '../../galaxyTime';
-import { gameYear, registerScenarioEvent, registerScenarioQuery, registerScenarioYearly } from '../hooks';
+import { gameYear, registerScenarioEvent, registerScenarioQuery, registerScenarioYearly, scenarioEmit } from '../hooks';
 import { registerStabilityTerm } from '../stability';
 import { scenarioParam } from '../state';
 import { scenarioNews, scenarioText } from '../messages';
@@ -79,7 +79,9 @@ export function concordDeclineIndex(galaxy: Galaxy): number {
     if (r === null || st === null) return 0;
     const start = Math.max(1, rimParam(galaxy, 'rimTraderStartMoney'));
     const drain = Math.min(1, (st.stats.stateDrain + st.stats.privateDrain) / start);
-    const poor = 1 - Math.min(1, Math.max(0, r.stateMoney) / start);
+    // Drained from its peak: the treasury against the most it ever held (at least the starting treasury).
+    const peak = Math.max(start, st.concordPeak ?? 0);
+    const poor = 1 - Math.min(1, Math.max(0, r.stateMoney) / peak);
     const gap = Math.min(1, concordTechGap(galaxy) / 3);
     return Math.min(1, 0.35 * concordAddiction(galaxy) + 0.25 * drain + 0.2 * poor + 0.2 * gap);
 }
@@ -88,7 +90,9 @@ declineSlot.fn = concordDeclineIndex;
 
 /** The peace gate: the Concord signs away rights only once declined this far. Pure. */
 export function concordGateOpen(galaxy: Galaxy): boolean {
-    return concordDeclineIndex(galaxy) >= vbParam(galaxy, 'voidbloomGateDecline');
+    // The yearly figure (the index walks every empire's tech tree); fresh when the year has none yet.
+    const cached = peekVbState(galaxy)?.declineNow;
+    return (cached ?? concordDeclineIndex(galaxy)) >= vbParam(galaxy, 'voidbloomGateDecline');
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -346,6 +350,11 @@ function onPeaceSigned(galaxy: Galaxy, p: { empire: Empire; other: Empire }): vo
         closeWar(galaxy, e, w.byConcord > w.byEmpire ? 'concord' : 'white');
         return;
     }
+    imposeTreaty(galaxy, e, r);
+}
+
+/** The built-in unequal treaty (the barren rock, an indemnity in instalments, every right). */
+function imposeTreaty(galaxy: Galaxy, e: Empire, r: Empire): void {
     const res = unequalTerms(galaxy, e, r, 600, true);
     const lines: string[] = [];
     if (res.cede !== null && res.cede.empire === r) {
@@ -365,6 +374,38 @@ function onPeaceSigned(galaxy: Galaxy, p: { empire: Empire; other: Empire }): vo
     }
     recordTreaty(galaxy, e, r, 600 + total / 25, lines, res.cede);
     closeWar(galaxy, e, 'treaty');
+}
+
+/**
+ * The exhausted Concord sues for peace: past the gate, two years into a Voidbloom war against a smuggler with at least
+ * 60 % of its strength (or ahead in the damage dealt), it signs the unequal treaty (the stock end of war, then the
+ * built-in terms; peaceSigned follows for the other add-ons). The Opium War's logic: a declined power gives way.
+ */
+function concordSuesForPeace(galaxy: Galaxy): void {
+    const r = rimTraderEmpire(galaxy);
+    const st = vbState(galaxy);
+    if (r === null || !concordGateOpen(galaxy)) return;
+    const now = galaxyStarDate(galaxy);
+    for (const w of [...st.wars]) {
+        if (w.outcome !== '' || now - w.start < 2 * YEAR_LENGTH) continue;
+        const e = empireById(galaxy, w.empireId);
+        if (e === null || !e.active || !isNormal(galaxy, e)) continue;
+        const rel = obtainDiplomaticRelation(e, r);
+        if (rel.type !== DiplomaticRelationType.War) continue;
+        const strong = militaryPotency(e) >= 0.6 * Math.max(1, militaryPotency(r)) || w.byEmpire > w.byConcord;
+        if (!strong) continue;
+        resetAttitudeLevelsAtEndOfWar(galaxy, rel, e);
+        rel.type = DiplomaticRelationType.None;
+        rel.lastDiplomacyTradeOfferDate = now;
+        const rel2 = obtainDiplomaticRelation(r, e);
+        rel2.type = DiplomaticRelationType.None;
+        rel2.lastDiplomacyTradeOfferDate = now;
+        processEndOfWarWithEmpire(galaxy, e, r);
+        processEndOfWarWithEmpire(galaxy, r, e);
+        imposeTreaty(galaxy, e, r);
+        scenarioEmit(galaxy, 'peaceSigned', { empire: r, other: e });
+        return;
+    }
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -485,6 +526,7 @@ function startBranch(galaxy: Galaxy, b: AftermathBranch): void {
 
 function treatyYear(galaxy: Galaxy): void {
     const st = vbState(galaxy);
+    concordSuesForPeace(galaxy);
     const t = st.treaty;
     const r = rimTraderEmpire(galaxy);
     const now = galaxyStarDate(galaxy);
@@ -499,7 +541,10 @@ function treatyYear(galaxy: Galaxy): void {
         }
         if (st.indemnity.yearsLeft <= 0) st.indemnity = null;
     }
-    if (r !== null) st.declineNow = Math.round(concordDeclineIndex(galaxy) * 1000) / 1000;
+    if (r !== null) {
+        st.concordPeak = Math.max(st.concordPeak ?? 0, r.stateMoney);
+        st.declineNow = Math.round(concordDeclineIndex(galaxy) * 1000) / 1000;
+    }
     // The gunboat moment: the Concord's frozen research falls two levels behind.
     if (r !== null && !st.gunboat && concordTechGap(galaxy) >= 2) {
         st.gunboat = true;
@@ -603,7 +648,7 @@ function burnedWonder(galaxy: Galaxy, h: Habitat): number | null {
 // ---------------------------------------------------------------------------------------------------------------
 
 const H = concordHooks();
-H.navyCapFactor = (g, f) => (vbOn(g) ? f * (1 - 0.5 * concordAddiction(g)) : f);
+H.navyCapFactor = (g, f) => (vbOn(g) ? f * (1 - 0.5 * Math.max(concordAddiction(g), peekVbState(g)?.declineNow ?? 0)) : f);
 H.researchCap = (g, cap) => {
     const st = vbOn(g) ? peekVbState(g) : null;
     if (st === null) return cap;

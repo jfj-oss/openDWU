@@ -325,6 +325,8 @@ export interface VoidbloomState {
     declineNow?: number;
     /** Star date of the last public burning (galactic news at most once a year). */
     lastBurning?: number;
+    /** The most the Concord's treasury has held (the decline index measures the drain from it). */
+    concordPeak?: number;
     /** History lines for the Galactopedia / panel (newest last, trimmed to 60). */
     history: string[];
     /** Yearly samples for the panel's "silver drain" figure (last 30 years). */
