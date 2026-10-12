@@ -631,6 +631,7 @@ interface FighterOwnerLike {
  */
 export function takeOwnershipOfBuiltObject(galaxy: Galaxy, self: Empire, builtObject: BuiltObject, newEmpire: Empire | null, setDesignAsObsolete = false, removeFromFleet = true): void {
     const actualEmpire = builtObject.actualEmpire;
+    if (newEmpire !== null && isHumanEmpire(galaxy, newEmpire)) builtObject.noAutoRebuild = true; // [auto-rebuild] acquired, not built: never a rebuildable loss
     // Empire.1.cs 528 _Galaxy.CheckTriggerEvent(builtObject.GameEventId, newEmpire, Capture, null) (story/eventActions.ts, M4z3).
     checkTriggerEvent(galaxy, builtObject.gameEventId, newEmpire, EventTriggerType.Capture, null);
     if (removeFromFleet && builtObject.shipGroup !== null) leaveShipGroup(galaxy, builtObject);

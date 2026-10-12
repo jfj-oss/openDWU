@@ -28,6 +28,7 @@ import {
     COLORS,
     FONT,
     el,
+    checkBox,
     glassButton,
     imageCombo,
     messageBox,
@@ -183,6 +184,16 @@ function createBuildOrder(opts: BuildOrderOptions): OriginalWindow {
     body.appendChild(place(text(bt('Available Money and Cashflow'), { size: FONT.large, bold: true, color: COLORS.label, shadow: false }), 414, ty + 30));
     const funds = body.appendChild(label('', C.cost.x - 5, ty + 34, C.cost.w + 5, 'right', true));
     const cashflow = body.appendChild(label('', C.maintenance.x, ty + 34, C.maintenance.w, 'right', false));
+
+    // [auto-rebuild] Two separate switches, off until enabled: journaled per-empire commands (player/autoRebuild.ts).
+    for (const [i, kind, caption] of [
+        [0, 'ships', 'Auto-rebuild lost ships'],
+        [1, 'stations', 'Auto-rebuild lost stations'],
+    ] as const) {
+        const box = checkBox(caption, empire.autoRebuild?.[kind] === true, (v) => issuePlayerCommand(galaxy, empire, 'setAutoRebuild', [kind, v]), FONT.large);
+        box.title = kind === 'ships' ? 'When one of your state ships is destroyed, queue a replacement automatically.' : 'When one of your state bases or stations is destroyed, a construction ship rebuilds it.';
+        body.appendChild(place(box, 12, ty + 4 + i * 30));
+    }
 
     const cancel = glassButton(bt('Cancel'), { size: 15.83, onClick: () => win.close() });
     body.appendChild(place(cancel, 12, ty + 67, 238, 40));

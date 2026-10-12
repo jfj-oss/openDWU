@@ -26,6 +26,7 @@ import { updatePosition } from '../movement';
 import { scenarioEmit } from '../scenario/hooks';
 import { battleReportHooks } from '../battleReports/hooks';
 import { isHumanEmpire } from '../humanEmpires';
+import { recordAutoRebuildLoss } from '../player/autoRebuild'; // [auto-rebuild]
 
 /** Galaxy.3.cs 4959 IndexSize (galaxy.ts / movement.ts keep private copies). */
 const INDEX_SIZE = 400_000;
@@ -195,6 +196,7 @@ export function builtObjectCompleteTeardown(galaxy: Galaxy, builtObject: BuiltOb
         if (builtObject.hasBeenDestroyed) scenarioEmit(galaxy, 'builtObjectDestroyed', { builtObject }); // 19e-7
         scenarioEmit(galaxy, 'builtObjectRemoved', { builtObject });
     }
+    recordAutoRebuildLoss(galaxy, builtObject); // [auto-rebuild] (no-op unless the owner switched it on)
     const self = builtObject;
     self.hasBeenDestroyed = true;
     if (self.contractsToFulfill.length > 0) checkCancelContracts(galaxy, self);

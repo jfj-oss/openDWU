@@ -5,6 +5,10 @@ import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { cachedTickGame } from './helpers/gameCache';
 import type { GameData } from '../src/sim/data/gameData';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
+import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
+import { builtObjectCompleteTeardown } from '../src/sim/combat/teardown';
+import { setAutoRebuild } from '../src/sim/player/autoRebuild';
+import { processAutoRebuild } from '../src/sim/player/autoRebuildTick';
 import { buildNewShips, buildOrderTotalCost, queueOf } from '../src/sim/construction/empireConstruction';
 import { BUILD_ORDER_SUBROLES, buildOrderPurchaseLists, buildOrderRows, buildOrderTotals, purchaseResultText } from '../src/ui/screens/buildOrder';
 
@@ -49,5 +53,56 @@ describe('Build Order purchase on the harness game', () => {
         expect(r.built).toEqual([]);
         expect(e.stateMoney).toBe(money0);
         expect(purchaseResultText(r)).toContain('Cannot afford build order');
+    });
+
+    function destroyEscort(g: ReturnType<typeof cachedTickGame>['galaxy'], e: ReturnType<typeof cachedTickGame>['playerEmpire']): void {
+        const ship = e.builtObjects.find((b) => b.role === BuiltObjectRole.Military && b.owner === e && b.design !== null && b.unbuiltComponentCount === 0);
+        expect(ship).toBeDefined();
+        ship!.hasBeenDestroyed = true; // as combat marks it before the teardown
+        builtObjectCompleteTeardown(g, ship!);
+    }
+    function queuedCount(e: ReturnType<typeof cachedTickGame>['playerEmpire']): number {
+        return e.spacePorts.reduce((n, p) => {
+            const q = queueOf(p)!;
+            return n + (q.constructionWaitQueue ?? []).length + (q.constructionYards ?? []).filter((y) => y.shipUnderConstruction).length;
+        }, 0);
+    }
+    it('auto-rebuild ships: a destroyed ship is re-queued once with the switch on, nothing with it off', () => {
+        const off = cachedTickGame(gameData);
+        off.playerEmpire.stateMoney = 1e9;
+        const before = queuedCount(off.playerEmpire);
+        destroyEscort(off.galaxy, off.playerEmpire);
+        processAutoRebuild(off.galaxy, off.playerEmpire);
+        expect(off.playerEmpire.autoRebuild).toBeUndefined();
+        expect(queuedCount(off.playerEmpire)).toBe(before);
+
+        const { galaxy: g, playerEmpire: e } = cachedTickGame(gameData);
+        e.stateMoney = 1e9;
+        expect(setAutoRebuild(g, e, 'ships', true)).toBe(true);
+        const q0 = queuedCount(e);
+        destroyEscort(g, e);
+        expect(e.autoRebuild!.losses.length).toBe(1);
+        processAutoRebuild(g, e);
+        expect(queuedCount(e)).toBe(q0 + 1);
+        expect(e.autoRebuild!.losses.length).toBe(0);
+        processAutoRebuild(g, e);
+        expect(queuedCount(e)).toBe(q0 + 1);
+    });
+    it('auto-rebuild ships: waits without debt, ignores scrapped ships and the stations switch', () => {
+        const { galaxy: g, playerEmpire: e } = cachedTickGame(gameData);
+        setAutoRebuild(g, e, 'ships', true);
+        e.stateMoney = 1e9;
+        const scrapped = e.builtObjects.find((b) => b.role === BuiltObjectRole.Military && b.owner === e)!;
+        builtObjectCompleteTeardown(g, scrapped); // not marked destroyed: scrapped / retired
+        expect(e.autoRebuild!.losses.length).toBe(0);
+        destroyEscort(g, e);
+        e.stateMoney = 0;
+        const q0 = queuedCount(e);
+        processAutoRebuild(g, e);
+        expect(queuedCount(e)).toBe(q0);
+        expect(e.stateMoney).toBe(0);
+        expect(e.autoRebuild!.losses.length).toBe(1);
+        setAutoRebuild(g, e, 'ships', false);
+        expect(e.autoRebuild!.losses.length).toBe(0);
     });
 });

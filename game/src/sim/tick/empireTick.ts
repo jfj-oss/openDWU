@@ -114,6 +114,7 @@ import { scenarioFlag } from '../scenario/state';
 import { scenarioEmit, scenarioQuery } from '../scenario/hooks';
 import { rimTraderColonyCapReached } from '../scenario/rimTrade/common';
 import { isHumanEmpire } from '../humanEmpires';
+import { processAutoRebuild } from '../player/autoRebuildTick'; // [auto-rebuild]
 
 /** Empire.cs 176-186 _ShortProcessingInterval .. _HugeProcessingInterval (seconds). */
 export const SHORT_PROCESSING_INTERVAL = 3.0;
@@ -310,6 +311,7 @@ export function empireDoTasks(galaxy: Galaxy, empire: Empire): void {
         if (isHumanEmpire(galaxy, empire)) {
             updateSystemRefuellingStatus(galaxy, empire);
             checkForStrandedShips(galaxy, empire);
+            processAutoRebuild(galaxy, empire); // [auto-rebuild] (no-op unless switched on)
         }
         updateSystemFuelSourceStatus(galaxy, empire);
         updateAchievements(galaxy, empire);
