@@ -51,17 +51,16 @@
     display: block;
 }
 
-/* Multiplayer (ours, no original art): text in the menu art's grey, gold on hover. */
+/* Multiplayer (ours, no original art): the stock items' font and grey, same width and row height (set inline in
+   mainMenu.ts), brighter on hover like the art's Active variant. */
 .main-menu-item-text {
-    padding: 6px 0;
-    font-family: Verdana, Arial, sans-serif;
+    font-family: 'Forgotten Futurist', sans-serif;
     font-weight: bold;
-    letter-spacing: 0.04em;
-    color: #b4bcc8;
-    text-shadow: 0 0 6px #000;
+    color: #cfd4dc;
+    text-shadow: 0 0 6px #000, 0 1px 2px #000;
 }
 .main-menu-item-text:hover {
-    color: #ffc040;
+    color: #fff;
 }
 
 /* Menu_* art renders at natural size × s (set inline in mainMenu.ts); no

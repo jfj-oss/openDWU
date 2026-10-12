@@ -157,6 +157,8 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
     // Vertical item list panel.
     const panel = document.createElement('div');
     panel.className = 'main-menu-panel';
+    let pendingMultiplayer: HTMLButtonElement | undefined;
+    let mainItems: Element[] = [];
     for (const item of MENU_ITEMS) {
         const btn = document.createElement('button');
         btn.className = 'main-menu-item';
@@ -227,32 +229,41 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
             }
         });
         panel.appendChild(btn);
-        // Multiplayer (ours, no original art): a text item in the menu's colours, after Load Game.
+        // Multiplayer (ours, no original art): one entry in the stock column, after Load Game. With a Resume handler it
+        // opens a submenu in the same style (Host / Join, Resume, Back); without, it goes straight to Host / Join.
         if (item.id === 'loadGame' && callbacks.onMultiplayer !== undefined) {
-            const mp = document.createElement('button');
-            mp.className = 'main-menu-item main-menu-item-text';
-            mp.type = 'button';
-            mp.setAttribute('data-id', 'multiplayer');
-            mp.textContent = 'Multiplayer';
-            mp.style.width = `${280 * s}px`;
-            mp.style.fontSize = `${22 * s}px`;
             const onMp = callbacks.onMultiplayer;
-            mp.addEventListener('click', () => onMp());
-            panel.appendChild(mp);
-            if (callbacks.onResumeMultiplayer !== undefined) {
-                const rs = document.createElement('button');
-                rs.className = 'main-menu-item main-menu-item-text';
-                rs.type = 'button';
-                rs.setAttribute('data-id', 'resumeMultiplayer');
-                rs.textContent = 'Resume Multiplayer Game';
-                rs.style.width = `${280 * s}px`;
-                rs.style.fontSize = `${18 * s}px`;
-                const onRs = callbacks.onResumeMultiplayer;
-                rs.addEventListener('click', () => onRs());
-                panel.appendChild(rs);
-            }
+            const onRs = callbacks.onResumeMultiplayer;
+            const textItem = (id: string, label: string, onClick: () => void): HTMLButtonElement => {
+                const b = document.createElement('button');
+                b.className = 'main-menu-item main-menu-item-text';
+                b.type = 'button';
+                b.setAttribute('data-id', id);
+                b.textContent = label;
+                b.style.width = `${280 * s}px`;
+                b.style.height = `${72 * s}px`;
+                b.style.fontSize = `${34 * s}px`;
+                b.addEventListener('click', onClick);
+                return b;
+            };
+            const showMain = (): void => {
+                panel.replaceChildren(...mainItems);
+            };
+            const showSub = (): void => {
+                panel.replaceChildren(
+                    textItem('hostJoinMultiplayer', 'Host / Join Game', () => onMp()),
+                    textItem('resumeMultiplayer', 'Resume Multiplayer Game', () => onRs?.()),
+                    textItem('multiplayerBack', 'Back', showMain),
+                );
+            };
+            pendingMultiplayer = textItem('multiplayer', 'Multiplayer', onRs === undefined ? () => onMp() : showSub);
         }
     }
+    if (pendingMultiplayer !== undefined) {
+        const loadIdx = Array.from(panel.children).findIndex((c) => c.getAttribute('data-id') === 'loadGame');
+        panel.children[loadIdx].after(pendingMultiplayer);
+    }
+    mainItems = Array.from(panel.children);
     root.appendChild(panel);
 
     // Title art, lower-middle (task 06c): natural aspect, width =
