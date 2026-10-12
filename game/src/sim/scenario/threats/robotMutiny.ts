@@ -512,7 +512,7 @@ export function beaconTarget(galaxy: Galaxy, yearIndex: number): number {
 }
 
 /** Raises the faction's tech tree to `lvl` (the construction sizes the designs need): SetTechTreeLevel's rule, only upward. */
-function raiseFactionTech(galaxy: Galaxy, faction: Empire, lvl: number): void {
+export function raiseFactionTech(galaxy: Galaxy, faction: Empire, lvl: number): void {
     const race = faction.dominantRace;
     const allowed = galaxy.researchStatic?.allowedRaces;
     let changed = false;

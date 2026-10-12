@@ -18,7 +18,7 @@
 // Empire.SendMessageToEmpire calls are kept (messages.ts queue) with GameText keys as descriptions (TextResolver is not
 // ported; M9). Scripted game events: CheckTriggerEvent / GetMatchingGameEventId* are story/eventActions.ts.
 
-import { scenarioQuery } from './scenario/hooks';
+import { scenarioEmit, scenarioQuery } from './scenario/hooks';
 import { doSingleEmpireEncounterShakturiStory, checkForStoryLocationHint, investigateRuinsStoryClue, investigateRuinsStoryEvent } from './story/storyEvents';
 import { resolveDescription } from './messages';
 import { EventMessageType, DisasterEventType, RaceEventType } from './eventTypes';
@@ -1067,6 +1067,7 @@ export function investigateRuins(galaxy: Galaxy, investigatingEmpire: Empire | n
     if (ruinsHabitat === null || investigatingEmpire === null) return;
     const ruin = ruinsHabitat.ruin;
     if (ruin === null) return;
+    if (galaxy.scenario !== null) scenarioEmit(galaxy, 'ruinsInvestigated', { empire: investigatingEmpire, habitat: ruinsHabitat }); // mod layer (Archive Cores)
     let text = '';
     let text2 = '';
     if (investigatingEmpire === galaxy.playerEmpire) {

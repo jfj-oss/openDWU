@@ -73,6 +73,7 @@ import {
     updateAchievements,
 } from '../events';
 import { isHumanEmpire } from '../humanEmpires';
+import { scenarioQuery } from '../scenario/hooks';
 
 /** Empire.1.cs 4095 DoTasksPirates(). */
 export function empirePirateDoTasks(galaxy: Galaxy, empire: Empire): void {
@@ -80,6 +81,9 @@ export function empirePirateDoTasks(galaxy: Galaxy, empire: Empire): void {
     if (!empire.active) {
         return;
     }
+    // Mod layer (Probe Swarm): a passive pirate-style faction keeps the pirate machinery (base, fleets' short tasks,
+    // research, upkeep) but never raids, bids for missions, extorts, trades or builds through the pirate AI.
+    const passive = galaxy.scenario !== null && scenarioQuery(galaxy, 'pirateFactionPassive', false, { empire });
     // 4101-4114
     const currentStarDate = galaxyStarDate(galaxy);
     const currentDateTime = galaxyNow(galaxy);
@@ -116,7 +120,7 @@ export function empirePirateDoTasks(galaxy: Galaxy, empire: Empire): void {
     if (num2 >= REGULAR_PROCESSING_INTERVAL) {
         reviewDesignsAndRetrofit(galaxy, empire);
         clearExpiredViewableEmpires(galaxy, empire);
-        pirateCheckMissionsOnOffer(galaxy, empire, currentStarDate);
+        if (!passive) pirateCheckMissionsOnOffer(galaxy, empire, currentStarDate);
         updateEmpireRefuellingLocations(galaxy, empire);
     }
     // 4179-4199 periodic block.
@@ -125,14 +129,14 @@ export function empirePirateDoTasks(galaxy: Galaxy, empire: Empire): void {
         pirateRecalculateEmpireCorruption(galaxy, empire);
         processMessages(galaxy, empire);
         evaluateColonyVariablesPirate(galaxy, empire, num3);
-        if (empire.controlMilitaryFleets) {
+        if (!passive && empire.controlMilitaryFleets) {
             maintainShipGroups(galaxy, empire);
             updateFleetLeadShips(galaxy, empire);
             reviewFleetPostures(galaxy, empire);
         }
         checkMarketOrders(galaxy, empire);
-        pirateAssignShipMissions(galaxy, empire, currentStarDate);
-        if (empire.controlAgentAssignment !== AutomationLevel.Undefined) {
+        if (!passive) pirateAssignShipMissions(galaxy, empire, currentStarDate);
+        if (!passive && empire.controlAgentAssignment !== AutomationLevel.Undefined) {
             assignSpecialMissions(galaxy, empire);
         }
         performIntelligenceMissions(galaxy, empire);
@@ -140,7 +144,7 @@ export function empirePirateDoTasks(galaxy: Galaxy, empire: Empire): void {
     }
     // 4200-4242 intermediate block.
     if (num4 >= INTERMEDIATE_PROCESSING_INTERVAL) {
-        if (empire.controlMilitaryAttacks !== AutomationLevel.Undefined) {
+        if (!passive && empire.controlMilitaryAttacks !== AutomationLevel.Undefined) {
             pirateTaskFleets(galaxy, empire);
         }
         reviewFleetAdmiralBonuses(galaxy, empire);
@@ -162,11 +166,11 @@ export function empirePirateDoTasks(galaxy: Galaxy, empire: Empire): void {
         }
         pirateReviewSystemThreats(galaxy, empire);
         // 4224 _ColonizationTargets = PirateReviewColoniesToControl() (pirates.ts; Galaxy.IndependentColonies).
-        empire.colonizationTargets = pirateReviewColoniesToControl(galaxy, empire, galaxy.independentColonies);
+        empire.colonizationTargets = passive ? [] : pirateReviewColoniesToControl(galaxy, empire, galaxy.independentColonies);
         empire.empireResourceTargets = prioritizeEmpireResourceNeeds(galaxy, empire, false, 5, 1.0);
         empire.resourceTargets = identifyResourceCentres(galaxy, empire);
         identifyUnavailableLuxuryResources(galaxy, empire);
-        pirateGenerateSellInfoOffers(galaxy, empire);
+        if (!passive) pirateGenerateSellInfoOffers(galaxy, empire);
         if (isHumanEmpire(galaxy, empire)) {
             updateSystemRefuellingStatus(galaxy, empire);
             checkForStrandedShips(galaxy, empire);
@@ -179,31 +183,35 @@ export function empirePirateDoTasks(galaxy: Galaxy, empire: Empire): void {
     }
     // 4243-4266 long block.
     if (num5 >= LONG_PROCESSING_INTERVAL) {
-        doTaskPiratesLongInterval(galaxy, empire);
+        if (!passive) doTaskPiratesLongInterval(galaxy, empire);
         mergeGalaxyMapsForSharedVisibilityEmpires(galaxy, empire);
         mergeKnownPirateBasesForSharedVisibilityEmpires(galaxy, empire);
         maintainPirateSpaceportResourceLevels(galaxy, empire);
         pirateReviewColonyFacilities(galaxy, empire);
         clearInvalidDiplomaticRelations(galaxy, empire);
         // 4250: the C# passes num4 (intermediate span), not num5.
-        pirateReviewEmpireRelations(galaxy, empire, currentStarDate, num4);
-        pirateProjectForces(galaxy, empire, currentStarDate);
+        if (!passive) {
+            pirateReviewEmpireRelations(galaxy, empire, currentStarDate, num4);
+            pirateProjectForces(galaxy, empire, currentStarDate);
+        }
         payMaintenanceForBuiltObjects(galaxy, empire, num5);
         payForTroops(galaxy, empire, num5);
         payForPlanetaryFacilities(galaxy, empire, num5);
         reviewMigrationTourism(galaxy, empire);
-        if (empire.initiateConstruction) {
+        if (!passive && empire.initiateConstruction) {
             reviewLatestDesigns(galaxy, empire);
             pirateDoConstruction(galaxy, empire);
         }
         pirateResetCivilianShipEmpireToIndependent(galaxy, empire);
-        piratesMakeAttackOffers(galaxy, empire, currentStarDate);
-        pirateTradeItems(galaxy, empire);
+        if (!passive) {
+            piratesMakeAttackOffers(galaxy, empire, currentStarDate);
+            pirateTradeItems(galaxy, empire);
+        }
         clearExpiredDeclinedTasks(galaxy, empire);
     }
     // 4267-4272 huge block.
     if (num6 >= HUGE_PROCESSING_INTERVAL) {
-        pirateReviewRandomEvents(galaxy, empire);
+        if (!passive) pirateReviewRandomEvents(galaxy, empire);
         maintainBaseResourceLevels(galaxy, empire);
         cleanupInvalidShips(galaxy, empire);
     }

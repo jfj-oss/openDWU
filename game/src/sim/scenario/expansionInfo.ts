@@ -56,11 +56,13 @@ export const EXPANSION_INFO: Readonly<Record<string, ExpansionInfo>> = {
         ],
     },
     'galactic-threats': {
-        about: 'Hidden end-game threats wait in the galaxy: a spreading cult, a hive mind, a hyperdrive-killing ruin, a mining swarm, ghost fleets, a robot uprising and more. Most stay quiet until late in the game, then force every empire to unite or fall.',
-        changes: 2,
+        about: 'Threats come from outside and below. Early on, a generation ship arrives to claim a populated world and a dead civilisation\'s probe swarm spreads through the asteroid fields; what they leave behind are archive cores of lost technology. Later, hidden threats rise: a spreading cult, a hive mind, a hyperdrive-killing ruin, a mining swarm, ghost fleets, a robot uprising and more, forcing every empire to unite or fall.',
+        changes: 3,
         difficulty: 2,
-        difficultyNote: 'Much harder: the late game turns against everyone.',
+        difficultyNote: 'Much harder: an early crisis tests your fleet, and the late game turns against everyone.',
         features: [
+            { heading: 'Generation ships', text: 'Early in the game a world ship and its escort arrive at the galaxy edge, scout a populated colony and demand it eighteen months later. Pilgrims, Heirs, the Ark Faith or the silent Quiet Ship: cede, offer another world, or fight.' },
+            { heading: 'The dead probe swarm and archive cores', text: 'Self-replicating probes expand mining stations through the asteroid fields and attack any ship in their systems until their mothercore falls. Archive cores from world ships, the mothercore and ruins give research: study them slowly or seal them for one big payoff.' },
             { heading: 'The Cult and the Time-Bomb', text: 'A creed spreads from governor to governor across borders; ruins hold research with a planet-killing failure mode the cult can trigger.' },
             { heading: 'The Chorus (hive)', text: 'Every independent colony is a node of one hidden mind that declares once enough nodes have been absorbed.' },
             { heading: 'The Silence and the Grey Tide', text: 'A precursor ruin makes hyperdrives fail in a widening radius; a mining swarm eats extractors and founds nests.' },

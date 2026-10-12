@@ -1,0 +1,17 @@
+{
+  "id": "archive-cores",
+  "name": "Archive Cores",
+  "description": "Lost technology: an Archive Core can be recovered from a generation ship, from the Probe Swarm's mothercore, or rarely from ruins. Study it slowly for four yearly research boosts, or seal it for five years for one larger payoff.",
+  "include": ["threat-framework"],
+  "flags": [
+    { "name": "threatArchiveCores", "label": "Archive Cores", "description": "Recovered archive cores give research: four yearly boosts, or one big payoff after five years.", "default": false }
+  ],
+  "params": [
+    { "name": "archiveStudySteps", "label": "Yearly study boosts", "default": 4, "min": 1, "max": 20 },
+    { "name": "archiveStudyPct", "label": "Each study boost (% of a year of the empire's research)", "default": 20, "min": 0, "max": 500 },
+    { "name": "archiveSealYears", "label": "Years a sealed core takes", "default": 5, "min": 1, "max": 50 },
+    { "name": "archiveSealPct", "label": "Sealed payoff (% of a year of the empire's research)", "default": 120, "min": 0, "max": 2000 },
+    { "name": "archiveMinPoints", "label": "Smallest boost (research points)", "default": 15000, "min": 0, "max": 10000000 },
+    { "name": "archiveRuinsChancePerMille", "label": "Chance a ruin investigation yields a core (per mille)", "default": 40, "min": 0, "max": 1000 }
+  ]
+}

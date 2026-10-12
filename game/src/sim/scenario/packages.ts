@@ -30,6 +30,9 @@ import './threats/cult';
 import './threats/doppelgangers';
 import './threats/greyTide';
 import './threats/hive';
+import './threats/archiveCores';
+import './threats/generationShips';
+import './threats/probeSwarm';
 import './threats/silence';
 import './lively/livelyGalaxy';
 import './rimDistressCalls'; // 19i item 10 ticker half (rimAtmosphere flag)

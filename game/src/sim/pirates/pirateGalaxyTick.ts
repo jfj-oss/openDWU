@@ -7,6 +7,7 @@
 // place, keeping the signatures (or adjusting the skeleton call in the same change).
 
 import type { Galaxy } from '../galaxy';
+import { scenarioQuery } from '../scenario/hooks';
 import type { Empire } from '../empire';
 import { EmpireMessageType, sendMessageToEmpire } from '../messages';
 import { obtainPirateRelation } from '../pirateRelations';
@@ -271,7 +272,7 @@ export function checkMergePirateFactions(galaxy: Galaxy): void {
     const empireList2: Empire[] = [];
     for (let i = 0; i < galaxy.pirateEmpires.length; i++) {
         const empire = galaxy.pirateEmpires[i];
-        if (empire != null && empire.active) {
+        if (empire != null && empire.active && !(galaxy.scenario !== null && scenarioQuery(galaxy, 'pirateFactionPassive', false, { empire }))) {
             if (checkPirateFactionShouldBeMerged(galaxy, empire)) empireList.push(empire);
             else if (checkPirateFactionCanAcceptMerge(galaxy, empire)) empireList2.push(empire);
         }

@@ -1,0 +1,11 @@
+'Archive Cores: message texts (scenarioText tags). {n} items are filled by the scenario code.
+ArchiveCore Found Title;Archive Core recovered
+ArchiveCore Found worldShip;Our crews have recovered an Archive Core from the {0}: a sealed memory of technology the galaxy has forgotten.
+ArchiveCore Found mothercore;Salvage teams have pulled an Archive Core from the wreck of the {0}. The probes' makers stored their knowledge in it.
+ArchiveCore Found ruins;Our survey team has found an intact Archive Core in the ruins on {0}.
+ArchiveCore Found Choice;We can study it gradually ({0} yearly boosts of about {1} research each) or seal it for {2} years and open it all at once (about {3} research).
+ArchiveCore Option Study;Study it ({0} yearly boosts)
+ArchiveCore Option Seal;Seal it ({0} years, one big payoff)
+ArchiveCore Title;Archive Core
+ArchiveCore Study Step;Archive Core study {0} of {1}: {2} research gained.
+ArchiveCore Seal Opened;The sealed Archive Core is open: {0} research gained.

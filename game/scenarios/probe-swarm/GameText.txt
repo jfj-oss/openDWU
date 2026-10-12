@@ -1,0 +1,11 @@
+'Dead Probe Swarm: message texts (scenarioText tags). {n} items are filled by the scenario code.
+ProbeSwarm Faction Name;Dead Probe Swarm
+ProbeSwarm Mothercore Name;Mothercore
+ProbeSwarm Engaged Title;Probes attack
+ProbeSwarm Engaged;Probe swarm drones are attacking the {0}. The swarm attacks any ship in a system it holds.
+ProbeSwarm Found Title;Probe swarm found
+ProbeSwarm Found;Our explorers have found the mothercore of a self-replicating probe swarm near {0}. Its makers are long dead; the probes mine, multiply and defend every system they hold.
+ProbeSwarm Salvage Title;Mothercore salvaged
+ProbeSwarm Salvage;We have salvaged the probes' drone technology from the mothercore: {0} research gained.
+ProbeSwarm Mothercore News;The mothercore of the dead probe swarm has been destroyed{0}. The swarm can no longer replicate.
+ProbeSwarm Site Row;Probe swarm mothercore

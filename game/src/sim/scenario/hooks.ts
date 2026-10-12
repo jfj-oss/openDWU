@@ -236,6 +236,8 @@ export interface ScenarioEvents {
     builtObjectKilledBy: { builtObject: BuiltObject; destroyer: Empire | null };
     /** researchTick.ts doResearchBreakthrough (end). */
     researchCompleted: { empire: Empire; project: unknown };
+    /** exploration.ts investigateRuins (top, after the null checks): `empire` investigates the ruins at `habitat`. No Rnd in handlers. */
+    ruinsInvestigated: { empire: Empire; habitat: Habitat };
     /** characters.ts generateNewCharacter (end). */
     characterCreated: { character: unknown; empire: Empire };
     /** combat/ownership.ts investigateAbandonedBuiltObject (end). */
@@ -701,6 +703,12 @@ export interface ScenarioQueries {
      * ship missions and the passive steps still run. Smarter AI pre-warp opening. Pure, never draws.
      */
     stateAIDormant: { value: boolean; args: { empire: Empire } };
+    /**
+     * tick/pirateTick.ts empirePirateDoTasks (and pirateGalaxyTick.ts checkMergePirateFactions): a pirate-kind faction
+     * for which this holds keeps its base, research and upkeep but skips the pirate AI's raids, mission bids,
+     * extortion, trade, offers, random events, fleet tasks and construction (the scenario drives it). Probe Swarm. Pure.
+     */
+    pirateFactionPassive: { value: boolean; args: { empire: Empire } };
     /**
      * designGeneration.ts createNewDesigns (BaconEmpire.CreateNewDesigns), before PlaceComponentsOnDesign: changes to
      * the template, the size-up share and the trim order of `empire`'s new `spec.subRole` design (stock: null = none).

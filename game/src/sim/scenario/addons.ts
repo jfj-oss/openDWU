@@ -49,6 +49,9 @@ const GROUP_OF: Readonly<Record<string, AddonGroup>> = {
     robotmutiny: 'Hidden threats',
     corporatecoup: 'Hidden threats',
     ghostarmada: 'Hidden threats',
+    'generation-ships': 'Hidden threats',
+    'archive-cores': 'Hidden threats',
+    'probe-swarm': 'Hidden threats',
     emergent: 'Politics & court',
     'espionage-consequences': 'Politics & court',
     'refugees-demographics': 'Politics & court',
@@ -422,7 +425,7 @@ export const EXPANSIONS: readonly Expansion[] = [
     { id: 'the-rim', name: 'The Rim', description: 'The frontier beyond the core: rim trade, frontier settlement, wild fauna and herders, the rim atmosphere, and the Voidbloom War.', members: ['rimTrade', 'rim-frontier', 'rim-fauna', 'rim-herders', 'rim-atmosphere', 'new-fauna', 'voidbloom'] },
     { id: 'politics-characters', name: 'Politics & Characters', description: 'Governors, VIPs and the Galactic Council, internal security, reputation, espionage fallout, frontier autonomy and refugees.', members: ['characters-victory', 'internal-security', 'reputation', 'espionage-consequences', 'frontier-autonomy', 'refugees-demographics'] },
     { id: 'economy', name: 'Economy', description: 'Colony economy, the exchange, chartered companies, corporate coups, privateers, resource crises and wreckage salvage.', members: ['colony-economy', 'exchange', 'chartered-companies', 'corporatecoup', 'privateers', 'resource-crises', 'wreckage-salvage'] },
-    { id: 'galactic-threats', name: 'Galactic Threats', description: 'The hidden end-game threats: cult, hive, silence, greytide, ghost armada, robot mutiny, time bomb, doppelgangers and dark farms.', members: ['threat-framework', 'cult', 'hive', 'silence', 'greytide', 'ghostarmada', 'robotmutiny', 'timebomb', 'doppelgangers', 'darkfarms'] },
+    { id: 'galactic-threats', name: 'Galactic Threats', description: 'The hidden end-game threats (cult, hive, silence, greytide, ghost armada, robot mutiny, time bomb, doppelgangers, dark farms) and the early ones: generation ships, a dead probe swarm and the archive cores they leave.', members: ['threat-framework', 'generation-ships', 'probe-swarm', 'archive-cores', 'cult', 'hive', 'silence', 'greytide', 'ghostarmada', 'robotmutiny', 'timebomb', 'doppelgangers', 'darkfarms'] },
     { id: 'living-galaxy', name: 'Living Galaxy', description: 'A galaxy that moves on its own: lively events, emergent factions, active independents and colony defence.', members: ['lively-galaxy', 'emergent', 'independents-active', 'colony-defence'] },
 ];
 

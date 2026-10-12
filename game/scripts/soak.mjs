@@ -135,6 +135,13 @@ const CONFIGS = [
     // cap of 5) and the 50-year runs (checkpoint saves with RIM_SAVE_YEARS / RIM_SAVE_DIR) for the treasure-fleet balance.
     ...[6, 7, 8].map((seed) => SCN('rimTrade', { name: `rimtrade-m-late-s${seed}`, set: 'rim-measure', seed, years: 15, wizard: { galaxyExpansionIndex: 5, empireExpansionIndex: 4, empireTechLevelIndex: 7 }, flags: undefined })),
     ...[1, 3].map((seed) => SCN('rimTrade', { name: `rimtrade-m-long-s${seed}`, set: 'rim-measure', seed, years: 50, wizard: {}, flags: undefined })),
+    // `--set new-threats`: Generation Ships, Archive Cores and the Dead Probe Swarm (docs/NEW_THREATS.md §soaks), 700 stars,
+    // 7 empires, default research, all three on (gt-on-sN) and off (gt-off-sN: the same galaxy, the stock game).
+    ...[1, 2, 3].map((seed) => ({ name: `gt-on-s${seed}`, set: 'new-threats', seed, years: 30, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 } }, scenario: ['threat-framework', 'generation-ships', 'archive-cores', 'probe-swarm'], flags: 'all' })),
+    ...[1, 2, 3].map((seed) => ({ name: `gt-off-s${seed}`, set: 'new-threats', seed, years: 30, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 } }, scenario: ['threat-framework', 'generation-ships', 'archive-cores', 'probe-swarm'], flags: {} })),
+    { name: 'gt-smoke-war', set: 'new-threats', seed: 2, years: 3, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 } }, scenario: ['threat-framework', 'generation-ships', 'archive-cores', 'probe-swarm'], flags: 'all', params: { genShipsEarliestYear: 1, genShipsLatestYear: 1, genShipsContactDays: 20, genShipsUltimatumDays: 120, genShipsAnswerDays: 20, genShipsFlavour: 1, genShipsAiFightRatioPct: 0, probeSwarmYear: 0 } },
+    { name: 'gt-smoke-off', set: 'new-threats', seed: 2, years: 3, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 } }, scenario: ['threat-framework', 'generation-ships', 'archive-cores', 'probe-swarm'], flags: {} },
+    { name: 'gt-smoke', set: 'new-threats', seed: 1, years: 3, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 } }, scenario: ['threat-framework', 'generation-ships', 'archive-cores', 'probe-swarm'], flags: 'all', params: { genShipsEarliestYear: 0, genShipsLatestYear: 1, genShipsContactDays: 20, genShipsUltimatumDays: 90, genShipsAnswerDays: 20, probeSwarmYear: 0 } },
     // `--set long`: the many-decade runs (not in the default set).
     { name: 'long-s1-30y', set: 'long', seed: 1, years: 30, wizard: {} },
     { name: 'long-s7-small-50y', set: 'long', seed: 7, years: 50, wizard: { starCountIndex: 1, dimensionIndex: 1, otherEmpires: { empireCount: 5 } } },

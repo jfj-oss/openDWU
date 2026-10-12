@@ -316,6 +316,9 @@ export const PACKAGE_DEFAULTS: readonly { prefix: string; source: string; catego
     { prefix: 'Exchange ', source: 'exchange', category: 'threat' },
     { prefix: 'GhostArmada ', source: 'ghostarmada', category: 'threat' },
     { prefix: 'GreyTide ', source: 'greytide', category: 'threat' },
+    { prefix: 'GenShips ', source: 'generation-ships', category: 'threat' },
+    { prefix: 'ArchiveCore ', source: 'archive-cores', category: 'threat' },
+    { prefix: 'ProbeSwarm ', source: 'probe-swarm', category: 'threat' },
     { prefix: 'Council ', source: 'council', category: 'council' },
 ];
 

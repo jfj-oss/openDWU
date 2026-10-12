@@ -34,6 +34,12 @@ import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import { findNewestCanBuild } from '../src/sim/designGeneration';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { threatMarker, THREAT_CONFIRMED_COLOR, THREAT_SUSPECTED_COLOR } from '../src/render/overlayLayer';
+import type { CreateGameOptions } from '../src/sim/game';
+import { comboOverlayFs, createScenarioGame } from './helpers/scenarioGame';
+import { scenarioEmit, scenarioQuery } from '../src/sim/scenario/hooks';
+import { genShipsPeriodic, genShipsState, peekGenShipsState } from '../src/sim/scenario/threats/generationShips';
+import { archiveCoresPeriodic, grantArchiveCore, peekArchiveCoresState } from '../src/sim/scenario/threats/archiveCores';
+import { peekProbeSwarmState, probeSwarmIncome, probeSwarmPeriodic, probeSwarmState } from '../src/sim/scenario/threats/probeSwarm';
 
 let base: GameData;
 beforeAll(async () => {
@@ -216,3 +222,105 @@ describe('threat framework: rarity and timing (§0)', () => {
     }, 600000);
 });
 
+
+// Generation Ships, Archive Cores and the Dead Probe Swarm (docs/NEW_THREATS.md): flag off, a forced arrival through
+// contact, the ultimatum (AI answer) and settling; an Archive Core's AI choice and payoff; the swarm's wake, its
+// passive pirate shell, expansion and the mothercore salvage. Direct calls on one composite game.
+describe('new threats: generation ships, archive cores, probe swarm', () => {
+    const ids = ['threat-framework', 'generation-ships', 'archive-cores', 'probe-swarm'];
+    const age3 = (o: CreateGameOptions): CreateGameOptions => ({ ...o, player: { ...o.player, age: 3 }, aiEmpires: o.aiEmpires.map((e) => ({ ...e, age: 3 })) });
+    function ntGame(flags: Record<string, boolean>, params: Record<string, number> = {}): Galaxy {
+        const { game } = createScenarioGame(base, { scenario: comboOverlayFs(ids), flags, params, options: age3 });
+        return game.galaxy;
+    }
+    const ALL = { threatGenerationShips: true, threatArchiveCores: true, threatProbeSwarm: true };
+
+    it('flags off: no state, no faction', () => {
+        const g = ntGame({ threatGenerationShips: false, threatArchiveCores: false, threatProbeSwarm: false }, { genShipsEarliestYear: 0, genShipsLatestYear: 0, probeSwarmYear: 0 });
+        const n = g.empires.length;
+        genShipsPeriodic(g);
+        probeSwarmPeriodic(g);
+        expect(peekGenShipsState(g)).toBeNull();
+        expect(peekProbeSwarmState(g)).toBeNull();
+        expect(peekArchiveCoresState(g)).toBeNull();
+        expect(g.empires.length).toBe(n);
+    }, 300000);
+
+    it('generation ships: arrival scaled to the target, contact, an AI that cedes, the world ship lands', () => {
+        const g = ntGame(ALL, { genShipsEarliestYear: 0, genShipsTechLevel: 1, genShipsEmpiresAtTech: 1, genShipsFlavour: 1, genShipsAiFightRatioPct: 100000, genShipsMinFirepower: 500 });
+        const st = genShipsState(g);
+        genShipsPeriodic(g); // one empire at tech level 1 fires it
+        expect(st.phase).toBe('arrived');
+        expect(st.flavour).toBe('heirs');
+        const faction = st.faction!;
+        expect(st.target!.empire).toBe(st.owner);
+        expect(st.escorts.length).toBeGreaterThan(0);
+        expect(st.fleetStrength).toBeGreaterThanOrEqual(Math.max(500, (st.ownerStrengthAtSpawn * 130) / 100) * 0.999);
+        expect(st.transports.reduce((n, b) => n + (b.troops?.count ?? 0), 0)).toBe(st.regiments);
+        expect(st.worldShip).not.toBeNull();
+        // The threatened AI plans a bigger navy only once contact is made.
+        expect(scenarioQuery(g, 'forceStructureWarships', 10, { empire: st.owner!, threat: 1 })).toBe(10);
+        st.contactDate = 0;
+        genShipsPeriodic(g);
+        expect(st.phase).toBe('contact');
+        expect(scenarioQuery(g, 'forceStructureWarships', 10, { empire: st.owner!, threat: 1 })).toBe(22);
+        expect(scenarioQuery(g, 'stateAIDormant', false, { empire: faction })).toBe(true);
+        st.ultimatumDate = 0;
+        if (g.playerEmpire === st.owner) st.owner = null; // the AI answers at once (a human gets the popup)
+        genShipsPeriodic(g);
+        if (st.owner !== null) {
+            expect(st.answer).toBe('cede');
+            expect(st.answeredBy).toBe('ai');
+            expect(st.target!.empire).toBe(faction);
+            expect(st.phase).toBe('settling');
+            const ws = st.worldShip!;
+            ws.xpos = st.settleAt!.xpos;
+            ws.ypos = st.settleAt!.ypos;
+            const pop = st.settleAt!.population.totalAmount;
+            genShipsPeriodic(g);
+            expect(st.phase).toBe('settled');
+            expect(st.worldShipFate).toBe('landed');
+            expect(st.settleAt!.population.totalAmount).toBeGreaterThan(pop);
+            expect(scenarioQuery(g, 'stateAIDormant', false, { empire: faction })).toBe(false);
+        }
+    }, 600000);
+
+    it('archive cores: an AI at peace seals its core and gets the larger payoff later', () => {
+        const g = ntGame(ALL, { genShipsEarliestYear: 99, probeSwarmYear: 99 });
+        const ai = g.empires.find((e) => e !== null && e !== g.playerEmpire && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null && e.active)!;
+        for (let i = 0; i < ai.diplomaticRelations.count; i++) ai.diplomaticRelations.at(i).type = DiplomaticRelationType.None;
+        const core = grantArchiveCore(g, ai, 'ruins', 'Test Ruins')!;
+        expect(core.choice).toBe('seal');
+        archiveCoresPeriodic(g);
+        expect(core.granted).toBe(0);
+        core.nextDate = 0;
+        archiveCoresPeriodic(g);
+        expect(core.done).toBe(true);
+        expect(core.granted).toBeGreaterThan(0);
+        expect(grantArchiveCore(g, g.independentEmpire, 'ruins', 'x')).toBeNull();
+    }, 300000);
+
+    it('probe swarm: a passive pirate shell that expands, and a mothercore that pays out when destroyed', () => {
+        const g = ntGame(ALL, { genShipsEarliestYear: 99, probeSwarmYear: 0, probeSwarmStationDays: 1 });
+        const st = probeSwarmState(g);
+        probeSwarmPeriodic(g);
+        expect(st.phase).toBe('active');
+        const f = st.faction!;
+        expect(f.pirateEmpireBaseHabitat).not.toBeNull();
+        expect(scenarioQuery(g, 'pirateFactionPassive', false, { empire: f })).toBe(true);
+        expect(st.mothercore).not.toBeNull();
+        st.budget = 10_000_000;
+        const before = st.stations.length;
+        for (let i = 0; i < 5; i++) {
+            st.lastStationDate = -1e12;
+            probeSwarmPeriodic(g);
+        }
+        expect(st.stations.length).toBeGreaterThan(before);
+        expect(probeSwarmIncome(g, st)).toBeLessThanOrEqual(250000);
+        const killer = g.empires.find((e) => e !== null && e !== g.playerEmpire && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null && e.active)!;
+        scenarioEmit(g, 'builtObjectKilledBy', { builtObject: st.mothercore!, destroyer: killer });
+        expect(st.mothercoreDestroyed).toBe(true);
+        expect(st.mothercoreKiller).toBe(killer);
+        expect(peekArchiveCoresState(g)!.cores.some((c) => c.empire === killer && c.source === 'mothercore')).toBe(true);
+    }, 600000);
+});
