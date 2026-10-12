@@ -100,16 +100,16 @@ function buildHaze(geo: RimGeometry, p: RimParams, seed: number, k: number): Spr
                 const u = (ang / TAU + 1) * N + du;
                 const v = f * N * 0.6;
                 const wv = sampleWrap(warp, N, u * 0.5, v * 0.5) - 0.5;
-                const m = smooth(0.3, 0.78, sampleWrap(n, N, u + wv * 40, v + wv * 28));
+                const m = smooth(0.36, 0.72, sampleWrap(n, N, u + wv * 40, v + wv * 28));
                 // Gentle feather at the rect border (the clouds still reach it).
                 const e = Math.min(wx, W - wx, wy, H - wy) / feather;
                 const edge = 0.6 + 0.4 * smooth(0, 1, e);
-                const a = band * edge * (0.08 + 0.62 * m) * k;
+                const a = band * edge * (0.04 + 0.84 * m) * k;
                 const i = (y * tw + x) * 4;
-                // Dark storm-cloud grey: a faint dim mass over black space, a darkening veil over the backdrop.
-                rgba[i] = 30 - 6 * m;
-                rgba[i + 1] = 28 - 6 * m;
-                rgba[i + 2] = 34 - 6 * m;
+                // Near-black storm-cloud grey: dense masses darken the backdrop strongly, the gaps between them stay clear.
+                rgba[i] = 16 - 8 * m;
+                rgba[i + 1] = 15 - 8 * m;
+                rgba[i + 2] = 19 - 8 * m;
                 rgba[i + 3] = clamp01(a) * 255;
             }
         }
