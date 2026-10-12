@@ -609,8 +609,9 @@ year or tech timer anywhere):
   instead of a white peace a year before.
 - **Labour and the climate (measured):** at the 40 M target the 35 % death rate kills about 14 M a year; convoys (12 M
   every 90 days, up to 48 M a year) plus migrants keep supplied worlds at 30–80 M through 45 years in every run, AI and
-  automated player alike; the only collapse was an independent world without convoys (12 M → 1 M in about ten years). The
-  rate stays at 35 % and the convoy size at 12 M; the yield exponent stays 0.6.
+  automated player alike. Worlds collapse (≤ 2 M) only without convoys (independents: 12 M → 1 M in about ten years) or
+  under the police action, whose task force intercepts most convoys (round 2: 22 of 58 and 4 of 44 arrived; 84–432 M
+  workers freed). The rate stays at 35 % and the convoy size at 12 M; the yield exponent stays 0.6.
 
 Round 1 (gate, tolerance, court drain 25 %, panic 0.55 / 35 %; before the duty, hold-out and capped bite), 45 years, 700
 stars, 7 empires, research × 2, The Rim + Voidbloom:
@@ -624,4 +625,21 @@ stars, 7 empires, research × 2, The Rim + Voidbloom:
 
 Save round trips identical in all 8 checks; no exceptions; 120.0 / 112.8 / 123.5 s a game year against 120.6 s for the
 base run (no measurable cost).
+
+Round 2 (final defaults: everything above, court drain 40 %, panic 0.4 / 50 %, duty 35 %):
+
+| run | gate / first colony | crackdown (trigger) | crises: tol / war / back | wars (start–end: outcome) | treaty / branch | decline / treasury y15, y25, y35, y45 | drain state (court) + private, duty |
+|---|---|---|---|---|---|---|---|
+| vb-s1 | y8 / y12 AI | y16 threshold | 12 / 0 / 0 | 21–29 Concord; 36–40 treaty | y40 the Erutkah Refugees: a colony, 429k + 5 × 200k, legal trade / collapse | 0.03/18.4M, 0.41/5.9M, 0.36/7.4M, 0.51 | 12.9M (11.3M) + 3.1M, 2.2M |
+| vb-s2 | y6 / y7 independents | y10 threshold | 9 / 1 / 0 | 39– (open); 42–44 treaty | y44 the Erutkah Refugees: a colony, 450k + 5 × 210k, legal trade, a treaty port / collapse | 0.54/10.4M, 0.45/21.4M, 0.55/15.0M, 0.56/9.6M | 7.5M (6.8M) + 1.3M, 0.4M |
+| vb-s3 | y8 / y13 cartel | y22 panic:leader | 4 / 0 / 0 | — | — | 0.03/18.9M, 0.28/5.1M, 0.22/16.2M, 0.29/35.8M | 6.6M (6.2M) + 0.7M, 0.4M |
+
+No AI backed down any more (all tolerated, then fought); 2 of 3 games reached a war after the crackdown and both ended in
+an unequal treaty (the aftermath ran: collapse twice); the decline passed the gate in 2 of 3. Save round trips identical
+in all 8 checks, no exceptions (one non-finite `SpaceBattleStats.weaponsDamageToEnemy` in vb-s2, a stock combat
+counter); 123.2 / 124.2 / 119.4 s a game year against 119.4 s for the base run (+0–4 %, within noise).
+
+Still off: an independent colony can still appear early (vb-s2, year 7, by a path outside the colonisation value), which
+brought that game's crackdown to year 10; the treaty victor was twice a late-founded refugee state rather than an
+original empire; vb-s3's Concord (only the cartel and late growers) never declined past 0.3.
 
