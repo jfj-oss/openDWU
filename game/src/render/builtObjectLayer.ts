@@ -29,6 +29,7 @@ import { CONCORD_LIMBS_MIN_PX, ConcordFxLayer, concordArtEmpire, concordShipArt,
 import { ConstructionOverlays, DamageOverlays, shipConstructionSubject, shipDamageSubject } from './shipOverlays';
 import { artBundleFlag } from './artBundleFlags';
 import { LiveryOverlays } from './liveryLayer';
+import { ANCIENT_TINT, ANCIENT_WEAR, SwarmFxLayer, isAncientHull, isSwarmHull, swarmArtFor, threatDrawScale, threatLooks } from './threatArt';
 import { fogOf } from './fog';
 import { Galaxy } from '../sim/galaxy';
 import type { BuiltObject } from '../sim/builtObject';
@@ -533,6 +534,8 @@ export class BuiltObjectLayer {
     private concordGameMs = -1;
     private frame = 0;
     // [concordArt] end
+    /** threatArt.ts: the probe swarm's light overlays (pooled; above the ships). */
+    private swarmFx = new SwarmFxLayer();
     /** Render interpolation between sim steps (renderInterp.ts; set by MainView). Null: draw the sim positions. */
     motion: MotionInterpolator | null = null;
     /** At zoom factor <= 3: the ships / bases drawn this frame with their drawn centre and their image side at zoom
@@ -548,6 +551,7 @@ export class BuiltObjectLayer {
     ) {
         world.addChild(this.root);
         world.addChild(this.concordFx.root); // [concordArt]
+        world.addChild(this.swarmFx.root);
         this.root.addChild(this.ships);
         this.liveries = new LiveryOverlays(this.root, galaxy);
         this.damage = new DamageOverlays<BuiltObject>(this.root);
@@ -590,6 +594,7 @@ export class BuiltObjectLayer {
         // Ships are drawn only while the original's zoom factor < 500.
         this.root.visible = f < BUILT_OBJECT_MAX_FACTOR;
         this.concordFx.root.visible = this.root.visible; // [concordArt]
+        this.swarmFx.root.visible = this.root.visible;
         if (!this.root.visible) return;
         // [concordArt] begin — null with the scenario / flag off: every object keeps its stock art.
         const concord = concordArtEmpire(this.galaxy);
@@ -609,8 +614,13 @@ export class BuiltObjectLayer {
         this.construction.begin();
         const damageFx = artBundleFlag(this.galaxy, 'damageFx');
         const liveries = artBundleFlag(this.galaxy, 'liveries');
-        this.liveries.root.visible = liveries;
-        if (liveries) this.liveries.begin();
+        // threatArt.ts: the generation ships wear the oldest wear look whether or not the livery flag is on.
+        const looks = threatLooks(this.galaxy);
+        const liveryPass = liveries || looks.genFaction !== null || looks.worldShip !== null;
+        this.liveries.root.visible = liveryPass;
+        if (liveryPass) this.liveries.begin();
+        this.swarmFx.begin();
+        const sec = nowMs / 1000;
         // Camera.worldToScreen, inlined (no allocation per ship per frame).
         const camX = cam.x;
         const camY = cam.y;
@@ -709,17 +719,14 @@ export class BuiltObjectLayer {
                 this.ships.addChild(sprite);
                 this.sprites.set(bo, sprite);
             }
-            const px = builtObjectSizePx(
-                bo.size,
-                metrics.areaRatio,
-                f,
-                bo.design?.imageScalingType ?? DesignImageScalingMode.None,
-                bo.design?.imageScalingFactor ?? 1,
-            );
+            // threatArt.ts: the world ship / the Mothercore draw larger (the drawn size also drives picking and rings).
+            const tScale = threatDrawScale(looks, bo);
+            const px =
+                builtObjectSizePx(bo.size, metrics.areaRatio, f, bo.design?.imageScalingType ?? DesignImageScalingMode.None, bo.design?.imageScalingFactor ?? 1) * tScale;
             this.drawnPx.set(bo, px);
             if (bars) {
                 // PrepareBuiltObjectImageNEW(..., 1.0): the image at zoom factor 1 (DetermineBuiltObjectSizeNEW).
-                const unitPx = builtObjectSizePx(bo.size, metrics.areaRatio, 1, bo.design?.imageScalingType ?? DesignImageScalingMode.None, bo.design?.imageScalingFactor ?? 1);
+                const unitPx = builtObjectSizePx(bo.size, metrics.areaRatio, 1, bo.design?.imageScalingType ?? DesignImageScalingMode.None, bo.design?.imageScalingFactor ?? 1) * tScale;
                 const n = this.battleBarShips.length;
                 let rec = this.barPool[n];
                 if (rec === undefined) {
@@ -750,7 +757,9 @@ export class BuiltObjectLayer {
                     ? this.construction.texture(bo, constructionSubject, shipArtRecord, builtObjectSizePx(bo.size, metrics.areaRatio, 1, bo.design?.imageScalingType ?? DesignImageScalingMode.None, bo.design?.imageScalingFactor ?? 1))
                     : null;
             // [concordArt] at close zoom the Concord's limbs animate: the limbless body under the moving limbs.
-            const shipTex = cArt !== null && cArt.body !== undefined && px >= CONCORD_LIMBS_MIN_PX ? cArt.body : texture;
+            const swarm = shipArtRecord !== null && isSwarmHull(looks, bo) ? swarmArtFor(shipArtRecord, bo === looks.mothercore, this.frame) ?? null : null;
+            const ancient = isAncientHull(looks, bo);
+            const shipTex = cArt !== null && cArt.body !== undefined && px >= CONCORD_LIMBS_MIN_PX ? cArt.body : swarm !== null ? swarm.texture : texture;
             sprite.texture = revealTex ?? shipTex;
             sprite.position.set(x, y);
             if (revealTex !== null) sprite.anchor.set(0.5);
@@ -758,6 +767,8 @@ export class BuiltObjectLayer {
             sprite.rotation = heading + Math.PI / 2;
             sprite.scale.set(px / metrics.cropSide / z);
             sprite.alpha = this.overlays.fadeCivilianShips && bo.owner === null ? 144 / 255 : 1;
+            const tint = ancient ? ANCIENT_TINT : 0xffffff;
+            if (sprite.tint !== tint) sprite.tint = tint;
             sprite.visible = true;
             shown.add(sprite);
             // [concordArt] begin
@@ -765,7 +776,9 @@ export class BuiltObjectLayer {
                 this.concordFx.draw(cArt, x, y, sprite.rotation, sprite.scale.x, sprite.anchor.x, sprite.anchor.y, bo.builtObjectID, px, nowMs, this.concordAnimMs);
             }
             // [concordArt] end
-            if (liveries && shipArtRecord !== null) this.liveries.draw(bo, shipArtRecord, px, z, sprite.alpha, x, y, heading);
+            if (swarm !== null && revealTex === null) this.swarmFx.draw(swarm, x, y, sprite.rotation, sprite.scale.x, sprite.anchor.x, sprite.anchor.y, bo.builtObjectID, px, sec);
+            if (ancient && !this.liveries.forced.has(bo)) this.liveries.forced.set(bo, ANCIENT_WEAR);
+            if ((liveries || ancient) && shipArtRecord !== null) this.liveries.draw(bo, shipArtRecord, px, z, sprite.alpha, x, y, heading);
             // 19r: MainView.cs 3253 method_73 → Main.Part12.cs 4988 method_106 while DamagedComponentCount > 0.
             if (bo.damagedComponentCount > 0 && shipArtRecord !== null) {
                 const subject = shipDamageSubject(bo);
@@ -773,9 +786,10 @@ export class BuiltObjectLayer {
             }
         }
         this.concordFx.end(); // [concordArt]
+        this.swarmFx.end();
         this.damage.end();
         this.construction.end();
-        if (liveries) this.liveries.end();
+        if (liveryPass) this.liveries.end();
         // Sprites shown last frame and not this one (off screen, unseen, ...): hidden, as the per-object cull did.
         for (const sp of this.shownLast) if (!shown.has(sp)) sp.visible = false;
         this.shownNow = this.shownLast;

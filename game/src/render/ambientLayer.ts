@@ -57,6 +57,7 @@ import { EngineType } from '../sim/builtObject';
 import { DesignImageScalingMode } from '../sim/data/designSpecifications';
 import { HabitatCategoryType, HabitatType, type Habitat } from '../sim/types';
 import type { ConstructionQueue } from '../sim/construction/constructionQueue';
+import { threatDrawScale, threatLooks } from './threatArt';
 
 const FX = '/assets/dwu/images/effects';
 
@@ -541,6 +542,7 @@ export class AmbientLayer {
             const treasure = concord !== null ? concordTreasureShips(this.galaxy) : null;
             // [concordArt] end
             const fog = fogOf(this.galaxy);
+            const looks = threatLooks(this.galaxy);
             // Perf: with the index, only the objects inside the 100 px cull below (same order).
             const list: readonly (BuiltObject | null)[] =
                 this.index !== null ? this.index.near(cam.x, cam.y, halfW / z, halfH / z, 101 / z, false, this.nearScratch) : this.galaxy.builtObjects;
@@ -565,7 +567,8 @@ export class AmbientLayer {
                 if (art === null) continue;
                 const scalingType = bo.design?.imageScalingType ?? DesignImageScalingMode.None;
                 const scalingFactor = bo.design?.imageScalingFactor ?? 1;
-                const pf = builtObjectSizePx(bo.size, art.metrics.areaRatio, f, scalingType, scalingFactor);
+                // threatArt.ts: drawn at the ship layer's visual scale (the world ship / the Mothercore), exhaust kept on the hull.
+                const pf = builtObjectSizePx(bo.size, art.metrics.areaRatio, f, scalingType, scalingFactor) * threatDrawScale(looks, bo);
                 if (pf < 1) continue;
                 const p1 = builtObjectSizePx(bo.size, art.metrics.areaRatio, 1, scalingType, scalingFactor);
                 if (p1 < 1) continue;
