@@ -14,11 +14,12 @@ import type { Race } from '../src/sim/data/races';
 import type { Habitat } from '../src/sim/types';
 import { Random } from '../src/sim/random';
 import { runGameSeconds } from '../src/sim/tick/harness';
-import { galaxyStarDate } from '../src/sim/tick/simTime';
+import { galaxyStarDate, REAL_SECONDS_IN_GALACTIC_YEAR } from '../src/sim/tick/simTime';
 import {
     checkAllStoryCluesUsed,
     checkForStoryLocationHint,
     checkOfferStoryHint,
+    shakturiArrivalYear,
     checkSendShipConvoysViaGateway,
     findNearestGalaxyEdgeCoords,
     galaxyRaceByName,
@@ -198,6 +199,31 @@ describe('Return of the Shakturi (Galaxy.8.cs 1348-2056, Empire.2.cs 3487-3777)'
             expect(msgs.map((m) => m.messageType)).toEqual([EmpireMessageType.StoryMessage]);
             expect(msgs[0].description).toBe('We have an important warning that you need to hear');
             expect(g.shakturiTriggerHabitat).toBeNull();
+            // Wizard "Arrival": with colonies no limit (prevalence 0) the stock rule would place the Beacon at year 25+; Late keeps
+            // it away before its drawn year (50-60), Early places it by its drawn year (12-18).
+            g.colonyPrevalence = 0;
+            const at = (y: number): void => {
+                g.nowMs = y * REAL_SECONDS_IN_GALACTIC_YEAR * 1000;
+                checkOfferStoryHint(g, mech);
+            };
+            g.shakturiArrival = 'late';
+            const lateYear = shakturiArrivalYear(g);
+            expect(lateYear).toBeGreaterThanOrEqual(50);
+            expect(lateYear).toBeLessThanOrEqual(60);
+            at(lateYear - 1);
+            expect(g.shakturiTriggerHabitat).toBeNull();
+            at(lateYear + 1);
+            expect(g.shakturiTriggerHabitat).not.toBeNull();
+            g.shakturiTriggerHabitat!.ruin = null;
+            g.shakturiTriggerHabitat = null;
+            g.shakturiArrival = 'early';
+            const earlyYear = shakturiArrivalYear(g);
+            expect(earlyYear).toBeGreaterThanOrEqual(12);
+            expect(earlyYear).toBeLessThanOrEqual(18);
+            at(earlyYear - 1);
+            expect(g.shakturiTriggerHabitat).toBeNull();
+            at(earlyYear + 1);
+            expect(g.shakturiTriggerHabitat).not.toBeNull();
             // The Beacon of Shaktur (normally once 25-80 years have passed).
             generateShakturiReturnTriggerRuins(g);
             const beacon = g.shakturiTriggerHabitat!;

@@ -194,6 +194,8 @@ export interface CreateGameOptions {
     storyReturnOfTheShakturiEnabled?: boolean;
     /** Start.2.cs bool_7 → Galaxy.StoryDistantWorldsEnabled (502): the "Distant Worlds" galactic-history story. Default false. */
     storyDistantWorldsEnabled?: boolean;
+    /** Arrival of the Return of the Shakturi story (wizard); absent = 'normal' (stock timing). */
+    shakturiArrival?: 'early' | 'normal' | 'late';
     /**
      * VictoryConditions.EnableStoryEventsShadows → Galaxy.StoryShadowsEnabled (506) and GenerateEmpire's pre-warp progress
      * events (Galaxy.7.cs 5187) and Start.2.cs 2031: the "Shadows" pre-warp story. Default false.
@@ -1142,6 +1144,7 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
     // GameDisasterEventsEnabled (503) is set before the first galaxy tick below.
     galaxy.storyReturnOfTheShakturiEnabled = opts.storyReturnOfTheShakturiEnabled ?? false;
     galaxy.storyDistantWorldsEnabled = opts.storyDistantWorldsEnabled ?? false;
+    if (opts.shakturiArrival === 'early' || opts.shakturiArrival === 'late') galaxy.shakturiArrival = opts.shakturiArrival;
     galaxy.gameRaceSpecificEventsEnabled = opts.raceSpecificEventsEnabled ?? true;
     galaxy.storyShadowsEnabled = opts.storyShadowsEnabled ?? false;
     // Start.2.cs 501-506 read victoryConditions_0 here, before any empire is generated (GenerateEmpire reads

@@ -510,3 +510,14 @@ at, within one tank of the fleet and of home; home when the holds are empty, no 
 the fleet zig-zags between the heaviest requests), one 1-stop voyage while s2 knew one empire; rare units sold
 1 061 / 1 122 (about the same: fewer, longer voyages), the holds still far from empty. Stats: `stats2.rareLoaded` /
 `rareLeft` per voyage.
+
+## 15. 2026-10-12 — Erutkah arrive late (wizard "Arrival")
+
+Not a Rim-only rule: the new-game wizard's victory page has an **Arrival** choice (Early / Normal / Late; greyed out without
+"Return of the Shakturi"), stored in `victory.shakturiArrival` and `CreateGameOptions.shakturiArrival` (saved on the galaxy;
+the multiplayer lobby carries it with the other start options). Normal (default) is the stock timing, byte-identical. Late: no
+Beacon of Shaktur before a game year in [50, 60] (stock colony rule and forced year are both raised to at least it; the
+research-speed scaling still applies, so slower research can only delay it further). Early: placed by a year in [12, 18].
+The year is hashed from the galaxy seed (`shakturiArrivalYear`, no `galaxy.rnd` draw). With rimTrader on and the player not
+having chosen, the wizard preselects Late (`shakturiArrivalOf`); the wizard choice always wins. The Erutkah still arrive only
+when someone investigates the Beacon.

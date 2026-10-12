@@ -66,7 +66,7 @@ import {
     type StartGameOptions,
 } from '../../sim/startGameOptions';
 // [todosweep2] begin
-import { GALAXY_RESEARCH_SPEED_MAX, GALAXY_RESEARCH_SPEED_MIN, researchBaseTechCostForSliderIndex, researchSpeedSliderIndexFor } from '../../sim/startGameOptions';
+import { SHAKTURI_ARRIVALS, shakturiArrivalOf, GALAXY_RESEARCH_SPEED_MAX, GALAXY_RESEARCH_SPEED_MIN, researchBaseTechCostForSliderIndex, researchSpeedSliderIndexFor } from '../../sim/startGameOptions';
 // [todosweep2] end
 // [wizardB1] begin
 import {
@@ -2745,12 +2745,26 @@ function buildVictoryPage(ctx: WizardCtx): HTMLDivElement {
     const storyHelp = (): [string, string] => [helpTitle2('Victory', 'Story Events'), wt('Enables story events in the game', 'Enables story events in the game')];
     const distantWorlds = check(events, wt('Enable original Distant Worlds story events', 'Enable original Distant Worlds story events'), v.enableStoryDistantWorlds === true, 20, 245, (x) => (v.enableStoryDistantWorlds = x));
     ctx.helpOn(distantWorlds.row, storyHelp);
-    const shakturi = check(events, wt('Enable Return Of The Shakturi story events and victory conditions', 'Enable Return Of The Shakturi story events and victory conditions'), v.enableStoryEvents === true, 20, 270, (x) => (v.enableStoryEvents = x));
+    let syncArrival = (): void => {};
+    const shakturi = check(events, wt('Enable Return Of The Shakturi story events and victory conditions', 'Enable Return Of The Shakturi story events and victory conditions'), v.enableStoryEvents === true, 20, 270, (x) => {
+        v.enableStoryEvents = x;
+        syncArrival();
+    });
     ctx.helpOn(shakturi.row, storyHelp);
     ctx.helpOn(check(events, wt('Enable Disasters and other events', 'Enable Disasters and other events'), v.enableDisasterEvents, 20, 295, (x) => (v.enableDisasterEvents = x)).row, () => [helpTitle2('Victory', 'Disaster Events'), wt('Enables various random game events, such as disasters at colonies', 'Enables various random game events, such as disasters at colonies')]);
     ctx.helpOn(check(events, wt('Enable Race-specific events', 'Enable Race-specific events'), v.enableRaceSpecificEvents, 20, 320, (x) => (v.enableRaceSpecificEvents = x)).row, () => [helpTitle2('Victory', 'Race-specific Events'), wt('Enables Race-specific Events in the game', 'Enables Race-specific Events in the game')]);
     const shadows = check(events, wt('Enable Shadows story events', 'Enable Shadows story events'), v.enableStoryEventsShadows === true, 20, 345, (x) => (v.enableStoryEventsShadows = x));
     ctx.helpOn(shadows.row, () => [helpTitle2('Victory', 'Shadows Events'), wt('Enables pre-warp game events, such as triggered pirate attacks and creature outbreaks', 'Enables pre-warp game events, such as triggered pirate attacks and creature outbreaks')]);
+    // "Arrival" (not in the original): when the Erutkah refugees' Beacon of Shaktur may appear. Greyed out without the story.
+    const ARRIVAL_NAMES = [wt('Arrival Early', 'Early'), wt('Arrival Normal', 'Normal'), wt('Arrival Late', 'Late')];
+    const arrivalLabel = label(events, wt('Arrival', 'Arrival'), 640, 248, { size: FONT.header, bold: true });
+    const arrival = combo(events, ARRIVAL_NAMES, SHAKTURI_ARRIVALS.indexOf(shakturiArrivalOf(options)), 710, 245, 80, 21, (i) => (v.shakturiArrival = SHAKTURI_ARRIVALS[i] ?? 'normal'), 'wizard-story-arrival');
+    syncArrival = (): void => {
+        const isPirate = empireTypeIsPirate(options.empireType);
+        arrival.select.disabled = isPirate || (options.humanPlayers?.length ?? 0) > 0 || v.enableStoryEvents !== true;
+        arrivalLabel.style.opacity = arrival.select.disabled ? '0.5' : '';
+    };
+    ctx.helpOn(arrival.select, () => [helpTitle2('Victory', 'Arrival'), wt('Arrival Help', 'When the Erutkah refugees of the Return of the Shakturi story arrive: Early (about years 12 to 18), Normal (the original timing) or Late (about years 50 to 60). The year is fixed by the galaxy seed. With the Rim expansion Late is preselected.')]);
     const rightCheck = (content: string, checked: boolean, y: number, onChange: (x: boolean) => void): HTMLLabelElement => {
         const c = checkBoxRight(content, checked, onChange, FONT.large);
         c.classList.add('wizard-checkbox', 'wizard-check-right');
@@ -2778,6 +2792,8 @@ function buildVictoryPage(ctx: WizardCtx): HTMLDivElement {
         distantWorlds.input.checked = !multiHuman && v.enableStoryDistantWorlds === true;
         shakturi.input.disabled = isPirate || multiHuman;
         shakturi.input.checked = !isPirate && !multiHuman && v.enableStoryEvents === true;
+        syncArrival();
+        arrival.select.value = String(SHAKTURI_ARRIVALS.indexOf(shakturiArrivalOf(options)));
         const prewarp = (options.galaxyExpansionIndex ?? 1) === 0;
         shadows.input.disabled = !prewarp || multiHuman;
         shadows.input.checked = prewarp && !multiHuman && v.enableStoryEventsShadows === true;

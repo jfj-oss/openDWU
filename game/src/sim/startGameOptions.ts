@@ -251,6 +251,18 @@ export interface VictoryConditions {
     /** [wizardB1] chkStoryDistantWorlds "Enable original Distant Worlds story events" → CreateGameFromSettings bool_7 →
      *  Galaxy.StoryDistantWorldsEnabled (Start.1.cs 3850, Start.2.cs 502). Unset = unchecked. */
     enableStoryDistantWorlds?: boolean;
+    /** "Arrival" (Return of the Shakturi): when the Beacon of Shaktur, and so the Erutkah, may appear. Not in the
+     *  original. Unset = the default of shakturiArrivalOf: Normal, or Late with the Rim trade add-on running. */
+    shakturiArrival?: ShakturiArrival;
+}
+
+/** Early / Normal (stock timing) / Late arrival of the Erutkah refugees (story/storyEvents.ts shakturiArrivalYear). */
+export type ShakturiArrival = 'early' | 'normal' | 'late';
+export const SHAKTURI_ARRIVALS: readonly ShakturiArrival[] = ['early', 'normal', 'late'];
+
+/** The effective arrival choice: the player's own, else Late when the Rim trade add-on (flag rimTrader) is on, else Normal. */
+export function shakturiArrivalOf(o: { victory: { shakturiArrival?: ShakturiArrival }; scenario?: StartScenarioChoice | null }): ShakturiArrival {
+    return o.victory.shakturiArrival ?? (o.scenario?.flags?.rimTrader === true ? 'late' : 'normal');
 }
 
 /** Min/max bounds of the wizard's numeric victory controls, straight from
@@ -1280,6 +1292,7 @@ export function toCreateGameOptions(
         difficultyLevelScalesAsPlayerApproachesVictory: o.difficultyScaling,
         // [wizardB1] Start.1.cs 3850 chkStoryDistantWorlds.Checked → CreateGameFromSettings bool_7 → Start.2.cs 502.
         storyDistantWorldsEnabled: o.victory.enableStoryDistantWorlds === true,
+        ...(shakturiArrivalOf(o) !== 'normal' ? { shakturiArrival: shakturiArrivalOf(o) } : {}),
         // [wizardB1] Start.1.cs 3687-3694 / 3737-3741 → Start.2.cs 485 Galaxy ctor and 496-499: the Galaxy-page sliders and
         // the option checkboxes.
         lifePrevalence: alienLifeFor(o.alienLifeIndex), // num4 = method_67(Alien Life) → _LifePrevalence

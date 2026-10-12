@@ -73,6 +73,16 @@ describe('wizard slider → Galaxy ctor value (Start.1.cs 3687-3694, 3739)', () 
         expect(c.player.playAsPirate).toBeUndefined();
     });
 
+    it('Arrival: Normal by default (no key), Late with the Rim trade add-on unless the player chose, the choice wins', () => {
+        expect(toCreateGameOptions(start({}), gameData, NAMES).shakturiArrival).toBeUndefined();
+        const rim = start({ scenario: { id: 'rimTrade', flags: { rimTrader: true }, params: {} } });
+        expect(toCreateGameOptions(rim, gameData, NAMES).shakturiArrival).toBe('late');
+        rim.victory = { ...rim.victory, shakturiArrival: 'normal' };
+        expect(toCreateGameOptions(rim, gameData, NAMES).shakturiArrival).toBeUndefined();
+        rim.victory = { ...rim.victory, shakturiArrival: 'early' };
+        expect(toCreateGameOptions(rim, gameData, NAMES).shakturiArrival).toBe('early');
+    });
+
     it('passes the option checkboxes, story toggles, home system and start location through', () => {
         const o = start({ spawnNewEmpires: false, allowTechTrading: false, allowGiantKaltorGeneration: false, destroyedPiratesDoNotRespawn: true, homeSystemIndex: 4, startLocationIndex: 3, shape: GalaxyShape.Spiral, empireCorruptionIndex: 3 });
         o.victory = { ...o.victory, enableStoryDistantWorlds: false, enableStoryEvents: false };

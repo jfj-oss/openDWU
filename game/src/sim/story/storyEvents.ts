@@ -688,6 +688,19 @@ export function generateDeliverancePlanetDestroyer(galaxy: Galaxy): BuiltObject 
 }
 
 /**
+ * The game year of the wizard "Arrival" Late (50-60) / Early (12-18), hashed from the galaxy seed (no galaxy.rnd
+ * draw; the same every call). Normal: 0 (unused).
+ */
+export function shakturiArrivalYear(galaxy: Galaxy): number {
+    if (galaxy.shakturiArrival === undefined) return 0;
+    let h = Math.imul(galaxy.randomSeed ^ 0x5a17c0de, 0x9e3779b1);
+    h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
+    h ^= h >>> 13;
+    const u = (h >>> 0) / 4294967296;
+    return galaxy.shakturiArrival === 'late' ? 50 + u * 10 : 12 + u * 6;
+}
+
+/**
  * Galaxy.8.cs 1825 GenerateShakturiReturnTriggerRuins(): places the "Beacon of Shaktur" StoryEvent ruin (StoryEventData 1)
  * at a lonely non-ice habitat near the galaxy edge ≥ 3 sectors from the player (then from the Mechanoid capital) and records
  * it as ShakturiTriggerHabitat. Rnd: FindNearestGalaxyEdgeCoordsMinimumRange's per try (≤ 50), FindLonelyHabitat*'s.
@@ -975,7 +988,20 @@ export function checkOfferStoryHint(galaxy: Galaxy, self: Empire): void {
             let val3 = actualStartDate(galaxy) + yearMs * val2;
             val3 = Math.max(val3, val);
             const currentStarDate = galaxyStarDate(galaxy);
-            if (galaxy.shakturiTriggerHabitat === null && ((num4 >= num5 && currentStarDate >= val3) || currentStarDate >= num8)) {
+            // Wizard "Arrival": Late = nothing before the drawn year; Early = nothing after it. Normal changes nothing.
+            let colonyDate = val3;
+            let forcedDate = num8;
+            if (galaxy.shakturiArrival !== undefined) {
+                const arrival = actualStartDate(galaxy) + yearMs * shakturiArrivalYear(galaxy);
+                if (galaxy.shakturiArrival === 'late') {
+                    colonyDate = Math.max(colonyDate, arrival);
+                    forcedDate = Math.max(forcedDate, arrival);
+                } else {
+                    colonyDate = Math.min(colonyDate, arrival);
+                    forcedDate = Math.min(forcedDate, arrival);
+                }
+            }
+            if (galaxy.shakturiTriggerHabitat === null && ((num4 >= num5 && currentStarDate >= colonyDate) || currentStarDate >= forcedDate)) {
                 generateShakturiReturnTriggerRuins(galaxy);
             } else if (galaxy.shakturiTriggerHabitat === null) {
                 num = 0;
