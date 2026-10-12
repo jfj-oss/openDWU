@@ -25,6 +25,7 @@ import { getSettings } from '../ui/settings';
 import { themeMusicFolder, themedAssetUrl } from '../themeAssets';
 import { encodePathSegments } from '../sim/data/customization';
 import { pickRimWeightedTrack } from './rimAtmosphereMix'; // [rimatmo-wiring] 19i item 8 (pure; no render/Pixi import)
+import { cachedPlaylist, listUserPlaylists, sourcePlaylistName } from './userMusic'; // [musicmood]
 
 /** Track files in Sounds/Music/ (MusicPlayer.cs:107 Directory.GetFiles(folder, "*.mp3")). */
 export const MUSIC_FILES: readonly string[] = [
@@ -114,6 +115,8 @@ export interface MediaBackend {
     readonly position: number;
     /** Called when the song stops at its end (MediaStateChanged → Stopped). */
     onEnded: (() => void) | null;
+    /** [musicmood] Called when a file could not be loaded or decoded (missing / unreadable / unsupported). */
+    onFailed?: (() => void) | null;
 }
 
 /** HTMLAudioElement backend; retries a gesture-blocked play() on the first pointerdown/keydown. */
@@ -121,12 +124,16 @@ export class HtmlMediaBackend implements MediaBackend {
     private readonly el: HTMLAudioElement;
     private blocked = false;
     onEnded: (() => void) | null = null;
+    onFailed: (() => void) | null = null;
 
     constructor() {
         this.el = new Audio();
         this.el.preload = 'auto';
         this.el.loop = false; // MediaPlayer.IsRepeating is never set: songs end and MediaEnded picks the next.
         this.el.addEventListener('ended', () => this.onEnded?.());
+        this.el.addEventListener('error', () => {
+            if (this.el.src !== '' && this.wantPlaying) this.onFailed?.();
+        });
     }
 
     private start(): void {
@@ -163,7 +170,10 @@ export class HtmlMediaBackend implements MediaBackend {
             .then((blob) => {
                 if (token !== this.loadToken) return;
                 this.loading = false;
-                if (blob === null) return;
+                if (blob === null || blob.size === 0) {
+                    this.onFailed?.(); // [musicmood] missing / unreadable: the player skips it
+                    return;
+                }
                 if (this.objectUrl !== null) URL.revokeObjectURL(this.objectUrl);
                 this.objectUrl = URL.createObjectURL(blob);
                 this.el.src = this.objectUrl;
@@ -238,6 +248,51 @@ export class MusicPlayer {
         this.rimMoodProbability = Math.max(0, Math.min(1, probability));
     }
     // [rimatmo-wiring] end
+    // [musicmood] begin — Options → Music & Mood: 'off' (nothing starts; a pending playlist also waits here) or a user
+    // playlist (full URLs, replacing the stock list and the theme); null playlist = the stock soundtrack, as before.
+    private off = false;
+    private playlist: { urls: readonly string[]; shuffle: boolean; index: number; failed: Set<string> } | null = null;
+
+    /** Silence the music (true) or let it play again (false; restarts a track when one was wanted). */
+    setOff(off: boolean): void {
+        if (this.off === off) return;
+        this.off = off;
+        if (off) {
+            this.stopTimer();
+            this.bool0 = false;
+            this.media.stop();
+        } else if (this.subscribed) this.start();
+    }
+    get isOff(): boolean {
+        return this.off;
+    }
+    /** Play these track URLs instead of the stock folder (null: back to the stock soundtrack). Restarts playback. */
+    setPlaylist(urls: readonly string[] | null, shuffle: boolean): void {
+        this.playlist = urls === null || urls.length === 0 ? null : { urls, shuffle, index: -1, failed: new Set() };
+        this.string0 = null;
+        if (this.subscribed && !this.off) this.start();
+    }
+    get playlistActive(): boolean {
+        return this.playlist !== null;
+    }
+    /** The Next Track button: fade out and start the next track. */
+    nextTrack(): void {
+        if (this.off) return;
+        this.subscribed = true;
+        this.forceSwitch();
+    }
+    private trackFailed(): void {
+        const p = this.playlist;
+        if (p === null || this.off || this.string0 === null) return;
+        p.failed.add(this.string0);
+        if (p.failed.size >= p.urls.length) {
+            this.media.stop();
+            return;
+        }
+        this.string0 = this.pick();
+        this.method1();
+    }
+    // [musicmood] end
     private double0 = -1.0; // fade direction
     private readonly double1 = 0.02;
     private int0 = 0; // ticks at the fade target
@@ -256,6 +311,7 @@ export class MusicPlayer {
         this.folder = opts.folder ?? MUSIC_URL_PREFIX;
         this.themeFile = opts.themeFile ?? THEME_MUSIC_FILE;
         this.media.onEnded = () => this.mediaEnded();
+        this.media.onFailed = () => this.trackFailed();
     }
 
     /** Port of IsPlaying: MediaPlayer.PlayPosition > 0 (true while paused mid-song). */
@@ -304,6 +360,7 @@ export class MusicPlayer {
     /** Port of StartTheme / StartThemeInternal. */
     startTheme(): void {
         this.subscribed = true;
+        if (this.playlist !== null) return this.start(); // [musicmood] a user playlist replaces the theme too
         this.string0 = this.themeFile;
         this.method1();
     }
@@ -348,6 +405,7 @@ export class MusicPlayer {
 
     /** Port of ResumeMusic. */
     resumeMusic(): void {
+        if (this.off) return;
         this.bool0 = false;
         this.media.resume();
     }
@@ -362,11 +420,13 @@ export class MusicPlayer {
     private method1(): void {
         this.bool0 = false;
         if (this.string0 === null) return;
-        this.playFile(this.folder + this.string0);
+        if (this.off) return; // [musicmood]
+        this.playFile(this.playlist !== null ? this.string0 : this.folder + this.string0);
     }
 
     /** Port of FadeResume. */
     fadeResume(): void {
+        if (this.off) return; // [musicmood]
         this.bool0 = false;
         this.double3 = 0.0;
         this.double0 = 1.0;
@@ -451,6 +511,21 @@ export class MusicPlayer {
     }
 
     private pick(): string | null {
+        // [musicmood] a user playlist: shuffled (never the same track twice running) or in order, skipping failed files.
+        const p = this.playlist;
+        if (p !== null) {
+            const ok = p.urls.filter((u) => !p.failed.has(u));
+            if (ok.length === 0) return null;
+            if (p.shuffle) return pickNextTrack(ok, this.string0, this.rand);
+            for (let i = 1; i <= p.urls.length; i++) {
+                const j = (p.index + i) % p.urls.length;
+                if (!p.failed.has(p.urls[j])) {
+                    p.index = j;
+                    return p.urls[j];
+                }
+            }
+            return null;
+        }
         // [rimatmo-wiring] 19i item 8: prefer the rim mood pool when one is set and its probability draws true;
         // pickRimWeightedTrack falls back to the full pool exactly like pickNextTrack when it does not.
         if (this.rimMoodFiles.length > 0 && this.rimMoodProbability > 0) {
@@ -496,6 +571,18 @@ function ensurePlayers(): { music: MusicPlayer; stings: MusicPlayer } {
         music0 = theme === null ? new MusicPlayer() : new MusicPlayer({ files: theme.files.map((f) => encodePathSegments(f)), folder: theme.urlOf('').replace(/[^/]*$/, ''), themeFile: encodePathSegments(theme.themeFile) });
         music0.setUserVolume(userVolume);
         if (userMuted) music0.mute();
+        // [musicmood] the persisted music source (resetMusicForTheme rebuilds the player: apply it again)
+        appliedSource = null;
+        try {
+            const s = getSettings();
+            if (s.musicSource !== 'original') applyMusicSource(s.musicSource, s.musicShuffle);
+            else {
+                appliedSource = 'original';
+                appliedShuffle = s.musicShuffle;
+            }
+        } catch {
+            // no settings store (tests)
+        }
     }
     if (music1 === null) {
         music1 = new MusicPlayer({ files: [], folder: EFFECTS_URL_PREFIX });
@@ -602,12 +689,67 @@ export function resetMusicForTheme(): void {
     music0 = null;
 }
 
+// [musicmood] begin — Options → Music & Mood's music source (UiSettings.musicSource / musicShuffle).
+let appliedSource: string | null = null;
+let appliedShuffle: boolean | null = null;
+let sourceToken = 0;
+/** A note for the panel when the chosen playlist could not be used (missing / empty), else null. */
+let sourceNote: string | null = null;
+
+export function musicSourceNote(): string | null {
+    return sourceNote;
+}
+
+/** Apply the music source: 'original' (the stock soundtrack), 'off', or 'playlist:<name>' (listed first when needed;
+ *  a missing or empty playlist falls back to the stock soundtrack with a note). No-op when nothing changed. */
+export function applyMusicSource(source: string, shuffle: boolean, force = false): void {
+    if (music0 === null) return; // ensurePlayers applies the persisted source when it builds the player
+    if (!force && source === appliedSource && shuffle === appliedShuffle) return;
+    appliedSource = source;
+    appliedShuffle = shuffle;
+    const token = ++sourceToken;
+    const music = musicPlayer();
+    sourceNote = null;
+    if (source === 'off') {
+        music.setOff(true);
+        return;
+    }
+    const name = sourcePlaylistName(source);
+    if (name === null) {
+        music.setPlaylist(null, shuffle);
+        music.setOff(false);
+        return;
+    }
+    const use = (): void => {
+        if (token !== sourceToken) return;
+        const p = cachedPlaylist(name);
+        if (p === null) sourceNote = `Playlist "${name}" not found; playing the original soundtrack.`;
+        music.setOff(true);
+        music.setPlaylist(p === null ? null : p.tracks.map((t) => t.url), shuffle);
+        music.setOff(false);
+    };
+    if (cachedPlaylist(name) !== null) use();
+    else {
+        music.setOff(true); // silent while the folder is listed (no theme blip before the playlist)
+        void listUserPlaylists().then(use, use);
+    }
+}
+
+/** The Next Track button. */
+export function nextMusicTrack(): void {
+    musicPlayer().nextTrack();
+}
+// [musicmood] end
+
 /** Test hook: forget the app players. */
 export function resetMusicForTests(): void {
     music0?.dispose();
     music1?.dispose();
     music0 = null;
     music1 = null;
+    appliedSource = null;
+    appliedShuffle = null;
+    sourceNote = null;
     userVolume = 0.5;
     userMuted = false;
     settingsRead = false;

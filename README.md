@@ -627,6 +627,43 @@ Notes:
 
 ---
 
+## Music & mood
+
+**Options → Sound Volume → Music & Mood...** (Escape menu → Options, or
+Options on the main menu) holds two independent choices:
+
+- **Background mood:** **Off** (default), **Rim only** (the Rim Atmosphere
+  add-on's ambience; greyed out in games without that add-on) or **Deep
+  Space**: sparse wind, a deep underwater rumble and, now and then, a
+  distant creature call or a hull creak, everywhere in the game. All of it
+  is synthesised by openDWU (no sound files). It follows the Effects volume
+  and has its own Level slider.
+- **Music:** **Original** (the game's soundtrack), **Off**, or one of your
+  own playlists, with **Shuffle** and **Next Track**.
+
+<details>
+<summary><b>How to add your own playlists</b></summary>
+
+The desktop app keeps a `Music` folder next to your saves, created on first
+run with a short `README.txt`:
+
+- Windows: `%APPDATA%\Distant Worlds Universe\Music`
+- macOS: `~/Library/Application Support/Distant Worlds Universe/Music`
+- Linux: `~/.config/Distant Worlds Universe/Music`
+
+**Open Music Folder** in the Music & Mood window opens it. Each subfolder is
+one playlist, named after the folder (for example `Music/Ambient/…`).
+Supported files: `.mp3`, `.ogg`, `.opus`, `.flac`, `.wav`, `.m4a` and `.aac`.
+The list is read again each time the window opens; empty, unreadable or
+unsupported files are skipped with a short note.
+
+In the browser build, **Choose Folder...** picks a folder of music for the
+current session only.
+
+</details>
+
+---
+
 ## Troubleshooting
 
 Desktop app:

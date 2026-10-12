@@ -6,6 +6,7 @@
 //   cannot cross the context bridge; window.postMessage is Electron's documented way to hand one to the page).
 // - net: LAN multiplayer (and the router port mapping of Internet hosting) (desktop/netHost.cjs, src/net/netBridge.ts). host / connect resolve; each connection's
 //   MessagePort then arrives as a window message `{ dwuNetLink: id, kind, remote }`.
+// - openMusicFolder: Options → Music & Mood's "Open Music Folder" (the listing and files are dwu://app/user-music/…).
 // - devHooks: the app was started with DWU_DEV_HOOKS=1 (scripts drive multiplayer games through the debug hooks).
 'use strict';
 const { contextBridge, ipcRenderer } = require('electron');
@@ -37,6 +38,8 @@ contextBridge.exposeInMainWorld('dwuDesktop', {
         mapPort: () => ipcRenderer.invoke('dwu:net-map-port'),
     },
     checkForUpdates: () => ipcRenderer.invoke('dwu:check-updates'),
+    // Options → Music & Mood: open the user-data Music folder (desktop/userMusic.cjs) in the file manager.
+    openMusicFolder: () => ipcRenderer.invoke('dwu:open-music-folder'),
     simProcess: {
         start: () => ipcRenderer.invoke('dwu:sim-start'),
         terminate: (id) => ipcRenderer.send('dwu:sim-terminate', Number(id)),

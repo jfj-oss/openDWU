@@ -269,3 +269,40 @@ describe('computeRimWeightsPerSystem / installRimAtmosphereData (render wiring)'
         expect(names[rimIndex]).toBeDefined();
     });
 });
+
+// [musicmood] Options → Music & Mood → Deep Space: sparse randomised calls / creaks, pitch transposition, gains.
+describe('Deep Space mood', async () => {
+    const deep = await import('../src/audio/deepSpaceMood');
+    const { seededRandom, CREAK_VOICE } = await import('../src/audio/rimCreatureCalls');
+    it('schedules calls and creaks tens of seconds to minutes apart, with varied pitch / pan / level', () => {
+        const s = new deep.DeepSpaceScheduler(deep.deepCallVoices().length);
+        const rand = seededRandom(5);
+        const ev: { kind: string; atS: number; pitch: number; pan: number; level: number }[] = [];
+        for (let t = 0; t < 3600; t += 1 / 30) ev.push(...s.step(t, 1 / 30, rand));
+        const calls = ev.filter((e) => e.kind === 'call').length;
+        const creaks = ev.filter((e) => e.kind === 'creak').length;
+        expect(calls).toBeGreaterThan(15);
+        expect(creaks).toBeGreaterThan(20);
+        expect(calls + creaks).toBeLessThan(160); // sparse: < one every ~22 s on average
+        for (let i = 1; i < ev.length; i++) expect(ev[i].atS - ev[i - 1].atS).toBeGreaterThanOrEqual(deep.DEEP_MIN_GAP_S - 1e-9);
+        const pitches = new Set(ev.map((e) => e.pitch.toFixed(2)));
+        expect(pitches.size).toBeGreaterThan(ev.length / 2);
+        for (const e of ev) {
+            expect(e.pitch).toBeGreaterThanOrEqual(deep.DEEP_PITCH_RANGE[0]);
+            expect(e.pitch).toBeLessThanOrEqual(deep.DEEP_PITCH_RANGE[1]);
+            expect(Math.abs(e.pan)).toBeLessThanOrEqual(0.85);
+        }
+    });
+    it('transposes pitches only (filters / modulation rates untouched)', () => {
+        const t = deep.transposeVoice(CREAK_VOICE, 2);
+        expect(t.bodyStartHz).toEqual([CREAK_VOICE.bodyStartHz[0] * 2, CREAK_VOICE.bodyStartHz[1] * 2]);
+        expect(t.lowpassHz).toBe(CREAK_VOICE.lowpassHz);
+        expect(t.grainHz).toEqual(CREAK_VOICE.grainHz);
+    });
+    it('follows the mood level and the Effects volume (0 when muted), and is at least DEEP_BED_WEIGHT deep', () => {
+        expect(deep.deepEventGain(0.6, 0)).toBe(0);
+        expect(deep.deepBedGain(0, 1, 0)).toBe(0);
+        expect(deep.deepBedGain(0, 1, 1)).toBeCloseTo(deep.deepBedGain(deep.DEEP_BED_WEIGHT, 1, 1));
+        expect(deep.deepBedGain(1, 1, 1)).toBeGreaterThan(deep.deepBedGain(0, 1, 1));
+    });
+});

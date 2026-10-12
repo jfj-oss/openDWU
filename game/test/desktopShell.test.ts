@@ -458,3 +458,47 @@ describe('desktop/simProcess.cjs (the sim in a process of its own)', () => {
         expect(crash).toHaveLength(1);
     });
 });
+
+// [musicmood] the user-data Music folder (desktop/userMusic.cjs) and the renderer's parse of its listing.
+describe('user music folder', () => {
+    const userMusic = require('../desktop/userMusic.cjs') as {
+        musicDir(userData: string): string;
+        ensureMusicFolder(dir: string): void;
+        listPlaylists(dir: string): { folder: string; playlists: { name: string; files: { name: string; rel: string }[] }[]; notes: string[] };
+    };
+    it('creates Music/ with a README, lists one playlist per subfolder and skips empty / unsupported files', async () => {
+        const root = mkdtempSync(path.join(tmpdir(), 'dwu-music-test-'));
+        try {
+            const dir = userMusic.musicDir(root);
+            expect(userMusic.listPlaylists(dir).notes.length).toBe(1); // missing
+            userMusic.ensureMusicFolder(dir);
+            expect(readFileSync(path.join(dir, 'README.txt'), 'utf8')).toContain('subfolder');
+            mkdirSync(path.join(dir, 'Calm'));
+            mkdirSync(path.join(dir, 'Empty'));
+            writeFileSync(path.join(dir, 'Calm', 'b 10.wav'), 'x');
+            writeFileSync(path.join(dir, 'Calm', 'b 2.FLAC'), 'x');
+            writeFileSync(path.join(dir, 'Calm', 'zero.mp3'), '');
+            writeFileSync(path.join(dir, 'Calm', 'cover.jpg'), 'x');
+            const l = userMusic.listPlaylists(dir);
+            expect(l.playlists.map((p) => p.name)).toEqual(['Calm', 'Empty']);
+            expect(l.playlists[0].files).toEqual([
+                { name: 'b 2.FLAC', rel: 'Calm/b 2.FLAC' },
+                { name: 'b 10.wav', rel: 'Calm/b 10.wav' },
+            ]);
+            expect(l.notes.join()).toContain('1 empty or unreadable');
+            const { parseDesktopListing } = await import('../src/audio/userMusic');
+            const parsed = parseDesktopListing(JSON.parse(JSON.stringify(l)), (mime) => mime !== 'audio/flac');
+            expect(parsed.playlists).toEqual([{ name: 'Calm', session: false, tracks: [{ name: 'b 10.wav', url: '/user-music/Calm/b%2010.wav' }] }]);
+            expect(parsed.notes.join('|')).toContain('Empty: no music files.');
+            expect(parsed.notes.join('|')).toContain('cannot play');
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
+    it('session folders: subfolders are playlists, loose files take the folder name', async () => {
+        const { sessionPlaylistName } = await import('../src/audio/userMusic');
+        expect(sessionPlaylistName('Root/Sub/x.mp3')).toBe('Sub');
+        expect(sessionPlaylistName('Root/Sub/deeper/x.mp3')).toBe('Sub');
+        expect(sessionPlaylistName('Root/x.mp3')).toBe('Root');
+    });
+});

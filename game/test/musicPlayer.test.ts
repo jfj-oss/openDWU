@@ -38,6 +38,7 @@ class FakeMedia implements MediaBackend {
     pos = 0;
     volume = 1;
     onEnded: (() => void) | null = null;
+    onFailed: (() => void) | null = null;
     played: string[] = [];
     play(url: string): void {
         this.url = url;
@@ -198,5 +199,43 @@ describe('fadeStep', () => {
         // The curve is fast near full volume and slow near silence, so allow
         // generous headroom but bound it.
         expect(ticks).toBeLessThan(1000);
+    });
+});
+// [musicmood] Options → Music & Mood: Off, user playlists, shuffle / in order, Next Track, unreadable files skipped.
+describe('MusicPlayer music source (Music & Mood)', () => {
+    it('Off plays nothing (start, theme, resume) until switched back on', () => {
+        const { p, media } = makePlayer();
+        p.setOff(true);
+        p.startTheme();
+        p.fadeResume();
+        p.resumeMusic();
+        expect(media.played).toEqual([]);
+        p.setOff(false);
+        expect(media.played.length).toBe(1);
+    });
+    it('a playlist replaces the stock list and the theme; in order wraps, shuffle never repeats', () => {
+        const { p, media } = makePlayer();
+        p.startTheme();
+        p.setPlaylist(['u/a.wav', 'u/b.wav', 'u/c.wav'], false);
+        media.end();
+        media.end();
+        media.end();
+        expect(media.played.slice(1)).toEqual(['u/a.wav', 'u/b.wav', 'u/c.wav', 'u/a.wav']);
+        p.setPlaylist(['u/a.wav', 'u/b.wav'], true);
+        for (let i = 0; i < 6; i++) media.end();
+        const tail = media.played.slice(-7);
+        for (let i = 1; i < tail.length; i++) expect(tail[i]).not.toBe(tail[i - 1]);
+        p.setPlaylist(null, true);
+        expect(media.played.at(-1)!.startsWith('/m/')).toBe(true);
+    });
+    it('a failed file is skipped; all failed stops', () => {
+        const { p, media } = makePlayer();
+        p.start();
+        p.setPlaylist(['u/bad.wav', 'u/ok.wav'], false);
+        expect(media.played.at(-1)).toBe('u/bad.wav');
+        media.onFailed?.();
+        expect(media.played.at(-1)).toBe('u/ok.wav');
+        media.onFailed?.();
+        expect(media.playing).toBe(false);
     });
 });

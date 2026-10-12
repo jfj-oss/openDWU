@@ -35,6 +35,7 @@ const installLib = require('./installDir.cjs');
 const updates = require('./updateCheck.cjs');
 const { createSimProcesses } = require('./simProcess.cjs');
 const { createNetHost } = require('./netHost.cjs');
+const userMusic = require('./userMusic.cjs');
 
 // A second profile (DWU_USER_DATA_DIR): its own saves, settings and single-instance lock, so two copies of the app can
 // run on one PC — a LAN host and a client on 127.0.0.1 (docs/MULTIPLAYER.md §10). Set before anything reads userData.
@@ -144,6 +145,9 @@ let installDir = null;
 let appIcon = nativeImage.createEmpty();
 const resolver = createResolver();
 const distResolver = createResolver();
+const musicResolver = createResolver();
+/** The player's own Music folder (desktop/userMusic.cjs), next to the saves in userData. */
+const MUSIC_DIR = () => userMusic.musicDir(app.getPath('userData'));
 /** Built at launch / on folder change: the JSON bodies of asset-manifest.json and theme-manifest/*. */
 let assetManifestBody = '{}';
 const themeBodies = new Map(); // name ('index.json' | '<set>.json') -> body | null (404)
@@ -218,6 +222,19 @@ app.whenReady().then(() => {
                     const type = /\.png$/i.test(resolved) ? 'image/png' : 'image/jpeg';
                     return new Response(body, { status: 200, headers: { 'Content-Type': type, 'Content-Length': String(body.length) } });
                 }
+                return net.fetch(pathToFileURL(resolved).href, request);
+            }
+
+            if (rest === 'user-music/index.json') {
+                // The player's playlists (Options → Music & Mood; src/audio/userMusic.ts), read fresh each time.
+                userMusic.ensureMusicFolder(MUSIC_DIR());
+                musicResolver.clearCache();
+                return new Response(JSON.stringify(userMusic.listPlaylists(MUSIC_DIR())), { status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+            }
+            if (rest.startsWith('user-music/')) {
+                const fileRel = rest.slice('user-music/'.length);
+                const resolved = musicResolver.resolveInsideRoot(MUSIC_DIR(), fileRel);
+                if (!resolved || !fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) return new Response(`Not found: ${fileRel}`, { status: 404 });
                 return net.fetch(pathToFileURL(resolved).href, request);
             }
 
@@ -395,6 +412,12 @@ app.on('before-quit', (event) => {
 });
 
 // The main menu's Check for Updates (gamePreload.cjs): the manual check, from the game window only.
+// Options → Music & Mood → Open Music Folder (game window only).
+ipcMain.handle('dwu:open-music-folder', async (event) => {
+    if (mainWin === null || event.sender !== mainWin.webContents) return false;
+    userMusic.ensureMusicFolder(MUSIC_DIR());
+    return (await shell.openPath(MUSIC_DIR())) === '';
+});
 ipcMain.handle('dwu:check-updates', async (event) => {
     if (mainWin === null || event.sender !== mainWin.webContents) return false;
     await checkForUpdates({ manual: true });
@@ -788,6 +811,7 @@ if (!app.requestSingleInstanceLock()) {
                 console.warn('No DW:U install folder configured; running without original assets.');
             }
         }
+        userMusic.ensureMusicFolder(MUSIC_DIR()); // Music/ + README.txt on first run (Options → Music & Mood)
         createWindow();
         launching = false;
 

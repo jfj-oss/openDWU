@@ -31,6 +31,8 @@ import { RIM_MOOD_TRACKS, RimAmbientBed, playRimVoiceStaticBurst, rimMoodProbabi
 // [rimatmo-wiring] end
 import type { BuiltObject } from '../sim/builtObject';
 import { RimCreatureAudio } from './rimCreatureAudio'; // [rimatmo-audio] 19i audio addendum
+import { DEEP_BED_WEIGHT, DeepSpaceEvents, deepEventGain } from './deepSpaceMood'; // [musicmood]
+import { DEFAULT_SETTINGS, getSettings } from '../ui/settings'; // [musicmood] UI settings only
 import { localViewerEmpire } from '../localViewer';
 
 // ---------------------------------------------------------------------------
@@ -335,6 +337,7 @@ export function installGameAudio(deps: GameAudioDeps): GameAudio {
         effectsVolume: () => session.player.volume,
         context: rimContext,
     });
+    const deepEvents = new DeepSpaceEvents(rimContext); // [musicmood] Deep Space calls + creaks (the bed is rimAmbient)
     // [rimatmo-wiring] end
     return {
         frame(): void {
@@ -349,9 +352,26 @@ export function installGameAudio(deps: GameAudioDeps): GameAudio {
                 musicPlayer().setRimMood(RIM_MOOD_TRACKS, rimMoodProbability(weightAtCamera, scenarioParam(galaxy, 'musicMoodWeight', 0.8)));
                 // The bed follows the visual atmosphere's zoom gate: silent at the galaxy view, fading in from halfway to
                 // the system view (the bed's own 0.5 s gain glide smooths any zoom jump).
-                const zoomFade = weightAtCamera > 0 ? rimAtmoZoomFade(camera.zoom, rimGalaxyViewZoom(galaxy.sizeX, galaxy.sizeY, camera.width, camera.height)) : 0;
-                rimAmbient.update(weightAtCamera, scenarioParam(galaxy, 'ambientGain', 0.35) * zoomFade);
-                rimCreatures.step(performance.now() / 1000, weightAtCamera); // [rimatmo-audio] calls + creaks
+                // [musicmood] Options → Music & Mood → Background mood: off (default) / rim (the add-on's bed as before) /
+                // deep (one bed everywhere at every zoom, at least DEEP_BED_WEIGHT deep, plus the rim layer and the Deep
+                // Space calls / creaks). One bed instance, so rim and deep never double up. Scaled by the Effects volume
+                // and the mood level.
+                const st = getSettings();
+                const fx = session.player.volume;
+                const level = st.moodLevel / DEFAULT_SETTINGS.moodLevel;
+                if (st.backgroundMood === 'rim') {
+                    const zoomFade = weightAtCamera > 0 ? rimAtmoZoomFade(camera.zoom, rimGalaxyViewZoom(galaxy.sizeX, galaxy.sizeY, camera.width, camera.height)) : 0;
+                    rimAmbient.update(weightAtCamera, scenarioParam(galaxy, 'ambientGain', 0.35) * zoomFade * fx * level);
+                    rimCreatures.step(performance.now() / 1000, weightAtCamera); // [rimatmo-audio] calls + creaks
+                    deepEvents.update(0);
+                } else if (st.backgroundMood === 'deep') {
+                    rimAmbient.update(Math.max(DEEP_BED_WEIGHT, weightAtCamera), st.moodLevel * fx);
+                    rimCreatures.step(performance.now() / 1000, weightAtCamera);
+                    deepEvents.update(deepEventGain(st.moodLevel, fx));
+                } else {
+                    rimAmbient.update(0, 0);
+                    deepEvents.update(0);
+                }
             } catch {
                 // no audio
             }
@@ -377,6 +397,7 @@ export function installGameAudio(deps: GameAudioDeps): GameAudio {
             rimAmbient.dispose(); // [rimatmo-wiring] 19i item 9
             // [rimatmo-audio] tear the synth bus and the shared rim context down with the audio graph.
             rimCreatures.dispose();
+            deepEvents.dispose(); // [musicmood]
             if (rimCtx !== null) void rimCtx.close().catch(() => undefined);
             rimCtx = null;
         },

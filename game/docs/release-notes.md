@@ -4,6 +4,11 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **Music & Mood.** Options → Sound Volume → **Music & Mood...**: a background mood (Off by default, **Rim only** for
+  the Rim Atmosphere add-on, or the new **Deep Space** bed: sparse wind, an underwater rumble and the odd distant
+  creature call or hull creak, all synthesised, everywhere in the game) and the music source (**Original**, **Off**
+  or **your own playlists** with Shuffle and Next Track). The desktop app reads playlists from a `Music` folder next
+  to your saves (one subfolder per playlist; mp3, ogg, flac, wav, m4a/aac); see the README's "Music & mood".
 - **Leaner, faster saves.** Saves use a new compact format (save format 3): the same late-game galaxy is about a third
   of the text (449 MB → 152 MB; 42 MB → 34 MB compressed), saves about twice as fast and loads with about half the
   memory. Every older save and `.dwusave` file still loads exactly as before; saves made with this version cannot be

@@ -6,8 +6,11 @@
 
 import { startEffects } from '../audio/effectsPlayer';
 import { simWorkerDefault } from '../systemMemory';
-import { applyMusicSettings } from '../audio/musicPlayer'; // [audio]
+import { applyMusicSettings, applyMusicSource } from '../audio/musicPlayer'; // [audio] [musicmood]
 import { sanitizeOverrides } from './keyBindingModel';
+
+/** Options → Music & Mood: the background mood bed (audio/deepSpaceMood.ts). */
+export type BackgroundMood = 'off' | 'rim' | 'deep';
 
 /** One entry of the persisted settings blob. */
 export interface UiSettings {
@@ -122,6 +125,16 @@ export interface UiSettings {
     stormFlashes: boolean;
     /** Ours: the new-game wizard's last Galaxy Backdrop pick (render/galaxyBackdropChoice.ts kinds). */
     newGameBackdrop: string;
+    // [musicmood] begin — Options → Music & Mood (ui/screens/musicMoodWindow.ts). UI settings, never sim state.
+    /** Background mood bed: off (default), the Rim Atmosphere add-on's bed only, or the whole-game Deep Space bed. */
+    backgroundMood: BackgroundMood;
+    /** The mood bed's own level, 0..1 (on top of the Effects volume). */
+    moodLevel: number;
+    /** Music source: 'original' (the install's soundtrack), 'off', or 'playlist:<folder name>' (audio/userMusic.ts). */
+    musicSource: string;
+    /** Shuffle the user playlist (else play it in file-name order). */
+    musicShuffle: boolean;
+    // [musicmood] end
 
     // [gameoptions] begin — the Game Options screen's view / display options (Main.Part6.cs:2491-2515 method_418,
     // Main.Part4.cs:4690-4712 method_569; defaults Main.Part9.cs:2774-2807 method_260). UI-only: none reaches the sim.
@@ -253,6 +266,10 @@ export const DEFAULT_SETTINGS: UiSettings = {
     animateBackdrop: true,
     stormFlashes: true,
     newGameBackdrop: 'original',
+    backgroundMood: 'off',
+    moodLevel: 0.6,
+    musicSource: 'original',
+    musicShuffle: true,
 
     // [gameoptions] begin — Main.Part9.cs:2774-2807 method_260; GameOptions.cs _MaximumFramerate = -1, _SystemNebulaeDetail = 0.
     mainViewScrollSpeed: 10,
@@ -350,6 +367,11 @@ export function loadSettings(): UiSettings {
         if (typeof parsed.animateBackdrop === 'boolean') out.animateBackdrop = parsed.animateBackdrop;
         if (typeof parsed.stormFlashes === 'boolean') out.stormFlashes = parsed.stormFlashes;
         if (typeof parsed.newGameBackdrop === 'string') out.newGameBackdrop = parsed.newGameBackdrop;
+        // [musicmood]
+        if (parsed.backgroundMood === 'off' || parsed.backgroundMood === 'rim' || parsed.backgroundMood === 'deep') out.backgroundMood = parsed.backgroundMood;
+        if (typeof parsed.moodLevel === 'number' && Number.isFinite(parsed.moodLevel)) out.moodLevel = Math.min(1, Math.max(0, parsed.moodLevel));
+        if (typeof parsed.musicSource === 'string' && (parsed.musicSource === 'original' || parsed.musicSource === 'off' || parsed.musicSource.startsWith('playlist:'))) out.musicSource = parsed.musicSource;
+        if (typeof parsed.musicShuffle === 'boolean') out.musicShuffle = parsed.musicShuffle;
         if (typeof parsed.showWeaponRangeCircles === 'boolean') out.showWeaponRangeCircles = parsed.showWeaponRangeCircles;
         if (typeof parsed.edgeScroll === 'boolean') out.edgeScroll = parsed.edgeScroll;
         if (typeof parsed.autoPauseInPopup === 'boolean') out.autoPauseInPopup = parsed.autoPauseInPopup;
@@ -530,6 +552,7 @@ function applySoundSettings(s: UiSettings): void {
     // [audio] begin — the music volume / mute apply to musicPlayer_0 and musicPlayer_1 (Main.Part9.cs:2816 SetVolume(MusicVolume)).
     try {
         applyMusicSettings(s.musicVolume, s.musicMuted);
+        applyMusicSource(s.musicSource, s.musicShuffle); // [musicmood] no-op unless the source / shuffle changed
     } catch {
         // Audio must never break a settings change.
     }
