@@ -2,4 +2,5 @@
 import './supply';
 import './trade';
 import './crackdown';
+import './treaty';
 export {};
