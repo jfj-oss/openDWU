@@ -100,7 +100,7 @@ An early-game crisis, once per game.
   random events, and the faction never merges; `pirateProtectionDesired` keeps empires from buying protection.
 - Budget `probeSwarmBudget` (60,000) + `probeSwarmBudgetPerStation` (15,000) per station a year, at most
   `probeSwarmBudgetCap` (250,000), spent only on warships (`probeSwarmStartShips` 4 + 0.5 per station) and mining /
-  gas mining stations (one every `probeSwarmStationDays` 75, up to `probeSwarmMaxStations` 30) at the free asteroid
+  gas mining stations (one every `probeSwarmStationDays` 75, no limit by default: `probeSwarmMaxStations` 0) at the free asteroid
   field or gas giant nearest the mothercore within `probeSwarmExpandRangePct` (6 % of the galaxy width) of a swarm
   station, never in a system with a colony.
 - Defence: every 10 days any ship of any owner inside a system with a swarm station is attacked by the two nearest

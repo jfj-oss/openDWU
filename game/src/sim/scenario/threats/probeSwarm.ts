@@ -132,7 +132,7 @@ const P = {
     cap: (g: Galaxy) => p(g, 'probeSwarmBudgetCap', 250000),
     startShips: (g: Galaxy) => Math.trunc(p(g, 'probeSwarmStartShips', 4)),
     shipsPerStation10: (g: Galaxy) => p(g, 'probeSwarmShipsPerStation', 5),
-    maxStations: (g: Galaxy) => Math.trunc(p(g, 'probeSwarmMaxStations', 30)),
+    maxStations: (g: Galaxy) => Math.trunc(p(g, 'probeSwarmMaxStations', 0)), // 0 = no limit (user request)
     expandRange: (g: Galaxy) => (p(g, 'probeSwarmExpandRangePct', 6) * g.sizeX) / 100,
     minCapitalDistance: (g: Galaxy) => (p(g, 'probeSwarmMinCapitalDistancePct', 15) * g.sizeX) / 100,
     salvage: (g: Galaxy) => p(g, 'probeSwarmSalvageResearch', 60000),
@@ -361,7 +361,8 @@ function spend(galaxy: Galaxy, st: ProbeSwarmState): void {
             st.shipsBuilt++;
             continue;
         }
-        if (st.stations.length >= P.maxStations(galaxy)) break;
+        const stationCap = P.maxStations(galaxy);
+        if (stationCap > 0 && st.stations.length >= stationCap) break;
         if (galaxyStarDate(galaxy) - st.lastStationDate < P.stationDays(galaxy) * GAME_DAY_LENGTH) break;
         const site = probeSwarmNextSite(galaxy, st);
         if (site === null) break;
