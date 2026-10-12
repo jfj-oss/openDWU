@@ -119,4 +119,55 @@ An early-game crisis, once per game.
 
 ## As built
 
-(Soak results and tuning below.)
+### Decisions taken during the build
+
+- Firepower is measured as `militaryPotency` (the stock `calculateOverallStrengthFactorWithoutShields` sum). In that
+  unit an AI empire has only about 90–900 at year 5, so the user's "about 7,000" escort became "1.3× the target,
+  never below 700" (the floor, about 8 warships, applies when 1.3× would be trivial), and the 30 regiments scale per
+  1,000 escort firepower.
+- The world ship is the faction's colony ship design at the target's tech level (no new art, no new hull). Lost tech
+  rides on it as an Archive Core; the escorts carry none.
+- Pilgrims' gratitude is a Protectorate plus lasting reputation; the Heirs' grudge is lasting reputation (the
+  reputation ledger when Reputation is on, the stock evaluation bias otherwise).
+- Repelled fleets scatter (are torn down) instead of lingering; the world ship leaves no wreck then.
+- The swarm's construction is abstracted (stations and warships appear at once for their purchase price) rather than
+  run through the pirate construction AI, which the passive gate switches off.
+- Destroying the mothercore dissolves the swarm through the stock pirate-termination rule (stations go independent).
+- Archive Core boosts are "% of a year of the empire's research" (`annualResearchPotential`), so they scale with the
+  empire.
+
+### Soak results (2026-10-12)
+
+700 stars (starCountIndex 3, dimensionIndex 3), 7 AI empires, default research, `scripts/soak.mjs --set new-threats`
+configs: `gt-on-sN` = all three add-ons on, `gt-off-s1` = the same galaxy with them off. 30 game years, save → load →
+continue check at year 15. Three rounds: round 1 (old defaults), a tuning round (escort floor, funded build-up,
+smaller cores and swarm), and the final round below after the AI defence fixes (fleet gathering, garrison levy,
+staged landings, 2-year war limit).
+
+| run | arrival / contact | flavour | target (owner) | fleet / owner at spawn → at ultimatum | answer | war result | Archive Cores | swarm stations y10 / y15 / y20 / y30 | swarm fights (engagements, kills, losses) | mothercore | save | s / game year |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| gt-on-s1 | y5.1 / y5.3 | Pilgrims | EB738 (Ugnari Industries, AI) | 724 / 88 → 169 | substitute (AI) | none: settled an empty world y7, now a 4-colony protectorate | 1 (ruins, sealed: 281k) | 13 / 30 / 30 / 30 | 168, 34, 39 | alive | ok | 70.1 |
+| gt-on-s2 | y5.1 / y5.3 | Ark Faith | S1061 2 (Wekkarus Confederacy, AI) | 1,320 / 911 → 2,117 | refuse (AI) | conquered after 2.2 years (7 landings; 15 of the escort left); the faction later lost the world | 3 (ruins, all sealed: 263k, 267k, 293k) | 7 / 23 / 30 / 30 | 214, 81, 41 | alive | ok | 72.6 |
+| gt-on-s3 | y5.1 / y5.3 | Ark Faith | Arra (Dhayut Empire, the automated player) | 758 / 113 → 337 | refused (answer expired) | repelled within 0.8 years: the fleet was destroyed | 2 (ruins 285k; the mothercore, sealed: 353k) | 13 / 28 / 30 / 30 | 369, 93, 34 | destroyed (S2166 Supremacy) | ok | 74.1 |
+| gt-off-s1 | — | — | — | — | — | — | — | — | — | — | ok | 68.0 |
+
+No exceptions, hard invariant failures, non-finite or negative values in any run; every save round trip was
+identical (digest, save text, re-serialised text).
+
+**Step time:** gt-on-s1 70.1 s per game year against 68.0 s for the same galaxy without the add-ons (+3 %, the two
+runs side by side on the same 8 cores; the s2/s3 runs ran alongside them and are not a baseline). The swarm's home
+search was made O(systems²) after the first smoke run showed a 1.6 s frame at its wake.
+
+**Round 1 → tuning:** the escort was at the 3,000 floor everywhere (34× the target), so every AI ceded; a sealed
+core paid 750k (1.2 years of research); the swarm reached 40 stations by year 20 with 36 warships. Round 2 showed the
+AI fighting (Ark, 2,028 against 1,320) but losing in six months: its fleet was 3.9 million units away and the
+transports' Attack order let the stock command land troops past the defenders.
+
+**Verdict.** Met: the arrival is early (year 5 in all three seeds; the tech gate and the year-5 floor coincide at
+default research); the build-up works (owner firepower ×1.9–3 by the ultimatum); a prepared defender beat the Ark
+(s3) and a committed AI held 2.2 years; the swarm grows noticeably when ignored (to its 30-station cap by year
+15–20) and an empire that went for the mothercore ended it (s3); the AI used every Archive Core choice (always
+"seal", none of the finders were at war). Not met yet: in s2 the committed AI still lost, just past the 2-year mark
+(`genShipsWarYears`): its navy was outnumbered at the world despite 1.6× more firepower overall. Levers, if more
+tuning is wanted: `genShipsWarYears`, `genShipsFleetFactorPct`, `genShipsAiGarrisonPct`, `genShipsAiFightRatioPct`.
+Two rounds were run, as asked; the final round's defence changes are mechanics fixes.

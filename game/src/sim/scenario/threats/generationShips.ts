@@ -824,7 +824,11 @@ export function genShipsPeriodic(galaxy: Galaxy): void {
     if (st.phase === 'settled' || st.phase === 'ended') return;
     const faction = st.faction;
     if (faction === null || !faction.active) {
+        // Wiped out in battle (the stock teardown of an empire with nothing left) before any other ending.
+        st.outcome ??= 'repelled';
+        st.worldShipFate ??= 'destroyed';
         st.phase = 'ended';
+        st.endDate = galaxyStarDate(galaxy);
         return;
     }
     st.escorts = st.escorts.filter((b) => alive(b, faction));
