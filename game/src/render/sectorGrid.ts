@@ -14,6 +14,9 @@ import type { Camera } from './camera';
 
 /** main_0.color_5 (Main.Part13.cs 199) = pen_1's colour (Main.Part12.cs 2295): the sector grid and the orbit lines. */
 export const SECTOR_GRID_COLOR = 0x202058;
+/** Grid line opacity. The original draws it opaque (method_250 5185); faded here at the user's request so the grid
+ *  stays a quiet guide on the galaxy map. Orbit lines share the colour but keep their own alpha. */
+export const SECTOR_GRID_ALPHA = 0.4;
 /** main_0.color_7 (Main.Part13.cs 201): the sector labels' brush (method_250 5148 solidBrush). */
 export const SECTOR_LABEL_COLOR = 0x6060ff;
 /** method_250 5153 num16: the grid and labels are drawn only while the zoom factor is above this. */

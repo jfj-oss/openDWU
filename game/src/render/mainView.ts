@@ -25,7 +25,7 @@ import { MAX_SOLAR_SYSTEM_SIZE, SystemVisibilityStatus, determineGalaxyLocations
 import { playGridClick } from '../audio/gameAudio'; // [audio]
 import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import { Camera } from './camera';
-import { SECTOR_GRID_COLOR, SectorLabelLayer, sectorGridVisible } from './sectorGrid';
+import { SECTOR_GRID_ALPHA, SECTOR_GRID_COLOR, SectorLabelLayer, sectorGridVisible } from './sectorGrid';
 import { themedAssetUrl } from '../themeAssets';
 import {
     AssetStore,
@@ -2618,7 +2618,7 @@ export class MainView {
         const sizeX = this.galaxy.sizeX;
         const sizeY = this.galaxy.sizeY;
         const step = this.galaxy.sectorSize;
-        const line = { width: 1 / z, color: SECTOR_GRID_COLOR, alpha: 1 }; // method_250 5185: color_5, 1 px
+        const line = { width: 1 / z, color: SECTOR_GRID_COLOR, alpha: SECTOR_GRID_ALPHA }; // method_250 5185: color_5, 1 px (faded, see SECTOR_GRID_ALPHA)
         for (let x = 0; x <= sizeX + 1; x += step) {
             g.moveTo(x, 0).lineTo(x, sizeY).stroke(line);
         }
