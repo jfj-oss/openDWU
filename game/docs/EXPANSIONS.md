@@ -14,7 +14,7 @@ Meters: **Changes to the base game** rates how much the expansion alters the sto
 
 | Expansion | Changes to the base game | Difficulty |
 | --- | --- | --- |
-| The Rim | ●●●●○ | Harder |
+| The Rim | ●●●●● | Harder |
 | Politics & Characters | ●●●●● | Harder |
 | Economy | ●●●○○ | Neutral |
 | Galactic Threats | ●●○○○ | Much harder |
@@ -22,11 +22,11 @@ Meters: **Changes to the base game** rates how much the expansion alters the sto
 
 ## The Rim
 
-The outer reaches of the galaxy become a frontier of their own: ion storms, thin stars and gravity shoals make travel and supply hard, while herds of creatures roam the rim and an isolationist rim empire trades its rare luxuries. Eight new creatures and a colder, lonelier look and sound complete it.
+The outer reaches of the galaxy become a frontier of their own: ion storms, thin stars and gravity shoals make travel and supply hard, while herds of creatures roam the rim and an isolationist rim empire trades its rare luxuries. A contraband spore from deadly rim worlds drains that empire until it cracks down and goes to war. Eight new creatures and a colder, lonelier look and sound complete it.
 
-- Changes to the base game: ●●●●○ (4 of 5)
-- Difficulty: Harder. Harder: fuel is scarce, travel is risky and the rim is hostile.
-- Members: rimTrade, rim-frontier, rim-fauna, rim-herders, rim-atmosphere, new-fauna
+- Changes to the base game: ●●●●● (5 of 5)
+- Difficulty: Harder. Harder: fuel is scarce, travel is risky, the rim is hostile and Voidbloom addiction can reach your own colonies.
+- Members: rimTrade, rim-frontier, rim-fauna, rim-herders, rim-atmosphere, new-fauna, voidbloom
 
 **The frontier belt.** An ion-storm belt, thinning stars, gravity shoals that pull ships out of hyperspace, little fuel and poor sensors make the rim hard to reach and hold. Ordinary empires start inside the belt; pirate bases split the rim.
 
@@ -35,6 +35,8 @@ The outer reaches of the galaxy become a frontier of their own: ion storms, thin
 **Rim herders.** Rim independents live with the herds: the herds are docile to them, their tamed freighters shrug off storms, and their ports are the only steady source of herd goods.
 
 **The rim trade.** An isolationist rim empire holds the rarest luxuries and trades them only for goods from the outer reaches, including its treasure fleet.
+
+**The Voidbloom War.** Voidbloom grows only on deadly rim worlds worked by forced labour under guard. Smugglers carry it into the Concord's closed markets and addiction spreads like an epidemic; the silver drains out until the Concord cracks down while it is still strong. Tolerate, pay, back down or fight: a late war ends in an unequal treaty, the Diet can intervene, and a random aftermath follows.
 
 **Atmosphere.** Cold colour grading, dark dust lanes, murk over unexplored rim systems, derelict hulks and eyes in the dark. Presentation only.
 

@@ -637,3 +637,16 @@ describe('19j rim herders — husbandry: regrowth, maturity, bred traits, stampe
         expect(scenarioQuery(g, 'extraLuxuryOrders', [], { empire: e, habitat: e.capital! })).toEqual([]);
     }, 600000);
 });
+
+describe('resource ids with The Voidbloom War', () => {
+    it('Voidbloom follows the herd goods (ids stay contiguous, looked up by name), no overlay warnings', async () => {
+        const { comboOverlayFs } = await import('./helpers/scenarioGame');
+        const data = scenarioGameData(base, comboOverlayFs(['rim-herders', 'voidbloom']));
+        const names = data.resources.map((r) => r.name);
+        const vb = data.resources.find((r) => r.name === 'Voidbloom')!;
+        expect(vb).toBeDefined();
+        expect(vb.resourceId).toBeGreaterThan(data.resources.find((r) => r.name === 'Kaltor Crystal')!.resourceId);
+        expect(data.resources.every((r, i) => r.resourceId === i)).toBe(true);
+        expect(new Set(names).size).toBe(names.length);
+    });
+});

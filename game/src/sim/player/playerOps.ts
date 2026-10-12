@@ -136,6 +136,7 @@ import { addHumanSeat, isHumanEmpire, setAiSeat } from '../humanEmpires';
 import { setEmpireDifficultyFactors } from '../pirates';
 import { setHumanMessageOptions } from '../perHumanState';
 import { acceptGovernorSuggestion, requestGovernor, setCvAutomation } from '../scenario/charactersVictory/governorsCv';
+import { bribeOfficials as vbBribeOfficials, playerLabourConvoy as vbPlayerLabourConvoy, playerLevyGarrison as vbPlayerLevyGarrison, playerSetAutomation as vbPlayerSetAutomation, playerSetPolicy as vbPlayerSetPolicy, playerStartDetox as vbPlayerStartDetox } from '../scenario/voidbloom/view';
 import { dietPlayerDeclareEmperor, dietPlayerEmergency, dietPlayerVeto, dietPlayerVote, dietPropose, dietSetDelegate } from '../scenario/charactersVictory/diet/diet';
 import type { DietMotionKind } from '../scenario/charactersVictory/diet/dietState';
 import { savePlayerVipDesign } from '../scenario/charactersVictory/shuttleDesign';
@@ -645,6 +646,20 @@ export const PLAYER_OPS = {
     /** The Regent declares themselves Emperor (the countdown victory). */
     dietDeclareEmperor: (galaxy: Galaxy, empire: Empire) => dietPlayerDeclareEmperor(galaxy, empire),
     // [charactersVictory] end
+    // [voidbloom] begin — The Voidbloom War (scenario/voidbloom; flag-gated inside)
+    /** Our Voidbloom policy: 'smuggle' (trade it anywhere), 'legal' (only where legal) or 'ban'. */
+    vbSetPolicy: (galaxy: Galaxy, empire: Empire, policy: string) => vbPlayerSetPolicy(galaxy, empire, policy),
+    /** Automatic labour convoys / garrison levies on our Voidbloom worlds. */
+    vbSetAutomation: (galaxy: Galaxy, empire: Empire, opts: { labour?: boolean; garrison?: boolean }) => vbPlayerSetAutomation(galaxy, empire, opts),
+    /** Send a labour convoy to one of our Voidbloom worlds. */
+    vbLabourConvoy: (galaxy: Galaxy, empire: Empire, world: Habitat) => vbPlayerLabourConvoy(galaxy, empire, world),
+    /** Raise one garrison troop on one of our Voidbloom worlds. */
+    vbLevyGarrison: (galaxy: Galaxy, empire: Empire, world: Habitat) => vbPlayerLevyGarrison(galaxy, empire, world),
+    /** Fund neural detox research. */
+    vbStartDetox: (galaxy: Galaxy, empire: Empire) => vbPlayerStartDetox(galaxy, empire),
+    /** Bribe the Concord's officials: no inspections of our ships for two years. */
+    vbBribeOfficials: (galaxy: Galaxy, empire: Empire) => vbBribeOfficials(galaxy, empire),
+    // [voidbloom] end
     // [llm] begin — 19s-3 strategic upgrade (scenario/llm/strategic.ts; flag llmStrategic, no-op when off): the local
     // model's validated choice for an AI empire (`empire` = that AI), or its refusal; the only way a model choice
     // reaches the sim, so seed + command log replays it without the model.

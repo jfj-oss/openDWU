@@ -17,15 +17,16 @@ export interface ExpansionInfo {
 
 export const EXPANSION_INFO: Readonly<Record<string, ExpansionInfo>> = {
     'the-rim': {
-        about: 'The outer reaches of the galaxy become a frontier of their own: ion storms, thin stars and gravity shoals make travel and supply hard, while herds of creatures roam the rim and an isolationist rim empire trades its rare luxuries. Eight new creatures and a colder, lonelier look and sound complete it.',
-        changes: 4,
+        about: 'The outer reaches of the galaxy become a frontier of their own: ion storms, thin stars and gravity shoals make travel and supply hard, while herds of creatures roam the rim and an isolationist rim empire trades its rare luxuries. A contraband spore from deadly rim worlds drains that empire until it cracks down and goes to war. Eight new creatures and a colder, lonelier look and sound complete it.',
+        changes: 5,
         difficulty: 1,
-        difficultyNote: 'Harder: fuel is scarce, travel is risky and the rim is hostile.',
+        difficultyNote: 'Harder: fuel is scarce, travel is risky, the rim is hostile and Voidbloom addiction can reach your own colonies.',
         features: [
             { heading: 'The frontier belt', text: 'An ion-storm belt, thinning stars, gravity shoals that pull ships out of hyperspace, little fuel and poor sensors make the rim hard to reach and hold. Ordinary empires start inside the belt; pirate bases split the rim.' },
             { heading: 'Creature herds', text: 'Far more herds roam the rim than the core. They graze gas clouds, asteroid fields and mining stations and migrate each year into the settled space inside the rim. Eight new creatures (void whales, hunter packs, hull grazers, storm drifters, lantern shoals, nest mothers, scavengers, brood carriers) join them.' },
             { heading: 'Rim herders', text: 'Rim independents live with the herds: the herds are docile to them, their tamed freighters shrug off storms, and their ports are the only steady source of herd goods.' },
             { heading: 'The rim trade', text: 'An isolationist rim empire holds the rarest luxuries and trades them only for goods from the outer reaches, including its treasure fleet.' },
+            { heading: 'The Voidbloom War', text: 'Voidbloom grows only on deadly rim worlds worked by forced labour under guard. Smugglers carry it into the Concord\'s closed markets and addiction spreads like an epidemic; the silver drains out until the Concord cracks down while it is still strong. Tolerate, pay, back down or fight: a late war ends in an unequal treaty, the Diet can intervene, and a random aftermath follows.' },
             { heading: 'Atmosphere', text: 'Cold colour grading, dark dust lanes, murk over unexplored rim systems, derelict hulks and eyes in the dark. Presentation only.' },
         ],
     },

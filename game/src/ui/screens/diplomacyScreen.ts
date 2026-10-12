@@ -93,6 +93,7 @@ import {
 } from './diplomacyRelationsView';
 import { leagueSection } from '../leagueRows';
 import { rimTraderTermsRows, type RimTraderTermsRows } from '../scenario/rimTraderRows';
+import { voidbloomBlock } from '../scenario/voidbloomUi'; // [voidbloom]
 import { rimTraderEmpire } from '../../sim/scenario/rimTrade/common';
 import { REAL_SECONDS_IN_GALACTIC_YEAR } from '../../sim/galaxyTime';
 import { EmpireMessageType, empireMessages } from '../../sim/messages';
@@ -1413,6 +1414,8 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         if (rimTerms !== null) {
             const stop = rimTerms.treasureStop;
             box.appendChild(rimTraderTermsBlock(rimTerms, stop === null ? undefined : () => issuePlayerCommand(player.galaxy, player, 'requestTreasureStop', [stop.port], () => render())));
+            const vb = voidbloomBlock(player, () => render()); // [voidbloom]
+            if (vb !== null) box.appendChild(vb);
         }
         // [rimTrader] end
         // [wargoals] begin

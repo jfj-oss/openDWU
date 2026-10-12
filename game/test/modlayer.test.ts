@@ -523,3 +523,15 @@ describe('spec-driven additions (periodic, game start, events, queries, BasedOn,
         expect(resolved.at(-1)).toBe(`${game.playerEmpire.name}:refuse`);
     });
 });
+
+describe('The Voidbloom War add-on (catalog)', () => {
+    it('is a Rim add-on of The Rim expansion that requires Rim Trade and cannot be added to a save', async () => {
+        const { addonCatalog, EXPANSIONS } = await import('../src/sim/scenario/addons');
+        const cat = addonCatalog(scenarioIndexFs());
+        const a = cat.byId.get('voidbloom')!;
+        expect(a.group).toBe('Rim');
+        expect(a.addableToSave).toBe(false);
+        expect(a.deps.some((d) => d.id === 'rimTrade' && d.kind === 'on')).toBe(true);
+        expect(EXPANSIONS.find((e) => e.id === 'the-rim')!.members).toContain('voidbloom');
+    });
+});

@@ -45,6 +45,13 @@ import { concordFallbackHome } from '../src/sim/scenario/rimTrade/rimTrader';
 import { galaxyResourceCurrentPrices } from '../src/sim/design';
 import { requestTreasureStop, treasureStopRequests } from '../src/sim/scenario/rimTrade/treasureFleet';
 import { ColonyResourceEffect } from '../src/sim/developmentLevel';
+import { vbColony, vbEmpire, vbState, voidbloomId, voidbloomStock } from '../src/sim/scenario/voidbloom/common';
+import { garrisonNeeded, garrisonOf, supplyTick, worldYield } from '../src/sim/scenario/voidbloom/supply';
+import { onContract, spreadTick, voidbloomApproval, voidbloomContractAvailable } from '../src/sim/scenario/voidbloom/trade';
+import { crackdownYear } from '../src/sim/scenario/voidbloom/crackdown';
+import { concordDeclineIndex, unequalTerms } from '../src/sim/scenario/voidbloom/treaty';
+import { describeTerms, sanitiseTerms, termsValueFor } from '../src/sim/scenario/lively/peaceTerms';
+import { makeHabitatIntoColonyRuntime } from '../src/sim/missions/cmdTroops';
 
 let base: GameData;
 beforeAll(async () => {
@@ -432,5 +439,125 @@ describe('19a rim trader — determinism, save, faithful path', () => {
         expect('rimTrade' in game.galaxy.scenario!.state).toBe(false);
         expect(rimTraderEmpire(game.galaxy)).toBeNull();
         expect(game.galaxy.empires.some((e) => e?.dominantRace?.name === 'Oranthi')).toBe(true);
+    }, 1200000);
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// The Voidbloom War (docs/VOIDBLOOM_WAR.md): a Rim add-on on top of the Concord.
+// ---------------------------------------------------------------------------------------------------------------
+describe('The Voidbloom War', () => {
+    let game: Game;
+    let g: Galaxy;
+    const vbFlags = { rimTrader: true, voidbloom: true };
+    beforeAll(() => {
+        game = createScenarioGame(base, { scenario: 'voidbloom', flags: vbFlags, params: { voidbloomWorlds: 3 }, options: forceOranthi }).game;
+        g = game.galaxy;
+    }, 1200000);
+
+    it('picks rim Voidbloom worlds at game start and clears every starting stock', () => {
+        const st = vbState(g);
+        expect(st.worlds.length).toBe(3);
+        for (const w of st.worlds) {
+            expect(w.habitat.empire).toBeNull();
+            expect(radiusFraction(g, w.habitat.xpos, w.habitat.ypos)).toBeGreaterThanOrEqual(0.7);
+            expect(w.habitat.baseQuality).toBeGreaterThanOrEqual(0.55);
+        }
+        const id = voidbloomId(g);
+        expect(id).toBeGreaterThan(0);
+        expect(g.habitats.some((h) => h?.cargo?.items.some((c) => c.commodity.resourceId === id) === true)).toBe(false);
+    });
+
+    it('a colony on a world harvests it; the climate kills; garrison levies; labour convoys sail', () => {
+        const w = vbState(g).worlds[0];
+        const e = g.empires.find((x) => x !== null && x !== rimTraderEmpire(g) && x !== g.independentEmpire && x !== g.playerEmpire && x.dominantRace !== null && x.colonies.length > 0)!;
+        const race = e.dominantRace!;
+        makeHabitatIntoColonyRuntime(g, e, w.habitat, e, race, 30_000_000);
+        e.stateMoney += 200_000;
+        const pop0 = w.habitat.population.totalAmount;
+        supplyTick(g);
+        expect(voidbloomStock(g, w.habitat)).toBeGreaterThan(0);
+        expect(w.habitat.population.totalAmount).toBeLessThan(pop0);
+        expect(garrisonOf(w.habitat)).toBeGreaterThanOrEqual(1);
+        expect(garrisonNeeded(g, w.habitat)).toBeGreaterThanOrEqual(2);
+        expect(worldYield(g, w)).toBeGreaterThan(0);
+    });
+
+    it('legal and black-market sellers: only smugglers sell into the Concord; a banning empire sells none', () => {
+        const r = rimTraderEmpire(g)!;
+        const id = voidbloomId(g);
+        const seller = vbState(g).worlds[0].habitat.empire!;
+        vbEmpire(g, seller).policy = 'legal';
+        expect(voidbloomContractAvailable(g, 100, { seller, buyer: r, resourceId: id })).toBe(0);
+        vbEmpire(g, seller).policy = 'smuggle';
+        expect(voidbloomContractAvailable(g, 100, { seller, buyer: r, resourceId: id })).toBe(100);
+        vbEmpire(g, seller).policy = 'ban';
+        expect(voidbloomContractAvailable(g, 100, { seller, buyer: g.independentEmpire, resourceId: id })).toBe(0);
+        expect(voidbloomContractAvailable(g, 100, { seller: g.independentEmpire, buyer: r, resourceId: id })).toBe(100);
+        vbEmpire(g, seller).policy = 'smuggle';
+    });
+
+    it('a black-market sale drains the Concord: premium, the state share, the smugglers\' cut, the first taste', () => {
+        const r = rimTraderEmpire(g)!;
+        const seller = vbState(g).worlds[0].habitat.empire!;
+        const dest = r.colonies[0];
+        const s0 = r.stateMoney;
+        const p0 = r.privateMoney;
+        onContract(g, { seller, buyer: r, destination: dest, resourceId: voidbloomId(g), amount: 100, value: 12_000, freighter: null });
+        const st = vbState(g);
+        expect(st.stats.blackSales).toBe(100);
+        expect(st.stats.stateDrain).toBeCloseTo(30_000 * 0.15, 3);
+        expect(r.stateMoney).toBeCloseTo(s0 - 30_000 * 0.15, 3);
+        expect(r.privateMoney).toBeLessThan(p0);
+        expect(st.arcStarted).toBeGreaterThan(0);
+        expect(vbColony(g, dest).tasted).toBeGreaterThan(0);
+    });
+
+    it('the spread reaches the Concord\'s Canton market first; supplied colonies grow addicted', () => {
+        const r = rimTraderEmpire(g)!;
+        for (let i = 0; i < 6; i++) spreadTick(g);
+        const c = vbColony(g, r.colonies[0]);
+        expect(c.a).toBeGreaterThan(0);
+        expect(voidbloomApproval(g, r.colonies[0])).not.toBeNull();
+    });
+
+    it('the crackdown: a commissioner and a crisis the AI answers; inspections seize cargo', () => {
+        const r = rimTraderEmpire(g)!;
+        for (const h of r.colonies) vbColony(g, h).a = 0.5;
+        const seller = vbState(g).worlds[0].habitat.empire!;
+        crackdownYear(g);
+        const st = vbState(g);
+        expect(st.crackdownStarted).toBeGreaterThan(0);
+        expect(st.commissioner).not.toBeNull();
+        const cd = st.crackdowns.find((c) => c.targetId === seller.empireId)!;
+        expect(cd).toBeDefined();
+        expect(['tolerated', 'war', 'paid', 'backedDown']).toContain(cd.status);
+        expect(st.stats.crises).toBeGreaterThanOrEqual(1);
+    });
+
+    it('unequal-treaty terms: Concord-only extra terms survive sanitising and count in the terms\' value', () => {
+        const r = rimTraderEmpire(g)!;
+        const e = vbState(g).worlds[0].habitat.empire!;
+        const res = unequalTerms(g, e, r, 1000, false);
+        expect(res.extra.map((x) => x.kind)).toContain('voidbloom.legalise');
+        const t = { cede: [], reparations: null, demilitarise: null, release: null, extra: [...res.extra, { kind: 'voidbloom.toll', from: e, to: r }] };
+        const clean = sanitiseTerms(g, t, e, r);
+        expect(clean.extra!.every((x) => x.from === r)).toBe(true);
+        expect(termsValueFor(g, clean, e)).toBeGreaterThan(0);
+        expect(describeTerms(clean).length).toBe(clean.extra!.length);
+        expect(concordDeclineIndex(g)).toBeGreaterThanOrEqual(0);
+    });
+
+    it('saves and loads its state identically', () => {
+        const scenario = { id: 'voidbloom', flags: vbFlags, params: { voidbloomWorlds: 3 } };
+        const text = saveText(game, scenario);
+        const loaded = deserializeGame(text, scenarioGameData(base, 'voidbloom'));
+        expect(saveText(loaded.game, scenario)).toBe(text);
+        expect(vbState(loaded.game.galaxy).worlds.length).toBe(3);
+    }, 1200000);
+
+    it('with voidbloom off nothing runs: no state, no Voidbloom worlds', () => {
+        const off = createScenarioGame(base, { scenario: 'voidbloom', flags: { rimTrader: true, voidbloom: false }, options: forceOranthi }).game;
+        runGameSeconds(off.galaxy, YEAR_LENGTH / 4000);
+        expect('voidbloom' in off.galaxy.scenario!.state).toBe(false);
     }, 1200000);
 });

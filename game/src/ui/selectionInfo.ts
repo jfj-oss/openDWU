@@ -57,6 +57,7 @@ import { rimGoodMarker } from './scenario/rimTraderRows'; // [rimTrader]
 import { rareGoodEffectText } from '../sim/scenario/rimTrade/rareGoods'; // [rimTrader]
 import { facilityGalactopediaTopic, facilityPanelHoverText } from './facilityHover';
 import { econColonyInfo } from './scenario/colonyEconomyInfo';
+import { voidbloomColonyLines } from '../sim/scenario/voidbloom/view'; // [voidbloom]
 import { supplyChainEnabled, supplySnapshot } from './supplyChainCache'; // [improvements] supplyChain
 import { colonyTooltipLines, itemNeedsText, resourceName, siteTooltipLines } from './supplyChainText'; // [improvements] supplyChain
 import { isPrivateer } from '../sim/scenario/privateers/privateers'; // privateers add-on label
@@ -1299,6 +1300,8 @@ export function habitatInfo(ctx: InfoContext, h: Habitat): InfoModel {
                 const own: InfoSeg[] = econ.facilities.map((f, i) => ({ img: f.img, faded: f.faded, gap: i === 0 && stock ? 6 : i > 0 ? 2 : 0, title: f.title, target: { kind: 'galactopedia', topic: f.topic } }));
                 rows.push(label('Facilities', stock ? [...facSegs, ...own] : own, { strip: true }));
             } else rows.push(label('Facilities', facSegs, { strip: true }));
+            // [voidbloom] Voidbloom world / addiction lines (own colonies, the Concord's, and any explored world).
+            if (owner === player || flag || vis === SystemVisibilityStatus.Visible) for (const line of voidbloomColonyLines(galaxy, h)) rows.push(label('Voidbloom', [txt(line, color)]));
             // Troops (InfoPanel.cs 4404-4500).
             const troops = troopItems(h.troops);
             const recruit = troopItems(h.troopsToRecruit);

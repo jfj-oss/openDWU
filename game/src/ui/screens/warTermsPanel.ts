@@ -9,6 +9,7 @@ import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import { buildTerms, describeTerms, termsChoices, warView, type PeaceTermsResult } from '../../sim/scenario/lively/peaceTerms';
 import type { PeaceTerms } from '../../sim/scenario/lively/warGoals';
 import { FONT, checkBox, dropDown, glassButton, numericUpDown } from '../originalWindow';
+import { voidbloomTermChoices, voidbloomTermText } from '../../sim/scenario/voidbloom/treaty'; // [voidbloom]
 
 interface Draft {
     cedeTheirs: Set<Habitat>;
@@ -21,6 +22,8 @@ interface Draft {
     demil: Set<Habitat>;
     demilYears: number;
     release: boolean;
+    /** [voidbloom] The Concord's extra terms asked (ScenarioTerm kinds). */
+    extra: Set<string>;
 }
 
 const drafts = new WeakMap<Empire, Draft>(); // weak: per game (a Map kept every game's empires)
@@ -40,7 +43,7 @@ function button(label: string, onClick: () => void): HTMLButtonElement {
 }
 
 function emptyDraft(): Draft {
-    return { cedeTheirs: new Set(), cedeOurs: new Set(), payer: 'none', lump: 0, perYear: 0, years: 0, demil: new Set(), demilYears: 10, release: false };
+    return { cedeTheirs: new Set(), cedeOurs: new Set(), payer: 'none', lump: 0, perYear: 0, years: 0, demil: new Set(), demilYears: 10, release: false, extra: new Set() };
 }
 
 function draftFromTerms(t: PeaceTerms, player: Empire): Draft {
@@ -57,6 +60,7 @@ function draftFromTerms(t: PeaceTerms, player: Empire): Draft {
         d.demilYears = t.demilitarise.years;
     }
     d.release = t.release !== null && t.release.overlord !== player;
+    for (const x of t.extra ?? []) if (x.to === player) d.extra.add(x.kind);
     return d;
 }
 
@@ -70,6 +74,8 @@ function termsFromDraft(d: Draft, player: Empire, other: Empire, subject: Empire
     }
     if (d.demil.size > 0) t.demilitarise = { empire: other, beneficiary: player, systems: [...d.demil], years: d.demilYears };
     if (d.release && subject !== null) t.release = { overlord: other, subject };
+    const extra = voidbloomTermChoices(player.galaxy, player, other).filter((x) => d.extra.has(x.kind));
+    if (extra.length > 0) t.extra = extra;
     return t;
 }
 
@@ -178,6 +184,18 @@ function composer(player: Empire, other: Empire, rerender: () => void): HTMLElem
         const line = checkBox(`They release the ${subject.name}`, d.release, (v) => (d.release = v));
         line.classList.add('ow-flow', 'diplomacy-line');
         box.appendChild(line);
+    }
+    // [voidbloom] The unequal-treaty terms (a Voidbloom war with the Concord).
+    const vbTerms = voidbloomTermChoices(galaxy, player, other);
+    if (vbTerms.length > 0) {
+        const group = el('div', 'diplomacy-propose-group');
+        group.appendChild(el('div', 'diplomacy-propose-label', 'Treaty rights'));
+        for (const x of vbTerms) {
+            const line = checkBox(voidbloomTermText(x), d.extra.has(x.kind), (v) => void (v ? d.extra.add(x.kind) : d.extra.delete(x.kind)));
+            line.classList.add('ow-flow', 'diplomacy-line');
+            group.appendChild(line);
+        }
+        box.appendChild(group);
     }
 
     const row = el('div', 'diplomacy-propose-options');

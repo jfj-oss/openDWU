@@ -27,6 +27,7 @@ const RH = 'Rim Herders';
 const RT = 'The Rim Trade';
 const RFR = 'Rim Frontier';
 const CV = 'Characters & Victory';
+const VB = 'The Voidbloom War';
 
 export const KIND_SUFFIX: Readonly<Record<ArticleKind, string>> = { creature: 'creature', faction: 'faction', good: 'good', ship: 'ship', mechanic: '' };
 
@@ -109,6 +110,26 @@ export const EXPANSION_ARTICLES: readonly ExpansionArticle[] = [
         'Each time the treasure fleet leaves a port, each treasure ship has a 4% chance to straggle for 10 to 40 days: it stays to finish loading, detours to refuel, or an engine fault (2 to 6 days out) stops it dead for 5 to 20 days. A straggler more than 60,000 units from every escort is exposed; after 20 days the convoy holds and the escorts turn back for it.',
         'Every 5 days pirates and aggressive AI empires (never a human player, never the Concord) weigh a raid within 8 sectors: the loot must outweigh the 3,000 standing penalty and their force must have 1.5 times the firepower defending the target within 150,000 units (up to 4 fleets combined against the main body). A sunk treasure ship\'s cargo goes to the raider\'s nearest space port; a captured one keeps it in the hold.',
         'Protect stragglers near your space, or catch one yourself if the Concord\'s anger is worth the cargo.'),
+    // The Voidbloom War (docs/VOIDBLOOM_WAR.md; numbers are scenarios/voidbloom/scenario.json defaults).
+    A('the-rim', VB, 'good', 'voidbloom', 'Voidbloom',
+        'A contraband spore (price 120), its own category: no stock luxury slot. It grows only on a few Voidbloom worlds in the rim (one per 140 stars, at least 3) and only a colony there can harvest it, about 12 units every 30 days per million workers to the power 0.6, stockpiled up to 4,000. No mining station can take it.',
+        'A colony that tastes it gets a short boost (up to +8 approval, +20 development while freshly supplied) and an addiction that grows each supplied month and fades slowly: up to -14 approval, -25% income and +50% corruption at full addiction, and up to -18 approval more in withdrawal when the supply stops.',
+        'Where it is banned only smugglers sell it (pirates, independents and empires whose policy is to smuggle), at a 150% black-market premium. Every purchase is paid mostly by the buyer\'s private sector and 15% by its state treasury: the silver drain.'),
+    A('the-rim', VB, 'mechanic', 'voidbloom-worlds', 'Voidbloom Worlds',
+        'Deadly rim planets: nobody is born there and 35% of the people die each year. They need labour convoys (12 million workers, 15,000 credits, every 90 days below 40 million; conquered peoples go first) and a garrison of 2 troops plus 1 per 10 million workers. A short garrison risks a revolt (up to 12% a month): the workers take the world for themselves.',
+        'AI empires value them four times as much as any other colony target and send fleets against worlds held by enemies or independents. If no empire has settled one by year 10, a rim cartel does.'),
+    A('the-rim', VB, 'mechanic', 'voidbloom-spread', 'Voidbloom Spread',
+        'Demand spreads like an epidemic, not everywhere at once: a colony starts to want Voidbloom only after exposure from growing worlds and addicted colonies within 14 sectors. The Concord\'s colonies are three times as exposed (the Canton market) and smugglers seek them out from anywhere once anyone grows it.',
+        'A ban halves the exposure (half again with a Customs Bureau, less with Internal Security) and a banning empire\'s colonies seize what they find. Some races are resistant, a few immune; stable governments and contented colonies resist best.'),
+    A('the-rim', VB, 'mechanic', 'the-crackdown', 'The Crackdown',
+        'When 12% of the Concord is addicted, or 400,000 credits have drained out of it, a commissioner is appointed to its worst-hit colony and publishes an open letter. Customs then search every ship carrying Voidbloom near a Concord colony (30% a sweep near the commissioner, half elsewhere) and burn what they seize in public. Neutral ships searched cost the Concord their owners\' goodwill.',
+        'Each smuggling empire faces the crisis: back down and hand over the smugglers, pay 250,000 credits for 5 years of quiet, tolerate a police action, or go to war. The police action is a task force of 8 warships that blockades your Voidbloom worlds, raids and destroys their stock, burns the fields (25% yield for 540 days), frees labour convoys, hunts your freighters, kills governors and finally occupies a world whose garrison is too thin.'),
+    A('the-rim', VB, 'mechanic', 'unequal-treaty', 'The Unequal Treaty',
+        'The Concord cracks down while it is still strong; a war then is very hard. It signs away rights only once it has declined (addiction, the silver drained, an empty treasury and its frozen research all count). The terms: a barren rock ceded (it grows into a trade hub), an indemnity in instalments, a treaty port, no tolls, no inspections, a 10% cut of its customs income and legal Voidbloom. Strong empires later demand the same (most-favoured nation).',
+        'A random aftermath follows, shifted by the treaty\'s harshness: Self-Strengthening and a revanche war 15 to 30 years on, a zealot\'s civil war, a client state, an opening that wakes the giant, or collapse into successor states. Ten years on a pretext incident offers the victor a second war; the Concord capital\'s wonder can then be looted and burned.'),
+    A('the-rim', VB, 'mechanic', 'voidbloom-diet', 'Voidbloom in the Diet',
+        'With the Interstellar Diet the Concord sits and votes as a full member but never hosts it nor holds the Regency. Members vote by self-interest: those hurt by the drug for Ban Voidbloom, those profiting from smuggling or wanting open Concord ports against; with no strong interest, a slight lean to the ban. Motions: Ban Voidbloom, Open the Concord\'s Ports, a Diet-mediated treaty, sanctions on smugglers or on the Concord, and after legalisation Galactic Prohibition.',
+        'After legalisation the galaxy grows dependent on the rim growers, temperance movements demand bans, neural detox research (300,000 credits, 4 years) speeds recovery, leaders pick up the habit and pirate syndicates grow rich.'),
     A('the-rim', RFR, 'mechanic', 'storm-belt', 'Storm Belt and Gravity Shoals',
         'Beyond 70% of the galaxy radius an ion-storm belt (density 0.5) damages ships, stars thin out (half of the positions past 60% are rejected), 4 gravity shoals pull ships out of hyperspace, and ship sensors there work at half range (listening posts are exempt). Ordinary empires start inside the belt; 60% of new pirate factions are placed in the rim.',
         'Carry a herder guide to reveal safe lanes, or wait for storm drifters and lantern shoals to move on.'),
@@ -280,6 +301,7 @@ export const ARTICLE_IMAGES: Readonly<Record<string, ArticleImage>> = {
     'oranthi-porcelain': resource(36),
     moonsilk: resource(29),
     'starleaf-tea': resource(21),
+    voidbloom: own('/art/voidbloom/voidbloom.svg', 48),
     'treasure-ship': own('/art/concord-photo/treasure.png'),
     'concord-designs': own('/art/concord-photo/battleship.png'),
     'treasure-fleet': own('/art/concord-photo/treasure.png', 160),

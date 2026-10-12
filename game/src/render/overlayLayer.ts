@@ -110,6 +110,7 @@ import { scenarioMapFeatures, scenarioSelectionFeatures, type ScenarioMapMarker 
 import { VipMarkerLayer } from './vipMarkers'; // [charactersVictory]
 import { EconomyMarkerLayer } from './economyMarkers'; // [colonyEconomy]
 import { DietMarkerLayer } from './dietMarkers'; // [charactersVictory] the Interstellar Diet's seat and enforcers
+import { VoidbloomMarkerLayer } from './voidbloomMarkers'; // [voidbloom] Voidbloom worlds and addicted colonies
 import { WRECK_MARKER_COLOR, visibleWreckFields, wreckFieldHit, wreckMarker } from '../ui/scenario/wreckageUi'; // [wreckage]
 import type { WreckField } from '../sim/scenario/wreckage/common'; // [wreckage]
 // [dw2overlays] begin
@@ -595,6 +596,7 @@ export class OverlayLayer {
     /** Characters & Victory: gold rings on visible VIP shuttles, routes with the VIP traffic overlay. */
     readonly vip: VipMarkerLayer;
     readonly diet: DietMarkerLayer; // [charactersVictory]
+    readonly voidbloom: VoidbloomMarkerLayer; // [voidbloom]
     readonly econ: EconomyMarkerLayer; // [colonyEconomy] designation badges
     /** Scenario map markers (mod layer, e.g. the 19a treasure fleet beacon): drawn at every zoom. */
     private scenarioMarkers = new Graphics();
@@ -699,6 +701,7 @@ export class OverlayLayer {
         this.root.addChild(this.wrecks); // [wreckage]
         this.vip = new VipMarkerLayer(galaxy, this.root, state); // [charactersVictory]
         this.diet = new DietMarkerLayer(galaxy, this.root); // [charactersVictory]
+        this.voidbloom = new VoidbloomMarkerLayer(galaxy, this.root); // [voidbloom]
         this.econ = new EconomyMarkerLayer(galaxy, this.root, state); // [colonyEconomy]
         // [dw2overlays] begin
         this.colonyScores = new ColonyScoreOverlay(galaxy, this.root, state);
@@ -873,6 +876,7 @@ export class OverlayLayer {
         this.vip.update(z);
         this.diet.motion = this.motion; // [charactersVictory]
         this.diet.update(z);
+        this.voidbloom.update(z); // [voidbloom]
         this.econ.update(z); // [colonyEconomy]
         this.supply.motion = this.motion; // [improvements] supplyChain
         this.runOverlay('Supply Shortages', SUPPLY_KEYS, () => this.supply.update(z, cam));

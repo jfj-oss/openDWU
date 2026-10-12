@@ -183,6 +183,12 @@ export const COMMAND_FAILURE: FailureTable = {
     dietPropose: no,
     dietEmergency: no,
     dietDeclareEmperor: no,
+    vbSetPolicy: no,
+    vbSetAutomation: no,
+    vbLabourConvoy: no,
+    vbLevyGarrison: no,
+    vbStartDetox: no,
+    vbBribeOfficials: no,
     llmStrategic: () => null,
 };
 
