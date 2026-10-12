@@ -28,6 +28,7 @@
 //   BaconValues null.
 // - DiplomaticRelations empty → CheckAtWar false; no pirate colony control.
 
+import { slaveryApprovalTerm } from './slavery';
 import { detPow } from './detMath';
 import { RaceEventType, getPlagueUnhappinessFactorWithPlague } from './eventTypes';
 import { processColonyTroops } from './troops';
@@ -435,6 +436,8 @@ export function empireApprovalRatingStock(galaxy: Galaxy, h: Habitat): number {
         if (num22 > 0.0) num22 *= 1.0 + num25;
         else if (num22 < 0.0) num22 /= 1.0 + num25;
     }
+    // Not in DW:U: the "Allow slavery" policy's approval term (slavery.ts; 0 unless the empire has penal colonies).
+    if (empire !== null && empire.slavery !== undefined) num22 += slaveryApprovalTerm(h);
     return num22;
 }
 

@@ -25,6 +25,7 @@
 // - Characters / Leader: none; RaidCountdown 0; no pirate colony control.
 // - Tax: Habitat.TaxRate / TaxComplianceRate come from taxes.ts (SetColonyTaxRate).
 
+import { penalTaxFactor } from './slavery';
 import { isReadOnlyGalaxy } from './readOnlyQuery';
 import { scenarioQuery } from './scenario/hooks';
 import type { Galaxy } from './galaxy';
@@ -462,6 +463,7 @@ export function recalculateAnnualTaxRevenue(galaxy: Galaxy, h: Habitat): void {
         const taxRate = galaxy.scenario !== null ? scenarioQuery(galaxy, 'colonyTaxRate', f32(h.taxRate), { habitat: h, empire: h.empire }) : f32(h.taxRate);
         h.annualTaxRevenue = habitatAnnualRevenue(galaxy, h) * taxRate * taxComplianceRate(galaxy, h);
         if (galaxy.scenario !== null) h.annualTaxRevenue = scenarioQuery(galaxy, 'colonyTaxRevenue', h.annualTaxRevenue, { habitat: h, empire: h.empire }); // mod layer
+        if (h.slavery !== undefined) h.annualTaxRevenue *= penalTaxFactor(h); // "Allow slavery": a penal colony's tax (slavery.ts)
         h.annualTaxRevenue = Math.max(0.0, h.annualTaxRevenue);
         let num = COLONY_STATE_SUPPORT_COST;
         if (h.population != null) {

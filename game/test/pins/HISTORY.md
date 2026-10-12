@@ -322,3 +322,8 @@ Appended by `npm run repin -- --reason "<why>"` (scripts/repin.mjs).
 
 - No seed pin moved (`repin --check --workers 1` = 0): rimTrade is off in the pinned games.
 - `test/rimTraderPassiveSoak.test.ts` "flag off is byte-identical" 1-year literals (rimTrade-ON): wizard Oranthi "6c27a02ef5fb07d3" → "e91879655e3931e3", Concord created at start "be952fd2a0c2537c" → "8c34d8bf8851b613". Deliberate: CONCORD_RANGE_COMPONENTS (concordDesigns.ts) drops 'NovaCore Reactor', so its warship designs use the best reactor of its starting tech (more fuel cells for the range); the start digests do not move.
+
+## 2026-10-12 — dark themes: "Allow slavery" empire policy (base game), scorched earth and war crimes (add-ons)
+
+- Base game: the new "Allow slavery" policy (src/sim/slavery.ts, slaveryReview.ts; docs/DARK_THEMES.md §1) changes AI behaviour — an AI whose species and government lean to it adopts it once a luxury- or rare-rich colony can be staffed with enslaved non-dominant-species workers and garrisoned at a profit. `npm run repin -- --dry-run --workers 2`: 0 pins would change. No pinned run reaches that point within its span (every pinned game is at most a few game years old, when no AI empire yet holds people of another species), and the policy's state is `declare`d optional fields absent until used, so the saves are unchanged. Expected to move pins whose games run long enough for an AI to adopt it.
+- Add-ons scorched-earth / war-crimes: off in every pinned game; `--check --workers 1` = 0.

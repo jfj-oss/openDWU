@@ -143,6 +143,13 @@ const CONFIGS = [
     { name: 'gt-swarm-dense', set: 'new-threats', seed: 1, years: 12, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 } }, scenario: ['threat-framework', 'generation-ships', 'archive-cores', 'probe-swarm'], flags: 'all', params: { genShipsEarliestYear: 99, probeSwarmYear: 1, probeSwarmMinCapitalDistancePct: 0, probeSwarmExpandRangePct: 12, probeSwarmStationDays: 30 } },
     { name: 'gt-smoke-off', set: 'new-threats', seed: 2, years: 3, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 } }, scenario: ['threat-framework', 'generation-ships', 'archive-cores', 'probe-swarm'], flags: {} },
     { name: 'gt-smoke', set: 'new-threats', seed: 1, years: 3, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 } }, scenario: ['threat-framework', 'generation-ships', 'archive-cores', 'probe-swarm'], flags: 'all', params: { genShipsEarliestYear: 0, genShipsLatestYear: 1, genShipsContactDays: 20, genShipsUltimatumDays: 90, genShipsAnswerDays: 20, probeSwarmYear: 0 } },
+    // `--set dark-themes` (docs/DARK_THEMES.md §soaks; --hook scripts/dark-themes-hook.mjs): 700 stars, 7 empires, 20 years.
+    // dt-slavery: the base game (AI slavery on); dt-noslave: the same galaxy with AI slavery switched off by the hook
+    // (name ends in -noslave), the baseline.
+    // dt-scorch: scorched earth; dt-warcrimes: Characters & Victory (the Diet) + war crimes + scorched earth.
+    ...[['dt-slavery-s1', null], ['dt-base-s1-noslave', null], ['dt-scorch-s1', ['scorched-earth']], ['dt-warcrimes-s1', ['characters-victory', 'war-crimes', 'scorched-earth']]].map(([name, scenario]) => ({
+        name, set: 'dark-themes', seed: 1, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 } }, ...(scenario === null ? {} : { scenario, flags: 'all' }),
+    })),
     // `--set long`: the many-decade runs (not in the default set).
     { name: 'long-s1-30y', set: 'long', seed: 1, years: 30, wizard: {} },
     { name: 'long-s7-small-50y', set: 'long', seed: 7, years: 50, wizard: { starCountIndex: 1, dimensionIndex: 1, otherEmpires: { empireCount: 5 } } },
@@ -194,7 +201,9 @@ if (arg('list', false) === true) {
 
 const MODULES = { game: '/src/sim/game.ts', sgo: '/src/sim/startGameOptions.ts', load: '/test/helpers/loadGameDataFs.ts',
     harness: '/src/sim/tick/harness.ts', save: '/src/sim/save/gameSave.ts', galaxySave: '/src/sim/save/galaxySave.ts', digest: '/src/sim/tick/digest.ts',
-    scenario: '/test/helpers/scenarioGame.ts', time: '/src/sim/galaxyTime.ts' };
+    scenario: '/test/helpers/scenarioGame.ts', time: '/src/sim/galaxyTime.ts',
+    // docs/DARK_THEMES.md: scripts/dark-themes-hook.mjs reads these (same module instances as the sim: preserveModules).
+    slavery: '/src/sim/slavery.ts', slaveryReview: '/src/sim/slaveryReview.ts' };
 
 async function bundle() {
     const dir = mkdtempSync(resolve(tmpdir(), 'dwu-soak-'));

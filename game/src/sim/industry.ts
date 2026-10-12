@@ -18,6 +18,7 @@
 // is rebuilt (Clone, save/load). The TS HabitatResourceList is a plain array searched by id (findIndex), which is the
 // intended behaviour; see the note at the RemoveAt site.
 
+import { notePenalExtraction, penalResourceFactor } from './slavery';
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
 import type { BuiltObject } from './builtObject';
@@ -665,7 +666,10 @@ export function extractResources(galaxy: Galaxy, habitat: Habitat, timePassed: n
     for (let i = 0; i < habitatResourceList.length; i++) {
         const habitatResource = habitatResourceList[i];
         if (habitatResource !== null && groupOf(galaxy, habitatResource.resourceId) === ResourceGroup.Luxury) {
-            const num4 = habitatResourceExtract(habitatResource, num3);
+            // "Allow slavery": a penal colony extracts its luxury / restricted resources × PENAL_RESOURCE_FACTOR (slavery.ts).
+            const k = habitat.slavery !== undefined ? penalResourceFactor(galaxy, habitat, habitatResource.resourceId) : 1;
+            const num4 = habitatResourceExtract(habitatResource, num3 * k);
+            if (k !== 1) notePenalExtraction(habitat, num4 - habitatResourceExtract(habitatResource, num3));
             if (galaxy.scenario !== null) recordExtraction(galaxy, habitat, habitatResource.resourceId, num4, empire); // 19d2 reserves (no Rnd)
             counters.miningExtractionLuxury = (counters.miningExtractionLuxury + num4) | 0;
             habitat.cargo.add(new Cargo(new ResourceRef(habitatResource.resourceId), num4, empire));
@@ -674,7 +678,9 @@ export function extractResources(galaxy: Galaxy, habitat: Habitat, timePassed: n
     for (let j = 0; j < habitatResourceList.length; j++) {
         const habitatResource2 = habitatResourceList[j];
         if (habitatResource2 !== null && groupOf(galaxy, habitatResource2.resourceId) === ResourceGroup.Gas) {
-            const num5 = habitatResourceExtract(habitatResource2, num3);
+            const knum5 = habitat.slavery !== undefined ? penalResourceFactor(galaxy, habitat, habitatResource2.resourceId) : 1; // restricted resources (slavery.ts)
+            const num5 = habitatResourceExtract(habitatResource2, num3 * knum5);
+            if (knum5 !== 1) notePenalExtraction(habitat, num5 - habitatResourceExtract(habitatResource2, num3));
             if (galaxy.scenario !== null) recordExtraction(galaxy, habitat, habitatResource2.resourceId, num5, empire); // 19d2 reserves (no Rnd)
             counters.miningExtractionGas = (counters.miningExtractionGas + num5) | 0;
             habitat.cargo.add(new Cargo(new ResourceRef(habitatResource2.resourceId), num5, empire));
@@ -683,7 +689,9 @@ export function extractResources(galaxy: Galaxy, habitat: Habitat, timePassed: n
     for (let k = 0; k < habitatResourceList.length; k++) {
         const habitatResource3 = habitatResourceList[k];
         if (habitatResource3 !== null && groupOf(galaxy, habitatResource3.resourceId) === ResourceGroup.Mineral) {
-            const num6 = habitatResourceExtract(habitatResource3, num3);
+            const knum6 = habitat.slavery !== undefined ? penalResourceFactor(galaxy, habitat, habitatResource3.resourceId) : 1; // restricted resources (slavery.ts)
+            const num6 = habitatResourceExtract(habitatResource3, num3 * knum6);
+            if (knum6 !== 1) notePenalExtraction(habitat, num6 - habitatResourceExtract(habitatResource3, num3));
             if (galaxy.scenario !== null) recordExtraction(galaxy, habitat, habitatResource3.resourceId, num6, empire); // 19d2 reserves (no Rnd)
             counters.miningExtractionStrategic = (counters.miningExtractionStrategic + num6) | 0;
             if (resourceDefinition(galaxy, habitatResource3.resourceId).colonyManufacturingLevel > 0) {

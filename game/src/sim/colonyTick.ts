@@ -15,6 +15,7 @@
 // draws per recruit. The Bacon market-price noise uses clock-seeded `new Random()` in C# — here
 // galaxy.baconHabitatClockRnd (derived from the galaxy seed, plan §0; never touches Galaxy.Rnd).
 
+import { isPenalColony, penalUnrest } from './slavery';
 import { RaceEventType } from './eventTypes';
 import type { Galaxy } from './galaxy';
 import { galaxyRace } from './galaxy';
@@ -336,6 +337,10 @@ export function checkSatisfaction(galaxy: Galaxy, habitat: Habitat): void {
     let approval = empireApprovalRating(galaxy, habitat);
     // mod layer (19m): the revolt reads the colony's stability ledger (martial law holds it at the leave threshold).
     if (galaxy.scenario !== null) approval = scenarioQuery(galaxy, 'colonyRevoltApproval', approval, { habitat, leaveThreshold: num5 });
+    // Not in DW:U: a penal colony's unrest the garrison does not hold (the "Allow slavery" policy, slavery.ts).
+    const penal = habitat.slavery !== undefined && isPenalColony(habitat);
+    const wasRebelling = habitat.rebelling;
+    if (penal) approval -= penalUnrest(galaxy, habitat);
     if (approval < num5 && habitat.rebelling) {
         if (troops === null || troops.count <= 0) {
             leaveEmpire(galaxy, habitat);
@@ -384,6 +389,7 @@ export function checkSatisfaction(galaxy: Galaxy, habitat: Habitat): void {
         }
         sendMessageToEmpire(owner, owner, EmpireMessageType.ColonyRebelling, habitat, description);
         habitat.rebelling = true;
+        if (penal && !wasRebelling && owner.slavery !== undefined) owner.slavery.stats.revolts++;
     } else {
         habitat.rebelling = false;
     }

@@ -35,6 +35,7 @@
 //   Empire.PenalColonies: empty. Empire.Capitals: only Capital at game start.
 //   Habitat.RaceEventType: Undefined. Habitat.DefensiveFortressBonus: 0. Facilities: none.
 
+import { penalGarrisonRequired } from './slavery';
 import { raceCautionLevel } from './racePeriodic';
 import { RaceEventType } from './eventTypes';
 import { Troop, TroopList, TroopType } from './cargo';
@@ -217,6 +218,8 @@ export function troopLevelRequired(galaxy: Galaxy, habitat: Habitat, difficultyL
         num = csDoubleToInt(num * Math.max(empire.policy.troopRecruitInfantryLevel, empire.policy.troopGarrisonLevel));
         num = Math.max(num, empire.policy.troopGarrisonMinimumPerColony * 100);
     }
+    // Not in DW:U: a penal colony (the "Allow slavery" policy, slavery.ts) needs a garrison scaled by its population.
+    if (habitat.slavery !== undefined) num = Math.max(num, penalGarrisonRequired(galaxy, habitat));
     return num;
 }
 

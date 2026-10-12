@@ -7,6 +7,7 @@
 // package module (tasks/M4-plan.md §3.2). Runs on a C# worker thread; the TS scheduler runs it at the end of the
 // frame in enqueue order (tick/scheduler.ts).
 
+import { reviewSlavery } from '../slaveryReview';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import { MIN_TIME, REAL_SECONDS_IN_GALACTIC_YEAR, galaxyNow, galaxyStarDate, spanSeconds } from './simTime';
@@ -255,6 +256,7 @@ export function empireDoTasks(galaxy: Galaxy, empire: Empire): void {
         }
         processTradeBonuses(galaxy, empire, num4);
         reviewColonyPopulationPolicy(galaxy, empire, num4);
+        reviewSlavery(galaxy, empire, num4); // not in DW:U: the "Allow slavery" policy (slaveryReview.ts)
         updateSystemExplorationStatus(galaxy, empire);
         checkKnownPirateBases(galaxy, empire);
         // 3579-3610 money.

@@ -7,6 +7,7 @@
 // Rnd: galaxy.rnd only in this module's gated handlers (game start: the world picks; the 30-day tick: revolts; the
 // yearly tick: the cartel's world). Queries never draw.
 
+import { isPenalColony } from '../../slavery';
 import type { Galaxy } from '../../galaxy';
 import type { Empire } from '../../empire';
 import type { Habitat } from '../../types';
@@ -243,7 +244,7 @@ function passengerSpec(e: Empire): import('../../data/designSpecifications').Des
     return null;
 }
 
-/** The colony and race a convoy draws its workers from: conquered peoples first, then the empire's own. Pure. */
+/** The colony and race a convoy draws its workers from: penal colonies first, then conquered peoples, then the empire's own. Pure. */
 export function labourSource(galaxy: Galaxy, e: Empire, world: Habitat, amount: number): { colony: Habitat; race: Race } | null {
     let best: { colony: Habitat; race: Race; score: number } | null = null;
     for (const c of e.colonies) {
@@ -252,7 +253,8 @@ export function labourSource(galaxy: Galaxy, e: Empire, world: Habitat, amount: 
         for (const p of c.population.items) {
             if (p.amount < amount * 1.5) continue;
             const conquered = p.race !== e.dominantRace;
-            const score = (conquered ? 1e13 : 0) + p.amount;
+            // "Allow slavery" (slavery.ts): a penal colony's chained workers are sent first.
+            const score = (c.slavery !== undefined && isPenalColony(c) ? 2e13 : 0) + (conquered ? 1e13 : 0) + p.amount;
             if (best === null || score > best.score || (score === best.score && c.habitatIndex < best.colony.habitatIndex)) best = { colony: c, race: p.race, score };
         }
     }

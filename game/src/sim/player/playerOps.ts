@@ -5,6 +5,7 @@
 // Adding an op: a new key here, plain arguments the codec can write (sim objects, data), and the UI call site issues
 // it through issuePlayerCommand. Headless: no DOM / Pixi.
 
+import { setPenalColony } from '../slaveryReview';
 import type { Galaxy } from '../galaxy';
 import type { GalaxyLocation } from '../galaxyLocation';
 import type { Empire } from '../empire';
@@ -364,6 +365,8 @@ export const PLAYER_OPS = {
     setColonyAsCapital: (galaxy: Galaxy, empire: Empire, colony: Habitat) => setColonyAsCapital(galaxy, empire, colony),
     /** Main.Part11.cs 2629 / 2643: cmbColonyPopulationPolicyRaceFamily (sameFamily) / cmbColonyPopulationPolicyAllOthers. */
     setColonyPopulationPolicy: (_galaxy: Galaxy, empire: Empire, colony: Habitat, sameFamily: boolean, policy: number) => setColonyPopulationPolicy(empire, colony, sameFamily, policy),
+    /** Not in DW:U: the Colonies window's "Make / Release penal colony" ("Allow slavery" policy, slaveryReview.ts). */
+    setPenalColony: (galaxy: Galaxy, empire: Empire, colony: Habitat, on: boolean) => setPenalColony(galaxy, empire, colony, on),
     /** Main.Part11.cs 2657 btnColonyPopulationApplyPolicyToAll_Click. */
     applyPopulationPolicyToAll: (_galaxy: Galaxy, empire: Empire, raceFamily: number, allOthers: number) => applyPopulationPolicyToAllColonies(empire, raceFamily, allOthers),
     /** Main.Part6.cs 3696 btnColonyFacilityScrap_Click (Scrap, or Attack for a pirate faction's facility). */

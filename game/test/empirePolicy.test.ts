@@ -231,3 +231,39 @@ describe('17d human player automation defaults (Start.2.cs 2122-2146)', () => {
         }
     }, 300000);
 });
+
+// "Allow slavery" (src/sim/slavery.ts, slaveryReview.ts; docs/DARK_THEMES.md §1).
+describe('Allow slavery: penal colonies', () => {
+    let gameData: GameData;
+    beforeAll(async () => {
+        gameData = await loadGameDataFs();
+    }, 300000);
+
+    it('designates, applies the factors and releases with the policy', async () => {
+        const { SLAVERY_PARAMS, isPenalColony, penalGarrisonRequired, penalTaxFactor, penalUnrest, slaveryApprovalTerm } = await import('../src/sim/slavery');
+        const { aiSlaveryScore, reviewSlavery, setPenalColony } = await import('../src/sim/slaveryReview');
+        const galaxy = cachedTickGame(gameData, { seconds: 1800 }).galaxy;
+        const e = galaxy.empires.find((x) => x !== null && x.active && x.colonies.length > 1 && x !== galaxy.independentEmpire && x.pirateEmpireBaseHabitat === null)!;
+        const h = e.colonies.find((c) => c !== e.capital && c.population.totalAmount > 0)!;
+        expect(setPenalColony(galaxy, e, h, true)).toBe(false); // policy off
+        e.policy!.allowSlavery = true;
+        expect(setPenalColony(galaxy, e, e.capital!, true)).toBe(false); // never the capital
+        expect(setPenalColony(galaxy, e, h, true)).toBe(true);
+        expect(isPenalColony(h)).toBe(true);
+        expect(penalTaxFactor(h)).toBeGreaterThanOrEqual(1);
+        expect(penalTaxFactor(h)).toBeLessThanOrEqual(SLAVERY_PARAMS.PENAL_TAX_MAX_FACTOR);
+        expect(penalGarrisonRequired(galaxy, h)).toBeGreaterThanOrEqual(SLAVERY_PARAMS.PENAL_GARRISON_BASE);
+        expect(slaveryApprovalTerm(h)).toBe(-SLAVERY_PARAMS.PENAL_APPROVAL_PENALTY);
+        expect(penalUnrest(galaxy, h)).toBeGreaterThanOrEqual(0);
+        e.policy!.allowSlavery = false;
+        reviewSlavery(galaxy, e, 10);
+        expect(isPenalColony(h)).toBe(false);
+        expect(h.slavery).toBeUndefined();
+        expect(e.slavery!.penal.length).toBe(0);
+        // Species and government: a democracy never allows it.
+        const gov = e.governmentId;
+        e.governmentId = 4;
+        expect(aiSlaveryScore(e)).toBeNull();
+        e.governmentId = gov;
+    }, 300000);
+});
