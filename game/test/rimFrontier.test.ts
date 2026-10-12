@@ -313,7 +313,7 @@ describe('19h rim frontier — pirate base rim/core share', () => {
         // pirates.ts fallback slot (one candidate remembered per faction, whatever it was rejected for) would then as
         // often catch a wrong-side candidate as a right-side-but-far-from-an-oasis one. The oasis feature's own effect
         // on placement is covered by the 9: fuel oases describe block instead.
-        const { game } = createScenarioGame(base, { scenario: 'rim-frontier', params: { rimFrontierFuelMaxRadius: 1.5, rimFrontierOasesPerSector: 0 } });
+        const { game } = createScenarioGame(base, { scenario: 'rim-frontier', params: { rimFrontierPirateRimShare: 0.6, rimWildExtraPiratesPer100Stars: 0, rimFrontierFuelMaxRadius: 1.5, rimFrontierOasesPerSector: 0 } });
         const g = game.galaxy;
         growPirateFactions(g, 20);
         const first20 = g.pirateEmpires.slice(0, 20);
@@ -521,7 +521,7 @@ describe('19h rim frontier — pirate faction cap (hooks.ts pirateFactionCount, 
         // rim/core-share test above isolates its own feature.
         const { game } = createScenarioGame(base, {
             scenario: 'rim-frontier',
-            params: { rimPirateFactionCap: 40, rimFrontierPirateRimShare: 0, rimFrontierOasesPerSector: 0, rimFrontierFuelMaxRadius: 1.5 },
+            params: { rimWildExtraPiratesPer100Stars: 0, rimPirateFactionCap: 40, rimFrontierPirateRimShare: 0, rimFrontierOasesPerSector: 0, rimFrontierFuelMaxRadius: 1.5 },
             options: (o) => ({
                 ...o,
                 starCount: STAR_COUNT,
@@ -563,4 +563,39 @@ describe('19h rim frontier — pirate faction cap (hooks.ts pirateFactionCount, 
         });
         expect(uncapped.galaxy.pirateEmpires.length).toBeGreaterThan(40);
     }, 300000);
+});
+
+describe('rim frontier — wild rim (poor planets, scarce AI colonies, strong pirates, derelict warships)', () => {
+    it('rim quality is cut by depth, derelicts sit in the rim as stock abandoned ships, and rim pirate bases are reinforced', () => {
+        const { game } = createScenarioGame(base, { scenario: 'rim-frontier' });
+        const g = game.galaxy;
+        const st = rimFrontierState(g);
+        expect(st.quality!.n).toBeGreaterThan(0);
+        expect(st.quality!.after).toBeLessThan(st.quality!.before);
+        expect(st.derelicts!.length).toBeGreaterThan(0);
+        for (const d of st.derelicts!) {
+            expect(g.abandonedBuiltObjects).toContain(d);
+            expect(radiusFraction(g, d.xpos, d.ypos)).toBeGreaterThanOrEqual(D.rimFrontierBeltInner);
+        }
+        const rimBases = g.pirateEmpires.filter((e) => e.pirateEmpireBaseHabitat !== null && radiusFraction(g, e.pirateEmpireBaseHabitat.xpos, e.pirateEmpireBaseHabitat.ypos) >= D.rimFrontierBeltInner);
+        expect(rimBases.length).toBeGreaterThan(0);
+        expect(rimBases.some((e) => e.pirateEmpireBaseHabitat!.basesAtHabitat.some((b) => b.empire === e && b.subRole === BuiltObjectSubRole.DefensiveBase))).toBe(true);
+    }, 120000);
+
+    it('AI colony target value falls with rim depth (not in the core, not for the Concord); the player is untouched; flag off: stock', () => {
+        const { game } = createScenarioGame(base, { scenario: 'rim-frontier' });
+        const g = game.galaxy;
+        const ai = g.empires.find((e) => e !== g.playerEmpire && e.dominantRace?.name !== 'Oranthi')!;
+        const at = (f: number) => g.habitats.find((h) => Math.abs(radiusFraction(g, h.xpos, h.ypos) - f) < 0.03)!;
+        const val = (h: ReturnType<typeof at>) => scenarioQuery(g, 'colonizationTargetValue', 1000, { empire: ai, habitat: h, filterOutDangerousTargets: true });
+        const core = val(at(0.3));
+        expect(core).toBe(1000);
+        const edge = val(at(0.72));
+        const deep = val(at(0.97));
+        expect(edge).toBeLessThan(1000);
+        expect(deep).toBeLessThan(edge);
+        const off = createScenarioGame(base, { scenario: 'rim-frontier', flags: { rimFrontier: false } }).game.galaxy;
+        const h2 = off.habitats.find((h) => radiusFraction(off, h.xpos, h.ypos) > 0.9)!;
+        expect(scenarioQuery(off, 'colonizationTargetValue', 1000, { empire: off.empires[1], habitat: h2, filterOutDangerousTargets: true })).toBe(1000);
+    }, 120000);
 });

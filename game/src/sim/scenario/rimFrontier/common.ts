@@ -4,6 +4,7 @@
 import type { Galaxy } from '../../galaxy';
 import type { GalaxyLocation } from '../../galaxyLocation';
 import type { Habitat } from '../../types';
+import type { BuiltObject } from '../../builtObject';
 import { scenarioParam, scenarioState } from '../state';
 import { radiusFraction } from '../hooks';
 
@@ -27,7 +28,7 @@ export const RIM_FRONTIER_DEFAULTS = {
     rimFrontierKeepStartsOut: 1,
     /** 19h pirate share: fraction of new pirate factions (in their creation order) placed in the rim; the rest go in
      *  the core. 0 = stock placement. */
-    rimFrontierPirateRimShare: 0.6,
+    rimFrontierPirateRimShare: 0.85,
     /** 19h base placement: extra buffer added past a rim herd's home range (RimHerd.homeRange, rimFauna/common.ts)
      *  that a new base (pirate or independent) may not land inside. */
     rimFrontierNestAvoidRadius: 5000,
@@ -48,6 +49,27 @@ export const RIM_FRONTIER_DEFAULTS = {
     /** Explicit ceiling on the game-start pirate-faction count (pirates.ts generateNewPirateEmpires, via hooks.ts's
      *  pirateFactionCount query): min(stock count, this) when > 0. 0 = stock rule (no cap). */
     rimPirateFactionCap: 0,
+    /** Wild rim (all below): AI colonisation target value multiplier at the belt edge / deep in the rim (depth 0 -> 1). 1 = stock. */
+    rimWildColonyValueEdge: 0.5,
+    rimWildColonyValueDeep: 0.1,
+    /** Wild rim: share of base habitat quality lost at the deepest point of the rim (scaled by depth; 0 = off). */
+    rimWildQualityLoss: 0.5,
+    /** Wild rim: factor on pirate control growth over a rim colony (stock 1). */
+    rimWildPirateControlFactor: 2.0,
+    /** Wild rim: extra warships a rim pirate base starts with, and per-year top-up up to the fleet cap (0 = off). */
+    rimWildPirateStartShips: 3,
+    rimWildPirateYearlyShips: 1,
+    rimWildPirateFleetCap: 14,
+    /** Wild rim: extra pirate factions per 100 stars founded in the rim at game start, beside the share-split ones (0 = off). */
+    rimWildExtraPiratesPer100Stars: 0.8,
+    /** Wild rim: defensive bases a rim pirate base keeps at its habitat (stock: none). */
+    rimWildPirateDefenceBases: 2,
+    /** Wild rim: derelict advanced warships per 100 stars placed in the rim at game start (0 = off). */
+    rimWildDerelictsPer100Stars: 2.5,
+    /** Wild rim: tech advance over the era of a derelict's design (generateDesignFromSpec techAdvanceAmount; the stock abandoned ships use 2-3). */
+    rimWildDerelictTechAdvance: 6,
+    /** Wild rim: share of derelicts parked near a rim pirate base (others sit deep in the rim; each may hold a Kaltor). */
+    rimWildDerelictPirateShare: 0.6,
 } as const;
 export type RimFrontierParam = keyof typeof RIM_FRONTIER_DEFAULTS;
 
@@ -83,6 +105,12 @@ export interface RimFrontierState {
     pirateHunts: RimFrontierPirateHunt[];
     /** 19h-11: the habitats picked as guaranteed rim fuel sources (one game's worth; not the pre-existing faithful ones). */
     fuelOases: Habitat[];
+    /** Wild rim: the derelict warships placed at game start (absent in older saves). */
+    derelicts?: BuiltObject[];
+    /** Wild rim: claims of those derelicts, in order (plain data). */
+    derelictClaims?: { name: string; empireId: number; at: number }[];
+    /** Wild rim: habitat-quality totals over the rim at generation, before and after the loss. */
+    quality?: { n: number; before: number; after: number };
 }
 
 export function rimFrontierState(galaxy: Galaxy): RimFrontierState {

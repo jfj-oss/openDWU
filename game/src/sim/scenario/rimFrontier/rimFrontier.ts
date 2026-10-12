@@ -35,6 +35,7 @@ import { GalaxyLocation, GalaxyLocationEffectType, GalaxyLocationShape, GalaxyLo
 import { HabitatType, type Habitat } from '../../types';
 import { Random } from '../../random';
 import { radiusFraction, registerScenarioGeneration, registerScenarioQuery, registerScenarioYearly } from '../hooks';
+import './wildRim';
 import type { GalaxyScenario } from '../state';
 import type { ScenarioGenerationSetup } from '../hooks';
 import { RIM_RACE } from '../rimTrade/common';

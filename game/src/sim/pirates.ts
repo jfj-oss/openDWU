@@ -350,7 +350,7 @@ export function generatePirateBaseName(galaxy: Galaxy, habitat: Habitat | null):
 // Heading = SelectRandomHeading() (NextDouble), ReDefine, fuel/shields, then
 // AddBuiltObjectToGalaxy(…, offsetLocationFromParent: true, isStateOwned, sendMessage: false)
 // with default offsets (NextDouble for the radius, NextDouble for the angle).
-function addPirateStartingShip(galaxy: Galaxy, empire: Empire, design: Design, name: string, habitat: Habitat, isStateOwned: boolean): BuiltObject {
+export function addPirateStartingShip(galaxy: Galaxy, empire: Empire, design: Design, name: string, habitat: Habitat, isStateOwned: boolean): BuiltObject {
     const builtObject = new BuiltObject(design, name, galaxy, true);
     builtObject.empire = empire;
     builtObject.heading = galaxy.selectRandomHeading();
