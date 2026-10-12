@@ -822,7 +822,7 @@ export function hostSettingsLines(state: LobbyState): string[] {
 }
 
 /** Open the main menu's Multiplayer screen. `onBack`: back to the menu. */
-export function openMultiplayerScreen(deps: MultiplayerAppDeps, onBack: () => void, opts: { resume?: boolean } = {}): void {
+export function openMultiplayerScreen(deps: MultiplayerAppDeps, onBack: () => void, opts: { resume?: boolean; focus?: 'host' | 'join' } = {}): void {
     const ep = netEndpoint();
     const root = h('div', 'mp-screen');
     root.dataset.mp = 'menu';
@@ -892,6 +892,8 @@ export function openMultiplayerScreen(deps: MultiplayerAppDeps, onBack: () => vo
     joinBox.appendChild(button('Join by code…', 'join-code', () => void doJoinByCode(), 'mp-btn mp-btn-primary'));
     joinBox.appendChild(h('div', 'mp-note', 'Join Game: by the host\'s IP address (LAN, Tailscale, or a forwarded port). Join by code: paste the invite code a host sent you over the Internet.'));
     win.appendChild(joinBox);
+    // Opened from the main menu's Host / Join entry: bring that section into view.
+    if (opts.focus !== undefined) setTimeout(() => (opts.focus === 'join' ? joinBox : hostBox).scrollIntoView({ block: 'start' }), 0);
 
     const status = h('div', 'mp-status');
     status.dataset.mp = 'status';

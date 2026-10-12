@@ -1932,7 +1932,7 @@ function showMainMenu(): void {
             menu.destroy();
             openWizard(showMainMenu);
         },
-        onMultiplayer: () => openMultiplayerScreen(multiplayerDeps, () => undefined),
+        onMultiplayer: (focus) => openMultiplayerScreen(multiplayerDeps, () => undefined, { focus }),
         // Resume with the same players (docs/MULTIPLAYER.md §21): host again on a saved multiplayer game.
         onResumeMultiplayer: () => openMultiplayerScreen(multiplayerDeps, () => undefined, { resume: true }),
         onTutorials: () => {

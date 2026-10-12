@@ -51,16 +51,15 @@
     display: block;
 }
 
-/* Multiplayer (ours, no original art): the stock items' font and grey, same width and row height (set inline in
+/* Multiplayer (ours, no original art): the stock items' font and grey (no shadow), same width and row height (set inline in
    mainMenu.ts), brighter on hover like the art's Active variant. */
 .main-menu-item-text {
     font-family: 'Forgotten Futurist', sans-serif;
     font-weight: bold;
-    color: #cfd4dc;
-    text-shadow: 0 0 6px #000, 0 1px 2px #000;
+    color: #aaaaaa; /* the stock Menu_* art's text grey (sampled), no drop shadow */
 }
 .main-menu-item-text:hover {
-    color: #fff;
+    color: #e0e0e0;
 }
 
 /* Menu_* art renders at natural size × s (set inline in mainMenu.ts); no

@@ -53,7 +53,7 @@ export interface MainMenuCallbacks {
     /** Change Theme → Switch Theme (Start.1.cs btnThemeSwitch_Click → method_2): load and remember theme `name`. */
     onSwitchTheme?: (name: string) => void | Promise<void>;
     /** Multiplayer (not in the original; docs/MULTIPLAYER.md §10): the LAN Host / Join screen. No item without it. */
-    onMultiplayer?: () => void;
+    onMultiplayer?: (focus?: 'host' | 'join') => void;
     /** Resume a saved multiplayer game with the same players (docs/MULTIPLAYER.md §21). No item without it. */
     onResumeMultiplayer?: () => void;
 }
@@ -251,7 +251,8 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
             };
             const showSub = (): void => {
                 panel.replaceChildren(
-                    textItem('hostJoinMultiplayer', 'Host / Join Game', () => onMp()),
+                    textItem('hostMultiplayer', 'Host Game', () => onMp('host')),
+                    textItem('joinMultiplayer', 'Join Game', () => onMp('join')),
                     textItem('resumeMultiplayer', 'Resume Multiplayer Game', () => onRs?.()),
                     textItem('multiplayerBack', 'Back', showMain),
                 );
