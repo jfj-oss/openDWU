@@ -157,6 +157,11 @@ export function buildCells(xs: Float64Array | number[], ys: Float64Array | numbe
             c = clipCell(c, nx, ny, (nx * (px + xs[j]) + ny * (py + ys[j])) / 2, j);
             if (c.verts.length < 6) break;
         }
+        // Clip to the playable area (0..sizeX, 0..sizeY): nothing is drawn outside the map.
+        c = clipCell(c, -1, 0, 0, -1);
+        if (c.verts.length >= 6) c = clipCell(c, 1, 0, sizeX, -1);
+        if (c.verts.length >= 6) c = clipCell(c, 0, -1, 0, -1);
+        if (c.verts.length >= 6) c = clipCell(c, 0, 1, sizeY, -1);
         cells[i] = c;
     }
     return { cells, spacing, systemCount: n };
@@ -335,8 +340,9 @@ export function buildGeometry(cs: CellSet, owner: Int16Array, sizeX: number, siz
     for (let i = 0; i < owner.length; i++) {
         const e = owner[i];
         if (e < 0) continue;
-        claimed++;
         const c = cs.cells[i];
+        if (c.verts.length < 6) continue;
+        claimed++;
         const v = c.verts;
         // Tile by the cell's centre (mean of vertices).
         let mx = 0, my = 0;
@@ -375,8 +381,6 @@ function mix(c: number, k: number): number {
 }
 export const FILL_DARKEN = 0.55;
 export const FILL_ALPHA = 0.2;
-export const LINE_BRIGHTEN = 1.3;
-export const LINE_ALPHA = 0.95;
 
 export class InfluenceBorderLayer {
     readonly root = new Container();
@@ -442,9 +446,9 @@ export class InfluenceBorderLayer {
             const g = new Graphics();
             for (const f of tile.fills) g.poly(f.verts, true).fill({ color: mix(this.colour(f.owner), FILL_DARKEN), alpha: FILL_ALPHA });
             for (const b of tile.borders) {
-                const col = mix(this.colour(b.owner), LINE_BRIGHTEN);
+                const col = mix(this.colour(b.owner), FILL_DARKEN);
                 for (let k = 0; k < b.seg.length; k += 4) g.moveTo(b.seg[k], b.seg[k + 1]).lineTo(b.seg[k + 2], b.seg[k + 3]);
-                g.stroke({ color: col, alpha: LINE_ALPHA, width: 1, pixelLine: true });
+                g.stroke({ color: col, alpha: FILL_ALPHA, width: 1, pixelLine: true });
             }
             this.root.addChild(g);
             this.tiles.push({ g, minX: tile.minX, minY: tile.minY, maxX: tile.maxX, maxY: tile.maxY });
