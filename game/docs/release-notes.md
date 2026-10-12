@@ -4,6 +4,20 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+## 0.1.18
+
+- **Construction ships no longer die at black holes.** Builds there used the star's centre instead of the safe parking
+  point, and ships came out of hyperspace inside the pull; both are fixed.
+- **Construction priority list** on the Build Order screen (F9): rank research and resort bases, mining stations and
+  everything else for your automated construction ships (new games default to that order; "Original order" restores
+  the stock one).
+- **Fewer map markers:** black holes and supernovae are only marked when they carry a real research or scenery bonus.
+- **Slavery is now a standalone add-on.** Off, the original game's enslavement works exactly as before; on, it takes over
+  the stock Enslave policy and penal colonies with output up to 6× and tax up to 2× by staffing, garrisons, revolts and
+  labour convoys.
+- **Rim Atmosphere's galaxy-map haze fixed:** it no longer shows as a tilted square past the map edge; it is now dark,
+  soft storm clouds that fill the rim to the map's edges.
+
 ## 0.1.17
 
 ### The Voidbloom War (new add-on in The Rim)
