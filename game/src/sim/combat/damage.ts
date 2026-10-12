@@ -1658,6 +1658,7 @@ export function destroyHabitat(galaxy: Galaxy, self: BuiltObject, habitat: Habit
     explosion.explosionWillDestroy = true;
     habitat.explosion = explosion;
     habitat.hasBeenDestroyed = true;
+    if (galaxy.scenario !== null) scenarioEmit(galaxy, 'habitatDestroyed', { habitat, destroyer: self.empire }); // mod layer (War Crimes)
     if (self.empire !== null && habitat.population !== null && habitat.population.totalAmount > 0) {
         let num = PLANET_DESTROY_REPUTATION_IMPACT;
         if (habitat.owner !== null && habitat.owner !== galaxy.independentEmpire && habitat.owner.pirateEmpireBaseHabitat === null) {

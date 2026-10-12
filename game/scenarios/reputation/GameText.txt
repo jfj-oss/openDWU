@@ -12,3 +12,6 @@ Reputation Cause exchange.exposed;You exposed the Exchange
 Reputation Cause exchange.agentCaught;We caught your agents working for the Exchange
 Reputation Cause exchange.boughtIntel;You bought our secrets from the Exchange
 Reputation Cause exchange.contract;The Exchange paid pirates to strike us
+Reputation Cause slavery.penalColonies;You keep slaves in penal colonies
+Reputation Cause scorchedEarth;You burned your own world rather than yield it
+Reputation Cause warCrimes;Your war crimes are remembered

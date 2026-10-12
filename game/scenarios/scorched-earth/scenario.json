@@ -1,0 +1,16 @@
+{
+  "id": "scorched-earth",
+  "name": "Scorched earth",
+  "description": "When an enemy invasion fleet reaches a colony, its owner chooses: defend it, or scorch it. Scorching is slow: the colony's people and the planet's quality fall steadily to nothing over about a year and a half, so the attacker wins only what is left (the stock terraforming facility can repair it). Capture stops the burning at once; a defender who beats the attack off may call it off. The AI scorches from its species and government, the world's value and its odds of holding it. Scorching hurts the scorcher's reputation a little and counts as a war crime (War Crimes add-on).",
+  "addableToSave": true,
+  "flags": [
+    { "name": "scorchedEarth", "label": "Scorched earth", "description": "Master switch.", "default": true }
+  ],
+  "params": [
+    { "name": "scorchRuinYears", "label": "Years for a scorched colony to burn out completely", "default": 1.5, "min": 0.25, "max": 5 },
+    { "name": "scorchSiegeClearDays", "label": "Days without an attack before a siege counts as beaten off", "default": 45, "min": 5, "max": 360 },
+    { "name": "scorchReputation", "label": "Attitude lost by every other empire when a colony is scorched", "default": 6, "min": 0, "max": 50 },
+    { "name": "scorchAiScore", "label": "AI scorches at this score or more (species + government + losing odds + value)", "default": 2.5, "min": -10, "max": 20 },
+    { "name": "scorchDecisionDays", "label": "Days the player has to answer before the colony is defended", "default": 10, "min": 1, "max": 90 }
+  ]
+}

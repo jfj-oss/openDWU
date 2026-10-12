@@ -143,6 +143,7 @@ export function toggleDietScreen(galaxy: Galaxy, player: Empire): void {
         let y = 6;
         y = line(p, `Host world: ${vm.worldName} (the ${vm.host}) — ${vm.hostBonuses}`, y);
         y = line(p, `Regent: ${vm.regent}${vm.emperor !== '' ? ` — EMPEROR: ${vm.emperor}` : ''}`, y, vm.emperor !== '' ? RED : GREY);
+        if (vm.warCrimes !== '') y = line(p, vm.warCrimes, y);
         const s = vm.session;
         if (s === null) {
             y = line(p, `No session sitting. The next session is called on ${vm.nextSession}.${vm.proposal !== '' ? ` Our motion for it: ${vm.proposal}.` : ''}`, y, YELLOW, FONT.large);

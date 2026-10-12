@@ -832,3 +832,32 @@ describe('Characters & Victory: the Interstellar Diet', () => {
         expect(saveText(back)).toBe(saveText(game));
     }, 900000);
 });
+
+// War crimes remembered (src/sim/scenario/charactersVictory/diet/warCrimes.ts; docs/DARK_THEMES.md §3).
+describe('war crimes remembered', () => {
+    let gd: GameData;
+    beforeAll(async () => {
+        gd = await loadGameDataFs();
+    }, 300000);
+
+    it('records crimes, costs attitude, fades slowly and names the worst offender', async () => {
+        const wc = await import('../src/sim/scenario/charactersVictory/diet/warCrimes');
+        const { dietWarCrimesLine } = await import('../src/sim/scenario/charactersVictory/diet/dietState');
+        const { obtainEmpireEvaluation } = await import('../src/sim/diplomacy');
+        const g = createScenarioGame(gd, { scenario: 'war-crimes' }).game.galaxy;
+        const ms = g.empires.filter((e): e is Empire => e !== null && e.active && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null);
+        const [a, v, w] = ms;
+        const before = obtainEmpireEvaluation(g, v, a).incidentEvaluation;
+        expect(wc.recordWarCrime(g, a, 'destroyPlanet', v, 'p1', 3600)).toBe(true);
+        expect(wc.recordWarCrime(g, a, 'destroyPlanet', v, 'p1', 3600)).toBe(false); // throttled
+        expect(wc.recordWarCrime(g, w, 'bombard', v, 'h1', 30)).toBe(true);
+        expect(obtainEmpireEvaluation(g, v, a).incidentEvaluation).toBeLessThan(before);
+        const worst = wc.worstOffender(g)!;
+        expect(worst.empire).toBe(a);
+        expect(worst.record.score).toBe(wc.WAR_CRIME_WEIGHTS.destroyPlanet);
+        // The victim wants a tribunal; the offender never does.
+        expect(wc.tribunalVoteScore(g, v, a)).toBeGreaterThan(0);
+        expect(wc.tribunalVoteScore(g, a, a)).toBe(-100);
+        expect(dietWarCrimesLine.fn!(g)).toContain(a.name);
+    }, 300000);
+});

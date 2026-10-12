@@ -298,3 +298,45 @@ describe('19l flags off', () => {
         expect(g.scenario!.params.invasionMinShips).toBe(0);
     }, 120000);
 });
+
+// Scorched earth (Living Galaxy; src/sim/scenario/scorchedEarth; docs/DARK_THEMES.md §2).
+describe('scorched earth', () => {
+    let base: GameData;
+    beforeAll(async () => {
+        base = await loadGameDataFs();
+    }, 300000);
+
+    it('asks the player, burns slowly, and stops at capture', async () => {
+        const se = await import('../src/sim/scenario/scorchedEarth/scorchedEarth');
+        const { pendingScenarioDecisions } = await import('../src/sim/scenario/decisions');
+        const { YEAR_LENGTH } = await import('../src/sim/galaxyTime');
+        const g = createScenarioGame(base, { scenario: 'scorched-earth' }).game.galaxy;
+        const player = g.playerEmpire!;
+        const ai = g.empires.find((e) => e !== null && e !== player && e.active && e.pirateEmpireBaseHabitat === null && e !== g.independentEmpire)!;
+        // An invasion ship (it carries troops) attacks a player colony that is not the capital: the player is asked.
+        const h = player.capital!;
+        const cap = player.capital;
+        player.capital = null;
+        const ship = { troops: { count: 1 }, shipGroup: null } as unknown as BuiltObject;
+        scenarioEmit(g, 'habitatAttacked', { habitat: h, attacker: ship, attackingEmpire: ai, bombarded: false });
+        player.capital = cap;
+        expect(pendingScenarioDecisions(g, player).some((d) => d.kind === 'scorchedEarth.choice')).toBe(true);
+        // Burning: half the ruin time leaves about half.
+        const pop0 = h.population.totalAmount;
+        const q0 = h.baseQuality;
+        se.beginScorching(g, h, ai);
+        const years = 1.5;
+        g.scenario!.state.scorchedEarth && ((g.scenario!.state.scorchedEarth as { burning: { started: number }[] }).burning[0].started -= (years / 2) * YEAR_LENGTH);
+        se.scorchTick(g);
+        expect(h.population.totalAmount / pop0).toBeGreaterThan(0.4);
+        expect(h.population.totalAmount / pop0).toBeLessThan(0.6);
+        expect(h.baseQuality).toBeLessThan(q0);
+        // Capture stops it: the captor keeps what is left.
+        takeOwnershipOfColonyFull(g, player, h, ai, false, false);
+        const left = h.population.totalAmount;
+        se.scorchTick(g);
+        expect(se.scorchState(g).burning.length).toBe(0);
+        expect(se.scorchState(g).stats.captured).toBe(1);
+        expect(h.population.totalAmount).toBe(left);
+    }, 300000);
+});

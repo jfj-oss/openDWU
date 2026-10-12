@@ -1,0 +1,16 @@
+{
+  "id": "war-crimes",
+  "name": "War crimes remembered",
+  "description": "Every empire's war crimes are recorded and remembered for generations: bombarding colonies, destroying planets, scorched earth, attacks on refugee convoys and Diet delegates, enslaving conquered peoples and attacks on independent worlds. Each crime costs attitude with every empire (the victim most). When the Interstellar Diet sits (Characters & Victory), members may convene a War Crimes Tribunal against the worst offender: if it passes, sanctions, reparations to the victims and, for the worst records, the trial and removal of the leader.",
+  "addableToSave": true,
+  "flags": [
+    { "name": "warCrimes", "label": "War crimes remembered", "description": "Master switch.", "default": true }
+  ],
+  "params": [
+    { "name": "warCrimesDecayPerYear", "label": "Share of a war-crimes record forgotten each year", "default": 0.03, "min": 0, "max": 0.5 },
+    { "name": "warCrimesReputation", "label": "Attitude every empire loses per point of crime (the victim twice that)", "default": 0.5, "min": 0, "max": 5 },
+    { "name": "warCrimesTribunalMin", "label": "Record at which a tribunal can be moved against an empire", "default": 40, "min": 1, "max": 1000 },
+    { "name": "warCrimesTrialMin", "label": "Record at which a passed tribunal also tries the leader", "default": 100, "min": 1, "max": 5000 },
+    { "name": "warCrimesReparationsPct", "label": "Reparations: share of the offender's treasury paid to its victims (%)", "default": 10, "min": 0, "max": 100 }
+  ]
+}

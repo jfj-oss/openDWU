@@ -178,7 +178,12 @@ export interface DietMotionKindDef {
     effect: (m: DietMotion) => string;
     needs: 'none' | 'empire';
     proposable?: (galaxy: Galaxy) => boolean;
+    /** The motion failed or was vetoed (optional). */
+    failed?: (galaxy: Galaxy, st: DietState, m: DietMotion) => void;
 }
+
+/** The Diet window's war-crimes line (War Crimes, diet/warCrimes.ts fills it; '' = none). */
+export const dietWarCrimesLine: { fn: ((galaxy: Galaxy) => string) | null } = { fn: null };
 
 // eslint-disable-next-line no-var
 var dietKindStore: DietMotionKindDef[] | undefined;

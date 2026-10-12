@@ -67,6 +67,8 @@ const GROUP_OF: Readonly<Record<string, AddonGroup>> = {
     'independents-active': 'Economy & factions',
     'wreckage-salvage': 'Economy & factions',
     'colony-defence': 'Economy & factions',
+    'scorched-earth': 'Politics & court',
+    'war-crimes': 'Politics & court',
     exchange: 'Economy & factions',
     privateers: 'Economy & factions',
     'colony-economy': 'Economy & factions',
@@ -423,10 +425,10 @@ export interface Expansion {
 
 export const EXPANSIONS: readonly Expansion[] = [
     { id: 'the-rim', name: 'The Rim', description: 'The frontier beyond the core: rim trade, frontier settlement, wild fauna and herders, the rim atmosphere, and the Voidbloom War.', members: ['rimTrade', 'rim-frontier', 'rim-fauna', 'rim-herders', 'rim-atmosphere', 'new-fauna', 'voidbloom'] },
-    { id: 'politics-characters', name: 'Politics & Characters', description: 'Governors, VIPs and the Galactic Council, internal security, reputation, espionage fallout, frontier autonomy and refugees.', members: ['characters-victory', 'internal-security', 'reputation', 'espionage-consequences', 'frontier-autonomy', 'refugees-demographics'] },
+    { id: 'politics-characters', name: 'Politics & Characters', description: 'Governors, VIPs and the Galactic Council, internal security, reputation, espionage fallout, frontier autonomy, refugees and war crimes remembered.', members: ['characters-victory', 'internal-security', 'reputation', 'espionage-consequences', 'frontier-autonomy', 'refugees-demographics', 'war-crimes'] },
     { id: 'economy', name: 'Economy', description: 'Colony economy, the exchange, chartered companies, corporate coups, privateers, resource crises and wreckage salvage.', members: ['colony-economy', 'exchange', 'chartered-companies', 'corporatecoup', 'privateers', 'resource-crises', 'wreckage-salvage'] },
     { id: 'galactic-threats', name: 'Galactic Threats', description: 'The hidden end-game threats (cult, hive, silence, greytide, ghost armada, robot mutiny, time bomb, doppelgangers, dark farms) and the early ones: generation ships, a dead probe swarm and the archive cores they leave.', members: ['threat-framework', 'generation-ships', 'probe-swarm', 'archive-cores', 'cult', 'hive', 'silence', 'greytide', 'ghostarmada', 'robotmutiny', 'timebomb', 'doppelgangers', 'darkfarms'] },
-    { id: 'living-galaxy', name: 'Living Galaxy', description: 'A galaxy that moves on its own: lively events, emergent factions, active independents and colony defence.', members: ['lively-galaxy', 'emergent', 'independents-active', 'colony-defence'] },
+    { id: 'living-galaxy', name: 'Living Galaxy', description: 'A galaxy that moves on its own: lively events, emergent factions, active independents, colony defence and scorched earth.', members: ['lively-galaxy', 'emergent', 'independents-active', 'colony-defence', 'scorched-earth'] },
 ];
 
 /** The expansion's members this index has, visible ones only (hidden infrastructure comes in as a dependency). */

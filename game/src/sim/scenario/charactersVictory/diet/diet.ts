@@ -462,7 +462,7 @@ export function closeSession(galaxy: Galaxy, st: DietState, c: Council, s: DietS
         if (passed) {
             st.counters.passed[m.kind] = (st.counters.passed[m.kind] ?? 0) + 1;
             applyDietMotion(galaxy, st, c, m, year);
-        }
+        } else dietMotionKindDef(m.kind)?.failed?.(galaxy, st, m); // a registered kind's failed / vetoed motion (War Crimes)
     }
     if (st.history.length > 40) st.history.splice(0, st.history.length - 40);
     news(galaxy, null, scenarioText('Diet Session Closed News', s.world.name, lines.join(' ') || scenarioText('Diet No Motions')), s.world);

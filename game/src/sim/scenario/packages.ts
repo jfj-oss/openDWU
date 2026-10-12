@@ -67,6 +67,8 @@ import './smarterAI/shipDesign'; // Smarter AI ship design (flags smarterAIDesig
 import './privateers/privateers'; // Private-sector privateers (flag privateers; player + AI empires' private sectors; no Rnd)
 import './themedNames/themedNames'; // Themed names for AI empires (flag themedNames; AI empires only; no Rnd)
 import './colonyDefence/colonyDefence'; // Defended colonies resist pirates (flag colonyDefence; every empire's colonies; no Rnd)
+import './charactersVictory/diet/warCrimes'; // War crimes remembered (flag warCrimes; records, reputation, the Diet's tribunal; no Rnd)
+import './scorchedEarth/scorchedEarth'; // Scorched earth (flag scorchedEarth; the defender's Defend / Scorch choice; no Rnd)
 import './charactersVictory/vip'; // Characters & Victory VIP shuttles, escorts, decoys (flag charactersVictory + cvVipShuttles / cvEscorts / cvRulerDecoys)
 import './charactersVictory/governorsCv'; // Characters & Victory governors on every colony (flag charactersVictory + cvGovernors; vacancy term in the stability ledger)
 import './charactersVictory/diet/diet'; // Characters & Victory part 2: the Interstellar Diet (flag charactersVictory + cvCouncil; extends emergent/council through registerCouncilExtension)

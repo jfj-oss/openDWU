@@ -15,7 +15,7 @@ import { blocOf, scoreToVote, type Council } from '../../emergent/council';
 import { colonyGovernor } from '../../governors';
 import { empireGovernors, mostImportantGovernor } from '../governorsCv';
 import { tripOfCharacter } from '../vip';
-import { type DietMotion, type DietMotionKind, type DietState, DIET_NAME, byId, dietMotionKindDef, dietOn, dietParam, peekDietState, registeredDietKinds } from './dietState';
+import { type DietMotion, type DietMotionKind, type DietState, DIET_NAME, byId, dietWarCrimesLine, dietMotionKindDef, dietOn, dietParam, peekDietState, registeredDietKinds } from './dietState';
 import { dietMembership, dietVoteScore, memberScores, voteWeight } from './dietAi';
 import { dietCouncil } from './diet';
 
@@ -89,6 +89,8 @@ export interface DietViewModel {
     /** Kinds the player may propose, with the targets they take. */
     proposable: { kind: DietMotionKind; label: string; needs: 'none' | 'empire' | 'pirate' | 'pair' | 'colony' | 'law' }[];
     proposal: string;
+    /** War Crimes: the worst offender's line ('' = the add-on is off). */
+    warCrimes: string;
 }
 
 const KIND_LABEL: Record<DietMotionKind, string> = {
@@ -276,6 +278,7 @@ export function dietView(galaxy: Galaxy, player: Empire): DietViewModel | null {
         regentIsYou: regentActive && st.regent === player,
         emperor: em !== null ? `${em.empire.name}: must hold ${em.capital.name} and ${em.world.name} until ${dateOf(em.until)}` : '',
         nextSession: s !== null ? 'in session' : dateOf(st.nextSessionAt),
+        warCrimes: dietWarCrimesLine.fn?.(galaxy) ?? '',
         session,
         laws: st.laws.map((l) => ({ text: l.text, since: dateOf(l.since), until: l.until < 0 ? 'until repealed' : dateOf(l.until) })),
         sanctions: c.sanctions.map((x) => `${x.kind === 'sanction' ? 'Sanctions' : 'Embargo'} on the ${x.target.name} (since ${x.year})`),
