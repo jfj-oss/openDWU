@@ -39,7 +39,7 @@ import { withinFuelRangeAndRefuel } from '../src/sim/movement';
 import { concordNavyYear, concordTradeHouseYear, concordWarships, navyGroupOf, rimNavyState } from '../src/sim/scenario/rimTrade/wealth';
 import { builtObjectMission } from '../src/sim/missions/mission';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
-import { concordExplorersYear, rimPatrolReview, rimPatrolState } from '../src/sim/scenario/rimTrade/patrol';
+import { concordExplorersYear, patrolParam, rimPatrolReview, rimPatrolState } from '../src/sim/scenario/rimTrade/patrol';
 
 let base: GameData;
 beforeAll(async () => {
@@ -198,7 +198,7 @@ describe('19a Concord — passive posture and anger', () => {
         const st = rimPatrolState(g);
         const warships = concordWarships(r).length;
         expect(n).toBeGreaterThan(0);
-        expect(n).toBeLessThanOrEqual(Math.floor((warships * (100 - rimParam(g, 'rimTraderHomeGuardPct'))) / 100));
+        expect(n).toBeLessThanOrEqual(Math.floor((warships * (100 - patrolParam(g, 'rimTraderPatrolHomeGuardPct'))) / 100));
         for (const q of st.squads) for (const b of q.ships) expect(isPatrolShip(g, b) && !b.isAutoControlled).toBe(true);
         const stops = concordPresenceStars(g, r);
         const q0 = st.squads[0];
