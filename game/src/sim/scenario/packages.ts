@@ -3,6 +3,7 @@
 // Keep the list sorted; a package's code only runs behind its scenario id / flags.
 import './charteredCompanies/charters';
 import './rimFrontier/rimFrontier';
+import './rimStarts';
 import './independents/independents';
 import './newFauna/newFauna';
 import './rimFauna/rimFauna';

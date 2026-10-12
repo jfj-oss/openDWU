@@ -263,12 +263,12 @@ describe('19h rim frontier — keep empire starts out of the rim', () => {
         expect(scenarioQuery(g, 'acceptHomeHabitat', true, { race: concordRace, habitat: rimHabitat, empireKind: 'ai' })).toBe(true);
     });
 
-    it('param 0: the stock (unfiltered) placement returns', () => {
+    it('param 0 no longer lifts the rule: the shared rim-start rule (rimStarts) still rejects a rim candidate', () => {
         const { game } = createScenarioGame(base, { scenario: 'rim-frontier', params: { rimFrontierKeepStartsOut: 0 } });
         const g = game.galaxy;
-        const rimHabitat = g.habitats.find((h) => radiusFraction(g, h.xpos, h.ypos) >= D.rimFrontierBeltInner)!;
+        const rimHabitat = g.habitats.find((h) => radiusFraction(g, h.xpos, h.ypos) >= 0.8)!;
         const race = g.empires[0].dominantRace!;
-        expect(scenarioQuery(g, 'acceptHomeHabitat', true, { race, habitat: rimHabitat, empireKind: 'player' })).toBe(true);
+        expect(scenarioQuery(g, 'acceptHomeHabitat', true, { race, habitat: rimHabitat, empireKind: 'player' })).toBe(false);
     });
 
     it('with the rim trader stacked: the Concord still lands in its own rim ring, everyone else stays inside the belt', () => {

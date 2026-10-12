@@ -274,3 +274,21 @@ describe('19g-7 rim fauna — population recovery', () => {
         expect(st.stats.repopulated).toBe(1);
     }, 600000);
 });
+
+describe('rim expansion — ordinary empires never start in the rim (rimStarts)', () => {
+    it('no player/AI home is past rimInner with only rim-fauna on, across seeds and galaxy sizes', () => {
+        const sizes = [undefined, 15];
+        for (const [i, seed] of [1, 2, 3].entries()) {
+            const sz = sizes[i % 2];
+            const { game } = createScenarioGame(base, {
+                scenario: 'rim-fauna',
+                options: (o) => (sz === undefined ? { ...o, seed } : { ...o, seed, sectorWidth: sz, sectorHeight: sz, starCount: 400, systemNames: Array.from({ length: 450 }, (_, k) => `S${k}`) }),
+            });
+            const g = game.galaxy;
+            for (const e of g.empires) {
+                if (e.capital === null || e.dominantRace === null || ['Oranthi', 'Ossuvan'].includes(e.dominantRace.name)) continue;
+                expect(radiusFraction(g, e.capital.xpos, e.capital.ypos), `seed ${seed} ${e.name}`).toBeLessThan(0.72);
+            }
+        }
+    }, 240000);
+});

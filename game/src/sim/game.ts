@@ -68,7 +68,7 @@ import { createGalaxyScenario } from './scenario/state';
 import { copyMessageOptions, type MessageOptions } from './messageRouting';
 import { ensurePlayerInbox } from './playerMessages';
 import { assignAllEntityRefIds } from './entityRefs';
-import { scenarioAfterGeneration, scenarioFindHomeHabitat, scenarioGameStart, scenarioGenerationSetup, scenarioQuery, scenarioExtendGameData, resolvedScenarioFlags } from './scenario/hooks';
+import { scenarioAfterGeneration, scenarioFindHomeHabitat, scenarioGameStart, scenarioGenerationSetup, scenarioQuery, radiusFraction, scenarioExtendGameData, resolvedScenarioFlags } from './scenario/hooks';
 import { parseSectorColumn } from './sectorNames';
 import './scenario/packages'; // mod layer: registers the scenario packages' hooks
 import { setHumanColonyNames } from './perHumanState';
@@ -1252,13 +1252,25 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
         // Mod layer: a scenario homePlacement rule for the race picks the capital first (no draws without one).
         let found: Habitat | null = galaxy.scenario !== null ? scenarioFindHomeHabitat(galaxy, race, capitalHabitatType, { randomPointInRing, inNebula }, 0) : null;
         let num10 = 0;
+        let hookRejects = 0;
+        let leastRim: Habitat | null = null;
+        let leastRimF = Infinity;
         let num11 = 0.0;
         let num12 = 0.0;
         while (found === null) {
             const p = playerStartPoint(galaxy, opts.shape, opts.player.startLocation ?? RANDOM, race);
             found = galaxy.findNearestUncolonizedHabitat(p.x + num11, p.y + num12, capitalHabitatType);
             if (found !== null && inNebula(galaxy, found)) found = null;
-            if (found !== null && galaxy.scenario !== null && !scenarioQuery(galaxy, 'acceptHomeHabitat', true, { race, habitat: found, empireKind: 'player' })) found = null;
+            if (found !== null && galaxy.scenario !== null && !scenarioQuery(galaxy, 'acceptHomeHabitat', true, { race, habitat: found, empireKind: 'player' })) {
+                // A scenario rejection (e.g. rimStarts) is a fresh random start point, not a failed search: it must not feed the
+                // 50-try escalation below, whose huge offsets only ever land on the galaxy's edge. After 300 rejections take the
+                // least-rim candidate seen (never fails game creation).
+                const f = radiusFraction(galaxy, found.xpos, found.ypos);
+                if (leastRim === null || f < leastRimF) { leastRim = found; leastRimF = f; }
+                if (++hookRejects >= 300) found = leastRim;
+                else found = null;
+                continue;
+            }
             num10++;
             if (num10 > 50) {
                 const num13 = num10 > 1000 ? 5000000.0 : 3000000.0;
@@ -1330,7 +1342,19 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
         const scenarioCap = galaxy.scenario !== null ? scenarioFindHomeHabitat(galaxy, aiRace, aiRace.nativeHabitatType, { randomPointInRing, inNebula }, galaxy.sectorSize * 0.7) : null;
         // Not C#: whether an empire of this race was already placed (findAiCapital raceAlreadyHasEmpire).
         const raceAlreadyHasEmpire = empireList.some((x) => x.dominantRace === aiRace);
-        const cap = scenarioCap ?? findAiCapital(galaxy, aiRace, prox, habitat, aiRace.nativeHabitatType, playAsPirate, num14 + 1, sector, raceAlreadyHasEmpire);
+        let cap = scenarioCap ?? findAiCapital(galaxy, aiRace, prox, habitat, aiRace.nativeHabitatType, playAsPirate, num14 + 1, sector, raceAlreadyHasEmpire);
+        // Mod layer (rimStarts): findAiCapital's own fallbacks skip the acceptHomeHabitat hook; retry a bounded number of
+        // times and keep the least-rim candidate. Only ever runs with a scenario that rejects the first pick.
+        if (scenarioCap === null && cap !== null && galaxy.scenario !== null && !scenarioQuery(galaxy, 'acceptHomeHabitat', true, { race: aiRace, habitat: cap, empireKind: 'ai' })) {
+            let best = cap;
+            for (let t = 0; t < 40; t++) {
+                const c2 = findAiCapital(galaxy, aiRace, prox, habitat, aiRace.nativeHabitatType, playAsPirate, num14 + 1, sector, raceAlreadyHasEmpire);
+                if (c2 === null) continue;
+                if (scenarioQuery(galaxy, 'acceptHomeHabitat', true, { race: aiRace, habitat: c2, empireKind: 'ai' })) { best = c2; break; }
+                if (radiusFraction(galaxy, c2.xpos, c2.ypos) < radiusFraction(galaxy, best.xpos, best.ypos)) best = c2;
+            }
+            cap = best;
+        }
         if (cap === null) throw new Error('Could not locate capital!');
         let dpfi = es.opts.designPictureFamilyIndex ?? -1;
         if (dpfi < 0) dpfi = aiRace.designsPictureFamilyIndex;

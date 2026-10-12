@@ -312,3 +312,8 @@ Appended by `npm run repin -- --reason "<why>"` (scripts/repin.mjs).
 
 - Stock: attackAI.ts notifyOfAttackHabitat now ports the independent-colony branch of Galaxy.7.cs 3058 NotifyOfAttack (3138-3195: CheckForMatchingSignal, the DistressSignal record on IndependentEmpire.DistressSignals, −IndependentColonyInvadeReputationImpact unless bombarding, −50 IncidentEvaluation from the territory owner). `npm run repin -- --dry-run`: 0 pins would change (no pinned run attacks an independent colony within its span); `--check --workers 1`: 0.
 - `rimTraderPassiveSoak` "flag off is byte-identical", Concord created at start, 1 year (test/rimTraderPassiveSoak.test.ts, in-place literal): "7803a217d920cb27" → "b4d3ec6299e45a89". Deliberate rimTrade-ON change: the treasure fleet's fixed escort 6 / 10 / 2 → 3 capital ships / 5 cruisers / 1 carrier (rimTraderExchangeRate 2.5 and rimTraderRarePriceMult 1.5 do not move it: the test pins the price factor to 1 and an exchange rate of 1 gives the same digest).
+
+## 2026-10-11 — rim-nospawn: ordinary empires never start in the rim (add-on-on only)
+
+- No seed pin moved (`repin --check --workers 1` = 0): every rim add-on is off in the pinned games, so the start is byte-identical.
+- `test/rimTraderPassiveSoak.test.ts` rimTrade-ON digests (4 literals) moved: the player and AI capitals now avoid the rim band (src/sim/scenario/rimStarts.ts, game.ts player loop / AI retry), so the whole start differs. Hand-updated, run twice-stable.
