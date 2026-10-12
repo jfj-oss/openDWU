@@ -255,6 +255,7 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // Moved "3a9cc8b9c4f924da" → "e3f6e6fa3f5b926b": message pipeline runs inside the sim tick (determinism; worker parity) (2026-10-04)
         // Moved "e3f6e6fa3f5b926b" → "941f2dd4ba1f5a6b": SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
         // Moved "941f2dd4ba1f5a6b" → "761ec1d601c110d5": galaxy long block clears the independent empire's never-processed message inbox (leak fix; only Empire.messages.length in the digest and the saved list change, RNG draws unchanged) (2026-10-10)
+        // Moved "761ec1d601c110d5" → "5795427034a5febc": construction priority list: new games mark galaxy.constructionPriorityDefault (save text) and the human player's automated construction ships take research/resort, then mining, then other jobs (AI empires unchanged) (2026-10-12)
         expect(summary.digest).toMatchPin('tickDeterminism.digest600');
         // (counts and Galaxy.Rnd draws pinned with the digest, tasks/M4-plan.md §5.3.4.)
         // Moved #f1aebd5dcd → #d21f9fe281: 17d: human player starts with C# automation defaults (Start.2.cs:2122) (2026-09-25)
@@ -274,6 +275,7 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // Moved #873f307b0e → #f78b172cc4: parity A2: spaceport threat check, race periodic traits, wonders scenic, race wonders, garrisons, maintenance, retrofit design (2026-10-03)
         // Moved #f78b172cc4 → #32e802a26c: parity A1: creature combat, threat warp bonus, captain range, design torpedo order, keep in-use designs (2026-10-03)
         // Moved #32e802a26c → #de5a1ff6a2: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
+        // Moved #de5a1ff6a2 → #72489db70f: construction priority list: new games mark galaxy.constructionPriorityDefault (save text) and the human player's automated construction ships take research/resort, then mining, then other jobs (AI empires unchanged) (2026-10-12)
         expect(summary.counts).toMatchPin('tickDeterminism.counts600');
         // Moved 389082 → 384537: 17d: human player starts with C# automation defaults (Start.2.cs:2122) (2026-09-25)
         // Moved 384537 → 571596: fix4sim: BaconMain.cs 605-640/859-874 BaconInitialize applies the stock BaconSettings.txt (useStarGravityWells=false, HyperJumpThreshhold=4000, BaseHyperJumpAccuracy=666, sublightFuelBurnDivisor=20, noFuel* 0.9/0.9/0.5) after createGame; Galaxy.5.cs 1609-1616/1747-1752 populated planets/moons get Cargo/Troop lists (2026-09-25)
@@ -292,6 +294,7 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // Moved 566691 → 579423: parity A2: spaceport threat check, race periodic traits, wonders scenic, race wonders, garrisons, maintenance, retrofit design (2026-10-03)
         // Moved 579423 → 572462: parity A1: creature combat, threat warp bonus, captain range, design torpedo order, keep in-use designs (2026-10-03)
         // Moved 572462 → 611011: SetupSun SelectHabitatPictures (Galaxy.5.cs 1323): star PictureRef/MapPictureRef draws (2026-10-04)
+        // Moved 611011 → 630952: construction priority list: new games mark galaxy.constructionPriorityDefault (save text) and the human player's automated construction ships take research/resort, then mining, then other jobs (AI empires unchanged) (2026-10-12)
         expect(summary.rndDraws).toMatchPin('tickDeterminism.rndDraws600');
         // The test game cache's 600 s game (one createGame + runGameSeconds(600) call, saved and loaded; the harness
         // smokes of other files use it) is this state. Checked when another file has built it (not built here: that

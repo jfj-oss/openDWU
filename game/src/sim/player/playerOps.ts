@@ -90,6 +90,7 @@ import type { BaconSettingsOverrides } from '../data/baconSettings';
 import { enemyTargetAttack, enemyTargetCancel, enemyTargetObjects } from './enemyTargets';
 import type { PrioritizedTargetObject } from '../civilianAI';
 import { setAutoRebuild } from './autoRebuild'; // [auto-rebuild]
+import { setConstructionPriority, type ConstructionPriorityCategory } from './constructionPriority'; // [constructionPriority]
 import { purchaseAtYard, removeFromYardQueue, scrapBuiltObjects, scrapShipUnderConstruction } from './yardOrders'; // [yards]
 import { investigateRuins } from '../exploration';
 import { cancelIntelligenceMission, characterMission } from '../espionage';
@@ -343,6 +344,8 @@ export const PLAYER_OPS = {
     setDesignLineUpgrade: (galaxy: Galaxy, empire: Empire, on: boolean) => setDesignLineUpgrade(galaxy, empire, on),
     /** [auto-rebuild] Build Order screen switches (ui/screens/buildOrder.ts). */
     setAutoRebuild: (galaxy: Galaxy, empire: Empire, kind: 'ships' | 'stations', on: boolean) => setAutoRebuild(galaxy, empire, kind, on),
+    /** [constructionPriority] Build Order screen: the automated construction ships' job order (player/constructionPriority.ts). */
+    setConstructionPriority: (galaxy: Galaxy, empire: Empire, order: ConstructionPriorityCategory[] | 'stock') => setConstructionPriority(galaxy, empire, order),
     /** [improvements] statePriorityShipyards on / off for the player empire (issued by the game view, ui/statePriorityShipyards.ts). */
     setStatePriorityShipyards: (galaxy: Galaxy, empire: Empire, on: boolean) => setStatePriorityShipyards(galaxy, empire, on),
     /** Main.Part4.cs:1682 Load Designs... with the picked file's text (player/designTools.ts). */

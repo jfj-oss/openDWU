@@ -67,6 +67,7 @@ import {
     type BuildOrderRow,
 } from './buildOrderModel';
 import { requestSimRefresh } from '../../simworker/refresh';
+import { CONSTRUCTION_PRIORITY_LABELS, DEFAULT_CONSTRUCTION_PRIORITY, constructionPriorityOf, movedConstructionPriority, type ConstructionPriorityCategory } from '../../sim/player/constructionPriority';
 
 export * from './buildOrderModel';
 
@@ -195,6 +196,48 @@ function createBuildOrder(opts: BuildOrderOptions): OriginalWindow {
         body.appendChild(place(box, 12, ty + 4 + i * 30));
     }
 
+    // [constructionPriority] The order the automated construction ships take the stock automation's jobs in: a ranked
+    // list with up / down arrows, or the original order (journaled per-empire command, player/constructionPriority.ts).
+    const py = ty + 117;
+    body.appendChild(place(text('Automated construction ships build first:', { size: FONT.large, bold: true, color: COLORS.label, shadow: false }), 12, py));
+    const stockBox = checkBox('Original order', false, (v) => setPriority(v ? 'stock' : DEFAULT_CONSTRUCTION_PRIORITY.slice()), FONT.large);
+    stockBox.title = 'The original order: research stations, mining for strategic resources, resort bases, monitoring stations, luxury mining.';
+    body.appendChild(place(stockBox, 560, py));
+    const prioRows = DEFAULT_CONSTRUCTION_PRIORITY.map((_, i) => {
+        const y = py + 26 + i * 25;
+        const name = body.appendChild(label('', 40, y, 400, 'left', false));
+        const up = glassButton('\u25b2', { size: 11, onClick: () => movePriority(i, -1) });
+        const down = glassButton('\u25bc', { size: 11, onClick: () => movePriority(i, 1) });
+        body.appendChild(place(up, 450, y, 30, 22));
+        body.appendChild(place(down, 484, y, 30, 22));
+        return { name, up, down };
+    });
+    let prioKey = '';
+    function setPriority(order: ConstructionPriorityCategory[] | 'stock'): void {
+        issuePlayerCommand(galaxy, empire, 'setConstructionPriority', [order], () => {
+            if (!win.closed) renderPriority();
+        });
+    }
+    function movePriority(i: number, dir: -1 | 1): void {
+        const next = movedConstructionPriority(constructionPriorityOf(galaxy, empire) ?? DEFAULT_CONSTRUCTION_PRIORITY, i, dir);
+        if (next !== null) setPriority(next);
+    }
+    function renderPriority(): void {
+        const order = constructionPriorityOf(galaxy, empire);
+        const key = order === null ? 'stock' : order.join(',');
+        if (key === prioKey) return;
+        prioKey = key;
+        (stockBox.querySelector('input') as HTMLInputElement).checked = order === null;
+        const shown = order ?? DEFAULT_CONSTRUCTION_PRIORITY;
+        prioRows.forEach((r, i) => {
+            setText(r.name, `${i + 1}.  ${CONSTRUCTION_PRIORITY_LABELS[shown[i]]}`);
+            r.name.style.opacity = order === null ? '0.5' : '1';
+            r.up.disabled = order === null || i === 0;
+            r.down.disabled = order === null || i === shown.length - 1;
+        });
+    }
+    renderPriority();
+
     const cancel = glassButton(bt('Cancel'), { size: 15.83, onClick: () => win.close() });
     body.appendChild(place(cancel, 12, ty + 67, 238, 40));
     const purchase = glassButton(bt('Purchase'), { size: 15.83, disabled: true, onClick: () => void onPurchase() });
@@ -282,6 +325,7 @@ function createBuildOrder(opts: BuildOrderOptions): OriginalWindow {
         const income = moneyPanelIncome(galaxy, empire);
         if (income !== null) setText(cashflow, formatThousands(income.cashflow));
         renderTotals();
+        renderPriority();
     }
 
     // btnBuildOrderPurchase_Click: the cannot-afford message box, else BuildNewShips and close (method_639).

@@ -344,8 +344,11 @@ export function purchaseResultText(result: BuildNewShipsResult): string {
 export const BUILD_ORDER_ROW_PITCH = 27;
 export const BUILD_ORDER_GROUP_GAP = 11;
 
-/** pnlBuildOrder.Size(810, 605 + 11 + 27 × 6). */
-export const BUILD_ORDER_SIZE = { w: 810, h: 605 + BUILD_ORDER_GROUP_GAP + BUILD_ORDER_ROW_PITCH * 6 } as const;
+/** [constructionPriority] Extra height under the buttons for the construction priority list (not in the original). */
+export const BUILD_ORDER_PRIORITY_H = 104;
+
+/** pnlBuildOrder.Size(810, 605 + 11 + 27 × 6), plus the construction priority list. */
+export const BUILD_ORDER_SIZE = { w: 810, h: 605 + BUILD_ORDER_GROUP_GAP + BUILD_ORDER_ROW_PITCH * 6 + BUILD_ORDER_PRIORITY_H } as const;
 
 /** The column x's (int_ … int_7): Type, Current, Advisor, Order, Design, Cost, Maintenance, and their widths. */
 export const BUILD_ORDER_COLUMNS = {

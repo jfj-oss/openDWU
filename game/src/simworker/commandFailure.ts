@@ -91,6 +91,7 @@ export const COMMAND_FAILURE: FailureTable = {
     autoUpgradeDesigns: () => ({ added: [], select: null }),
     setDesignLineUpgrade: no,
     setAutoRebuild: no,
+    setConstructionPriority: no,
     setStatePriorityShipyards: no,
     loadDesignFile: (message) => ({ ok: false, loaded: [], message, title: 'Cannot Load Designs' }),
     empireRename: no,

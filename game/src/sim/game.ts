@@ -1291,6 +1291,7 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
         // TODO(port): empire flag (Galaxy.GenerateEmpireFlag uses a clock-seeded Random).
     }
     galaxy.playerEmpire = empire2;
+    galaxy.constructionPriorityDefault = true; // [constructionPriority] a new game: human empires use the default order
     // Start.2.cs 870-875: the wizard's flag colours / shape replace the race defaults (no Rnd draws; the flag bitmap
     // itself is not ported).
     if (opts.player.flagShape !== undefined && opts.player.flagShape >= 0) {

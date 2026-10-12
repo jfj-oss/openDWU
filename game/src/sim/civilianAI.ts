@@ -125,6 +125,7 @@ import { determineColonizationValue } from './tradeItems';
 import { baconSettings } from './data/baconSettings';
 import { scenarioEmit, scenarioQuery } from './scenario/hooks';
 import { detPow } from './detMath';
+import { constructionPriorityOf } from './player/constructionPriority'; // [constructionPriority]
 
 // ---------------------------------------------------------------------------------------------------------------
 // Galaxy statics (Galaxy.3.cs 4996-5033) and Bacon settings used here.
@@ -1157,255 +1158,287 @@ function assignMissionConstructionShip(galaxy: Galaxy, empire: Empire, ship: Bui
             }
         }
     }
-    if (empire.researchHabitats != null && empire.researchHabitats.length > 0) {
-        let flag13 = false;
-        if (empire.policy!.researchPriority < 1.0) {
-            if (galaxy.rnd.next(0, 2) === 1) flag13 = true;
-        } else if (empire.policy!.researchPriority === 1.0) {
-            if (galaxy.rnd.next(0, 4) > 0) flag13 = true;
-        } else if (empire.policy!.researchPriority > 1.0) {
-            flag13 = true;
-        }
-        if (flag13) {
-            const analysis = analyzeNewResearchFacilities(empire);
-            let design2 = analysis.result;
-            if (design2 !== null) {
-                let industryType = IndustryType.Undefined;
-                if (design2.subRole === BuiltObjectSubRole.WeaponsResearchStation) industryType = IndustryType.Weapon;
-                else if (design2.subRole === BuiltObjectSubRole.EnergyResearchStation) industryType = IndustryType.Energy;
-                else if (design2.subRole === BuiltObjectSubRole.HighTechResearchStation) industryType = IndustryType.HighTech;
-                const num25 = calculateSupportCost(galaxy, empire, design2);
-                const num26 = design2.calculateCurrentPurchasePrice(galaxy);
-                if (num26 <= empire.stateMoney && num25 <= calculateSpareAnnualRevenueComplete(galaxy, empire)) {
-                    let habitat7: Habitat | null = null;
-                    for (let num27 = 0; num27 < empire.researchHabitats.length; num27++) {
-                        const rh = empire.researchHabitats[num27];
-                        if (rh.researchBonusIndustry === industryType && withinFuelRangeAndRefuel(galaxy, ship, rh.xpos, rh.ypos, 0.0)) {
-                            habitat7 = rh;
-                            break;
-                        }
-                    }
-                    if (habitat7 !== null && withinFuelRangeAndRefuel(galaxy, ship, habitat7.xpos, habitat7.ypos, 0.0)) {
-                        const num28 = Math.fround(Math.fround(habitat7.researchBonus) / Math.fround(100));
-                        switch (habitat7.researchBonusIndustry) {
-                            case IndustryType.Weapon:
-                                if (num28 > empire.researchBonusWeapons) design2 = analysis.weaponsResearchStation;
+    // [constructionPriority] The stock blocks below in the stock order (Empire.5.cs: research stations, strategic-resource
+    // mining, resort bases, monitoring stations, luxury mining), or — for a human empire with a priority order set
+    // (player/constructionPriority.ts) — grouped by its ranked categories. Each block returns true when it assigned a mission.
+    let habitatList4: Habitat[] | null = null;
+    // Computed where the stock computes it: just before the first mining block that runs.
+    const minedList = (): Habitat[] => (habitatList4 ??= determineHabitatsBeingMinedIncludingBuildingMiningStations(galaxy, empire, false));
+    const research = (): boolean => {
+        if (empire.researchHabitats != null && empire.researchHabitats.length > 0) {
+            let flag13 = false;
+            if (empire.policy!.researchPriority < 1.0) {
+                if (galaxy.rnd.next(0, 2) === 1) flag13 = true;
+            } else if (empire.policy!.researchPriority === 1.0) {
+                if (galaxy.rnd.next(0, 4) > 0) flag13 = true;
+            } else if (empire.policy!.researchPriority > 1.0) {
+                flag13 = true;
+            }
+            if (flag13) {
+                const analysis = analyzeNewResearchFacilities(empire);
+                let design2 = analysis.result;
+                if (design2 !== null) {
+                    let industryType = IndustryType.Undefined;
+                    if (design2.subRole === BuiltObjectSubRole.WeaponsResearchStation) industryType = IndustryType.Weapon;
+                    else if (design2.subRole === BuiltObjectSubRole.EnergyResearchStation) industryType = IndustryType.Energy;
+                    else if (design2.subRole === BuiltObjectSubRole.HighTechResearchStation) industryType = IndustryType.HighTech;
+                    const num25 = calculateSupportCost(galaxy, empire, design2);
+                    const num26 = design2.calculateCurrentPurchasePrice(galaxy);
+                    if (num26 <= empire.stateMoney && num25 <= calculateSpareAnnualRevenueComplete(galaxy, empire)) {
+                        let habitat7: Habitat | null = null;
+                        for (let num27 = 0; num27 < empire.researchHabitats.length; num27++) {
+                            const rh = empire.researchHabitats[num27];
+                            if (rh.researchBonusIndustry === industryType && withinFuelRangeAndRefuel(galaxy, ship, rh.xpos, rh.ypos, 0.0)) {
+                                habitat7 = rh;
                                 break;
-                            case IndustryType.Energy:
-                                if (num28 > empire.researchBonusEnergy) design2 = analysis.energyResearchStation;
-                                break;
-                            case IndustryType.HighTech:
-                                if (num28 > empire.researchBonusHighTech) design2 = analysis.highTechResearchStation;
-                                break;
-                        }
-                        let x3: number;
-                        let y3: number;
-                        if (habitat7.category === HabitatCategoryType.Star) {
-                            let num29 = 0.0;
-                            let habitat8: Habitat | null = null;
-                            for (let num30 = 0; num30 < galaxy.asteroidFields.length; num30++) {
-                                const habitatList3 = galaxy.asteroidFields[num30];
-                                if (habitatList3.length <= 0 || habitatList3[0].parent !== habitat7) continue;
-                                let num31 = 0;
-                                while (habitat8 === null && num31 < 20) {
-                                    habitat8 = habitatList3[galaxy.rnd.next(0, habitatList3.length)];
-                                    const builtObject10 = galaxy.findNearestBuiltObject(Math.trunc(habitat8.xpos), Math.trunc(habitat8.ypos), BuiltObjectRole.Base);
-                                    if (builtObject10 !== null) {
-                                        const num32 = galaxy.calculateDistance(habitat8.xpos, habitat8.ypos, builtObject10.xpos, builtObject10.ypos);
-                                        if (num32 < 200.0) habitat8 = null;
-                                    }
-                                    num31++;
-                                }
                             }
-                            if (habitat8 !== null) {
-                                habitat7 = habitat8;
+                        }
+                        if (habitat7 !== null && withinFuelRangeAndRefuel(galaxy, ship, habitat7.xpos, habitat7.ypos, 0.0)) {
+                            const num28 = Math.fround(Math.fround(habitat7.researchBonus) / Math.fround(100));
+                            switch (habitat7.researchBonusIndustry) {
+                                case IndustryType.Weapon:
+                                    if (num28 > empire.researchBonusWeapons) design2 = analysis.weaponsResearchStation;
+                                    break;
+                                case IndustryType.Energy:
+                                    if (num28 > empire.researchBonusEnergy) design2 = analysis.energyResearchStation;
+                                    break;
+                                case IndustryType.HighTech:
+                                    if (num28 > empire.researchBonusHighTech) design2 = analysis.highTechResearchStation;
+                                    break;
+                            }
+                            let x3: number;
+                            let y3: number;
+                            if (habitat7.category === HabitatCategoryType.Star) {
+                                let num29 = 0.0;
+                                let habitat8: Habitat | null = null;
+                                for (let num30 = 0; num30 < galaxy.asteroidFields.length; num30++) {
+                                    const habitatList3 = galaxy.asteroidFields[num30];
+                                    if (habitatList3.length <= 0 || habitatList3[0].parent !== habitat7) continue;
+                                    let num31 = 0;
+                                    while (habitat8 === null && num31 < 20) {
+                                        habitat8 = habitatList3[galaxy.rnd.next(0, habitatList3.length)];
+                                        const builtObject10 = galaxy.findNearestBuiltObject(Math.trunc(habitat8.xpos), Math.trunc(habitat8.ypos), BuiltObjectRole.Base);
+                                        if (builtObject10 !== null) {
+                                            const num32 = galaxy.calculateDistance(habitat8.xpos, habitat8.ypos, builtObject10.xpos, builtObject10.ypos);
+                                            if (num32 < 200.0) habitat8 = null;
+                                        }
+                                        num31++;
+                                    }
+                                }
+                                if (habitat8 !== null) {
+                                    habitat7 = habitat8;
+                                    const p = galaxy.selectRelativeHabitatSurfacePoint(habitat7);
+                                    x3 = p.x;
+                                    y3 = p.y;
+                                } else {
+                                    num29 = habitat7.diameter;
+                                    if (habitat7.type === HabitatType.BlackHole) num29 = habitat7.diameter * 0.7;
+                                    else if (habitat7.type === HabitatType.SuperNova) num29 = habitat7.diameter * 0.1;
+                                    else if (habitat7.type === HabitatType.Neutron) num29 = habitat7.diameter * 2.0;
+                                    const p = galaxy.selectRelativeParkingPoint(num29);
+                                    x3 = p.x;
+                                    y3 = p.y;
+                                }
+                            } else {
                                 const p = galaxy.selectRelativeHabitatSurfacePoint(habitat7);
                                 x3 = p.x;
                                 y3 = p.y;
-                            } else {
-                                num29 = habitat7.diameter;
-                                if (habitat7.type === HabitatType.BlackHole) num29 = habitat7.diameter * 0.7;
-                                else if (habitat7.type === HabitatType.SuperNova) num29 = habitat7.diameter * 0.1;
-                                else if (habitat7.type === HabitatType.Neutron) num29 = habitat7.diameter * 2.0;
-                                const p = galaxy.selectRelativeParkingPoint(num29);
-                                x3 = p.x;
-                                y3 = p.y;
                             }
-                        } else {
-                            const p = galaxy.selectRelativeHabitatSurfacePoint(habitat7);
-                            x3 = p.x;
-                            y3 = p.y;
+                            if (!checkResearchStationAtLocation(galaxy, habitat7)) {
+                                let flag14 = false;
+                                const designList = checkBasesToBeBuiltAtHabitat(empire, habitat7);
+                                if (designList != null && designList.length > 0) {
+                                    for (let num33 = 0; num33 < designList.length; num33++) {
+                                        if (designList[num33].subRole === BuiltObjectSubRole.EnergyResearchStation || designList[num33].subRole === BuiltObjectSubRole.HighTechResearchStation || designList[num33].subRole === BuiltObjectSubRole.WeaponsResearchStation) {
+                                            flag14 = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                                removeFromList(empire.researchHabitats, habitat7);
+                                if (!flag14) {
+                                    assignMission(galaxy, ship, BuiltObjectMissionType.Build, habitat7, null, BuiltObjectMissionPriority.Normal, { design: design2, x: x3, y: y3 });
+                                    return true;
+                                }
+                            }
                         }
-                        if (!checkResearchStationAtLocation(galaxy, habitat7)) {
-                            let flag14 = false;
-                            const designList = checkBasesToBeBuiltAtHabitat(empire, habitat7);
-                            if (designList != null && designList.length > 0) {
-                                for (let num33 = 0; num33 < designList.length; num33++) {
-                                    if (designList[num33].subRole === BuiltObjectSubRole.EnergyResearchStation || designList[num33].subRole === BuiltObjectSubRole.HighTechResearchStation || designList[num33].subRole === BuiltObjectSubRole.WeaponsResearchStation) {
-                                        flag14 = true;
+                    }
+                }
+            }
+        }
+        return false;
+    };
+    const strategicMining = (): boolean => {
+        if (empire.resourceTargets != null && empire.resourceTargets.length > 0 && buildStrategicResourceSupply(galaxy, empire, ship, minedList())) {
+            return true;
+        }
+        return false;
+    };
+    const resort = (): boolean => {
+        if (empire.resortBaseBuildLocations != null && empire.resortBaseBuildLocations.length > 0 && empire.policy!.engageInTourism && flag2 && galaxy.rnd.next(0, 2) === 1) {
+            let num34 = Math.min(20, 1 + Math.trunc(empire.colonies.length / 6));
+            num34 = Math.trunc(num34 * empire.policy!.tourismPriority);
+            if (empire.resortBases.length < num34) {
+                const design3 = findNewestCanBuild(empire.designs, BuiltObjectSubRole.ResortBase, empire);
+                if (design3 !== null) {
+                    const num35 = calculateSupportCost(galaxy, empire, design3);
+                    const num36 = design3.calculateCurrentPurchasePrice(galaxy);
+                    if (num36 <= empire.stateMoney && num35 <= calculateSpareAnnualRevenueComplete(galaxy, empire) && assignBuildResortBaseMissionToBuiltObject(galaxy, empire, ship, design3)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    };
+    const monitoring = (): boolean => {
+        if (empire.monitoringHabitats != null && empire.monitoringPoints != null && (empire.monitoringHabitats.length > 0 || empire.monitoringPoints.length > 0)) {
+            const design4 = findNewestCanBuild(empire.designs, BuiltObjectSubRole.MonitoringStation, empire);
+            if (design4 !== null && galaxy.rnd.next(0, 2) === 1) {
+                const num37 = calculateSupportCost(galaxy, empire, design4);
+                const num38 = design4.calculateCurrentPurchasePrice(galaxy);
+                if (num38 <= empire.stateMoney && num37 <= calculateSpareAnnualRevenueComplete(galaxy, empire)) {
+                    const num39 = Math.min(40, Math.max(1, Math.trunc(empire.colonies.length / 3)));
+                    if (empire.longRangeScanners.length < num39) {
+                        if (empire.monitoringHabitats.length > empire.monitoringPoints.length) {
+                            let habitat9: Habitat | null = null;
+                            for (let num40 = 0; num40 < empire.monitoringHabitats.length; num40++) {
+                                const habitat10 = empire.monitoringHabitats[num40];
+                                if (!withinFuelRangeAndRefuel(galaxy, ship, habitat10.xpos, habitat10.ypos, 0.0)) continue;
+                                let num41 = Number.MAX_VALUE;
+                                const builtObject11 = fastFindNearestLongRangeScannerBase(galaxy, Math.trunc(habitat10.xpos), Math.trunc(habitat10.ypos), empire);
+                                if (builtObject11 !== null) {
+                                    num41 = galaxy.calculateDistance(habitat10.xpos, habitat10.ypos, builtObject11.xpos, builtObject11.ypos);
+                                }
+                                if (num41 > MAX_SOLAR_SYSTEM_SIZE * 2.1) {
+                                    const designList2 = checkBasesToBeBuiltAtHabitat(empire, habitat10);
+                                    if (designList2 == null || designList2.length <= 0) {
+                                        habitat9 = habitat10;
                                         break;
                                     }
                                 }
                             }
-                            removeFromList(empire.researchHabitats, habitat7);
-                            if (!flag14) {
-                                assignMission(galaxy, ship, BuiltObjectMissionType.Build, habitat7, null, BuiltObjectMissionPriority.Normal, { design: design2, x: x3, y: y3 });
-                                return;
+                            if (habitat9 !== null) {
+                                let x4: number;
+                                let y4: number;
+                                if (habitat9.category === HabitatCategoryType.Star) {
+                                    const p = galaxy.selectRelativeParkingPoint(habitat9.diameter);
+                                    x4 = p.x;
+                                    y4 = p.y;
+                                } else {
+                                    const p = galaxy.selectRelativeHabitatSurfacePoint(habitat9);
+                                    x4 = p.x;
+                                    y4 = p.y;
+                                }
+                                let builtObject12 = galaxy.findNearestBuiltObject(Math.trunc(habitat9.xpos + x4), Math.trunc(habitat9.ypos + y4), BuiltObjectRole.Base);
+                                let num42 = Number.MAX_VALUE;
+                                if (builtObject12 !== null) {
+                                    num42 = galaxy.calculateDistance(habitat9.xpos + x4, habitat9.ypos + y4, builtObject12.xpos, builtObject12.ypos);
+                                }
+                                let num43 = 0;
+                                while (num42 < MINIMUM_DISTANCE_BETWEEN_BASES) {
+                                    const p = galaxy.selectRelativeHabitatSurfacePoint(habitat9);
+                                    x4 = p.x;
+                                    y4 = p.y;
+                                    builtObject12 = galaxy.findNearestBuiltObject(Math.trunc(habitat9.xpos + x4), Math.trunc(habitat9.ypos + y4), BuiltObjectRole.Base);
+                                    // The C# dereferences builtObject12 unguarded (it was non-null to enter the loop and a base still exists).
+                                    num42 = builtObject12 !== null ? galaxy.calculateDistance(habitat9.xpos + x4, habitat9.ypos + y4, builtObject12.xpos, builtObject12.ypos) : Number.MAX_VALUE;
+                                    num43++;
+                                    if (num43 > 5) break;
+                                }
+                                assignMission(galaxy, ship, BuiltObjectMissionType.Build, habitat9, null, BuiltObjectMissionPriority.Normal, { design: design4, x: x4, y: y4 });
+                                removeFromList(empire.monitoringHabitats, habitat9);
+                                return true;
+                            }
+                        } else {
+                            let item2: Point | null = null; // Point.Empty
+                            for (let num44 = 0; num44 < empire.monitoringPoints.length; num44++) {
+                                const point = empire.monitoringPoints[num44];
+                                if (withinFuelRangeAndRefuel(galaxy, ship, point.x, point.y, 0.0)) {
+                                    let num45 = Number.MAX_VALUE;
+                                    const builtObject13 = fastFindNearestLongRangeScannerBase(galaxy, point.x, point.y, empire);
+                                    if (builtObject13 !== null) {
+                                        num45 = galaxy.calculateDistance(point.x, point.y, builtObject13.xpos, builtObject13.ypos);
+                                    }
+                                    if (num45 > MAX_SOLAR_SYSTEM_SIZE * 2.1) {
+                                        item2 = point;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (item2 !== null && !pointIsEmpty(item2)) {
+                                // C# oddity (Empire.5.cs 2555-2556): the mission goes to _MonitoringPoints[0] while item2 is the point removed.
+                                assignMission(galaxy, ship, BuiltObjectMissionType.Build, null, null, BuiltObjectMissionPriority.Normal, { design: design4, x: empire.monitoringPoints[0].x, y: empire.monitoringPoints[0].y });
+                                removeFromList(empire.monitoringPoints, item2);
+                                return true;
                             }
                         }
                     }
                 }
             }
         }
-    }
-    const habitatList4 = determineHabitatsBeingMinedIncludingBuildingMiningStations(galaxy, empire, false);
-    if (empire.resourceTargets != null && empire.resourceTargets.length > 0 && buildStrategicResourceSupply(galaxy, empire, ship, habitatList4)) {
+        return false;
+    };
+    const luxuryMining = (): boolean => {
+            if (!flag2 || empire.resourceTargets == null || empire.resourceTargets.length <= 0) return false;
+        let stellarObject4: StellarObject | null = fastFindNearestSpacePort(galaxy, ship.xpos, ship.ypos, empire);
+        if (stellarObject4 === null) {
+            stellarObject4 = empire.pirateEmpireBaseHabitat !== null ? empire.pirateEmpireBaseHabitat : empire.capital;
+        }
+        const privateAnnualCashflow = getPrivateAnnualCashflow(galaxy, empire);
+        let num46 = 0;
+        let design5: Design | null = null;
+        const iterationCount3 = { count: 0 };
+        for (; conditionCheckLimit(design5 === null && num46 < empire.resourceTargets.length, 1000, iterationCount3); num46++) {
+            const habitatPrioritization3 = empire.resourceTargets[num46];
+            const habitat11 = empire.resourceTargets[num46].habitat!;
+            if (minedList().includes(habitat11) || (habitat11.empire !== null && habitat11.empire !== galaxy.independentEmpire) || !habitatResourcesHaveLuxury(galaxy, habitat11) || stellarObject4 === null || !distanceWithinRange(galaxy, ship, stellarObject4.xpos, stellarObject4.ypos, habitat11.xpos, habitat11.ypos, 0.1)) {
+                continue;
+            }
+            if (habitatResourcesContainGroup(galaxy, habitat11, ResourceGroup.Gas)) design5 = findNewestCanBuild(empire.designs, BuiltObjectSubRole.GasMiningStation, empire);
+            if (habitatResourcesContainGroup(galaxy, habitat11, ResourceGroup.Mineral)) design5 = findNewestCanBuild(empire.designs, BuiltObjectSubRole.MiningStation, empire);
+            if (design5 === null && habitatResourcesContainGroup(galaxy, habitat11, ResourceGroup.Luxury)) design5 = findNewestCanBuild(empire.designs, BuiltObjectSubRole.MiningStation, empire);
+            if (design5 === null) continue;
+            const num47 = designCalculateMaintenanceCosts(galaxy, design5, empire);
+            const num48 = design5.calculateCurrentPurchasePrice(galaxy);
+            if (!(empire.privateMoney > num48) || !(privateAnnualCashflow > num47) || habitatPrioritization3.priority <= MINING_STATION_RESOURCE_THRESHHOLD || checkNearPirateBase(galaxy, empire, habitat11, Math.trunc(MAX_SOLAR_SYSTEM_SIZE * 2.1), habitat11.xpos, habitat11.ypos, null)) {
+                continue;
+            }
+            let p = galaxy.selectRelativeHabitatSurfacePoint(habitat11);
+            let x5 = p.x;
+            let y5 = p.y;
+            let builtObject14 = galaxy.findNearestBuiltObject(Math.trunc(habitat11.xpos + x5), Math.trunc(habitat11.ypos + y5), BuiltObjectRole.Base);
+            let num49 = Number.MAX_VALUE;
+            if (builtObject14 !== null) {
+                num49 = galaxy.calculateDistance(habitat11.xpos + x5, habitat11.ypos + y5, builtObject14.xpos, builtObject14.ypos);
+            }
+            let num50 = 0;
+            while (num49 < MINIMUM_DISTANCE_BETWEEN_BASES) {
+                p = galaxy.selectRelativeHabitatSurfacePoint(habitat11);
+                x5 = p.x;
+                y5 = p.y;
+                builtObject14 = galaxy.findNearestBuiltObject(Math.trunc(habitat11.xpos + x5), Math.trunc(habitat11.ypos + y5), BuiltObjectRole.Base);
+                num49 = builtObject14 !== null ? galaxy.calculateDistance(habitat11.xpos + x5, habitat11.ypos + y5, builtObject14.xpos, builtObject14.ypos) : Number.MAX_VALUE;
+                num50++;
+                if (num50 > 5) break;
+            }
+            assignMission(galaxy, ship, BuiltObjectMissionType.Build, habitat11, null, BuiltObjectMissionPriority.Normal, { design: design5, x: x5, y: y5 });
+            minedList().push(habitat11);
+            empire.resourceTargets.splice(num46, 1);
+            return true;
+        }
+        return false;
+    };
+    const order = constructionPriorityOf(galaxy, empire);
+    if (order === null) {
+        if (research() || strategicMining() || resort() || monitoring()) return;
+        luxuryMining();
         return;
     }
-    if (empire.resortBaseBuildLocations != null && empire.resortBaseBuildLocations.length > 0 && empire.policy!.engageInTourism && flag2 && galaxy.rnd.next(0, 2) === 1) {
-        let num34 = Math.min(20, 1 + Math.trunc(empire.colonies.length / 6));
-        num34 = Math.trunc(num34 * empire.policy!.tourismPriority);
-        if (empire.resortBases.length < num34) {
-            const design3 = findNewestCanBuild(empire.designs, BuiltObjectSubRole.ResortBase, empire);
-            if (design3 !== null) {
-                const num35 = calculateSupportCost(galaxy, empire, design3);
-                const num36 = design3.calculateCurrentPurchasePrice(galaxy);
-                if (num36 <= empire.stateMoney && num35 <= calculateSpareAnnualRevenueComplete(galaxy, empire) && assignBuildResortBaseMissionToBuiltObject(galaxy, empire, ship, design3)) {
-                    return;
-                }
-            }
-        }
-    }
-    if (empire.monitoringHabitats != null && empire.monitoringPoints != null && (empire.monitoringHabitats.length > 0 || empire.monitoringPoints.length > 0)) {
-        const design4 = findNewestCanBuild(empire.designs, BuiltObjectSubRole.MonitoringStation, empire);
-        if (design4 !== null && galaxy.rnd.next(0, 2) === 1) {
-            const num37 = calculateSupportCost(galaxy, empire, design4);
-            const num38 = design4.calculateCurrentPurchasePrice(galaxy);
-            if (num38 <= empire.stateMoney && num37 <= calculateSpareAnnualRevenueComplete(galaxy, empire)) {
-                const num39 = Math.min(40, Math.max(1, Math.trunc(empire.colonies.length / 3)));
-                if (empire.longRangeScanners.length < num39) {
-                    if (empire.monitoringHabitats.length > empire.monitoringPoints.length) {
-                        let habitat9: Habitat | null = null;
-                        for (let num40 = 0; num40 < empire.monitoringHabitats.length; num40++) {
-                            const habitat10 = empire.monitoringHabitats[num40];
-                            if (!withinFuelRangeAndRefuel(galaxy, ship, habitat10.xpos, habitat10.ypos, 0.0)) continue;
-                            let num41 = Number.MAX_VALUE;
-                            const builtObject11 = fastFindNearestLongRangeScannerBase(galaxy, Math.trunc(habitat10.xpos), Math.trunc(habitat10.ypos), empire);
-                            if (builtObject11 !== null) {
-                                num41 = galaxy.calculateDistance(habitat10.xpos, habitat10.ypos, builtObject11.xpos, builtObject11.ypos);
-                            }
-                            if (num41 > MAX_SOLAR_SYSTEM_SIZE * 2.1) {
-                                const designList2 = checkBasesToBeBuiltAtHabitat(empire, habitat10);
-                                if (designList2 == null || designList2.length <= 0) {
-                                    habitat9 = habitat10;
-                                    break;
-                                }
-                            }
-                        }
-                        if (habitat9 !== null) {
-                            let x4: number;
-                            let y4: number;
-                            if (habitat9.category === HabitatCategoryType.Star) {
-                                const p = galaxy.selectRelativeParkingPoint(habitat9.diameter);
-                                x4 = p.x;
-                                y4 = p.y;
-                            } else {
-                                const p = galaxy.selectRelativeHabitatSurfacePoint(habitat9);
-                                x4 = p.x;
-                                y4 = p.y;
-                            }
-                            let builtObject12 = galaxy.findNearestBuiltObject(Math.trunc(habitat9.xpos + x4), Math.trunc(habitat9.ypos + y4), BuiltObjectRole.Base);
-                            let num42 = Number.MAX_VALUE;
-                            if (builtObject12 !== null) {
-                                num42 = galaxy.calculateDistance(habitat9.xpos + x4, habitat9.ypos + y4, builtObject12.xpos, builtObject12.ypos);
-                            }
-                            let num43 = 0;
-                            while (num42 < MINIMUM_DISTANCE_BETWEEN_BASES) {
-                                const p = galaxy.selectRelativeHabitatSurfacePoint(habitat9);
-                                x4 = p.x;
-                                y4 = p.y;
-                                builtObject12 = galaxy.findNearestBuiltObject(Math.trunc(habitat9.xpos + x4), Math.trunc(habitat9.ypos + y4), BuiltObjectRole.Base);
-                                // The C# dereferences builtObject12 unguarded (it was non-null to enter the loop and a base still exists).
-                                num42 = builtObject12 !== null ? galaxy.calculateDistance(habitat9.xpos + x4, habitat9.ypos + y4, builtObject12.xpos, builtObject12.ypos) : Number.MAX_VALUE;
-                                num43++;
-                                if (num43 > 5) break;
-                            }
-                            assignMission(galaxy, ship, BuiltObjectMissionType.Build, habitat9, null, BuiltObjectMissionPriority.Normal, { design: design4, x: x4, y: y4 });
-                            removeFromList(empire.monitoringHabitats, habitat9);
-                            return;
-                        }
-                    } else {
-                        let item2: Point | null = null; // Point.Empty
-                        for (let num44 = 0; num44 < empire.monitoringPoints.length; num44++) {
-                            const point = empire.monitoringPoints[num44];
-                            if (withinFuelRangeAndRefuel(galaxy, ship, point.x, point.y, 0.0)) {
-                                let num45 = Number.MAX_VALUE;
-                                const builtObject13 = fastFindNearestLongRangeScannerBase(galaxy, point.x, point.y, empire);
-                                if (builtObject13 !== null) {
-                                    num45 = galaxy.calculateDistance(point.x, point.y, builtObject13.xpos, builtObject13.ypos);
-                                }
-                                if (num45 > MAX_SOLAR_SYSTEM_SIZE * 2.1) {
-                                    item2 = point;
-                                    break;
-                                }
-                            }
-                        }
-                        if (item2 !== null && !pointIsEmpty(item2)) {
-                            // C# oddity (Empire.5.cs 2555-2556): the mission goes to _MonitoringPoints[0] while item2 is the point removed.
-                            assignMission(galaxy, ship, BuiltObjectMissionType.Build, null, null, BuiltObjectMissionPriority.Normal, { design: design4, x: empire.monitoringPoints[0].x, y: empire.monitoringPoints[0].y });
-                            removeFromList(empire.monitoringPoints, item2);
-                            return;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    if (!flag2 || empire.resourceTargets == null || empire.resourceTargets.length <= 0) return;
-    let stellarObject4: StellarObject | null = fastFindNearestSpacePort(galaxy, ship.xpos, ship.ypos, empire);
-    if (stellarObject4 === null) {
-        stellarObject4 = empire.pirateEmpireBaseHabitat !== null ? empire.pirateEmpireBaseHabitat : empire.capital;
-    }
-    const privateAnnualCashflow = getPrivateAnnualCashflow(galaxy, empire);
-    let num46 = 0;
-    let design5: Design | null = null;
-    const iterationCount3 = { count: 0 };
-    for (; conditionCheckLimit(design5 === null && num46 < empire.resourceTargets.length, 1000, iterationCount3); num46++) {
-        const habitatPrioritization3 = empire.resourceTargets[num46];
-        const habitat11 = empire.resourceTargets[num46].habitat!;
-        if (habitatList4.includes(habitat11) || (habitat11.empire !== null && habitat11.empire !== galaxy.independentEmpire) || !habitatResourcesHaveLuxury(galaxy, habitat11) || stellarObject4 === null || !distanceWithinRange(galaxy, ship, stellarObject4.xpos, stellarObject4.ypos, habitat11.xpos, habitat11.ypos, 0.1)) {
-            continue;
-        }
-        if (habitatResourcesContainGroup(galaxy, habitat11, ResourceGroup.Gas)) design5 = findNewestCanBuild(empire.designs, BuiltObjectSubRole.GasMiningStation, empire);
-        if (habitatResourcesContainGroup(galaxy, habitat11, ResourceGroup.Mineral)) design5 = findNewestCanBuild(empire.designs, BuiltObjectSubRole.MiningStation, empire);
-        if (design5 === null && habitatResourcesContainGroup(galaxy, habitat11, ResourceGroup.Luxury)) design5 = findNewestCanBuild(empire.designs, BuiltObjectSubRole.MiningStation, empire);
-        if (design5 === null) continue;
-        const num47 = designCalculateMaintenanceCosts(galaxy, design5, empire);
-        const num48 = design5.calculateCurrentPurchasePrice(galaxy);
-        if (!(empire.privateMoney > num48) || !(privateAnnualCashflow > num47) || habitatPrioritization3.priority <= MINING_STATION_RESOURCE_THRESHHOLD || checkNearPirateBase(galaxy, empire, habitat11, Math.trunc(MAX_SOLAR_SYSTEM_SIZE * 2.1), habitat11.xpos, habitat11.ypos, null)) {
-            continue;
-        }
-        let p = galaxy.selectRelativeHabitatSurfacePoint(habitat11);
-        let x5 = p.x;
-        let y5 = p.y;
-        let builtObject14 = galaxy.findNearestBuiltObject(Math.trunc(habitat11.xpos + x5), Math.trunc(habitat11.ypos + y5), BuiltObjectRole.Base);
-        let num49 = Number.MAX_VALUE;
-        if (builtObject14 !== null) {
-            num49 = galaxy.calculateDistance(habitat11.xpos + x5, habitat11.ypos + y5, builtObject14.xpos, builtObject14.ypos);
-        }
-        let num50 = 0;
-        while (num49 < MINIMUM_DISTANCE_BETWEEN_BASES) {
-            p = galaxy.selectRelativeHabitatSurfacePoint(habitat11);
-            x5 = p.x;
-            y5 = p.y;
-            builtObject14 = galaxy.findNearestBuiltObject(Math.trunc(habitat11.xpos + x5), Math.trunc(habitat11.ypos + y5), BuiltObjectRole.Base);
-            num49 = builtObject14 !== null ? galaxy.calculateDistance(habitat11.xpos + x5, habitat11.ypos + y5, builtObject14.xpos, builtObject14.ypos) : Number.MAX_VALUE;
-            num50++;
-            if (num50 > 5) break;
-        }
-        assignMission(galaxy, ship, BuiltObjectMissionType.Build, habitat11, null, BuiltObjectMissionPriority.Normal, { design: design5, x: x5, y: y5 });
-        habitatList4.push(habitat11);
-        empire.resourceTargets.splice(num46, 1);
+    for (const category of order) {
+        if (category === 'researchResort' && (research() || resort())) return;
+        if (category === 'mining' && (strategicMining() || luxuryMining())) return;
+        if (category === 'other' && monitoring()) return;
     }
 }
 

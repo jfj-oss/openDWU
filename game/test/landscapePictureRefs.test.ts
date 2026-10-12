@@ -242,7 +242,8 @@ describe('draw order (Galaxy.6.cs SelectXxxPlanet / SelectHabitatPictures)', () 
         // Moved #47ed84cdb0 → #2f99c2bee0: galaxy long block clears the independent empire's never-processed message inbox (leak fix; only Empire.messages.length in the digest and the saved list change, RNG draws unchanged) (2026-10-10)
         // Moved #2f99c2bee0 → #ae75f0c349: saves carry the stable command ref ids (entityRefs.ts refId / Galaxy.nextEntityRefId); sim state and digests unchanged (2026-10-10)
         // Moved #ae75f0c349 → #1cfe93f829: save format 3 (compactCodec.ts): the save text is spelled compactly; same graph — the format-2 tree of the same game still hashes to the old pin — and sim state / digests unchanged (2026-10-10)
-        expect(sha(serializeGame(copy.game, copy.time, start))).toMatchPin('landscapeRefs.seed1SaveWithoutLandscapes', "ccc08877d9d97a3def4a808675a21fc266528d3a");
+        // Moved #1cfe93f829 → #14229ee505: construction priority list: new games mark galaxy.constructionPriorityDefault (save text) and the human player's automated construction ships take research/resort, then mining, then other jobs (AI empires unchanged) (2026-10-12)
+        expect(sha(serializeGame(copy.game, copy.time, start))).toMatchPin('landscapeRefs.seed1SaveWithoutLandscapes', "b8c56d6abb19e1e78c6e0ce43ed8cb43be81ce86");
     });
 });
 

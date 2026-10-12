@@ -27,7 +27,7 @@ const S = BuiltObjectSubRole;
 
 describe('Build Order layout (method_628)', () => {
     it('is the 810 × 778 ScreenPanel with the totals at num29 = 593', () => {
-        expect(BUILD_ORDER_SIZE).toEqual({ w: 810, h: 778 });
+        expect(BUILD_ORDER_SIZE).toEqual({ w: 810, h: 778 + 104 }); // + the construction priority list
         expect(BUILD_ORDER_TOTALS_Y).toBe(593);
         expect(BUILD_ORDER_CONTAINER).toEqual({ x: 0, y: 105, w: 760, h: 473 });
     });

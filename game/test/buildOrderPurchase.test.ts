@@ -9,6 +9,8 @@ import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { builtObjectCompleteTeardown } from '../src/sim/combat/teardown';
 import { setAutoRebuild } from '../src/sim/player/autoRebuild';
 import { processAutoRebuild } from '../src/sim/player/autoRebuildTick';
+import { DEFAULT_CONSTRUCTION_PRIORITY, constructionPriorityOf, movedConstructionPriority, setConstructionPriority, type ConstructionPriorityCategory } from '../src/sim/player/constructionPriority';
+import { runPlayerCommand } from '../src/sim/player/playerCommands';
 import { buildNewShips, buildOrderTotalCost, queueOf } from '../src/sim/construction/empireConstruction';
 import { BUILD_ORDER_SUBROLES, buildOrderPurchaseLists, buildOrderRows, buildOrderTotals, purchaseResultText } from '../src/ui/screens/buildOrder';
 
@@ -104,5 +106,26 @@ describe('Build Order purchase on the harness game', () => {
         expect(e.autoRebuild!.losses.length).toBe(1);
         setAutoRebuild(g, e, 'ships', false);
         expect(e.autoRebuild!.losses.length).toBe(0);
+    });
+    it('construction priority: new games use the default order, older saves the stock one; journaled, human empires only', () => {
+        // The cached game went through save / load, so the new-game mark survives a save.
+        const { galaxy: g, playerEmpire: e } = cachedTickGame(gameData);
+        expect(g.constructionPriorityDefault).toBe(true);
+        expect(constructionPriorityOf(g, e)).toEqual(['researchResort', 'mining', 'other']);
+        const ai = g.empires.find((x) => x !== e && x.capital !== null)!;
+        expect(constructionPriorityOf(g, ai)).toBeNull();
+        expect(setConstructionPriority(g, ai, ['mining', 'researchResort', 'other'])).toBe(false);
+        expect(setConstructionPriority(g, e, ['mining', 'mining', 'other'] as ConstructionPriorityCategory[])).toBe(false);
+        const moved = movedConstructionPriority(DEFAULT_CONSTRUCTION_PRIORITY, 0, 1)!;
+        expect(moved).toEqual(['mining', 'researchResort', 'other']);
+        expect(movedConstructionPriority(DEFAULT_CONSTRUCTION_PRIORITY, 0, -1)).toBeNull();
+        expect(runPlayerCommand(g, e, 'setConstructionPriority', [moved])).toBe(true);
+        expect(constructionPriorityOf(g, e)).toEqual(moved);
+        expect(runPlayerCommand(g, e, 'setConstructionPriority', ['stock'])).toBe(true);
+        expect(constructionPriorityOf(g, e)).toBeNull();
+        // A save from before the setting: no mark, no order of its own -> the stock order.
+        const old = cachedTickGame(gameData);
+        delete old.galaxy.constructionPriorityDefault;
+        expect(constructionPriorityOf(old.galaxy, old.playerEmpire)).toBeNull();
     });
 });
