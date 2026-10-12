@@ -23,6 +23,7 @@ import { annualTroopMaintenance } from '../../troops';
 import { isHumanEmpire } from '../../humanEmpires';
 import { registerScenarioPeriodic } from '../hooks';
 import { registerStabilityTerm } from '../stability';
+import { isHerderEmpire } from '../rimHerders/common';
 import { DAY, ECON_BOND_FLAG, ECON_FLAG, YEAR, econOn, econParam, empireRecord, hasPrivateSector, peekEmpire, type Bond, type EconEmpire } from './common';
 import { investmentBankCount, privateSurplus } from './facilities';
 
@@ -248,7 +249,7 @@ function maybeBorrow(galaxy: Galaxy, e: Empire, r: EconEmpire | null): void {
  * player's treasury is left alone. Not a port: DW:U lets a treasury stay negative.
  */
 function maybeLevy(galaxy: Galaxy, e: Empire): void {
-    if (isHumanEmpire(galaxy, e) || !(e.stateMoney < 0)) return;
+    if (isHumanEmpire(galaxy, e) || isHerderEmpire(galaxy, e) || !(e.stateMoney < 0)) return;
     const a = Math.floor(Math.min(-e.stateMoney, privateSurplus(galaxy, e) * BOND_RULES.LEVY_SHARE));
     if (!(a > 0)) return;
     e.privateMoney -= a;

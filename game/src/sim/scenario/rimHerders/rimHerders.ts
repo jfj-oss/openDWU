@@ -955,6 +955,20 @@ export function rimHerdersTribute(galaxy: Galaxy): number {
     return total;
 }
 
+/** Herder empires have no tax income: herd-goods sales (private money) move to the state treasury, plus a pro-rata stipend. */
+const INCOME_PERIOD_DAYS = 10;
+export function rimHerdersIncome(galaxy: Galaxy): void {
+    const stipend = (herderParam(galaxy, 'rimHerdersStipend') * INCOME_PERIOD_DAYS * GAME_DAY_LENGTH) / YEAR_LENGTH;
+    for (const e of galaxy.empires) {
+        if (e === null || !e.active || !isHerderEmpire(galaxy, e)) continue;
+        if (e.privateMoney > 0) {
+            e.stateMoney += e.privateMoney;
+            e.privateMoney = 0;
+        }
+        e.stateMoney += stipend;
+    }
+}
+
 /** The yearly tick (`rimHerders.year`). */
 export function rimHerdersYear(galaxy: Galaxy, year: number): void {
     const st = rimHerdersState(galaxy);
@@ -1099,6 +1113,7 @@ registerRimHerdDriver({
 });
 registerScenarioGameStart({ id: 'rimHerders.start', flag: RIM_HERDERS_FLAG, run: (g) => rimHerdersGameStart(g) });
 registerScenarioPeriodic({ id: 'rimHerders.tick', flag: RIM_HERDERS_FLAG, periodDays: 1, run: (g) => rimHerdersTick(g) });
+registerScenarioPeriodic({ id: 'rimHerders.income', flag: RIM_HERDERS_FLAG, periodDays: INCOME_PERIOD_DAYS, run: (g) => rimHerdersIncome(g) });
 registerScenarioYearly({ id: 'rimHerders.year', flag: RIM_HERDERS_FLAG, run: (g, y) => rimHerdersYear(g, y) });
 registerScenarioEvent({ id: 'rimHerders.kill', flag: RIM_HERDERS_FLAG, event: 'creatureKilled', run: rimHerdersOnCreatureKilled });
 registerScenarioEvent({ id: 'rimHerders.defend', flag: RIM_HERDERS_FLAG, event: 'habitatAttacked', run: rimHerdersOnHabitatAttacked });

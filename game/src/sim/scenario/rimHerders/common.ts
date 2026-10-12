@@ -72,6 +72,7 @@ export const RIM_HERDERS_PARAM_DEFAULTS = {
     rimHerdersLeaveStanding: 0,
     rimHerdersProtectYears: 3,
     rimHerdersTribute: 0.5,
+    rimHerdersStipend: 25000,
     rimHerdersFeralYears: 5,
     rimHerdersFeralRange: 4,
     rimHerdersDefendRange: 30000,

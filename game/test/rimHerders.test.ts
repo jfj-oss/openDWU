@@ -66,7 +66,7 @@ import { Troop, TroopList, TroopType } from '../src/sim/cargo';
 import { setShipsFleet } from '../src/sim/player/fleetOps';
 import { shipGroupTotalTroopAttackStrength } from '../src/sim/fleets/shipGroupTasks';
 import { BuiltObjectMissionType, builtObjectMission } from '../src/sim/missions/mission';
-import { rimHerdersStagingTick, rimHerdersYear } from '../src/sim/scenario/rimHerders/rimHerders';
+import { rimHerdersIncome, rimHerdersStagingTick, rimHerdersYear } from '../src/sim/scenario/rimHerders/rimHerders';
 
 let base: GameData;
 /** Shared flag-on game: every rim independent is a herder, migration season on the last day (tests drive it). */
@@ -235,6 +235,21 @@ describe('19j rim herders — (4) drovers and guides', () => {
         expect(drover.empire).toBeNull();
         expect(rimGuideAboard(g, ship)).toBe(false);
         expect(scenarioQuery(g, 'creatureIgnoresTarget', false, { creature: wild.leader!, target: ship })).toBe(false);
+    });
+});
+
+describe('herder income', () => {
+    it('sweeps sale proceeds to the state treasury and pays the stipend pro-rata', () => {
+        const g = createScenarioGame(base, { scenario: 'rim-herders', params: PARAMS }).game.galaxy;
+        const h = g.empires.find((e): e is Empire => e !== null && e.dominantRace?.name === HERDER_RACE);
+        if (h === undefined) return;
+        h.privateMoney = 1000;
+        const s0 = h.stateMoney;
+        rimHerdersIncome(g);
+        expect(h.privateMoney).toBe(0);
+        const gain = h.stateMoney - s0 - 1000;
+        expect(gain).toBeGreaterThan(0);
+        expect(gain).toBeLessThan(25000 / 30);
     });
 });
 
