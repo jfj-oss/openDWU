@@ -83,9 +83,9 @@ export function archiveCoresOn(galaxy: Galaxy): boolean {
 
 const P = {
     studySteps: (g: Galaxy) => Math.max(1, Math.trunc(scenarioParam(g, 'archiveStudySteps', 4))),
-    studyPct: (g: Galaxy) => scenarioParam(g, 'archiveStudyPct', 8),
+    studyPct: (g: Galaxy) => scenarioParam(g, 'archiveStudyPct', 16),
     sealYears: (g: Galaxy) => scenarioParam(g, 'archiveSealYears', 5),
-    sealPct: (g: Galaxy) => scenarioParam(g, 'archiveSealPct', 45),
+    sealPct: (g: Galaxy) => scenarioParam(g, 'archiveSealPct', 90),
     minPoints: (g: Galaxy) => scenarioParam(g, 'archiveMinPoints', 15000),
     ruinsPerMille: (g: Galaxy) => scenarioParam(g, 'archiveRuinsChancePerMille', 40),
 };

@@ -82,8 +82,8 @@ An early-game crisis, once per game.
   ruins (`archiveRuinsChancePerMille` 40, one roll per ruin with an own seeded `Random`; the new
   `ruinsInvestigated` event at the top of `exploration.ts investigateRuins`).
 - The finder chooses (a scenario decision; the player in the popup, journaled): **study** — `archiveStudySteps` (4)
-  yearly boosts of `archiveStudyPct` (8) % of a year of its research each; **seal** — one boost of `archiveSealPct`
-  (45) % after `archiveSealYears` (5). A boost is at least `archiveMinPoints` (15,000) and goes into the current
+  yearly boosts of `archiveStudyPct` (16) % of a year of its research each; **seal** — one boost of `archiveSealPct`
+  (90) % after `archiveSealYears` (5). A boost is at least `archiveMinPoints` (15,000) and goes into the current
   research projects (the progress / breakthrough path of `performResearchProjects`, without research events). Seal
   is worth more than the sum of the study boosts, and later.
 - AI: studies at war, seals at peace.

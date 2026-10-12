@@ -8,9 +8,9 @@
   ],
   "params": [
     { "name": "archiveStudySteps", "label": "Yearly study boosts", "default": 4, "min": 1, "max": 20 },
-    { "name": "archiveStudyPct", "label": "Each study boost (% of a year of the empire's research)", "default": 8, "min": 0, "max": 500 },
+    { "name": "archiveStudyPct", "label": "Each study boost (% of a year of the empire's research)", "default": 16, "min": 0, "max": 500 },
     { "name": "archiveSealYears", "label": "Years a sealed core takes", "default": 5, "min": 1, "max": 50 },
-    { "name": "archiveSealPct", "label": "Sealed payoff (% of a year of the empire's research)", "default": 45, "min": 0, "max": 2000 },
+    { "name": "archiveSealPct", "label": "Sealed payoff (% of a year of the empire's research)", "default": 90, "min": 0, "max": 2000 },
     { "name": "archiveMinPoints", "label": "Smallest boost (research points)", "default": 15000, "min": 0, "max": 10000000 },
     { "name": "archiveRuinsChancePerMille", "label": "Chance a ruin investigation yields a core (per mille)", "default": 40, "min": 0, "max": 1000 }
   ]
