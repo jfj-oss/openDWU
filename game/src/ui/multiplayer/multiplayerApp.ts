@@ -160,7 +160,7 @@ function placeDock(): void {
     const v = `${left}px`;
     if (root.getPropertyValue('--mp-dock-left') !== v) root.setProperty('--mp-dock-left', v);
 }
-window.addEventListener('resize', () => placeDock());
+if (typeof window !== 'undefined') window.addEventListener('resize', () => placeDock());
 
 /** The "address" of a game joined by code (the rejoin memory; reconnecting takes a fresh code exchange). */
 const INTERNET_ADDRESS = 'internet';

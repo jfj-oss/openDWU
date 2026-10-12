@@ -398,7 +398,8 @@ describe('19h rim frontier — pirate herd hunting (not a port: new scenario rul
         rimFaunaState(g).herds.splice(rimFaunaState(g).herds.indexOf(herd), 1);
         const before = faction.stateMoney;
         frontierPirateHunt(g);
-        expect(rimFrontierState(g).pirateHunts.length).toBe(0);
+        // Only this herd's hunt must end: with the wild rim and the denser rim fauna, other rim factions may hunt other herds.
+        expect(rimFrontierState(g).pirateHunts.some((h) => h.herdId === herd.id)).toBe(false);
         expect(faction.stateMoney).toBeGreaterThan(before);
     }, 120000);
 
