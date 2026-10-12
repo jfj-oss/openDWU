@@ -21,6 +21,7 @@ import { registerStabilityTerm } from '../stability';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
 import { applyReputation } from '../reputation/ledger';
 import { rimTraderEmpire } from '../rimTrade/common';
+import { growsVoidbloom } from './trade';
 import {
     VOIDBLOOM_FLAG,
     addHistory,
@@ -87,7 +88,7 @@ function legalYear(galaxy: Galaxy): void {
         // Dependency: the hooked empire warms to its growers (leverage).
         for (const p of dependencyOf(galaxy, e)) applyReputation(galaxy, e, p, 4, { cause: 'voidbloom.dependency', labelKey: 'Voidbloom Reputation Dependency', source: 'voidbloom', term: 'bias' });
         // Temperance movements: a hooked, unhappy colony demands a ban.
-        if (rec.policy !== 'ban' && e !== r) temperance(galaxy, e);
+        if (rec.policy !== 'ban' && e !== r && !growsVoidbloom(galaxy, e)) temperance(galaxy, e);
     }
     // The pirate syndicates grow rich on the trade.
     const cut = st.stats.smugglerCut;

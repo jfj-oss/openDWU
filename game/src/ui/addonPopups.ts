@@ -8,8 +8,9 @@ import { addonTextTag } from '../sim/textResolver';
 import { getSettings } from './settings';
 
 /** Title tags of the moments worth a popup: victories and defeats, a hidden threat's reveal, coups, secession, the
- *  Diet's sessions, results, regency, empire and expulsion, the treasure fleet's arrival. */
-const BIG_MOMENT = /Victory|Defeat|Turn Title|Trigger Title|Rise Title|Start Title|Shutdown Title|Detonation Title|Coup|Secession|Breakaway|Expelled|Emperor|Regent Title|Session Title|Emergency Title|Results Title|Enforcers Title|Ruler Revealed|Ultimatum|Sector Formed|Treasure Title/;
+ *  Diet's sessions, results, regency, empire and expulsion, the treasure fleet's arrival, a Voidbloom world gained or lost
+ *  to its workers. */
+const BIG_MOMENT = /Victory|Defeat|Turn Title|Trigger Title|Rise Title|Start Title|Shutdown Title|Detonation Title|Coup|Secession|Breakaway|Expelled|Emperor|Regent Title|Session Title|Emergency Title|Results Title|Enforcers Title|Ruler Revealed|Ultimatum|Sector Formed|Treasure Title|Voidbloom Revolt Title|Voidbloom World Title/;
 
 const GATED = new Set<EmpireMessageType>([EmpireMessageType.GeneralBadEvent, EmpireMessageType.GeneralNeutralEvent, EmpireMessageType.GeneralGoodEvent]);
 

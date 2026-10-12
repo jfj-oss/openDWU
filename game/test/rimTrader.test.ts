@@ -505,8 +505,8 @@ describe('The Voidbloom War', () => {
         onContract(g, { seller, buyer: r, destination: dest, resourceId: voidbloomId(g), amount: 100, value: 12_000, freighter: null });
         const st = vbState(g);
         expect(st.stats.blackSales).toBe(100);
-        expect(st.stats.stateDrain).toBeCloseTo(30_000 * 0.15, 3);
-        expect(r.stateMoney).toBeCloseTo(s0 - 30_000 * 0.15, 3);
+        expect(st.stats.stateDrain).toBeCloseTo(21_000 * 0.15, 3);
+        expect(r.stateMoney).toBeCloseTo(s0 - 21_000 * 0.15, 3);
         expect(r.privateMoney).toBeLessThan(p0);
         expect(st.arcStarted).toBeGreaterThan(0);
         expect(vbColony(g, dest).tasted).toBeGreaterThan(0);

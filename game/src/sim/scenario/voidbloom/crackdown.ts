@@ -181,10 +181,14 @@ export function aiCrisisChoice(galaxy: Galaxy, e: Empire): string {
     const profit = rec.soldConcord / years;
     const price = vbParam(galaxy, 'voidbloomPayIndemnity');
     const decline = concordDecline(galaxy);
-    const war = 2 * (ratio - 1) + aggr - caution + 2 * decline + (profit > price ? 0.5 : 0) - 1;
-    const tolerate = 0.5 + Math.min(1.5, profit / Math.max(1, price)) - 0.3 * caution;
-    const pay = e.stateMoney > 3 * price ? 0.4 + 0.3 * caution + Math.min(1, profit / Math.max(1, price)) * 0.5 : -9;
-    const back = 0.2 + 0.5 * friendly + 0.6 * caution - Math.min(1.5, profit / Math.max(1, price)) - ratio * 0.3;
+    // The Concord is strong at first: war pays only once it has declined and the police action has started to bite.
+    const cd = crackdownOn(galaxy, e);
+    const bite = cd === null ? 0 : 0.25 * (cd.raids + cd.burns) + 0.8 * cd.occupations;
+    const share = Math.min(1, profit / Math.max(1, price));
+    const war = 3 * (ratio - 0.8) + aggr - 0.5 * caution + 3 * decline - 1.5;
+    const tolerate = 1 + share - bite;
+    const pay = e.stateMoney > 3 * price ? 0.6 + 0.3 * caution : -9;
+    const back = 0.3 + 0.5 * friendly + 0.5 * caution - share - 0.2 * ratio;
     const opts: [string, number][] = [['war', war], ['tolerate', tolerate], ['pay', pay], ['backDown', back]];
     let best = opts[0];
     for (const o of opts) if (o[1] > best[1]) best = o;
@@ -313,8 +317,10 @@ function seize(galaxy: Galaxy, bo: BuiltObject, near: Habitat): number {
         if (isHuman(galaxy, owner)) scenarioMessage(galaxy, owner, scenarioText('Voidbloom Seizure Title'), scenarioText('Voidbloom Seizure', bo.name, fmt(n), near.name), { type: EmpireMessageType.GeneralBadEvent, subject: near, popup: false });
     }
     // The public burning: a big haul is burned in public (galactic news).
-    if (n >= 300 || st.stats.burnings === 0) {
+    const now = galaxyStarDate(galaxy);
+    if (st.stats.burnings === 0 || (n >= 300 && now - (st.lastBurning ?? -Infinity) >= YEAR_LENGTH)) {
         st.stats.burnings++;
+        st.lastBurning = now;
         scenarioNews(galaxy, r, scenarioText('Voidbloom Burning News', fmt(n), near.name, st.commissioner?.name ?? r.name), () => true, near);
     }
     return n;
@@ -506,7 +512,7 @@ function policeAction(galaxy: Galaxy, r: Empire, cd: Crackdown): void {
     if (stock > 0) {
         cd.raids++;
         st.stats.raids++;
-        scenarioNews(galaxy, r, scenarioText('Voidbloom Raid News', r.name, site.name, fmt(stock)), () => true, site);
+        if (cd.raids === 1) scenarioNews(galaxy, r, scenarioText('Voidbloom Raid News', r.name, site.name, fmt(stock)), () => true, site);
         if (isHuman(galaxy, e)) scenarioMessage(galaxy, e, scenarioText('Voidbloom Police Title'), scenarioText('Voidbloom Raid', r.name, site.name, fmt(stock)), { type: EmpireMessageType.GeneralBadEvent, subject: site, popup: false });
     }
     // Burned fields after 30 days on station.
@@ -514,7 +520,8 @@ function policeAction(galaxy: Galaxy, r: Empire, cd: Crackdown): void {
         w.burnedUntil = now + vbParam(galaxy, 'voidbloomBurnDays') * GAME_DAY_LENGTH;
         cd.burns++;
         st.stats.burns++;
-        scenarioNews(galaxy, r, scenarioText('Voidbloom Burn News', r.name, site.name), () => true, site);
+        if (cd.burns === 1) scenarioNews(galaxy, r, scenarioText('Voidbloom Burn News', r.name, site.name), () => true, site);
+        else if (isHuman(galaxy, e)) scenarioMessage(galaxy, e, scenarioText('Voidbloom Police Title'), scenarioText('Voidbloom Burn News', r.name, site.name), { type: EmpireMessageType.GeneralBadEvent, subject: site, popup: false });
     }
     // Agents against the governor (Characters & Victory's governors).
     const gov = colonyGovernor(site);

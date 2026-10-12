@@ -1,6 +1,6 @@
 # The Voidbloom War — design and mechanics audit
 
-Status: design only (2026-10-12). No code yet. Planned add-on id `voidbloom`, group **Rim**, member of The Rim
+Status: built 2026-10-12 (see **As built** at the end; the design below is kept as written). Add-on id `voidbloom`, group **Rim**, member of The Rim
 expansion (`EXPANSIONS` in `src/sim/scenario/addons.ts`), requires `rimTrade`. Optional partners: `characters-victory`
 (Interstellar Diet, VIP shuttles), `lively-galaxy` (War Goals and Terms), `internal-security`, `emergent`,
 `frontier-autonomy`, `colony-economy`.
@@ -401,3 +401,121 @@ Total ≈ 6,000 lines, in eight agent-sized slices. V0–V2 are playable alone, 
    or the ban side, by default?
 6. **Spread home:** may Voidbloom leak into the smuggler's own and other empires' colonies (which drives Diet support
    for a ban), or should addiction stay confined to Concord space?
+
+
+## As built (2026-10-12)
+
+Code: `src/sim/scenario/voidbloom/` (`common.ts` state and lookups, `supply.ts` worlds / harvest / labour / garrisons,
+`trade.ts` orders / legality / drain / spread / effects / AI policy, `crackdown.ts` commissioner / inspections / crisis /
+police action / bribes, `treaty.ts` decline / peace gate / terms / aftermath, `diet.ts` the Diet, `legal.ts` the legal era,
+`view.ts` read-outs and player commands), `scenarios/voidbloom/` (manifest, `resources.txt`, `GameText.txt`), UI in
+`src/ui/scenario/voidbloomUi.ts`, `src/render/voidbloomMarkers.ts`, the peace dialog (`warTermsPanel.ts`), the colony
+panel (`selectionInfo.ts`) and the colonies list. Tests: `test/rimTrader.test.ts` ("The Voidbloom War"),
+`test/modlayer.test.ts` (catalog), `test/rimHerders.test.ts` (resource ids).
+
+**Groundwork (V0), all inert with the add-on off:** `rimTrade/common.ts concordHooks()` (opening, war lift, protectorate
+exception, colony-cap exemption, navy-cap factor, research cap, task-force exemption from the passive posture, treaty-port
+trade, toll exemption, ports open), `lively/peaceTerms.ts` `PeaceTerms.extra` with `registerPeaceTermKind` (value,
+describe, sanitise, apply), `registerPeaceTermsBuilder` and `registerPeaceAppliedListener`; `lively/warGoals.ts
+grantCasusBelli`; the humiliation write now goes through `applyReputation` (flag off: the same write);
+`diet/dietState.ts registerDietMotionKind` (text, apply via `addLaw`, vote score, candidates, label / effect for the
+screen) and `registerDietSeatExclusion`; `diet.ts dietLawViolation`.
+
+### Decisions taken during the build (details the design left open)
+
+1. **Voidbloom is a resource-table entry** (overlay id 49, renumbered by name when rim-herders is absent; our own icon,
+   picture ref 9100) registered as a scenario good, so galaxy generation draws exactly as without the add-on. It is on
+   no planet's resource list: the add-on grows it into the colony's stock, so no mining station can take it.
+2. **Worlds:** picked at game start among unowned, unpopulated rim planets (radius ≥ 0.7) of habitable types, swamps and
+   volcanic worlds first, at least 5 sectors apart; one per 140 stars, at least 3; base quality raised to 0.55 so the
+   stock colonisation filter considers them. **The climate:** nobody is born there (`colonyMaxPopulation` capped at the
+   current population), 35 % die each year, and a crowd above 1.5 × the labour target (migrants) loses half the excess a
+   month; never below 1 million.
+3. **Harvest:** `voidbloomYield × workers(M)^0.6` units every 30 days (12 × 40^0.6 ≈ 110), a quarter while the fields are
+   burned, nothing while the Concord holds the world; stockpile capped at 4,000.
+4. **Labour convoys** reuse the Refugees add-on's convoy pattern (an independent passenger ship, pre-loaded, Transport
+   mission, settled by the stock unload). Conquered peoples are taken first. AI (and the player's automation, on by
+   default) sends one every 90 days while the world is under 40 million; 15,000 credits each.
+5. **Garrisons** count troops: 2 + 1 per 10 million workers. A levy raises one troop for 8,000 credits (AI and the
+   player's automation one a month). A short garrison risks a revolt (12 % a month × the shortfall share): the workers
+   take the world as an independent colony, which keeps its stock and becomes a black-market seller.
+6. **Who sells where:** the stock order path (the `extraLuxuryOrders` slot) and `contractAvailable` on the seller: into a
+   banned market (the Concord always, unless legalised) only smugglers sell — pirates, independents and empires whose
+   policy is `smuggle`; an empire with policy `ban` sells none. **A grower keeps it off its own markets** (its colonies
+   order it only once hooked some other way; exposure × 0.2) — added after the first soak, where the grower's own
+   colonies ate the whole harvest.
+7. **Price and drain:** black-market premium = value × 1.5 × (0.5 + the buyer colony's addiction); a legal sale carries
+   a 0.5 × addiction markup. On every purchase the buyer's state treasury pays 15 % of the total (the silver drain), its
+   private sector the rest; smugglers keep 20 % of the premium (the carrier, else the richest pirate faction).
+   **Addicted colonies use it:** 60 units per billion people a month at full addiction (the stock luxury consumption is
+   only 2e-8 per person a year, far too small to drain anyone).
+8. **Spread (epidemic):** every 30 days, exposure from growing worlds (0.1, 0.18 when the owner smuggles) and addicted
+   colonies (0.1 × addiction) within 14 sectors, linear fall-off; the Concord's colonies get +0.04 a month once anyone
+   grows it and × 3 overall (the Canton market). Dampers: race susceptibility from a fixed hash of the race name (about
+   10 % immune, 20 % resistant at 0.4, 20 % susceptible at 1.3), a ban × 0.5, a Customs Bureau × 0.5, Internal Security
+   × 0.8, the government's stability, unhappiness (approval under 30 speeds it). A colony that tastes it (exposure 1 or a
+   delivery) orders it; supplied (stock, or a purchase in the last 60 days) it gains 0.03 addiction a month (× 1.2 in
+   the Concord), unsupplied it loses 0.012 (× 4 after neural detox).
+9. **Crackdown timing:** at a Concord addiction index of 0.12 or 400,000 credits drained (whichever first). The
+   commissioner is a governor character (`governors.ts spawnGovernorFor`, so Characters & Victory's travel applies when
+   on) named "Commissioner …" at the worst-hit colony. Inspections every 10 days: 30 % per ship near the commissioner,
+   15 % near any other Concord colony; seized cargo is destroyed; galactic news of a public burning at most once a year.
+10. **Crisis:** every smuggling empire (sold into the Concord, policy smuggle, holds a world) gets a crisis decision:
+    back down (legal for 10 years), pay 250,000 (5 quiet years), tolerate, or war (declared at once; casus belli and a
+    penalty-free declaration). The AI scores war = 3 (strength ratio vs the home guard − 0.8) + aggression − caution / 2 +
+    3 × decline − 1.5 against tolerate = 1 + profit share − the police action's bite (raids, burns, occupations); a
+    tolerated AI target is asked again every 3 years, so wars come late. Independent growers (the cartel, risen workers)
+    get the police action without a crisis.
+11. **Police action** is scripted, not the stock war AI: a task force of 8 warships (out of AI control, exempt from the
+    passive posture; the home guard share stays home) blockades the nearest world; on station it raids every 30 days
+    (the stock on the planet is destroyed), burns the fields after 30 days, kills the governor 25 % a month, frees
+    labour convoys it meets (the workers join the nearest Concord colony), stops and searches the target's freighters
+    within a sector (and attacks them in war), and **occupies** a world after 90 days when its garrison is smaller than
+    the ships present (a scripted hand-over, so it works without war). Occupied worlds lie fallow and do not count
+    against the Concord's colony cap. During a tolerated action the Concord may attack the target's ships without war.
+12. **Decline index** (0..1) = 0.35 × addiction + 0.25 × drained / starting treasury + 0.2 × (1 − treasury / starting
+    treasury) + 0.2 × (tech gap / 3, the best normal empire's weapon / energy / high-tech level over the Concord's). The
+    navy cap factor falls with addiction (× (1 − addiction / 2)). **Peace gate:** below 0.45 the Concord rejects any offer
+    in which it cedes, pays or grants rights.
+13. **Treaty terms** (PeaceTerms.extra kinds; points): legal Voidbloom 150, treaty port 150 (its most populous non-capital
+    colony), toll exemption 120, inspection exemption 80, a 10 % customs cut 100; the barren rock is its least valuable
+    colony (it grows into a trade hub: +2 development and +3 % income a year, up to +30 / +40 %). The AI asks legalisation
+    always and the rest within its budget. Without War Goals: a built-in treaty when the Concord's gate is open and the
+    smuggler inflicted 1.2 × the damage it took (the rock, 30 % of 40 % of the Concord's treasury now, the rest in five
+    yearly instalments, every right).
+14. **Aftermath:** drawn at the first yearly tick after signing. Harshness = the treaty's value to the victor in term
+    points, harsh from 600. Weights as §4 (plus +5 collapse when harsh). Self-Strengthening raises the research cap a
+    level every 5 years to 9 and plans a revanche 15–30 years on (the war block lifts toward the victor only); unrest
+    splits 35 % of the Concord at its most addicted colony (the "Bloom Heavenly Kingdom", its leader "the Bloom Prophet",
+    Spiritual); client = a protectorate under the victor (the Concord's refusal lifted for that one treaty); opening ends
+    every closed-trade rule (the Concord becomes a normal AI empire) and legalises Voidbloom for all; collapse splits 2–3
+    far colonies off. Ten years after any treaty but client / opening the pretext incident gives the victor a casus belli
+    (an AI victor with 60 % of the Concord's strength declares); war damage at the Concord's capital in that war loots
+    10 % of its treasury and burns its wonder (−10 approval there).
+15. **"Me too":** a normal empire in contact with the Concord and at least half its strength gets legal Voidbloom, toll
+    and inspection exemption once a treaty exists.
+16. **Diet:** Ban Voidbloom (members ban it; a member smuggling into another member breaks the law, once a year),
+    Open the Concord's Ports (toll exemption and open ports for members), a Diet treaty for a Voidbloom war a year old
+    (truce, an indemnity of at most 200,000 or 5 % of the Concord's treasury, no cession, the smuggler backs down), and
+    after 8 years of legal trade Galactic Prohibition (every member bans it and every legalisation is suspended). Sanction
+    cases on smugglers come from hooked members and the Concord, on the Concord from members whose cargo was seized.
+    Vote bias follows decision 5; the Concord never hosts the Diet nor stands for or becomes Regent.
+17. **Legal era (item 15):** dependency (a member with addiction ≥ 0.25 warms to its growers yearly and hesitates to war on
+    them), withdrawal crises (120 days unsupplied at addiction ≥ 0.35), temperance movements (a hooked colony under 40
+    approval asks for a ban; AI cautious or hooked governments ban; ignoring costs −5 approval there for 3 years), neural
+    detox (300,000, 4 years; the AI funds it at addiction ≥ 0.2), leaders who pick up the Addict trait, and syndicate news.
+    Temperance and dependency run whenever addiction is high, not only after legalisation.
+18. **Bribery:** the player (and a rich AI under a police action) can bribe the Concord's officials: no inspections of its
+    ships for 2 years for 80,000 + 2 % of the Concord's treasury.
+19. **Player commands** (journaled): `vbSetPolicy`, `vbSetAutomation`, `vbLabourConvoy`, `vbLevyGarrison`, `vbStartDetox`,
+    `vbBribeOfficials`; the crisis and temperance answers use `answerDecision`; treaty rights go through
+    `proposePeaceTerms`; Diet motions through `dietPropose`.
+20. **UI:** a Voidbloom block under the Concord's trade terms on the diplomacy screen (policy, the drain, addiction and
+    decline, our worlds with convoy / garrison buttons and automation, detox, bribery, history); treaty-rights check
+    boxes in the peace dialog; Voidbloom lines on the colony panel and in the colonies list's approval breakdown; a quiet
+    map mark (a spore glyph on explored worlds, a faint violet ring around addicted colonies). No new top-bar icon; only a
+    revolt and a world gained pop up (the crisis and temperance are decisions).
+
+**Not done / simplified:** the treasure fleet is not forced to call at treaty ports; recognising treaty ports in the Diet
+(stock `claim`) is not proposed by the AI; in the opening branch the treasure fleet stays but no longer sails as a Concord
+rule; occupation does not use the stock invasion; per-pair dependency is approximated by "every grower that sells".

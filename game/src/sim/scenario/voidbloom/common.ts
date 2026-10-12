@@ -39,6 +39,7 @@ export const VB_DEFAULTS = {
     voidbloomRevoltPct: 12,
     voidbloomColonyValue: 4,
     voidbloomPremium: 1.5,
+    voidbloomUse: 60,
     voidbloomStateDrainPct: 15,
     voidbloomSmugglerCutPct: 20,
     voidbloomReachSectors: 14,
@@ -308,6 +309,8 @@ export interface VoidbloomState {
     syndicateNoted?: number;
     /** The Concord's decline index at the last yearly review (soak / panel read-out). */
     declineNow?: number;
+    /** Star date of the last public burning (galactic news at most once a year). */
+    lastBurning?: number;
     /** History lines for the Galactopedia / panel (newest last, trimmed to 60). */
     history: string[];
     /** Yearly samples for the panel's "silver drain" figure (last 30 years). */

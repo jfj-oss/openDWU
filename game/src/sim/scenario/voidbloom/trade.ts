@@ -69,6 +69,8 @@ function extraOrders(galaxy: Galaxy, v: readonly number[], a: { empire: Empire; 
     if (c === null || c.tasted < 0) return v;
     // A banning empire's colonies still want it once addicted (the black market); before, the ban keeps demand away.
     if (policyOf(galaxy, a.empire) === 'ban' && a.empire !== rimTraderEmpire(galaxy) && c.a < 0.05) return v;
+    // A grower keeps it off its own markets: its colonies order it only once hooked some other way.
+    if (c.a < 0.1 && growsVoidbloom(galaxy, a.empire)) return v;
     return v.length === 0 ? [id] : [...v, id];
 }
 
@@ -116,13 +118,17 @@ export function onContract(galaxy: Galaxy, p: { seller: Empire; buyer: Empire | 
     const buyer = p.buyer;
     if (seller === buyer) return;
     const black = !legalInto(galaxy, seller, buyer);
-    const premium = black ? p.value * vbParam(galaxy, 'voidbloomPremium') : 0;
+    // Demand and price rise with addiction: the black market's premium (and a legal markup) grows with the buyer's habit.
+    const hDest = destinationColony(p.destination);
+    const habit = hDest !== null ? (peekVbColony(galaxy, hDest)?.a ?? 0) : 0;
+    const premium = p.value * (black ? vbParam(galaxy, 'voidbloomPremium') * (0.5 + habit) : 0.5 * habit);
     const total = p.value + premium;
     const statePart = (total * vbParam(galaxy, 'voidbloomStateDrainPct')) / 100;
     const privateExtra = total - statePart - p.value; // may be negative: the state share refunds the private sector
     if (privateExtra !== 0) performPrivateTransaction(buyer, -privateExtra);
     buyer.stateMoney -= statePart;
     let cut = 0;
+    if (premium > 0 && !black) performPrivateTransaction(seller, premium);
     if (black) {
         cut = (premium * vbParam(galaxy, 'voidbloomSmugglerCutPct')) / 100;
         const carrier = p.freighter?.actualEmpire ?? null;
@@ -265,6 +271,7 @@ export function spreadTick(galaxy: Galaxy): void {
             if (d < reach && d > 1) dx += s.w * (1 - d / reach);
         }
         const isConcord = e === r;
+        if (growsVoidbloom(galaxy, e)) dx *= 0.2;
         if (isConcord) dx = (dx + (growing ? 0.04 : 0)) * vbParam(galaxy, 'voidbloomCanton');
         if (dx <= 0 && existing === null) continue;
         const approval = empireApprovalRatingStock(galaxy, h);
@@ -280,11 +287,33 @@ export function spreadTick(galaxy: Galaxy): void {
         if (supplied) {
             c.sup = now;
             c.a = Math.min(1, c.a + rate * Math.max(0.3, sus) * (isConcord ? 1.2 : 1));
+            // The habit eats the stock far faster than any stock luxury: voidbloomUse units per billion a month at full addiction.
+            const use = Math.ceil(vbParam(galaxy, 'voidbloomUse') * Math.max(0.05, c.a) * Math.max(0.2, (h.population?.totalAmount ?? 0) / 1e9));
+            consumeVoidbloom(galaxy, h, use);
         } else if (c.a > 0) {
             const detox = vbEmpire(galaxy, e).detoxDone ? 4 : 1;
             c.a = Math.max(0, c.a - decay * detox);
         }
     }
+}
+
+/** Takes up to `n` units of Voidbloom from the colony's own stock (unreserved first). Returns units taken. */
+function consumeVoidbloom(galaxy: Galaxy, h: Habitat, n: number): number {
+    const id = voidbloomId(galaxy);
+    if (h.cargo === null || n <= 0) return 0;
+    let left = n;
+    const items = h.cargo.items;
+    for (let i = items.length - 1; i >= 0 && left > 0; i--) {
+        const c = items[i];
+        if (c.commodity.resourceId !== id) continue;
+        const free = Math.max(0, c.amount - (c.reserved ?? 0));
+        const take = Math.min(free, left);
+        if (take <= 0) continue;
+        c.amount -= take;
+        left -= take;
+        if (c.amount <= 0 && (c.reserved ?? 0) <= 0) items.splice(i, 1);
+    }
+    return n - left;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -386,6 +415,12 @@ function warnings(galaxy: Galaxy): void {
 // ---------------------------------------------------------------------------------------------------------------
 // The AI's policy (yearly)
 // ---------------------------------------------------------------------------------------------------------------
+
+/** `e` holds a Voidbloom world. Pure. */
+export function growsVoidbloom(galaxy: Galaxy, e: Empire): boolean {
+    for (const w of peekVbState(galaxy)?.worlds ?? []) if (w.habitat.empire === e && !w.habitat.hasBeenDestroyed) return true;
+    return false;
+}
 
 /** Voidbloom held or grown by `e` (units in stock at its worlds and colonies). Pure. */
 export function voidbloomHeld(galaxy: Galaxy, e: Empire): number {
