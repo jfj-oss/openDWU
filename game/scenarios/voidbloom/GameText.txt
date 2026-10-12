@@ -1,0 +1,110 @@
+'Scenario voidbloom: texts of The Voidbloom War (docs/VOIDBLOOM_WAR.md). Sober and dark, in the game's own tone.
+Voidbloom World Title;Voidbloom World
+Voidbloom World Gained;{0} is a Voidbloom world. Nothing is born there and the workers die steadily: it needs labour convoys and a garrison of at least {1} troops to keep the forced workers down.
+Voidbloom Colony World;Voidbloom world: deadly; worked by forced labour under guard.
+Voidbloom Revolt Title;Workers' Revolt
+Voidbloom Revolt;The forced workers of {0} have overrun a garrison of {1} (it needed {2}) and hold the world for themselves.
+Voidbloom Revolt News;The labourers of the Voidbloom world {0} have risen against the {1} and taken the world.
+Voidbloom Convoy Title;Labour Convoy
+Voidbloom Convoy Name;{0} Labour Convoy
+Voidbloom Convoy Sent;A labour convoy of {0} {1} has left {2} for the Voidbloom world {3}.
+Voidbloom Convoy Freed;The {1} intercepted our labour convoy: {0} workers were freed and taken into Concord space.
+Voidbloom Cartel News;A rim cartel has settled the Voidbloom world {0}. Its spore will find buyers.
+Voidbloom Spread Title;Voidbloom
+Voidbloom Spread;Voidbloom has reached {0}. Its people have tasted it and now ask for more.
+Voidbloom Withdrawal Title;Withdrawal
+Voidbloom Withdrawal;{0} has gone without Voidbloom for months. The addicted are in withdrawal: approval and output are falling.
+Voidbloom Dens News;Spore dens have opened in {0}. The {1} cannot close them as fast as they appear.
+Voidbloom Ban News;The {0} has banned Voidbloom: its freighters will carry none and its colonies will seize what they find.
+Voidbloom Commissioner Name;Commissioner {0}
+Voidbloom Letter News;{0} of the {1} has published an open letter to the rulers of the galaxy from {2}: the trade in Voidbloom will end, and every cargo of it found in Concord space will be burned.
+Voidbloom Burning News;{0} units of seized Voidbloom were burned in public at {1} on the orders of {2}.
+Voidbloom Seizure Title;Cargo Seized
+Voidbloom Seizure;Concord customs searched our ship {0} near {2} and seized {1} units of Voidbloom.
+Voidbloom Crisis Title;The Voidbloom Crisis
+Voidbloom Crisis Text;The {0} demands an end to our Voidbloom trade. {1} has named our Voidbloom worlds and will blockade, raid and burn them. We can back down and hand over the smugglers, pay {2} credits for {3} years of quiet, tolerate the police action and keep trading, or go to war.
+Voidbloom Crisis BackDown;Back down: hand over the smugglers
+Voidbloom Crisis Pay;Pay {0} credits
+Voidbloom Crisis Tolerate;Tolerate the police action
+Voidbloom Crisis War;Go to war
+Voidbloom Answer backDown;backed down
+Voidbloom Answer pay;paid
+Voidbloom Answer tolerate;tolerated the police action
+Voidbloom Answer war;went to war
+Voidbloom BackDown News;The {0} has handed over its smugglers to the {1} and ended its Voidbloom trade.
+Voidbloom Paid News;The {0} has paid the {1} {2} credits to call off its crackdown.
+Voidbloom Police News;The {0} has begun a police action against the Voidbloom worlds of the {1}. The {1} does not resist.
+Voidbloom Police Title;Police Action
+Voidbloom Raid;Concord marines raided {1} and destroyed {2} units of Voidbloom.
+Voidbloom Raid News;Marines of the {0} raided {1} and destroyed {2} units of Voidbloom stored there.
+Voidbloom Burn News;The {0} has burned the Voidbloom fields of {1}. They will yield little for a long time.
+Voidbloom Agents News;The governor of {0} has been killed. Agents of the {1} are suspected.
+Voidbloom Occupied News;The {0} has occupied the Voidbloom world {1}, taken from the {2}. Its fields lie fallow.
+Voidbloom War News;The {0} has gone to war with the {1} over Voidbloom.
+Voidbloom Gunboat News;The ships of the {0} are a generation behind. Its research has stood still while the galaxy moved on.
+Voidbloom Treaty News;The {0} has signed an unequal treaty with the {1}: {2}.
+Voidbloom Term Legalise;the {0} allows the {1} to sell Voidbloom legally
+Voidbloom Term Inspection;the {1}'s ships are exempt from the {0}'s inspections
+Voidbloom Term Toll;the {1} pays no tolls or standing limits on the {0}'s rare goods
+Voidbloom Term Port;{0} becomes a treaty port open to the {1}
+Voidbloom Term Customs;the {0} takes {1}% of the {2}'s customs income
+Voidbloom Term Cede;the {0} cedes {1} to the {2}
+Voidbloom Term Indemnity;an indemnity of {0} credits now and {1} a year for {2} years
+Voidbloom MFN News;The {0} has demanded and won the same rights from the {1} as its conquerors: most-favoured nation.
+Voidbloom Branch reform News;The {0} turns inward to study the foreigners' guns. Self-Strengthening has begun; the {1} has not been forgiven.
+Voidbloom Branch unrest News;A prophet of the bloom has raised the addicted provinces of the {0} in revolt. Civil war has begun.
+Voidbloom Branch client News;The {0} has placed itself under the protection of the {1}.
+Voidbloom Branch opening News;The {0} has thrown open its ports and its laboratories. The giant is awake.
+Voidbloom Branch collapse News;The {0} is breaking apart. Its far provinces have declared themselves free.
+Voidbloom Rebel Name;Bloom Heavenly Kingdom
+Voidbloom Zealot Name;{0} the Bloom Prophet
+Voidbloom Revanche News;The {0} has gone to war with the {1} to take back its treaty ports.
+Voidbloom Pretext News;Concord customs have boarded a ship of the {1} and hauled down its flag. The {1} calls it an outrage; the {0} calls it law.
+Voidbloom Loot News;Troops of the {0} have looted and burned the great wonder of {1}, carrying off {2} credits.
+Voidbloom Detox News;The {0} has completed its neural detox research. Its addicted colonies recover faster.
+Voidbloom Leader Title;Our Leader
+Voidbloom Leader Addict;{0} has taken to Voidbloom.
+Voidbloom Syndicate News;Pirate syndicates have grown rich on the Voidbloom trade: {0} credits so far.
+Voidbloom Temperance Title;Temperance Movement
+Voidbloom Temperance Text;A temperance movement at {0} demands that we ban Voidbloom.
+Voidbloom Temperance Ban;Ban Voidbloom
+Voidbloom Temperance Ignore;Ignore them
+Voidbloom Diet Ban;Ban Voidbloom across the Diet
+Voidbloom Diet Open;Open the ports of the {0}
+Voidbloom Diet Mediate;A Diet treaty between the {0} and the {1}
+Voidbloom Diet Prohibition;Galactic Prohibition of Voidbloom
+Voidbloom Panel Title;Voidbloom
+Voidbloom Panel Drain;Silver drained from the Concord
+Voidbloom Panel Concord;The Concord
+Voidbloom Panel Ours;Our colonies
+Voidbloom Panel Trade;Our trade
+Voidbloom Panel Seized;Seized from us
+Voidbloom Panel Rights;Our treaty rights
+Voidbloom Panel Commissioner;Commissioner
+Voidbloom Panel Crackdown;Crackdown on us
+Voidbloom Panel War;War
+Voidbloom Panel Treaty;Unequal treaty
+Voidbloom History First;{0} sold the first Voidbloom into the {1} in {2}.
+Voidbloom History Cartel;A rim cartel settled {0} in {1}.
+Voidbloom History Revolt;The workers of {0} rose against the {1} in {2}.
+Voidbloom History Letter;{0} published the open letter in {1}.
+Voidbloom History Crisis;The {0} {1} in {2}.
+Voidbloom History War;The {0} went to war with the {1} in {2}.
+Voidbloom History Occupied;{0} was occupied by the {1} in {2}.
+Voidbloom History Treaty;The {0} signed an unequal treaty with the {1} in {2}.
+Voidbloom History Gunboat;The {0} fell a generation behind in {1}.
+Voidbloom History Pretext;The {0} was given its pretext for a second war in {1}.
+Voidbloom History Loot;The wonder of {0} was looted and burned in {1}.
+Voidbloom History Revanche Won;The {0} took back its treaty rights from the {1} in {2}.
+Voidbloom History Mediated;The Diet ended the war between the {0} and the {1}; the Concord paid {2} credits.
+Voidbloom History Diet;The Diet passed: {0}.
+Voidbloom History Temperance;The {0} banned Voidbloom under pressure from its temperance movements in {1}.
+Voidbloom History Branch reform;The {0} began its Self-Strengthening in {1}.
+Voidbloom History Branch unrest;The {0} fell into civil war in {1}.
+Voidbloom History Branch client;The {0} became a client state in {1}.
+Voidbloom History Branch opening;The {0} opened itself to the galaxy in {1}.
+Voidbloom History Branch collapse;The {0} broke apart in {1}.
+Voidbloom Reputation Seizure;Seized our Voidbloom cargo
+Voidbloom Reputation Neutral;Searched and seized our ships
+Voidbloom Reputation Dependency;Supplies our Voidbloom
+Voidbloom Reputation Treaty;Forced an unequal treaty on us

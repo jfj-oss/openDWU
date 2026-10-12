@@ -38,6 +38,7 @@ const GROUP_OF: Readonly<Record<string, AddonGroup>> = {
     'rim-frontier': 'Rim',
     'new-fauna': 'Rim',
     rimTrade: 'Rim',
+    voidbloom: 'Rim',
     cult: 'Hidden threats',
     darkfarms: 'Hidden threats',
     doppelgangers: 'Hidden threats',
@@ -418,7 +419,7 @@ export interface Expansion {
 }
 
 export const EXPANSIONS: readonly Expansion[] = [
-    { id: 'the-rim', name: 'The Rim', description: 'The frontier beyond the core: rim trade, frontier settlement, wild fauna and herders, and the rim atmosphere.', members: ['rimTrade', 'rim-frontier', 'rim-fauna', 'rim-herders', 'rim-atmosphere', 'new-fauna'] },
+    { id: 'the-rim', name: 'The Rim', description: 'The frontier beyond the core: rim trade, frontier settlement, wild fauna and herders, the rim atmosphere, and the Voidbloom War.', members: ['rimTrade', 'rim-frontier', 'rim-fauna', 'rim-herders', 'rim-atmosphere', 'new-fauna', 'voidbloom'] },
     { id: 'politics-characters', name: 'Politics & Characters', description: 'Governors, VIPs and the Galactic Council, internal security, reputation, espionage fallout, frontier autonomy and refugees.', members: ['characters-victory', 'internal-security', 'reputation', 'espionage-consequences', 'frontier-autonomy', 'refugees-demographics'] },
     { id: 'economy', name: 'Economy', description: 'Colony economy, the exchange, chartered companies, corporate coups, privateers, resource crises and wreckage salvage.', members: ['colony-economy', 'exchange', 'chartered-companies', 'corporatecoup', 'privateers', 'resource-crises', 'wreckage-salvage'] },
     { id: 'galactic-threats', name: 'Galactic Threats', description: 'The hidden end-game threats: cult, hive, silence, greytide, ghost armada, robot mutiny, time bomb, doppelgangers and dark farms.', members: ['threat-framework', 'cult', 'hive', 'silence', 'greytide', 'ghostarmada', 'robotmutiny', 'timebomb', 'doppelgangers', 'darkfarms'] },

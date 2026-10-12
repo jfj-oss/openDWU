@@ -1,0 +1,4 @@
+'Scenario voidbloom: Voidbloom, the contraband spore (our own icon, picture ref 9100). No distributions: it never
+'occurs on planets; only a colony on a Voidbloom world grows it (scenario/voidbloom/supply.ts). Id 49 follows
+'rimTrade's 41-46 and rim-herders' 47-48; loaded without rim-herders the overlay merge renumbers it (looked up by name).
+49, Voidbloom, 9100, 120.0, 2, 0, N, N, 0, 0,

@@ -45,6 +45,7 @@ import { checkCancelContracts, clearPreviousMissionRequirements, assignMission }
 import { BuiltObjectMissionPriority, BuiltObjectMissionType, CommandAction, isBuiltObject, isHabitat } from './mission';
 import type { CommandHandler } from './executeCommands';
 import { refugeeConvoySkipLoad, settleRefugeeConvoyArrival } from '../scenario/emergent/demographics';
+import { labourConvoySkipLoad, settleLabourConvoyArrival } from '../scenario/voidbloom/supply';
 import { addHumanSmuggling } from '../perHumanState';
 import { humanEmpires } from '../humanEmpires';
 
@@ -427,7 +428,7 @@ export const cmdLoad: CommandHandler = (ctx) => {
     let result = 0.0;
     // mod layer (19d4 §2.5): a refugee convoy is pre-loaded (its population already left the origin when its flow
     // spawned) — skip the pickup leg instead of wiping and re-pulling it from the origin's live colony population.
-    if (galaxy.scenario !== null && refugeeConvoySkipLoad(galaxy, bo)) {
+    if (galaxy.scenario !== null && (refugeeConvoySkipLoad(galaxy, bo) || labourConvoySkipLoad(galaxy, bo))) {
         mission.completeCommand();
         bo.firstExecutionOfCommand = true;
         return timePassed;
@@ -816,7 +817,10 @@ export const cmdUnload: CommandHandler = (ctx) => {
             // mod layer (19d4 §2.6): refugee convoys settle here — before bo.population is wiped below, so the hook
             // still sees the arrived items (and can found an independent colony when dockedAt had none, which the
             // stock code above silently drops).
-            if (galaxy.scenario !== null) settleRefugeeConvoyArrival(galaxy, bo, dockedAt);
+            if (galaxy.scenario !== null) {
+                settleRefugeeConvoyArrival(galaxy, bo, dockedAt);
+                settleLabourConvoyArrival(galaxy, bo, dockedAt); // The Voidbloom War: labour convoys (the stock unload above settled them)
+            }
             if (bo.population !== null) {
                 bo.population.items.length = 0;
                 bo.population.recalculateTotalAmount();
