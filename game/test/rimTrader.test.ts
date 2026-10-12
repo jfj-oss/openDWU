@@ -45,10 +45,10 @@ import { concordFallbackHome } from '../src/sim/scenario/rimTrade/rimTrader';
 import { galaxyResourceCurrentPrices } from '../src/sim/design';
 import { requestTreasureStop, treasureStopRequests } from '../src/sim/scenario/rimTrade/treasureFleet';
 import { ColonyResourceEffect } from '../src/sim/developmentLevel';
-import { vbColony, vbEmpire, vbState, voidbloomId, voidbloomStock } from '../src/sim/scenario/voidbloom/common';
-import { garrisonNeeded, garrisonOf, supplyTick, worldYield } from '../src/sim/scenario/voidbloom/supply';
-import { onContract, spreadTick, voidbloomApproval, voidbloomContractAvailable } from '../src/sim/scenario/voidbloom/trade';
-import { crackdownYear } from '../src/sim/scenario/voidbloom/crackdown';
+import { hasBloomTech, vbColony, vbEmpire, vbState, voidbloomId, voidbloomStock } from '../src/sim/scenario/voidbloom/common';
+import { fallbackStarter, garrisonNeeded, garrisonOf, supplyTick, worldYield } from '../src/sim/scenario/voidbloom/supply';
+import { onContract, spreadTick, treasuryDrain, voidbloomApproval, voidbloomContractAvailable } from '../src/sim/scenario/voidbloom/trade';
+import { concordHarm, crackdownDue, crackdownYear } from '../src/sim/scenario/voidbloom/crackdown';
 import { concordDeclineIndex, unequalTerms } from '../src/sim/scenario/voidbloom/treaty';
 import { describeTerms, sanitiseTerms, termsValueFor } from '../src/sim/scenario/lively/peaceTerms';
 import { makeHabitatIntoColonyRuntime } from '../src/sim/missions/cmdTroops';
@@ -467,11 +467,35 @@ describe('The Voidbloom War', () => {
         expect(g.habitats.some((h) => h?.cargo?.items.some((c) => c.commodity.resourceId === id) === true)).toBe(false);
     });
 
+    it('the supply gate: no grower and no cartel before a tech-4 hostile-environment project', () => {
+        const st = vbState(g);
+        const normal = g.empires.filter((x) => x !== null && x !== rimTraderEmpire(g) && x !== g.independentEmpire && x.dominantRace !== null);
+        expect(normal.some((x) => hasBloomTech(g, x!))).toBe(false);
+        // No fixed year: decades on, the cartel still waits for somebody's research.
+        g.nowMs += 30 * YEAR_LENGTH;
+        fallbackStarter(g, 30);
+        g.nowMs -= 30 * YEAR_LENGTH;
+        expect(st.cartel).toBeNull();
+        expect(st.gateOpened ?? -1).toBeLessThan(0);
+        // A worked world grows nothing without the tech.
+        const w = st.worlds[0];
+        const e = g.empires.find((x) => x !== null && x !== rimTraderEmpire(g) && x !== g.independentEmpire && x !== g.playerEmpire && x.dominantRace !== null && x.colonies.length > 0)!;
+        makeHabitatIntoColonyRuntime(g, e, w.habitat, e, e.dominantRace!, 30_000_000);
+        expect(worldYield(g, w)).toBe(0);
+        // Biological Workshops (Habitation, tech 4) opens it; the cartel clock starts with the first such empire.
+        const node = e.research.techTree.find((n) => n.def.category === 8 && n.def.techLevel === 4 && n.def.facilityId != null)!;
+        expect(node).toBeDefined();
+        node.isResearched = true;
+        expect(hasBloomTech(g, e)).toBe(true);
+        expect(worldYield(g, w)).toBeGreaterThan(0);
+        fallbackStarter(g, 1);
+        expect(st.gateOpened).toBeGreaterThan(0);
+        expect(st.cartel).toBeNull(); // a world is worked, and the gate has stood open less than voidbloomFallbackYear
+    });
+
     it('a colony on a world harvests it; the climate kills; garrison levies; labour convoys sail', () => {
         const w = vbState(g).worlds[0];
-        const e = g.empires.find((x) => x !== null && x !== rimTraderEmpire(g) && x !== g.independentEmpire && x !== g.playerEmpire && x.dominantRace !== null && x.colonies.length > 0)!;
-        const race = e.dominantRace!;
-        makeHabitatIntoColonyRuntime(g, e, w.habitat, e, race, 30_000_000);
+        const e = w.habitat.empire!;
         e.stateMoney += 200_000;
         const pop0 = w.habitat.population.totalAmount;
         supplyTick(g);
@@ -502,11 +526,16 @@ describe('The Voidbloom War', () => {
         const dest = r.colonies[0];
         const s0 = r.stateMoney;
         const p0 = r.privateMoney;
+        const ss0 = seller.stateMoney;
         onContract(g, { seller, buyer: r, destination: dest, resourceId: voidbloomId(g), amount: 100, value: 12_000, freighter: null });
+        // The export duty: the seller's state takes 35 % of the total from its private sector.
+        expect(seller.stateMoney).toBeCloseTo(ss0 + 21_000 * 0.35, 3);
+        expect(vbEmpire(g, seller).duty).toBeCloseTo(21_000 * 0.35, 3);
         const st = vbState(g);
         expect(st.stats.blackSales).toBe(100);
-        expect(st.stats.stateDrain).toBeCloseTo(21_000 * 0.15, 3);
-        expect(r.stateMoney).toBeCloseTo(s0 - 21_000 * 0.15, 3);
+        // The Concord's state carries 35 % (others 15 %).
+        expect(st.stats.stateDrain).toBeCloseTo(21_000 * 0.35, 3);
+        expect(r.stateMoney).toBeCloseTo(s0 - 21_000 * 0.35, 3);
         expect(r.privateMoney).toBeLessThan(p0);
         expect(st.arcStarted).toBeGreaterThan(0);
         expect(vbColony(g, dest).tasted).toBeGreaterThan(0);
@@ -518,6 +547,35 @@ describe('The Voidbloom War', () => {
         const c = vbColony(g, r.colonies[0]);
         expect(c.a).toBeGreaterThan(0);
         expect(voidbloomApproval(g, r.colonies[0])).not.toBeNull();
+        // The court's habit: a share of the treasury itself, paid to the sellers.
+        const seller = vbState(g).worlds[0].habitat.empire!;
+        const s0 = r.stateMoney;
+        const p0 = seller.privateMoney;
+        const out = treasuryDrain(g);
+        expect(out).toBeGreaterThan(0);
+        expect(out).toBeLessThan(s0 * 0.25 / 12 + 1);
+        expect(r.stateMoney).toBeCloseTo(s0 - out, 3);
+        expect(seller.privateMoney).toBeGreaterThan(p0);
+    });
+
+    it('the tolerance phase: small harm is tolerated; a new leader past the panic line starts a moral panic', () => {
+        const r = rimTraderEmpire(g)!;
+        const st = vbState(g);
+        const saved = r.colonies.map((h) => vbColony(g, h).a);
+        const drains = st.drainByYear.splice(0);
+        for (const h of r.colonies) vbColony(g, h).a = 0.05;
+        expect(concordHarm(g)).toBeLessThan(0.55);
+        st.concordLeader = 'Someone Else';
+        expect(crackdownDue(g)).toBe(''); // the officials look away, whoever rules
+        for (const h of r.colonies) vbColony(g, h).a = 0.2;
+        const harm = concordHarm(g);
+        expect(harm).toBeGreaterThanOrEqual(0.55);
+        expect(harm).toBeLessThan(1);
+        st.concordLeader = 'Someone Else';
+        if (r.leader !== null) expect(crackdownDue(g)).toBe('panic:leader');
+        expect(st.crackdownStarted).toBeLessThan(0);
+        st.drainByYear.push(...drains);
+        r.colonies.forEach((h, i) => (vbColony(g, h).a = saved[i]));
     });
 
     it('the crackdown: a commissioner and a crisis the AI answers; inspections seize cargo', () => {

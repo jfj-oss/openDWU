@@ -43,6 +43,7 @@ export const VB_DEFAULTS = {
     voidbloomPrice: 120,
     voidbloomStateDrainPct: 15,
     voidbloomSmugglerCutPct: 20,
+    voidbloomExportDutyPct: 35,
     voidbloomReachSectors: 14,
     voidbloomCanton: 3,
     voidbloomAddictRate: 0.03,
@@ -52,8 +53,16 @@ export const VB_DEFAULTS = {
     voidbloomWithdrawalApproval: 18,
     voidbloomIncomeLossPct: 25,
     voidbloomCorruption: 0.5,
-    voidbloomCrackdownAddiction: 0.12,
-    voidbloomCrackdownValue: 400000,
+    voidbloomCrackdownAddiction: 0.3,
+    voidbloomCrackdownDrainPct: 10,
+    voidbloomPanicHarm: 0.4,
+    voidbloomScandalPct: 50,
+    voidbloomGateTech: 4,
+    voidbloomConcordStateDrainPct: 35,
+    voidbloomConcordDrainPctYear: 40,
+    voidbloomConcordDemand: 1.5,
+    voidbloomConcordAddict: 1.5,
+    voidbloomConcordHarm: 1.6,
     voidbloomInspectPct: 20,
     voidbloomTaskForceShips: 8,
     voidbloomBurnDays: 540,
@@ -65,12 +74,34 @@ export const VB_DEFAULTS = {
     voidbloomRevancheMinYears: 15,
     voidbloomRevancheMaxYears: 30,
     voidbloomSecondWarYears: 10,
-    voidbloomFallbackYear: 10,
+    voidbloomFallbackYear: 4,
     voidbloomDetoxCost: 300000,
     voidbloomDetoxYears: 4,
 } as const;
 
 export type VbParam = keyof typeof VB_DEFAULTS;
+
+/** Research category Habitation (research.txt Category 8). */
+const HABITATION = 8;
+
+/**
+ * The supply gate: colonising or extracting from a deadly Voidbloom world needs a hostile-environment project — a
+ * Habitation research project of tech level voidbloomGateTech or higher that colonises a new planet type, speeds
+ * colony growth or unlocks a facility (stock tree: Ocean / Desert Colonization, Biological Workshops at tech 4;
+ * Genetic Replication, Ice / Volcanic Colonization above). Pure (walks the tech tree).
+ */
+export function hasBloomTech(galaxy: Galaxy, e: Empire | null): boolean {
+    if (e === null) return false;
+    const gate = vbParam(galaxy, 'voidbloomGateTech');
+    if (gate <= 0) return true;
+    for (const n of e.research?.techTree ?? []) {
+        if (!n.isResearched) continue;
+        const d = n.def;
+        if (d.category !== HABITATION || d.techLevel < gate) continue;
+        if (d.facilityId != null || d.abilities.some((a) => a.type === 1 || a.type === 4)) return true;
+    }
+    return false;
+}
 
 export function vbParam(galaxy: Galaxy, name: VbParam): number {
     return scenarioParam(galaxy, name, VB_DEFAULTS[name]);
@@ -130,6 +161,8 @@ export interface VbEmpire {
     /** Value sold (seller side, all buyers) and into the Concord. */
     sold: number;
     soldConcord: number;
+    /** Export duty its state took on its sales (all time). */
+    duty?: number;
     /** Value bought (buyer side): private and state shares. */
     boughtPrivate: number;
     boughtState: number;
@@ -283,6 +316,13 @@ export interface VbStats {
     addictLeaders: number;
     seizedAtHome: number;
     mfn: number;
+    /** Of stateDrain: the court's treasury-proportional habit (treasuryDrain). */
+    courtDrain?: number;
+    /** Labour convoys that reached their world, and the workers they landed. */
+    convoysArrived?: number;
+    /** Export duty the sellers' states took (all time). */
+    duty?: number;
+    workersArrived?: number;
     runs?: number;
 }
 
@@ -327,6 +367,14 @@ export interface VoidbloomState {
     declineNow?: number;
     /** Star date of the last public burning (galactic news at most once a year). */
     lastBurning?: number;
+    /** Star date an empire first held the hostile-environment tech (the supply gate opened; -1 / absent not yet). */
+    gateOpened?: number;
+    /** What started the crackdown: 'threshold' (harm past the line) or 'panic:scandal' / 'panic:leader' (a moral panic). */
+    crackdownTrigger?: string;
+    /** The Concord's harm figure at the last yearly review (addiction and treasury drain against the tolerance line). */
+    harmNow?: number;
+    /** The Concord's leader at the last yearly review (a change of leader may start a moral panic). */
+    concordLeader?: string;
     /** The most the Concord's treasury has held (the decline index measures the drain from it). */
     concordPeak?: number;
     /** History lines for the Galactopedia / panel (newest last, trimmed to 60). */

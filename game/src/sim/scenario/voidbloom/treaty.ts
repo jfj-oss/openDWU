@@ -254,12 +254,30 @@ registerPeaceTermsBuilder({
 function warAcceptance(galaxy: Galaxy, v: boolean, a: { empire: Empire; other: Empire }): boolean {
     if (!v || !vbOn(galaxy)) return v;
     const r = rimTraderEmpire(galaxy);
+    // The smuggler holds out (its government earns the duty and the treaty is in sight): neither side's white peace.
+    if (r !== null && a.other === r && a.empire !== r) return holdsOut(galaxy, a.empire, r, `${r.empireId}:${a.empire.empireId}`) ? false : v;
+    if (r !== null && a.empire === r && holdsOut(galaxy, a.other, r, `${a.other.empireId}:${r.empireId}`)) return false;
     if (a.empire !== r || vbWarOf(galaxy, a.other) === null || concordGateOpen(galaxy)) return v;
     const st = galaxy.scenario?.state['warGoals'] as { offers?: Record<string, PeaceTerms> } | undefined;
     const offer = st?.offers?.[`${a.other.empireId}:${r.empireId}`] ?? null;
     if (offer === null) return v;
     const concedes = offer.cede.some((c) => c.from === r) || (offer.extra ?? []).some((x) => x.from === r) || (offer.reparations !== null && offer.reparations.payer === r);
     return concedes ? false : v;
+}
+
+/**
+ * A smuggler at war with the Concord holds out for the unequal treaty: once the Concord's decline is within 0.12 of the
+ * gate, for up to six years of war, it signs no peace that wins it nothing (`offerKey`: the War Goals offer to it). Pure.
+ */
+function holdsOut(galaxy: Galaxy, e: Empire, r: Empire, offerKey: string | null): boolean {
+    const w = vbWarOf(galaxy, e);
+    if (w === null || w.outcome !== '' || galaxyStarDate(galaxy) - w.start >= 6 * YEAR_LENGTH) return false;
+    if ((peekVbState(galaxy)?.declineNow ?? concordDeclineIndex(galaxy)) < vbParam(galaxy, 'voidbloomGateDecline') - 0.12) return false;
+    if (offerKey === null) return true;
+    const wg = galaxy.scenario?.state['warGoals'] as { offers?: Record<string, PeaceTerms> } | undefined;
+    const offer = wg?.offers?.[offerKey] ?? null;
+    const gains = offer !== null && (offer.cede.some((c) => c.to === e) || (offer.extra ?? []).some((x) => x.to === e) || (offer.reparations !== null && offer.reparations.payer === r));
+    return !gains;
 }
 
 /** warReviewAttitudeRelax: a smuggler under crackdown leans toward war as the Concord declines. Pure. */

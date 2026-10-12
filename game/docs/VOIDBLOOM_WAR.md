@@ -465,7 +465,7 @@ screen) and `registerDietSeatExclusion`; `diet.ts dietLawViolation`.
    × 0.8, the government's stability, unhappiness (approval under 30 speeds it). A colony that tastes it (exposure 1 or a
    delivery) orders it; supplied (stock, or a purchase in the last 60 days) it gains 0.03 addiction a month (× 1.2 in
    the Concord), unsupplied it loses 0.012 (× 4 after neural detox).
-9. **Crackdown timing:** at a Concord addiction index of 0.12 or 400,000 credits drained (whichever first). The
+9. **Crackdown timing:** (superseded by the tolerance phase, see *Mid-game tuning* below; first build: at a Concord addiction index of 0.12 or 400,000 credits drained, whichever first). The
    commissioner is a governor character (`governors.ts spawnGovernorFor`, so Characters & Victory's travel applies when
    on) named "Commissioner …" at the worst-hit colony. Inspections every 10 days (state and private freighters, independents included): 20 % per ship near the commissioner,
    10 % near any other Concord colony; seized cargo is destroyed; galactic news of a public burning at most once a year.
@@ -568,3 +568,60 @@ an unequal treaty — the Concord's economy (10–30 M treasury, rising) outgrow
 down. The levers, if longer games still do not reach the treaty: `voidbloomYield` / `voidbloomUse` (more trade),
 `voidbloomStateDrainPct` (a larger state share), `voidbloomGateDecline` (now 0.4), the crisis weights in
 `crackdown.ts aiCrisisChoice`. Only three tuning rounds were run, as asked.
+
+### Mid-game tuning (2026-10-12): the supply gate, the tolerance phase, the court's drain, the export duty
+
+The first 40-year soaks started the arc in years 4–10 and the crackdown in years 6–15, no war was won and no treaty
+signed: the Concord's 10–30 M treasury outgrew a fixed 1–2 M drain and the AI mostly backed down. Changes (no fixed
+year or tech timer anywhere):
+
+- **Supply gate** (`common.ts hasBloomTech`, stock research tree). Working a Voidbloom world needs a Habitation
+  project (research.txt category 8) of tech level `voidbloomGateTech` (4) or more that colonises a planet type, speeds
+  colony growth or unlocks a facility — Ocean / Desert Colonization, Biological Workshops at tech 4 (Genetic Replication,
+  Ice / Volcanic Colonization above). Without it a normal owner's world yields nothing (`worldYield`) and the AI's
+  colonisation value is −1 (the × 4 only with the tech). The independents colonise one only as the cartel would.
+  **Fallback cartel:** waits until some normal empire, or the independents themselves, hold the tech (`gateOpened`),
+  then `voidbloomFallbackYear` (now 4) years with nobody working a world.
+- **Tolerance phase** (`crackdown.ts concordHarm`, `crackdownDue`). Harm = addiction / `voidbloomCrackdownAddiction`
+  (0.3) + last year's drain as a share of the treasury / `voidbloomCrackdownDrainPct` (10 %). Below 1 the officials take
+  their cut and look away (no commissioner, no inspections); at 1 the crackdown starts (`threshold`). **Moral panic:**
+  from harm `voidbloomPanicHarm` (0.4) a new Concord leader (`panic:leader`: a hard-line commissioner) or a scandal
+  (`panic:scandal`: a spore den in the capital, or a yearly `voidbloomScandalPct` 50 % × harm chance on galaxy.rnd) starts
+  it early, with its own galactic news. The trigger is saved (`crackdownTrigger`). The crackdown still comes while the
+  Concord is strong (decline 0.0–0.3 at the letter).
+- **The court's drain** (`trade.ts`). Concord purchases put `voidbloomConcordStateDrainPct` 35 % on its state (others
+  15 %); every 30 days `treasuryDrain` pays out treasury × `voidbloomConcordDrainPctYear` (40 %) a year × its addiction
+  index to the empires that sold into it (by their sales; the pirate syndicate when none did) — the drain grows with the
+  treasury. Concord colonies consume and order × `voidbloomConcordDemand` 1.5, grow addicted × `voidbloomConcordAddict`
+  1.5 (was 1.2), and lose income and gain corruption × `voidbloomConcordHarm` 1.6 (income loss capped at 90 %).
+- **Export duty** (the user's decision: the stock tax comes from colony income only, Empire.1.cs 3579, so trade money in
+  a private sector is never taxed). The seller's state takes `voidbloomExportDutyPct` 35 % of every Voidbloom sale's total
+  from its private sector (legal and black-market alike; the private sector keeps the rest after the smugglers' cut);
+  independents, the cartel and pirates pay none. The buyer's private outflow does not tax the Concord either, so its state
+  weakens only through the state share, the court's drain and its colonies' lost income.
+- **Crisis weights** (`aiCrisisChoice`): stake = duty a year / the indemnity price (≤ 1.5); bite of the police action
+  capped at 1.2 (0.08 a raid or burn, 0.4 an occupation). war = 3 (ratio − 0.8) + aggression − caution / 2 + 3 decline +
+  5 max(0, decline − 0.3) + stake + bite / 2 − 1.5; tolerate = 1.2 + 1.5 share + stake / 2 − bite + max(0, 0.6 − 2 decline);
+  pay = 0.6 + 0.3 caution − stake (rich only); back down = 0.1 + 0.4 friendliness + 0.4 caution − share − stake − 0.3 ratio
+  − 2 decline. (Before, an uncapped bite of 0.25 a raid made every re-asked target back down.)
+- **Holding out** (`treaty.ts holdsOut`): a smuggler at war with the Concord whose decline is within 0.12 of the gate
+  signs no peace that wins it nothing, for up to six years of war — so the Concord sues for peace once the gate opens
+  instead of a white peace a year before.
+- **Labour and the climate (measured):** at the 40 M target the 35 % death rate kills about 14 M a year; convoys (12 M
+  every 90 days, up to 48 M a year) plus migrants keep supplied worlds at 30–80 M through 45 years in every run, AI and
+  automated player alike; the only collapse was an independent world without convoys (12 M → 1 M in about ten years). The
+  rate stays at 35 % and the convoy size at 12 M; the yield exponent stays 0.6.
+
+Round 1 (gate, tolerance, court drain 25 %, panic 0.55 / 35 %; before the duty, hold-out and capped bite), 45 years, 700
+stars, 7 empires, research × 2, The Rim + Voidbloom:
+
+| run | gate / first colony | crackdown (trigger) | crises: tol / war / back | wars (start–end: outcome) | treaty / branch | decline / treasury y15, y25, y35, y45 | drain state (court) + private |
+|---|---|---|---|---|---|---|---|
+| vb-s1 | y8 / y12 AI | y16 threshold | 3 / 0 / 9 | — | — | 0.02/17.4M, 0.34/10.7M, 0.35/9.3M, 0.27/16.4M | 4.9M (4.2M) + 1.3M |
+| vb-s2 | y6 / y7 independents | y18 threshold | 3 / 3 / 0 | 21–24 Concord, 32–37 Concord, 35–37 treaty | y37: a colony, 450k + 5 × 210k, legal trade / opening | 0.22/17.1M, 0.45/21.0M, 0.45/27.0M, 0.67/0.7M | 12.7M (10.9M) + 3.4M |
+| vb-s3 | y8 / y13 cartel | y29 panic:leader | 1 / 0 / 1 | — | — | 0.03/19.4M, 0.26/2.7M, 0.31/0.3M, 0.24/10.0M | 1.9M (1.7M) + 0.4M |
+| base-s1 | — | — | — | — | — | treasury 19.7M, 26.9M, 34.5M, 19.4M | — |
+
+Save round trips identical in all 8 checks; no exceptions; 120.0 / 112.8 / 123.5 s a game year against 120.6 s for the
+base run (no measurable cost).
+

@@ -17,6 +17,8 @@ Voidbloom Withdrawal;{0} has gone without Voidbloom for months. The addicted are
 Voidbloom Dens News;Spore dens have opened in {0}. The {1} cannot close them as fast as they appear.
 Voidbloom Ban News;The {0} has banned Voidbloom: its freighters will carry none and its colonies will seize what they find.
 Voidbloom Commissioner Name;Commissioner {0}
+Voidbloom Panic Scandal News;Scandal in {0}: ministers of the {1} are found in a spore den, and the court's tolerance of the Voidbloom trade ends overnight.
+Voidbloom Panic Leader News;{0}, the new ruler of the {1}, has sworn to end the Voidbloom trade and appointed a hard-line commissioner.
 Voidbloom Letter News;{0} of the {1} has published an open letter to the rulers of the galaxy from {2}: the trade in Voidbloom will end, and every cargo of it found in Concord space will be burned.
 Voidbloom Burning News;{0} units of seized Voidbloom were burned in public at {1} on the orders of {2}.
 Voidbloom Seizure Title;Cargo Seized

@@ -102,19 +102,53 @@ export function smugglersIntoConcord(galaxy: Galaxy): Empire[] {
     return out;
 }
 
-/** The crackdown starts while the Concord is still strong: at a low addiction index or a modest smuggled value. Pure. */
-export function crackdownDue(galaxy: Galaxy): boolean {
-    const st = vbState(galaxy);
-    if (st.crackdownStarted >= 0 || concord(galaxy) === null) return false;
-    if (concordAddiction(galaxy) >= vbParam(galaxy, 'voidbloomCrackdownAddiction')) return true;
-    return st.stats.stateDrain + st.stats.privateDrain >= vbParam(galaxy, 'voidbloomCrackdownValue');
+/**
+ * The Concord's harm figure (1 = its tolerance line): the addiction index against voidbloomCrackdownAddiction plus the
+ * share of its treasury drained last year against voidbloomCrackdownDrainPct. Below the line its officials take their
+ * cut and look away (no inspections, no commissioner). Pure.
+ */
+export function concordHarm(galaxy: Galaxy): number {
+    const r = concord(galaxy);
+    const st = peekVbState(galaxy);
+    if (r === null || st === null) return 0;
+    const add = concordAddiction(galaxy) / Math.max(0.01, vbParam(galaxy, 'voidbloomCrackdownAddiction'));
+    const last = st.drainByYear.length > 0 ? st.drainByYear[st.drainByYear.length - 1].value : 0;
+    const share = (100 * last) / Math.max(1, Math.max(0, r.stateMoney) + last);
+    return add + share / Math.max(0.1, vbParam(galaxy, 'voidbloomCrackdownDrainPct'));
 }
 
-export function startCrackdown(galaxy: Galaxy): void {
+/**
+ * Yearly: what starts the crackdown now ('' nothing). 'threshold': harm past the tolerance line. Past
+ * voidbloomPanicHarm a moral panic may come first: 'panic:leader' when the Concord has a new leader (a hard-liner
+ * appoints the commissioner), 'panic:scandal' when a spore den opens in its capital or a scandal breaks (yearly chance
+ * voidbloomScandalPct % × harm, drawn on galaxy.rnd). Records the harm and the leader.
+ */
+export function crackdownDue(galaxy: Galaxy): string {
+    const st = vbState(galaxy);
+    const r = concord(galaxy);
+    if (r === null) return '';
+    const leader = r.leader?.name ?? '';
+    const prevLeader = st.concordLeader;
+    st.concordLeader = leader;
+    if (st.crackdownStarted >= 0) return '';
+    const harm = concordHarm(galaxy);
+    st.harmNow = Math.round(harm * 1000) / 1000;
+    if (harm >= 1) return 'threshold';
+    if (harm < vbParam(galaxy, 'voidbloomPanicHarm')) return '';
+    if (prevLeader !== undefined && leader !== '' && leader !== prevLeader) return 'panic:leader';
+    if (r.capital !== null && st.colonies[r.capital.habitatIndex]?.den === true) return 'panic:scandal';
+    return galaxy.rnd.nextDouble() < (vbParam(galaxy, 'voidbloomScandalPct') / 100) * harm ? 'panic:scandal' : '';
+}
+
+export function startCrackdown(galaxy: Galaxy, trigger = 'threshold'): void {
     const r = concord(galaxy);
     if (r === null) return;
     const st = vbState(galaxy);
     st.crackdownStarted = galaxyStarDate(galaxy);
+    st.crackdownTrigger = trigger;
+    // A moral panic: the story moment before the letter (a scandal, or a new leader's hard line).
+    if (trigger === 'panic:scandal') scenarioNews(galaxy, r, scenarioText('Voidbloom Panic Scandal News', r.capital?.name ?? r.name, r.name), () => true, r.capital);
+    else if (trigger === 'panic:leader') scenarioNews(galaxy, r, scenarioText('Voidbloom Panic Leader News', r.leader?.name ?? r.name, r.name), () => true, r.capital);
     const where = worstColony(galaxy, r);
     if (where !== null) {
         const c = spawnGovernorFor(galaxy, r, where);
@@ -184,12 +218,17 @@ export function aiCrisisChoice(galaxy: Galaxy, e: Empire): string {
     const decline = concordDecline(galaxy);
     // The Concord is strong at first: war pays only once it has declined and the police action has started to bite.
     const cd = crackdownOn(galaxy, e);
-    const bite = cd === null ? 0 : 0.25 * (cd.raids + cd.burns) + 0.8 * cd.occupations;
+    // The bite of the police action, capped: raids and burns hurt, but a grower that has borne years of them does not
+    // simply fold; it fights back (half the bite counts toward war).
+    const bite = cd === null ? 0 : Math.min(1.2, 0.08 * (cd.raids + cd.burns) + 0.4 * cd.occupations);
     const share = Math.min(1, profit / Math.max(1, price));
-    const war = 3 * (ratio - 0.8) + aggr - 0.5 * caution + 3 * decline - 1.5;
-    const tolerate = 1.2 + 1.5 * share - bite;
-    const pay = e.stateMoney > 3 * price ? 0.6 + 0.3 * caution : -9;
-    const back = 0.1 + 0.4 * friendly + 0.4 * caution - share - 0.3 * ratio;
+    // The government's own stake: the export duty it earns a year (a war over the trade pays the state directly).
+    const stake = Math.min(1.5, (rec.duty ?? 0) / years / Math.max(1, price));
+    // A weakened Concord invites war (past a decline of 0.3 the case grows fast); early on the police action is borne.
+    const war = 3 * (ratio - 0.8) + aggr - 0.5 * caution + 3 * decline + 5 * Math.max(0, decline - 0.3) + stake + 0.5 * bite - 1.5;
+    const tolerate = 1.2 + 1.5 * share + 0.5 * stake - bite + Math.max(0, 0.6 - 2 * decline);
+    const pay = e.stateMoney > 3 * price ? 0.6 + 0.3 * caution - stake : -9;
+    const back = 0.1 + 0.4 * friendly + 0.4 * caution - share - stake - 0.3 * ratio - 2 * decline;
     const opts: [string, number][] = [['war', war], ['tolerate', tolerate], ['pay', pay], ['backDown', back]];
     let best = opts[0];
     for (const o of opts) if (o[1] > best[1]) best = o;
@@ -257,7 +296,8 @@ export function crackdownYear(galaxy: Galaxy): void {
     const st = vbState(galaxy);
     const r = concord(galaxy);
     if (r === null) return;
-    if (crackdownDue(galaxy)) startCrackdown(galaxy);
+    const trigger = crackdownDue(galaxy);
+    if (trigger !== '') startCrackdown(galaxy, trigger);
     if (st.crackdownStarted < 0) return;
     const now = galaxyStarDate(galaxy);
     for (const cd of st.crackdowns) {

@@ -27,6 +27,7 @@ import { makeHabitatIntoColonyRuntime } from '../../missions/cmdTroops';
 import { calculateTroopMaintenanceMultiplier, generateNewTroop } from '../../builtObjectPlacement';
 import { EmpireMessageType } from '../../messages';
 import { galaxyStarDate } from '../../tick/simTime';
+import { YEAR_LENGTH } from '../../galaxyTime';
 import { findNearestAvailableFleet } from '../../fleets/militaryAI';
 import { shipGroupAssignMission } from '../../fleets/shipGroup';
 import { FleetPosture } from '../../diplomacyTick';
@@ -40,6 +41,7 @@ import {
     VOIDBLOOM_FLAG,
     VOIDBLOOM_GOOD,
     addHistory,
+    hasBloomTech,
     bloomWorldOf,
     concord,
     fmt,
@@ -51,7 +53,6 @@ import {
     vbOn,
     vbParam,
     vbState,
-    vbYears,
     voidbloomId,
     voidbloomStock,
     removeVoidbloom,
@@ -135,6 +136,9 @@ export function worldYield(galaxy: Galaxy, w: BloomWorld): number {
     const h = w.habitat;
     if (h.hasBeenDestroyed || h.empire === null) return 0;
     if (h.empire === rimTraderEmpire(galaxy)) return 0; // the Concord holds it: the fields lie fallow
+    // The supply gate: without the hostile-environment tech nobody can work the spore fields (independents — the rim
+    // cartel, workers who rose — farm it the old way).
+    if (h.empire !== galaxy.independentEmpire && !hasBloomTech(galaxy, h.empire)) return 0;
     const m = popM(h);
     if (m <= 0) return 0;
     let y = vbParam(galaxy, 'voidbloomYield') * detPow(m, vbParam(galaxy, 'voidbloomYieldExponent'));
@@ -319,6 +323,10 @@ function convoySweep(galaxy: Galaxy): void {
     for (const c of [...st.convoys]) {
         if (c.stage === 'sea' && c.ship.hasBeenDestroyed) c.stage = 'lost';
         if (c.stage === 'sea') continue;
+        if (c.stage === 'done') {
+            st.stats.convoysArrived = (st.stats.convoysArrived ?? 0) + 1;
+            st.stats.workersArrived = (st.stats.workersArrived ?? 0) + c.amount;
+        }
         if (c.stage === 'lost') {
             st.stats.convoysLost++;
             const e = galaxy.empires.find((x) => x !== null && x.empireId === c.empireId) ?? null;
@@ -379,11 +387,21 @@ function cartelRace(galaxy: Galaxy): Race | null {
     return galaxy.empires.find((e) => e !== null && e.dominantRace !== null && e !== rimTraderEmpire(galaxy))?.dominantRace ?? null;
 }
 
-/** Yearly: past voidbloomFallbackYear with no colony on any world, a rim cartel settles one (draws galaxy.rnd). */
+/**
+ * Yearly: once the supply gate has stood open voidbloomFallbackYear years (some empire holds the hostile-environment
+ * tech, or the independents reached it themselves) and still no colony works any world, a rim cartel settles one
+ * (draws galaxy.rnd). No fixed year: the cartel follows the galaxy's research.
+ */
 export function fallbackStarter(galaxy: Galaxy, year: number): void {
     const st = vbState(galaxy);
     const fy = vbParam(galaxy, 'voidbloomFallbackYear');
-    if (st.cartel !== null || fy <= 0 || vbYears(galaxy) < fy || galaxy.independentEmpire === null) return;
+    if (st.cartel !== null || fy < 0 || galaxy.independentEmpire === null) return;
+    const now = galaxyStarDate(galaxy);
+    if (st.gateOpened === undefined || st.gateOpened < 0) {
+        if (!normalEmpires(galaxy).some((e) => e !== rimTraderEmpire(galaxy) && hasBloomTech(galaxy, e)) && !hasBloomTech(galaxy, galaxy.independentEmpire)) return;
+        st.gateOpened = now;
+    }
+    if (now - st.gateOpened < fy * YEAR_LENGTH) return;
     if (st.worlds.some((w) => w.habitat.empire !== null && !w.habitat.hasBeenDestroyed)) return;
     const free = st.worlds.filter((w) => w.habitat.empire === null && !w.habitat.hasBeenDestroyed);
     const race = cartelRace(galaxy);
@@ -404,6 +422,13 @@ export function fallbackStarter(galaxy: Galaxy, year: number): void {
 /** colonizationTargetValue: a Voidbloom world is worth voidbloomColonyValue × its stock value (never less than 1000). */
 function colonyValue(galaxy: Galaxy, v: number, a: { empire: Empire; habitat: Habitat }): number {
     if (!vbOn(galaxy) || bloomWorldOf(galaxy, a.habitat) === null || a.empire === rimTraderEmpire(galaxy)) return v;
+    // The supply gate: a deadly world is no colony target before the empire holds the hostile-environment tech.
+    if (!hasBloomTech(galaxy, a.empire)) return -1;
+    // Independents settle one only as the rim cartel would: once the gate has stood open voidbloomFallbackYear years.
+    if (a.empire === galaxy.independentEmpire) {
+        const st = vbState(galaxy);
+        if (st.gateOpened === undefined || st.gateOpened < 0 || galaxyStarDate(galaxy) - st.gateOpened < vbParam(galaxy, 'voidbloomFallbackYear') * YEAR_LENGTH) return -1;
+    }
     return Math.max(v * vbParam(galaxy, 'voidbloomColonyValue'), 1000);
 }
 

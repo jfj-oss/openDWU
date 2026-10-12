@@ -45,6 +45,7 @@ import {
     isSmuggler,
     legalInto,
     normalEmpires,
+    concordAddiction,
     peekVbColony,
     peekVbState,
     policyOf,
@@ -131,7 +132,9 @@ export function onContract(galaxy: Galaxy, p: { seller: Empire; buyer: Empire | 
     const habit = hDest !== null ? (peekVbColony(galaxy, hDest)?.a ?? 0) : 0;
     const premium = p.value * (black ? vbParam(galaxy, 'voidbloomPremium') * (0.5 + habit) : 0.5 * habit);
     const total = p.value + premium;
-    const statePart = (total * vbParam(galaxy, 'voidbloomStateDrainPct')) / 100;
+    // The Concord's state carries a far bigger share (its trade houses buy for the court; officials skim the rest).
+    const statePct = buyer === rimTraderEmpire(galaxy) ? vbParam(galaxy, 'voidbloomConcordStateDrainPct') : vbParam(galaxy, 'voidbloomStateDrainPct');
+    const statePart = (total * statePct) / 100;
     const privateExtra = total - statePart - p.value; // may be negative: the state share refunds the private sector
     if (privateExtra !== 0) performPrivateTransaction(buyer, -privateExtra);
     buyer.stateMoney -= statePart;
@@ -149,12 +152,27 @@ export function onContract(galaxy: Galaxy, p: { seller: Empire; buyer: Empire | 
         st.stats.blackSales += p.amount;
         st.stats.blackValue += total;
     }
+    // The export duty: the seller's state takes voidbloomExportDutyPct of the sale's total from its private sector
+    // (trade money is never taxed by the stock tax, which comes from colony income only). Legal and black sales alike;
+    // independents, the rim cartel and pirates have no state to pay it to.
+    let duty = 0;
+    if (isNormal(galaxy, seller) && seller !== galaxy.independentEmpire) {
+        duty = (total * vbParam(galaxy, 'voidbloomExportDutyPct')) / 100;
+        if (duty > 0) {
+            performPrivateTransaction(seller, -duty);
+            seller.stateMoney += duty;
+            st.stats.duty = (st.stats.duty ?? 0) + duty;
+        }
+    }
     st.stats.sales += p.amount;
     st.stats.salesValue += total;
     st.stats.smugglerCut += cut;
     const sr = isNormal(galaxy, seller) ? vbEmpire(galaxy, seller) : null;
     const br = isNormal(galaxy, buyer) ? vbEmpire(galaxy, buyer) : null;
-    if (sr !== null) sr.sold += total;
+    if (sr !== null) {
+        sr.sold += total;
+        sr.duty = (sr.duty ?? 0) + duty;
+    }
     if (br !== null) {
         br.boughtPrivate += total - statePart;
         br.boughtState += statePart;
@@ -295,9 +313,10 @@ export function spreadTick(galaxy: Galaxy): void {
         const supplied = (voidbloomStock(galaxy, h) > 0 && !growsVoidbloom(galaxy, e)) || (c.buy !== undefined && now - c.buy <= 60 * GAME_DAY_LENGTH);
         if (supplied) {
             c.sup = now;
-            c.a = Math.min(1, c.a + rate * Math.max(0.3, sus) * (isConcord ? 1.2 : 1));
-            // The habit eats the stock far faster than any stock luxury: voidbloomUse units per billion a month at full addiction.
-            const use = Math.ceil(vbParam(galaxy, 'voidbloomUse') * Math.max(0.05, c.a) * Math.max(0.2, (h.population?.totalAmount ?? 0) / 1e9));
+            c.a = Math.min(1, c.a + rate * Math.max(0.3, sus) * (isConcord ? vbParam(galaxy, 'voidbloomConcordAddict') : 1));
+            // The habit eats the stock far faster than any stock luxury: voidbloomUse units per billion a month at full addiction
+            // (the Canton market's dens more).
+            const use = Math.ceil(vbParam(galaxy, 'voidbloomUse') * (isConcord ? vbParam(galaxy, 'voidbloomConcordDemand') : 1) * Math.max(0.05, c.a) * Math.max(0.2, (h.population?.totalAmount ?? 0) / 1e9));
             consumeVoidbloom(galaxy, h, use);
         } else if (c.a > 0) {
             const detox = vbEmpire(galaxy, e).detoxDone ? 4 : 1;
@@ -354,7 +373,7 @@ function resourceBonuses(galaxy: Galaxy, value: Habitat['resourceBonuses'], h: H
     if (c === null || (c.a <= 0.01 && c.sup < 0)) return value;
     const id = voidbloomId(galaxy);
     const out = [...value];
-    const loss = Math.round(c.a * vbParam(galaxy, 'voidbloomIncomeLossPct'));
+    const loss = Math.round(Math.min(90, c.a * vbParam(galaxy, 'voidbloomIncomeLossPct') * concordHarm(galaxy, h)));
     if (loss > 0) out.push({ resourceId: id, effect: ColonyResourceEffect.IncomeBoost, value: -loss, appliesOnlyToSources: false });
     if (daysSinceSupply(galaxy, c.sup) <= 45 && c.a < 0.5) out.push({ resourceId: id, effect: ColonyResourceEffect.Development, value: Math.round(20 * (1 - 2 * c.a)), appliesOnlyToSources: false });
     return out;
@@ -364,7 +383,46 @@ function corruption(galaxy: Galaxy, v: number, h: Habitat): number {
     if (!vbOn(galaxy)) return v;
     const c = peekVbColony(galaxy, h);
     if (c === null || c.a <= 0) return v;
-    return v * (1 + c.a * vbParam(galaxy, 'voidbloomCorruption'));
+    return v * (1 + c.a * vbParam(galaxy, 'voidbloomCorruption') * concordHarm(galaxy, h));
+}
+
+/** The Concord's colonies suffer the habit harder (idle dens, a court that taxes nothing): voidbloomConcordHarm, else 1. Pure. */
+function concordHarm(galaxy: Galaxy, h: Habitat): number {
+    return h.empire !== null && h.empire === rimTraderEmpire(galaxy) ? vbParam(galaxy, 'voidbloomConcordHarm') : 1;
+}
+
+/**
+ * Every 30 days: the court's own habit. The Concord's treasury pays out voidbloomConcordDrainPctYear % a year of what
+ * it holds × its addiction index (officials' purchases, tribute to the smuggling houses), so the drain grows with the
+ * treasury instead of a fixed sum. The silver goes to the empires that sold into the Concord (by their sales, ids
+ * ascending), the pirate syndicate when none did. No Rnd.
+ */
+export function treasuryDrain(galaxy: Galaxy): number {
+    const r = rimTraderEmpire(galaxy);
+    if (r === null || r.stateMoney <= 0) return 0;
+    const add = concordAddiction(galaxy);
+    if (add <= 0.005) return 0;
+    const st = vbState(galaxy);
+    const out = r.stateMoney * (vbParam(galaxy, 'voidbloomConcordDrainPctYear') / 100) * add * (PERIOD_DAYS / 360);
+    if (!(out > 0)) return 0;
+    const sellers: { e: Empire; w: number }[] = [];
+    let sum = 0;
+    for (const e of normalEmpires(galaxy)) {
+        if (e === r) continue;
+        const w = st.empires[e.empireId]?.soldConcord ?? 0;
+        if (w <= 0) continue;
+        sellers.push({ e, w });
+        sum += w;
+    }
+    r.stateMoney -= out;
+    if (sum > 0) for (const s of sellers) performPrivateTransaction(s.e, (out * s.w) / sum);
+    else {
+        const syn = syndicate(galaxy);
+        if (syn !== null) syn.stateMoney += out;
+    }
+    st.stats.stateDrain += out;
+    st.stats.courtDrain = (st.stats.courtDrain ?? 0) + out;
+    return out;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -468,7 +526,7 @@ export function smugglerRuns(galaxy: Galaxy): number {
         if (sent >= RUNS_PER_TICK) break;
         const buyer = h.empire!;
         const c = st.colonies[h.habitatIndex];
-        const want = Math.max(40, Math.ceil(3 * use * Math.max(0.1, c.a) * Math.max(0.2, (h.population?.totalAmount ?? 0) / 1e9)));
+        const want = Math.max(40, Math.ceil(3 * use * (buyer === rimTraderEmpire(galaxy) ? vbParam(galaxy, 'voidbloomConcordDemand') : 1) * Math.max(0.1, c.a) * Math.max(0.2, (h.population?.totalAmount ?? 0) / 1e9)));
         const coming = st.runs.filter((x) => x.dest === h).reduce((n, x) => n + x.amount, 0);
         const need = want - voidbloomStock(galaxy, h) - coming;
         if (need < 20) continue;
@@ -669,6 +727,7 @@ registerScenarioPeriodic({
     periodDays: PERIOD_DAYS,
     run: (g) => {
         spreadTick(g);
+        treasuryDrain(g);
         homeSeizures(g);
         smugglerRuns(g);
         warnings(g);
