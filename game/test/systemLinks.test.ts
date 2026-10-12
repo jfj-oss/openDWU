@@ -105,7 +105,7 @@ describe('the view (method_250 5144-5147, 5229, 5268)', () => {
     });
 
     it('selectSystemLinks: the drawing system in range; a reciprocal link only to a system outside it', () => {
-        const mk = (from: number, sx: number, tx: number, reciprocal: boolean): SystemLink => ({ fromSystem: from, toSystem: 9, x0: 0, y0: 0, x1: 0, y1: 0, color: 0, reciprocal, sx, sy: 0, tx, ty: 0 });
+        const mk = (from: number, sx: number, tx: number, reciprocal: boolean): SystemLink => ({ fromSystem: from, toSystem: 9, x0: 0, y0: 0, x1: 0, y1: 0, color: 0, empireId: 1, reciprocal, sx, sy: 0, tx, ty: 0 });
         const links = [mk(0, 0, 0, false), mk(1, 0, 3, false), mk(2, 0, 0, true), mk(3, 0, 3, true), mk(4, 3, 0, false), mk(5, 3, 0, true)];
         const sel = selectSystemLinks(links, { x0: 0, x1: 1, y0: 0, y1: 0 });
         expect(sel.map((l) => l.fromSystem)).toEqual([0, 1, 3]);

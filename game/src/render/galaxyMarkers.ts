@@ -927,7 +927,7 @@ export class GalaxyMarkerLayer {
         this.discs = new ParticleContainer({ texture: this.discTex, dynamicProperties: dyn });
         this.symbols = new ParticleContainer({ texture: Texture.WHITE, dynamicProperties: dyn });
         this.links = new SystemLinkLayer(galaxy);
-        this.back.addChild(this.discs, this.links.root, this.rings);
+        this.back.addChild(this.discs, this.links.root, this.links.pulseRoot, this.rings);
         // overlayG (redrawn when its ops change: flushOverlay) is in its own render group (renderGroups.ts). (The battle
         // bars over the ships are combatBars.ts BattleBarLayer, MainView.1.cs 1251-1295.)
         this.overlayGroup = inOwnRenderGroup(this.overlayG);
