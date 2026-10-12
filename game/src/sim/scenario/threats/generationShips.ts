@@ -50,6 +50,9 @@ import { DiplomaticRelationType, obtainDiplomaticRelation } from '../../diplomac
 import { assignMission } from '../../missions/assign';
 import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission } from '../../missions/mission';
 import { makeHabitatIntoColonyRuntime } from '../../missions/cmdTroops';
+import { habitatGenerateNewTroop } from '../../troops';
+import { TroopType } from '../../cargo';
+import { empireShipGroups, shipGroupAssignMission } from '../../fleets/shipGroup';
 import { reviewEmpireTerritory } from '../../exploration';
 import { Population, PopulationList } from '../../population';
 import { generateDebrisField } from '../../story/storyStart';
@@ -179,9 +182,10 @@ const P = {
     contactDays: (g: Galaxy) => p(g, 'genShipsContactDays', 60),
     ultimatumDays: (g: Galaxy) => p(g, 'genShipsUltimatumDays', 540),
     answerDays: (g: Galaxy) => p(g, 'genShipsAnswerDays', 60),
-    warYears: (g: Galaxy) => p(g, 'genShipsWarYears', 4),
+    warYears: (g: Galaxy) => p(g, 'genShipsWarYears', 2),
     aiBuildupPct: (g: Galaxy) => p(g, 'genShipsAiBuildupPct', 220),
     aiFightRatioPct: (g: Galaxy) => p(g, 'genShipsAiFightRatioPct', 100),
+    aiGarrisonPct: (g: Galaxy) => p(g, 'genShipsAiGarrisonPct', 120),
     coreOnKillPct: (g: Galaxy) => p(g, 'genShipsCoreOnKillPct', 60),
     grudge: (g: Galaxy) => p(g, 'genShipsGrudge', 60),
     gratitude: (g: Galaxy) => p(g, 'genShipsGratitude', 50),
@@ -582,12 +586,19 @@ function directWar(galaxy: Galaxy, st: GenShipsState): void {
             if (galaxy.calculateDistance(b.xpos, b.ypos, target.xpos, target.ypos) <= STATION_RANGE) defenders++;
         }
     }
-    // Transports sail once half the escort is on station and land (the stock landing of a troop ship attacking a
-    // colony: cmdAttack.ts ~590, as darkFarms.directFaction does) when no defending warship is near.
-    const sail = escorts.length === 0 || onStation * 2 >= escorts.length;
+    // Transports wait at a staging point (STATION_RANGE × 3 short of the world, on the edge side) until half the
+    // escort is on station and no defending warship is near, then close in and land (the stock landing of a troop ship
+    // attacking a colony, cmdAttack.ts ~590, done here as darkFarms.directFaction does). Move orders only: an Attack
+    // order would let the stock command land them past the defenders.
+    const clear = defenders === 0 && (escorts.length === 0 || onStation * 2 >= escorts.length);
+    const dx = st.spawnX - target.xpos;
+    const dy = st.spawnY - target.ypos;
+    const dl = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+    const stageX = target.xpos + (dx / dl) * STATION_RANGE * 3;
+    const stageY = target.ypos + (dy / dl) * STATION_RANGE * 3;
     for (const bo of st.transports) {
         if (bo.troops === null || bo.troops.count === 0) continue;
-        if (galaxy.calculateDistance(bo.xpos, bo.ypos, target.xpos, target.ypos) <= LANDING_RANGE && defenders === 0) {
+        if (clear && galaxy.calculateDistance(bo.xpos, bo.ypos, target.xpos, target.ypos) <= LANDING_RANGE) {
             const troops = [...bo.troops.items];
             bo.troops.clear();
             for (const t of troops) t.builtObject = null;
@@ -595,10 +606,13 @@ function directWar(galaxy: Galaxy, st: GenShipsState): void {
             st.landings++;
             continue;
         }
-        if (!sail) continue;
         const m = builtObjectMission(bo.mission);
-        if (m === null || m.type !== BuiltObjectMissionType.Attack || m.targetHabitat !== target) {
-            assignMission(galaxy, bo, BuiltObjectMissionType.Attack, target, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
+        if (clear) {
+            if (m === null || m.type !== BuiltObjectMissionType.Move || m.targetHabitat !== target) {
+                assignMission(galaxy, bo, BuiltObjectMissionType.Move, target, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
+            }
+        } else if (galaxy.calculateDistance(bo.xpos, bo.ypos, stageX, stageY) > LANDING_RANGE && (m === null || m.type !== BuiltObjectMissionType.Move || m.targetHabitat !== null)) {
+            hold(galaxy, bo, stageX, stageY);
         }
     }
     const troopsLeft = st.transports.some((b) => b.troops !== null && b.troops.count > 0) || (target.invadingTroops !== null && target.invadingTroops.items.some((t) => t.empire === faction));
@@ -622,8 +636,20 @@ function commitDefence(galaxy: Galaxy, st: GenShipsState, owner: Empire, target:
             near = e;
         }
     }
+    // Fleets first (the fleet AI would override a member's own order): the whole fleet takes the order.
+    for (const sg of empireShipGroups(owner)) {
+        if (sg === null || sg.ships.length === 0) continue;
+        const m = sg.mission;
+        if (near !== null) {
+            if (m !== null && m.type === BuiltObjectMissionType.Attack && m.targetBuiltObject !== null && !m.targetBuiltObject.hasBeenDestroyed && m.targetBuiltObject.actualEmpire === st.faction) continue;
+            shipGroupAssignMission(galaxy, sg, BuiltObjectMissionType.Attack, near, null, BuiltObjectMissionPriority.High, true);
+        } else if (m === null || !(m.type === BuiltObjectMissionType.Patrol && m.targetHabitat === target)) {
+            shipGroupAssignMission(galaxy, sg, BuiltObjectMissionType.Patrol, target, null, BuiltObjectMissionPriority.High, true);
+        }
+    }
     for (const b of owner.builtObjects) {
         if (b.hasBeenDestroyed || b.role !== BuiltObjectRole.Military || b.topSpeed <= 0 || b.subRole === BuiltObjectSubRole.TroopTransport) continue;
+        if (b.shipGroup !== null) continue;
         const m = builtObjectMission(b.mission);
         if (near !== null) {
             if (m !== null && m.type === BuiltObjectMissionType.Attack && m.targetBuiltObject !== null && !m.targetBuiltObject.hasBeenDestroyed && m.targetBuiltObject.actualEmpire === st.faction) continue;
@@ -632,6 +658,21 @@ function commitDefence(galaxy: Galaxy, st: GenShipsState, owner: Empire, target:
             assignMission(galaxy, b, BuiltObjectMissionType.Patrol, target, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
         }
     }
+}
+
+/**
+ * The threatened AI recruits infantry at the world (Habitat.GenerateNewTroop into TroopsToRecruit, as the stock
+ * garrison review recruits, troops.ts 812) while its garrison, recruits included, is below genShipsAiGarrisonPct % of
+ * the invaders' attack strength; at most 3 in training at once.
+ */
+function levyGarrison(galaxy: Galaxy, st: GenShipsState, owner: Empire, target: Habitat): void {
+    if (!owner.troopCanRecruitInfantry || target.troops === null || target.troopsToRecruit === null || target.troopsToRecruit.count >= 3) return;
+    let invaders = 0;
+    for (const b of st.transports) if (b.troops !== null) invaders += b.troops.totalAttackStrength;
+    const have = target.troops.totalDefendStrengthExcludeReadiness + target.troopsToRecruit.totalDefendStrengthExcludeReadiness;
+    if (have >= (invaders * P.aiGarrisonPct(galaxy)) / 100) return;
+    const t = habitatGenerateNewTroop(galaxy, target, TroopType.Infantry, null, false);
+    if (t !== null) target.troopsToRecruit.add(t);
 }
 
 function nearestColony(galaxy: Galaxy, empire: Empire, x: number, y: number): Habitat | null {
@@ -809,6 +850,12 @@ export function genShipsPeriodic(galaxy: Galaxy): void {
             break;
         default:
             break;
+    }
+    // From first contact the threatened AI gathers its navy over the world (it has 18 months to get there) and raises
+    // its garrison there.
+    if ((st.phase === 'contact' || st.phase === 'ultimatum' || st.phase === 'war') && st.owner !== null && st.target !== null && st.target.empire === st.owner && !isHumanEmpire(galaxy, st.owner)) {
+        if (st.phase !== 'war') commitDefence(galaxy, st, st.owner, st.target);
+        levyGarrison(galaxy, st, st.owner, st.target);
     }
     if (st.phase === 'arrived' || st.phase === 'contact' || st.phase === 'ultimatum') {
         for (const b of [...st.escorts, ...st.transports]) if (isIdle(b)) hold(galaxy, b, st.spawnX, st.spawnY);

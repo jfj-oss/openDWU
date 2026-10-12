@@ -44,7 +44,10 @@ An early-game crisis, once per game.
   report: no life signs, a ship mind following its colonisation orders, the date it moves.
 - **Build-up**: from first contact until the arc resolves, the owner's AI plans a larger navy:
   `forceStructureThreat` ≥ 4, `forceStructureWarships` × `genShipsAiBuildupPct` (220) %, and the new
-  `stateConstructionBudget` query lets the state construction budget cover the whole planned force.
+  `stateConstructionBudget` query lets the state construction budget cover the whole planned force. The AI also
+  gathers its navy over the world (fleets and loose warships Patrol it, and attack an escort that comes within 24,000)
+  and recruits infantry there while its garrison is below `genShipsAiGarrisonPct` (120) % of the invaders' troop
+  strength (at most 3 in training). A human owner only gets the warning and the countdown.
 - **Ultimatum** (a scenario decision, `decisions.ts`; the player answers in the message popup through the journaled
   `answerScenarioDecision` command, `genShipsAnswerDays` 60 to answer, then "refuse"; the AI answers at once):
   - Pilgrims: cede / offer a substitute (the nearest empty habitable planet, else the owner's smallest other
@@ -54,9 +57,10 @@ An early-game crisis, once per game.
   AI rule (`aiUltimatumChoice`): fight when its military firepower is at least `genShipsAiFightRatioPct` (100) % of
   the escort's living firepower; otherwise Pilgrims are offered a substitute, Heirs are fought from 75 % of that
   ratio, everything else is ceded.
-- **War** (locked while it lasts): the escort attacks the colony; the transports sail once half the escort is on
-  station and land (the stock troop-ship landing, `invadeFromInside`, as Dark Farms) when no defending warship is
-  within 8,000; the stock ground war decides it.
+- **War** (locked while it lasts): the escort attacks the colony; the transports wait at a staging point 24,000 short
+  of it and close in (Move orders only, so the stock Attack command cannot land them past the defenders) once half
+  the escort is on station and no defending warship is within 8,000, then land (`invadeFromInside`, as Dark Farms);
+  the stock ground war decides it.
 - **Outcomes**:
   - ceded / substitute / conquered: the war ends, the world ship flies to the world and lands (its sleepers join the
     colony; an empty substitute is colonised with `makeHabitatIntoColonyRuntime`, the stock Colonize path), and the
@@ -67,7 +71,7 @@ An early-game crisis, once per game.
     killer; the fleet scatters.
   - the world ship captured (the stock boarding / capture rules, `builtObjectOwnerChanged`): its sleepers join the
     captor's nearest colony; the captor recovers an Archive Core; the fleet scatters.
-  - repelled (no warships and no troops left, or `genShipsWarYears` 4 without winning): the survivors scatter (torn
+  - repelled (no warships and no troops left, or `genShipsWarYears` 2 without winning): the survivors scatter (torn
     down). The Ark Faith leaves no cult.
 - **UI**: popups only for arrival (NewsNet), first contact and the ultimatum; the rest is ticker / NewsNet lines.
   Known-site row on the map for the world ship.
