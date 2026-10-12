@@ -36,7 +36,7 @@ import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { threatMarker, THREAT_CONFIRMED_COLOR, THREAT_SUSPECTED_COLOR } from '../src/render/overlayLayer';
 import type { CreateGameOptions } from '../src/sim/game';
 import { comboOverlayFs, createScenarioGame } from './helpers/scenarioGame';
-import { scenarioEmit, scenarioQuery } from '../src/sim/scenario/hooks';
+import { registerScenarioEvent, scenarioEmit, scenarioQuery } from '../src/sim/scenario/hooks';
 import { genShipsPeriodic, genShipsState, peekGenShipsState } from '../src/sim/scenario/threats/generationShips';
 import { archiveCoresPeriodic, grantArchiveCore, peekArchiveCoresState } from '../src/sim/scenario/threats/archiveCores';
 import { peekProbeSwarmState, probeSwarmIncome, probeSwarmPeriodic, probeSwarmState } from '../src/sim/scenario/threats/probeSwarm';
@@ -323,4 +323,30 @@ describe('new threats: generation ships, archive cores, probe swarm', () => {
         expect(st.mothercoreKiller).toBe(killer);
         expect(peekArchiveCoresState(g)!.cores.some((c) => c.empire === killer && c.source === 'mothercore')).toBe(true);
     }, 600000);
+
+    it('probe swarm: builds in colony systems (and on planets), never on a colony, and avoids them with probeSwarmAvoidColonies', () => {
+        for (const avoid of [0, 1]) {
+            const g = ntGame(ALL, { genShipsEarliestYear: 99, probeSwarmYear: 0, probeSwarmStationDays: 1, probeSwarmExpandRangePct: 100, probeSwarmMinCapitalDistancePct: 0, probeSwarmAvoidColonies: avoid });
+            const st = probeSwarmState(g);
+            probeSwarmPeriodic(g);
+            const attacked: string[] = [];
+            const off = registerScenarioEvent({ id: `test.swarmAttack${avoid}`, flag: 'threatProbeSwarm', event: 'habitatAttacked', run: (_g, e) => { if (e.attackingEmpire === st.faction) attacked.push(e.habitat.name); } });
+            st.budget = 100_000_000;
+            for (let i = 0; i < 250; i++) {
+                st.lastStationDate = -1e12;
+                st.budget = 100_000_000;
+                probeSwarmPeriodic(g);
+            }
+            off();
+            const colonised = new Set<number>();
+            for (const e of g.empires) if (e !== null && e.active) for (const c of e.colonies) colonised.add(c.systemIndex);
+            const colonyHabitats = new Set<unknown>();
+            for (const e of g.empires) if (e !== null && e.active) for (const c of e.colonies) colonyHabitats.add(c);
+            const inColony = st.stations.filter((b) => b.parentHabitat !== null && colonised.has(b.parentHabitat.systemIndex));
+            if (avoid === 1) expect(inColony.length).toBe(0);
+            else expect(inColony.length).toBeGreaterThan(0);
+            expect(st.stations.every((b) => b.parentHabitat !== null && !colonyHabitats.has(b.parentHabitat))).toBe(true);
+            expect(attacked).toEqual([]);
+        }
+    }, 900000);
 });

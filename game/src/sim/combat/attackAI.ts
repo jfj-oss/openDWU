@@ -937,6 +937,10 @@ export function shouldAttack(galaxy: Galaxy, bo: BuiltObject, potentialTarget: S
                 flag4 = true;
             }
             const attackers = stellarAttackers(bo);
+            // mod layer (probe swarm): leaves colony-system bases alone unless they fire first; no scenario = no call.
+            if (galaxy.scenario !== null && scenarioQuery(galaxy, 'builtObjectSparesStaticTarget', false, { builtObject: bo, target: builtObject }) && !attackersContainsFighterOrBuiltObject(attackers, builtObject)) {
+                return false;
+            }
             switch (bo.design.stance) {
                 case BuiltObjectStance.DoNotAttack:
                     return false;

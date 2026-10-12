@@ -28,6 +28,7 @@ import { BuiltObjectSubRole } from '../../builtObjectTypes';
 import { BuiltObjectRole } from '../../data/designSpecifications';
 import { ResourceGroup } from '../../resourceSystem';
 import { habitatResourcesContainsGroup } from '../../stationPlacement';
+import { resourceGroupOf } from '../../resourceSystem';
 import { identifyPirateBase } from '../../characters';
 import { generateNewBuiltObject } from '../../empireEvents';
 import { generateDesignFromSpec } from '../../designGeneration';
@@ -136,6 +137,7 @@ const P = {
     expandRange: (g: Galaxy) => (p(g, 'probeSwarmExpandRangePct', 6) * g.sizeX) / 100,
     minCapitalDistance: (g: Galaxy) => (p(g, 'probeSwarmMinCapitalDistancePct', 15) * g.sizeX) / 100,
     salvage: (g: Galaxy) => p(g, 'probeSwarmSalvageResearch', 60000),
+    avoidColonies: (g: Galaxy) => p(g, 'probeSwarmAvoidColonies', 0) > 0,
     stationDays: (g: Galaxy) => p(g, 'probeSwarmStationDays', 75),
 };
 
@@ -149,8 +151,20 @@ function yearsIn(galaxy: Galaxy): number {
     return gameYear(galaxyStarDate(galaxy)) - gameYear(startStarDateForAge(galaxy.age));
 }
 
+/** Asteroid fields, gas giants, and planets / moons (the caller checks free, uncolonised and that a mining station fits). */
 function isMiningSite(h: Habitat): boolean {
-    return h.category === HabitatCategoryType.Asteroid || h.type === HabitatType.GasGiant || h.type === HabitatType.FrozenGasGiant;
+    return h.category === HabitatCategoryType.Asteroid || h.category === HabitatCategoryType.Planet || h.category === HabitatCategoryType.Moon || h.type === HabitatType.GasGiant || h.type === HabitatType.FrozenGasGiant;
+}
+
+/** Summed abundance of the habitat's mineral and gas resources (what a swarm mining station could pull). Pure. */
+function richness(galaxy: Galaxy, h: Habitat): number {
+    let sum = 0;
+    for (const r of h.resources) {
+        if (r == null) continue;
+        const g = resourceGroupOf(galaxy.resourceSystem.resources[r.resourceId]);
+        if (g === ResourceGroup.Mineral || g === ResourceGroup.Gas) sum += r.abundance;
+    }
+    return sum;
 }
 
 /** Systems (system index) holding any empire's colony. Pure. */
@@ -309,16 +323,17 @@ function stationDesignFor(galaxy: Galaxy, faction: Empire, h: Habitat): Design |
     return d;
 }
 
-/** The next expansion site: the free mining site nearest the mothercore within one step of a swarm station. Pure. */
+/** The next expansion site: the free mining site in the system nearest the mothercore (a system is finished first; richer first within it) within one step of a swarm station. Pure. */
 export function probeSwarmNextSite(galaxy: Galaxy, st: ProbeSwarmState): Habitat | null {
     const faction = st.faction;
     const home = st.home;
     if (faction === null || home === null) return null;
     const anchors = [...(st.mothercore !== null ? [st.mothercore] : []), ...st.stations];
     const range = P.expandRange(galaxy);
-    const colonised = colonisedSystems(galaxy);
+    const colonised = P.avoidColonies(galaxy) ? colonisedSystems(galaxy) : new Set<number>();
     let best: Habitat | null = null;
     let bestD = Number.MAX_VALUE;
+    let bestRich = -1;
     for (const h of galaxy.habitats) {
         if (h === null || !isMiningSite(h) || !siteFree(h) || colonised.has(h.systemIndex)) continue;
         let near = false;
@@ -329,8 +344,13 @@ export function probeSwarmNextSite(galaxy: Galaxy, st: ProbeSwarmState): Habitat
             }
         }
         if (!near) continue;
-        const d = galaxy.calculateDistance(home.xpos, home.ypos, h.xpos, h.ypos);
-        if (d < bestD && stationDesignFor(galaxy, faction, h) !== null) {
+        // Dense blob: the system nearest the mothercore wins, and a system is finished before the next one out; richness
+        // only orders the sites of one system (then habitat index, the loop order).
+        const star = galaxy.systems[h.systemIndex].systemStar;
+        const d = galaxy.calculateDistance(home.xpos, home.ypos, star.xpos, star.ypos);
+        const rich = richness(galaxy, h);
+        if ((d < bestD || (d === bestD && rich > bestRich)) && stationDesignFor(galaxy, faction, h) !== null) {
+            bestRich = rich;
             bestD = d;
             best = h;
         }
@@ -528,18 +548,30 @@ export function probeSwarmKnownSites(galaxy: Galaxy, empire: Empire): KnownThrea
 // Registration
 // ---------------------------------------------------------------------------------------------------------------
 
+/** A stationary base (colony defence, space port, any base) in a system holding a colony: the swarm only returns fire at it. */
+function sparesColonySystemBase(galaxy: Galaxy, t: BuiltObject): boolean {
+    if (t.role !== BuiltObjectRole.Base) return false;
+    const star = t.nearestSystemStar;
+    if (star === null) return false;
+    for (const h of galaxy.systems[star.systemIndex].habitats) {
+        if ((h.category === HabitatCategoryType.Planet || h.category === HabitatCategoryType.Moon) && h.empire !== null && h.empire !== galaxy.independentEmpire) return true;
+    }
+    return false;
+}
+
 function isSwarm(galaxy: Galaxy, e: Empire | null): boolean {
     const st = peekProbeSwarmState(galaxy);
     return st !== null && e !== null && st.faction === e;
 }
 
-export const PROBE_SWARM_HANDLER_IDS = ['probeSwarm.periodic', 'probeSwarm.killedBy'] as const;
+export const PROBE_SWARM_HANDLER_IDS = ['probeSwarm.periodic', 'probeSwarm.killedBy', 'probeSwarm.sparesColony'] as const;
 
 export function registerProbeSwarm(): void {
     registerThreatExistence(PROBE_SWARM_KEY, PROBE_SWARM_FLAG);
     registerScenarioPeriodic({ id: 'probeSwarm.periodic', flag: PROBE_SWARM_FLAG, periodDays: PERIOD_DAYS, order: 14, run: (g) => probeSwarmPeriodic(g) });
     registerScenarioEvent({ id: 'probeSwarm.killedBy', flag: PROBE_SWARM_FLAG, event: 'builtObjectKilledBy', run: (g, e) => onKilledBy(g, e.builtObject, e.destroyer) });
     registerScenarioQuery({ id: 'probeSwarm.passive', flag: PROBE_SWARM_FLAG, query: 'pirateFactionPassive', run: (g, v, a) => v || isSwarm(g, a.empire) });
+    registerScenarioQuery({ id: 'probeSwarm.sparesColony', flag: PROBE_SWARM_FLAG, query: 'builtObjectSparesStaticTarget', run: (g, v, a) => v || (isSwarm(g, a.builtObject.empire) && sparesColonySystemBase(g, a.target)) });
     registerScenarioQuery({ id: 'probeSwarm.noProtection', flag: PROBE_SWARM_FLAG, query: 'pirateProtectionDesired', run: (g, v, a) => v && !isSwarm(g, a.pirate) });
     registerThreatKnownSites(PROBE_SWARM_KEY, probeSwarmKnownSites);
 }

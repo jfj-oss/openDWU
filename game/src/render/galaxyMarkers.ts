@@ -66,6 +66,7 @@ import { BuiltObjectSubRole } from '../sim/builtObjectTypes';
 import { BuiltObjectRole } from '../sim/data/designSpecifications';
 import { HabitatCategoryType, HabitatType, type SystemInfo } from '../sim/types';
 import { SystemVisibilityStatus } from '../sim/visibility';
+import { peekProbeSwarmState } from '../sim/scenario/threats/probeSwarm';
 import { fogOf } from './fog';
 import { isObjectVisibleToThisEmpire, isObjectVisibleToThisEmpireImprecise } from '../sim/independentTraders';
 import type { MapOverlayState } from '../ui/mapOverlays';
@@ -263,6 +264,9 @@ export function galaxyOverlayAlpha(f: number): number {
 export function factionRingBandAlpha(f: number): number {
     return f > SYSTEM_RING_MIN_FACTOR ? 1 : 0;
 }
+
+/** Dead Probe Swarm presence: a dark, calm brown. */
+const SWARM_BROWN = 0x6b4220;
 
 /** Presence disc alpha: the territory layer's 0.25 once zoomed out past system level (the backdrop pass, f > 70). */
 export function presenceBandAlpha(f: number): number {
@@ -905,7 +909,9 @@ export class GalaxyMarkerLayer {
     private ringKey = { z: NaN, v: -1, a: NaN, x0: 0, y0: 0, x1: 0, y1: 0, sig: '' };
     /** Whether the owned / independent system rings are listed (method_250 5395: !CleanGalaxyView). */
     private ringsGated = true;
-    private discKey = { z: NaN, v: -1, x: NaN, y: NaN };
+    /** The Dead Probe Swarm's faction while it has a presence the viewer knows (dark-brown discs, drawn whatever the presence toggle). */
+    private swarmFaction: Empire | null = null;
+    private discKey = { z: NaN, v: -1, x: NaN, y: NaN, all: true };
 
     constructor(
         private readonly galaxy: Galaxy,
@@ -1002,7 +1008,9 @@ export class GalaxyMarkerLayer {
         if (p.stage === 0) {
             const bos = p.builtObjects;
             const known = this.knownBases;
-            const knownBase = (bo: BuiltObject): boolean => known.has(bo);
+            // The swarm's presence follows the system fog (explored systems), not sightings of single stations.
+            const swarm = peekProbeSwarmState(g)?.faction ?? null;
+            const knownBase = (bo: BuiltObject): boolean => known.has(bo) || (swarm !== null && bo.empire === swarm);
             let i = p.cursor;
             for (; i < bos.length && units < budget; i++, units += REFRESH_UNITS_OBJECT) {
                 const bo = bos[i];
@@ -1088,6 +1096,8 @@ export class GalaxyMarkerLayer {
     private publishRefresh(p: RefreshPass): void {
         this.visibleObjects = p.visible;
         this.presence = p.presence.result();
+        const sw = peekProbeSwarmState(this.galaxy)?.faction ?? null;
+        this.swarmFaction = sw !== null && this.presence.some((q) => q.empire === sw) ? sw : null;
         this.owners = p.owners;
         this.ringList = p.ringList;
         this.visibleFleets = p.visibleFleets;
@@ -1102,9 +1112,10 @@ export class GalaxyMarkerLayer {
         const f = 1 / z;
         const factionOn = this.overlays.factionMarkers;
         const presenceOn = stationPresenceVisible(this.overlays);
+        const swarmOn = this.swarmFaction !== null;
         // GameOptions.CleanGalaxyView (method_250's flag, cleanGalaxyView.ts): no system rings, links or name decorations.
         const gates = galaxyViewGates(getSettings().cleanGalaxyView);
-        this.back.visible = f > GALAXY_OVERLAY_MIN_FACTOR && (factionOn || presenceOn);
+        this.back.visible = f > GALAXY_OVERLAY_MIN_FACTOR && (factionOn || presenceOn || swarmOn);
         this.front.visible = factionOn;
         this.drawn.length = 0;
         this.overlayOps.length = 0;
@@ -1141,8 +1152,8 @@ export class GalaxyMarkerLayer {
             this.pass = null;
         }
 
-        this.discs.visible = presenceOn && presenceBandAlpha(f) > 0;
-        if (this.discs.visible) this.updateDiscs(f, z, cam);
+        this.discs.visible = (presenceOn || swarmOn) && presenceBandAlpha(f) > 0;
+        if (this.discs.visible) this.updateDiscs(f, z, cam, presenceOn);
         const ringA = factionOn ? factionRingBandAlpha(f) : 0;
         this.rings.visible = ringA > 0;
         if (this.rings.visible) this.updateRings(f, z, cam, ringA);
@@ -1154,9 +1165,11 @@ export class GalaxyMarkerLayer {
 
     // Presence discs ------------------------------------------------------------------------------------------------
 
-    private updateDiscs(f: number, z: number, cam: Camera): void {
+    private updateDiscs(f: number, z: number, cam: Camera, all: boolean): void {
         const k = this.discKey;
-        if (k.v === this.dataVersion && k.z === z && k.x === cam.x && k.y === cam.y) return;
+        const swarm = this.swarmFaction;
+        if (k.v === this.dataVersion && k.z === z && k.x === cam.x && k.y === cam.y && k.all === all) return;
+        k.all = all;
         k.v = this.dataVersion;
         k.z = z;
         k.x = cam.x;
@@ -1185,10 +1198,13 @@ export class GalaxyMarkerLayer {
             out[n++] = part;
         };
         for (const p of this.presence) {
+            const isSwarm = p.empire === swarm;
+            if (!all && !isSwarm) continue;
             const star = this.galaxy.systems[p.systemIndex].systemStar;
-            const r = Math.max(presenceDiscRadius(p.count), presenceMinScreenPx(p.count, t) / z);
+            const cnt = isSwarm ? 1 : p.count; // the swarm marks the system, not the station count
+            const r = Math.max(presenceDiscRadius(cnt), presenceMinScreenPx(cnt, t) / z);
             if (!boundsOnScreen(star.xpos, star.ypos, r, 0, cam.x, cam.y, cam.width, cam.height, z)) continue;
-            const tint = empireMarkerColor(p.empire);
+            const tint = isSwarm ? SWARM_BROWN : empireMarkerColor(p.empire);
             if (softA > 0.004) put(star.xpos, star.ypos, r, tint, softA, this.discTex);
             if (vividA > 0.004) put(star.xpos, star.ypos, r, tint, vividA, this.discVividTex);
         }

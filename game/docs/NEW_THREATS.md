@@ -100,9 +100,15 @@ An early-game crisis, once per game.
   random events, and the faction never merges; `pirateProtectionDesired` keeps empires from buying protection.
 - Budget `probeSwarmBudget` (60,000) + `probeSwarmBudgetPerStation` (15,000) per station a year, at most
   `probeSwarmBudgetCap` (250,000), spent only on warships (`probeSwarmStartShips` 4 + 0.5 per station) and mining /
-  gas mining stations (one every `probeSwarmStationDays` 75, no limit by default: `probeSwarmMaxStations` 0) at the free asteroid
-  field or gas giant nearest the mothercore within `probeSwarmExpandRangePct` (6 % of the galaxy width) of a swarm
-  station, never in a system with a colony.
+  gas mining stations (one every `probeSwarmStationDays` 75, no limit by default: `probeSwarmMaxStations` 0) at a free
+  asteroid field, gas giant, planet or moon with minable resources (never a colonised world; nearest system to the mothercore first and every eligible site of a system finished before the next one out, richer
+  sites first only within a system: a dense blob that grows ring by ring) within `probeSwarmExpandRangePct` (6 % of the galaxy width) of a swarm station. It may build in
+  systems that hold colonies (`probeSwarmAvoidColonies` 1 restores the old ban). The mothercore still sits in an uncolonised system.
+- Colony systems: its warships attack ships there as anywhere, but never raid, bombard or invade the colony, and do not
+  open fire on colony bases (defences, space ports): the `builtObjectSparesStaticTarget` query makes `shouldAttack`
+  skip a stationary base in a colony system unless it attacked the swarm first (then fire is returned).
+- Map: systems with a swarm base the viewer has explored and seen draw a dark-brown presence disc (galaxyMarkers.ts station-presence
+  layer, own colour, shown regardless of the presence toggle, galaxy/sector zoom, redrawn only when the refreshed station set or view changes).
 - Defence: every 10 days any ship of any owner inside a system with a swarm station is attacked by the two nearest
   free swarm warships; idle warships patrol the stations.
 - Mothercore destroyed: the expansion stops; as for any pirate faction without a base, the stock

@@ -513,6 +513,11 @@ export interface ScenarioQueries {
      * `target`'s ships and bases without a war, as pirates do. Stock false. 19a tit-for-tat strikes. Never draws.
      */
     attackWithoutWar: { value: boolean; args: { empire: Empire; target: Empire } };
+    /**
+     * combat/attackAI.ts shouldAttack: true = `builtObject` does not open fire on the stationary `target` unless it was
+     * attacked by it first (the Dead Probe Swarm leaves colony defences alone). Stock false. Never draws.
+     */
+    builtObjectSparesStaticTarget: { value: boolean; args: { builtObject: BuiltObject; target: BuiltObject } };
     /** 19j: events.ts applyLocationEffects (BuiltObject.cs 3934 ApplyLocationEffects): true = no lightning / ship-damage effects. */
     builtObjectStormImmune: { value: boolean; args: { builtObject: BuiltObject } };
     /** 19j: movement.ts rechargeReactors (BuiltObject.1.cs 2509 RechargeReactors): true = recharging burns no fuel. */
