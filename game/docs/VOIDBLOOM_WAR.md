@@ -8,6 +8,25 @@ expansion (`EXPANSIONS` in `src/sim/scenario/addons.ts`), requires `rimTrade`. O
 Labels used below: **[C#]** ported stock code; **[add-on]** existing openDWU add-on code; **[new]** to be written.
 Verdicts: **works** (usable as is), **hook** (exists, needs a small extension point), **missing** (new system).
 
+
+## User decisions (2026-10-12) — these override the proposals below where they differ
+
+1. **Supply: a colony good on deadly rim worlds.** Voidbloom spawns only on special rim planets and can only be
+   extracted by a colony there (no mining station). The planet is deadly: its population declines constantly, so it
+   needs a steady **forced-labour** inflow and a strong **garrison** against revolts. New system: a direct way to ship
+   labour to the planet (labour convoys built on the Refugees add-on's population convoys; workers from conquered or
+   captured populations; player orders, AI automatic). Convoys and garrisons are raid and rebellion targets.
+2. **"Late only" comes from the crackdown timing.** The Concord cracks down *before* it is weakened (pre-emptively,
+   while still strong), which triggers a **crisis and a choice** (back down / pay / hand over smugglers, or war). Fighting
+   it then is very hard, so success comes naturally late as Voidbloom keeps draining it. No hard year or tech floor.
+3. **The Concord and its commissioner are AI-only.**
+4. **A harsher treaty shifts the aftermath odds** (e.g. more likely revenge).
+5. **Diet votes by self-interest:** members hurt by Voidbloom vote for the ban, members profiting from smuggling or
+   wanting open Concord ports vote for free trade; with no strong interest, a slight lean to the ban.
+6. **Voidbloom may spread into non-Concord colonies** through normal trade (short approval boost, then addiction:
+   approval, output, corruption). Counters: an empire policy "Ban Voidbloom" (freighters don't buy it, colonies seize
+   it), the Colony Economy Customs Bureau, Internal Security policing, a Diet ban, and later patrols.
+
 ## 1. Summary
 
 The Oranthi Concord already runs a closed, Canton-style trade. Rare goods are sold only through its own port and the
