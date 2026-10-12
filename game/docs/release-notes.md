@@ -4,6 +4,12 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+## 0.1.19
+
+- **The treasure fleet no longer gives away the Concord's homeworld.** Until you have met the Concord it follows normal
+  fog of war: no map marker, route or selection lines for systems you haven't explored, and no treasure-fleet news
+  naming its home. After contact it behaves as before.
+
 ## 0.1.18
 
 - **Construction ships no longer die at black holes.** Builds there used the star's centre instead of the safe parking
