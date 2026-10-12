@@ -380,6 +380,14 @@ function mix(c: number, k: number): number {
 }
 export const FILL_DARKEN = 0.55;
 export const FILL_ALPHA = 0.2;
+/** Edge shading: the fill darkens towards each region's boundary. Stacked strokes along the border, widths in mean
+ *  star spacings (widest, faintest first), so the darkening fades inward over about half a spacing. */
+export const EDGE_SHADE_PASSES: ReadonlyArray<readonly [width: number, alpha: number]> = [
+    [1.0, 0.07],
+    [0.6, 0.08],
+    [0.3, 0.1],
+];
+export const EDGE_SHADE_COLOUR = 0x000000;
 
 /** Empire names on influence borders: Source Serif 4 (SIL OFL 1.1, bundled under public/fonts/source-serif-4), a
  *  calm book serif; falls back to the system serifs until it has loaded. */
@@ -471,7 +479,12 @@ export class InfluenceBorderLayer {
             if (tile.fills.length === 0) continue;
             const g = new Graphics();
             for (const f of tile.fills) g.poly(f.verts, true).fill({ color: mix(this.colour(f.owner), FILL_DARKEN), alpha: FILL_ALPHA });
+            const spc = this.cells?.spacing ?? 1;
             for (const b of tile.borders) {
+                for (const [w, a] of EDGE_SHADE_PASSES) {
+                    for (let k = 0; k < b.seg.length; k += 4) g.moveTo(b.seg[k], b.seg[k + 1]).lineTo(b.seg[k + 2], b.seg[k + 3]);
+                    g.stroke({ color: EDGE_SHADE_COLOUR, alpha: a, width: w * spc, cap: 'round', join: 'round' });
+                }
                 const col = mix(this.colour(b.owner), FILL_DARKEN);
                 for (let k = 0; k < b.seg.length; k += 4) g.moveTo(b.seg[k], b.seg[k + 1]).lineTo(b.seg[k + 2], b.seg[k + 3]);
                 g.stroke({ color: col, alpha: FILL_ALPHA, width: 1, pixelLine: true });
