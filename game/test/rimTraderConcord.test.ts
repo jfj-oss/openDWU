@@ -33,11 +33,13 @@ import {
     scenarioWarBlocked,
 } from '../src/sim/scenario/rimTrade/common';
 import { RIM_START_HIGH_QUALITY, RIM_START_MIN_QUALITY, concordStartColonyCandidates } from '../src/sim/scenario/rimTrade/rimTrader';
-import { concordAttacksWithoutWar, concordMissionAllowed, distanceToConcordSpace, inConcordSpace, isStrikeShip, recordRimAggression, rimAngerReview, rimAngerYear, rimCapReview, rimPassiveLeash, rimStrikeReview } from '../src/sim/scenario/rimTrade/passive';
+import { concordAttacksWithoutWar, concordMissionAllowed, concordPresenceStars, concordSystemStars, distanceToConcordSpace, inConcordSpace, isPatrolShip, isStrikeShip, recordRimAggression, rimAngerReview, rimAngerYear, rimCapReview, rimPassiveLeash, rimStrikeReview } from '../src/sim/scenario/rimTrade/passive';
 import { treasureFleetTargetSize, treasureState } from '../src/sim/scenario/rimTrade/treasureFleet';
 import { withinFuelRangeAndRefuel } from '../src/sim/movement';
 import { concordNavyYear, concordTradeHouseYear, concordWarships, navyGroupOf, rimNavyState } from '../src/sim/scenario/rimTrade/wealth';
 import { builtObjectMission } from '../src/sim/missions/mission';
+import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
+import { concordExplorersYear, rimPatrolReview, rimPatrolState } from '../src/sim/scenario/rimTrade/patrol';
 
 let base: GameData;
 beforeAll(async () => {
@@ -181,6 +183,46 @@ describe('19a Concord — passive posture and anger', () => {
         g.scenario!.flags['rimTraderPassive'] = false;
         expect(call(BuiltObjectMissionType.Attack, foreign)).toBe(true);
         g.scenario!.flags['rimTraderPassive'] = true;
+    });
+
+    it('rim patrols: squadrons leave AI control and rotate; the Concord may escort its construction ships; patrols off restores the parked rules', () => {
+        const g = game.galaxy;
+        const r = rimTraderEmpire(g)!;
+        expect(concordPresenceStars(g, r).length).toBeGreaterThanOrEqual(concordSystemStars(g, r).length);
+        const cs = r.builtObjects.find((b) => b !== null && !b.hasBeenDestroyed && b.subRole === BuiltObjectSubRole.ConstructionShip) ?? null;
+        const escort = () => concordMissionAllowed(g, true, { builtObject: r.builtObjects.find((b) => b !== null && !b.hasBeenDestroyed && b.role === BuiltObjectRole.Military && !isPatrolShip(g, b) && !isStrikeShip(g, b))!, missionType: BuiltObjectMissionType.Escort, target: cs, x: -2000000001, y: -2000000001 });
+        if (cs !== null) {
+            expect(escort()).toBe(true); // wherever it sails
+        }
+        const n = rimPatrolReview(g);
+        const st = rimPatrolState(g);
+        const warships = concordWarships(r).length;
+        expect(n).toBeGreaterThan(0);
+        expect(n).toBeLessThanOrEqual(Math.floor((warships * (100 - rimParam(g, 'rimTraderHomeGuardPct'))) / 100));
+        for (const q of st.squads) for (const b of q.ships) expect(isPatrolShip(g, b) && !b.isAutoControlled).toBe(true);
+        const stops = concordPresenceStars(g, r);
+        const q0 = st.squads[0];
+        expect(stops).toContain(q0.stop);
+        if (stops.length > 1) {
+            const before = q0.stop;
+            q0.since = -1e15; // the dwell is over
+            rimPatrolReview(g);
+            expect(st.stats.rotations).toBeGreaterThanOrEqual(1);
+            expect(q0.stop).not.toBe(before);
+        }
+        // Patrols off: the old parked rules (no escort of civilian ships) and no new squadrons.
+        const patrolled = q0.ships[0];
+        g.scenario!.params['rimTraderPatrolSquadrons'] = 0;
+        if (cs !== null) expect(escort()).toBe(false);
+        expect(rimPatrolReview(g)).toBe(0);
+        expect(patrolled.isAutoControlled).toBe(false); // (the squadrons are left to finish; none are added)
+        g.scenario!.params['rimTraderPatrolSquadrons'] = 4;
+        for (const q of st.squads) for (const b of q.ships) b.isAutoControlled = true; // (the shared game goes on without squadrons)
+        st.squads = [];
+        // The explorers top-up buys nothing while the Concord has enough.
+        const have = r.builtObjects.filter((b) => b !== null && !b.hasBeenDestroyed && b.subRole === BuiltObjectSubRole.ExplorationShip).length;
+        g.scenario!.params['rimTraderExplorers'] = have;
+        expect(concordExplorersYear(g)).toBe(0);
     });
 
     it('no war without an aggressive action; war and retaliation within range after one', () => {

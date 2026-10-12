@@ -18,7 +18,7 @@ import { builtObjectMission } from '../src/sim/missions/mission';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../src/sim/diplomacy';
 import { registerScenarioEvent, scenarioEmit } from '../src/sim/scenario';
 import { rimAngerState, rimAngeredAt, rimAngeredAtAnyone, rimLedgerOpen, rimParam, rimTraderEmpire } from '../src/sim/scenario/rimTrade/common';
-import { distanceToConcordSpace, inConcordSpace, inRetaliationRange, isStrikeShip, missionPoint, rimStrikeReview } from '../src/sim/scenario/rimTrade/passive';
+import { distanceToConcordSpace, inConcordPresence, inConcordSpace, inRetaliationRange, isPatrolShip, isStrikeShip, missionPoint, rimStrikeReview } from '../src/sim/scenario/rimTrade/passive';
 import { treasureState } from '../src/sim/scenario/rimTrade/treasureFleet';
 import { concordWarships, rimNavyState } from '../src/sim/scenario/rimTrade/wealth';
 
@@ -103,13 +103,13 @@ describe('19a Concord — passive posture soak', () => {
                     const now = new Set<unknown>();
                     let warships = 0;
                     for (const b of r.builtObjects) {
-                        if (b === null || b.hasBeenDestroyed || b.role !== BuiltObjectRole.Military || ts.ships.includes(b) || isStrikeShip(g, b)) continue; // strike fleets sail galaxy-wide by design
+                        if (b === null || b.hasBeenDestroyed || b.role !== BuiltObjectRole.Military || ts.ships.includes(b) || isStrikeShip(g, b) || isPatrolShip(g, b)) continue; // strike fleets sail galaxy-wide by design; patrol squadrons keep to the presence systems (rimTraderConcord.test.ts)
                         warships++;
                         const m = builtObjectMission(b.mission);
                         const t = m === null ? null : (m.targetBuiltObject ?? m.targetHabitat ?? m.targetCreature ?? m.targetShipGroup);
                         const dest = m === null ? null : missionPoint(t, m.x, m.y);
-                        const inside = inConcordSpace(g, r, b.xpos, b.ypos);
-                        const homeward = dest !== null && inConcordSpace(g, r, dest.x, dest.y);
+                        const inside = inConcordPresence(g, r, b.xpos, b.ypos); // (colonised systems and those with a Concord base)
+                        const homeward = dest !== null && inConcordPresence(g, r, dest.x, dest.y);
                         const retaliating = angry && inRetaliationRange(g, r, b.xpos, b.ypos) && (dest === null || inRetaliationRange(g, r, dest.x, dest.y));
                         // A mission beyond Concord space is only ever a retaliation within range.
                         const destOk = dest === null || homeward || (angry && inRetaliationRange(g, r, dest.x, dest.y));

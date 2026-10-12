@@ -57,7 +57,7 @@ import { EmpireMessageType } from '../../messages';
 import { galaxyStarDate } from '../../tick/simTime';
 import { ultraFastFindNearestRefuellingLocation, withinFuelRange, withinFuelRangeAndRefuel, type FuelTypeRef } from '../../movement';
 import { registerScenarioEvent, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly } from '../hooks';
-import { scenarioFlag, scenarioState } from '../state';
+import { scenarioFlag, scenarioParam, scenarioState } from '../state';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
 import { treasureState } from './treasureFleet';
 import {
@@ -114,6 +114,58 @@ export function distanceToConcordSpace(galaxy: Galaxy, r: Empire, x: number, y: 
 /** (x, y) lies inside one of the Concord's colonised systems (MaxSolarSystemSize of its star). Pure. */
 export function inConcordSpace(galaxy: Galaxy, r: Empire, x: number, y: number): boolean {
     return distanceToConcordSpace(galaxy, r, x, y) <= galaxy.maxSolarSystemSize;
+}
+
+/** Default of the rimTraderPatrolSquadrons param (scenario.json); read here so the posture needs no import of patrol.ts. */
+export const PATROL_SQUADRONS_DEFAULT = 6;
+
+/** Rim patrols on: rimTraderPatrolSquadrons > 0 (a manifest param; 0 = the old parked posture). Pure. */
+export function patrolOn(galaxy: Galaxy): boolean {
+    return scenarioParam(galaxy, 'rimTraderPatrolSquadrons', PATROL_SQUADRONS_DEFAULT) > 0;
+}
+
+/**
+ * Concord presence (patrols on): the stars of its colonised systems and of the systems holding one of its bases
+ * (mining stations, outposts). Unique, in a stable order (colonies, then bases). Pure.
+ */
+export function concordPresenceStars(galaxy: Galaxy, r: Empire): Habitat[] {
+    const out = concordSystemStars(galaxy, r);
+    // The private sector's mining stations are the Concord's too (privateBuiltObjects).
+    for (const list of [r.builtObjects, r.privateBuiltObjects] as (BuiltObject | null)[][]) {
+        for (const b of list) {
+            if (b === null || b.hasBeenDestroyed || b.role !== BuiltObjectRole.Base || b.builtAt !== null) continue;
+            const star = b.nearestSystemStar;
+            if (star !== null && galaxy.calculateDistance(b.xpos, b.ypos, star.xpos, star.ypos) <= galaxy.maxSolarSystemSize && !out.includes(star)) out.push(star);
+        }
+    }
+    return out;
+}
+
+/** (x, y) lies inside a Concord presence system (colonised, or holding a Concord base). Pure. */
+export function inConcordPresence(galaxy: Galaxy, r: Empire, x: number, y: number): boolean {
+    for (const s of concordPresenceStars(galaxy, r)) if (galaxy.calculateDistance(x, y, s.xpos, s.ypos) <= galaxy.maxSolarSystemSize) return true;
+    return false;
+}
+
+/** Saved state of the rim patrols (`scenarioState(galaxy, 'rimPatrol')`, patrol.ts): squadrons out of AI control. */
+export interface RimPatrolSquadron {
+    ships: BuiltObject[];
+    /** The system star the squadron patrols now (null: not yet sent). */
+    stop: Habitat | null;
+    /** Star date it took up that stop. */
+    since: number;
+}
+export interface RimPatrolState {
+    squads: RimPatrolSquadron[];
+    stats: { engagements: number; pirateKills: number; creatureKills: number; escorted: number; rotations: number };
+    /** builtObjectIDs of construction ships already counted as escorted. */
+    escortedIds: number[];
+}
+
+/** `bo` sails in a patrol squadron (exempt from the posture and the leash). Pure. */
+export function isPatrolShip(galaxy: Galaxy, bo: unknown): boolean {
+    if (galaxy.scenario === null || !('rimPatrol' in galaxy.scenario.state)) return false;
+    return (galaxy.scenario.state.rimPatrol as RimPatrolState).squads.some((q) => q.ships.includes(bo as never));
 }
 
 /** (x, y) lies within rimTraderRetaliationRange sectors of the Concord's colonised systems. Pure. */
@@ -182,13 +234,18 @@ export function concordMissionAllowed(galaxy: Galaxy, value: boolean, args: { bu
         if (type === BuiltObjectMissionType.UnloadTroops && isHabitat(target) && target.empire !== r) return false;
     }
     if (!scenarioFlag(galaxy, PASSIVE_FLAG)) return value;
-    if (bo.role !== BuiltObjectRole.Military || isTreasureShip(galaxy, bo) || isStrikeShip(galaxy, bo) || concordHooks().missionExempt?.(galaxy, bo) === true) return value;
+    if (bo.role !== BuiltObjectRole.Military || isTreasureShip(galaxy, bo) || isStrikeShip(galaxy, bo) || isPatrolShip(galaxy, bo) || concordHooks().missionExempt?.(galaxy, bo) === true) return value;
+    const patrols = patrolOn(galaxy);
+    // Rim patrols: a warship may escort the Concord's own construction ship to a build site beyond its presence.
+    if (patrols && type === BuiltObjectMissionType.Escort && isBuiltObject(target) && target.actualEmpire === r && target.subRole === BuiltObjectSubRole.ConstructionShip) return value;
     // No escorting of civilian ships: freighters, miners and explorers leave Concord space, and the escort would follow.
     if (type === BuiltObjectMissionType.Escort && isBuiltObject(target) && target.role !== BuiltObjectRole.Military && target.role !== BuiltObjectRole.Base) return false;
     const angered = owner !== null && owner !== r && rimAngeredAt(galaxy, owner);
     const p = missionPoint(target, args.x, args.y);
-    const home = p === null || inConcordSpace(galaxy, r, p.x, p.y);
-    if (offensive().has(type) && owner !== null && owner !== r && !angered) {
+    const home = p === null || (patrols ? inConcordPresence(galaxy, r, p.x, p.y) : inConcordSpace(galaxy, r, p.x, p.y));
+    // Rim patrols: pirates are hunted inside Concord presence (ships and bases; they are at war with everyone).
+    const pirate = patrols && home && owner !== null && owner.pirateEmpireBaseHabitat !== null && (type === BuiltObjectMissionType.Attack || type === BuiltObjectMissionType.WaitAndAttack);
+    if (offensive().has(type) && owner !== null && owner !== r && !angered && !pirate) {
         // Defence: attacking a ship (not a base) inside Concord space is allowed; nothing else against the unprovoked.
         const intruder = home && isBuiltObject(target) && target.role !== BuiltObjectRole.Base && (type === BuiltObjectMissionType.Attack || type === BuiltObjectMissionType.WaitAndAttack);
         if (!intruder) return false;
@@ -241,9 +298,9 @@ export function rimPassiveLeash(galaxy: Galaxy): number {
     const fleets: ShipGroup[] = [];
     let n = 0;
     for (const b of [...r.builtObjects]) {
-        if (b === null || b.hasBeenDestroyed || b.role !== BuiltObjectRole.Military || isTreasureShip(galaxy, b) || isStrikeShip(galaxy, b) || concordHooks().missionExempt?.(galaxy, b) === true) continue;
+        if (b === null || b.hasBeenDestroyed || b.role !== BuiltObjectRole.Military || isTreasureShip(galaxy, b) || isStrikeShip(galaxy, b) || isPatrolShip(galaxy, b) || concordHooks().missionExempt?.(galaxy, b) === true) continue;
         const m = builtObjectMission(b.mission);
-        const here = inConcordSpace(galaxy, r, b.xpos, b.ypos);
+        const here = patrolOn(galaxy) ? inConcordPresence(galaxy, r, b.xpos, b.ypos) : inConcordSpace(galaxy, r, b.xpos, b.ypos);
         if (m === null || m.type === BuiltObjectMissionType.Undefined) {
             if (here) continue;
         } else {
@@ -527,7 +584,7 @@ function disbandStrike(galaxy: Galaxy, r: Empire, f: RimStrikeFleet): void {
 }
 
 /** A warship fit to strike: armed, mobile, not a troop / resupply ship, under AI control, not busy elsewhere. Pure. */
-function strikeCapable(galaxy: Galaxy, b: BuiltObject): boolean {
+export function strikeCapable(galaxy: Galaxy, b: BuiltObject): boolean {
     return (
         !b.hasBeenDestroyed &&
         b.role === BuiltObjectRole.Military &&
