@@ -3,4 +3,6 @@ import './supply';
 import './trade';
 import './crackdown';
 import './treaty';
+import './diet';
+import './legal';
 export {};
