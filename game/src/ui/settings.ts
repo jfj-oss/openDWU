@@ -271,7 +271,7 @@ export const DEFAULT_SETTINGS: UiSettings = {
     cleanGalaxyView: false,
     animateBackdrop: true,
     stormFlashes: true,
-    newGameBackdrop: 'original',
+    newGameBackdrop: 'deep',
     backgroundMood: 'off',
     moodLevel: 0.6,
     musicSource: 'original',

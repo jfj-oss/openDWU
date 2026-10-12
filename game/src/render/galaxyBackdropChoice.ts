@@ -5,11 +5,12 @@
 // default save is byte-identical); a save without it — every older save — loads as Original. The Main View listens
 // for changes (galaxyBackdrop.ts rebuilds its layer).
 
-export type GalaxyBackdropKind = 'original' | 'galacticCore' | 'goldenSpiral' | 'eerie' | 'nebula';
+export type GalaxyBackdropKind = 'original' | 'galacticCore' | 'goldenSpiral' | 'eerie' | 'nebula' | 'deep';
 
 /** Picker order and labels. Original = the install's galaxy_backdrop.jpg (the default, unchanged). */
 export const GALAXY_BACKDROP_OPTIONS: readonly { kind: GalaxyBackdropKind; label: string; description: string }[] = [
     { kind: 'original', label: 'Original', description: 'The original galaxy backdrop image.' },
+    { kind: 'deep', label: 'Deep (DW2-style)', description: 'The original image darkened to near-black, with soft dark rust, brown and teal dust clouds over it.' },
     { kind: 'galacticCore', label: 'Galactic Core', description: 'An infrared-style galaxy built from light around every star system: cyan young stars, green haze, red dust.' },
     { kind: 'goldenSpiral', label: 'Golden Spiral', description: 'A golden galaxy built from light around every star system, with blue-white knots and brown dust.' },
     { kind: 'eerie', label: 'Eerie', description: 'Near-black, cold and still, with drifting fog and the odd faint pulse.' },

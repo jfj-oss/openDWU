@@ -205,7 +205,7 @@ export function createBackdropThumbnail(size: number, className = ''): { el: HTM
     let lastKey = '';
     const update = (src: BackdropPreviewSource): void => {
         const kind = src.kind;
-        if (kind === 'original') {
+        if (kind === 'original' || kind === 'deep') {
             if (img.getAttribute('src') === null) img.src = BACKDROP_URLS[0];
             img.style.display = 'block';
             canvas.style.display = 'none';

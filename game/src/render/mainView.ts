@@ -123,6 +123,7 @@ import { showsMapIndicators } from './mainViewDisplay';
 import { createFollowState, followTargetAlive, followTargetPosition, isFollowing, stopFollow, type FollowState, type FollowTarget } from './followCamera';
 import { localViewerEmpire } from '../localViewer';
 import { GalaxyBackdropLayer } from './galaxyBackdrop';
+import { buildDeepBackdrop } from './deepBackdrop';
 import { getGalaxyBackdrop, onGalaxyBackdropChange, setGalaxyBackdrop, urlGalaxyBackdrop, urlGalaxyBackdropTime, type GalaxyBackdropKind } from './galaxyBackdropChoice';
 
 export function fadeIn(v: number, a: number, b: number): number {
@@ -2967,10 +2968,28 @@ export class MainView {
         this.galaxyBackdropLayer?.onContextRestored();
     }
 
+    private deepTex: Texture | null = null;
+    /** The "Deep (DW2-style)" texture built from the loaded original (deepBackdrop.ts), or the original if it fails. */
+    private deepBackdropTexture(): Texture {
+        const orig = this.textures.backdrop;
+        if (this.deepTex === null) {
+            const res = orig.source.resource as CanvasImageSource | undefined;
+            const canvas = res ? buildDeepBackdrop(res, orig.source.pixelWidth, orig.source.pixelHeight, this.galaxy.randomSeed | 0) : null;
+            if (canvas === null) return orig;
+            this.deepTex = Texture.from(canvas);
+        }
+        return this.deepTex;
+    }
+
     /** Show the chosen galaxy backdrop: a generated variant, or the original image (also when a variant cannot run). */
     private applyGalaxyBackdrop(kind: GalaxyBackdropKind): void {
         const generated = this.galaxyBackdropLayer?.setKind(kind) ?? false;
         this.backdrop.visible = !generated;
+        if (this.textures !== undefined) {
+            const tex = kind === 'deep' ? this.deepBackdropTexture() : this.textures.backdrop;
+            this.backdrop.texture = tex;
+            this.backdrop.scale.set(this.galaxy.sizeX / tex.width, this.galaxy.sizeY / tex.height);
+        }
     }
 
     /** Repeated context losses (contextLoss.ts): level 1 = CPU nebula path, level 2 = no system nebulae. */
