@@ -79,7 +79,6 @@ export function particleWind(style: ParticleStyle, structure: BackdropStructure)
 export function fitArmPhase(s: BackdropStructure, arms: number, wind: number): number {
     const n = DENSITY_SIZE;
     const [cu, cv] = s.centre;
-    const [ax, ay] = s.aspect;
     const hand = s.arm[3];
     let best = 0;
     let bestScore = -Infinity;
@@ -88,8 +87,9 @@ export function fitArmPhase(s: BackdropStructure, arms: number, wind: number): n
         let score = 0;
         for (let y = 0; y < n; y += 2) {
             for (let x = 0; x < n; x += 2) {
-                const px = ((x + 0.5) / n - cu) * 2 * ax;
-                const py = ((y + 0.5) / n - cv) * 2 * ay;
+                // The structure frame (each axis in its own half side; galaxyBackdropStructure.ts).
+                const px = ((x + 0.5) / n - cu) * 2;
+                const py = ((y + 0.5) / n - cv) * 2;
                 const r = Math.hypot(px, py);
                 if (r < 0.08 || r > s.misc[1]) continue;
                 const psi = arms * (hand * Math.atan2(py, px) - Math.log(r) * wind) + phase;
@@ -145,13 +145,17 @@ export function buildGalaxyParticles(us: ArrayLike<number>, vs: ArrayLike<number
     const bright: number[] = [];
     let j = 0;
     for (let i = 0; i < n; i++) {
+        // Positions in centred units (isotropic, 1 = half the larger side); the structure (radius, arms, streaming)
+        // in the structure frame, each axis in its own half side (the generator stretches the layout to the rectangle).
         const sx = (us[i] - cu) * 2 * ax;
         const sy = (vs[i] - cv) * 2 * ay;
-        const sr = Math.max(1e-4, Math.hypot(sx, sy));
+        const qx = sx / ax;
+        const qy = sy / ay;
+        const sr = Math.max(1e-4, Math.hypot(qx, qy));
         // Local streaming direction: along the arm / ring (spiral: the log spiral's tangent; elliptical / ring:
         // around the centre); isotropic for irregular and cluster galaxies.
-        const rx = sx / sr;
-        const ry = sy / sr;
+        const rx = qx / sr;
+        const ry = qy / sr;
         let tx = -ry;
         let ty = rx;
         let elong = 1;
@@ -161,6 +165,12 @@ export function buildGalaxyParticles(us: ArrayLike<number>, vs: ArrayLike<number
             ty = Math.sin(a) * rx + Math.cos(a) * ry;
             elong = 2.6;
         } else if (shape <= 2) elong = 2.2;
+        // The tangent back in centred units.
+        tx *= ax;
+        ty *= ay;
+        const tl = Math.max(1e-9, Math.hypot(tx, ty));
+        tx /= tl;
+        ty /= tl;
         const local = spacing * 0.6 / Math.sqrt(Math.max(0.12, dens(us[i], vs[i])));
         for (let k = 0; k < perSystem[i]; k++, j++) {
             const rho = local * (0.25 + 2.2 * Math.pow(rnd(), 1.6));
@@ -168,12 +178,14 @@ export function buildGalaxyParticles(us: ArrayLike<number>, vs: ArrayLike<number
             const gb = gauss(rnd) * rho * 0.45;
             const px = sx + tx * ga - ty * gb;
             const py = sy + ty * ga + tx * gb;
-            const r = Math.max(1e-4, Math.hypot(px, py));
+            const pqx = px / ax;
+            const pqy = py / ay;
+            const r = Math.max(1e-4, Math.hypot(pqx, pqy));
             const rn = r / rOut;
             // The arm / ring pattern at the particle: brighter on the arms, dim between (fitted to the stars).
             let arm = 1;
             if (shape === 0 || style === 'galacticCore') {
-                const psi = shape <= 2 && shape !== 0 ? -Math.log(r) * wind * 2 + phase : arms * (hand * Math.atan2(py, px) - Math.log(r) * wind) + phase;
+                const psi = shape <= 2 && shape !== 0 ? -Math.log(r) * wind * 2 + phase : arms * (hand * Math.atan2(pqy, pqx) - Math.log(r) * wind) + phase;
                 arm = shape <= 2 ? Math.pow(0.5 + 0.5 * Math.cos(psi), 2) : 1;
             }
             const band = Math.min(1, Math.max(0, (rn - 0.06) / 0.2));

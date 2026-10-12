@@ -30,9 +30,9 @@ export interface BackdropStructure {
     shape: number;
     /** Arms: count, log-spiral winding (1 / tan(pitch)), phase (rad), handedness (+1 / -1). */
     arm: [number, number, number, number];
-    /** Major axis (cos, sin), minor / major ratio, core radius (centred units: 1 = half the larger side). */
+    /** Major axis (cos, sin), minor / major ratio, core radius (structure frame: each axis in units of its half side). */
     ell: [number, number, number, number];
-    /** Core brightness weight, outer (90%) radius, galaxy seed noise offsets (0..1). */
+    /** Core brightness weight, outer (90%) radius (structure frame), galaxy seed noise offsets (0..1). */
     misc: [number, number, number, number];
 }
 
@@ -144,51 +144,43 @@ export function analyzeGalaxyStructure(xs: ArrayLike<number>, ys: ArrayLike<numb
         density[i * 4 + 3] = 255;
     }
 
-    // Centre: a ring turns about its middle (the centroid of all stars); every other shape about its densest point —
+    // Centre: the spiral, elliptical and ring layouts are generated about the rectangle's middle (Galaxy.5.cs SetupSun:
+    // SizeX / 2, SizeY / 2), so their structure turns about exactly that (the densest blur cell wanders with the random
+    // star layout, and put the core visibly off-centre); irregular and cluster galaxies about their densest point —
     // the weighted centroid of the broad-blur cells within 85% of the peak.
     let cu = 0.5;
     let cv = 0.5;
-    if (count > 0) {
-        if (code === 2) {
-            let ax = 0;
-            let ay = 0;
-            for (let i = 0; i < count; i++) {
-                ax += xs[i];
-                ay += ys[i];
+    if (count > 0 && code > 2) {
+        let peak = 0;
+        for (let i = 0; i < n * n; i++) peak = Math.max(peak, broad[i]);
+        let w = 0;
+        let ax = 0;
+        let ay = 0;
+        for (let y = 0; y < n; y++) {
+            for (let x = 0; x < n; x++) {
+                const v = broad[y * n + x];
+                if (v < peak * 0.85) continue;
+                const wt = v - peak * 0.85;
+                w += wt;
+                ax += wt * (x + 0.5);
+                ay += wt * (y + 0.5);
             }
-            cu = ax / count / sx;
-            cv = ay / count / sy;
-        } else {
-            let peak = 0;
-            for (let i = 0; i < n * n; i++) peak = Math.max(peak, broad[i]);
-            let w = 0;
-            let ax = 0;
-            let ay = 0;
-            for (let y = 0; y < n; y++) {
-                for (let x = 0; x < n; x++) {
-                    const v = broad[y * n + x];
-                    if (v < peak * 0.85) continue;
-                    const wt = v - peak * 0.85;
-                    w += wt;
-                    ax += wt * (x + 0.5);
-                    ay += wt * (y + 0.5);
-                }
-            }
-            if (w > 0) {
-                cu = ax / w / n;
-                cv = ay / w / n;
-            }
+        }
+        if (w > 0) {
+            cu = ax / w / n;
+            cv = ay / w / n;
         }
     }
 
-    // Radii and second moments in centred units (1 = half the larger side), about the centre.
+    // Radii and second moments in the structure frame (each axis in units of its own half side: the generator stretches
+    // the layout to the rectangle; for a square galaxy this is the centred frame, 1 = half the side), about the centre.
     const radii = new Float32Array(count);
     let mxx = 0;
     let myy = 0;
     let mxy = 0;
     for (let i = 0; i < count; i++) {
-        const px = (xs[i] / sx - cu) * 2 * aspect[0];
-        const py = (ys[i] / sy - cv) * 2 * aspect[1];
+        const px = (xs[i] / sx - cu) * 2;
+        const py = (ys[i] / sy - cv) * 2;
         radii[i] = Math.hypot(px, py);
         mxx += px * px;
         myy += py * py;
@@ -230,8 +222,8 @@ export function analyzeGalaxyStructure(xs: ArrayLike<number>, ys: ArrayLike<numb
         let score = 0;
         for (let y = 0; y < n; y += 2) {
             for (let x = 0; x < n; x += 2) {
-                const px = ((x + 0.5) / n - cu) * 2 * aspect[0];
-                const py = ((y + 0.5) / n - cv) * 2 * aspect[1];
+                const px = ((x + 0.5) / n - cu) * 2;
+                const py = ((y + 0.5) / n - cv) * 2;
                 const r = Math.hypot(px, py);
                 if (r < rMin || r > rMax) continue;
                 const psi = arms * (hand * Math.atan2(py, px) - Math.log(r) * wind) + phase;

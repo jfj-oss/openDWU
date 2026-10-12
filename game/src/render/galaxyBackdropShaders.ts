@@ -114,6 +114,9 @@ vec2 hash22(vec2 p) {
     return fract((p3.xx + p3.yz) * p3.zy);
 }
 
+// The structure frame: p with each axis scaled to its own half side (the galaxy generator stretches its layout to the
+// rectangle, so a non-square galaxy's core, arms and rim stretch with it; square galaxies: q = p). The noise keeps p.
+vec2 sq(vec2 p) { return p / uAspect; }
 // Radius in the galaxy's own ellipse (major axis uEll.xy, minor / major uEll.z).
 float ellR(vec2 p) {
     vec2 q = vec2(dot(p, uEll.xy), dot(p, vec2(-uEll.y, uEll.x)) / uEll.z);
@@ -177,15 +180,16 @@ float dustFilaments(vec2 p) {
 
 // The arm / ring phase of the particle galaxy at p (winding uPartInfo.z, phase uPartInfo.w).
 float partPsi(vec2 p) {
-    float r = max(length(p), 0.003);
-    if (uParams.w < 0.5) return uArm.x * (uArm.w * atan(p.y, p.x) - log(r) * uPartInfo.z) + uPartInfo.w;
+    vec2 q = sq(p);
+    float r = max(length(q), 0.003);
+    if (uParams.w < 0.5) return uArm.x * (uArm.w * atan(q.y, q.x) - log(r) * uPartInfo.z) + uPartInfo.w;
     if (uParams.w < 2.5 && uPartInfo.y < 0.5) return -log(r) * uPartInfo.z * 2.0 + uPartInfo.w;
     return 0.0;
 }
 
 vec3 partStatic(vec2 uv, vec2 p, vec3 d) {
     float golden = uPartInfo.y;
-    float r = max(length(p), 0.0015);
+    float r = max(length(sq(p)), 0.0015);
     float rn = r / uMisc.y;
     vec3 part = texture(uPart, vUv).rgb * uPartInfo.x;
     vec3 h1 = texture(uHaze1, uv).rgb * uPartInfo.x;
@@ -229,8 +233,9 @@ vec3 partStatic(vec2 uv, vec2 p, vec3 d) {
 
 vec4 partAnim(vec2 uv, vec2 p, vec3 d, float t) {
     float golden = uPartInfo.y;
-    float r = max(length(p), 0.015);
-    float th = atan(p.y, p.x);
+    vec2 q = sq(p);
+    float r = max(length(q), 0.015);
+    float th = atan(q.y, q.x);
     float rn = r / uMisc.y;
     vec3 h1 = texture(uHaze1, uv).rgb * uPartInfo.x;
     vec3 h2 = texture(uHaze2, uv).rgb * uPartInfo.x;
@@ -325,9 +330,10 @@ const vec3 NB_PINK = vec3(0.31, 0.05, 0.19);
 
 float nebulaArms(vec2 p, float t) {
     if (uParams.w > 0.5) return 1.0;
-    float r = max(length(p), 0.015);
+    vec2 q = sq(p);
+    float r = max(length(q), 0.015);
     float rn = r / uMisc.y;
-    float a = atan(p.y, p.x) + uArm.w * 0.0011 * t;
+    float a = atan(q.y, q.x) + uArm.w * 0.0011 * t;
     return mix(0.35, 1.25, armMask(r, a, 1.6)) * mix(1.0, armBand(rn), 0.6);
 }
 
@@ -345,7 +351,7 @@ vec4 nebulaAnim(vec2 p, vec3 d, float t) {
     vec2 w = q + 0.9 * w1;
     vec2 w2 = vec2(uC(w * 1.4 + vec2(1.7, 9.2) + 0.0042 * t), uD(w * 1.4 + vec2(8.3, 2.8) - 0.0037 * t)) - 0.5;
     vec2 ww = w + 0.5 * w2;
-    float env = (0.3 + 0.7 * smoothstep(0.02, 0.55, d.g)) * nebulaArms(p, t) * (1.0 - smoothstep(1.0, 1.5, length(p) / uMisc.y));
+    float env = (0.3 + 0.7 * smoothstep(0.02, 0.55, d.g)) * nebulaArms(p, t) * (1.0 - smoothstep(1.0, 1.5, length(sq(p)) / uMisc.y));
     // Diffuse, glowing clouds with feathered edges: thin translucent veils over wide areas, and denser glowing knots.
     float veil = smoothstep(0.36, 0.72, uA(ww * 0.9 + vec2(0.37, 0.91)));
     float knot = pow(smoothstep(0.5, 0.78, uB(ww * 1.6 + vec2(3.1, 7.7))), 1.5);
