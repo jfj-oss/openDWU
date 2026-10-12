@@ -36,6 +36,32 @@ Verdicts: **works** (usable as is), **hook** (exists, needs a small extension po
    carrying Voidbloom; send agents after the colony's governor (only when Characters & Victory is on, since governors
    come from it). **Plus occupation:** the Concord may invade and occupy a Voidbloom world (stock invasion) to shut it
    down or hold it. Not chosen (dropped for now): smuggler bounties, "outlaw" status, bribing the garrison.
+9. **Crackdown status:** the target empire either **tolerates** the crackdown (blockades, raids and occupation run as
+   a "police action", no war) or **declares war**. AI decides by strength, the profit at stake and personality.
+10. **Tone: dark.** No toggle or softening; forced labour and addiction stay as designed.
+11. **All gaps fixed:** a fallback starter (pirates or a rim faction smuggle if no empire does); neutral ships hit by
+    the crackdown cost the Concord standing with their owners (feeds the Diet); per-colony addiction and Voidbloom
+    levels on the colony screen plus a map overlay and spread warnings; profit tuned so labour, garrisons and risk are
+    clearly worth it (soak-measured); Galactopedia articles, Rim expansion meter update, multiplayer determinism; not
+    addable to saves.
+12. **All history events in:** the commissioner's open letter; the public burning (galaxy news); the "merchants'
+    detention" becomes a **raid of the Voidbloom colony that destroys its Voidbloom stock**; the gunboat moment (the
+    Concord's frozen research); a small "barren rock" world ceded that grows into a trade hub; "me too" treaties
+    (most-favoured nation); indemnity paid in instalments; the winner takes a cut of Concord tolls (foreign-run
+    customs); a second war years later from a pretext incident, in which the Concord capital's wonder can be looted and
+    burned; the civil-war branch led by a zealot character; the reform branch as "Self-Strengthening"; corrupt Concord
+    officials who can be bribed to look away; spore dens in addicted Concord colonies; the "silver drain" statistic.
+13. **The Concord in the Diet (coordinator's recommendation, pending user OK):** a full member that votes, lobbies and
+    bribes delegates, but cannot host or hold the Regency; motions against it are real votes it fights.
+14. **Trade model (proposed, pending user OK):** Voidbloom is its own **contraband** category, not a stock luxury or
+    super-luxury slot. Every colony that tastes it gains a strong short boost (approval and development, like a super
+    luxury) and an addiction level; demand and price rise with addiction; where it's banned, demand is met by the black
+    market (smugglers ignore the ban); withdrawal hurts approval and output when supply stops. Concord colonies have the
+    highest base demand (the "Canton market").
+15. **After legalisation (ideas, pending):** a galaxy-wide dependency (empires reliant on rim producers, giving them
+    leverage); withdrawal crises when supply is cut; temperance movements in colonies demanding bans; a research cure
+    ("neural detox") that lowers addiction; a later Diet "Galactic Prohibition" motion; pirate syndicates growing rich on
+    the trade; leaders who pick up an addiction trait.
 8. **AI empires want Voidbloom worlds badly:** a very high colonisation and conquest value for Voidbloom planets in
    the AI's target scoring (via a scenario hook on colonisation and invasion targets), so AI empires race for them,
    defend them and fight over them. This also guarantees the AI takes part in the arc.
