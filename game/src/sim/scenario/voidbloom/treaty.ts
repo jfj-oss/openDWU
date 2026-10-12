@@ -459,12 +459,18 @@ function mostAddictedColony(galaxy: Galaxy, r: Empire): Habitat | null {
     return best;
 }
 
+function d2(a: Habitat, b: Habitat): number {
+    const dx = a.xpos - b.xpos;
+    const dy = a.ypos - b.ypos;
+    return dx * dx + dy * dy;
+}
+
 function farthestColonies(r: Empire, n: number): Habitat[] {
     const cap = r.capital;
     if (cap === null) return [];
     return r.colonies
         .filter((h) => !h.hasBeenDestroyed && h !== cap)
-        .sort((a, b) => (b.xpos - cap.xpos) ** 2 + (b.ypos - cap.ypos) ** 2 - ((a.xpos - cap.xpos) ** 2 + (a.ypos - cap.ypos) ** 2) || a.habitatIndex - b.habitatIndex)
+        .sort((a, b) => d2(b, cap) - d2(a, cap) || a.habitatIndex - b.habitatIndex)
         .slice(0, n);
 }
 
