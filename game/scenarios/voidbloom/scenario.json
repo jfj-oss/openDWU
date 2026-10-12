@@ -22,6 +22,7 @@
     { "name": "voidbloomRevoltPct", "label": "Revolt chance per 30 days at no garrison (%)", "default": 12, "min": 0, "max": 100 },
     { "name": "voidbloomColonyValue", "label": "AI colonisation value of a Voidbloom world (× stock)", "default": 4, "min": 1, "max": 50 },
     { "name": "voidbloomPremium", "label": "Black-market premium on top of the price (× value, × (0.5 + the buyer colony's addiction))", "default": 1.5, "min": 0, "max": 20 },
+    { "name": "voidbloomPrice", "label": "Black-market price per unit before the premium (credits)", "default": 120, "min": 1, "max": 5000 },
     { "name": "voidbloomUse", "label": "Units an addicted colony uses per billion people a month (at full addiction)", "default": 60, "min": 0, "max": 2000 },
     { "name": "voidbloomStateDrainPct", "label": "Share of a purchase the buyer's state treasury pays (%)", "default": 15, "min": 0, "max": 100 },
     { "name": "voidbloomSmugglerCutPct", "label": "Smugglers' cut of a black-market sale (%)", "default": 20, "min": 0, "max": 100 },

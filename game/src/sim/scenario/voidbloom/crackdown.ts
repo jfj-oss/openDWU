@@ -289,6 +289,11 @@ export function crackdownYear(galaxy: Galaxy): void {
 // Inspections (every 10 days): seizures, public burnings, neutral ships
 // ---------------------------------------------------------------------------------------------------------------
 
+/** An empire's state ships and private freighters (the freighters carry the cargo), fixed order. */
+function shipsOf(e: Empire): BuiltObject[] {
+    return e.privateBuiltObjects.length === 0 ? e.builtObjects : [...e.builtObjects, ...e.privateBuiltObjects];
+}
+
 function inspectionExempt(galaxy: Galaxy, e: Empire | null): boolean {
     if (e === null) return false;
     const rec = peekVbState(galaxy)?.empires[e.empireId];
@@ -336,9 +341,11 @@ export function inspectionSweep(galaxy: Galaxy): void {
     const ports = r.colonies.filter((h) => !h.hasBeenDestroyed);
     if (ports.length === 0) return;
     const full = vbParam(galaxy, 'voidbloomInspectPct') / 100;
-    for (const e of [...galaxy.empires, ...galaxy.pirateEmpires]) {
+    const carriers = [...galaxy.empires, ...galaxy.pirateEmpires];
+    if (galaxy.independentEmpire !== null && !carriers.includes(galaxy.independentEmpire)) carriers.push(galaxy.independentEmpire);
+    for (const e of carriers) {
         if (e === null || !e.active || e === r) continue;
-        for (const b of e.builtObjects) {
+        for (const b of shipsOf(e)) {
             if (b === null || b.hasBeenDestroyed || b.cargo === null || b.cargo.items.length === 0) continue;
             if (voidbloomStock(galaxy, b) <= 0 || inspectionExempt(galaxy, b.actualEmpire)) continue;
             let near: Habitat | null = null;
@@ -441,7 +448,7 @@ function interceptConvoys(galaxy: Galaxy, r: Empire, cd: Crackdown): void {
 function huntFreighters(galaxy: Galaxy, r: Empire, cd: Crackdown, e: Empire): void {
     const reach = galaxy.sectorSize;
     const st = vbState(galaxy);
-    for (const b of e.builtObjects) {
+    for (const b of shipsOf(e)) {
         if (b === null || b.hasBeenDestroyed || b.cargo === null || voidbloomStock(galaxy, b) <= 0) continue;
         let hunter: BuiltObject | null = null;
         for (const t of cd.taskForce) if (!t.hasBeenDestroyed && galaxy.calculateDistance(t.xpos, t.ypos, b.xpos, b.ypos) <= reach) hunter = hunter ?? t;
@@ -535,6 +542,22 @@ function policeAction(galaxy: Galaxy, r: Empire, cd: Crackdown): void {
     // Occupation after 90 days on station when the garrison is thinner than the task force's marines.
     if (daysThere >= 90 && garrisonOf(site) < present) {
         takeOwnershipOfColonyFull(galaxy, e, site, r, false, true);
+        // The Concord frees the forced workers and shuts the world down: the people are taken to its nearest colony.
+        const home = nearestConcordColony(galaxy, r, site.xpos, site.ypos);
+        const pop = site.population;
+        if (home !== null && home.population !== null && pop !== null) {
+            for (const p of pop.items) {
+                const moved = Math.max(0, p.amount - 1_000_000 / Math.max(1, pop.items.length));
+                if (moved <= 0) continue;
+                p.amount -= moved;
+                home.population.add(new Population(p.race, moved, galaxy));
+                cd.freed += moved;
+                st.stats.freed += moved;
+            }
+            pop.recalculateTotalAmount();
+            home.population.recalculateTotalAmount();
+            recalculateEmpirePopulation(r);
+        }
         cd.occupations++;
         st.stats.occupations++;
         cd.site = null;

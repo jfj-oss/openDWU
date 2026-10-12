@@ -8,6 +8,7 @@ import type { BuiltObject } from '../builtObject';
 import type { Habitat } from '../types';
 import type { Cargo } from '../cargo';
 import { ResourceRef } from '../cargo';
+import { contrabandCount, isContraband } from '../scenario/scenarioGoods';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
 import { galaxyResourceCurrentPrices } from '../design';
 import { getPrivateFunds } from '../forceStructure';
@@ -502,7 +503,9 @@ export interface ColonyLuxuryResourceLists {
  * then the self-supplied-first / unavailable-last reorder (RemoveAt by the snapshot's index, as in the C#). No Rnd.
  */
 export function prepareColonyLuxuryResourceLists(galaxy: Galaxy, empire: Empire): ColonyLuxuryResourceLists {
-    const resourceList = showCheapestLuxuryResources(galaxy);
+    let resourceList = showCheapestLuxuryResources(galaxy);
+    // Mod layer (The Voidbloom War): contraband has its own order slot, never the stock cheapest-first one.
+    if (galaxy.scenario !== null && contrabandCount() > 0) resourceList = resourceList.filter((r) => !isContraband(galaxy.resourceSystem.byId.get(r.ref.resourceId)?.name ?? ''));
     const resourceList2 = showAvailableRestrictedResourcesForEmpire(galaxy, empire);
     const resourceList3 = showAvailableRestrictedResourcesForEmpireSelfSupplied(galaxy, empire);
     if (empire.selfSuppliedLuxuryResources === null) empire.selfSuppliedLuxuryResources = [];

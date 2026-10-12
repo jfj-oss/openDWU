@@ -21,3 +21,21 @@ export function isScenarioGood(name: string): boolean {
 export function scenarioGoodCount(): number {
     return names?.size ?? 0;
 }
+
+// Contraband (The Voidbloom War): goods kept out of the stock cheapest-first luxury ordering (Empire.4.cs 3186 loop);
+// they have their own order slot (extraLuxuryOrders). Inert unless such a good is in the galaxy's data.
+// eslint-disable-next-line no-var
+var contraband: Set<string> | undefined;
+
+export function registerContraband(list: readonly string[]): void {
+    contraband ??= new Set<string>();
+    for (const n of list) contraband.add(n);
+}
+
+export function isContraband(name: string): boolean {
+    return contraband !== undefined && contraband.has(name);
+}
+
+export function contrabandCount(): number {
+    return contraband?.size ?? 0;
+}

@@ -40,6 +40,7 @@ export const VB_DEFAULTS = {
     voidbloomColonyValue: 4,
     voidbloomPremium: 1.5,
     voidbloomUse: 60,
+    voidbloomPrice: 120,
     voidbloomStateDrainPct: 15,
     voidbloomSmugglerCutPct: 20,
     voidbloomReachSectors: 14,
@@ -221,6 +222,16 @@ export interface VbTreaty {
     looted: boolean;
 }
 
+/** A smuggler's freighter on its way to a black market (trade.ts smugglerRuns). */
+export interface SmugglerRun {
+    ship: BuiltObject;
+    dest: Habitat;
+    buyerId: number;
+    sellerId: number;
+    amount: number;
+    since: number;
+}
+
 /** A labour convoy at sea. */
 export interface LabourConvoy {
     ship: BuiltObject;
@@ -270,6 +281,7 @@ export interface VbStats {
     addictLeaders: number;
     seizedAtHome: number;
     mfn: number;
+    runs?: number;
 }
 
 export interface VoidbloomState {
@@ -279,6 +291,8 @@ export interface VoidbloomState {
     colonies: Record<number, VbColony>;
     empires: Record<number, VbEmpire>;
     convoys: LabourConvoy[];
+    /** Smuggler runs at sea. */
+    runs: SmugglerRun[];
     /** First Voidbloom sale into the Concord (-1 none) and who carried it ('ai' | 'player' | 'cartel' | 'pirate'). */
     arcStarted: number;
     starter: string;
@@ -335,6 +349,7 @@ export function vbState(galaxy: Galaxy): VoidbloomState {
         colonies: {},
         empires: {},
         convoys: [],
+        runs: [],
         arcStarted: -1,
         starter: '',
         cartel: null,

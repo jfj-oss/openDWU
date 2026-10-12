@@ -23,7 +23,14 @@ import { scenarioFlag } from '../state';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
 import { rimTraderEmpire, rimTraderStanding } from '../rimTrade/common';
 import { peekColony } from '../colonyEconomy/common';
-import { isBuiltObject } from '../../missions/mission';
+import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission, isBuiltObject } from '../../missions/mission';
+import { assignMission } from '../../missions/assign';
+import { BuiltObjectRole } from '../../data/designSpecifications';
+import { Cargo, CargoList, ResourceRef } from '../../cargo';
+import { cargoEmpireId } from '../../logistics/orders';
+import { determineAvailableFreighters } from '../../logistics/freight';
+import { isStellarObjectDockable } from '../../independentTraders';
+import { YEAR_LENGTH } from '../../galaxyTime';
 import {
     VOIDBLOOM_FLAG,
     addHistory,
@@ -49,6 +56,7 @@ import {
     voidbloomId,
     voidbloomStock,
     removeVoidbloom,
+    type SmugglerRun,
     type VbPolicy,
 } from './common';
 
@@ -283,7 +291,8 @@ export function spreadTick(galaxy: Galaxy): void {
             if (c.x >= 1) c.tasted = now;
         }
         // Supplied: Voidbloom in stock, or a purchase on its way within the last 60 days (stock consumption eats it fast).
-        const supplied = voidbloomStock(galaxy, h) > 0 || (c.buy !== undefined && now - c.buy <= 60 * GAME_DAY_LENGTH);
+        // A grower's own posts hold its export stock: there only a purchase supplies (it keeps it off its own markets).
+        const supplied = (voidbloomStock(galaxy, h) > 0 && !growsVoidbloom(galaxy, e)) || (c.buy !== undefined && now - c.buy <= 60 * GAME_DAY_LENGTH);
         if (supplied) {
             c.sup = now;
             c.a = Math.min(1, c.a + rate * Math.max(0.3, sus) * (isConcord ? 1.2 : 1));
@@ -356,6 +365,164 @@ function corruption(galaxy: Galaxy, v: number, h: Habitat): number {
     const c = peekVbColony(galaxy, h);
     if (c === null || c.a <= 0) return v;
     return v * (1 + c.a * vbParam(galaxy, 'voidbloomCorruption'));
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Smuggler runs: the black market's own deliveries
+// ---------------------------------------------------------------------------------------------------------------
+//
+// The stock market only matches an empire's orders against posts in systems it has explored, and the Concord barely
+// explores: its black market would never be reached. So every 30 days the smugglers come to it: for colonies whose
+// market is banned (the Concord's, a banning empire's hooked colonies), a smuggler with Voidbloom within reach sends one
+// of its idle freighters — a real ship with the cargo aboard (inspected, hunted, seized like any other) on a Transport
+// mission from its post to the colony. It is paid at dispatch, as a stock contract is (initiateContract), and the
+// purchase runs through onContract (premium, the silver drain, the first taste). No Rnd.
+
+const RUNS_PER_TICK = 6;
+
+function runOf(galaxy: Galaxy, bo: BuiltObject): SmugglerRun | null {
+    for (const r of peekVbState(galaxy)?.runs ?? []) if (r.ship === bo) return r;
+    return null;
+}
+
+/** cmdLoad hook: a smuggler run sails pre-loaded. */
+export function smugglerRunSkipLoad(galaxy: Galaxy, bo: BuiltObject): boolean {
+    return vbOn(galaxy) && runOf(galaxy, bo) !== null;
+}
+
+function freeVoidbloom(galaxy: Galaxy, holder: { cargo: { items: { commodity: { resourceId: number }; amount: number; reserved: number }[] } | null }, owner: Empire): number {
+    const id = voidbloomId(galaxy);
+    let n = 0;
+    for (const c of holder.cargo?.items ?? []) if (c.commodity.resourceId === id && cargoEmpireId(c as never) === owner.empireId) n += Math.max(0, c.amount - c.reserved);
+    return n;
+}
+
+function takeVoidbloom(galaxy: Galaxy, holder: { cargo: { items: { commodity: { resourceId: number }; amount: number; reserved: number }[] } | null }, owner: Empire, n: number): number {
+    const id = voidbloomId(galaxy);
+    const items = holder.cargo?.items ?? [];
+    let left = n;
+    for (let i = items.length - 1; i >= 0 && left > 0; i--) {
+        const c = items[i];
+        if (c.commodity.resourceId !== id || cargoEmpireId(c as never) !== owner.empireId) continue;
+        const take = Math.min(left, Math.max(0, c.amount - c.reserved));
+        c.amount -= take;
+        left -= take;
+        if (c.amount <= 0 && c.reserved <= 0) items.splice(i, 1);
+    }
+    return n - left;
+}
+
+/** Smugglers' posts holding Voidbloom: their Voidbloom worlds and space ports. */
+function smugglerPosts(galaxy: Galaxy): { post: Habitat | BuiltObject; owner: Empire; free: number }[] {
+    const out: { post: Habitat | BuiltObject; owner: Empire; free: number }[] = [];
+    const st = vbState(galaxy);
+    for (const w of st.worlds) {
+        const h = w.habitat;
+        const o = h.empire;
+        if (h.hasBeenDestroyed || o === null || !isSmuggler(galaxy, o)) continue;
+        const free = freeVoidbloom(galaxy, h, o);
+        if (free >= 20) out.push({ post: h, owner: o, free });
+    }
+    for (const e of normalEmpires(galaxy)) {
+        if (!isSmuggler(galaxy, e)) continue;
+        for (const p of e.spacePorts) {
+            if (p === null || p.hasBeenDestroyed) continue;
+            const free = freeVoidbloom(galaxy, p, e);
+            if (free >= 20) out.push({ post: p, owner: e, free });
+        }
+    }
+    return out;
+}
+
+/** The colonies only smugglers can serve: hooked colonies in a banned market (the Concord's always). Fixed order. */
+function blackMarkets(galaxy: Galaxy): Habitat[] {
+    const st = vbState(galaxy);
+    const r = rimTraderEmpire(galaxy);
+    const out: Habitat[] = [];
+    for (const k of Object.keys(st.colonies)) {
+        const c = st.colonies[Number(k)];
+        if (c.tasted < 0) continue;
+        const h = galaxy.habitats[Number(k)];
+        if (h === undefined || h === null || h.hasBeenDestroyed || !isNormal(galaxy, h.empire) || bloomWorldOf(galaxy, h) !== null) continue;
+        const e = h.empire;
+        if (e !== r && (policyOf(galaxy, e) !== 'ban' || c.a < 0.05)) continue;
+        out.push(h);
+    }
+    // The Canton market first.
+    out.sort((a, b) => (a.empire === r ? 0 : 1) - (b.empire === r ? 0 : 1) || a.habitatIndex - b.habitatIndex);
+    return out;
+}
+
+export function smugglerRuns(galaxy: Galaxy): number {
+    const st = vbState(galaxy);
+    const now = galaxyStarDate(galaxy);
+    st.runs = st.runs.filter((x) => !x.ship.hasBeenDestroyed && builtObjectMission(x.ship.mission)?.type === BuiltObjectMissionType.Transport && now - x.since < YEAR_LENGTH);
+    let posts = smugglerPosts(galaxy);
+    if (posts.length === 0) return 0;
+    const reach = 45 * galaxy.sectorSize;
+    const id = voidbloomId(galaxy);
+    const use = vbParam(galaxy, 'voidbloomUse');
+    let sent = 0;
+    const freighters = new Map<Empire, BuiltObject[]>();
+    for (const h of blackMarkets(galaxy)) {
+        if (sent >= RUNS_PER_TICK) break;
+        const buyer = h.empire!;
+        const c = st.colonies[h.habitatIndex];
+        const want = Math.max(40, Math.ceil(3 * use * Math.max(0.1, c.a) * Math.max(0.2, (h.population?.totalAmount ?? 0) / 1e9)));
+        const coming = st.runs.filter((x) => x.dest === h).reduce((n, x) => n + x.amount, 0);
+        const need = want - voidbloomStock(galaxy, h) - coming;
+        if (need < 20) continue;
+        // The nearest smuggler post within reach that may dock there.
+        let best: { post: Habitat | BuiltObject; owner: Empire; free: number } | null = null;
+        let bd = Infinity;
+        for (const p of posts) {
+            if (p.owner === buyer || p.free < 20) continue;
+            const d = galaxy.calculateDistance(p.post.xpos, p.post.ypos, h.xpos, h.ypos);
+            if (d > reach || d >= bd) continue;
+            const carrier = p.owner === galaxy.independentEmpire ? galaxy.independentEmpire : p.owner;
+            if (!isStellarObjectDockable(galaxy, h, carrier)) continue;
+            best = p;
+            bd = d;
+        }
+        if (best === null) continue;
+        const owner = best.owner;
+        let pool = freighters.get(owner);
+        if (pool === undefined) {
+            pool = determineAvailableFreighters(owner).available.filter((b) => b.role === BuiltObjectRole.Freight && b.cargoCapacity > 0 && b.cargo !== null && !b.hasBeenDestroyed);
+            freighters.set(owner, pool);
+        }
+        if (pool.length === 0) continue;
+        let ship = pool[0];
+        let sd = Infinity;
+        for (const b of pool) {
+            const d = galaxy.calculateDistance(b.xpos, b.ypos, best.post.xpos, best.post.ypos);
+            if (d < sd) {
+                sd = d;
+                ship = b;
+            }
+        }
+        const amount = Math.min(best.free, need, Math.max(20, ship.cargoCapacity));
+        const taken = takeVoidbloom(galaxy, best.post, owner, amount);
+        if (taken <= 0) continue;
+        best.free -= taken;
+        pool.splice(pool.indexOf(ship), 1);
+        ship.cargo!.add(new Cargo(new ResourceRef(id), taken, buyer));
+        const manifest = new CargoList();
+        manifest.add(new Cargo(new ResourceRef(id), taken, buyer));
+        assignMission(galaxy, ship, BuiltObjectMissionType.Transport, best.post, h, BuiltObjectMissionPriority.Normal, { cargo: manifest });
+        // The black market's own price (the galaxy price falls with the glut of legal supply).
+        const value = taken * vbParam(galaxy, 'voidbloomPrice');
+        // As a stock contract pays at initiation (contracts.ts initiateContract): the buyer's private sector pays the seller.
+        performPrivateTransaction(buyer, -value);
+        if (owner !== galaxy.independentEmpire) performPrivateTransaction(owner, value);
+        onContract(galaxy, { seller: owner, buyer, destination: h, resourceId: id, amount: taken, value, freighter: ship });
+        st.runs.push({ ship, dest: h, buyerId: buyer.empireId, sellerId: owner.empireId, amount: taken, since: now });
+        st.stats.runs = (st.stats.runs ?? 0) + 1;
+        sent++;
+        posts = posts.filter((p) => p.free >= 20);
+        if (posts.length === 0) break;
+    }
+    return sent;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -503,6 +670,7 @@ registerScenarioPeriodic({
     run: (g) => {
         spreadTick(g);
         homeSeizures(g);
+        smugglerRuns(g);
         warnings(g);
     },
 });

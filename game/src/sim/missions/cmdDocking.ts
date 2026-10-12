@@ -46,6 +46,7 @@ import { BuiltObjectMissionPriority, BuiltObjectMissionType, CommandAction, isBu
 import type { CommandHandler } from './executeCommands';
 import { refugeeConvoySkipLoad, settleRefugeeConvoyArrival } from '../scenario/emergent/demographics';
 import { labourConvoySkipLoad, settleLabourConvoyArrival } from '../scenario/voidbloom/supply';
+import { smugglerRunSkipLoad } from '../scenario/voidbloom/trade';
 import { addHumanSmuggling } from '../perHumanState';
 import { humanEmpires } from '../humanEmpires';
 
@@ -428,7 +429,7 @@ export const cmdLoad: CommandHandler = (ctx) => {
     let result = 0.0;
     // mod layer (19d4 §2.5): a refugee convoy is pre-loaded (its population already left the origin when its flow
     // spawned) — skip the pickup leg instead of wiping and re-pulling it from the origin's live colony population.
-    if (galaxy.scenario !== null && (refugeeConvoySkipLoad(galaxy, bo) || labourConvoySkipLoad(galaxy, bo))) {
+    if (galaxy.scenario !== null && (refugeeConvoySkipLoad(galaxy, bo) || labourConvoySkipLoad(galaxy, bo) || smugglerRunSkipLoad(galaxy, bo))) {
         mission.completeCommand();
         bo.firstExecutionOfCommand = true;
         return timePassed;

@@ -34,7 +34,7 @@ import { DiplomaticRelationType } from '../../diplomacy';
 import { detPow } from '../../detMath';
 import { GAME_DAY_LENGTH, gameYear, radiusFraction, registerScenarioEvent, registerScenarioGameStart, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly } from '../hooks';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
-import { registerScenarioGoods } from '../scenarioGoods';
+import { registerContraband, registerScenarioGoods } from '../scenarioGoods';
 import { rimTraderEmpire } from '../rimTrade/common';
 import {
     VOIDBLOOM_FLAG,
@@ -61,6 +61,7 @@ import {
 
 // Galaxy generation draws the same with and without the add-on (galaxy.ts generateRandomOrderedResources).
 registerScenarioGoods([VOIDBLOOM_GOOD]);
+registerContraband([VOIDBLOOM_GOOD]);
 
 /** Most Voidbloom a colony stockpiles (units); the harvest stops above it. */
 export const STOCK_CAP = 4000;
@@ -213,7 +214,8 @@ export function levyGarrison(galaxy: Galaxy, e: Empire, h: Habitat): boolean {
 function revoltCheck(galaxy: Galaxy, w: BloomWorld): void {
     const h = w.habitat;
     const owner = h.empire;
-    if (!isNormal(galaxy, owner) || galaxy.independentEmpire === null) return;
+    // A world the Concord holds lies fallow: no forced workers left to rise.
+    if (!isNormal(galaxy, owner) || galaxy.independentEmpire === null || owner === rimTraderEmpire(galaxy)) return;
     const need = garrisonNeeded(galaxy, h);
     const have = garrisonOf(h);
     if (have >= need) return;
@@ -342,8 +344,9 @@ function upkeep(galaxy: Galaxy, w: BloomWorld): void {
     const r = vbEmpire(galaxy, e);
     const human = isHuman(galaxy, e);
     if (!human || r.autoGarrison) {
-        const need = garrisonNeeded(galaxy, h);
-        if (garrisonOf(h) < need) levyGarrison(galaxy, e, h);
+        // Up to three troops a month until the garrison is full (a new world fills fast with migrants and convoys).
+        const need = garrisonNeeded(galaxy, h) + 1;
+        for (let i = 0; i < 3 && garrisonOf(h) < need; i++) if (!levyGarrison(galaxy, e, h)) break;
     }
     if (!human || r.autoLabour) {
         const now = galaxyStarDate(galaxy);
@@ -449,7 +452,7 @@ function onOwnerChanged(galaxy: Galaxy, p: { colony: Habitat; from: Empire | nul
 /** Game start: no Voidbloom anywhere but on its worlds (the Ancient Guardians' capital starts with every resource). */
 function clearStartingStock(galaxy: Galaxy): void {
     for (const h of galaxy.habitats) if (h !== null && h.cargo !== null) removeVoidbloom(galaxy, h);
-    for (const e of [...galaxy.empires, ...galaxy.pirateEmpires]) for (const b of e?.builtObjects ?? []) if (b !== null && b.cargo !== null) removeVoidbloom(galaxy, b);
+    for (const e of [...galaxy.empires, ...galaxy.pirateEmpires]) for (const b of [...(e?.builtObjects ?? []), ...(e?.privateBuiltObjects ?? [])]) if (b !== null && b.cargo !== null) removeVoidbloom(galaxy, b);
 }
 
 registerScenarioGameStart({

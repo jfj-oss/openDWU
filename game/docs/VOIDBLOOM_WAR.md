@@ -448,7 +448,16 @@ screen) and `registerDietSeatExclusion`; `diet.ts dietLawViolation`.
    a 0.5 × addiction markup. On every purchase the buyer's state treasury pays 15 % of the total (the silver drain), its
    private sector the rest; smugglers keep 20 % of the premium (the carrier, else the richest pirate faction).
    **Addicted colonies use it:** 60 units per billion people a month at full addiction (the stock luxury consumption is
-   only 2e-8 per person a year, far too small to drain anyone).
+   only 2e-8 per person a year, far too small to drain anyone). Voidbloom is **contraband**: kept out of the stock
+   cheapest-first luxury ordering (`scenarioGoods.ts registerContraband`, one guarded line in
+   `colonySupply.ts prepareColonyLuxuryResourceLists`), ordered only through its own slot.
+   **Smuggler runs:** the stock market matches an empire's orders only against posts in systems it has explored, and the
+   Concord barely explores, so its black market would never be reached. Every 30 days up to 6 runs go out: for a hooked
+   colony in a banned market (the Concord's always) the nearest smuggler post within 45 sectors (a smuggler's Voidbloom
+   world or space port) that may dock there sends an idle freighter of its own (independents: an independent freighter)
+   with the cargo aboard on a Transport mission. It is paid at dispatch at the black-market price (120 a unit, not the
+   galaxy price, which falls with the legal glut) and booked through the same purchase path (premium, drain, taste). These
+   ships are what the inspections search and the task force hunts.
 8. **Spread (epidemic):** every 30 days, exposure from growing worlds (0.1, 0.18 when the owner smuggles) and addicted
    colonies (0.1 × addiction) within 14 sectors, linear fall-off; the Concord's colonies get +0.04 a month once anyone
    grows it and × 3 overall (the Canton market). Dampers: race susceptibility from a fixed hash of the race name (about
