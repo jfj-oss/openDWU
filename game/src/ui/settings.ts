@@ -55,6 +55,8 @@ export interface UiSettings {
     openMessagesAutomatically: boolean;
     /** Stubs shown at once (1..6); the rest scroll. */
     messageStubsVisible: number;
+    /** Add-on messages pop up (stub / card) only for their big moments; the rest go to the ticker and history only. */
+    addonPopupsBigOnly: boolean;
     // [popupstubs] end
 
     // [leftovers] begin — GameOptions.AutoSaveInterval (GameOptions.cs:240): 0 = off, else minutes (10-60, Main.InitializeComponent.cs:10739-10744).
@@ -208,6 +210,7 @@ export const DEFAULT_SETTINGS: UiSettings = {
     // [popupstubs] begin
     openMessagesAutomatically: false,
     messageStubsVisible: 6,
+    addonPopupsBigOnly: true,
     // [popupstubs] end
 
     // [leftovers] begin — Main.Part9.cs:2781 default AutoSaveInterval = 30.
@@ -327,6 +330,7 @@ export function loadSettings(): UiSettings {
 
         // [popupstubs] begin
         if (typeof parsed.openMessagesAutomatically === 'boolean') out.openMessagesAutomatically = parsed.openMessagesAutomatically;
+        if (typeof parsed.addonPopupsBigOnly === 'boolean') out.addonPopupsBigOnly = parsed.addonPopupsBigOnly;
         if (typeof parsed.messageStubsVisible === 'number' && Number.isFinite(parsed.messageStubsVisible)) {
             out.messageStubsVisible = Math.min(6, Math.max(1, Math.round(parsed.messageStubsVisible)));
         }

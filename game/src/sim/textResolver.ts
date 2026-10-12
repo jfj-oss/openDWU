@@ -15,11 +15,18 @@ let text = new Map<string, string>();
  * hide that every base tag is missing, and every deferred message text would show as its raw "tag|arg|…" encoding.
  */
 let baseLoaded = false;
+/** Not a port (UI aid, never game state): tags only scenario overlays added (addText), not in the base file. */
+let addedTags = new Set<string>();
+let baseTags = new Set<string>();
+let addonByText: Map<string, string> | null = null;
 
 /** TextResolver.cs Clear. */
 export function clearText(): void {
     text = new Map();
     baseLoaded = false;
+    addedTags = new Set();
+    baseTags = new Set();
+    addonByText = null;
 }
 
 /**
@@ -30,6 +37,7 @@ export function loadText(content: string): void {
     clearText();
     text = parseGameText(content).text;
     baseLoaded = text.size > 0;
+    baseTags = new Set(text.keys());
 }
 
 /**
@@ -40,9 +48,12 @@ export function loadText(content: string): void {
 export function loadBaseTextUnderAdded(content: string): void {
     if (baseLoaded || /^\uFEFF?\s*</.test(content)) return;
     const added = text;
+    const addedKeys = addedTags;
     loadText(content);
+    addedTags = addedKeys;
     if (!baseLoaded) {
         text = added;
+        baseTags = new Set();
         return;
     }
     for (const [k, v] of added) text.set(k, v);
@@ -53,7 +64,27 @@ export function loadBaseTextUnderAdded(content: string): void {
  * tag already present is overridden. Not a port (TextResolver has no merge).
  */
 export function addText(content: string): void {
-    for (const [k, v] of parseGameText(content).text) text.set(k, v);
+    for (const [k, v] of parseGameText(content).text) {
+        text.set(k, v);
+        addedTags.add(k);
+    }
+    addonByText = null;
+}
+
+/**
+ * Not a port (a UI aid): the tag of an add-on-only GameText entry whose text is exactly `resolved` (one without `{n}`
+ * items), else null. Lets the UI tell an add-on message by its title.
+ */
+export function addonTextTag(resolved: string): string | null {
+    if (addonByText === null) {
+        addonByText = new Map();
+        for (const k of addedTags) {
+            if (baseTags.has(k)) continue;
+            const v = text.get(k);
+            if (v !== undefined && !v.includes('{') && !addonByText.has(v)) addonByText.set(v, k);
+        }
+    }
+    return addonByText.get(resolved) ?? null;
 }
 
 /** True once a GameText.txt file has been loaded (loadGameData does it); add-on tags alone do not count. */

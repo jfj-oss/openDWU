@@ -49,7 +49,7 @@ const IMPROVEMENTS: Improvement[] = [
         label: 'Automatic design upgrades (same tech line)',
         description: 'New research upgrades the parts of the design types you made along their own tech line (blaster → phaser, missile → missile); automation stops replacing those types.',
         default: true,
-        viewRow: true,
+        // Not listed in the View popup: a game rule, not a map overlay (Game Options → Improvements switches it).
     },
     {
         // [improvements] statePriorityShipyards (sim/construction/statePriority.ts; ui/statePriorityShipyards.ts syncs it to the sim).
@@ -57,7 +57,7 @@ const IMPROVEMENTS: Improvement[] = [
         label: 'State ships first at shipyards',
         description: 'Your state ships take a free berth before private ships, and pause (never cancel) the least-built private ship when all are busy; a private ship paused over 6 months in all is not paused again.',
         default: true,
-        viewRow: true,
+        // Not listed in the View popup: a game rule, not a map overlay (Game Options → Improvements switches it).
     },
 ];
 

@@ -112,7 +112,6 @@ import { Fighter } from '../sim/combat/fighters';
 import { localViewerEmpire } from '../localViewer';
 import { toggleDietScreen } from './screens/dietScreen'; // [charactersVictory]
 import { dietOn } from '../sim/scenario/charactersVictory/diet/dietState'; // [charactersVictory]
-import { DIET_GLYPH_SVG } from '../render/dietArt'; // [charactersVictory]
 
 // Port of Main.Part12.cs LoadUiChromeButtons (381–520): the control → chrome
 // button image mapping. The original loads each control's image from
@@ -668,9 +667,6 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
             case 'btnTopMore':
                 el = buildTopMoreButton(wiring);
                 break;
-            case 'btnTopDiet':
-                el = buildTopDietButton(wiring); // [charactersVictory]
-                break;
             case 'tbtnResearch':
                 el = buildResearchButton(wiring);
                 break;
@@ -1179,6 +1175,8 @@ export const TOP_MORE_ITEMS: readonly { key: string; label: string }[] = [
     { key: 'gameOptions', label: 'Game Options (O)' },
     { key: 'advisor', label: 'Talk to your admiral (K)' },
     { key: 'shortcuts', label: 'Keyboard shortcuts (?)' },
+    // [charactersVictory] the Interstellar Diet: listed only while it runs (no top-bar button of its own; Diplomacy has one too).
+    { key: 'diet', label: 'The Interstellar Diet' },
 ];
 
 function runTopMoreItem(key: string, wiring: HudWiring): void {
@@ -1208,6 +1206,9 @@ function runTopMoreItem(key: string, wiring: HudWiring): void {
         case 'advisor':
             if (src) toggleAdvisorPanel({ galaxy: src.empire.galaxy, player: src.empire });
             return;
+        case 'diet':
+            if (wiring.galaxy && src) toggleDietScreen(wiring.galaxy, src.empire);
+            return;
         case 'shortcuts':
             // The "?" overlay belongs to main.ts's key handler.
             window.dispatchEvent(new KeyboardEvent('keydown', { key: '?' }));
@@ -1215,33 +1216,10 @@ function runTopMoreItem(key: string, wiring: HudWiring): void {
     }
 }
 
-/** [charactersVictory] The Interstellar Diet button: our own glyph (a domed hall), visible only while the Diet runs. */
-function buildTopDietButton(wiring: HudWiring): HTMLElement {
-    const wrap = document.createElement('div');
-    wrap.className = 'top-more top-diet';
-    const btn = topGlass('top-btn top-more-btn top-diet-btn', [false, false, true, true], 'The Interstellar Diet');
-    btn.innerHTML = DIET_GLYPH_SVG;
-    btn.style.width = '100%';
-    btn.style.height = '100%';
-    btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const src = getEmpireSummarySource();
-        const galaxy = wiring.galaxy;
-        if (galaxy && src) toggleDietScreen(galaxy, src.empire);
-    });
-    wrap.appendChild(btn);
-    const sync = (): void => {
-        wrap.style.display = dietOn(wiring.galaxy ?? null) ? '' : 'none';
-    };
-    sync();
-    whileInDocument(wrap, sync, 2000);
-    return wrap;
-}
-
 function buildTopMoreButton(wiring: HudWiring): HTMLElement {
     const wrap = document.createElement('div');
     wrap.className = 'top-more';
-    const btn = topGlass('top-btn top-more-btn', [false, false, true, true], 'More screens: Galaxy Map, Empires, Game Options, Advisor, Keyboard shortcuts');
+    const btn = topGlass('top-btn top-more-btn', [false, false, true, true], 'More screens: Galaxy Map, Empires, Game Options, Advisor, Keyboard shortcuts (and the Interstellar Diet while it runs)');
     btn.textContent = '•••';
     btn.style.width = '100%';
     btn.style.height = '100%';
@@ -1250,6 +1228,13 @@ function buildTopMoreButton(wiring: HudWiring): HTMLElement {
     menu.hidden = true;
     for (const item of TOP_MORE_ITEMS) {
         const row = toolStripItem(item.label, { tag: 'button', className: 'top-more-item' });
+        if (item.key === 'diet') {
+            const sync = (): void => {
+                row.style.display = dietOn(wiring.galaxy ?? null) ? '' : 'none';
+            };
+            sync();
+            whileInDocument(row, sync, 2000);
+        }
         row.addEventListener('click', (e) => {
             e.stopPropagation();
             menu.hidden = true;

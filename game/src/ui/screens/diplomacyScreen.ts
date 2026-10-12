@@ -720,7 +720,15 @@ function rimTraderTermsBlock(t: RimTraderTermsRows, onRequestStop?: () => void):
     // Treasure fleet: ask it to call at our port with the most rim goods (journaled command requestTreasureStop).
     if (t.treasureStop !== null) {
         if (t.treasureStop.requested || onRequestStop === undefined) box.appendChild(el('div', 'diplomacy-line diplomacy-muted', t.treasureStop.label));
-        else box.appendChild(glassButton(t.treasureStop.label, { onClick: onRequestStop }));
+        else {
+            // The screen's own button style (as "Manage charter" / "Open the Interstellar Diet"), not a glass pill.
+            const b = el('button', 'diplomacy-button', t.treasureStop.label);
+            b.type = 'button';
+            b.addEventListener('click', onRequestStop);
+            const row = el('div', 'diplomacy-buttons');
+            row.appendChild(b);
+            box.appendChild(row);
+        }
     }
     return box;
 }
@@ -1298,7 +1306,7 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         const restricted = restrictedResourceLines(player, empire);
         const restrictedH = restricted.length * 18;
         const extrasTop = feelingY + lay.factorGap;
-        const extrasBottom = lay.detail.h - (restrictedH > 0 ? 15 + restrictedH + 4 : 6);
+        const extrasBottom = lay.detail.h - (restrictedH > 0 ? 15 + restrictedH + 12 : 6);
         const extras = place(scrollPanel('dip-extras'), 14, extrasTop, lay.detail.w - 22, Math.max(30, extrasBottom - extrasTop));
         extras.style.fontSize = `${f.normal}px`;
         for (const fac of row.factors) {
@@ -1330,7 +1338,8 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         const restricted = restrictedResourceLines(player, empire);
         const restrictedH = restricted.length * 18;
         const top = y16 + lay.factorGap;
-        const bottom = lay.detail.h - (restrictedH > 0 ? 15 + restrictedH + 4 : 6);
+        // Ends above the restricted-resources lines (drawn from h - 21 - their height), so the two never overlap.
+        const bottom = lay.detail.h - (restrictedH > 0 ? 15 + restrictedH + 12 : 6);
         const box = place(scrollPanel('dip-extras dip-pirate-player'), 14, top, lay.detail.w - 22, Math.max(30, bottom - top));
         box.style.fontSize = `${f.normal}px`;
         for (const fac of v.factors) {

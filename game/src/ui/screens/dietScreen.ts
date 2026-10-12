@@ -95,7 +95,9 @@ export function toggleDietScreen(galaxy: Galaxy, player: Empire): void {
         rowClass: (r) => (r.you ? 'diet-you' : ''),
         columns: [
             { id: 'name', header: 'Member', fill: 1.4, sort: (r) => r.name, render: (r, c) => (c.textContent = r.name) },
-            { id: 'weight', header: 'Vote weight', width: 110, align: 'right', sort: (r) => r.weight, render: (r, c) => ((c.textContent = r.weight.toFixed(1)), (c.title = r.weightNote)) },
+            { id: 'weight', header: 'Vote weight', width: 96, align: 'right', sort: (r) => r.weight, render: (r, c) => ((c.textContent = r.weight.toFixed(1)), (c.title = r.weightNote)) },
+            // A gap after the right-aligned vote weight, so the number never runs into the delegate's name.
+            { id: 'gap', header: '', width: 24, render: (_r, c) => (c.textContent = '') },
             { id: 'delegate', header: 'Delegate', fill: 1.1, render: (r, c) => (c.textContent = r.delegate) },
             {
                 id: 'presence',
@@ -177,9 +179,15 @@ export function toggleDietScreen(galaxy: Galaxy, player: Empire): void {
         }
         for (const m of motions) {
             const block = place(darkRect(96), 4, my, bw - 40, 104);
-            block.appendChild(place(text(m.text, { size: FONT.large, color: m.vetoed ? RED : YELLOW, bold: true }), 8, 4, bw - 330));
-            block.appendChild(place(text(`Moved by the ${m.proposer}. ${m.effect}`, { size: FONT.small ?? FONT.normal, color: GREY }), 8, 28, bw - 330));
-            block.appendChild(place(text(`${m.advice}${m.advice !== '' ? ' · ' : ''}Projected: ${m.projected}${m.vetoed ? ' · VETOED by the Regent' : ''}`, { size: FONT.small ?? FONT.normal, color: m.projectedYes > m.projectedNo ? GREEN : RED }), 8, 72, bw - 330));
+            // Title one line (ellipsis, full text in the tooltip) and the effect wrapped, both short of the vote buttons.
+            const title = place(text(m.text, { size: FONT.normal, color: m.vetoed ? RED : YELLOW, bold: true }), 8, 6, bw - 340);
+            title.style.whiteSpace = 'nowrap';
+            title.style.overflow = 'hidden';
+            title.style.textOverflow = 'ellipsis';
+            title.title = m.text;
+            block.appendChild(title);
+            block.appendChild(place(text(`Moved by the ${m.proposer}. ${m.effect}`, { size: FONT.small ?? FONT.normal, color: GREY, wrapWidth: bw - 340 }), 8, 28));
+            block.appendChild(place(text(`${m.advice}${m.advice !== '' ? ' · ' : ''}Projected: ${m.projected}${m.vetoed ? ' · VETOED by the Regent' : ''}`, { size: FONT.small ?? FONT.normal, color: m.projectedYes > m.projectedNo ? GREEN : RED }), 8, 76, bw - 340));
             if (vm.member && s !== null) {
                 let bx = bw - 316;
                 for (const [v, label] of [

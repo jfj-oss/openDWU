@@ -245,7 +245,7 @@ const OPTIONS_H = 696;
 const EMPIRE_W = 500;
 const EMPIRE_H = 769 + 25;
 const MESSAGES_W = 735;
-const MESSAGES_H = 502 + 43;
+const MESSAGES_H = 502 + 43 + 16; // + our "Add-on messages" row under the stub options
 const ADVANCED_W = 440;
 const ADVANCED_H = 500 + 110 + 25 + 120 + 22 + 56 + 104;
 
@@ -727,6 +727,8 @@ function createMessageSettings(empire: Empire | null): OriginalWindow {
     // Ours: the popup stubs (ui/messageStubList.ts).
     const st = getSettings();
     check(body, 'Open messages automatically', st.openMessagesAutomatically, 14, 432, (v) => updateSettings({ openMessagesAutomatically: v }));
+    // Ours: add-on messages pop up only for big moments (ui/addonPopups.ts); the rest go to the ticker and history.
+    check(body, 'Add-on messages: only big moments pop up', st.addonPopupsBigOnly, 14, 456, (v) => updateSettings({ addonPopupsBigOnly: v }));
     label(body, 'Message stubs shown at once', 420, 434);
     const stubs = numericUpDown({ value: st.messageStubsVisible, min: 1, max: 6, size: F4 - 4, onChange: (v) => updateSettings({ messageStubsVisible: v }) });
     body.appendChild(place(stubs.el, 660, 431, 45, 21));

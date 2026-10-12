@@ -74,7 +74,7 @@ export function renderEconomyTab(page: HTMLElement, galaxy: Galaxy, empire: Empi
     // --- Designation (left) ---------------------------------------------------------------------------------------
     const left = gradientPanel({ corners: { tl: true, br: true } });
     page.appendChild(place(left, 0, 0, 300, 271));
-    left.appendChild(place(text('Designation', { bold: true, size: FONT.title ?? FONT.normal }), 8, 6));
+    left.appendChild(place(text('Designation', { bold: true, size: FONT.normal }), 8, 8)); // the right panel's heading size
     const scores = designationScores(galaxy, h);
     const best = scores[0];
     let choice = String(cur === Designation.None ? best.designation : cur);
@@ -209,7 +209,7 @@ export function renderEconomyTab(page: HTMLElement, galaxy: Galaxy, empire: Empi
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Treasury window (Empire Summary → "Bonds & private sector")
+// Treasury window (Empire Summary → "Bonds & debt")
 // ---------------------------------------------------------------------------------------------------------------
 
 let treasury: OriginalWindow | null = null;
@@ -223,7 +223,7 @@ export function openTreasuryWindow(galaxy: Galaxy, empire: Empire): void {
     let timer = 0;
     const win = openOriginalWindow({
         id: 'econTreasury',
-        title: `Treasury: Bonds, Private Sector & Supply — ${empire.name}`,
+        title: `Treasury — ${empire.name}`,
         width: 640,
         height: refinementActive(galaxy) ? 640 : 430,
         onClose: () => {
@@ -244,11 +244,10 @@ export function openTreasuryWindow(galaxy: Galaxy, empire: Empire): void {
             panel.appendChild(place(text(label, { size: FONT.small, color: COLORS.gridText }), x, y));
             panel.appendChild(place(text(value, { size: FONT.small, bold: true, color }), x + 150, y));
         };
-        kv('Treasury', formatThousandsK(empire.stateMoney), 10, 8, empire.stateMoney < 0 ? COLORS.red : undefined);
-        kv('Private money', formatThousandsK(empire.privateMoney), 10, 26);
-        kv('Private surplus', formatThousandsK(f.surplus), 10, 44);
-        kv('Outstanding debt', `${formatThousandsK(v.outstanding)} / ${formatThousandsK(v.cap)}`, 10, 62);
-        kv('Arrears', formatThousandsK(v.arrears), 10, 80, v.arrears > 0 ? COLORS.red : undefined);
+        // Cash on hand and private money are on the Empire Summary underneath; only what borrowing needs is here.
+        kv('Private surplus', formatThousandsK(f.surplus), 10, 8);
+        kv('Outstanding debt', `${formatThousandsK(v.outstanding)} / ${formatThousandsK(v.cap)}`, 10, 26);
+        kv('Arrears', formatThousandsK(v.arrears), 10, 44, v.arrears > 0 ? COLORS.red : undefined);
         kv('Debt service a year', formatThousandsK(v.annualService), 320, 8);
         kv('Interest paid (total)', formatThousandsK(v.interestPaid), 320, 26);
         kv('Borrowed / repaid', `${formatThousandsK(v.borrowedTotal)} / ${formatThousandsK(v.repaidTotal)}`, 320, 44);
@@ -258,7 +257,11 @@ export function openTreasuryWindow(galaxy: Galaxy, empire: Empire): void {
         // Bonds table.
         const tbl = scrollPanel('econ-bonds');
         body.appendChild(place(tbl, 10, 140, 620, 200));
-        const head = el('div', 'col-att-line col-att-header', 'Bond      Principal   Outstanding   Rate    Instalment   Left   Matures');
+        // Header cells at the row cells' x (one positioned line, not a space-padded string).
+        const head = el('div', 'col-att-line col-att-header');
+        head.style.position = 'relative';
+        head.style.height = '18px';
+        for (const [s, x] of [['Bond', 2], ['Principal', 60], ['Outstanding', 145], ['Rate', 235], ['Instalment', 290], ['Left', 380], ['Matures', 420]] as const) head.appendChild(place(text(s, { size: FONT.small, color: COLORS.gridText }), x, 1));
         tbl.appendChild(head);
         if (v.bonds.length === 0) tbl.appendChild(el('div', 'col-att-line col-att-note', 'No bonds outstanding.'));
         for (const b of v.bonds) {

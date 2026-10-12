@@ -396,11 +396,11 @@ function createEmpireSummary(src: EmpireSummarySource): OpenState {
     // [colonyEconomy] the treasury view: bonds, debt, repayment schedule, private surplus.
     if (galaxy && galaxy.scenario !== null && econBondsVisible(galaxy)) {
         const g = galaxy;
-        const link = linkLabel('Bonds & private sector →', () => openTreasuryWindow(g, empire), F.normal);
+        const link = linkLabel('Bonds & debt →', () => openTreasuryWindow(g, empire), F.normal);
         link.classList.add('es-bonds');
-        link.style.zIndex = '5';
-        link.title = 'Borrow from your own private sector; outstanding debt, interest and the repayment schedule';
-        body.appendChild(place(link, 760, 46));
+        link.title = 'The treasury: borrow from your own private sector; outstanding debt, interest and the repayment schedule';
+        // In the link stack above the Economy panel, beside "Supply by resource" (not on the panel's frame).
+        body.appendChild(place(link, 590, 36));
     }
     // [improvements] supplyChain: the resource supply panel, on the resource with the most unmet need (else the first).
     if (resourceSupplyAvailable()) {

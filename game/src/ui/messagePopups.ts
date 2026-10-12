@@ -15,6 +15,7 @@
 // menu (method_238, conversationActions.ts greetingMenuLinks over sim/player/diplomacyProposals.ts listProposals), the
 // options submitted as submitProposal commands and answered as the Diplomacy screen's talk panel does.
 
+import { addonPopupAllowed } from './addonPopups';
 import { closeEventSting, playDiplomacyMood, playMessageSounds } from '../audio/gameAudio'; // [audio]
 import './messagePopups.css';
 import { getMessageOptions, type DialogPartType } from './messageRouting';
@@ -950,7 +951,8 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
             // [suggest] begin
             if (p.advisor) continue;
             // [suggest] end
-            const route = p.route!;
+            // Add-on messages pop up only for their big moments (ui/addonPopups.ts; the ticker and history keep them).
+            const route = p.route!.popup && !addonPopupAllowed(m) ? { ...p.route!, popup: false } : p.route!;
             // [popupstubs] begin
             // A popup message becomes a stub under the top-right panel; the card opens by itself only with the
             // "Open messages automatically" option (the 16d behaviour).

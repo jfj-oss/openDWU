@@ -950,7 +950,7 @@ export class OverlayLayer {
                 g.moveTo(p.x - o.x, p.y - o.y).lineTo(q.x - o.x, q.y - o.y);
                 any = true;
             }
-            if (any) g.stroke({ width: f, color: ft.color, alpha: 0.55 });
+            if (any) g.stroke({ width: f, color: ft.color, alpha: 0.3 });
             // The route through the remaining stops.
             let ax = p.x;
             let ay = p.y;
@@ -963,10 +963,10 @@ export class OverlayLayer {
                 ax = st.x;
                 ay = st.y;
             }
-            if (any) g.stroke({ width: 1.5 * f, color: ft.color, alpha: 0.85 });
+            if (any) g.stroke({ width: f, color: ft.color, alpha: 0.45 }); // calm: as thin as the stock route lines
             for (const st of ft.stops) {
                 if (st.x < x0 || st.x > x1 || st.y < y0 || st.y > y1) continue;
-                g.circle(st.x - o.x, st.y - o.y, 8 * f).stroke({ width: 1.5 * f, color: ft.color, alpha: 0.9 });
+                g.circle(st.x - o.x, st.y - o.y, 7 * f).stroke({ width: f, color: ft.color, alpha: 0.5 });
             }
         }
         g.visible = true;

@@ -123,8 +123,6 @@ export function topBarLayout(width: number): Record<string, TopRect> {
     // Small tweak: our screens without an original button sit behind one overflow button in the empty slot under
     // the hourglass, flush with the row.
     out['btnTopMore'] = { x: num3 + 668, y: 90, w: 32, h: 32 };
-    // [charactersVictory] The Interstellar Diet's window, under the overflow button (shown only while the Diet runs).
-    out['btnTopDiet'] = { x: num3 + 668, y: 122, w: 32, h: 32 };
     out['pnlTopLeftBar'] = { ...TOP_LEFT_AREA };
     out['pnlMoney'] = { x: width - MONEY_BLOCK_W, y: 0, w: MONEY_BLOCK_W, h: MONEY_BLOCK_H };
     return out;

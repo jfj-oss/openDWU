@@ -2939,7 +2939,8 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
             about.appendChild(el('summary', '', 'About'));
             const bd = el('div', 'wizard-expansion-aboutbody');
             bd.appendChild(el('div', '', info.about));
-            bd.appendChild(el('div', 'wizard-addon-needs', `Changes to the base game ${meterBar(info.changes)} · Difficulty: ${difficultyLabel(info.difficulty)} (${info.difficultyNote})`));
+            // The row above already shows the changes meter and difficulty: the fold adds only the reason.
+            bd.appendChild(el('div', 'wizard-addon-needs', info.difficultyNote));
             const more = linkLabel('Read more', () => openGalactopedia({ topic: x.id }), FONT.normal);
             more.style.position = 'static';
             more.style.alignSelf = 'flex-start';
