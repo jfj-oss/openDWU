@@ -9,7 +9,8 @@
 //   ship is drawn WORLD_SHIP_VISUAL_SCALE × its stock size (the drawn size feeds picking, the selection ring and the
 //   ambient exhaust, so all stay consistent).
 // - Probe swarm (the stock Mechanoid / Ancient Guardians frames): an oxidised dark-brown palette shift with dust,
-//   pitting and edge corrosion, a few sensor spines out of the hull, baked sensor eyes and blink lights with their
+//   pitting and edge corrosion, a few sensor spines out of the hull, a cluster of spider eyes at the bow (one glow sprite
+//   each, its own seeded blink schedule) and blink lights with their
 //   additive halos (SwarmFxLayer, one sprite per light group per ship, pooled — no per-frame allocation), and the
 //   Mothercore drawn larger with a slow core glow. Built lazily (at most one composite per frame) and cached per frame URL.
 
@@ -84,7 +85,8 @@ export const ANCIENT_WEAR = { level: 1, scars: 2 } as const;
 
 export interface SwarmArt {
     texture: Texture;
-    eyes: Texture;
+    /** Spider eyes [x, y, r] in frame px (one glow sprite each, own blink schedule). */
+    eyes: Float32Array;
     blink: Texture;
     core: Texture | null;
 }
@@ -212,7 +214,8 @@ interface SwarmImages {
     w: number;
     h: number;
     ship: Uint8ClampedArray;
-    eyes: Uint8ClampedArray;
+    /** Eyes [x, y, r] in frame px. */
+    eyes: Float32Array;
     blink: Uint8ClampedArray;
     core: Uint8ClampedArray | null;
 }
@@ -340,40 +343,52 @@ export function buildSwarmImages(art: Pick<ShipArt, 'rgba' | 'w' | 'h' | 'metric
         blinks.push({ x, y, r: Math.max(0.7, 0.5 * u) });
     }
     for (const b of blinks) disc(d, w, h, b.x, b.y, b.r, [BLINK[0] * 0.55, BLINK[1] * 0.55, BLINK[2] * 0.55]);
-    // 5. Sensor eyes: a pair near the bow (the frame's top), else the deepest point near it.
+    // 5. Spider eyes: a cluster of pairs at the bow (the frame's top), of slightly different sizes — a big front
+    // pair, smaller ones beside and behind it. Each must sit on the hull interior, mirrored about the centre line.
     const eyes: Light[] = [];
-    const er = Math.max(0.9, 1.15 * u * (mothercore ? 1.4 : 1));
+    const er = Math.max(0.8, 0.85 * u * (mothercore ? 1.25 : 1));
     if (top < h) {
         let bottom = top;
         for (let p = 0; p < w * h; p++) if (mask[p] !== 0) bottom = Math.max(bottom, Math.floor(p / w));
-        const ey = Math.round(top + (bottom - top) * (mothercore ? 0.3 : 0.2));
-        for (const side of [-1, 1]) {
+        const ey = top + (bottom - top) * (mothercore ? 0.28 : 0.17);
+        const pairs = mothercore ? 6 + Math.floor(hash2(3, 5, seed) * 2) : 2 + Math.floor(hash2(3, 5, seed) * 3);
+        // Pair k: lateral offset (× er) and row offset (× er), radius factor. Spider layout: front pair, an outer
+        // pair just behind, a small inner pair, a rear pair ... (mothercore: two more rings).
+        const LAYOUT: readonly [number, number, number][] = [
+            [1.6, 0, 1.0], [4.0, 1.4, 0.8], [0.9, 2.6, 0.62], [3.2, 3.6, 0.7], [5.6, 3.0, 0.55], [2.2, 5.2, 0.6], [4.6, 6.2, 0.5],
+        ];
+        for (let k = 0; k < pairs && k < LAYOUT.length; k++) {
+            const [ox, oy, rf] = LAYOUT[k];
+            const r = er * rf * (0.9 + 0.2 * hash2(k, 51, seed));
             let best = -1;
             let bestScore = -Infinity;
-            for (let x = Math.max(0, Math.floor(cx - S * 0.3)); x < Math.min(w, cx + S * 0.3); x++) {
-                if (side < 0 ? x > cx : x < cx) continue;
-                for (let y = Math.max(0, ey - Math.round(3 * u)); y <= Math.min(h - 1, ey + Math.round(3 * u)); y++) {
-                    const p = y * w + x;
-                    if (dist[p] < er + 1) continue;
-                    const sc = -Math.abs(Math.abs(x - cx) - Math.max(er * 2, S * 0.07)) - Math.abs(y - ey) * 0.5;
+            const tx = cx - (ox * er + r) * (mothercore ? 1.5 : 1);
+            const ty = ey + oy * er * (mothercore ? 1.5 : 1);
+            const win = Math.max(2, Math.round(2.5 * er));
+            for (let y = Math.max(0, Math.round(ty - win)); y <= Math.min(h - 1, Math.round(ty + win)); y++) {
+                for (let x = Math.max(0, Math.round(tx - win)); x <= Math.min(w - 1, Math.round(tx + win)); x++) {
+                    if (x + 0.5 >= cx - r) continue;
+                    const mx = Math.round(2 * cx - x - 1);
+                    if (mx < 0 || mx >= w) continue;
+                    if (dist[y * w + x] < r + 0.8 || dist[y * w + mx] < r + 0.8) continue;
+                    const sc = -Math.hypot(x - tx, y - ty);
                     if (sc > bestScore) {
                         bestScore = sc;
-                        best = p;
+                        best = y * w + x;
                     }
                 }
             }
-            if (best >= 0) {
-                const x = (best % w) + 0.5;
-                const y = Math.floor(best / w) + 0.5;
-                if (!eyes.some((e) => Math.hypot(e.x - x, e.y - y) < er * 2)) eyes.push({ x, y, r: er });
-            }
+            if (best < 0) continue;
+            const x = (best % w) + 0.5;
+            const y = Math.floor(best / w) + 0.5;
+            if (eyes.some((e) => Math.hypot(e.x - x, e.y - y) < e.r + r + 0.6)) continue;
+            eyes.push({ x, y, r }, { x: 2 * cx - x, y, r });
         }
     }
     if (eyes.length === 0 && sw > 0) eyes.push({ x: sx / sw + 0.5, y: sy / sw + 0.5, r: er });
     for (const e of eyes) {
-        disc(d, w, h, e.x, e.y, e.r * 1.7, [0.03, 0.02, 0.015]);
-        disc(d, w, h, e.x, e.y, e.r, [EYE[0] * 0.8, EYE[1] * 0.7, EYE[2] * 0.6]);
-        disc(d, w, h, e.x - e.r * 0.25, e.y - e.r * 0.25, e.r * 0.4, [1, 0.88, 0.6]);
+        disc(d, w, h, e.x, e.y, e.r * 1.6, [0.03, 0.02, 0.015]);
+        disc(d, w, h, e.x, e.y, e.r, [EYE[0] * 0.42, EYE[1] * 0.3, EYE[2] * 0.2]);
     }
     // 6. The Mothercore's core: a deep amber disc at the hull's interior centroid, its slow glow an overlay.
     let core: Uint8ClampedArray | null = null;
@@ -392,7 +407,7 @@ export function buildSwarmImages(art: Pick<ShipArt, 'rgba' | 'w' | 'h' | 'metric
         if (d[i + 3] === 0) continue;
         if ((d[i] === 0 && d[i + 1] === 0 && d[i + 2] === 255) || (d[i] === 255 && d[i + 1] === 255 && d[i + 2] === 0)) d[i + 2] ^= 1;
     }
-    return { w, h, ship: d, eyes: halo(w, h, eyes, EYE, 2.6), blink: halo(w, h, blinks, BLINK, 2.8), core };
+    return { w, h, ship: d, eyes: Float32Array.from(eyes.flatMap((e) => [e.x, e.y, e.r])), blink: halo(w, h, blinks, BLINK, 2.8), core };
 }
 
 function tex(data: Uint8ClampedArray, w: number, h: number): Texture {
@@ -413,7 +428,7 @@ export function swarmArtFor(art: ShipArt, mothercore: boolean, frame: number): S
     if (frame === swarmBuildFrame) return undefined;
     swarmBuildFrame = frame;
     const im = buildSwarmImages(art, mothercore);
-    const sa = im === null ? null : { texture: tex(im.ship, im.w, im.h), eyes: tex(im.eyes, im.w, im.h), blink: tex(im.blink, im.w, im.h), core: im.core !== null ? tex(im.core, im.w, im.h) : null };
+    const sa = im === null ? null : { texture: tex(im.ship, im.w, im.h), eyes: im.eyes, blink: tex(im.blink, im.w, im.h), core: im.core !== null ? tex(im.core, im.w, im.h) : null };
     swarmCache.set(key, sa);
     return sa;
 }
@@ -422,9 +437,21 @@ export function swarmArtFor(art: ShipArt, mothercore: boolean, frame: number): S
 // Animation (shared clock: the layer's one `sec` per frame; nothing allocated per frame)
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Sensor eyes: a slow breathing pulse (3.6 s), phase per ship. Pure. */
-export function swarmEyeAlpha(sec: number, id: number): number {
-    return 0.35 + 0.55 * (0.5 + 0.5 * Math.sin(2 * Math.PI * (sec / 3.6 + (id % 17) / 17)));
+/** One spider eye (`eye` = its index): a steady glow with a faint shimmer, shut briefly on two incommensurate
+ * schedules seeded from the object id and the eye (periods 2.3–6.1 s and 3.7–9.6 s, random phases), so the cluster
+ * never blinks together. Pure, allocation-free. */
+export function swarmEyeAlpha(sec: number, id: number, eye: number): number {
+    const h1 = hash2(id, eye, 0x3e1);
+    const h2 = hash2(id, eye, 0x3e2);
+    const p1 = 2.3 + 3.8 * h1;
+    const p2 = 3.7 + 5.9 * h2;
+    const f1 = (sec / p1 + h2) % 1;
+    const f2 = (sec / p2 + h1 * 0.7) % 1;
+    // Shut for ~0.18 s / ~0.12 s of each period (a quick close and open).
+    const shut1 = f1 * p1 < 0.18 ? Math.abs(f1 * p1 - 0.09) / 0.09 : 1;
+    const shut2 = f2 * p2 < 0.12 ? Math.abs(f2 * p2 - 0.06) / 0.06 : 1;
+    const shimmer = 0.85 + 0.15 * Math.sin(2 * Math.PI * (sec / (1.7 + h1) + h2));
+    return Math.min(shut1, shut2) * shimmer;
 }
 
 /** Blink lights: a short flash every 2.9 s, phase per ship (0 between flashes). Pure. */
@@ -436,6 +463,32 @@ export function swarmBlinkAlpha(sec: number, id: number): number {
 /** The Mothercore's core: a slow 6.5 s swell. Pure. */
 export function swarmCoreAlpha(sec: number): number {
     return 0.3 + 0.6 * (0.5 + 0.5 * Math.sin((2 * Math.PI * sec) / 6.5));
+}
+
+/** The shared eye glow: a hot amber core of EYE_GLOW_CORE_PX radius in a soft halo (procedural, built once). */
+const EYE_GLOW_SIDE = 48;
+const EYE_GLOW_CORE_PX = 5;
+let eyeGlow: Texture | null = null;
+function eyeGlowTexture(): Texture {
+    if (eyeGlow !== null) return eyeGlow;
+    const S = EYE_GLOW_SIDE;
+    const d = new Uint8ClampedArray(S * S * 4);
+    for (let y = 0; y < S; y++) {
+        for (let x = 0; x < S; x++) {
+            const r = Math.hypot(x + 0.5 - S / 2, y + 0.5 - S / 2) / EYE_GLOW_CORE_PX;
+            const core = Math.max(0, Math.min(1, 1.15 - r));
+            const halo = Math.exp(-r * r * 0.35) * 0.55;
+            const a = Math.min(1, core + halo);
+            const i = (y * S + x) * 4;
+            const hot = core * 0.6;
+            d[i] = 255;
+            d[i + 1] = (EYE[1] + (0.92 - EYE[1]) * hot) * 255;
+            d[i + 2] = (EYE[2] + (0.62 - EYE[2]) * hot) * 255;
+            d[i + 3] = a * 255;
+        }
+    }
+    eyeGlow = tex(d, S, S);
+    return eyeGlow;
 }
 
 /** Overlays below this drawn size (px) are skipped (the baked dots still show). */
@@ -467,7 +520,24 @@ export class SwarmFxLayer {
     /** The light overlays of one swarm object, with the ship sprite's transform. `sec`: the shared wall clock. */
     draw(art: SwarmArt, x: number, y: number, rotation: number, scale: number, ax: number, ay: number, id: number, drawnPx: number, sec: number): void {
         if (drawnPx < SWARM_FX_MIN_PX) return;
-        this.one(art.eyes, swarmEyeAlpha(sec, id), x, y, rotation, scale, ax, ay);
+        // Spider eyes: one glow sprite each, placed through the ship sprite's transform.
+        const tw = art.texture.width;
+        const th = art.texture.height;
+        const cos = Math.cos(rotation);
+        const sin = Math.sin(rotation);
+        const glow = eyeGlowTexture();
+        const e = art.eyes;
+        for (let i = 0, k = 0; i < e.length; i += 3, k++) {
+            const a = swarmEyeAlpha(sec, id, k);
+            if (a <= 0.02) continue;
+            const lx = (e[i] - ax * tw) * scale;
+            const ly = (e[i + 1] - ay * th) * scale;
+            const s = this.pool.acquire(glow);
+            s.blendMode = 'add';
+            s.position.set(x + lx * cos - ly * sin, y + lx * sin + ly * cos);
+            s.scale.set((e[i + 2] * scale) / EYE_GLOW_CORE_PX);
+            s.alpha = a;
+        }
         this.one(art.blink, swarmBlinkAlpha(sec, id), x, y, rotation, scale, ax, ay);
         if (art.core !== null) this.one(art.core, swarmCoreAlpha(sec), x, y, rotation, scale, ax, ay);
     }

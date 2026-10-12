@@ -30,6 +30,7 @@ import { rimAtmoZoomFade, rimGalaxyViewZoom } from '../render/rimCurve';
 import { RIM_MOOD_TRACKS, RimAmbientBed, playRimVoiceStaticBurst, rimMoodProbability, rimVoiceStaticGain } from './rimAtmosphereMix';
 // [rimatmo-wiring] end
 import type { BuiltObject } from '../sim/builtObject';
+import { ProbeChatter } from './probeChatter';
 import { RimCreatureAudio } from './rimCreatureAudio'; // [rimatmo-audio] 19i audio addendum
 import { DEEP_BED_WEIGHT, DeepSpaceEvents, deepEventGain } from './deepSpaceMood'; // [musicmood]
 import { DEFAULT_SETTINGS, getSettings } from '../ui/settings'; // [musicmood] UI settings only
@@ -338,6 +339,7 @@ export function installGameAudio(deps: GameAudioDeps): GameAudio {
         context: rimContext,
     });
     const deepEvents = new DeepSpaceEvents(rimContext); // [musicmood] Deep Space calls + creaks (the bed is rimAmbient)
+    const probeChatter = new ProbeChatter(rimContext); // Dead Probe Swarm radio chatter near its ships
     // [rimatmo-wiring] end
     return {
         frame(): void {
@@ -376,6 +378,11 @@ export function installGameAudio(deps: GameAudioDeps): GameAudio {
                 // no audio
             }
             // [rimatmo-wiring] end
+            try {
+                probeChatter.update(galaxy, camera, session.player.volume, performance.now() / 1000);
+            } catch {
+                // no audio
+            }
             if (r.ambientPlaying === null) return;
             try {
                 const m = musicPlayer();
@@ -398,6 +405,7 @@ export function installGameAudio(deps: GameAudioDeps): GameAudio {
             // [rimatmo-audio] tear the synth bus and the shared rim context down with the audio graph.
             rimCreatures.dispose();
             deepEvents.dispose(); // [musicmood]
+            probeChatter.dispose();
             if (rimCtx !== null) void rimCtx.close().catch(() => undefined);
             rimCtx = null;
         },
