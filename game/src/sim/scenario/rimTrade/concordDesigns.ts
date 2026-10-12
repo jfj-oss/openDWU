@@ -10,7 +10,8 @@
 //     treasure voyage never runs dry in a galaxy at most ~30 sectors across. The Concord's policy design focus is
 //     Efficiency (scenarios/rimTrade/Policy/Oranthi.txt ResearchDesignOverallFocus 3: the most fuel-efficient reactor
 //     and hyperdrive it has, ResearchSystem.cs EvaluateDesiredComponent), and at game start it is given the most
-//     efficient drive / reactor and the densest fuel cell in the data (applyConcordTech: CONCORD_RANGE_COMPONENTS).
+//     efficient drive and the densest fuel cell in the data (applyConcordTech: CONCORD_RANGE_COMPONENTS); the reactor is
+//     the best its starting tech level researches (not the top NovaCore), and more fuel cells make up the range.
 // No Rnd of its own: createNewDesigns replays the stock placement's draws for every extra placement.
 
 import type { Galaxy } from '../../galaxy';
@@ -38,10 +39,10 @@ export const CONCORD_WARSHIP_SUB_ROLES: ReadonlySet<BuiltObjectSubRole> = new Se
 
 /**
  * Components the Concord is given at game start (applyConcordTech, with their research projects' parents): the most
- * fuel-efficient hyperdrive (components.txt VelocityDrive: 23500 speed for 64 energy), the most fuel-efficient reactor
- * (NovaCore: 480 fuel per 240 storage) and the densest fuel cell (Mega-Density, 140).
+ * fuel-efficient hyperdrive (components.txt VelocityDrive: 23500 speed for 64 energy) and the densest fuel cell
+ * (Mega-Density, 140). No top reactor: the designs use the best one its starting tech level gives, with more fuel cells.
  */
-export const CONCORD_RANGE_COMPONENTS = ['VelocityDrive', 'NovaCore Reactor', 'Mega-Density Fuel Cell'] as const;
+export const CONCORD_RANGE_COMPONENTS = ['VelocityDrive', 'Mega-Density Fuel Cell'] as const;
 
 export const DESIGN_PARAM_DEFAULTS = { rimTraderDesignRangeSectors: 40 } as const;
 

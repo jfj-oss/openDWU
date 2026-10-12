@@ -225,7 +225,7 @@ export function applyConcordTech(galaxy: Galaxy, r: Empire, setLevel: boolean): 
     for (const n of r.research.techTree) {
         if (n.def.abilities.some((a) => abilityTypeFromFile(a.type) === ResearchAbilityType.ConstructionSize && a.level <= target)) mark(n);
     }
-    // concordDesigns.ts: the most efficient drive / reactor and the densest fuel cell, with their projects' parents.
+    // concordDesigns.ts: the most efficient drive and the densest fuel cell (the reactor is the best its tech level gives), with their projects' parents.
     if (designParam(galaxy, 'rimTraderDesignRangeSectors') > 0) {
         const ids = new Set(CONCORD_RANGE_COMPONENTS.map((name) => componentDefinitionsStatic(galaxy).find((c) => c.name === name)?.componentId ?? -1).filter((id) => id >= 0));
         for (const n of r.research.techTree) if (n.def.components.some((id) => ids.has(id))) mark(n);

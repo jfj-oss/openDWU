@@ -317,3 +317,8 @@ Appended by `npm run repin -- --reason "<why>"` (scripts/repin.mjs).
 
 - No seed pin moved (`repin --check --workers 1` = 0): every rim add-on is off in the pinned games, so the start is byte-identical.
 - `test/rimTraderPassiveSoak.test.ts` rimTrade-ON digests (4 literals) moved: the player and AI capitals now avoid the rim band (src/sim/scenario/rimStarts.ts, game.ts player loop / AI retry), so the whole start differs. Hand-updated, run twice-stable.
+
+## 2026-10-12 — rim-reactor: the Concord starts without the top (NovaCore) reactor (rimTrade-ON only)
+
+- No seed pin moved (`repin --check --workers 1` = 0): rimTrade is off in the pinned games.
+- `test/rimTraderPassiveSoak.test.ts` "flag off is byte-identical" 1-year literals (rimTrade-ON): wizard Oranthi "6c27a02ef5fb07d3" → "e91879655e3931e3", Concord created at start "be952fd2a0c2537c" → "8c34d8bf8851b613". Deliberate: CONCORD_RANGE_COMPONENTS (concordDesigns.ts) drops 'NovaCore Reactor', so its warship designs use the best reactor of its starting tech (more fuel cells for the range); the start digests do not move.

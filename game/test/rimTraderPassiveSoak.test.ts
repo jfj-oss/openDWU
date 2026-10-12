@@ -55,9 +55,12 @@ describe('19a Concord — flag off is byte-identical', () => {
     // 13cf4e837a88adbf. The wizard-Oranthi values do not move.
     // Repinned 2026-10-11 (rim-nospawn, rimTrade-ON): ordinary empires no longer start in the rim (rimStarts.ts), so the
     // non-Concord capitals move; was b219685db2d2d5db/94796ded96a0ba95 and 6fb9b2295df9e9c3/b4d3ec6299e45a89.
+    // Repinned 2026-10-12 (rim-reactor, rimTrade-ON): the Concord no longer starts with the NovaCore Reactor (concordDesigns.ts
+    // CONCORD_RANGE_COMPONENTS); its designs use the best reactor of its starting tech, so the 1-year digests move (the start
+    // digests do not); were 6c27a02ef5fb07d3 and be952fd2a0c2537c.
     const PINS: [boolean, string, string][] = [
-        [true, '5f4e9cbce5a491ea', '6c27a02ef5fb07d3'],
-        [false, '38a5553577975b30', 'be952fd2a0c2537c'],
+        [true, '5f4e9cbce5a491ea', 'e91879655e3931e3'],
+        [false, '38a5553577975b30', '8c34d8bf8851b613'],
     ];
     for (const [forced, d0, d1] of PINS) {
         it(`passive off, 1 starting colony, cap 4 (${forced ? 'wizard Oranthi' : 'Concord created at start'}): 1 year matches the pre-feature digests`, () => {

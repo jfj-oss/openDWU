@@ -430,7 +430,7 @@ All behind flag `rimTrader` (add-on off: byte-identical; the base sim gains thre
 - **Designs** (`rimTrade/concordDesigns.ts`, query `aiDesignTweak`): every Concord warship sub-role sized up to the maximum
   construction size (construction level 8 = 1500 × 0.9 military; carriers × 1.5) and fuel cells added until the design's
   MaximumFuelRange reaches `rimTraderDesignRangeSectors` (40) sectors; policy design focus Efficiency
-  (`Policy/Oranthi.txt`); VelocityDrive, NovaCore Reactor and Mega-Density Fuel Cell researched at start
+  (`Policy/Oranthi.txt`); VelocityDrive and Mega-Density Fuel Cell researched at start (no top reactor: the best one its starting tech gives, more fuel cells for the range)
   (`applyConcordTech`, with their parents); the designs are regenerated at game start. The Treasure Ship gets the same
   range (cargo makes room), size `treasureShipSize` 1500.
 - **Strike fuel** (`passive.ts`): a strike ship that fails WithinFuelRangeAndRefuel for its target refuels at a stop on
