@@ -22,6 +22,8 @@ export interface UiSettings {
     soundVolume: number;
     /** Sound effects muted flag (EffectsPlayer.mute/unmute). */
     soundMuted: boolean;
+    /** Notifications volume, 0..1: message / alert sounds, on top of the Effects level (1 = unchanged). */
+    notifyVolume: number;
     /** UI scale percentage applied as `--ui-scale` on the HUD root. */
     uiScale: number;
     /** Show system name labels on the map (mainView.ts reads per frame). */
@@ -204,6 +206,7 @@ export const DEFAULT_SETTINGS: UiSettings = {
     // Matches EffectsPlayer's default master volume (double_0 = 0.7).
     soundVolume: 0.7,
     soundMuted: false,
+    notifyVolume: 1,
     uiScale: 100,
     showSystemNames: true,
     showRegionLabels: false,
@@ -327,6 +330,9 @@ export function loadSettings(): UiSettings {
         if (typeof parsed.musicMuted === 'boolean') out.musicMuted = parsed.musicMuted;
         if (typeof parsed.soundVolume === 'number' && Number.isFinite(parsed.soundVolume)) {
             out.soundVolume = Math.min(1, Math.max(0, parsed.soundVolume));
+        }
+        if (typeof parsed.notifyVolume === 'number' && Number.isFinite(parsed.notifyVolume)) {
+            out.notifyVolume = Math.min(1, Math.max(0, parsed.notifyVolume));
         }
         if (typeof parsed.soundMuted === 'boolean') out.soundMuted = parsed.soundMuted;
         if (typeof parsed.uiScale === 'number' && Number.isFinite(parsed.uiScale)) {
@@ -499,6 +505,7 @@ export function updateSettings(patch: Partial<UiSettings>): UiSettings {
     if (next.musicVolume < 0 || next.musicVolume > 1) {
         next.musicVolume = Math.min(1, Math.max(0, next.musicVolume));
     }
+    if (next.notifyVolume < 0 || next.notifyVolume > 1) next.notifyVolume = Math.min(1, Math.max(0, next.notifyVolume));
     if (next.soundVolume < 0 || next.soundVolume > 1) {
         next.soundVolume = Math.min(1, Math.max(0, next.soundVolume));
     }
@@ -552,6 +559,7 @@ function applySoundSettings(s: UiSettings): void {
     try {
         const p = startEffects();
         p.setVolume(s.soundVolume);
+        p.setNotifyVolume(s.notifyVolume);
         if (s.soundMuted) p.mute();
         else p.unmute();
     } catch {

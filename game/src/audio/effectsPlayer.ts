@@ -142,6 +142,8 @@ export class WebAudioBackend implements AudioBackend {
 export class EffectsPlayer {
     // C# double_0 = 0.7 (the master effects volume; Main sets it from options).
     volume = 0.7;
+    /** Options → Notifications slider (0..1): scales the message / alert sounds on top of `volume` (muting zeroes `volume`, so it follows mute). */
+    notifyVolume = 1;
     private backend: AudioBackend;
     private baseUrl: string;
     // C# sfxBank (filename -> SoundEffect). Promises so concurrent requests
@@ -276,7 +278,7 @@ export class EffectsPlayer {
     }
 
     resolveImportantMessage(): SoundEffectRequest {
-        return request('message_major.wav', 0.0, this.volume * 0.7);
+        return request('message_major.wav', 0.0, this.volume * this.notifyVolume * 0.7);
     }
 
     // Port of ResolveMessage(EmpireMessageType): every listed type not in the
@@ -284,12 +286,12 @@ export class EffectsPlayer {
     // listed at all, e.g. 0, play nothing).
     resolveMessage(messageType: number): SoundEffectRequest {
         let text = '';
-        let num = this.volume * 0.7;
+        let num = this.volume * this.notifyVolume * 0.7;
         if (MESSAGE_MINOR.has(messageType)) {
             text = 'message_minor.wav';
         } else if (MESSAGE_ALARM.has(messageType)) {
             text = 'message_alarm.wav';
-            num = this.volume * 0.4;
+            num = this.volume * this.notifyVolume * 0.4;
         } else if (MESSAGE_MAJOR.has(messageType)) {
             text = 'message_major.wav';
         } else if (!MESSAGE_NONE.has(messageType) && messageType >= 1 && messageType <= 97) {
@@ -491,6 +493,8 @@ export interface SessionEffects {
     /** Main.method_1 / method_2: play the pending requests (called once per rendered frame). */
     flush(): void;
     setVolume(v: number): void;
+    /** Notifications volume 0..1 (message_*.wav alerts). */
+    setNotifyVolume(v: number): void;
     mute(): void;
     unmute(): void;
 }
@@ -555,6 +559,9 @@ export function startEffects(): SessionEffects {
                 volume = v;
                 apply();
             },
+            setNotifyVolume(v: number): void {
+                if (v >= 0 && v <= 1) player.notifyVolume = v;
+            },
             mute(): void {
                 muted = true;
                 apply();
@@ -566,6 +573,7 @@ export function startEffects(): SessionEffects {
         };
         const s = getSettings();
         session.setVolume(s.soundVolume);
+        session.setNotifyVolume(s.notifyVolume);
         if (s.soundMuted) session.mute();
     }
     return session;

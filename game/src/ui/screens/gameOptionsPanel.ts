@@ -411,17 +411,20 @@ function createGameOptionsPanel(opts: GameOptionsPanelOptions): OpenState {
 
     // --- grpOptionsVolume (12, 147) 659 × 74: Music (17, 22) / Effects (17, 47), sliders (81, 24 / 49). The sliders
     // leave room for our mute boxes and the [musicmood] Music & Mood button (568 → 370 px).
-    const volume = place(groupBox('Sound Volume', 659, 74, F2), 12, 147);
+    const volume = place(groupBox('Sound Volume', 659, 79, F2), 12, 147);
     body.appendChild(volume);
-    label(volume, 'Music', 17, 22);
-    slider(volume, Math.round(s.musicVolume * 100), 0, 100, 81, 24, 370, (v) => updateSettings({ musicVolume: v / 100, musicMuted: false }));
-    check(volume, 'Mute', s.musicMuted, 462, 21, (v) => updateSettings({ musicMuted: v }));
-    label(volume, 'Effects', 17, 47);
-    slider(volume, Math.round(s.soundVolume * 100), 0, 100, 81, 49, 370, (v) => updateSettings({ soundVolume: v / 100, soundMuted: false }));
-    check(volume, 'Mute', s.soundMuted, 462, 46, (v) => updateSettings({ soundMuted: v }));
+    label(volume, 'Music', 17, 16);
+    slider(volume, Math.round(s.musicVolume * 100), 0, 100, 81, 18, 370, (v) => updateSettings({ musicVolume: v / 100, musicMuted: false }));
+    check(volume, 'Mute', s.musicMuted, 462, 15, (v) => updateSettings({ musicMuted: v }));
+    label(volume, 'Effects', 17, 37);
+    slider(volume, Math.round(s.soundVolume * 100), 0, 100, 81, 39, 370, (v) => updateSettings({ soundVolume: v / 100, soundMuted: false }));
+    check(volume, 'Mute', s.soundMuted, 462, 36, (v) => updateSettings({ soundMuted: v }));
+    label(volume, 'Notifications', 17, 58);
+    const notify = slider(volume, Math.round(s.notifyVolume * 100), 0, 100, 81, 60, 370, (v) => updateSettings({ notifyVolume: v / 100 }));
+    notify.el.title = 'Volume of message and alert sounds (new message, event, alarm), on top of Effects. Follows the Effects mute.';
     // [musicmood] Options → Music & Mood (musicMoodWindow.ts): background mood + music source / user playlists.
     const rimAvailable = empire !== null ? scenarioFlag(empire.galaxy, 'rimAtmosphere') : null;
-    button(volume, `${MUSIC_MOOD_TITLE}...`, 535, 20, 112, 47, () => openSubWindow('musicmood', () => openMusicMoodWindow(rimAvailable, () => subWindows.delete('musicmood')))).dataset.id = 'musicmood';
+    button(volume, `${MUSIC_MOOD_TITLE}...`, 535, 18, 112, 47, () => openSubWindow('musicmood', () => openMusicMoodWindow(rimAvailable, () => subWindows.delete('musicmood')))).dataset.id = 'musicmood';
 
     // --- grpOptionsAutoSave (12, 228) 180 × 54: chkOptionsAutoSave "Every [num] minutes" (7, 19), num (72, 20) 35 × 21.
     const autoSave = place(groupBox('Auto Save', 180, 54, F2), 12, 228);
