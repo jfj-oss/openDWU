@@ -51,6 +51,9 @@ import { contractListenersActive, emitContractInitiated } from '../../logistics/
 import { doEmpireEncounter } from '../../exploration';
 import { concordHooks, concordNavyActive, isRimTraderAI, rareGoodIds, rimAngerState, rimParam, rimGoodIds, rimTradeState, rimTraderAllowsRestrictedTrade, rimTraderEmpire, rimTraderPort, rimTraderStanding } from './common';
 import { isHumanEmpire } from '../../humanEmpires';
+import { SystemVisibilityStatus } from '../../visibility';
+import { isObjectVisibleToThisEmpire } from '../../independentTraders';
+import { localViewerEmpire } from '../../../localViewer';
 import { identifyMechanoidEmpire } from '../../fleets/militaryAI';
 import { convoyRecovering, straggleHeld, treasureStraggleAtDeparture } from './treasureRaids';
 
@@ -721,6 +724,24 @@ function portLabel(galaxy: Galaxy, p: BuiltObject | Habitat): string {
     return star !== null ? `${p.name} (${star.name})` : p.name;
 }
 
+
+/** Fog of war: whether `e` has met the Concord. AI empires always have (their news and beacon are unchanged). */
+function knowsConcord(galaxy: Galaxy, e: Empire | null): boolean {
+    const r = rimTraderEmpire(galaxy);
+    if (e === null || r === null || e === r || !isHumanEmpire(galaxy, e)) return true;
+    return obtainDiplomaticRelation(e, r).type !== DiplomaticRelationType.NotMet;
+}
+
+/** Fog of war: whether `e` has explored the system of a port (no viewer: everything is known). */
+function portExploredBy(e: Empire | null, p: BuiltObject | Habitat): boolean {
+    if (e === null) return true;
+    const idx = p instanceof BuiltObject ? p.nearestSystemStar?.systemIndex : p.systemIndex;
+    return idx !== undefined && idx >= 0 && e.visibility.checkSystemVisibilityStatus(idx) >= SystemVisibilityStatus.Explored;
+}
+
+/** Treasure-fleet news names ports, so an unmet human empire gets none (AI empires keep it). */
+const metFilter = (galaxy: Galaxy) => (e: Empire): boolean => knowsConcord(galaxy, e);
+
 function depart(galaxy: Galaxy, r: Empire, st: TreasureFleetState, home: BuiltObject | Habitat, now: number): void {
     st.visited = [];
     const first = nextTreasureStop(galaxy, r, st, home, home);
@@ -742,7 +763,7 @@ function depart(galaxy: Galaxy, r: Empire, st: TreasureFleetState, home: BuiltOb
     treasureStraggleAtDeparture(galaxy, r, st);
     sailTo(galaxy, st, first);
     const route = portLabel(galaxy, first);
-    scenarioNews(galaxy, r, scenarioText('Scenario RimTrade Treasure Departs', r.name, portLabel(galaxy, home), route), undefined, lead(st));
+    scenarioNews(galaxy, r, scenarioText('Scenario RimTrade Treasure Departs', r.name, portLabel(galaxy, home), route), metFilter(galaxy), lead(st));
 }
 
 function arrive(galaxy: Galaxy, r: Empire, st: TreasureFleetState, port: BuiltObject): void {
@@ -776,7 +797,7 @@ function arrive(galaxy: Galaxy, r: Empire, st: TreasureFleetState, port: BuiltOb
                 facts: { occasion: 'treasure fleet arrival', concord: r.name, port: portLabel(galaxy, port), ships: st.treasure.length, voyage: st.stats.voyages },
             });
         }
-        scenarioNews(galaxy, r, scenarioText('Scenario RimTrade Treasure Docks', r.name, portLabel(galaxy, port), host.name), (e) => e !== host, lead(st));
+        scenarioNews(galaxy, r, scenarioText('Scenario RimTrade Treasure Docks', r.name, portLabel(galaxy, port), host.name), (e) => e !== host && knowsConcord(galaxy, e), lead(st));
     }
 }
 
@@ -854,7 +875,7 @@ export function treasureFleetTick(galaxy: Galaxy): void {
     st.leg = 0;
     st.homeward = false;
     st.visited = [];
-    scenarioNews(galaxy, r, scenarioText('Scenario RimTrade Treasure Returns', r.name, portLabel(galaxy, home)), undefined, l);
+    scenarioNews(galaxy, r, scenarioText('Scenario RimTrade Treasure Returns', r.name, portLabel(galaxy, home)), metFilter(galaxy), l);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -862,8 +883,9 @@ export function treasureFleetTick(galaxy: Galaxy): void {
 // ---------------------------------------------------------------------------------------------------------------
 
 /** objectVisibleToAll query: the convoy's ships are known to every empire. Pure. */
-export function treasureBeaconVisible(galaxy: Galaxy, value: boolean, args: { object: BuiltObject | Habitat }): boolean {
+export function treasureBeaconVisible(galaxy: Galaxy, value: boolean, args: { empire?: Empire; object: BuiltObject | Habitat }): boolean {
     if (value || !(args.object instanceof BuiltObject) || !hasTreasureState(galaxy)) return value;
+    if (!knowsConcord(galaxy, args.empire ?? null)) return value; // unmet: stock fog rule
     return treasureState(galaxy).ships.includes(args.object) && !args.object.hasBeenDestroyed;
 }
 
@@ -879,20 +901,35 @@ export function treasureShipDestroyed(galaxy: Galaxy, ev: { builtObject: BuiltOb
     const penalty = treasureParam(galaxy, 'treasureRaidPenalty') * (isTreasure ? 1 : 0.25);
     const row = (rimTradeState(galaxy).ledger[ev.destroyer.empireId] ??= { credit: 0, debit: 0 });
     row.debit += penalty;
-    if (isTreasure) scenarioNews(galaxy, r, scenarioText('Scenario RimTrade Treasure Raided', r.name, ev.destroyer.name), undefined, ev.builtObject);
+    if (isTreasure) scenarioNews(galaxy, r, scenarioText('Scenario RimTrade Treasure Raided', r.name, ev.destroyer.name), metFilter(galaxy), ev.builtObject);
 }
 
-export function treasureMapFeatures(galaxy: Galaxy): ScenarioMapFeatures | null {
+export function treasureMapFeatures(galaxy: Galaxy, viewer: Empire | null = null): ScenarioMapFeatures | null {
     if (!hasTreasureState(galaxy) || !scenarioFlag(galaxy, 'rimTrader')) return null;
     const st = treasureState(galaxy);
     const l = st.treasure.find((b) => !b.hasBeenDestroyed) ?? st.ships.find((b) => !b.hasBeenDestroyed) ?? null;
     const out: ScenarioMapFeatures = { markers: [], routes: [] };
     if (l === null) return out;
+    if (viewer !== null && !isObjectVisibleToThisEmpire(galaxy, viewer, l)) return out; // fog: only what the viewer can see
     if (scenarioFlag(galaxy, 'treasureBeacon')) out.markers.push({ x: l.xpos, y: l.ypos, label: scenarioText('Scenario RimTrade Treasure Fleet'), color: TREASURE_COLOR });
     const home = rimTraderPort(galaxy);
     if (st.sailing && home !== null && st.circuit.length > 0) {
-        const points = [home, ...st.circuit, home].map((p) => ({ x: p.xpos, y: p.ypos }));
-        out.routes.push({ points, color: TREASURE_COLOR, activeLeg: st.leg });
+        // Only legs whose both ends the viewer has explored (a run of them is one polyline).
+        const pts = [home, ...st.circuit, home];
+        let run: { x: number; y: number }[] = [];
+        let active = -1;
+        const flush = (): void => {
+            if (run.length > 1) out.routes.push({ points: run, color: TREASURE_COLOR, activeLeg: active });
+            run = [];
+            active = -1;
+        };
+        for (let i = 0; i + 1 < pts.length; i++) {
+            if (!portExploredBy(viewer, pts[i]) || !portExploredBy(viewer, pts[i + 1])) { flush(); continue; }
+            if (run.length === 0) run.push({ x: pts[i].xpos, y: pts[i].ypos });
+            if (i === st.leg) active = run.length - 1;
+            run.push({ x: pts[i + 1].xpos, y: pts[i + 1].ypos });
+        }
+        flush();
     }
     return out;
 }
@@ -911,11 +948,13 @@ export function treasureSelectionFeature(galaxy: Galaxy, sel: ScenarioSelectionL
     const live = st.ships.filter((b) => !b.hasBeenDestroyed);
     const lead = live.find((b) => st.treasure.includes(b)) ?? live[0] ?? null;
     if (lead === null) return null;
+    const viewer = localViewerEmpire(galaxy);
+    if (viewer !== null && !isObjectVisibleToThisEmpire(galaxy, viewer, lead)) return null;
     const stops: { x: number; y: number }[] = [];
     if (st.sailing) {
-        if (st.homeward !== true) for (let i = Math.max(0, st.leg); i < st.circuit.length; i++) stops.push({ x: st.circuit[i].xpos, y: st.circuit[i].ypos });
+        if (st.homeward !== true) for (let i = Math.max(0, st.leg); i < st.circuit.length; i++) if (portExploredBy(viewer, st.circuit[i])) stops.push({ x: st.circuit[i].xpos, y: st.circuit[i].ypos });
         const home = rimTraderPort(galaxy);
-        if (home !== null) stops.push({ x: home.xpos, y: home.ypos });
+        if (home !== null && portExploredBy(viewer, home)) stops.push({ x: home.xpos, y: home.ypos });
     }
     return { color: TREASURE_COLOR, lead, stops, members: live.filter((b) => b !== lead) };
 }
@@ -925,5 +964,5 @@ registerScenarioQuery({ id: 'rimTrade.beacon', flag: 'treasureBeacon', query: 'o
 registerScenarioEvent({ id: 'rimTrade.treasureRaid', flag: 'rimTrader', event: 'builtObjectKilledBy', run: treasureShipDestroyed });
 registerScenarioPeriodic({ id: 'rimTrade.treasure', flag: 'rimTrader', periodDays: 10, run: (g) => treasureFleetTick(g) });
 registerScenarioYearly({ id: 'rimTrade.researchCapYear', flag: 'rimTrader', order: 11, run: (g) => yearlyCapCheck(g) });
-registerScenarioMapFeatures('rimTrade.treasure', (g) => treasureMapFeatures(g));
+registerScenarioMapFeatures('rimTrade.treasure', (g, v) => treasureMapFeatures(g, v));
 registerScenarioSelectionFeatures('rimTrade.treasure', (g, sel) => treasureSelectionFeature(g, sel));

@@ -18,6 +18,7 @@ import { performResearch } from '../src/sim/researchTick';
 import { isObjectVisibleToThisEmpire } from '../src/sim/independentTraders';
 import { scenarioEmit } from '../src/sim/scenario';
 import { scenarioMapFeatures, scenarioSelectionFeatures } from '../src/sim/scenario/mapFeatures';
+import { setLocalViewerEmpire } from '../src/localViewer';
 import { empireMessages } from '../src/sim/messages';
 import { rareGoodIds, rimGoodIds, rimTradeState, rimTraderEmpire, rimTraderPort, rimTraderStanding } from '../src/sim/scenario/rimTrade/common';
 import {
@@ -138,10 +139,14 @@ describe('19a addendum — treasure fleet', () => {
         expect(st.circuit.length).toBeGreaterThan(0);
         expect(st.circuit.every((p) => p.actualEmpire !== r && p.isSpacePort)).toBe(true);
         // Selected on the map: its remaining stops (the circuit, then home) and a line to each other ship.
+        // Fog of war: the player has explored none of the stops, so no stop (or home) is drawn for them.
+        expect(scenarioSelectionFeatures(g, { builtObject: st.ships[st.ships.length - 1] })[0]?.stops.length ?? 0).toBe(0);
+        setLocalViewerEmpire(g, null); // no viewer: everything known
         const selF = scenarioSelectionFeatures(g, { builtObject: st.ships[st.ships.length - 1] });
         expect(selF.length).toBe(1);
         expect(selF[0].stops.length).toBe(st.circuit.length + 1);
         expect(selF[0].members.length).toBe(st.ships.length - 1);
+        setLocalViewerEmpire(g, undefined);
         expect(scenarioSelectionFeatures(g, { builtObject: st.circuit[0] }).length).toBe(0);
         const lead = st.treasure[0];
         const rare = rareGoodIds(g)[0];
@@ -171,7 +176,7 @@ describe('19a addendum — treasure fleet', () => {
         expect(cargoGetCargo(lead.cargo!, rim, r)?.amount ?? 0).toBeGreaterThan(0);
         expect(empireMessages(host).length).toBeGreaterThan(msgs);
         // Map: a marker on the fleet and the circuit route home → ports → home.
-        const f = scenarioMapFeatures(g, g.playerEmpire);
+        const f = scenarioMapFeatures(g, null);
         expect(f.markers.length).toBe(1);
         expect(f.routes[0].points.length).toBe(st.circuit.length + 2);
         expect(f.routes[0].activeLeg).toBe(1);
@@ -197,9 +202,16 @@ describe('19a addendum — treasure fleet', () => {
         meet(r2, e);
         treasureFleetTick(g2);
         const ship = st.treasure[0];
-        const stranger = others(g2, r2).find((x) => obtainDiplomaticRelation(r2, x).type === DiplomaticRelationType.NotMet)!;
+        const stranger = others(g2, r2).find((x) => x !== g2.playerEmpire && obtainDiplomaticRelation(r2, x).type === DiplomaticRelationType.NotMet)!;
         expect(stranger).toBeDefined();
         expect(isObjectVisibleToThisEmpire(g2, stranger, ship)).toBe(true);
+        // Fog of war: the human who has not met the Concord gets no beacon, no marker or route, and no news.
+        const human = g2.playerEmpire!;
+        if (obtainDiplomaticRelation(r2, human).type === DiplomaticRelationType.NotMet && !isObjectVisibleToThisEmpire(g2, human, ship)) {
+            expect(scenarioMapFeatures(g2, human).markers.length).toBe(0);
+            expect(scenarioMapFeatures(g2, human).routes.length).toBe(0);
+            expect(empireMessages(human).some((m) => /treasure fleet/i.test(m.description))).toBe(false);
+        }
         const g3 = rimGame({ treasureBeacon: false }).galaxy;
         const r3 = rimTraderEmpire(g3)!;
         const st3 = treasureState(g3);
