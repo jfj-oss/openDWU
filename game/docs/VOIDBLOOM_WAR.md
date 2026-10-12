@@ -32,6 +32,10 @@ Verdicts: **works** (usable as is), **hook** (exists, needs a small extension po
    (bombardment that cuts the colony's yield for a while), intercept labour convoys and free the workers (who rebel or
    join the Concord), hunt freighters carrying Voidbloom, a bounty on smuggler ships, send agents against the colony's
    governor, and declare a Voidbloom world "outlaw" so pirates are welcome to raid it.
+   **Confirmed by the user:** burn the fields; free the workers from intercepted labour convoys; hunt freighters
+   carrying Voidbloom; send agents after the colony's governor (only when Characters & Victory is on, since governors
+   come from it). **Plus occupation:** the Concord may invade and occupy a Voidbloom world (stock invasion) to shut it
+   down or hold it. Not chosen (dropped for now): smuggler bounties, "outlaw" status, bribing the garrison.
 8. **AI empires want Voidbloom worlds badly:** a very high colonisation and conquest value for Voidbloom planets in
    the AI's target scoring (via a scenario hook on colonisation and invasion targets), so AI empires race for them,
    defend them and fight over them. This also guarantees the AI takes part in the arc.
