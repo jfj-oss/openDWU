@@ -33,8 +33,8 @@ An early-game crisis, once per game.
   - an escort of warships (Cruiser, Destroyer, Frigate, Cruiser, Capital ship, Destroyer, Escort, repeating) until its
     firepower reaches `genShipsFleetFactorPct` (130) % of the target empire's military firepower measured at that
     moment (`militaryPotency`, the sum of `calculateOverallStrengthFactorWithoutShields`), never below
-    `genShipsMinFirepower` (3,000), at most `genShipsMaxEscorts` (60) ships;
-  - troop transports with `genShipsRegiments` (30) regiments per 7,000 escort firepower (clamped 12..90), strength
+    `genShipsMinFirepower` (700), at most `genShipsMaxEscorts` (60) ships;
+  - troop transports with `genShipsRegiments` (30) regiments per `genShipsRegimentFirepower` (1,000) escort firepower (clamped 12..90), strength
     `genShipsTroopStrength` (100) each, of the faction's race;
   - the world ship (the faction's colony ship design, named per flavour) with `genShipsSleepersM` (1,500) million
     sleepers; a scout flies to the target.
@@ -43,7 +43,8 @@ An early-game crisis, once per game.
   fleet's size and the countdown (`genShipsUltimatumDays` 540 = 18 months). The Quiet Ship's contact is the scouts'
   report: no life signs, a ship mind following its colonisation orders, the date it moves.
 - **Build-up**: from first contact until the arc resolves, the owner's AI plans a larger navy:
-  `forceStructureThreat` ≥ 4 and `forceStructureWarships` × `genShipsAiBuildupPct` (220) %.
+  `forceStructureThreat` ≥ 4, `forceStructureWarships` × `genShipsAiBuildupPct` (220) %, and the new
+  `stateConstructionBudget` query lets the state construction budget cover the whole planned force.
 - **Ultimatum** (a scenario decision, `decisions.ts`; the player answers in the message popup through the journaled
   `answerScenarioDecision` command, `genShipsAnswerDays` 60 to answer, then "refuse"; the AI answers at once):
   - Pilgrims: cede / offer a substitute (the nearest empty habitable planet, else the owner's smallest other
@@ -77,8 +78,8 @@ An early-game crisis, once per game.
   ruins (`archiveRuinsChancePerMille` 40, one roll per ruin with an own seeded `Random`; the new
   `ruinsInvestigated` event at the top of `exploration.ts investigateRuins`).
 - The finder chooses (a scenario decision; the player in the popup, journaled): **study** — `archiveStudySteps` (4)
-  yearly boosts of `archiveStudyPct` (20) % of a year of its research each; **seal** — one boost of `archiveSealPct`
-  (120) % after `archiveSealYears` (5). A boost is at least `archiveMinPoints` (15,000) and goes into the current
+  yearly boosts of `archiveStudyPct` (8) % of a year of its research each; **seal** — one boost of `archiveSealPct`
+  (45) % after `archiveSealYears` (5). A boost is at least `archiveMinPoints` (15,000) and goes into the current
   research projects (the progress / breakthrough path of `performResearchProjects`, without research events). Seal
   is worth more than the sum of the study boosts, and later.
 - AI: studies at war, seals at peace.
@@ -94,8 +95,8 @@ An early-game crisis, once per game.
   missions, colony control, offers, relations / extortion, force projection, construction, attack offers, trade and
   random events, and the faction never merges; `pirateProtectionDesired` keeps empires from buying protection.
 - Budget `probeSwarmBudget` (60,000) + `probeSwarmBudgetPerStation` (15,000) per station a year, at most
-  `probeSwarmBudgetCap` (250,000), spent only on warships (`probeSwarmStartShips` 4 + 0.8 per station) and mining /
-  gas mining stations (one every `probeSwarmStationDays` 75, up to `probeSwarmMaxStations` 40) at the free asteroid
+  `probeSwarmBudgetCap` (250,000), spent only on warships (`probeSwarmStartShips` 4 + 0.5 per station) and mining /
+  gas mining stations (one every `probeSwarmStationDays` 75, up to `probeSwarmMaxStations` 30) at the free asteroid
   field or gas giant nearest the mothercore within `probeSwarmExpandRangePct` (6 % of the galaxy width) of a swarm
   station, never in a system with a colony.
 - Defence: every 10 days any ship of any owner inside a system with a swarm station is attacked by the two nearest
@@ -106,7 +107,8 @@ An early-game crisis, once per game.
 
 ## Stock-code touch points (all behind `galaxy.scenario !== null`)
 
-- `scenario/hooks.ts`: event `ruinsInvestigated`, query `pirateFactionPassive`.
+- `scenario/hooks.ts`: event `ruinsInvestigated`, queries `pirateFactionPassive` and `stateConstructionBudget`.
+- `construction/empireConstruction.ts` state construction: the `stateConstructionBudget` query.
 - `exploration.ts investigateRuins`: emits `ruinsInvestigated`.
 - `tick/pirateTick.ts empirePirateDoTasks`, `pirates/pirateGalaxyTick.ts checkMergePirateFactions`: the passive gate.
 - `threats/robotMutiny.ts`: `raiseFactionTech` exported for reuse.

@@ -219,7 +219,7 @@ async function driver() {
     const list = only === null ? CONFIGS.filter((c) => (c.set ?? null) === set) : String(only).split(',').map((n) => { const c = CONFIGS.find((x) => x.name === n); if (!c) throw new Error(`no config ${n}`); return c; });
     const jobs = Number(arg('jobs', 3));
     const bundleDir = await bundle();
-    const passthrough = ['years', 'chunk', 'scan-days', 'save-at', 'save-run', 'max-heap'].flatMap((k) => (arg(k, null) === null ? [] : [`--${k}`, String(arg(k))]));
+    const passthrough = ['years', 'chunk', 'scan-days', 'save-at', 'save-run', 'max-heap', 'hook'].flatMap((k) => (arg(k, null) === null ? [] : [`--${k}`, String(arg(k))]));
     // Longest first (stars × empires × years, roughly), so the big runs do not tail the queue.
     const cost = (c) => (c.stars ?? [100, 250, 400, 700, 1000, 1400][c.wizard?.starCountIndex ?? 3]) * (c.years) * (1 + (c.wizard?.otherEmpires?.empireCount ?? 10) / 10);
     const queue = [...list].sort((a, b) => cost(b) - cost(a));

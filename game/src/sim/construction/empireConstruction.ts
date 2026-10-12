@@ -1639,6 +1639,7 @@ export function directConstruction(galaxy: Galaxy, empire: Empire): void {
     let num11 = 5.0;
     if (checkAtWar(empire)) num11 = 2.0;
     if (num10 > num11) num7 = Math.max(num7, num8);
+    if (galaxy.scenario !== null) num7 = scenarioQuery(galaxy, 'stateConstructionBudget', num7, { empire, projectedSupport: num8 }); // mod layer (Generation Ships build-up)
     let num12 = 0.0;
     let num13 = 0.0;
     const policy = empire.policy!;

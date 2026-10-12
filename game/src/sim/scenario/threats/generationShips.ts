@@ -7,10 +7,10 @@
 // beacon level of robotMutiny.ts empireTechLevel) — and between genShipsEarliestYear and genShipsLatestYear years in
 // (the latest year fires it whatever the tech) — a world ship, an escort of about genShipsFleetFactorPct % of the
 // target empire's military firepower (measured at that moment; never below genShipsMinFirepower) at the target's tech
-// level, and troop transports (genShipsRegiments per 7,000 escort firepower) appear at the galaxy edge nearest a
+// level, and troop transports (genShipsRegiments per genShipsRegimentFirepower of escort firepower) appear at the galaxy edge nearest a
 // populated colony, owned by a new faction (createThreatFaction, adoptOnly: no colony yet). A scout flies to the
 // colony; first contact follows (genShipsContactDays), the ultimatum genShipsUltimatumDays later. Meanwhile the
-// target's AI plans a larger navy (forceStructureThreat / forceStructureWarships queries). The owner answers the
+// target's AI plans and funds a larger navy (forceStructureThreat / forceStructureWarships / stateConstructionBudget). The owner answers the
 // ultimatum in a scenario decision (the player: popup, journaled command; the AI: by strength, aiUltimatumChoice).
 //
 // Flavours: Pilgrims (accept a substitute world; grateful protectorate afterwards), Heirs (cede or war; a lasting
@@ -168,7 +168,8 @@ const P = {
     latestYear: (g: Galaxy) => p(g, 'genShipsLatestYear', 15),
     flavour: (g: Galaxy) => Math.trunc(p(g, 'genShipsFlavour', -1)),
     fleetFactorPct: (g: Galaxy) => p(g, 'genShipsFleetFactorPct', 130),
-    minFirepower: (g: Galaxy) => p(g, 'genShipsMinFirepower', 3000),
+    minFirepower: (g: Galaxy) => p(g, 'genShipsMinFirepower', 700),
+    regimentFirepower: (g: Galaxy) => p(g, 'genShipsRegimentFirepower', 1000),
     maxEscorts: (g: Galaxy) => Math.trunc(p(g, 'genShipsMaxEscorts', 60)),
     regiments: (g: Galaxy) => p(g, 'genShipsRegiments', 30),
     minRegiments: (g: Galaxy) => p(g, 'genShipsMinRegiments', 12),
@@ -377,8 +378,8 @@ export function genShipsArrive(galaxy: Galaxy, st: GenShipsState): boolean {
         strength += calculateOverallStrengthFactorWithoutShields(bo);
     }
     st.fleetStrength = strength;
-    // Troops: genShipsRegiments per 7,000 escort firepower (clamped).
-    st.regiments = Math.round(Math.min(P.maxRegiments(galaxy), Math.max(P.minRegiments(galaxy), (P.regiments(galaxy) * strength) / 7000)));
+    // Troops: genShipsRegiments per genShipsRegimentFirepower of escort firepower (clamped).
+    st.regiments = Math.round(Math.min(P.maxRegiments(galaxy), Math.max(P.minRegiments(galaxy), (P.regiments(galaxy) * strength) / Math.max(1, P.regimentFirepower(galaxy)))));
     const transport = designs.get(BuiltObjectSubRole.TroopTransport) ?? null;
     if (transport !== null) {
         let left = st.regiments;
@@ -565,6 +566,7 @@ function directWar(galaxy: Galaxy, st: GenShipsState): void {
     if (target.empire !== null && target.empire !== st.owner && target.empire !== galaxy.independentEmpire && !obtainDiplomaticRelation(faction, target.empire).locked) lockWar(galaxy, faction, target.empire);
     const escorts = st.escorts;
     const holder = target.empire;
+    if (holder !== null && holder === st.owner) commitDefence(galaxy, st, holder, target);
     let onStation = 0;
     for (const bo of escorts) {
         if (galaxy.calculateDistance(bo.xpos, bo.ypos, target.xpos, target.ypos) <= STATION_RANGE) onStation++;
@@ -602,6 +604,34 @@ function directWar(galaxy: Galaxy, st: GenShipsState): void {
     const troopsLeft = st.transports.some((b) => b.troops !== null && b.troops.count > 0) || (target.invadingTroops !== null && target.invadingTroops.items.some((t) => t.empire === faction));
     const tooLong = galaxyStarDate(galaxy) - st.warDate > P.warYears(galaxy) * YEAR_LENGTH;
     if ((escorts.length === 0 && !troopsLeft) || tooLong) endScatter(galaxy, st, 'repelled');
+}
+
+/**
+ * The threatened AI commits its navy (a human decides for themself): its mobile warships not already fighting near the
+ * world hold position over the target (Patrol, as the stock defend-colony missions), and attack an escort that comes
+ * within STATION_RANGE × 3 of it. Missions only, no Rnd.
+ */
+function commitDefence(galaxy: Galaxy, st: GenShipsState, owner: Empire, target: Habitat): void {
+    if (isHumanEmpire(galaxy, owner)) return;
+    let near: BuiltObject | null = null;
+    let nearD = STATION_RANGE * 3;
+    for (const e of st.escorts) {
+        const d = galaxy.calculateDistance(e.xpos, e.ypos, target.xpos, target.ypos);
+        if (d < nearD) {
+            nearD = d;
+            near = e;
+        }
+    }
+    for (const b of owner.builtObjects) {
+        if (b.hasBeenDestroyed || b.role !== BuiltObjectRole.Military || b.topSpeed <= 0 || b.subRole === BuiltObjectSubRole.TroopTransport) continue;
+        const m = builtObjectMission(b.mission);
+        if (near !== null) {
+            if (m !== null && m.type === BuiltObjectMissionType.Attack && m.targetBuiltObject !== null && !m.targetBuiltObject.hasBeenDestroyed && m.targetBuiltObject.actualEmpire === st.faction) continue;
+            assignMission(galaxy, b, BuiltObjectMissionType.Attack, near, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
+        } else if (m === null || !(m.type === BuiltObjectMissionType.Patrol && m.targetHabitat === target) && m.type !== BuiltObjectMissionType.Refuel && m.type !== BuiltObjectMissionType.Repair) {
+            assignMission(galaxy, b, BuiltObjectMissionType.Patrol, target, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
+        }
+    }
 }
 
 function nearestColony(galaxy: Galaxy, empire: Empire, x: number, y: number): Habitat | null {
@@ -843,6 +873,7 @@ export function registerGenerationShips(): void {
         query: 'forceStructureWarships',
         run: (g, v, a) => (threatened(g, a.empire) ? Math.max(v, (v * P.aiBuildupPct(g)) / 100) : v),
     });
+    registerScenarioQuery({ id: 'genShips.buildupBudget', flag: GEN_SHIPS_FLAG, query: 'stateConstructionBudget', run: (g, v, a) => (threatened(g, a.empire) ? Math.max(v, a.projectedSupport) : v) });
     registerScenarioQuery({ id: 'genShips.factionDormant', flag: GEN_SHIPS_FLAG, query: 'stateAIDormant', run: (g, v, a) => v || factionDormant(g, a.empire) });
     registerThreatKnownSites(GEN_SHIPS_KEY, genShipsKnownSites);
 }

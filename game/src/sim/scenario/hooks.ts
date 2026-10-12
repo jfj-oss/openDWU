@@ -710,6 +710,12 @@ export interface ScenarioQueries {
      */
     pirateFactionPassive: { value: boolean; args: { empire: Empire } };
     /**
+     * construction/empireConstruction.ts state construction (Empire.6.cs DirectConstruction), after the annual cashflow
+     * budget (num7) is set: the support budget new state ships may use. `projectedSupport` = the support cost of the
+     * whole planned force (num8). Generation Ships: a threatened AI funds its plan. Pure.
+     */
+    stateConstructionBudget: { value: number; args: { empire: Empire; projectedSupport: number } };
+    /**
      * designGeneration.ts createNewDesigns (BaconEmpire.CreateNewDesigns), before PlaceComponentsOnDesign: changes to
      * the template, the size-up share and the trim order of `empire`'s new `spec.subRole` design (stock: null = none).
      * Handlers must not mutate `spec` (it is the empire's own template). Smarter AI ship design. No Rnd.
