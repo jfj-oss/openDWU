@@ -516,9 +516,9 @@ export class SystemLinkLayer {
         const hi = Math.max(l.fromSystem, l.toSystem);
         a[o + 5] = ((Math.imul(lo * 7919 + hi * 104729 + l.empireId * 31, 0x9e3779b1) >>> 0) % 1000) / 1000;
         a[o + 6] = Math.max(1, Math.round(lenPx / PULSE_SPACING_PX));
-        // The empire colour lifted a third of the way to white: a bright pulse that keeps the link's hue.
+        // The empire colour lifted halfway to white: a bright pulse that keeps the link's hue (a third was too faint on dark colours).
         const c = l.color;
-        const lift = (v: number): number => Math.round(v + (255 - v) / 3);
+        const lift = (v: number): number => Math.round(v + (255 - v) / 2);
         a[o + 7] = lift((c >> 16) & 255) * 65536 + lift((c >> 8) & 255) * 256 + lift(c & 255);
         this.laneCount++;
     }
