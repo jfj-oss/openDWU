@@ -26,6 +26,15 @@ Verdicts: **works** (usable as is), **hook** (exists, needs a small extension po
 6. **Voidbloom may spread into non-Concord colonies** through normal trade (short approval boost, then addiction:
    approval, output, corruption). Counters: an empire policy "Ban Voidbloom" (freighters don't buy it, colonies seize
    it), the Colony Economy Customs Bureau, Internal Security policing, a Diet ban, and later patrols.
+7. **Crackdown on Voidbloom colonies, pirate-style:** the Concord **blockades** every known Voidbloom colony (stock
+   Blockade mission) and **raids** it to seize any Voidbloom stockpiled on the planet (reuse the pirate raid path that
+   takes resources and money from a colony). Further crackdown tools (proposed, user to confirm): burn the fields
+   (bombardment that cuts the colony's yield for a while), intercept labour convoys and free the workers (who rebel or
+   join the Concord), hunt freighters carrying Voidbloom, a bounty on smuggler ships, send agents against the colony's
+   governor, and declare a Voidbloom world "outlaw" so pirates are welcome to raid it.
+8. **AI empires want Voidbloom worlds badly:** a very high colonisation and conquest value for Voidbloom planets in
+   the AI's target scoring (via a scenario hook on colonisation and invasion targets), so AI empires race for them,
+   defend them and fight over them. This also guarantees the AI takes part in the arc.
 
 ## 1. Summary
 
