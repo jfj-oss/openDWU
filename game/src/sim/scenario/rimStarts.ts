@@ -12,7 +12,7 @@ import type { Galaxy } from '../galaxy';
 
 const RIM_START_FLAGS = ['rimTrader', 'rimFrontier', 'rimFauna', 'rimHerders', 'rimAtmosphere'] as const;
 const RIM_LIVING_RACES: ReadonlySet<string> = new Set(['Oranthi', 'Ossuvan']);
-export const RIM_START_REJECT_CAP = 600;
+export const RIM_START_REJECT_CAP = 60;
 const REJECT_KEY = 'rimStarts.rejected';
 
 /** Sim-side rim boundary (fraction of the galaxy radius), matching the render curve's rimInner default. */

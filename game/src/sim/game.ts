@@ -1267,7 +1267,7 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
                 // least-rim candidate seen (never fails game creation).
                 const f = radiusFraction(galaxy, found.xpos, found.ypos);
                 if (leastRim === null || f < leastRimF) { leastRim = found; leastRimF = f; }
-                if (++hookRejects >= 300) found = leastRim;
+                if (++hookRejects >= 40) found = leastRim;
                 else found = null;
                 continue;
             }
@@ -1347,7 +1347,7 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
         // times and keep the least-rim candidate. Only ever runs with a scenario that rejects the first pick.
         if (scenarioCap === null && cap !== null && galaxy.scenario !== null && !scenarioQuery(galaxy, 'acceptHomeHabitat', true, { race: aiRace, habitat: cap, empireKind: 'ai' })) {
             let best = cap;
-            for (let t = 0; t < 40; t++) {
+            for (let t = 0; t < 4; t++) {
                 const c2 = findAiCapital(galaxy, aiRace, prox, habitat, aiRace.nativeHabitatType, playAsPirate, num14 + 1, sector, raceAlreadyHasEmpire);
                 if (c2 === null) continue;
                 if (scenarioQuery(galaxy, 'acceptHomeHabitat', true, { race: aiRace, habitat: c2, empireKind: 'ai' })) { best = c2; break; }
