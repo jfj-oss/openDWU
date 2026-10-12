@@ -67,7 +67,7 @@ describe('19g-7 rim fauna — density', () => {
         for (const h of st.herds) {
             expect(radiusFraction(g, h.birthX, h.birthY)).toBeGreaterThan(0.5);
             expect(herdMembers(h).length).toBeGreaterThanOrEqual(4);
-            expect(herdMembers(h).length).toBeLessThanOrEqual(7);
+            expect(herdMembers(h).length).toBeLessThanOrEqual(8);
             for (const c of herdMembers(h)) expect(rimHerdOfCreature(g, c)).toBe(h);
         }
     });

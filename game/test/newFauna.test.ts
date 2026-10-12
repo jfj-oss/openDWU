@@ -91,6 +91,18 @@ function shipOf(g: Galaxy, pred: (b: BuiltObject) => boolean): BuiltObject {
 }
 
 describe('19g-7b new fauna — variant table and spawning', () => {
+    it('buffed chasers: packs outrun the warships, damage up 30-50 %, speed grows with the era', () => {
+        const def = (v: FaunaVariant) => faunaVariantDef(v);
+        // Year-0 warships top out at about 80 (measured); hunters, grazers and nest young are faster than the typical ship.
+        expect(def(FaunaVariant.HunterPack).leaderSpeed).toBeGreaterThanOrEqual(90);
+        expect(def(FaunaVariant.HullGrazer).leaderSpeed).toBeGreaterThan(def(FaunaVariant.VoidWhale).leaderSpeed);
+        // attack = size / attackDiv: hunters and the nest mother +50 % (6 -> 4, 25 -> 16.7), whales +30 % (40 -> 30.8).
+        expect(6 / def(FaunaVariant.HunterPack).attackDiv).toBeCloseTo(1.5, 1);
+        expect(25 / def(FaunaVariant.NestMother).attackDiv).toBeCloseTo(1.5, 1);
+        expect(40 / def(FaunaVariant.VoidWhale).attackDiv).toBeCloseTo(1.3, 1);
+        expect(30 / def(FaunaVariant.HullGrazer).attackDiv).toBeCloseTo(1.4, 1);
+        expect(newFaunaParam(shared.galaxy, 'newFaunaSpeedYearGrowth')).toBeGreaterThan(0);
+    });
     it('eight variants over the ported creature types, each with a look and herd shape', () => {
         const t = faunaVariantTable();
         expect(t.map((d) => d.variant)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
@@ -231,7 +243,7 @@ describe('19g-7b new fauna — behaviours (forced short runs)', () => {
         const drained = newFaunaState(g).stats.hullDrained;
         for (let i = 0; i < 4; i++) hullGrazerTick(g, herd, inf);
         expect(damaged()).toBeGreaterThan(before);
-        expect(newFaunaState(g).stats.hullDrained - drained).toBe(4 * 10);
+        expect(newFaunaState(g).stats.hullDrained - drained).toBe(4 * newFaunaParam(g, 'newFaunaGrazerDrain'));
         // Harmless only means it never starts a fight: the host's empire does not spare it.
         expect(scenarioQuery(g, 'creatureIgnoresTarget', false, { creature: herd.leader!, target: host })).toBe(true);
         expect(scenarioQuery(g, 'builtObjectSparesCreature', false, { builtObject: host, creature: herd.leader! })).toBe(false);

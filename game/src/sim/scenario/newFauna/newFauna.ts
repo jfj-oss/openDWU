@@ -46,8 +46,10 @@ import { notifyOfAttackBuiltObject } from '../../combat/attackAI';
 import { stellarAttackers, stellarPursuers } from '../../combat/threats';
 import { isBuiltObject } from '../../missions/mission';
 import { galaxyStarDate } from '../../tick/simTime';
+import { YEAR_LENGTH } from '../../galaxyTime';
 import { GAME_DAY_LENGTH, radiusFraction, registerScenarioEvent, registerScenarioGameStart, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly } from '../hooks';
 import { scenarioFlag } from '../state';
+import { rimInnerFraction } from '../rimStarts';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
 import { EmpireMessageType } from '../../messages';
 import { HERD_COHESION, HERD_HYPER_SPEED, HERD_REST_RANGE, herdDensityAt, herdMembers, peekRimFaunaState, rimFaunaState, rimHerdDocileTo, rimHerdOfCreature, setRimHerdDocile, type RimHerd } from '../rimFauna/common';
@@ -97,9 +99,21 @@ function resourceIdByName(galaxy: Galaxy, name: string): number {
 // Members: variant stats over the base type's ctor values
 // ---------------------------------------------------------------------------------------------------------------
 
+/**
+ * Era scaling of the sublight speed of the chasers (hunter packs, nest young, hull grazers; void whales at half rate): the
+ * warships' speed rises with the research, so the table's year-0 speeds grow newFaunaSpeedYearGrowth a game year up to
+ * newFaunaSpeedMaxMul. Deterministic (game time only, no Rnd); other variants keep the table speed.
+ */
+function eraSpeedMul(galaxy: Galaxy, variant: FaunaVariant): number {
+    const rate = variant === FaunaVariant.VoidWhale ? 0.5 : variant === FaunaVariant.HunterPack || variant === FaunaVariant.HullGrazer || variant === FaunaVariant.NestMother ? 1 : 0;
+    if (rate === 0) return 1;
+    const years = galaxy.nowMs / YEAR_LENGTH;
+    return 1 + Math.min(newFaunaParam(galaxy, 'newFaunaSpeedMaxMul') - 1, newFaunaParam(galaxy, 'newFaunaSpeedYearGrowth') * years) * rate;
+}
+
 /** Speeds / ranges of a member (no Rnd; re-applied every tick so the 19g-7 leader promotion cannot reset them). */
-function applyVariant(c: Creature, def: FaunaVariantDef, leader: boolean, young: boolean): void {
-    const speed = young ? NEST_YOUNG.speed : leader ? def.leaderSpeed : def.followerSpeed;
+function applyVariant(galaxy: Galaxy, c: Creature, def: FaunaVariantDef, leader: boolean, young: boolean): void {
+    const speed = Math.fround((young ? NEST_YOUNG.speed : leader ? def.leaderSpeed : def.followerSpeed) * eraSpeedMul(galaxy, def.variant));
     c.movementSpeed = speed;
     c.movementSpeedBase = speed;
     c.attackRange = def.attackRange;
@@ -122,7 +136,7 @@ function adoptMember(galaxy: Galaxy, info: FaunaHerdInfo, c: Creature, def: Faun
     c.attackStrength = div > 0 ? Math.trunc(c.size / div) : 0;
     c.damageKillThreshold = Math.trunc(c.size * (young ? NEST_YOUNG.killMul : def.killMul));
     c.name = young ? `${name} (young)` : name;
-    applyVariant(c, def, leader, young);
+    applyVariant(galaxy, c, def, leader, young);
     if (!info.members.includes(c.creatureId)) info.members.push(c.creatureId);
 }
 
@@ -238,15 +252,20 @@ export function spawnVariantHerd(galaxy: Galaxy, variant: FaunaVariant, systemIn
     return herd;
 }
 
+const RIM_BIASED: readonly FaunaVariant[] = [FaunaVariant.HunterPack, FaunaVariant.Scavenger, FaunaVariant.StormDrifter, FaunaVariant.LanternShoal, FaunaVariant.BroodCarrier];
+
 /** Weighted variant pick among those allowed at radius fraction f. One NextDouble. */
 function pickVariant(galaxy: Galaxy, f: number): FaunaVariant | null {
     // Void whales are placed galaxy-wide on their own (newFaunaGameStart's whale pass).
     const rows = faunaVariantTable().filter((d) => f >= d.minRadius && d.variant !== FaunaVariant.VoidWhale);
     if (rows.length === 0) return null;
-    const total = rows.reduce((a, d) => a + d.weight, 0);
+    // In the rim band the roaming variants are weighted up (newFaunaRimWeight): hunters, scavengers, drifters, shoals, broods.
+    const rimMul = f >= rimInnerFraction(galaxy) ? newFaunaParam(galaxy, 'newFaunaRimWeight') : 1;
+    const w = (d: FaunaVariantDef): number => (RIM_BIASED.includes(d.variant) ? d.weight * rimMul : d.weight);
+    const total = rows.reduce((a, d) => a + w(d), 0);
     let roll = galaxy.rnd.nextDouble() * total;
     for (const d of rows) {
-        roll -= d.weight;
+        roll -= w(d);
         if (roll < 0) return d.variant;
     }
     return rows[rows.length - 1].variant;
@@ -263,11 +282,13 @@ export function newFaunaGameStart(galaxy: Galaxy): void {
     const st = newFaunaState(galaxy);
     const cap = Math.trunc(newFaunaParam(galaxy, 'newFaunaMaxGroups'));
     const mul = newFaunaParam(galaxy, 'newFaunaDensity');
+    const rimBoost = newFaunaParam(galaxy, 'newFaunaRimBoost');
+    const rimBand = rimInnerFraction(galaxy);
     let groups = 0;
     for (let i = 0; i < galaxy.systems.length && groups < cap; i++) {
         const star = galaxy.systems[i].systemStar;
         const f = radiusFraction(galaxy, star.xpos, star.ypos);
-        const d = herdDensityAt(galaxy, f) * mul;
+        const d = herdDensityAt(galaxy, f) * mul * (f >= rimBand ? rimBoost : 1);
         if (d <= 0) continue;
         if (galaxy.systemHabitatsOf(i).some((h) => h.empire !== null && h.empire !== galaxy.independentEmpire)) continue;
         let n = Math.floor(d);
@@ -985,7 +1006,7 @@ function adoptNewMembers(galaxy: Galaxy, herd: RimHerd, info: FaunaHerdInfo): vo
     for (const c of herdMembers(herd)) {
         const leader = c === herd.leader;
         if (!info.members.includes(c.creatureId)) adoptMember(galaxy, info, c, def, leader, name);
-        else applyVariant(c, def, leader, def.variant === FaunaVariant.NestMother && !leader);
+        else applyVariant(galaxy, c, def, leader, def.variant === FaunaVariant.NestMother && !leader);
     }
 }
 

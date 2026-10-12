@@ -77,14 +77,14 @@ export interface FaunaVariantDef {
 export function faunaVariantTable(): readonly FaunaVariantDef[] {
     if (table !== null) return table;
     table = [
-        { variant: FaunaVariant.VoidWhale, name: 'Void Whale', baseType: CreatureType.Kaltor, look: 'voidWhale', groupMin: 1, groupMax: 3, sizeMin: 1000, sizeMax: 1400, maxSize: 1800, leaderSpeed: 14, followerSpeed: 18, hyperSpeed: 3500, attackDiv: 40, killMul: 3.0, attackRange: 800, harmless: true, minRadius: 0, weight: 3, tameable: true, grazes: true },
-        { variant: FaunaVariant.HunterPack, name: 'Hunter Pack', baseType: CreatureType.Kaltor, look: 'hunter', groupMin: 4, groupMax: 6, sizeMin: 45, sizeMax: 70, maxSize: 120, leaderSpeed: 70, followerSpeed: 78, hyperSpeed: 4000, attackDiv: 6, killMul: 1.2, attackRange: 3000, harmless: false, minRadius: 0.5, weight: 3, tameable: true, grazes: false },
-        { variant: FaunaVariant.HullGrazer, name: 'Hull Grazer', baseType: CreatureType.RockSpaceSlug, look: 'hullGrazer', groupMin: 1, groupMax: 2, sizeMin: 110, sizeMax: 160, maxSize: 300, leaderSpeed: 20, followerSpeed: 22, hyperSpeed: 0, attackDiv: 30, killMul: 1.6, attackRange: 600, harmless: true, minRadius: 0.5, weight: 2, tameable: false, grazes: false },
+        { variant: FaunaVariant.VoidWhale, name: 'Void Whale', baseType: CreatureType.Kaltor, look: 'voidWhale', groupMin: 1, groupMax: 3, sizeMin: 1000, sizeMax: 1400, maxSize: 1800, leaderSpeed: 14, followerSpeed: 18, hyperSpeed: 3500, attackDiv: 30.8, killMul: 3.0, attackRange: 800, harmless: true, minRadius: 0, weight: 3, tameable: true, grazes: true },
+        { variant: FaunaVariant.HunterPack, name: 'Hunter Pack', baseType: CreatureType.Kaltor, look: 'hunter', groupMin: 4, groupMax: 6, sizeMin: 45, sizeMax: 70, maxSize: 120, leaderSpeed: 90, followerSpeed: 100, hyperSpeed: 4000, attackDiv: 4, killMul: 1.2, attackRange: 3000, harmless: false, minRadius: 0.5, weight: 3, tameable: true, grazes: false },
+        { variant: FaunaVariant.HullGrazer, name: 'Hull Grazer', baseType: CreatureType.RockSpaceSlug, look: 'hullGrazer', groupMin: 1, groupMax: 2, sizeMin: 110, sizeMax: 160, maxSize: 300, leaderSpeed: 30, followerSpeed: 33, hyperSpeed: 0, attackDiv: 21.4, killMul: 1.6, attackRange: 600, harmless: true, minRadius: 0.5, weight: 2, tameable: false, grazes: false },
         { variant: FaunaVariant.StormDrifter, name: 'Storm Drifter', baseType: CreatureType.Ardilus, look: 'stormDrifter', groupMin: 1, groupMax: 2, sizeMin: 260, sizeMax: 380, maxSize: 600, leaderSpeed: 16, followerSpeed: 18, hyperSpeed: 6000, attackDiv: 0, killMul: 2.0, attackRange: 800, harmless: true, minRadius: 0.6, weight: 2, tameable: false, grazes: false },
         { variant: FaunaVariant.LanternShoal, name: 'Lantern Shoal', baseType: CreatureType.Kaltor, look: 'lantern', groupMin: 1, groupMax: 1, sizeMin: 180, sizeMax: 260, maxSize: 400, leaderSpeed: 30, followerSpeed: 30, hyperSpeed: 3000, attackDiv: 0, killMul: 0.8, attackRange: 800, harmless: true, minRadius: 0.45, weight: 2, tameable: false, grazes: false },
-        { variant: FaunaVariant.NestMother, name: 'Nest Mother', baseType: CreatureType.Ardilus, look: 'nestMother', groupMin: 1, groupMax: 1, sizeMin: 1600, sizeMax: 2200, maxSize: 2600, leaderSpeed: 4, followerSpeed: 60, hyperSpeed: 0, attackDiv: 25, killMul: 4.0, attackRange: 15000, harmless: false, minRadius: 0.7, weight: 1, tameable: false, grazes: false },
+        { variant: FaunaVariant.NestMother, name: 'Nest Mother', baseType: CreatureType.Ardilus, look: 'nestMother', groupMin: 1, groupMax: 1, sizeMin: 1600, sizeMax: 2200, maxSize: 2600, leaderSpeed: 4, followerSpeed: 95, hyperSpeed: 0, attackDiv: 16.7, killMul: 4.0, attackRange: 15000, harmless: false, minRadius: 0.7, weight: 1, tameable: false, grazes: false },
         { variant: FaunaVariant.Scavenger, name: 'Scavenger', baseType: CreatureType.DesertSpaceSlug, look: 'scavenger', groupMin: 1, groupMax: 3, sizeMin: 90, sizeMax: 150, maxSize: 260, leaderSpeed: 36, followerSpeed: 40, hyperSpeed: 3000, attackDiv: 0, killMul: 1.4, attackRange: 800, harmless: true, minRadius: 0.45, weight: 2, tameable: false, grazes: false },
-        { variant: FaunaVariant.BroodCarrier, name: 'Brood Carrier', baseType: CreatureType.Ardilus, look: 'broodCarrier', groupMin: 1, groupMax: 1, sizeMin: 700, sizeMax: 950, maxSize: 1200, leaderSpeed: 18, followerSpeed: 18, hyperSpeed: 8000, attackDiv: 60, killMul: 2.4, attackRange: 800, harmless: true, minRadius: 0.6, weight: 1, tameable: false, grazes: false },
+        { variant: FaunaVariant.BroodCarrier, name: 'Brood Carrier', baseType: CreatureType.Ardilus, look: 'broodCarrier', groupMin: 1, groupMax: 1, sizeMin: 700, sizeMax: 950, maxSize: 1200, leaderSpeed: 18, followerSpeed: 18, hyperSpeed: 8000, attackDiv: 46.2, killMul: 2.4, attackRange: 800, harmless: true, minRadius: 0.6, weight: 1, tameable: false, grazes: false },
     ];
     return table;
 }
@@ -95,7 +95,7 @@ export function faunaVariantDef(v: FaunaVariant): FaunaVariantDef {
 }
 
 /** The young of a nest mother: small hunters (the renderer draws them with the hunter body, smaller). */
-export const NEST_YOUNG = { sizeMin: 30, sizeMax: 50, speed: 60, attackDiv: 8, killMul: 1.0 } as const;
+export const NEST_YOUNG = { sizeMin: 30, sizeMax: 50, speed: 95, attackDiv: 5.3, killMul: 1.0 } as const;
 
 /** Manifest defaults (scenario.json) — the fallbacks of scenarioParam. */
 export const NEW_FAUNA_PARAM_DEFAULTS = {
@@ -115,14 +115,20 @@ export const NEW_FAUNA_PARAM_DEFAULTS = {
     newFaunaNestEscapeDamage: 0.7,
     newFaunaNestEscapeMin: 3000000,
     newFaunaNestEscapeHyper: 2500,
-    newFaunaMaxGroups: 60,
+    newFaunaMaxGroups: 180,
+    /** Rim band (rimInnerFraction): multiplier on the variant group density, and on the weights of the roaming variants. */
+    /** Era scaling of the chasers' speed: + this share of the table speed per game year, up to × newFaunaSpeedMaxMul. */
+    newFaunaSpeedYearGrowth: 0.04,
+    newFaunaSpeedMaxMul: 2.0,
+    newFaunaRimBoost: 1.25,
+    newFaunaRimWeight: 1.6,
     newFaunaWhaleKillHaul: 40,
     newFaunaHunterStalkRange: 40000,
     newFaunaHunterFleeRange: 25000,
     newFaunaHunterFleeDistance: 60000,
     newFaunaGrazerRange: 60000,
-    newFaunaGrazerDrain: 10,
-    newFaunaGrazerFuelSiphon: 0.03,
+    newFaunaGrazerDrain: 14,
+    newFaunaGrazerFuelSiphon: 0.042,
     newFaunaGrazerSpreadChance: 0.2,
     newFaunaGrazerSpreadRange: 2000,
     newFaunaGrazerSpreadDays: 30,

@@ -24,14 +24,14 @@ export const RIM_FAUNA_PARAM_DEFAULTS = {
     /** Density curve (herds per star system / gas cloud, as an expected count) at radius fraction 0 … the inner radius. */
     rimFaunaDensityCore: 0,
     /** … rising linearly from the inner radius to this value at radius fraction ≥ 1. */
-    rimFaunaDensityRim: 0.4,
+    rimFaunaDensityRim: 0.7,
     /** Radius fraction where the density starts to rise above the core value. */
     rimFaunaDensityInner: 0.55,
     /** Cap on the number of herds spawned at game start. */
-    rimFaunaMaxHerds: 40,
+    rimFaunaMaxHerds: 90,
     /** Herd size (leader + followers) at spawn: min / max (inclusive), and the size breeding refills to. */
     rimFaunaHerdSizeMin: 4,
-    rimFaunaHerdSizeMax: 7,
+    rimFaunaHerdSizeMax: 8,
     /** Yearly chance that a herd below its max size gains one follower. */
     rimFaunaBreedChance: 0.5,
     /** Yearly chance a wild herd at full size splits; the new herd's pasture lies this far from the old one. */
