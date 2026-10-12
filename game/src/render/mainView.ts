@@ -124,6 +124,7 @@ import { createFollowState, followTargetAlive, followTargetPosition, isFollowing
 import { localViewerEmpire } from '../localViewer';
 import { GalaxyBackdropLayer } from './galaxyBackdrop';
 import { buildDeepBackdrop } from './deepBackdrop';
+import { DeepNebulaAnim, DEEP_ANIM_DUST_SHARE } from './deepBackdropAnim';
 import { getGalaxyBackdrop, onGalaxyBackdropChange, setGalaxyBackdrop, urlGalaxyBackdrop, urlGalaxyBackdropTime, type GalaxyBackdropKind } from './galaxyBackdropChoice';
 
 export function fadeIn(v: number, a: number, b: number): number {
@@ -2117,6 +2118,7 @@ export class MainView {
             this.galaxyBackdropLayer.update(this.backdropGroup.visible, dtSeconds, !rt.paused, getSettings().animateBackdrop, Math.min(cam.width, cam.height) * res, Math.max(cam.width, cam.height) * res, getSettings().stormFlashes);
             this.backdrop.visible = !this.galaxyBackdropLayer.active;
         }
+        this.deepAnim?.update(this.deepKind && this.backdropGroup.visible && this.backdrop.visible, dtSeconds, !rt.paused, getSettings().animateBackdrop, this.backdropGroup.alpha);
 
         // Sector grid + edge labels (sectorGrid.ts): opaque color_5 lines and color_7 labels at every zoom factor
         // above 150, none below (MainView.2.cs method_250 5153); GameOptions.CleanGalaxyView hides both (5155:
@@ -2969,14 +2971,27 @@ export class MainView {
     }
 
     private deepTex: Texture | null = null;
+    /** Animated dust, glows and godrays over the Deep backdrop (deepBackdropAnim.ts); null when it cannot run. */
+    deepAnim: DeepNebulaAnim | null = null;
+    private deepKind = false;
     /** The "Deep (DW2-style)" texture built from the loaded original (deepBackdrop.ts), or the original if it fails. */
     private deepBackdropTexture(): Texture {
         const orig = this.textures.backdrop;
         if (this.deepTex === null) {
             const res = orig.source.resource as CanvasImageSource | undefined;
-            const canvas = res ? buildDeepBackdrop(res, orig.source.pixelWidth, orig.source.pixelHeight, this.galaxy.randomSeed | 0) : null;
-            if (canvas === null) return orig;
-            this.deepTex = Texture.from(canvas);
+            const seed = this.galaxy.randomSeed | 0;
+            const built = res ? buildDeepBackdrop(res, orig.source.pixelWidth, orig.source.pixelHeight, seed, 1 - DEEP_ANIM_DUST_SHARE) : null;
+            if (built === null) return orig;
+            try {
+                this.deepAnim = new DeepNebulaAnim(built.field, this.galaxy.sizeX, this.galaxy.sizeY, seed);
+                const urlTime = urlGalaxyBackdropTime();
+                if (urlTime !== null) this.deepAnim.setTime(urlTime);
+                this.backdropGroup.addChildAt(this.deepAnim.root, this.backdropGroup.getChildIndex(this.backdrop) + 1);
+            } catch (err) {
+                console.warn('deep backdrop: animated layer failed, using the full static dust', err);
+                this.deepAnim = null;
+            }
+            this.deepTex = Texture.from(this.deepAnim !== null ? built.canvas : (buildDeepBackdrop(res!, orig.source.pixelWidth, orig.source.pixelHeight, seed)?.canvas ?? built.canvas));
         }
         return this.deepTex;
     }
@@ -2985,6 +3000,7 @@ export class MainView {
     private applyGalaxyBackdrop(kind: GalaxyBackdropKind): void {
         const generated = this.galaxyBackdropLayer?.setKind(kind) ?? false;
         this.backdrop.visible = !generated;
+        this.deepKind = kind === 'deep' && !generated;
         if (this.textures !== undefined) {
             const tex = kind === 'deep' ? this.deepBackdropTexture() : this.textures.backdrop;
             this.backdrop.texture = tex;
@@ -3023,6 +3039,8 @@ export class MainView {
         this.offGalaxyBackdropChange?.();
         this.offGalaxyBackdropChange = null;
         this.galaxyBackdropLayer?.destroy();
+        this.deepAnim?.destroy();
+        this.deepAnim = null;
         this.galaxyBackdropLayer = null;
     }
 

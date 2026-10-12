@@ -18,8 +18,20 @@ export function deepTone(v: number): number {
     return 0.72 * Math.pow(v, 1.5);
 }
 
-/** A DW2-style dark backdrop canvas from `src` (the loaded original image), or null if it cannot be read. */
-export function buildDeepBackdrop(src: CanvasImageSource, srcW: number, srcH: number, seed: number): HTMLCanvasElement | null {
+/** Side of the square field texture handed to the animated layer (deepBackdropAnim.ts). */
+export const DEEP_FIELD_SIZE = 256;
+
+export interface DeepBackdrop {
+    canvas: HTMLCanvasElement;
+    /** DEEP_FIELD_SIZE^2 RGBA bytes: R galaxy-shape weight, G dust noise, B palette (teal) noise, A wisp noise. */
+    field: Uint8Array;
+}
+
+/**
+ * A DW2-style dark backdrop from `src` (the loaded original image), or null if it cannot be read. `staticDust` scales
+ * the dust baked into the canvas (1 = all of it; less when the animated layer draws the rest on top).
+ */
+export function buildDeepBackdrop(src: CanvasImageSource, srcW: number, srcH: number, seed: number, staticDust = 1): DeepBackdrop | null {
     if (typeof document === 'undefined' || srcW < 2 || srcH < 2) return null;
     const k = Math.min(1, MAX_PX / Math.max(srcW, srcH));
     const w = Math.max(2, Math.round(srcW * k));
@@ -78,7 +90,7 @@ export function buildDeepBackdrop(src: CanvasImageSource, srcW: number, srcH: nu
                 const area = smooth(0.04, 0.5, s0 * (1 - fy) + s1 * fy);
                 const cloud = smooth(0.38, 0.88, sampleWrap(dust, N, gx, gy)) * (0.35 + 0.65 * area);
                 const wisp = smooth(0.55, 0.85, 1 - Math.abs(2 * sampleWrap(lane, N, gx, gy) - 1)) * 0.5 * area;
-                const a = (cloud + wisp * cloud) * 1.25;
+                const a = (cloud + wisp * cloud) * 1.25 * staticDust;
                 const teal = smooth(0.52, 0.76, sampleWrap(tint, N, gx, gy));
                 // dark rust / brown / orange, with the odd deep teal
                 const cr = 0.44 * (1 - teal) + 0.03 * teal;
@@ -92,7 +104,28 @@ export function buildDeepBackdrop(src: CanvasImageSource, srcW: number, srcH: nu
             }
         }
         ctx.putImageData(img, 0, 0);
-        return canvas;
+        const F = DEEP_FIELD_SIZE;
+        const field = new Uint8Array(F * F * 4);
+        for (let y = 0; y < F; y++) {
+            const sy = Math.min(sh - 1.001, Math.max(0, (y / F) * sh - 0.5));
+            const y0 = Math.floor(sy);
+            const fy = sy - y0;
+            for (let x = 0; x < F; x++) {
+                const sx = Math.min(sw - 1.001, Math.max(0, (x / F) * sw - 0.5));
+                const x0 = Math.floor(sx);
+                const fx = sx - x0;
+                const s0 = shape[y0 * sw + x0] * (1 - fx) + shape[y0 * sw + x0 + 1] * fx;
+                const s1 = shape[(y0 + 1) * sw + x0] * (1 - fx) + shape[(y0 + 1) * sw + x0 + 1] * fx;
+                const gx = (x / F) * N;
+                const gy = (y / F) * N;
+                const q = (y * F + x) * 4;
+                field[q] = Math.round(smooth(0.04, 0.5, s0 * (1 - fy) + s1 * fy) * 255);
+                field[q + 1] = Math.round(Math.min(1, Math.max(0, sampleWrap(dust, N, gx, gy))) * 255);
+                field[q + 2] = Math.round(Math.min(1, Math.max(0, sampleWrap(tint, N, gx, gy))) * 255);
+                field[q + 3] = Math.round(Math.min(1, Math.max(0, sampleWrap(lane, N, gx, gy))) * 255);
+            }
+        }
+        return { canvas, field };
     } catch (err) {
         console.warn('deep backdrop: could not build, showing the original', err);
         return null;
