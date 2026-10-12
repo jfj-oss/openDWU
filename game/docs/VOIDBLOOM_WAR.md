@@ -437,7 +437,7 @@ screen) and `registerDietSeatExclusion`; `diet.ts dietLawViolation`.
    mission, settled by the stock unload). Conquered peoples are taken first. AI (and the player's automation, on by
    default) sends one every 90 days while the world is under 40 million; 15,000 credits each.
 5. **Garrisons** count troops: 2 + 1 per 10 million workers. A levy raises one troop for 8,000 credits (AI and the
-   player's automation one a month). A short garrison risks a revolt (12 % a month × the shortfall share): the workers
+   player's automation up to three a month, to the need + 1). A short garrison risks a revolt (12 % a month × the shortfall share): the workers
    take the world as an independent colony, which keeps its stock and becomes a black-market seller.
 6. **Who sells where:** the stock order path (the `extraLuxuryOrders` slot) and `contractAvailable` on the seller: into a
    banned market (the Concord always, unless legalised) only smugglers sell — pirates, independents and empires whose
@@ -467,24 +467,25 @@ screen) and `registerDietSeatExclusion`; `diet.ts dietLawViolation`.
    the Concord), unsupplied it loses 0.012 (× 4 after neural detox).
 9. **Crackdown timing:** at a Concord addiction index of 0.12 or 400,000 credits drained (whichever first). The
    commissioner is a governor character (`governors.ts spawnGovernorFor`, so Characters & Victory's travel applies when
-   on) named "Commissioner …" at the worst-hit colony. Inspections every 10 days: 30 % per ship near the commissioner,
-   15 % near any other Concord colony; seized cargo is destroyed; galactic news of a public burning at most once a year.
+   on) named "Commissioner …" at the worst-hit colony. Inspections every 10 days (state and private freighters, independents included): 20 % per ship near the commissioner,
+   10 % near any other Concord colony; seized cargo is destroyed; galactic news of a public burning at most once a year.
 10. **Crisis:** every smuggling empire (sold into the Concord, policy smuggle, holds a world) gets a crisis decision:
-    back down (legal for 10 years), pay 250,000 (5 quiet years), tolerate, or war (declared at once; casus belli and a
+    back down (legal for 6 years), pay 250,000 (5 quiet years), tolerate, or war (declared at once; casus belli and a
     penalty-free declaration). The AI scores war = 3 (strength ratio vs the home guard − 0.8) + aggression − caution / 2 +
-    3 × decline − 1.5 against tolerate = 1 + profit share − the police action's bite (raids, burns, occupations); a
+    3 × decline − 1.5 against tolerate = 1.2 + 1.5 × profit share − the police action's bite (raids, burns, occupations); a
     tolerated AI target is asked again every 3 years, so wars come late. Independent growers (the cartel, risen workers)
     get the police action without a crisis.
 11. **Police action** is scripted, not the stock war AI: a task force of 8 warships (out of AI control, exempt from the
-    passive posture; the home guard share stays home) blockades the nearest world; on station it raids every 30 days
-    (the stock on the planet is destroyed), burns the fields after 30 days, kills the governor 25 % a month, frees
+    passive posture; the home guard share stays home) blockades the nearest world; on station it raids every 60 days
+    (70 % of the stock on the planet is destroyed), burns the fields after 30 days, kills the governor 25 % a month, frees
     labour convoys it meets (the workers join the nearest Concord colony), stops and searches the target's freighters
-    within a sector (and attacks them in war), and **occupies** a world after 90 days when its garrison is smaller than
-    the ships present (a scripted hand-over, so it works without war). Occupied worlds lie fallow and do not count
+    within a sector (35 % a month; attacked in war), and **occupies** a world after 180 days when its garrison is under half
+    the ships present (the workers are taken off to the Concord's nearest colony) (a scripted hand-over, so it works without war). Occupied worlds lie fallow and do not count
     against the Concord's colony cap. During a tolerated action the Concord may attack the target's ships without war.
 12. **Decline index** (0..1) = 0.35 × addiction + 0.25 × drained / starting treasury + 0.2 × (1 − treasury / starting
     treasury) + 0.2 × (tech gap / 3, the best normal empire's weapon / energy / high-tech level over the Concord's). The
-    navy cap factor falls with addiction (× (1 − addiction / 2)). **Peace gate:** below 0.45 the Concord rejects any offer
+    navy cap factor falls with addiction or decline (× (1 − max / 2)); the treasury term is measured from the Concord's
+    peak treasury. **Peace gate:** below 0.4 the Concord rejects any offer
     in which it cedes, pays or grants rights.
 13. **Treaty terms** (PeaceTerms.extra kinds; points): legal Voidbloom 150, treaty port 150 (its most populous non-capital
     colony), toll exemption 120, inspection exemption 80, a 10 % customs cut 100; the barren rock is its least valuable
@@ -501,6 +502,8 @@ screen) and `registerDietSeatExclusion`; `diet.ts dietLawViolation`.
     far colonies off. Ten years after any treaty but client / opening the pretext incident gives the victor a casus belli
     (an AI victor with 60 % of the Concord's strength declares); war damage at the Concord's capital in that war loots
     10 % of its treasury and burns its wonder (−10 approval there).
+14b. **The Concord sues for peace:** past the gate, two years into a Voidbloom war against a smuggler with at least 60 %
+    of its strength (or ahead in damage dealt), it ends the war and signs the built-in unequal treaty.
 15. **"Me too":** a normal empire in contact with the Concord and at least half its strength gets legal Voidbloom, toll
     and inspection exemption once a treaty exists.
 16. **Diet:** Ban Voidbloom (members ban it; a member smuggling into another member breaks the law, once a year),
@@ -528,3 +531,40 @@ screen) and `registerDietSeatExclusion`; `diet.ts dietLawViolation`.
 **Not done / simplified:** the treasure fleet is not forced to call at treaty ports; recognising treaty ports in the Diet
 (stock `claim`) is not proposed by the AI; in the opening branch the treasure fleet stays but no longer sails as a Concord
 rule; occupation does not use the stock invasion; per-pair dependency is approximated by "every grower that sells".
+
+### Soak results and tuning (Haiku-run soaks, 2026-10-12)
+
+700 stars (starCountIndex 3, dimensionIndex 3), 7 empires, research 2× (galaxyResearchSpeed 60), The Rim on; `vb-sN` add
+Voidbloom; `vbfull-sN` also Living Galaxy (War Goals), Characters & Victory (Diet), the Galactic Council, Colony Economy
+and Internal Security; `base-sN` = The Rim without Voidbloom. 40 game years each, a save → load → continue check at
+year 20 (`scripts/soak.mjs` configs + a scratch hook). Three rounds: a 30-year round to fix mechanics (the grower's own
+colonies ate its harvest; contraband slipped into the stock luxury loop; the Concord's black market was unreachable,
+hence smuggler runs; garrisons too thin; inspections missed private freighters), then two 40-year rounds.
+
+Final round (current defaults):
+
+| run | arc start / starter | crackdown | crises: tolerated / paid / backed down | wars | treaty | Concord addiction peak / decline at y40 | drain state + private | runs / seizures | year s |
+|---|---|---|---|---|---|---|---|---|---|
+| vb-s1 | y4.1 AI | y6 | 2 / 0 / 2 | — | — | 0.28 / 0.09 | 180k + 1,022k | 44 / 27 | 80.3 |
+| vb-s2 | y6.6 independent | y10 | 2 / 0 / 4 | — | — | 0.29 / 0.41 (0.45 at y30) | 257k + 1,458k | 159 / 79 | 89.8 |
+| vb-s3 | y10.4 cartel (fallback) | y15 | 1 / 1 / 3 | — | — | 0.15 / 0.06 | 157k + 887k | 75 / 33 | 84.2 |
+| vbfull-s1 | y5.5 independent | y12 | 3 / 0 / 9 | — | — | 0.50 / 0.13 | 217k + 1,230k | 71 / 48 | 91.2 |
+| vbfull-s2 | y5.1 AI | y15 | 2 / 0 / 3 | — | — | 0.09 / 0.29 | 214k + 1,211k | 60 / 17 | 92.7 |
+
+The previous round (before the softer police action) had wars in 3 of 4 runs (y16–y40, all held by the Concord), a
+decline of 0.44 at y35 in one run (its treasury fell to 0.6 M), and the same pattern otherwise. Every run: labour
+convoys and garrison levies by the AI (6–34 convoys, up to 65 levies an empire), revolts 1–2, temperance movements,
+withdrawal crises, neural detox, an addicted leader, Ban Voidbloom moved and passed in the Diet runs. Save round trips
+identical in all 12 runs (digest, save text, re-serialised text); no exceptions.
+
+**Performance:** the round with base runs alongside: Voidbloom runs 100.0 s per game year on average against 99.2 s
+for the same galaxies without it (+0.9 %, within noise of runs sharing 8 cores).
+
+**Tuning verdict.** Met: the arc starts in every game (AI growers, independents, the fallback cartel); the crackdown
+comes while the Concord is strong (decline 0.0–0.3); profit clearly outweighs labour and garrisons (a grower sells
+0.4–4 M against 15,000 a convoy and 8,000 a troop); spread is contained (bans, seizures at home and the crackdown push
+addiction back to zero for years); the AI uses every part. Not met yet: the war is still rare and no 40-year run reached
+an unequal treaty — the Concord's economy (10–30 M treasury, rising) outgrows a 1–2 M drain, and most AI targets back
+down. The levers, if longer games still do not reach the treaty: `voidbloomYield` / `voidbloomUse` (more trade),
+`voidbloomStateDrainPct` (a larger state share), `voidbloomGateDecline` (now 0.4), the crisis weights in
+`crackdown.ts aiCrisisChoice`. Only three tuning rounds were run, as asked.
