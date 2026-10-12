@@ -87,7 +87,9 @@ export type DietMotionKind =
     | 'claim'
     | 'expel'
     | 'regent'
-    | 'repeal';
+    | 'repeal'
+    // A kind another add-on registers (registerDietMotionKind; e.g. The Voidbloom War's 'banVoidbloom').
+    | (string & {});
 
 /** The galactic council's own kinds (applied through council.ts applyMotion). */
 export const STOCK_KINDS: ReadonlySet<DietMotionKind> = new Set(['sanction', 'embargo', 'condemn', 'lift', 'recognise', 'threat']);
@@ -148,7 +150,68 @@ export interface DietSession {
     vetoUsed: boolean;
 }
 
-export type DietLawKind = 'freeTrade' | 'banPlanetDestroyers' | 'banBombard' | 'outlawPirates' | 'protectIndependents' | 'openIndependents' | 'claim' | 'truce';
+export type DietLawKind = 'freeTrade' | 'banPlanetDestroyers' | 'banBombard' | 'outlawPirates' | 'protectIndependents' | 'openIndependents' | 'claim' | 'truce' | (string & {});
+
+/** A motion's AI candidate as a registered kind proposes it (dietAi.ts DietCandidate). */
+export interface DietKindCandidate {
+    kind: DietMotionKind;
+    proposer: Empire;
+    target: Empire | null;
+    other: Empire | null;
+    colony: Habitat | null;
+    resourceId: number;
+    weight: number;
+}
+
+/**
+ * A motion kind another add-on adds to the Diet (registerDietMotionKind): its text, its effect when passed (usually a
+ * law through `addLaw`), every AI voter's score, and the members' candidates. Pure but `apply`; no Rnd.
+ */
+export interface DietMotionKindDef {
+    kind: string;
+    text: (galaxy: Galaxy, st: DietState, m: { target: Empire | null; other: Empire | null; colony: Habitat | null; resourceId: number }) => string;
+    apply: (galaxy: Galaxy, st: DietState, m: DietMotion, addLaw: (kind: DietLawKind, empire: Empire | null, other: Empire | null, colony: Habitat | null, until: number) => DietLaw) => void;
+    voteScore: (galaxy: Galaxy, st: DietState, voter: Empire, m: DietMotion) => number;
+    candidates?: (galaxy: Galaxy, st: DietState, a: Empire) => DietKindCandidate[];
+    /** The Diet screen: the motion's name, what it does, what it names ('none' | 'empire'), and when it may be moved. */
+    label: string;
+    effect: (m: DietMotion) => string;
+    needs: 'none' | 'empire';
+    proposable?: (galaxy: Galaxy) => boolean;
+}
+
+// eslint-disable-next-line no-var
+var dietKindStore: DietMotionKindDef[] | undefined;
+// eslint-disable-next-line no-var
+var dietSeatExclusionStore: ((galaxy: Galaxy, e: Empire) => boolean)[] | undefined;
+
+export function registerDietMotionKind(def: DietMotionKindDef): void {
+    const list = (dietKindStore ??= []);
+    const i = list.findIndex((x) => x.kind === def.kind);
+    if (i >= 0) list.splice(i, 1);
+    list.push(def);
+}
+
+export function dietMotionKindDef(kind: string): DietMotionKindDef | null {
+    return dietKindStore?.find((x) => x.kind === kind) ?? null;
+}
+
+export function registeredDietKinds(): readonly DietMotionKindDef[] {
+    return dietKindStore ?? [];
+}
+
+/** A member that may sit and vote but never hosts the Diet nor holds the Regency (The Voidbloom War: the Concord). */
+export function registerDietSeatExclusion(fn: (galaxy: Galaxy, e: Empire) => boolean): void {
+    const list = (dietSeatExclusionStore ??= []);
+    if (!list.includes(fn)) list.push(fn);
+}
+
+export function dietSeatExcluded(galaxy: Galaxy, e: Empire): boolean {
+    const list = dietSeatExclusionStore;
+    if (list === undefined) return false;
+    for (const f of list) if (f(galaxy, e)) return true;
+    return false;
+}
 
 /** A measure in force. */
 export interface DietLaw {

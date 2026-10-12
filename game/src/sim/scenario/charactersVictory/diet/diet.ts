@@ -73,7 +73,9 @@ import {
     type DietSession,
     type DietState,
     byId,
+    dietMotionKindDef,
     dietOn,
+    dietSeatExcluded,
     dietParam,
     dietState,
     lawInForce,
@@ -154,8 +156,10 @@ export function dietMotionText(galaxy: Galaxy, st: DietState, kind: DietMotionKi
             const law = st.laws.find((l) => l.id === resourceId);
             return scenarioText('Diet Motion Repeal', law?.text ?? '');
         }
-        default:
-            return kind;
+        default: {
+            const def = dietMotionKindDef(kind);
+            return def !== null ? def.text(galaxy, st, { target, other, colony, resourceId }) : kind;
+        }
     }
 }
 
@@ -171,6 +175,7 @@ export function strongestMember(galaxy: Galaxy, ms: readonly Empire[]): Empire |
     const guardians = identifyMechanoidEmpire(galaxy);
     for (const e of ms) {
         if (e === guardians && ms.length > 1) continue;
+        if (ms.length > 1 && dietSeatExcluded(galaxy, e)) continue;
         const s = calculateEmpireScore(galaxy, e).score;
         if (s > bv) {
             bv = s;
@@ -552,7 +557,7 @@ function applyDietMotion(galaxy: Galaxy, st: DietState, c: Council, m: DietMotio
             if (m.target !== null) expel(galaxy, st, c, m.target, year);
             break;
         case 'regent':
-            if (m.target !== null) {
+            if (m.target !== null && !dietSeatExcluded(galaxy, m.target)) {
                 st.regent = m.target;
                 st.regentUntil = now + dietParam(galaxy, 'dietRegentYears') * YEAR_LENGTH;
                 st.counters.regents++;
@@ -565,9 +570,20 @@ function applyDietMotion(galaxy: Galaxy, st: DietState, c: Council, m: DietMotio
             if (law !== undefined) removeLaw(st, law);
             break;
         }
-        default:
+        default: {
+            const def = dietMotionKindDef(m.kind);
+            if (def !== null) def.apply(galaxy, st, m, (kind, empire, other, colony, until) => addLaw(st, kind, empire, other, colony, until, m.text, now));
             break;
+        }
     }
+}
+
+/** A registered law's breach (The Voidbloom War's ban): the Diet's violation path. Exported for registered kinds. */
+export function dietLawViolation(galaxy: Galaxy, offender: Empire, law: DietLaw): void {
+    const st = peekDietState(galaxy);
+    const c = dietCouncil(galaxy);
+    if (st === null || c === null || !inDiet(galaxy, c, offender)) return;
+    violation(galaxy, st, c, offender, law);
 }
 
 /** Expulsion: out of the council (and its blocs), no rejoining for dietExpelYears. */

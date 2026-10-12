@@ -72,6 +72,8 @@ import {
     rimParam,
     rimTradeState,
     rimTraderColonyCapReached,
+    concordHooks,
+    concordCappedColonies,
     rimTraderEmpire,
     rimTraderStanding,
 } from './common';
@@ -180,7 +182,7 @@ export function concordMissionAllowed(galaxy: Galaxy, value: boolean, args: { bu
         if (type === BuiltObjectMissionType.UnloadTroops && isHabitat(target) && target.empire !== r) return false;
     }
     if (!scenarioFlag(galaxy, PASSIVE_FLAG)) return value;
-    if (bo.role !== BuiltObjectRole.Military || isTreasureShip(galaxy, bo) || isStrikeShip(galaxy, bo)) return value;
+    if (bo.role !== BuiltObjectRole.Military || isTreasureShip(galaxy, bo) || isStrikeShip(galaxy, bo) || concordHooks().missionExempt?.(galaxy, bo) === true) return value;
     // No escorting of civilian ships: freighters, miners and explorers leave Concord space, and the escort would follow.
     if (type === BuiltObjectMissionType.Escort && isBuiltObject(target) && target.role !== BuiltObjectRole.Military && target.role !== BuiltObjectRole.Base) return false;
     const angered = owner !== null && owner !== r && rimAngeredAt(galaxy, owner);
@@ -239,7 +241,7 @@ export function rimPassiveLeash(galaxy: Galaxy): number {
     const fleets: ShipGroup[] = [];
     let n = 0;
     for (const b of [...r.builtObjects]) {
-        if (b === null || b.hasBeenDestroyed || b.role !== BuiltObjectRole.Military || isTreasureShip(galaxy, b) || isStrikeShip(galaxy, b)) continue;
+        if (b === null || b.hasBeenDestroyed || b.role !== BuiltObjectRole.Military || isTreasureShip(galaxy, b) || isStrikeShip(galaxy, b) || concordHooks().missionExempt?.(galaxy, b) === true) continue;
         const m = builtObjectMission(b.mission);
         const here = inConcordSpace(galaxy, r, b.xpos, b.ypos);
         if (m === null || m.type === BuiltObjectMissionType.Undefined) {
@@ -536,7 +538,8 @@ function strikeCapable(galaxy: Galaxy, b: BuiltObject): boolean {
         b.subRole !== BuiltObjectSubRole.TroopTransport &&
         b.subRole !== BuiltObjectSubRole.ResupplyShip &&
         !isTreasureShip(galaxy, b) &&
-        !isStrikeShip(galaxy, b)
+        !isStrikeShip(galaxy, b) &&
+        concordHooks().missionExempt?.(galaxy, b) !== true
     );
 }
 
@@ -747,7 +750,7 @@ function rimCapState(galaxy: Galaxy): RimCapState {
 export function rimCapColonyGained(galaxy: Galaxy, p: { colony: Habitat; from: Empire | null; to: Empire | null }): void {
     const r = rimTraderEmpire(galaxy);
     if (r === null || p.to !== r || p.from === r || !isRimTraderAI(galaxy, r)) return;
-    if (r.colonies.length <= rimParam(galaxy, 'rimTraderMaxColonies')) return;
+    if (concordCappedColonies(galaxy, r) <= rimParam(galaxy, 'rimTraderMaxColonies') || concordHooks().capExempt?.(galaxy, p.colony) === true) return;
     const st = rimCapState(galaxy);
     if (!st.overCap.includes(p.colony)) st.overCap.push(p.colony);
 }
@@ -762,7 +765,7 @@ export function rimCapReview(galaxy: Galaxy): void {
     st.overCap = [];
     if (r === null || ind === null || !isRimTraderAI(galaxy, r)) return;
     for (const c of queue) {
-        if (c.hasBeenDestroyed || c.empire !== r || c === r.capital || r.colonies.length <= rimParam(galaxy, 'rimTraderMaxColonies')) continue;
+        if (c.hasBeenDestroyed || c.empire !== r || c === r.capital || concordCappedColonies(galaxy, r) <= rimParam(galaxy, 'rimTraderMaxColonies') || concordHooks().capExempt?.(galaxy, c) === true) continue;
         takeOwnershipOfColonyFull(galaxy, ind, c, ind, false, false);
         st.released++;
     }

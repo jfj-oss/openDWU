@@ -36,7 +36,7 @@ import { registerScenarioQuery, registerScenarioYearly } from '../hooks';
 import { identifyMechanoidEmpire } from '../../fleets/militaryAI';
 import { scenarioState } from '../state';
 import { scenarioMessage, scenarioText } from '../messages';
-import { isRimTraderAI, rimParam, rimTraderEmpire } from './common';
+import { concordHooks, isRimTraderAI, rimParam, rimTraderEmpire } from './common';
 
 /** The warship spread: sub-role groups (preferred first) and their shares. */
 export const NAVY_SPREAD: { roles: BuiltObjectSubRole[]; share: number }[] = [
@@ -207,8 +207,9 @@ export function strongestNormalFirepower(galaxy: Galaxy, r: Empire): number {
  * a rich empire otherwise builds hundreds (309 warships, 139k firepower in a late-start soak). Pure.
  */
 export function concordNavyCapped(galaxy: Galaxy, r: Empire): boolean {
-    const factor = rimParam(galaxy, 'rimTraderNavyCapFactor');
-    if (!(factor > 0)) return false;
+    const base = rimParam(galaxy, 'rimTraderNavyCapFactor');
+    if (!(base > 0)) return false;
+    const factor = concordHooks().navyCapFactor?.(galaxy, base) ?? base;
     if (concordWarships(r).length < Math.trunc(rimParam(galaxy, 'rimTraderNavyTarget'))) return false;
     return militaryFirepower(r) >= factor * strongestNormalFirepower(galaxy, r);
 }

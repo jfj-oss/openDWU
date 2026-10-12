@@ -145,6 +145,48 @@ export function resourceName(galaxy: Galaxy, id: number): string {
     return galaxy.resourceSystem.byId.get(id)?.name ?? String(id);
 }
 
+/**
+ * Late-bound exceptions to the Concord's rules (The Voidbloom War, scenario/voidbloom): unequal-treaty rights, the
+ * decline model, the aftermath branches and the crackdown task force. Each slot returns the stock answer unless that
+ * add-on's flag is on, so with it off every rule runs exactly as before. `var`: this module sits in import cycles.
+ */
+export interface ConcordHooks {
+    /** The opening branch: the Concord turns into a normal empire (its closed-trade rules end). */
+    normalised?: (galaxy: Galaxy) => boolean;
+    /** The war block lifts toward `target` (a revanche / second war). */
+    warAllowed?: (galaxy: Galaxy, self: Empire, target: Empire | null) => boolean;
+    /** The Concord accepts this treaty type with `other` (the client-state branch's protectorate). */
+    treatyAllowed?: (galaxy: Galaxy, self: Empire, other: Empire, type: DiplomaticRelationType) => boolean;
+    /** A Concord colony the colony cap does not count (an occupied Voidbloom world). */
+    capExempt?: (galaxy: Galaxy, colony: Habitat) => boolean;
+    /** The navy cap factor (the decline model scales it). */
+    navyCapFactor?: (galaxy: Galaxy, factor: number) => number;
+    /** The research cap (self-strengthening lifts it). */
+    researchCap?: (galaxy: Galaxy, cap: number) => number;
+    /** A Concord warship outside the passive posture (the crackdown task force). */
+    missionExempt?: (galaxy: Galaxy, bo: BuiltObject) => boolean;
+    /** Restricted trade granted regardless of standing (a treaty port / the Diet's open ports). */
+    tradeGranted?: (galaxy: Galaxy, other: Empire) => boolean;
+    /** No price factor and no standing cap on the rare goods for this buyer (toll exemption). */
+    tollExempt?: (galaxy: Galaxy, buyer: Empire) => boolean;
+    /** The single-port rule does not apply to this empire (treaty ports). */
+    portsOpen?: (galaxy: Galaxy, other: Empire) => boolean;
+}
+// eslint-disable-next-line no-var
+var concordHooksStore: ConcordHooks | undefined;
+export function concordHooks(): ConcordHooks {
+    return (concordHooksStore ??= {});
+}
+
+/** The Concord counts toward its colony cap with these colonies (all but the exempt ones). Pure. */
+export function concordCappedColonies(galaxy: Galaxy, empire: Empire): number {
+    const ex = concordHooks().capExempt;
+    if (ex === undefined) return empire.colonies.length;
+    let n = 0;
+    for (const c of empire.colonies) if (!ex(galaxy, c)) n++;
+    return n;
+}
+
 /** The Concord (null with no rimTrade state, an eliminated Concord, or none placed). */
 export function rimTraderEmpire(galaxy: Galaxy): Empire | null {
     if (galaxy.scenario === null || !('rimTrade' in galaxy.scenario.state)) return null;
@@ -156,7 +198,9 @@ export function rimTraderEmpire(galaxy: Galaxy): Empire | null {
 
 /** The Concord when the AI runs it (a player who picks the Oranthi plays them normally: rules R1–R7 are AI rules). */
 export function isRimTraderAI(galaxy: Galaxy, e: Empire | null): boolean {
-    return e !== null && e === rimTraderEmpire(galaxy) && !isHumanEmpire(galaxy, e);
+    if (e === null || e !== rimTraderEmpire(galaxy) || isHumanEmpire(galaxy, e)) return false;
+    const n = concordHooks().normalised;
+    return n === undefined || !n(galaxy);
 }
 
 /** The Concord's single trading port: the space port at its capital, else the capital habitat (step 5). */
@@ -180,6 +224,7 @@ export function rimTraderAllowsRestrictedTrade(galaxy: Galaxy, r: Empire, other:
     if (other === null || other === r || other === galaxy.independentEmpire || other.pirateEmpireBaseHabitat !== null) return false;
     const rel = obtainDiplomaticRelation(r, other);
     if (rel.type === DiplomaticRelationType.NotMet || rel.type === DiplomaticRelationType.War || rel.type === DiplomaticRelationType.TradeSanctions) return false;
+    if (concordHooks().tradeGranted?.(galaxy, other) === true) return true;
     const s = rimTraderStanding(galaxy, other.empireId);
     return rel.supplyRestrictedResources ? s >= 0 : s >= rimParam(galaxy, 'rimTraderGrantThreshold');
 }
@@ -211,12 +256,13 @@ export function rimTraderAccessChanged(galaxy: Galaxy, r: Empire, other: Empire 
 export function scenarioWarBlocked(galaxy: Galaxy, self: Empire, target: Empire | null): boolean {
     if (!scenarioFlag(galaxy, 'rimTrader') || !isRimTraderAI(galaxy, self)) return false;
     if (target !== null && scenarioFlag(galaxy, 'rimTraderPassive') && rimAngeredAt(galaxy, target)) return false;
+    if (concordHooks().warAllowed?.(galaxy, self, target) === true) return false;
     return true;
 }
 
 /** R2 (step 8): the Concord AI stops colonizing at the cap. */
 export function rimTraderColonyCapReached(galaxy: Galaxy, empire: Empire): boolean {
-    return isRimTraderAI(galaxy, empire) && empire.colonies.length >= rimParam(galaxy, 'rimTraderMaxColonies');
+    return isRimTraderAI(galaxy, empire) && concordCappedColonies(galaxy, empire) >= rimParam(galaxy, 'rimTraderMaxColonies');
 }
 
 /** R2 for the base-sim guards (colony founding): the flag and the cap. Pure. */
@@ -313,13 +359,15 @@ export function rimTraderRefusesTreatyType(type: DiplomaticRelationType): boolea
  */
 export function rimTraderRefusesProposal(galaxy: Galaxy, self: Empire, proposer: Empire, type: DiplomaticRelationType): boolean {
     if (!isRimTraderAI(galaxy, self) || !rimTraderRefusesTreatyType(type)) return false;
+    if (concordHooks().treatyAllowed?.(galaxy, self, proposer, type) === true) return false;
     scenarioMessage(galaxy, proposer, scenarioText('Scenario RimTrade Terms Title'), scenarioText('Scenario RimTrade Treaty Refused', self.name), { type: EmpireMessageType.GeneralNeutralEvent, sender: self });
     return true;
 }
 
 /** R6 (step 11): with the single-port flag, the only Concord object foreign traders may use (undefined = no rule). */
-export function rimTraderOnlyTradingPost(galaxy: Galaxy, other: Empire): BuiltObject | Habitat | null | undefined {
+export function rimTraderOnlyTradingPost(galaxy: Galaxy, other: Empire, buyer: Empire | null = null): BuiltObject | Habitat | null | undefined {
     if (!scenarioFlag(galaxy, 'rimTraderSinglePort') || !scenarioFlag(galaxy, 'rimTrader') || other !== rimTraderEmpire(galaxy)) return undefined;
+    if (buyer !== null && concordHooks().portsOpen?.(galaxy, buyer) === true) return undefined;
     return rimTraderPort(galaxy);
 }
 

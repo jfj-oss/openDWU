@@ -112,12 +112,24 @@ export interface ReleaseTerm {
     overlord: Empire;
     subject: Empire;
 }
-/** A peace offer's terms. Everything empty = status quo. */
+/**
+ * A term another add-on defines (peaceTerms.ts registerPeaceTermKind: value, text, sanitising and effect by `kind`).
+ * `from` gives, `to` gains. The Voidbloom War's unequal-treaty terms (treaty port, exemptions, legalisation) are these.
+ */
+export interface ScenarioTerm {
+    kind: string;
+    from: Empire;
+    to: Empire;
+    colony?: Habitat | null;
+    amount?: number;
+}
+/** A peace offer's terms. Everything empty = status quo. `extra` is absent unless an add-on term is in it. */
 export interface PeaceTerms {
     cede: CedeTerm[];
     reparations: ReparationTerm | null;
     demilitarise: DemilTerm | null;
     release: ReleaseTerm | null;
+    extra?: ScenarioTerm[];
 }
 
 export interface DemilTreaty {
@@ -629,6 +641,15 @@ registerScenarioPeriodic({
 
 export function humiliation(galaxy: Galaxy, humiliated: Empire, victor: Empire): number {
     return peekState(galaxy)?.humiliations[pairKey(humiliated, victor)] ?? 0;
+}
+
+/**
+ * Grants `victim` a casus belli against `offender` (read by holdsCasusBelli, the war-goal candidates and the war-review
+ * relax; expires after casusBelliYears). For other add-ons' incidents (The Voidbloom War's crackdown). No Rnd.
+ */
+export function grantCasusBelli(galaxy: Galaxy, victim: Empire, offender: Empire): void {
+    if (!warGoalsOn(galaxy)) return;
+    warGoalsState(galaxy).casusBelli[pairKey(victim, offender)] = galaxyStarDate(galaxy);
 }
 
 export function holdsCasusBelli(galaxy: Galaxy, victim: Empire, breacher: Empire): boolean {

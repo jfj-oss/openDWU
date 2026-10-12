@@ -15,7 +15,7 @@ import { blocOf, scoreToVote, type Council } from '../../emergent/council';
 import { colonyGovernor } from '../../governors';
 import { empireGovernors, mostImportantGovernor } from '../governorsCv';
 import { tripOfCharacter } from '../vip';
-import { type DietMotion, type DietMotionKind, type DietState, DIET_NAME, byId, dietOn, dietParam, peekDietState } from './dietState';
+import { type DietMotion, type DietMotionKind, type DietState, DIET_NAME, byId, dietMotionKindDef, dietOn, dietParam, peekDietState, registeredDietKinds } from './dietState';
 import { dietMembership, dietVoteScore, memberScores, voteWeight } from './dietAi';
 import { dietCouncil } from './diet';
 
@@ -149,7 +149,13 @@ function effectOf(st: DietState, m: DietMotion): string {
             const law = st.laws.find((l) => l.id === m.resourceId);
             return `Ends: ${law?.text ?? 'a measure'}.`;
         }
+        default:
+            return dietMotionKindDef(m.kind)?.effect(m) ?? '';
     }
+}
+
+function kindLabel(k: DietMotionKind): string {
+    return (KIND_LABEL as Record<string, string>)[k] ?? dietMotionKindDef(k)?.label ?? k;
 }
 
 function dateOf(sd: number): string {
@@ -280,12 +286,17 @@ export function dietView(galaxy: Galaxy, player: Empire): DietViewModel | null {
         canEmergency: regentActive && st.regent === player && s === null && (lastEm < 0 || now - lastEm >= dietParam(galaxy, 'dietEmergencyYears') * 600_000),
         canEmperor: regentActive && st.regent === player && em === null,
         fund: Math.round(st.fund),
-        proposable: (Object.keys(KIND_LABEL) as DietMotionKind[]).map((k) => ({
-            kind: k,
-            label: KIND_LABEL[k],
-            needs: k === 'truce' ? 'pair' : k === 'outlawPirates' ? 'pirate' : k === 'claim' ? 'colony' : k === 'repeal' ? 'law' : ['freeTrade', 'banPlanetDestroyers', 'banBombard', 'protectIndependents', 'openIndependents'].includes(k) ? 'none' : 'empire',
-        })),
-        proposal: p !== undefined ? `${KIND_LABEL[p.kind]}${p.target !== null ? `: ${p.target.name}` : ''}` : '',
+        proposable: [
+            ...(Object.keys(KIND_LABEL) as DietMotionKind[]).map((k): DietViewModel['proposable'][number] => ({
+                kind: k,
+                label: KIND_LABEL[k],
+                needs: k === 'truce' ? 'pair' : k === 'outlawPirates' ? 'pirate' : k === 'claim' ? 'colony' : k === 'repeal' ? 'law' : ['freeTrade', 'banPlanetDestroyers', 'banBombard', 'protectIndependents', 'openIndependents'].includes(k) ? 'none' : 'empire',
+            })),
+            ...registeredDietKinds()
+                .filter((d) => d.proposable === undefined || d.proposable(galaxy))
+                .map((d) => ({ kind: d.kind as DietMotionKind, label: d.label, needs: d.needs })),
+        ],
+        proposal: p !== undefined ? `${kindLabel(p.kind)}${p.target !== null ? `: ${p.target.name}` : ''}` : '',
     };
 }
 

@@ -41,7 +41,7 @@ import { registerScenarioQuery } from '../hooks';
 import { registerStabilityTerm } from '../stability';
 import { scenarioParam } from '../state';
 import { cargoGetCargo } from '../../logistics/orders';
-import { rareGoodIds, resourceName, rimParam, rimTraderEmpire, rimTraderPort, rimTraderStanding } from './common';
+import { concordHooks, rareGoodIds, resourceName, rimParam, rimTraderEmpire, rimTraderPort, rimTraderStanding } from './common';
 import { habitatDevelopmentLevel } from '../../developmentLevel';
 import { galaxyResourceCurrentPrices } from '../../design';
 
@@ -203,6 +203,7 @@ export function rareOrderMinDevelopment(galaxy: Galaxy, value: number, available
 export function rareContractAvailable(galaxy: Galaxy, value: number, args: { seller: Empire | null; buyer: Empire | null; resourceId: number }): number {
     const r = rimTraderEmpire(galaxy);
     if (r === null || args.seller !== r || args.buyer === null || args.buyer === r || !rareGoodIds(galaxy).includes(args.resourceId)) return value;
+    if (concordHooks().tollExempt?.(galaxy, args.buyer) === true) return value;
     const price = (galaxyResourceCurrentPrices(galaxy)[args.resourceId] ?? 0) * rimParam(galaxy, 'rimTraderRarePriceMult');
     if (!(price > 0)) return value;
     const standing = rimTraderStanding(galaxy, args.buyer.empireId);

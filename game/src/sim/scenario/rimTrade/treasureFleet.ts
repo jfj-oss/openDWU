@@ -49,7 +49,7 @@ import { galaxyResourceCurrentPrices } from '../../design';
 import { cargoGetCargo, cargoRemove } from '../../logistics/orders';
 import { contractListenersActive, emitContractInitiated } from '../../logistics/contractEvents';
 import { doEmpireEncounter } from '../../exploration';
-import { concordNavyActive, isRimTraderAI, rareGoodIds, rimAngerState, rimParam, rimGoodIds, rimTradeState, rimTraderAllowsRestrictedTrade, rimTraderEmpire, rimTraderPort, rimTraderStanding } from './common';
+import { concordHooks, concordNavyActive, isRimTraderAI, rareGoodIds, rimAngerState, rimParam, rimGoodIds, rimTradeState, rimTraderAllowsRestrictedTrade, rimTraderEmpire, rimTraderPort, rimTraderStanding } from './common';
 import { isHumanEmpire } from '../../humanEmpires';
 import { identifyMechanoidEmpire } from '../../fleets/militaryAI';
 import { convoyRecovering, straggleHeld, treasureStraggleAtDeparture } from './treasureRaids';
@@ -248,7 +248,8 @@ export function applyConcordTech(galaxy: Galaxy, r: Empire, setLevel: boolean): 
 /** researchFrozen query: the Concord AI stops researching an industry at the cap (construction line excluded). Pure. */
 export function concordResearchFrozen(galaxy: Galaxy, value: boolean, args: { empire: Empire; industry: number }): boolean {
     if (value || !isRimTraderAI(galaxy, args.empire)) return value;
-    const cap = treasureParam(galaxy, 'rimTraderResearchCap');
+    const cap0 = treasureParam(galaxy, 'rimTraderResearchCap');
+    const cap = concordHooks().researchCap?.(galaxy, cap0) ?? cap0;
     if (!(cap > 0)) return value;
     return highestResearchedLevel(args.empire, args.industry as IndustryType) >= cap;
 }
@@ -257,7 +258,8 @@ function yearlyCapCheck(galaxy: Galaxy): void {
     const r = rimTraderEmpire(galaxy);
     if (r === null || !isRimTraderAI(galaxy, r)) return;
     const st = treasureState(galaxy);
-    const cap = treasureParam(galaxy, 'rimTraderResearchCap');
+    const cap0 = treasureParam(galaxy, 'rimTraderResearchCap');
+    const cap = concordHooks().researchCap?.(galaxy, cap0) ?? cap0;
     st.researchCapped = cap > 0 && [IndustryType.Weapon, IndustryType.Energy, IndustryType.HighTech].every((i) => highestResearchedLevel(r, i) >= cap);
 }
 

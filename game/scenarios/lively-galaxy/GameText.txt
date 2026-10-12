@@ -48,3 +48,4 @@ Lively Anniversary War News;The {0} marks the anniversary of a war that shaped i
 Lively Anniversary Wonder Title;Wonder Anniversary
 Lively Anniversary Wonder Own;We celebrate the anniversary of a great wonder's dedication.
 Lively Anniversary Wonder News;The {0} celebrates the anniversary of a great wonder's dedication.
+Lively Reputation Humiliation;Humiliated in a peace treaty

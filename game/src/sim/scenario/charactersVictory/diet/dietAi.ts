@@ -32,7 +32,7 @@ import {
     type Motion,
     type MotionKind,
 } from '../../emergent/council';
-import { type DietLaw, type DietMotion, type DietMotionKind, type DietState, STOCK_KINDS, byId, dietParam, lawInForce } from './dietState';
+import { type DietLaw, type DietMotion, type DietMotionKind, type DietState, STOCK_KINDS, byId, dietMotionKindDef, dietParam, dietSeatExcluded, lawInForce, registeredDietKinds } from './dietState';
 import { scenarioQuery } from '../../hooks';
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -297,8 +297,10 @@ export function dietVoteScore(galaxy: Galaxy, c: Council, st: DietState, voter: 
             // The seat must be filled (+10); only a dominant candidate (over 35 % of the score) is feared.
             return 10 + (t === st.host ? 10 : 0) + 0.5 * attitudeOf(voter, t!) + 0.5 * tradeInterest(voter, t!) - (share > 0.35 ? 15 * (p.caution + 0.5) : 0) + 5 * has(p, CharacterTraitType.Trusting) - 10 * has(p, CharacterTraitType.Paranoid) + (blocOf(c, voter)?.members.includes(t!) ? 20 : 0) - (atWar(voter, t!) ? 60 : 0);
         }
-        default:
-            return 0;
+        default: {
+            const def = dietMotionKindDef(m.kind);
+            return def !== null ? def.voteScore(galaxy, st, voter, m) : 0;
+        }
     }
 }
 
@@ -414,10 +416,12 @@ export function memberCandidates(galaxy: Galaxy, c: Council, st: DietState, a: E
         const scores = memberScores(galaxy, members);
         // The Ancient Guardians (the story's Mechanoids) never stand for the Regency.
         const guardians = identifyMechanoidEmpire(galaxy);
-        const ranked = [...members].filter((x) => x !== guardians).sort((x, y) => (scores.get(y) ?? 0) - (scores.get(x) ?? 0) || byId(x, y));
+        const ranked = [...members].filter((x) => x !== guardians && !dietSeatExcluded(galaxy, x)).sort((x, y) => (scores.get(y) ?? 0) - (scores.get(x) ?? 0) || byId(x, y));
         // An empty seat is the Diet's first business: it outweighs the members' other cases.
         if (ranked.indexOf(a) >= 0 && ranked.indexOf(a) < 2) out.push({ kind: 'regent', proposer: a, target: a, other: null, colony: null, resourceId: -1, weight: 85 + 10 * p.aggression - 5 * ranked.indexOf(a) });
     }
+    // Registered kinds (other add-ons' motions).
+    for (const def of registeredDietKinds()) if (def.candidates !== undefined) out.push(...def.candidates(galaxy, st, a));
     // Repeal what hurts us.
     for (const law of st.laws) {
         if (law.kind === 'truce') continue;

@@ -241,7 +241,7 @@ function addForeignTradingPosts(galaxy: Galaxy, empire: Empire, other: Empire, l
         }
     }
     // Mod layer 19a: foreign traders use only the Concord's port (tasks/19a-rim-trader.md R6)
-    const onlyPost = galaxy.scenario !== null ? rimTraderOnlyTradingPost(galaxy, other) : undefined;
+    const onlyPost = galaxy.scenario !== null ? rimTraderOnlyTradingPost(galaxy, other, empire) : undefined;
     for (let n = 0; n < other.spacePorts.length; n++) {
         const builtObject3 = other.spacePorts[n];
         if (onlyPost !== undefined && builtObject3 !== onlyPost) continue;

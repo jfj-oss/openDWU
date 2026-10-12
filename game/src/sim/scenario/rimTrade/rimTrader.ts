@@ -22,7 +22,7 @@ import { checkColoniesForBaseFacilities } from '../../stationPlacement';
 import { recalculateEmpirePopulation } from '../../taxes';
 import { recalculateAnnualTaxRevenue } from '../../forceStructure';
 import { applyConcordTech, treasureParam, treasureState } from './treasureFleet';
-import { RIM_MIN_RADIUS, RIM_RACE, rareGoodIds, resourceName, rimGoodIds, rimParam, rimTradeState, rimTraderEmpire, rimTraderPort, isRimGood } from './common';
+import { concordHooks, RIM_MIN_RADIUS, RIM_RACE, rareGoodIds, resourceName, rimGoodIds, rimParam, rimTradeState, rimTraderEmpire, rimTraderPort, isRimGood } from './common';
 import { concordWealthStart } from './wealth';
 import { isHumanEmpire } from '../../humanEmpires';
 
@@ -257,7 +257,7 @@ export function rimTraderOnContract(galaxy: Galaxy, ev: { seller: Empire; buyer:
         // purse, as the contract), the Concord's treasury takes it; standing is spent at the full price.
         // A treasure-fleet sale (treasureFleet.ts treasureTradeAt) is already priced with the factor.
         const fleet = ev.freighter != null && galaxy.scenario !== null && 'rimTreasure' in galaxy.scenario.state && treasureState(galaxy).ships.includes(ev.freighter);
-        const mult = fleet ? 1 : rimParam(galaxy, 'rimTraderRarePriceMult');
+        const mult = fleet || concordHooks().tollExempt?.(galaxy, ev.buyer) === true ? 1 : rimParam(galaxy, 'rimTraderRarePriceMult');
         const value = ev.value * mult;
         if (mult !== 1) {
             const extra = value - ev.value;

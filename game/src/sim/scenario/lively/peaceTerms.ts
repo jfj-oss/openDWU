@@ -61,11 +61,74 @@ import {
     warshipsInside,
     type DemilTreaty,
     type PeaceTerms,
+    type ScenarioTerm,
     type WarGoal,
     type WarSide,
 } from './warGoals';
 import { acceptProposal } from '../../player/playerOrders';
 import { isHumanEmpire } from '../../humanEmpires';
+import { applyReputation } from '../reputation/ledger';
+
+// ---------------------------------------------------------------------------------------------------------------
+// Add-on terms (PeaceTerms.extra) and term builders
+// ---------------------------------------------------------------------------------------------------------------
+
+/** A term kind another add-on defines. Every function is pure but `apply` (no Rnd in any). */
+export interface PeaceTermKind {
+    kind: string;
+    /** The term's value to `e` in war-score points (gain > 0, loss < 0, 0 when `e` is no party). */
+    value: (galaxy: Galaxy, t: ScenarioTerm, e: Empire) => number;
+    describe: (t: ScenarioTerm) => string;
+    /** The term as valid between `a` and `b` now, or null to drop it. */
+    sanitise: (galaxy: Galaxy, t: ScenarioTerm, a: Empire, b: Empire) => ScenarioTerm | null;
+    apply: (galaxy: Galaxy, t: ScenarioTerm) => void;
+}
+
+/** Adds add-on terms to `t` (buildTerms, the proposer clearly ahead); returns the budget (term points) left. */
+export interface PeaceTermsBuilder {
+    id: string;
+    build: (galaxy: Galaxy, proposer: Empire, target: Empire, t: PeaceTerms, budget: number) => number;
+}
+
+// `var` + accessors: registered at module load inside import cycles.
+// eslint-disable-next-line no-var
+var termKindStore: PeaceTermKind[] | undefined;
+// eslint-disable-next-line no-var
+var termBuilderStore: PeaceTermsBuilder[] | undefined;
+function termKinds(): PeaceTermKind[] {
+    return (termKindStore ??= []);
+}
+function termBuilders(): PeaceTermsBuilder[] {
+    return (termBuilderStore ??= []);
+}
+
+export function registerPeaceTermKind(k: PeaceTermKind): void {
+    const list = termKinds();
+    const i = list.findIndex((x) => x.kind === k.kind);
+    if (i >= 0) list.splice(i, 1);
+    list.push(k);
+}
+
+export function registerPeaceTermsBuilder(b: PeaceTermsBuilder): void {
+    const list = termBuilders();
+    const i = list.findIndex((x) => x.id === b.id);
+    if (i >= 0) list.splice(i, 1);
+    list.push(b);
+    list.sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
+}
+
+/** Called at the end of applyTerms with the signed (sanitised) terms (The Voidbloom War records its treaties). No Rnd. */
+export type PeaceAppliedListener = (galaxy: Galaxy, t: PeaceTerms, a: Empire, b: Empire) => void;
+// eslint-disable-next-line no-var
+var peaceAppliedStore: PeaceAppliedListener[] | undefined;
+export function registerPeaceAppliedListener(fn: PeaceAppliedListener): void {
+    const list = (peaceAppliedStore ??= []);
+    if (!list.includes(fn)) list.push(fn);
+}
+
+export function peaceTermKind(kind: string): PeaceTermKind | null {
+    return termKinds().find((k) => k.kind === kind) ?? null;
+}
 
 // ---------------------------------------------------------------------------------------------------------------
 // Pricing
@@ -76,7 +139,7 @@ export function statusQuo(): PeaceTerms {
 }
 
 export function isStatusQuo(t: PeaceTerms): boolean {
-    return t.cede.length === 0 && t.reparations === null && t.demilitarise === null && t.release === null;
+    return t.cede.length === 0 && t.reparations === null && t.demilitarise === null && t.release === null && (t.extra === undefined || t.extra.length === 0);
 }
 
 /** A ceded colony's price: its war value (Galaxy.3.cs 507 CalculateWarValue) × termColonyFactor, at least 1. */
@@ -118,6 +181,7 @@ export function termsValueFor(galaxy: Galaxy, t: PeaceTerms, e: Empire): number 
         if (t.release.overlord === e) v -= p;
         else v += p;
     }
+    if (t.extra !== undefined) for (const x of t.extra) v += peaceTermKind(x.kind)?.value(galaxy, x, e) ?? 0;
     return v;
 }
 
@@ -229,6 +293,7 @@ export function buildTerms(galaxy: Galaxy, proposer: Empire, target: Empire): Pe
             budget -= p;
         }
     }
+    for (const b of termBuilders()) budget = b.build(galaxy, proposer, target, t, budget);
     const total = Math.floor(budget * mpp);
     if (total >= mpp) {
         const years = Math.max(0, Math.round(scenarioParam(galaxy, 'reparationYears', 5)));
@@ -266,6 +331,16 @@ export function sanitiseTerms(galaxy: Galaxy, t: PeaceTerms, a: Empire, b: Empir
     }
     const rel = t.release;
     if (rel != null && party(rel.overlord) && rel.subject != null && subjectsOf(rel.overlord).includes(rel.subject)) out.release = { overlord: rel.overlord, subject: rel.subject };
+    if (Array.isArray(t.extra)) {
+        const extra: ScenarioTerm[] = [];
+        for (const x of t.extra) {
+            if (x == null || !party(x.from) || !party(x.to) || x.from === x.to) continue;
+            const k = peaceTermKind(x.kind);
+            const v = k === null || extra.some((y) => y.kind === x.kind && y.to === x.to) ? null : k.sanitise(galaxy, x, a, b);
+            if (v !== null) extra.push(v);
+        }
+        if (extra.length > 0) out.extra = extra;
+    }
     return out;
 }
 
@@ -282,6 +357,7 @@ export function describeTerms(t: PeaceTerms): string[] {
         out.push(scenarioText('Lively Term Demil', d.empire.name, d.systems.map((s) => s.name).join(', '), d.years));
     }
     if (t.release !== null) out.push(scenarioText('Lively Term Release', t.release.overlord.name, t.release.subject.name));
+    if (t.extra !== undefined) for (const x of t.extra) out.push(peaceTermKind(x.kind)?.describe(x) ?? x.kind);
     if (out.length === 0) out.push(scenarioText('Lively Term StatusQuo'));
     return out;
 }
@@ -337,19 +413,21 @@ export function applyTerms(galaxy: Galaxy, t: PeaceTerms, a: Empire, b: Empire):
             sendMessageToEmpire(t.release.overlord, t.release.subject, EmpireMessageType.DiplomaticRelationChange, DiplomaticRelationType.None, 'We are releasing you from subjugation to us. We no longer consider you to be our conquered dominion.');
         }
     }
+    if (t.extra !== undefined) for (const x of t.extra) peaceTermKind(x.kind)?.apply(galaxy, x);
     // The side that conceded remembers it (humiliation) and thinks less of the victor.
     const [loser, victor, lost] = valueA < valueB ? [a, b, -valueA] : [b, a, -valueB];
     if (lost > 0) {
         const k = pairKey(loser, victor);
         st.humiliations[k] = (st.humiliations[k] ?? 0) + lost;
-        const ev = obtainEmpireEvaluation(galaxy, loser, victor);
         const drop = Math.min(scenarioParam(galaxy, 'humiliationRelationCap', 30), lost * scenarioParam(galaxy, 'humiliationRelationDrop', 0.02));
-        ev.incidentEvaluation = ev.incidentEvaluationRaw - drop;
+        // reputation/channel: flag off, the former direct write (ev.incidentEvaluation = raw − drop); on, a ledger entry.
+        applyReputation(galaxy, loser, victor, -drop, { cause: 'warGoals.humiliation', labelKey: 'Lively Reputation Humiliation', source: 'warGoals' });
     }
     const lines = describeTerms(t).join('; ');
     scenarioMessage(galaxy, a, scenarioText('Lively Peace Title'), scenarioText('Lively Peace Signed', b.name, lines), { type: EmpireMessageType.GeneralNeutralEvent, subject: b, sender: b });
     scenarioMessage(galaxy, b, scenarioText('Lively Peace Title'), scenarioText('Lively Peace Signed', a.name, lines), { type: EmpireMessageType.GeneralNeutralEvent, subject: a, sender: a });
     if (!isStatusQuo(t)) scenarioNews(galaxy, null, scenarioText('Lively Peace News', a.name, b.name, lines), (x) => x !== a && x !== b);
+    if (peaceAppliedStore !== undefined) for (const fn of peaceAppliedStore) fn(galaxy, t, a, b);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
