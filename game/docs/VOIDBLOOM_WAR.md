@@ -51,13 +51,25 @@ Verdicts: **works** (usable as is), **hook** (exists, needs a small extension po
     customs); a second war years later from a pretext incident, in which the Concord capital's wonder can be looted and
     burned; the civil-war branch led by a zealot character; the reform branch as "Self-Strengthening"; corrupt Concord
     officials who can be bribed to look away; spore dens in addicted Concord colonies; the "silver drain" statistic.
-13. **The Concord in the Diet (coordinator's recommendation, pending user OK):** a full member that votes, lobbies and
+13. **The Concord in the Diet (user OK):** a full member that votes, lobbies and
     bribes delegates, but cannot host or hold the Regency; motions against it are real votes it fights.
-14. **Trade model (proposed, pending user OK):** Voidbloom is its own **contraband** category, not a stock luxury or
+14. **Trade model (user OK):** Voidbloom is its own **contraband** category, not a stock luxury or
     super-luxury slot. Every colony that tastes it gains a strong short boost (approval and development, like a super
     luxury) and an addiction level; demand and price rise with addiction; where it's banned, demand is met by the black
     market (smugglers ignore the ban); withdrawal hurts approval and output when supply stops. Concord colonies have the
     highest base demand (the "Canton market").
+    **Flow:** the producer colony extracts it into colony stock; buyer colonies place buy orders at their port (the
+    stock order path); legal where allowed (normal private freighters), black market where banned (only smugglers:
+    pirate smugglers, independents, smuggler-flagged private freighters); on delivery the buyer pays the seller.
+    **The drain (user OK):** the buyer's private sector pays most of it, plus a **small share from the buyer's state
+    treasury** (the "silver drain"), so the Concord weakens visibly; the seller's private sector earns, smugglers take a
+    cut.
+    **Demand spreads like an epidemic, not everywhere at once:** a colony only starts wanting Voidbloom after
+    *exposure* (smugglers sold there, or nearby colonies are addicted, along trade routes). Exposure and addiction are
+    damped by: an empire ban plus a Customs Bureau, price and scarcity (deadly, labour-hungry producers limit supply),
+    smuggler reach (distance from producers and smuggler bases), race susceptibility (some races resistant, a few
+    immune), government type, and colony approval (unhappy colonies fall faster). So it creeps out from the rim, hits
+    the Concord's "Canton market" hardest, and can be contained.
 15. **After legalisation (ideas, pending):** a galaxy-wide dependency (empires reliant on rim producers, giving them
     leverage); withdrawal crises when supply is cut; temperance movements in colonies demanding bans; a research cure
     ("neural detox") that lowers addiction; a later Diet "Galactic Prohibition" motion; pirate syndicates growing rich on
