@@ -16,6 +16,8 @@ import type { Habitat } from '../../types';
 import type { BuiltObject } from '../../builtObject';
 import type { Design } from '../../design';
 import { canBuildDesign } from '../../designGeneration';
+import { calculateAnnualCashflow } from '../../treasury';
+import { annualStateExpenses } from './bonds';
 import { isHumanEmpire } from '../../humanEmpires';
 import { EmpireMessageType } from '../../messages';
 import { registerScenarioPeriodic, registerScenarioQuery } from '../hooks';
@@ -33,6 +35,9 @@ export const SUPPLY_RULES = {
     commissionMoneyFactor: 1.2,
     /** At most this many commissions a review (the hard-tier goods first). */
     commissionsPerReview: 2,
+    /** ...and keeps this many months of state expenses (at least reserveMin) after paying its share. */
+    reserveMonths: 6,
+    reserveMin: 20000,
     /** Once a good is needed at a soft tier (3-4): one more refinery of it per this many shipyards, at most maxPerGood. */
     yardsPerRefinery: 4,
     maxPerGood: 3,
@@ -153,6 +158,7 @@ export function goodsWanted(galaxy: Galaxy, e: Empire): number[] {
     const era = Math.max(0, ...(r.goodsNow ?? []));
     const out: number[] = [];
     const urgent: number[] = [];
+    const planned: number[] = [];
     for (let gi = 0; gi < GOODS.length; gi++) {
         const tNow = r.goodsNow?.[gi] ?? 0;
         const tNext = r.goodsNext[gi] ?? 0;
@@ -177,10 +183,15 @@ export function goodsWanted(galaxy: Galaxy, e: Empire): number[] {
             if (c === null) continue;
             have += c.facilities.filter((f) => f.id === fid).length + c.requests.filter((x) => x === fid).length;
         }
-        if (have < target) (have === 0 && (hard || top) ? urgent : out).push(gi);
+        if (have >= target) continue;
+        // The goods researched components need now at a hard tier with no refinery at all first, then the rest; the
+        // Exotics Lab / Precision Works planned ahead of their tier last (before 2026-10-11 they counted as urgent and
+        // took the Core World sites and the treasury ahead of the Electronics Fab the yards were waiting for).
+        if (have === 0 && (top ? now : tNow >= 5)) urgent.push(gi);
+        else if (top && !now) planned.push(gi);
+        else out.push(gi);
     }
-    // The goods with no refinery at all at a hard tier first (one review commissions at most two).
-    return [...urgent, ...out];
+    return [...urgent, ...out, ...planned];
 }
 
 /** The colony where `e` would place refinery `fid` (its designation, a free slot; most populous first). Pure. */
@@ -193,19 +204,35 @@ function commissionSite(galaxy: Galaxy, e: Empire, fid: FacilityId): Habitat | n
     return best;
 }
 
-/** An undesignated colony (cooldown over) that fits designation `d` best, to designate for a refinery. Pure. */
+/**
+ * A colony (cooldown over) that fits designation `d` best, to designate for a refinery: an undesignated one, else one of
+ * another designation with no facility to lose (2026-10-11: the AI designates every colony early, so an empire often had
+ * no undesignated colony left and never got a Core World for its Electronics Fab). Pure.
+ */
 function designateSite(galaxy: Galaxy, e: Empire, d: Designation): Habitat | null {
     let best: { h: Habitat; s: number } | null = null;
     const home = homeColony(e);
-    for (const h of e.colonies) {
-        // Never the home world (the designation review gives it its best fit), never a colony too small to designate.
-        if (h === home || (h.population?.totalAmount ?? 0) < AI_MIN_POPULATION) continue;
-        const c = peekColony(galaxy, h);
-        if ((c?.designation ?? Designation.None) !== Designation.None || designationCooldownDays(galaxy, h) > 0) continue;
-        const s = designationScores(galaxy, h).find((x) => x.designation === d)?.score ?? 0;
-        if (best === null || s > best.s) best = { h, s };
+    for (let pass = 0; pass < 2 && best === null; pass++) {
+        for (const h of e.colonies) {
+            // Never the home world (the designation review gives it its best fit), never a colony too small to designate.
+            if (h === home || (h.population?.totalAmount ?? 0) < AI_MIN_POPULATION) continue;
+            const c = peekColony(galaxy, h);
+            const cur = c?.designation ?? Designation.None;
+            if (cur === d || designationCooldownDays(galaxy, h) > 0) continue;
+            if (pass === 0 ? cur !== Designation.None : (c?.facilities.length ?? 0) > 0 || (c?.requests.length ?? 0) > 0) continue;
+            const s = designationScores(galaxy, h).find((x) => x.designation === d)?.score ?? 0;
+            if (best === null || s > best.s) best = { h, s };
+        }
     }
     return best?.h ?? null;
+}
+
+/**
+ * Money the AI keeps in its treasury after a commission: SUPPLY_RULES.reserveMonths of state expenses (2026-10-11: the
+ * treasury paid down to a fifth of the share, and the next months' upkeep left it in the red). Pure.
+ */
+export function commissionReserve(galaxy: Galaxy, e: Empire): number {
+    return Math.max(SUPPLY_RULES.reserveMin, (annualStateExpenses(galaxy, e) / 12) * SUPPLY_RULES.reserveMonths);
 }
 
 function aiCommission(galaxy: Galaxy, e: Empire): void {
@@ -219,7 +246,10 @@ function aiCommission(galaxy: Galaxy, e: Empire): void {
             if (site !== null && setDesignation(galaxy, e, site, def.designation)) h = commissionSite(galaxy, e, fid);
         }
         if (h === null) continue;
-        if (e.stateMoney < commissionStateShare(galaxy, e, def, h) * SUPPLY_RULES.commissionMoneyFactor) continue;
+        const share = commissionStateShare(galaxy, e, def, h);
+        // Only what the treasury can afford beyond a safe reserve, and never while it runs a deficit.
+        if (e.stateMoney - share < commissionReserve(galaxy, e) || e.stateMoney < share * SUPPLY_RULES.commissionMoneyFactor) continue;
+        if (calculateAnnualCashflow(galaxy, e) < 0) return;
         if (startCommission(galaxy, e, h, colonyRecord(galaxy, h), def, false) && ++started >= SUPPLY_RULES.commissionsPerReview) return;
     }
 }

@@ -615,6 +615,13 @@ export interface ScenarioQueries {
      */
     contractAvailable: { value: number; args: { seller: Empire | null; buyer: Empire | null; resourceId: number } };
     /**
+     * logistics/freight.ts attemptToFulfillOrderAtTradingPost / freighterFulfillOrdersForDestination (Empire.4.cs 923 /
+     * 1225): the units of `resourceId` a trading post keeps back (stock: Galaxy.cs CalculateResourceLevel, 500-4000 a
+     * resource at a colony with a space port). Colony Economy: a refined good is kept back only for the post's own yard
+     * queue and refinery inputs, so a refinery's output is sold. Pure, never draws.
+     */
+    tradingPostReserve: { value: number; args: { post: Habitat | BuiltObject; resourceId: number } };
+    /**
      * A colony handed over without conquest — exploration.ts investigateRuins (Galaxy.5.cs RuinType.LostColony's
      * MakeHabitatIntoColony, and the ruin event's AcquireHabitat action, eventActions.ts) and cmdTroops.ts cmdColonize
      * ("the existing population joined our empire"): false skips it (19j rim herders: herder colonies are taken only by

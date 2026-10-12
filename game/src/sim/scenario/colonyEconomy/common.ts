@@ -346,6 +346,13 @@ export interface EconEmpire {
     buildsWaited?: number;
     reliefIds?: number[];
     reliefBuilds?: number;
+    /** Bonds: what the AI's levy drew from the private surplus into a treasury in the red (bonds.ts maybeLevy). */
+    levied?: number;
+    /** Waits measured to their end (the goods arrived or the AI relief began; builtObjectID → days waited), and their
+     *  totals: the time a build stood at factor 0, without the relief build that may follow (2026-10-11). */
+    waitClosed?: Record<number, number>;
+    waitClosedN?: number;
+    waitClosedDays?: number;
     /** Phase 4: designs the AI swapped for a suppliable older one. */
     designFallbacks?: number;
     /** Phase 4: the facility tax paid to the state; the treasury's share of commissioned refineries. */

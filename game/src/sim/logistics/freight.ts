@@ -720,6 +720,8 @@ function attemptToFulfillOrderAtTradingPost(ctx: FulfillContext, tradingPost: St
                     num3 = memo.level[m];
                 } else {
                     num3 = isBuiltObject(tradingPost) ? calculateResourceLevelCargoBuiltObject(galaxy, cargo, tradingPost) : calculateResourceLevelCargoHabitat(galaxy, cargo, tradingPost);
+                    // Mod layer (Colony Economy): a refined good's reserve at the post.
+                    if (galaxy.scenario !== null) num3 = scenarioQuery(galaxy, 'tradingPostReserve', num3, { post: tradingPost as Habitat | BuiltObject, resourceId: cargo.commodity.resourceId });
                     if (m >= 0) {
                         memo.level[m] = num3;
                         memo.state[m] |= 2;
@@ -825,6 +827,7 @@ function freighterFulfillOrdersForDestination(galaxy: Galaxy, self: Empire, dest
         let num3 = 0;
         if (!isBuiltObject(supplier)) num3 = calculateResourceLevelCargoHabitat(galaxy, supplier.cargo.items[num], supplier);
         else num3 = calculateResourceLevelCargoBuiltObject(galaxy, supplier.cargo.items[num], supplier);
+        if (galaxy.scenario !== null) num3 = scenarioQuery(galaxy, 'tradingPostReserve', num3, { post: supplier as Habitat | BuiltObject, resourceId: supplier.cargo.items[num].commodity.resourceId });
         available = Math.max(0, available - num3);
         // Mod layer 19a: the Concord's rare goods only as far as the buyer's standing covers.
         if (galaxy.scenario !== null && available > 0 && order.commodityResource !== null) available = scenarioQuery(galaxy, 'contractAvailable', available, { seller: supplierEmpire, buyer: destinationEmpire, resourceId: order.commodityResource.resourceId });

@@ -355,6 +355,10 @@ New, except where noted.
   BaconEmpire.cs 608, troops.ts, PlanetaryFacilityList.cs 228).
 - **The player** sells a bond, repays one early in full, or switches automatic bonds on, all with journaled commands.
 - **Missed instalments** become arrears and carry interest.
+- **The AI's levy (2026-10-11, new):** an AI treasury still in the red after the bond review (no bond can be sold:
+  the debt or service limit, the issue gap, a deficit, or an empire with no tax revenue) draws up to half the private
+  surplus a period, at most the debt (`levied`). Before, AI treasuries sat negative for years beside rich private
+  sectors. The player's treasury is never levied.
 - **Default:** arrears worth more than 12 instalments are a default.
   - The bonds are written off: the private sector loses them.
   - Every colony takes −5 approval for 3 years (stability cause "bonds").
@@ -461,8 +465,17 @@ refineries' trading posts; private freighters carry the goods and show on the Fr
   refinery of it per 2 shipyards (at most 6): the hard tiers need two to four units a component. Exotics and
   Precision Components want one per 5 yards (at most 3), and an empire whose researched components reach tech 5 plans
   one Exotic Materials Lab and one Precision Works ahead of tech 7 (the Works needs both refined inputs, so it takes
-  longest to come into supply). Goods with no refinery at all at a hard tier go first; at most two commissions a
-  review, while the treasury holds 1.2 times the state's share.
+  longest to come into supply). Goods researched components need now at a hard tier with no refinery at all go
+  first, then the rest, then the Exotics Lab / Precision Works planned ahead of their tier. At most two commissions a
+  review, only while the treasury keeps 6 months of state expenses (at least 20k) after paying the state's share, and
+  never while the annual cashflow is negative (2026-10-11: before, a commission left the treasury at a fifth of the
+  share and the next months' upkeep put it in the red). With no colony of the designation, it designates an
+  undesignated colony, or else re-designates one of another designation that has no facility to lose.
+- **Freight (2026-10-11):** a trading post keeps back a refined good only for its own yard queue (and a Precision
+  Works' inputs), through the `tradingPostReserve` query, instead of the stock 500-4000 units a resource
+  (CalculateResourceLevel): the refineries' output used to sit at their space ports. Yards order goods in orders of
+  at most 100 units, since the stock affordability test (CheckOrderIsAffordable) skips any state order worth more than
+  the treasury holds. The Ancient Guardians (the Mechanoids) are outside the goods chain. Their builds never wait.
 - **Supply alerts:** the player gets one warning per good when research is about to need a good no refinery of theirs
   makes. The treasury window (Empire Summary → "Bonds & private sector") lists every good's status and, per
   shipyard, the goods its queued builds lack and the builds waiting.

@@ -42,7 +42,8 @@ import { registerScenarioGoods } from '../scenarioGoods';
 import { findGalaxyBuiltObjectById } from '../../builtObjectById';
 import { galaxyStarDate } from '../../tick/simTime';
 import { isHumanEmpire } from '../../humanEmpires';
-import { DAY, ECON_FAC_FLAG, ECON_FLAG, ECON_REFINE_FLAG, activeFacilities, econOn, empireRecord, isEconEmpire, peekEmpire, type FacilityId } from './common';
+import { isBuiltObject } from '../../missions/mission';
+import { DAY, ECON_FAC_FLAG, ECON_FLAG, ECON_REFINE_FLAG, activeFacilities, econOn, empireRecord, isEconEmpire, peekEmpire, type EconEmpire, type FacilityId } from './common';
 
 export interface GoodDef {
     key: 'alloys' | 'electronics' | 'polymers' | 'fuelCells' | 'exotics' | 'precision';
@@ -90,6 +91,9 @@ export const REFINE_RULES = {
     exoticTarget: 10,
     /** A yard orders at most this much of a good for its queued builds. */
     demandCap: 400,
+    /** ...in orders of at most this many units: the stock affordability test (CheckOrderIsAffordable) skips a state order
+     *  worth more than the treasury holds, so one 400-unit order sat unfilled at a thin AI treasury (2026-10-11). */
+    orderChunk: 100,
     /** Soft tiers: a build missing all its tech-3 / tech-4 goods runs at ×0.7 / ×0.6. */
     tier3Penalty: 0.3,
     tier4Penalty: 0.4,
@@ -169,6 +173,15 @@ export function tradingPostOf(h: Habitat): Habitat | BuiltObject {
         if (b !== null && !b.hasBeenDestroyed && b.isSpacePort && (b.subRole === BuiltObjectSubRole.SmallSpacePort || b.subRole === BuiltObjectSubRole.MediumSpacePort || b.subRole === BuiltObjectSubRole.LargeSpacePort)) return b;
     }
     return h;
+}
+
+/**
+ * Story empires outside the goods chain: the Ancient Guardians (the Mechanoids, fleets/militaryAI.ts
+ * identifyMechanoidEmpire) build with their own ancient means — no refinery of theirs exists to supply them. Pure.
+ */
+export function goodsExempt(e: Empire): boolean {
+    const n = e.dominantRace?.name;
+    return n !== undefined && n.toLowerCase() === 'mechanoid' && e.pirateEmpireBaseHabitat === null;
 }
 
 function cargoOf(o: Habitat | BuiltObject): import('../../cargo').CargoList | null {
@@ -358,23 +371,56 @@ function slotFactor(galaxy: Galaxy, ship: BuiltObject, yard: BuiltObject | null,
     if (!refinementActive(galaxy)) return 1;
     const post = postOf(yard, habitat);
     const e = post === null ? null : post.empire;
-    if (post === null || e === null || !isEconEmpire(galaxy, e) || ship.design === null) return 1;
+    if (post === null || e === null || !isEconEmpire(galaxy, e) || ship.design === null || goodsExempt(e)) return 1;
     const f = buildGoodsFactor(galaxy, e, post, ship.design);
+    const id = ship.builtObjectID;
     if (f === 0) {
         const r = empireRecord(galaxy, e);
         const w = (r.waitStart ??= {});
         const now = galaxyStarDate(galaxy);
-        const since = w[ship.builtObjectID];
-        if (since === undefined) w[ship.builtObjectID] = now;
+        const since = w[id];
+        if (since === undefined) w[id] = now;
         // AI safeguard (no deadlock): an AI build that has waited AI_RELIEF_DAYS goes on at the relief speed with what
         // the yard holds (the player's builds keep waiting; the treasury window shows them).
         else if (now - since > R.aiReliefDays * DAY && !isHumanEmpire(galaxy, e)) {
-            r.reliefBuilds = (r.reliefBuilds ?? 0) + (r.reliefIds?.includes(ship.builtObjectID) ? 0 : 1);
-            if (!(r.reliefIds ??= []).includes(ship.builtObjectID)) r.reliefIds.push(ship.builtObjectID);
+            closeWait(r, id, (now - since) / DAY);
+            r.reliefBuilds = (r.reliefBuilds ?? 0) + (r.reliefIds?.includes(id) ? 0 : 1);
+            if (!(r.reliefIds ??= []).includes(id)) r.reliefIds.push(id);
             return R.aiReliefFactor;
         }
+    } else {
+        const r = peekEmpire(galaxy, e);
+        const since = r?.waitStart?.[id];
+        if (r !== null && since !== undefined) closeWait(r, id, (galaxyStarDate(galaxy) - since) / DAY);
     }
     return f;
+}
+
+/** The end of a build's wait (the goods came, or the relief began): counted once. */
+function closeWait(r: EconEmpire, id: number, days: number): void {
+    const c = (r.waitClosed ??= {});
+    if (c[id] !== undefined) return;
+    c[id] = days;
+    r.waitClosedN = (r.waitClosedN ?? 0) + 1;
+    r.waitClosedDays = (r.waitClosedDays ?? 0) + days;
+}
+
+/**
+ * The units of refined good `resourceId` a trading post keeps back from freight (the tradingPostReserve query): what
+ * its own yard queue needs and, at a Precision Works' post, one period of inputs — not the stock 500-4000 a resource,
+ * which held a refinery's whole output at its space port (2026-10-11). Other resources: the stock reserve. Pure.
+ */
+function postReserve(galaxy: Galaxy, v: number, post: Habitat | BuiltObject, resourceId: number): number {
+    const ids = goodIds(galaxy);
+    const gi = ids === null ? -1 : ids.indexOf(resourceId);
+    if (gi < 0) return v;
+    const e = post.empire;
+    if (e === null || !isEconEmpire(galaxy, e)) return v;
+    let reserve = 0;
+    if (isBuiltObject(post) && post.isShipYard) reserve += Math.min(R.demandCap, queueDemand(post.constructionQueue as ConstructionQueue | null)[gi]);
+    const h = isBuiltObject(post) ? post.parentHabitat : post;
+    if (h !== null && h.empire === e && GOODS.some((g) => g.inputs.includes(GOODS[gi].name) && activeFacilities(galaxy, h).some((f) => f.id === g.facility))) reserve += R.refineInput;
+    return reserve;
 }
 
 // --- Yard demand and use ------------------------------------------------------------------------------------------------
@@ -413,7 +459,7 @@ function orderAt(galaxy: Galaxy, e: Empire, post: Post, ids: readonly number[], 
         const want = target - heldAt(post, ids[gi], e) - pendingOrder(galaxy, e, post, ids[gi]);
         // A state order: the state pays for what its yards use, the refinery's private sector earns.
         if (want >= Math.max(1, target / 2) || (demand[gi] > 0 && want > 0 && heldAt(post, ids[gi], e) < demand[gi] && pendingOrder(galaxy, e, post, ids[gi]) <= 0)) {
-            empireCreateOrder(galaxy, e, post, new ResourceRef(ids[gi]), Math.ceil(want), true, OrderType.Standard);
+            for (let left = Math.ceil(want); left > 0; left -= R.orderChunk) empireCreateOrder(galaxy, e, post, new ResourceRef(ids[gi]), Math.min(left, R.orderChunk), true, OrderType.Standard);
         }
     }
 }
@@ -421,6 +467,7 @@ function orderAt(galaxy: Galaxy, e: Empire, post: Post, ids: readonly number[], 
 function orderForYards(galaxy: Galaxy, e: Empire, ids: readonly number[]): void {
     const r = peekEmpire(galaxy, e);
     // The base targets (stock for the early bonus and the soft tiers) once anything needs goods, or while the early bonus lasts.
+    if (goodsExempt(e)) return;
     const base = r !== null && (r.early === true || (r.goodsNow ?? []).some((t) => t >= 3));
     for (const yard of e.spacePorts as BuiltObject[]) {
         if (yard === null || yard.hasBeenDestroyed || !yard.isShipYard || !yardBusy(yard)) continue;
@@ -464,6 +511,7 @@ function consume(galaxy: Galaxy, ship: BuiltObject, yard: BuiltObject | null, ha
         delete w[ship.builtObjectID];
         r.buildsWaited = (r.buildsWaited ?? 0) + 1;
     }
+    if (r.waitClosed !== undefined) delete r.waitClosed[ship.builtObjectID];
     if (r.reliefIds !== undefined) r.reliefIds = r.reliefIds.filter((x) => x !== ship.builtObjectID);
 }
 
@@ -511,6 +559,7 @@ function reviewEra(galaxy: Galaxy, e: Empire, ids: readonly number[]): void {
         return b !== null && !b.hasBeenDestroyed && b.builtAt !== null;
     };
     if (r.waitStart !== undefined) for (const k of Object.keys(r.waitStart)) if (!live(Number(k))) delete r.waitStart[k as unknown as number];
+    if (r.waitClosed !== undefined) for (const k of Object.keys(r.waitClosed)) if (!live(Number(k))) delete r.waitClosed[k as unknown as number];
     if (r.reliefIds !== undefined && r.reliefIds.length > 0) r.reliefIds = r.reliefIds.filter(live);
 }
 
@@ -548,6 +597,7 @@ registerScenarioEvent({
         if (refinementActive(galaxy)) consume(galaxy, p.builtObject, p.yard ?? null, p.habitat ?? null);
     },
 });
+registerScenarioQuery({ id: 'colonyEconomy.postReserve', flag: ECON_FLAG, query: 'tradingPostReserve', run: (g, v, a) => (refinementActive(g) ? postReserve(g, v, a.post, a.resourceId) : v) });
 registerScenarioQuery({ id: 'colonyEconomy.buildGoods', flag: ECON_FLAG, query: 'buildGoodsFactor', run: (g, v, a) => (refinementActive(g) ? v * slotFactor(g, a.ship, a.yard, a.habitat) : v) });
 
 /** The colony screen's goods line: what this colony's port and yards hold. Pure. */

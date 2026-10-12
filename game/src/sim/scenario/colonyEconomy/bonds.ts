@@ -46,6 +46,8 @@ export const BOND_RULES = {
     TARGET_MONTHS: 4,
     /** Instalment period (game days). */
     PERIOD_DAYS: 30,
+    /** An AI treasury still in the red that cannot sell a bond draws this share of the private surplus a period (a levy). */
+    LEVY_SHARE: 0.5,
 };
 
 /** Annual state expenses (maintenance, troops, facilities). Pure. */
@@ -239,12 +241,29 @@ function maybeBorrow(galaxy: Galaxy, e: Empire, r: EconEmpire | null): void {
     issueBond(galaxy, e, want);
 }
 
+/**
+ * The AI's last resort (2026-10-11): a treasury still in the red after the bond review — no bond can be sold (the debt
+ * or service limit, the issue gap, a deficit, an empire without tax revenue) — draws up to LEVY_SHARE of the private
+ * surplus a period, at most the debt. Before, an AI treasury sat negative for years beside a rich private sector. The
+ * player's treasury is left alone. Not a port: DW:U lets a treasury stay negative.
+ */
+function maybeLevy(galaxy: Galaxy, e: Empire): void {
+    if (isHumanEmpire(galaxy, e) || !(e.stateMoney < 0)) return;
+    const a = Math.floor(Math.min(-e.stateMoney, privateSurplus(galaxy, e) * BOND_RULES.LEVY_SHARE));
+    if (!(a > 0)) return;
+    e.privateMoney -= a;
+    e.stateMoney += a;
+    const r = empireRecord(galaxy, e);
+    r.levied = (r.levied ?? 0) + a;
+}
+
 function bondsTick(galaxy: Galaxy): void {
     for (const e of galaxy.empires) {
         if (!hasPrivateSector(galaxy, e)) continue;
         const r = peekEmpire(galaxy, e);
         if (r !== null) serviceBonds(galaxy, e, r);
         maybeBorrow(galaxy, e, r);
+        maybeLevy(galaxy, e);
     }
 }
 
