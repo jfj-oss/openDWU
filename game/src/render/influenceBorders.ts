@@ -23,7 +23,6 @@ import { habitatDevelopmentLevel } from '../sim/developmentLevel';
 import { SystemVisibilityStatus } from '../sim/visibility';
 import { fogOf } from './fog';
 import { empireColour } from './empireLayer';
-import { MAP_FONT_FAMILY } from './mainView';
 import { getSettings } from '../ui/settings';
 
 /** All tunable weights. Distances are in mean star spacings (sqrt(galaxy area / star count)). */
@@ -382,6 +381,30 @@ function mix(c: number, k: number): number {
 export const FILL_DARKEN = 0.55;
 export const FILL_ALPHA = 0.2;
 
+/** Empire names on influence borders: Source Serif 4 (SIL OFL 1.1, bundled under public/fonts/source-serif-4), a
+ *  calm book serif; falls back to the system serifs until it has loaded. */
+const NAME_FONT_FAMILY = "'openDWU Serif', Georgia, 'Times New Roman', serif";
+let nameFontState: 'idle' | 'loading' | 'ready' = 'idle';
+const nameFontWaiters: Array<() => void> = [];
+function loadNameFont(onReady: () => void): void {
+    if (nameFontState === 'ready') return;
+    nameFontWaiters.push(onReady);
+    if (nameFontState === 'loading' || typeof FontFace === 'undefined' || typeof document === 'undefined') return;
+    nameFontState = 'loading';
+    const faces = [
+        new FontFace('openDWU Serif', "url('/fonts/source-serif-4/source-serif-4-600-latin.woff2') format('woff2')", { weight: '600', unicodeRange: 'U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2212' }),
+        new FontFace('openDWU Serif', "url('/fonts/source-serif-4/source-serif-4-600-latin-ext.woff2') format('woff2')", { weight: '600', unicodeRange: 'U+0100-024F, U+1E00-1EFF, U+2C60-2C7F, U+A720-A7FF' }),
+    ];
+    Promise.all(faces.map((f) => f.load().then((ff) => document.fonts.add(ff))))
+        .then(() => {
+            nameFontState = 'ready';
+            for (const w of nameFontWaiters.splice(0)) w();
+        })
+        .catch(() => {
+            nameFontState = 'ready'; // keep the system serif fallback
+        });
+}
+
 export class InfluenceBorderLayer {
     readonly root = new Container();
     private tiles: Array<{ g: Graphics; minX: number; minY: number; maxX: number; maxY: number }> = [];
@@ -396,6 +419,9 @@ export class InfluenceBorderLayer {
     lastComputeMs = 0;
 
     constructor(private galaxy: Galaxy) {
+        loadNameFont(() => {
+            this.sig = ''; // rebuild once the serif has loaded, so the names don't stay in the fallback font
+        });
         this.root.visible = false;
     }
 
@@ -457,7 +483,7 @@ export class InfluenceBorderLayer {
         for (const r of geo.regions) {
             if (r.length < NAME_MIN_LENGTH_SPACINGS * sp) continue;
             const emp = this.galaxy.empires[r.owner];
-            const t = new Text({ text: emp.name, style: { fontFamily: MAP_FONT_FAMILY, fontSize: 96, fill: mix(this.colour(r.owner), 1.3), letterSpacing: 6 } });
+            const t = new Text({ text: emp.name, style: { fontFamily: NAME_FONT_FAMILY, fontWeight: '600', fontSize: 96, fill: mix(this.colour(r.owner), 1.3), letterSpacing: 6 } });
             t.anchor.set(0.5);
             t.position.set(r.cx, r.cy);
             const fitW = (0.62 * r.length) / t.width;
