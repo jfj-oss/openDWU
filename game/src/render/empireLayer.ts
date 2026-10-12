@@ -26,6 +26,8 @@ import { moonDotPx, planetSpritePx } from './mainView';
 import { DrawKey } from './drawCache';
 import { displayColorForEmpire } from '../sim/empireColors';
 import { showsMapIndicators } from './mainViewDisplay';
+import { InfluenceBorderLayer } from './influenceBorders';
+import { getSettings } from '../ui/settings';
 
 /** Neutral grey for independent (non-empire) populated worlds. Matches the
  * grey the sim forces onto the independent empire (Empire ctor, empire.ts). */
@@ -165,6 +167,8 @@ export class EmpireLayer {
      * overlayLayer.ts. */
     private territoryEnabled = true;
     private frame = 0;
+    /** Optional display mode (Advanced Display Settings -> Influence borders): replaces the stock shading. */
+    readonly influence: InfluenceBorderLayer;
 
     /** Show/hide the territory fill (overlayLayer.ts, "Empire Territory"). */
     setTerritoryEnabled(enabled: boolean): void {
@@ -176,6 +180,8 @@ export class EmpireLayer {
         world.addChild(this.root);
         this.territoryRoot.visible = false;
         this.root.addChild(this.territoryRoot);
+        this.influence = new InfluenceBorderLayer(galaxy);
+        this.root.addChild(this.influence.root);
         this.territoryRoot.addChild(this.meshRoot);
         for (const h of galaxy.habitats) {
             if (h.category !== HabitatCategoryType.Planet && h.category !== HabitatCategoryType.Moon) continue;
@@ -302,7 +308,9 @@ export class EmpireLayer {
         // Territory fill: galaxy/sector zoom only. Fades out while zooming in towards a system (factor 300 -> 70),
         // where one empire's fill covers the whole screen as a flat coloured haze.
         const fade = Math.max(0, Math.min(1, (factor - 70) / (300 - 70)));
-        const showTerritory = !atSystemZoom && this.territoryEnabled && fade > 0;
+        const influenceOn = getSettings().influenceBorders;
+        this.influence.update(z, cam, influenceOn && !atSystemZoom && this.territoryEnabled);
+        const showTerritory = !atSystemZoom && this.territoryEnabled && fade > 0 && !influenceOn;
         if (showTerritory) this.updateTerritory();
         this.territoryRoot.visible = showTerritory && this.territoryMeshes.length > 0;
         if (this.territoryRoot.visible) {

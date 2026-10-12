@@ -249,7 +249,7 @@ const EMPIRE_H = 769 + 25;
 const MESSAGES_W = 735;
 const MESSAGES_H = 502 + 43 + 16; // + our "Add-on messages" row under the stub options
 const ADVANCED_W = 440;
-const ADVANCED_H = 500 + 110 + 25 + 120 + 22 + 56 + 104;
+const ADVANCED_H = 500 + 110 + 25 + 120 + 22 + 56 + 104 + 44;
 
 interface OpenState {
     win: OriginalWindow;
@@ -767,7 +767,7 @@ const OFFSCREEN_RATE_ITEMS: readonly { mode: OffscreenUpdateMode; label: string 
     { mode: 'adaptive', label: 'Adaptive (spare time)' },
 ];
 
-type MapDisplayKey = 'showSystemNames' | 'showRegionLabels' | 'freightFlowsDefault' | 'ditherGradients' | 'pullStationsToCentre' | 'showWeaponRangeCircles' | 'edgeScroll';
+type MapDisplayKey = 'showSystemNames' | 'showRegionLabels' | 'freightFlowsDefault' | 'ditherGradients' | 'influenceBorders' | 'influenceBorderNames' | 'pullStationsToCentre' | 'showWeaponRangeCircles' | 'edgeScroll';
 
 // [improvements] begin
 /** Game Options → Improvements (ours): the "Improvements" group (ui/improvements.ts buildImprovementsGroup), one
@@ -848,13 +848,15 @@ function createAdvancedDisplaySettings(empire: Empire | null): OriginalWindow {
     check(body, 'Clean Galaxy view', st.cleanGalaxyView, 12, 425, (v) => updateSettings({ cleanGalaxyView: v }));
 
     // Ours: the map label / overlay / output toggles (were in the Escape menu's Options panel), below it.
-    const map = place(groupBox('Map Display', 400, 180, F2), 12, 450);
+    const map = place(groupBox('Map Display', 400, 224, F2), 12, 450);
     body.appendChild(map);
     const mapBoxes: [string, MapDisplayKey][] = [
         ['Show system names', 'showSystemNames'],
         ['Show region labels', 'showRegionLabels'],
         ['Freight flows overlay on at start', 'freightFlowsDefault'],
         ['Dither gradients (no banding)', 'ditherGradients'],
+        ['Influence borders (angular empire regions)', 'influenceBorders'],
+        ['Show empire names on map (influence borders)', 'influenceBorderNames'],
         ['Draw stations closer to their planet / moon', 'pullStationsToCentre'],
         ['Show weapon range circles for the selected ship', 'showWeaponRangeCircles'],
         ['Scroll the map at the screen edges (mouse)', 'edgeScroll'],
@@ -863,7 +865,7 @@ function createAdvancedDisplaySettings(empire: Empire | null): OriginalWindow {
 
     // Ours: the sim worker (docs/sim-worker.md), read by main.ts when the next game starts or loads; on by default only
     // with 16 GB+ of RAM (src/systemMemory.ts). Was in the old Escape menu's Options panel.
-    const perf = place(groupBox('Performance', 400, 122, F2), 12, 638);
+    const perf = place(groupBox('Performance', 400, 122, F2), 12, 682);
     body.appendChild(perf);
     check(perf, 'Multithreading (next game)', st.simWorker, 10, 22, (v) => updateSettings({ simWorker: v }));
     const mem = systemMemoryGiB();
@@ -883,7 +885,7 @@ function createAdvancedDisplaySettings(empire: Empire | null): OriginalWindow {
 
     // Ours: the galaxy backdrop of this game (a view setting saved with it; picked in the new-game wizard) and the
     // "Animate backdrop" option (all games). The thumbnail shows the pick over this galaxy.
-    const bd = place(groupBox('Galaxy Backdrop', 400, 96, F2), 12, 768);
+    const bd = place(groupBox('Galaxy Backdrop', 400, 96, F2), 12, 812);
     body.appendChild(bd);
     if (empire !== null) {
         const galaxy = empire.galaxy;

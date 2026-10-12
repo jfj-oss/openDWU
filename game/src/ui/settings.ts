@@ -75,6 +75,10 @@ export interface UiSettings {
 
     /** Dither the map's output (render/outputDither.ts): removes banding in dark gradients on 8-bit canvases. */
     ditherGradients: boolean;
+    /** Galaxy map: angular influence borders (render/influenceBorders.ts) instead of the stock territory shading. Display only. */
+    influenceBorders: boolean;
+    /** With influence borders on: write the empire names across the large regions. */
+    influenceBorderNames: boolean;
     /** Cosmetic (not in the original): draw stations pulled in toward their planet's / moon's centre. */
     pullStationsToCentre: boolean;
     /** Bacon mod (BaconMain.cs 442 DrawWeaponRanges, opt-in like its showRangeCircles / "!rangecircles"): weapon-range
@@ -236,6 +240,8 @@ export const DEFAULT_SETTINGS: UiSettings = {
     // [freightOverlay] end
 
     ditherGradients: true,
+    influenceBorders: false,
+    influenceBorderNames: true,
     pullStationsToCentre: false,
     showWeaponRangeCircles: false,
     edgeScroll: true,
@@ -362,6 +368,8 @@ export function loadSettings(): UiSettings {
         if (typeof parsed.freightFlowsDefault === 'boolean') out.freightFlowsDefault = parsed.freightFlowsDefault;
         // [freightOverlay] end
         if (typeof parsed.ditherGradients === 'boolean') out.ditherGradients = parsed.ditherGradients;
+        if (typeof parsed.influenceBorders === 'boolean') out.influenceBorders = parsed.influenceBorders;
+        if (typeof parsed.influenceBorderNames === 'boolean') out.influenceBorderNames = parsed.influenceBorderNames;
         if (typeof parsed.pullStationsToCentre === 'boolean') out.pullStationsToCentre = parsed.pullStationsToCentre;
         if (typeof parsed.cleanGalaxyView === 'boolean') out.cleanGalaxyView = parsed.cleanGalaxyView;
         if (typeof parsed.animateBackdrop === 'boolean') out.animateBackdrop = parsed.animateBackdrop;
