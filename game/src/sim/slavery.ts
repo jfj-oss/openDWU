@@ -41,7 +41,7 @@ export const SLAVERY_PARAMS = {
     PENAL_TARGET_SHARE: 0.25,
     /** ...clamped to this range (people). */
     PENAL_TARGET_MIN: 50_000_000,
-    PENAL_TARGET_MAX: 600_000_000,
+    PENAL_TARGET_MAX: 400_000_000,
     /** Workers lost a year to the conditions (a share of the workers; Voidbloom worlds lose far more). */
     PENAL_WORKER_DEATH_PER_YEAR: 0.05,
     /** Approval at the penal colony itself. */
@@ -54,10 +54,10 @@ export const SLAVERY_PARAMS = {
     PENAL_UNREST_GROWTH_PER_YEAR: 4,
     /** ...up to this. */
     PENAL_UNREST_MAX: 40,
-    /** Garrison (troop defend strength) a penal colony needs: this much... */
-    PENAL_GARRISON_BASE: 400,
+    /** Garrison (troop defend strength, the units of COLONY_MAXIMUM_TROOP_STRENGTH) a penal colony needs: this much... */
+    PENAL_GARRISON_BASE: 40_000,
     /** ...plus this per billion workers... */
-    PENAL_GARRISON_PER_BILLION: 3000,
+    PENAL_GARRISON_PER_BILLION: 300_000,
     /** ...times (1 + this × years as a penal colony), at most PENAL_GARRISON_GROWTH_CAP. */
     PENAL_GARRISON_GROWTH_PER_YEAR: 0.1,
     PENAL_GARRISON_GROWTH_CAP: 2,
@@ -76,7 +76,7 @@ export const SLAVERY_PARAMS = {
     /** AI: a candidate holds at least this summed abundance of luxury / restricted resources... */
     AI_MIN_RESOURCE_ABUNDANCE: 30,
     /** ...and the empire can staff it (workers there + enslavable people elsewhere not yet promised) to this share of the target. */
-    AI_MIN_STAFF_SHARE: 0.6,
+    AI_MIN_STAFF_SHARE: 0.4,
     /** AI: the garrison's upkeep may take at most this share of the colony's extra tax plus resource value. */
     AI_MAX_GARRISON_COST_SHARE: 0.6,
     /** AI: gives a colony up when its garrison is under this share of the need while it rebels. */

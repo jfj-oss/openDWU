@@ -234,8 +234,15 @@ registerScenarioYearly({
             if (!major(g, e) || e.slavery === undefined) continue;
             for (const h of e.slavery.penal) {
                 let w = 0;
-                for (const p of h.population?.items ?? []) if (p.race !== e.dominantRace) w += p.amount;
-                if (w > 0) recordWarCrime(g, e, 'enslave', null, `held${h.habitatIndex}`, 300, Math.min(1, w / 2e8) * 0.5);
+                let most: { race: unknown; amount: number } | null = null;
+                for (const p of h.population?.items ?? []) {
+                    if (p.race === e.dominantRace) continue;
+                    w += p.amount;
+                    if (most === null || p.amount > most.amount) most = { race: p.race, amount: p.amount };
+                }
+                // The victim: the empire of the most numerous enslaved people (none if they have no empire).
+                const victim = most === null ? null : (g.empires.find((x): x is Empire => major(g, x) && x !== e && x.dominantRace === most!.race) ?? null);
+                if (w > 0) recordWarCrime(g, e, 'enslave', victim, `held${h.habitatIndex}`, 300, Math.min(1, w / 2e8) * 0.5);
             }
         }
         const st = g.scenario?.state[KEY] as WarCrimesState | undefined;
@@ -339,7 +346,7 @@ registerDietMotionKind({
         const t = tribunalTarget(g);
         if (t === null || t.empire === a) return [];
         const s = tribunalVoteScore(g, a, t.empire);
-        return s > 0 ? [{ kind: TRIBUNAL, proposer: a, target: t.empire, other: null, colony: null, resourceId: -1, weight: 20 + Math.min(40, s) }] : [];
+        return s > 0 ? [{ kind: TRIBUNAL, proposer: a, target: t.empire, other: null, colony: null, resourceId: -1, weight: 30 + Math.min(50, 2 * s) }] : [];
     },
 });
 

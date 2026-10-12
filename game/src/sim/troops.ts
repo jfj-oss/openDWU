@@ -194,7 +194,7 @@ export function estimatedDefensiveForceRequired(galaxy: Galaxy, habitat: Habitat
 }
 
 // Habitat.cs TroopLevelRequired (318). Returns int. No Rnd.
-export function troopLevelRequired(galaxy: Galaxy, habitat: Habitat, difficultyLevel: number): number {
+export function troopLevelRequiredStock(galaxy: Galaxy, habitat: Habitat, difficultyLevel: number): number {
     let num = csDoubleToInt(estimatedDefensiveForceRequired(galaxy, habitat, false, difficultyLevel) * 0.5);
     const num2 = csDoubleToInt(Math.sqrt(difficultyLevel) * Math.trunc(COLONY_MAXIMUM_TROOP_STRENGTH / 100));
     if (num > num2) num = num2;
@@ -218,9 +218,13 @@ export function troopLevelRequired(galaxy: Galaxy, habitat: Habitat, difficultyL
         num = csDoubleToInt(num * Math.max(empire.policy.troopRecruitInfantryLevel, empire.policy.troopGarrisonLevel));
         num = Math.max(num, empire.policy.troopGarrisonMinimumPerColony * 100);
     }
-    // Not in DW:U: a penal colony (the "Allow slavery" policy, slavery.ts) needs a garrison scaled by its population.
-    if (habitat.slavery !== undefined) num = Math.max(num, penalGarrisonRequired(galaxy, habitat));
     return num;
+}
+
+/** troopLevelRequired plus the "Allow slavery" penal colony's garrison (slavery.ts; not in DW:U). */
+export function troopLevelRequired(galaxy: Galaxy, habitat: Habitat, difficultyLevel: number): number {
+    const num = troopLevelRequiredStock(galaxy, habitat, difficultyLevel);
+    return habitat.slavery !== undefined ? Math.max(num, penalGarrisonRequired(galaxy, habitat)) : num;
 }
 
 // Habitat.cs TroopLevelMinimum (362).

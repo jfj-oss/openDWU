@@ -33,7 +33,7 @@ from its species and government (`aiSlaveryScore`):
 **Penal colonies.** With the policy on, any colony but a capital can be made a penal colony (Colonies window,
 "Make / Release penal colony", the `setPenalColony` command; its tooltip shows the estimate below). Its **workers** are
 its people of species other than the empire's dominant one. **Staffing** = workers ÷ target, where the target is
-`PENAL_TARGET_SHARE` (25%) of the planet's maximum population, clamped to 50 M – 600 M.
+`PENAL_TARGET_SHARE` (25%) of the planet's maximum population, clamped to 50 M – 400 M.
 
 | Effect | Value (`SLAVERY_PARAMS`) | Where |
 |---|---|---|
@@ -42,7 +42,7 @@ its people of species other than the empire's dominant one. **Staffing** = worke
 | Approval at the colony | −10 | `taxes.ts empireApprovalRatingStock` |
 | Approval at the empire's other colonies of an enslaved race | −4 | same |
 | Unrest in the revolt check | 12 + 4 per year as a penal colony (max 40), × (1 − garrison held / needed) | `colonyTick.ts checkSatisfaction` |
-| Garrison needed (troop defend strength) | (400 + 3000 per billion workers) × (1 + 0.1 per year, max ×2) | `troops.ts troopLevelRequired` raises the garrison target to it |
+| Garrison needed (troop defend strength) | (40,000 + 300,000 per billion workers) × (1 + 0.1 per year, max ×2) | `troops.ts troopLevelRequired` raises the garrison target to it |
 | Worker deaths | 5% of the workers a year (Voidbloom worlds lose far more) | `slaveryReview.ts` |
 | Reputation | every empire that does not allow slavery: −6 attitude a year per penal colony | `reputation/ledger.ts applyReputation` |
 
@@ -58,7 +58,7 @@ docks elsewhere loses them. The player's penal colonies are staffed the same way
 
 **The AI** makes a colony a penal colony (at most 3) only when:
 - it holds at least 30 summed abundance of luxury / restricted resources;
-- the workers there plus the empire's enslavable people elsewhere not yet promised to another penal colony reach 60%
+- the workers there plus the empire's enslavable people elsewhere not yet promised to another penal colony reach 40%
   of the target (`AI_MIN_STAFF_SHARE`);
 - the garrison's upkeep is at most 60% of the extra tax plus the extra luxury output at market prices;
 - the estimated net gain (`penalLedger`: extra tax + extra luxury value − garrison upkeep) is positive; it picks the best.
@@ -112,7 +112,7 @@ ground, the siege is beaten off: the AI stops the burning; the player is asked (
 that with the victim. This works without the Diet.
 
 **Tribunal.** With the Interstellar Diet running, members may move a **War Crimes Tribunal** against the worst
-offender once its record reaches `warCrimesTribunalMin` (40). An AI proposes it when its own vote score is positive.
+offender once its record reaches `warCrimesTribunalMin` (40). An AI proposes it when its own vote score is positive (motion weight 30 + 2 × that score, at most 80). The victim of enslavement is the empire of the most numerous enslaved people.
 Vote score: record / 5 − 5 + harm done to the voter / 2 − the voter's own record / 4, +20 at war with the offender,
 −25 allied (mutual defence / protectorate), −10 under free trade; the offender −100. Passed: the council's stock
 sanctions, reparations (`warCrimesReparationsPct`, 10% of the offender's treasury, split among its victims by harm) and,

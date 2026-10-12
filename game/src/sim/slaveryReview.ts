@@ -21,7 +21,7 @@ import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
 import type { Habitat } from './types';
 import { TroopType } from './cargo';
-import { calculateCostPerTroop } from './troops';
+import { calculateCostPerTroop, troopLevelRequiredStock } from './troops';
 import { REAL_SECONDS_IN_GALACTIC_YEAR, galaxyStarDate } from './tick/simTime';
 import { isHumanEmpire } from './humanEmpires';
 import { galaxyResourceCurrentPrices } from './design';
@@ -144,10 +144,18 @@ export function penalLedger(galaxy: Galaxy, h: Habitat, workers = penalWorkers(h
         outputFree += units;
         luxuryValue += (multiplier - 1) * units * (prices[r.resourceId] ?? 0);
     }
+    // Garrison upkeep: only the troops beyond the colony's stock garrison (troopLevelRequiredStock), at the colony's
+    // (else the empire's) average troop strength.
     const need = penalGarrisonFor(workers, isPenalColony(h) ? penalYears(galaxy, h) : 0);
-    const perTroop = Math.max(50, e.dominantRace !== null ? e.dominantRace.troopStrength : 100);
-    const garrisonUpkeep = Math.ceil(need / perTroop) * calculateCostPerTroop(e, TroopType.Infantry, h, null);
+    const extra = Math.max(0, need - troopLevelRequiredStock(galaxy, h, galaxy.difficultyLevel));
+    const garrisonUpkeep = Math.ceil(extra / averageTroopStrength(e, h)) * calculateCostPerTroop(e, TroopType.Infantry, h, null);
     return { workers, target, multiplier, taxFree, taxPenal, outputFree, outputPenal: outputFree * multiplier, luxuryValue, garrisonUpkeep, net: taxPenal - taxFree + luxuryValue - garrisonUpkeep };
+}
+
+function averageTroopStrength(e: Empire, h: Habitat): number {
+    if (h.troops !== null && h.troops.count > 0) return Math.max(1, h.troops.totalDefendStrengthExcludeReadiness / h.troops.count);
+    if (e.troops != null && e.troops.count > 0) return Math.max(1, e.troops.totalDefendStrengthExcludeReadiness / e.troops.count);
+    return 1000;
 }
 
 /** People of non-dominant species `e` could ship from colony `c` (keeps PENAL_SOURCE_KEEP_SHARE of each). */
