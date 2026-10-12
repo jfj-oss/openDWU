@@ -2764,7 +2764,13 @@ function buildVictoryPage(ctx: WizardCtx): HTMLDivElement {
         arrival.select.disabled = isPirate || (options.humanPlayers?.length ?? 0) > 0 || v.enableStoryEvents !== true;
         arrivalLabel.style.opacity = arrival.select.disabled ? '0.5' : '';
     };
-    ctx.helpOn(arrival.select, () => [helpTitle2('Victory', 'Arrival'), wt('Arrival Help', 'When the Erutkah refugees of the Return of the Shakturi story arrive: Early (about years 12 to 18), Normal (the original timing) or Late (about years 50 to 60). The year is fixed by the galaxy seed. With the Rim expansion Late is preselected.')]);
+    const ARRIVAL_HELP = [
+        wt('Arrival Early Help', 'The Beacon appears early, around years 12 to 18, whatever the research speed.'),
+        wt('Arrival Normal Help', 'Like the original: the Beacon of Shaktur can appear from year 25 (year 40 in a galaxy starting at age 0), later with slower research (year 25 x sqrt(research cost / 120,000)), and by year 80 at the latest (later still with slower research). The refugees arrive once someone investigates it.'),
+        wt('Arrival Late Help', "The Beacon can't appear before a year between 50 and 60. Slower research can still push it later, as in the original."),
+    ];
+    ctx.helpOn(arrival.select, () => [helpTitle2('Victory', 'Arrival'), ARRIVAL_HELP[parseInt(arrival.select.value, 10)] ?? ARRIVAL_HELP[1]]);
+    Array.from(arrival.select.options).forEach((o, i) => (o.title = ARRIVAL_HELP[i] ?? ''));
     const rightCheck = (content: string, checked: boolean, y: number, onChange: (x: boolean) => void): HTMLLabelElement => {
         const c = checkBoxRight(content, checked, onChange, FONT.large);
         c.classList.add('wizard-checkbox', 'wizard-check-right');
