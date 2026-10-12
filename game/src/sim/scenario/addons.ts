@@ -69,6 +69,7 @@ const GROUP_OF: Readonly<Record<string, AddonGroup>> = {
     'colony-defence': 'Economy & factions',
     'scorched-earth': 'Politics & court',
     'war-crimes': 'Politics & court',
+    slavery: 'Economy & factions',
     exchange: 'Economy & factions',
     privateers: 'Economy & factions',
     'colony-economy': 'Economy & factions',

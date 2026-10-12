@@ -666,7 +666,7 @@ export function extractResources(galaxy: Galaxy, habitat: Habitat, timePassed: n
     for (let i = 0; i < habitatResourceList.length; i++) {
         const habitatResource = habitatResourceList[i];
         if (habitatResource !== null && groupOf(galaxy, habitatResource.resourceId) === ResourceGroup.Luxury) {
-            // "Allow slavery": a penal colony extracts its luxury / restricted resources × PENAL_RESOURCE_FACTOR (slavery.ts).
+            // Slavery add-on: a penal colony extracts its luxury / restricted resources × up to PENAL_RESOURCE_MAX_FACTOR (slavery.ts).
             const k = habitat.slavery !== undefined ? penalResourceFactor(galaxy, habitat, habitatResource.resourceId) : 1;
             const num4 = habitatResourceExtract(habitatResource, num3 * k);
             if (k !== 1) notePenalExtraction(habitat, num4 - habitatResourceExtract(habitatResource, num3));

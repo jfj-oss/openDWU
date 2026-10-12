@@ -1,11 +1,19 @@
-// Slavery as an empire policy (base game; docs/DARK_THEMES.md §1). Not a port: DW:U 1.9.5 has the Enslave population
-// policy and the "Implement Enslavement with Penal Colonies" policy (colonyTick.ts reviewColonyPopulationPolicy), which
-// stay as they are. This adds a separate policy, "Allow slavery" (EmpirePolicy.allowSlavery, absent = off), and with it
-// the PENAL COLONY: a colony worked by enslaved people of species other than the empire's dominant one.
+// Slavery (scenarios/slavery, a standalone add-on; docs/DARK_THEMES.md §1). Not a port. With the add-on on it
+// OVERWRITES DW:U 1.9.5's own enslavement, built on its pieces:
+//   - the switch is the stock empire policy "Use Penal Colonies to implement 'Enslave' policy"
+//     (EmpirePolicy.implementEnslavementWithPenalColonies);
+//   - who is enslaved is the stock per-colony population policy (ColonyPopulationPolicy.Enslave, for the race family
+//     or all other races);
+//   - the penal colonies are the stock Empire.penalColonies list; the stock auto-selection (colonyTick.ts
+//     identifyBestNewPenalColonies, cap 5, and its Enslave → Resettle reset) and the stock SlaveryBonusFactor income
+//     are gated off (colonyTick.ts reviewColonyPopulationPolicy) and replaced by this module and slaveryReview.ts. The
+//     stock slaveryOffense diplomacy line stays.
+// With the add-on off nothing here runs (every stock hook checks Habitat.slavery / Empire.slavery, which only the
+// add-on's review creates), so the stock enslavement is untouched.
 //
-//   - WORKERS are the colony's populations of non-dominant species (conquered or migrant peoples; the dominant species
-//     there are the overseers). The STAFFING share is workers / target workers (PENAL_TARGET_SHARE of the planet's
-//     maximum population, clamped to PENAL_TARGET_MIN..MAX);
+// A PENAL COLONY (one on the stock list, adopted by the add-on: Habitat.slavery):
+//   - WORKERS are its people under the Enslave population policy. The STAFFING share is workers / target workers
+//     (PENAL_TARGET_SHARE of the planet's maximum population, clamped to PENAL_TARGET_MIN..MAX);
 //   - its luxury and restricted ("rare") extraction is × (1 + (PENAL_RESOURCE_MAX_FACTOR − 1) × staffing), up to ×6
 //     (industry.ts extractResources), and its tax × (1 + (PENAL_TAX_MAX_FACTOR − 1) × staffing), up to ×2
 //     (forceStructure.ts recalculateAnnualTaxRevenue): an unstaffed penal colony earns little more than a free one;
@@ -15,13 +23,12 @@
 //     workers (penalGarrisonRequired, which troops.ts troopLevelRequired raises the garrison target to); the unrest the
 //     garrison cannot hold enters the stock revolt check (colonyTick.ts checkSatisfaction), so an under-garrisoned
 //     penal colony rebels (militia, no extraction) and, with its troops gone, breaks away (stock leaveEmpire);
-//   - workers die off by PENAL_WORKER_DEATH_PER_YEAR and are resupplied by labour convoys from the empire's other
-//     colonies (slaveryReview.ts; the source colonies lose those people).
+//   - workers die off by PENAL_WORKER_DEATH_PER_YEAR and are resupplied by labour convoys of enslaved people from the
+//     empire's other colonies (slaveryReview.ts; the source colonies lose them).
 //
-// This module holds the pure helpers the stock code reads (no imports of the stock modules, so no cycles); the policy
-// review (AI choice, designations, convoys, the reputation stain) is slaveryReview.ts. Rnd: none. State:
-// EmpirePolicy.allowSlavery and the `slavery` fields below on Empire / Habitat / BuiltObject (`declare`d, absent until
-// used, so a game that never uses slavery saves exactly as before).
+// This module holds the pure helpers the stock code reads (no imports of the stock modules, so no cycles); the review
+// (AI choice, designations, convoys, the reputation stain) is slaveryReview.ts. Rnd: none. State: the `slavery` fields
+// below on Empire / Habitat / BuiltObject (`declare`d, absent until the add-on uses them).
 
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
@@ -30,6 +37,8 @@ import type { BuiltObject } from './builtObject';
 import { YEAR_LENGTH } from './galaxyTime';
 import { galaxyStarDate } from './tick/simTime';
 import { ResourceGroup, resourceGroupOf } from './resourceSystem';
+import { ColonyPopulationPolicy } from './data/policies';
+import type { Race } from './data/races';
 
 /** Every number of the policy (docs/DARK_THEMES.md §1 lists them). */
 export const SLAVERY_PARAMS = {
@@ -132,16 +141,31 @@ declare module './empire' {
     }
 }
 
-export function slaveryAllowed(e: Empire | null): boolean {
-    return e !== null && e.policy != null && e.policy.allowSlavery === true;
+export const SLAVERY_FLAG = 'slavery';
+
+/** The Slavery add-on runs. */
+export function slaveryOn(galaxy: Galaxy | null | undefined): boolean {
+    return galaxy != null && galaxy.scenario != null && galaxy.scenario.flags[SLAVERY_FLAG] === true;
 }
 
-/** A live penal colony: designated by its current owner, whose policy still allows slavery. */
+/** The switch: the stock "Use Penal Colonies to implement 'Enslave' policy". */
+export function slaveryAllowed(e: Empire | null): boolean {
+    return e !== null && e.policy != null && e.policy.implementEnslavementWithPenalColonies === true;
+}
+
+/** The stock population policy that applies to `race` at `h` (colonyTick.ts reviewColonyPopulationPolicy's choice). */
+export function populationPolicyFor(h: Habitat, race: Race): ColonyPopulationPolicy {
+    const d = h.empire !== null ? h.empire.dominantRace : null;
+    if (d === null || race === d) return ColonyPopulationPolicy.Assimilate;
+    return race.raceFamily === d.raceFamily ? h.colonyPopulationPolicyRaceFamily : h.colonyPopulationPolicy;
+}
+
+/** A live penal colony: on its owner's stock penalColonies list, adopted by the add-on, the switch on. */
 export function isPenalColony(h: Habitat): boolean {
     const s = h.slavery;
     if (s === undefined) return false;
     const e = h.empire;
-    return e !== null && e.empireId === s.empireId && slaveryAllowed(e);
+    return e !== null && e.empireId === s.empireId && slaveryAllowed(e) && e.penalColonies.includes(h);
 }
 
 export function penalYears(galaxy: Galaxy, h: Habitat): number {
@@ -155,12 +179,11 @@ export function isPenalResource(galaxy: Galaxy, resourceId: number): boolean {
     return r !== undefined && (resourceGroupOf(r) === ResourceGroup.Luxury || r.superLuxuryBonusAmount > 0);
 }
 
-/** Enslaved workers at a colony: its populations of species other than the owner's dominant one. */
+/** Enslaved workers at a colony: its people under the stock Enslave population policy. */
 export function penalWorkers(h: Habitat): number {
-    const e = h.empire;
-    if (e === null || h.population == null) return 0;
+    if (h.empire === null || h.population == null) return 0;
     let n = 0;
-    for (const p of h.population.items) if (p.race !== e.dominantRace) n += p.amount;
+    for (const p of h.population.items) if (populationPolicyFor(h, p.race) === ColonyPopulationPolicy.Enslave) n += p.amount;
     return n;
 }
 

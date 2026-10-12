@@ -220,7 +220,7 @@ export interface ScenarioEvents {
      * ship is still idle. Handlers may assign a mission (19e-7 salvage).
      */
     constructionShipIdle: { empire: Empire; ship: BuiltObject };
-    /** "Allow slavery" (slavery.ts): `empire` made `colony` a penal colony (war crimes: enslaving a conquered people). */
+    /** Slavery add-on (slavery.ts): `empire` made `colony` a penal colony (war crimes: enslaving a conquered people). */
     colonyEnslaved: { empire: Empire; colony: Habitat };
     /** Scorched earth (scorchedEarth.ts): `empire` began burning its own `colony` against `attacker`. */
     colonyScorched: { empire: Empire; colony: Habitat; attacker: Empire | null };

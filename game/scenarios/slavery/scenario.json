@@ -1,0 +1,9 @@
+{
+  "id": "slavery",
+  "name": "Slavery",
+  "description": "Overwrites the game's own enslavement. The stock policy \"Use Penal Colonies to implement 'Enslave' policy\" is the switch, the colony population policy Enslave decides who is enslaved, and the stock penal colony list holds the penal colonies, now chosen for their luxury and rare resources. A penal colony's luxury and rare output rises to six times and its tax to twice with the enslaved workers it holds; labour convoys ship them in, they die off slowly, and only a large garrison holds down the growing unrest, or the colony revolts and may break free. Other empires think less of slavers. AI empires choose by species and government, and only where it pays.",
+  "addableToSave": true,
+  "flags": [
+    { "name": "slavery", "label": "Slavery", "description": "Master switch.", "default": true }
+  ]
+}

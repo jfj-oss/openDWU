@@ -253,7 +253,7 @@ export function labourSource(galaxy: Galaxy, e: Empire, world: Habitat, amount: 
         for (const p of c.population.items) {
             if (p.amount < amount * 1.5) continue;
             const conquered = p.race !== e.dominantRace;
-            // "Allow slavery" (slavery.ts): a penal colony's chained workers are sent first.
+            // Slavery add-on (slavery.ts): a penal colony's chained workers are sent first.
             const score = (c.slavery !== undefined && isPenalColony(c) ? 2e13 : 0) + (conquered ? 1e13 : 0) + p.amount;
             if (best === null || score > best.score || (score === best.score && c.habitatIndex < best.colony.habitatIndex)) best = { colony: c, race: p.race, score };
         }

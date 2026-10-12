@@ -334,8 +334,6 @@ export interface EmpirePolicy {
     troopGarrisonLevel: number;
     useExplorationShipsToScoutEnemySystems: boolean;
     buildPlanetDestroyers: boolean;
-    /** Not in DW:U: "Allow slavery" (slavery.ts; docs/DARK_THEMES.md §1). Absent = off, so a policy that never set it is unchanged. */
-    allowSlavery?: boolean;
 }
 
 export function defaultEmpirePolicy(): EmpirePolicy {

@@ -221,7 +221,7 @@ export function troopLevelRequiredStock(galaxy: Galaxy, habitat: Habitat, diffic
     return num;
 }
 
-/** troopLevelRequired plus the "Allow slavery" penal colony's garrison (slavery.ts; not in DW:U). */
+/** troopLevelRequired plus the Slavery add-on's penal colony's garrison (slavery.ts; not in DW:U). */
 export function troopLevelRequired(galaxy: Galaxy, habitat: Habitat, difficultyLevel: number): number {
     const num = troopLevelRequiredStock(galaxy, habitat, difficultyLevel);
     return habitat.slavery !== undefined ? Math.max(num, penalGarrisonRequired(galaxy, habitat)) : num;

@@ -23,7 +23,7 @@
 // TODO(port): character portraits in the Troops & Characters tab (CharacterImageCache) — CharacterTroopListIconView.cs
 // TODO(port): racial / wonder / resource bonus lines of the attitude summary — HabitatAttitudeSummary.cs DetermineHabitat*Bonuses
 
-import { SLAVERY_PARAMS, isPenalColony, penalGarrisonRequired, slaveryAllowed } from '../../sim/slavery';
+import { SLAVERY_PARAMS, isPenalColony, penalGarrisonRequired, slaveryAllowed, slaveryOn } from '../../sim/slavery';
 import { penalDesignationBlocked, penalLedger } from '../../sim/slaveryReview';
 import { cvColonySlot } from '../scenario/charactersVictoryUi'; // [charactersVictory]
 import { econVisible, renderEconomyTab } from '../scenario/colonyEconomyUi'; // [colonyEconomy]
@@ -1266,8 +1266,9 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
             },
         });
         page.appendChild(place(apply, 5, 244, 265, 25));
-        // Not in DW:U: the "Allow slavery" policy's penal colony (sim/slavery.ts), shown only while the policy allows it.
-        if (owned && (slaveryAllowed(empire) || isPenalColony(h))) {
+        // Slavery add-on (sim/slavery.ts): the stock penal colony list, with the add-on's figures; shown only with it on
+        // and the stock "Use Penal Colonies to implement 'Enslave' policy" switch set.
+        if (owned && slaveryOn(galaxy) && (slaveryAllowed(empire) || isPenalColony(h))) {
             const penal = isPenalColony(h);
             const blocked = penal ? null : penalDesignationBlocked(galaxy, empire, h);
             const led = penalLedger(galaxy, h);
@@ -1278,8 +1279,12 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
             const k = (n: number): string => Math.round(n).toLocaleString();
             pb.title =
                 blocked ??
-                `Penal colony worked by enslaved non-${empire.dominantRace?.name ?? ''} peoples, shipped in by labour convoys: ${k(led.workers)} of ${k(led.target)} workers, luxury and rare output ×${led.multiplier.toFixed(1)} (×${SLAVERY_PARAMS.PENAL_RESOURCE_MAX_FACTOR} fully staffed), tax up to ×${SLAVERY_PARAMS.PENAL_TAX_MAX_FACTOR}. Garrison needed: ${k(penal ? penalGarrisonRequired(galaxy, h) : SLAVERY_PARAMS.PENAL_GARRISON_BASE)} troop strength, rising with the workers and the years. A year: tax ${k(led.taxFree)} → ${k(led.taxPenal)}, luxuries +${k(led.luxuryValue)}, garrison −${k(led.garrisonUpkeep)}, net ${led.net >= 0 ? '+' : ''}${k(led.net)}.`;
+                `Penal colony worked by the peoples you enslave (the population policy Enslave), shipped in by labour convoys: ${k(led.workers)} of ${k(led.target)} workers, luxury and rare output ×${led.multiplier.toFixed(1)} (×${SLAVERY_PARAMS.PENAL_RESOURCE_MAX_FACTOR} fully staffed), tax up to ×${SLAVERY_PARAMS.PENAL_TAX_MAX_FACTOR}. Garrison needed: ${k(penal ? penalGarrisonRequired(galaxy, h) : SLAVERY_PARAMS.PENAL_GARRISON_BASE)} troop strength, rising with the workers and the years. A year: tax ${k(led.taxFree)} → ${k(led.taxPenal)}, luxuries +${k(led.luxuryValue)}, garrison −${k(led.garrisonUpkeep)}, net ${led.net >= 0 ? '+' : ''}${k(led.net)}.`;
             page.appendChild(place(pb, 5, 272, 265, 22));
+            if (penal) {
+                const info = text(`Staffing ${Math.round((100 * led.workers) / led.target)}% · output ×${led.multiplier.toFixed(1)} · garrison ${k(h.troops?.totalDefendStrength ?? 0)} / ${k(penalGarrisonRequired(galaxy, h))}`, { color: COLORS.gridText, size: FONT.small });
+                page.appendChild(place(info, 5, 297, 265, 15));
+            }
         }
         const bg = gradientPanel({ corners: { tl: true, br: true } });
         page.appendChild(place(bg, 274, 5, 385, 240));

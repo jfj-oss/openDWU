@@ -1,21 +1,25 @@
-// "Allow slavery" policy review (base game; docs/DARK_THEMES.md §1; the pure rules are slavery.ts). Not a port. Runs from
+// Slavery add-on review (scenarios/slavery; docs/DARK_THEMES.md §1; the pure rules are slavery.ts). Not a port. Runs from
 // the empire's intermediate block right after the stock ReviewColonyPopulationPolicy (tick/empireTick.ts):
 //
-//   - bookkeeping: penal colonies the empire lost are dropped (one that rebelled away to independence counts as a
-//     breakaway); with the policy off every designation is released;
-//   - the reputation stain: every empire that does not allow slavery loses attitude toward the slaver, per penal colony
-//     and year (reputation/ledger.ts applyReputation: the ledger when the Reputation add-on runs, else the stock
-//     IncidentEvaluation);
+//   - bookkeeping on the stock Empire.penalColonies list: colonies on it are adopted (Habitat.slavery), lost ones
+//     dropped (one that rebelled away to independence counts as a breakaway); with the switch (the stock "Use Penal
+//     Colonies to implement 'Enslave' policy") off, or no Enslave population policy left at a colony, it is released;
+//   - the reputation stain: every empire whose switch is off loses attitude toward the slaver, per penal colony and
+//     year (reputation/ledger.ts applyReputation: the ledger when the Reputation add-on runs, else the stock
+//     IncidentEvaluation); the stock slaveryOffense line (colonyTick.ts) stays as well;
 //   - labour convoys (the Voidbloom / Refugees convoy pattern: a pre-loaded passenger ship on a Transport mission):
-//     non-dominant-species people are taken from the empire's other colonies (which lose them) and shipped to its
-//     penal colonies until they reach their target workers; workers die off slowly there, so convoys keep coming;
-//   - the AI: adopts the policy from its SPECIES (Race aggression / friendliness / loyalty, races.txt) and GOVERNMENT
-//     (a weight per governments.txt row; democracies and utopias never), only when a luxury- or rare-rich colony would
-//     earn more as a penal colony after the garrison's upkeep, and designates such colonies only while it can pay the
-//     garrison AND staff them (workers there plus enslavable people elsewhere not yet promised ≥ AI_MIN_STAFF_SHARE).
+//     people under the Enslave population policy at the empire's other colonies (which lose them) are shipped to its
+//     penal colonies until they reach their target workers; workers die off slowly there, so convoys keep coming. The
+//     AI sets Enslave on the people it ships; the player chooses whom to enslave with the stock colony drop-downs;
+//   - the AI (replacing the stock IdentifyBestNewPenalColonies): sets the switch from its SPECIES (Race aggression /
+//     friendliness / loyalty, races.txt) and GOVERNMENT (a weight per governments.txt row; democracies and utopias
+//     never), only when a luxury- or rare-rich colony would earn more as a penal colony after the garrison's upkeep,
+//     and designates such colonies only while it can pay the garrison AND staff them (workers there plus enslavable
+//     people elsewhere not yet promised ≥ AI_MIN_STAFF_SHARE).
 //
 // Rnd: none (every choice is a deterministic score; ties go to the lower habitat index). Human empires choose for
-// themselves (the Policy screen's "Allow slavery", the Colonies window's "Penal colony"; journaled player ops).
+// themselves (the stock Policy screen switch; the Colonies window's "Make / Release penal colony"; journaled ops).
+// Runs only with the add-on on (tick/empireTick.ts).
 
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
@@ -46,9 +50,13 @@ import {
     penalTargetWorkers,
     penalWorkers,
     penalYears,
+    populationPolicyFor,
     slaveryAllowed,
+    slaveryOn,
     type SlaveryEmpireState,
 } from './slavery';
+import { ColonyPopulationPolicy } from './data/policies';
+import type { Race } from './data/races';
 
 /**
  * Adoption weight per government (governments.txt GovernmentId → weight; null = never allows slavery). Authoritarian,
@@ -158,18 +166,30 @@ function averageTroopStrength(e: Empire, h: Habitat): number {
     return 1000;
 }
 
-/** People of non-dominant species `e` could ship from colony `c` (keeps PENAL_SOURCE_KEEP_SHARE of each). */
-function enslavableAt(e: Empire, c: Habitat): number {
-    if (c.population == null || c.slavery !== undefined) return 0;
+/**
+ * May `q` at colony `c` be shipped to a penal colony? Its stock population policy there is Enslave; `potential`
+ * (the AI planning): any people of another species, since the AI sets that policy itself when it ships them.
+ */
+function shippable(e: Empire, c: Habitat, race: Race, potential: boolean): boolean {
+    if (race === e.dominantRace) return false;
+    return potential || populationPolicyFor(c, race) === ColonyPopulationPolicy.Enslave;
+}
+
+/** People `e` could ship from colony `c` (keeps PENAL_SOURCE_KEEP_SHARE of each). */
+function enslavableAt(e: Empire, c: Habitat, potential: boolean): number {
+    if (c.population == null || c.slavery !== undefined || e.penalColonies.includes(c)) return 0;
     let n = 0;
-    for (const q of c.population.items) if (q.race !== e.dominantRace) n += Math.trunc(q.amount * (1 - SLAVERY_PARAMS.PENAL_SOURCE_KEEP_SHARE));
+    for (const q of c.population.items) if (shippable(e, c, q.race, potential)) n += Math.trunc(q.amount * (1 - SLAVERY_PARAMS.PENAL_SOURCE_KEEP_SHARE));
     return n;
 }
 
-/** Enslavable people across the empire not yet promised to a penal colony (its shortfall to target, minus convoys at sea). */
-export function enslavablePool(e: Empire): number {
+/**
+ * Enslavable people across the empire not yet promised to a penal colony (its shortfall to target, minus convoys at
+ * sea). `potential`: as the AI counts them (any people of another species); else only those under the Enslave policy.
+ */
+export function enslavablePool(e: Empire, potential = false): number {
     let n = 0;
-    for (const c of e.colonies) n += enslavableAt(e, c);
+    for (const c of e.colonies) n += enslavableAt(e, c, potential);
     for (const h of e.slavery?.penal ?? []) n -= Math.max(0, penalTargetWorkers(h) - penalWorkers(h) - labourAtSea(e, h));
     return Math.max(0, n);
 }
@@ -182,33 +202,54 @@ function labourAtSea(e: Empire, h: Habitat): number {
 
 /** Why `h` cannot be made a penal colony by `e` (null: it can). */
 export function penalDesignationBlocked(galaxy: Galaxy, e: Empire, h: Habitat): string | null {
+    if (!slaveryOn(galaxy)) return 'the Slavery add-on is off';
     if (h.empire !== e || !e.colonies.includes(h)) return 'not your colony';
-    if (!slaveryAllowed(e)) return 'your policy does not allow slavery';
+    if (!slaveryAllowed(e)) return "your policy does not use penal colonies to implement 'Enslave'";
     if (e.capital === h || (e.capitals != null && e.capitals.includes(h))) return 'a capital cannot be a penal colony';
     if (h.population == null || h.population.totalAmount <= 0) return 'no population';
-    void galaxy;
     return null;
+}
+
+/** The stock population policies of a penal colony: every other people there is enslaved. */
+function enslaveAt(h: Habitat): void {
+    h.colonyPopulationPolicy = ColonyPopulationPolicy.Enslave;
+    h.colonyPopulationPolicyRaceFamily = ColonyPopulationPolicy.Enslave;
+}
+
+/** Adopts a colony on the stock penalColonies list into the add-on's bookkeeping. */
+function adopt(galaxy: Galaxy, e: Empire, st: SlaveryEmpireState, h: Habitat): void {
+    h.slavery = { empireId: e.empireId, since: galaxyStarDate(galaxy), lastConvoy: -1, workersArrived: 0, extraLuxury: 0 };
+    if (!st.penal.includes(h)) st.penal.push(h);
+    st.stats.designated++;
+    refreshRaces(st);
+    // War crimes (scenario/warCrimes): enslaving a conquered people.
+    if (galaxy.scenario !== null) scenarioEmit(galaxy, 'colonyEnslaved', { empire: e, colony: h });
+}
+
+function drop(e: Empire, st: SlaveryEmpireState, h: Habitat): void {
+    const i = st.penal.indexOf(h);
+    if (i >= 0) st.penal.splice(i, 1);
+    const j = e.penalColonies.indexOf(h);
+    if (j >= 0) e.penalColonies.splice(j, 1);
+    if (h.slavery !== undefined && h.slavery.empireId === e.empireId) delete h.slavery;
+    refreshRaces(st);
 }
 
 /** Designates (on) or releases (off) a penal colony. The player op and the AI. False when refused / unchanged. */
 export function setPenalColony(galaxy: Galaxy, e: Empire, h: Habitat, on: boolean): boolean {
+    if (!slaveryOn(galaxy)) return false;
+    if (on && (isPenalColony(h) || penalDesignationBlocked(galaxy, e, h) !== null)) return false;
     const st = slaveryState(e);
     if (on) {
-        if (isPenalColony(h) || penalDesignationBlocked(galaxy, e, h) !== null) return false;
-        h.slavery = { empireId: e.empireId, since: galaxyStarDate(galaxy), lastConvoy: -1, workersArrived: 0, extraLuxury: 0 };
-        if (!st.penal.includes(h)) st.penal.push(h);
-        st.stats.designated++;
-        refreshRaces(st);
-        // War crimes (scenario/warCrimes): enslaving a conquered people.
-        if (galaxy.scenario !== null) scenarioEmit(galaxy, 'colonyEnslaved', { empire: e, colony: h });
+        // The stock list is the penal colony list; the stock Enslave policy decides who works it.
+        if (!e.penalColonies.includes(h)) e.penalColonies.push(h);
+        enslaveAt(h);
+        adopt(galaxy, e, st, h);
         return true;
     }
-    const i = st.penal.indexOf(h);
-    if (i < 0) return false;
-    st.penal.splice(i, 1);
-    if (h.slavery !== undefined && h.slavery.empireId === e.empireId) delete h.slavery;
+    if (!st.penal.includes(h) && !e.penalColonies.includes(h)) return false;
+    drop(e, st, h);
     st.stats.released++;
-    refreshRaces(st);
     return true;
 }
 
@@ -231,16 +272,19 @@ export function reviewSlavery(galaxy: Galaxy, e: Empire, timePassed: number): vo
     if (!majorEmpire(galaxy, e)) return;
     const human = isHumanEmpire(galaxy, e);
     if (!human) aiReviewPolicy(galaxy, e);
-    const st = e.slavery;
-    if (st === undefined) return;
-    // Bookkeeping: lost colonies (a breakaway when its slaves now rule it), the policy switched off.
+    if (e.slavery === undefined && e.penalColonies.length === 0 && (human || !slaveryAllowed(e))) return;
+    const st = slaveryState(e);
+    // Bookkeeping. The stock list is the penal colony list: colonies on it the add-on has not adopted yet (a stock
+    // choice made before, or a save from before the add-on) are adopted; lost ones dropped (a breakaway when its
+    // slaves now rule it); with the switch off, or no Enslave policy left there (the stock rule, Empire.2.cs 3409),
+    // every one is released.
+    for (const h of [...e.penalColonies]) if (h.empire === e && slaveryAllowed(e) && !st.penal.includes(h)) adopt(galaxy, e, st, h);
     for (const h of [...st.penal]) {
-        if (h.empire === e && slaveryAllowed(e)) continue;
-        if (h.empire === galaxy.independentEmpire || h.empire === null) st.stats.breakaways += h.empire === galaxy.independentEmpire ? 1 : 0;
-        st.penal.splice(st.penal.indexOf(h), 1);
-        if (h.slavery !== undefined && h.slavery.empireId === e.empireId) delete h.slavery;
+        const enslaving = h.colonyPopulationPolicy === ColonyPopulationPolicy.Enslave || h.colonyPopulationPolicyRaceFamily === ColonyPopulationPolicy.Enslave;
+        if (h.empire === e && slaveryAllowed(e) && e.penalColonies.includes(h) && enslaving) continue;
+        if (h.empire === galaxy.independentEmpire) st.stats.breakaways++;
         if (h.empire === e) st.stats.released++;
-        refreshRaces(st);
+        drop(e, st, h);
     }
     convoySweep(galaxy, st);
     const dt = timePassed / REAL_SECONDS_IN_GALACTIC_YEAR;
@@ -249,7 +293,7 @@ export function reviewSlavery(galaxy: Galaxy, e: Empire, timePassed: number): vo
         if (h.population != null) {
             let died = 0;
             for (const q of h.population.items) {
-                if (q.race === e.dominantRace) continue;
+                if (populationPolicyFor(h, q.race) !== ColonyPopulationPolicy.Enslave) continue;
                 const d = Math.min(q.amount, Math.trunc(q.amount * SLAVERY_PARAMS.PENAL_WORKER_DEATH_PER_YEAR * dt));
                 q.amount -= d;
                 died += d;
@@ -283,14 +327,15 @@ function aiReviewPolicy(galaxy: Galaxy, e: Empire): void {
     const score = aiSlaveryScore(e);
     const leans = score !== null && score >= SLAVERY_PARAMS.AI_ADOPT_SCORE;
     if (slaveryAllowed(e)) {
+        // The add-on's choice replaces the race policy file's value (the switch is the stock policy).
         if (!leans) {
-            e.policy.allowSlavery = false;
+            e.policy.implementEnslavementWithPenalColonies = false;
             for (const h of [...(e.slavery?.penal ?? [])]) setPenalColony(galaxy, e, h, false);
         }
         return;
     }
     if (!leans || bestPenalCandidate(galaxy, e) === null) return;
-    e.policy.allowSlavery = true;
+    e.policy.implementEnslavementWithPenalColonies = true;
     slaveryState(e).adoptedAt = galaxyStarDate(galaxy);
 }
 
@@ -299,9 +344,9 @@ function bestPenalCandidate(galaxy: Galaxy, e: Empire): Habitat | null {
     const p = SLAVERY_PARAMS;
     let best: Habitat | null = null;
     let bestNet = 0;
-    const pool = enslavablePool(e);
+    const pool = enslavablePool(e, true);
     for (const h of e.colonies) {
-        if (h.slavery !== undefined || h.rebelling || e.capital === h || (e.capitals != null && e.capitals.includes(h))) continue;
+        if (h.slavery !== undefined || e.penalColonies.includes(h) || h.rebelling || e.capital === h || (e.capitals != null && e.capitals.includes(h))) continue;
         if (h.population == null || h.population.totalAmount <= 0) continue;
         if (penalResourceAbundance(galaxy, h) < p.AI_MIN_RESOURCE_ABUNDANCE) continue;
         // Staffing: the workers there plus what the empire can still ship must reach a good share of the target.
@@ -326,7 +371,7 @@ function aiReviewColonies(galaxy: Galaxy, e: Empire, st: SlaveryEmpireState): vo
         const have = h.troops !== null ? h.troops.totalDefendStrength : 0;
         if (h.rebelling && need > 0 && have < p.AI_RELEASE_GARRISON_SHARE * need) setPenalColony(galaxy, e, h, false);
         // ...or one it can no longer staff (after a year to fill it).
-        else if (penalYears(galaxy, h) > 1 && penalWorkers(h) + labourAtSea(e, h) < 0.2 * penalTargetWorkers(h) && enslavablePool(e) <= 0) setPenalColony(galaxy, e, h, false);
+        else if (penalYears(galaxy, h) > 1 && penalWorkers(h) + labourAtSea(e, h) < 0.2 * penalTargetWorkers(h) && enslavablePool(e, true) <= 0) setPenalColony(galaxy, e, h, false);
     }
     if (st.penal.length >= p.AI_MAX_PENAL_COLONIES || e.stateMoney <= 0) return;
     const h = bestPenalCandidate(galaxy, e);
@@ -344,10 +389,11 @@ function staffPenalColony(galaxy: Galaxy, e: Empire, st: SlaveryEmpireState, h: 
     let src: Habitat | null = null;
     let race: Population['race'] | null = null;
     let best = 0;
+    const ai = !isHumanEmpire(galaxy, e);
     for (const c of e.colonies) {
-        if (c === h || c.slavery !== undefined || c.population == null || c.hasBeenDestroyed) continue;
+        if (c === h || c.slavery !== undefined || e.penalColonies.includes(c) || c.population == null || c.hasBeenDestroyed) continue;
         for (const q of c.population.items) {
-            if (q.race === e.dominantRace) continue;
+            if (!shippable(e, c, q.race, ai)) continue;
             const spare = Math.trunc(q.amount * (1 - p.PENAL_SOURCE_KEEP_SHARE));
             if (spare > best || (spare === best && src !== null && c.habitatIndex < src.habitatIndex)) {
                 best = spare;
@@ -363,6 +409,11 @@ function staffPenalColony(galaxy: Galaxy, e: Empire, st: SlaveryEmpireState, h: 
     const design = generateDesignFromSpec(galaxy, e, spec, 3.0, now);
     if (design === null) return;
     const amount = Math.min(best, p.PENAL_CONVOY_SIZE);
+    // The AI enslaves the people it ships (the stock population policy at the source; the player sets it itself).
+    if (ai && populationPolicyFor(src, race) !== ColonyPopulationPolicy.Enslave) {
+        if (e.dominantRace !== null && race.raceFamily === e.dominantRace.raceFamily) src.colonyPopulationPolicyRaceFamily = ColonyPopulationPolicy.Enslave;
+        else src.colonyPopulationPolicy = ColonyPopulationPolicy.Enslave;
+    }
     const item = src.population!.items.find((q) => q.race === race)!;
     item.amount -= amount;
     src.population!.recalculateTotalAmount();

@@ -6,7 +6,7 @@
 //   scorch       — scorching one's own colony (Scorched Earth, `colonyScorched`)
 //   refugees     — attacking a refugee convoy (Refugees & Demographics' convoys, `builtObjectAttacked`; once per ship)
 //   delegate     — attacking a Diet delegate's VIP shuttle (Characters & Victory trips; once per ship)
-//   enslave      — making a penal colony of conquered peoples ("Allow slavery", `colonyEnslaved`), and every year a
+//   enslave      — making a penal colony of conquered peoples (Slavery add-on, `colonyEnslaved`), and every year a
 //                  penal colony holds enslaved workers
 //   independents — attacking an independent colony (`habitatAttacked`; once per colony and year)
 // Each adds its weight × WAR_CRIME_WEIGHTS to the offender's RECORD, which fades by warCrimesDecayPerYear a year (3%: a

@@ -144,10 +144,9 @@ const CONFIGS = [
     { name: 'gt-smoke-off', set: 'new-threats', seed: 2, years: 3, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 } }, scenario: ['threat-framework', 'generation-ships', 'archive-cores', 'probe-swarm'], flags: {} },
     { name: 'gt-smoke', set: 'new-threats', seed: 1, years: 3, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 } }, scenario: ['threat-framework', 'generation-ships', 'archive-cores', 'probe-swarm'], flags: 'all', params: { genShipsEarliestYear: 0, genShipsLatestYear: 1, genShipsContactDays: 20, genShipsUltimatumDays: 90, genShipsAnswerDays: 20, probeSwarmYear: 0 } },
     // `--set dark-themes` (docs/DARK_THEMES.md §soaks; --hook scripts/dark-themes-hook.mjs): 700 stars, 7 empires, 20 years.
-    // dt-slavery: the base game (AI slavery on); dt-noslave: the same galaxy with AI slavery switched off by the hook
-    // (name ends in -noslave), the baseline.
+    // dt-slavery: the Slavery add-on; dt-base-noslave: the same galaxy, the stock game (the baseline).
     // dt-scorch: scorched earth; dt-warcrimes: Characters & Victory (the Diet) + war crimes + scorched earth.
-    ...[['dt-slavery-s1', null], ['dt-base-s1-noslave', null], ['dt-scorch-s1', ['scorched-earth']], ['dt-warcrimes-s1', ['characters-victory', 'war-crimes', 'scorched-earth']]].map(([name, scenario]) => ({
+    ...[['dt-slavery-s1', ['slavery']], ['dt-base-s1-noslave', null], ['dt-scorch-s1', ['scorched-earth']], ['dt-warcrimes-s1', ['characters-victory', 'war-crimes', 'scorched-earth', 'slavery']]].map(([name, scenario]) => ({
         name, set: 'dark-themes', seed: 1, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 } }, ...(scenario === null ? {} : { scenario, flags: 'all' }),
     })),
     // `--set long`: the many-decade runs (not in the default set).

@@ -368,7 +368,7 @@ export const PLAYER_OPS = {
     setColonyAsCapital: (galaxy: Galaxy, empire: Empire, colony: Habitat) => setColonyAsCapital(galaxy, empire, colony),
     /** Main.Part11.cs 2629 / 2643: cmbColonyPopulationPolicyRaceFamily (sameFamily) / cmbColonyPopulationPolicyAllOthers. */
     setColonyPopulationPolicy: (_galaxy: Galaxy, empire: Empire, colony: Habitat, sameFamily: boolean, policy: number) => setColonyPopulationPolicy(empire, colony, sameFamily, policy),
-    /** Not in DW:U: the Colonies window's "Make / Release penal colony" ("Allow slavery" policy, slaveryReview.ts). */
+    /** Not in DW:U: the Colonies window's "Make / Release penal colony" (Slavery add-on, slaveryReview.ts). */
     setPenalColony: (galaxy: Galaxy, empire: Empire, colony: Habitat, on: boolean) => setPenalColony(galaxy, empire, colony, on),
     /** Main.Part11.cs 2657 btnColonyPopulationApplyPolicyToAll_Click. */
     applyPopulationPolicyToAll: (_galaxy: Galaxy, empire: Empire, raceFamily: number, allOthers: number) => applyPopulationPolicyToAllColonies(empire, raceFamily, allOthers),

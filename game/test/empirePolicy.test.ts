@@ -232,37 +232,69 @@ describe('17d human player automation defaults (Start.2.cs 2122-2146)', () => {
     }, 300000);
 });
 
-// "Allow slavery" (src/sim/slavery.ts, slaveryReview.ts; docs/DARK_THEMES.md §1).
-describe('Allow slavery: penal colonies', () => {
+// Slavery add-on (src/sim/slavery.ts, slaveryReview.ts; docs/DARK_THEMES.md §1): off = the stock enslavement; on = one
+// system on the stock switch, Enslave policy and penalColonies list.
+describe('Slavery add-on: penal colonies', () => {
     let gameData: GameData;
     beforeAll(async () => {
         gameData = await loadGameDataFs();
     }, 300000);
 
-    it('designates, applies the factors and releases with the policy', async () => {
-        const { SLAVERY_PARAMS, isPenalColony, penalGarrisonRequired, penalTaxFactor, penalUnrest, slaveryApprovalTerm } = await import('../src/sim/slavery');
-        const { aiSlaveryScore, reviewSlavery, setPenalColony } = await import('../src/sim/slaveryReview');
-        const galaxy = cachedTickGame(gameData, { seconds: 1800 }).galaxy;
-        const e = galaxy.empires.find((x) => x !== null && x.active && x.colonies.length > 1 && x !== galaxy.independentEmpire && x.pirateEmpireBaseHabitat === null)!;
-        const h = e.colonies.find((c) => c !== e.capital && c.population.totalAmount > 0)!;
-        expect(setPenalColony(galaxy, e, h, true)).toBe(false); // policy off
-        e.policy!.allowSlavery = true;
-        expect(setPenalColony(galaxy, e, e.capital!, true)).toBe(false); // never the capital
+    async function enslaved(galaxy: import('../src/sim/galaxy').Galaxy, e: Empire, h: import('../src/sim/types').Habitat): Promise<void> {
+        const { Population } = await import('../src/sim/population');
+        const other = galaxy.races.find((r) => r !== e.dominantRace && r.raceFamily !== e.dominantRace!.raceFamily)!;
+        h.population.add(new Population(other, 100_000_000, galaxy));
+        h.population.recalculateTotalAmount();
+        h.colonyPopulationPolicy = ColonyPopulationPolicy.Enslave;
+        h.colonyPopulationPolicyRaceFamily = ColonyPopulationPolicy.Enslave;
+    }
+
+    it('add-on off: the stock Enslave bonus, no add-on state, no designation', async () => {
+        const { setPenalColony } = await import('../src/sim/slaveryReview');
+        const { reviewColonyPopulationPolicy } = await import('../src/sim/colonyTick');
+        const galaxy = cachedTickGame(gameData).galaxy;
+        const e = galaxy.playerEmpire!;
+        const h = e.capital!;
+        await enslaved(galaxy, e, h);
+        e.policy!.implementEnslavementWithPenalColonies = true;
+        reviewColonyPopulationPolicy(galaxy, e, 1);
+        expect(h.slaveryBonusFactor).toBeGreaterThan(1); // Empire.2.cs 3260: the stock income bonus
+        expect(setPenalColony(galaxy, e, h, true)).toBe(false);
+        expect(h.slavery).toBeUndefined();
+        expect(e.slavery).toBeUndefined();
+    }, 300000);
+
+    it('add-on on: the stock switch, Enslave policy and penal list drive the staffed factors', async () => {
+        const { SLAVERY_PARAMS, isPenalColony, penalGarrisonRequired, penalTaxFactor, penalWorkers, slaveryApprovalTerm } = await import('../src/sim/slavery');
+        const { aiSlaveryScore, penalDesignationBlocked, reviewSlavery, setPenalColony } = await import('../src/sim/slaveryReview');
+        const { reviewColonyPopulationPolicy } = await import('../src/sim/colonyTick');
+        const { createScenarioGame } = await import('./helpers/scenarioGame');
+        const galaxy = createScenarioGame(gameData, { scenario: 'slavery' }).game.galaxy;
+        const e = galaxy.playerEmpire!;
+        const h = e.capital!;
+        await enslaved(galaxy, e, h);
+        e.capital = null; // a capital cannot be a penal colony
+        if (e.capitals != null) e.capitals.length = 0;
+        expect(setPenalColony(galaxy, e, h, true)).toBe(false); // the stock switch is off
+        e.policy!.implementEnslavementWithPenalColonies = true;
+        expect(penalDesignationBlocked(galaxy, e, h)).toBeNull();
         expect(setPenalColony(galaxy, e, h, true)).toBe(true);
+        expect(e.penalColonies).toContain(h);
         expect(isPenalColony(h)).toBe(true);
-        expect(penalTaxFactor(h)).toBeGreaterThanOrEqual(1);
+        expect(penalWorkers(h)).toBe(100_000_000);
+        reviewColonyPopulationPolicy(galaxy, e, 1);
+        expect(h.slaveryBonusFactor).toBe(1); // the stock bonus is replaced
+        expect(penalTaxFactor(h)).toBeGreaterThan(1);
         expect(penalTaxFactor(h)).toBeLessThanOrEqual(SLAVERY_PARAMS.PENAL_TAX_MAX_FACTOR);
         expect(penalGarrisonRequired(galaxy, h)).toBeGreaterThanOrEqual(SLAVERY_PARAMS.PENAL_GARRISON_BASE);
         expect(slaveryApprovalTerm(h)).toBe(-SLAVERY_PARAMS.PENAL_APPROVAL_PENALTY);
-        expect(penalUnrest(galaxy, h)).toBeGreaterThanOrEqual(0);
-        e.policy!.allowSlavery = false;
+        // The switch off releases it from the stock list.
+        e.policy!.implementEnslavementWithPenalColonies = false;
         reviewSlavery(galaxy, e, 10);
-        expect(isPenalColony(h)).toBe(false);
+        expect(e.penalColonies).not.toContain(h);
         expect(h.slavery).toBeUndefined();
-        expect(e.slavery!.penal.length).toBe(0);
-        // Species and government: a democracy never allows it.
         const gov = e.governmentId;
-        e.governmentId = 4;
+        e.governmentId = 4; // a democracy never enslaves
         expect(aiSlaveryScore(e)).toBeNull();
         e.governmentId = gov;
     }, 300000);

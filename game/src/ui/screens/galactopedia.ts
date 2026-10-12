@@ -44,7 +44,7 @@ import { econGalactopediaItems, econGalactopediaPage } from '../scenario/colonyE
 import { FONT, el, glassButton, gradientPanel, linkLabel, openOriginalWindow, place, textBox } from '../originalWindow';
 import { EXPANSIONS } from '../../sim/scenario/addons';
 import { EXPANSION_INFO, difficultyLabel, meterBar } from '../../sim/scenario/expansionInfo';
-import { ARTICLE_IMAGES, EXPANSION_ARTICLES, articleTitle, type ArticleImage, type ExpansionArticle } from '../../sim/scenario/expansionArticles';
+import { ARTICLE_IMAGES, EXPANSION_ARTICLES, STANDALONE_EXP, articleTitle, type ArticleImage, type ExpansionArticle } from '../../sim/scenario/expansionArticles';
 import { FAUNA_BODIES, LANTERN_SWARM, PALETTE_FRAMES, dotRgba, fallbackPaletteSource, paletteSourceFromRgba, rasterBody, restPose, type PaletteSource, type RgbaImage } from '../../render/creatureRig';
 import { loadScenarioIndex } from '../../sim/scenario/fetchScenario';
 import { fileNameOf, findMhtPart, parseMht, type MhtDocument } from './mht';
@@ -1142,6 +1142,10 @@ function expansionArticleItems(expItems: EncyclopediaItem[]): EncyclopediaItem[]
             out.push({ id: articleItemId(a), title: articleTitle(a), filename: `${ART_PREFIX}${articleItemId(a)}`, category, isCategoryRoot: false, relatedItems: [expItem] });
         }
     }
+    // Standalone add-ons (in no expansion: exp STANDALONE_EXP) are listed under Expansions themselves.
+    for (const a of EXPANSION_ARTICLES.filter((x) => x.exp === STANDALONE_EXP)) {
+        out.push({ id: articleItemId(a), title: `${articleTitle(a)} — standalone add-on`, filename: `${ART_PREFIX}${articleItemId(a)}`, category: EncyclopediaCategory.Expansions, isCategoryRoot: false, relatedItems: [] });
+    }
     return out;
 }
 
@@ -1168,9 +1172,9 @@ function renderFieldGuideArticle(key: string): HTMLElement {
     }
     const a = EXPANSION_ARTICLES.find((x) => articleItemId(x) === key);
     const e = a === undefined ? undefined : EXPANSIONS.find((x) => x.id === a.exp);
-    if (a === undefined || e === undefined) return wrap;
-    wrap.appendChild(partOfLine('Part of:', e.name, e.id));
-    wrap.appendChild(el('p', 'gp-partof', `Add-on: ${a.addon}.`));
+    if (a === undefined || (e === undefined && a.exp !== STANDALONE_EXP)) return wrap;
+    if (e !== undefined) wrap.appendChild(partOfLine('Part of:', e.name, e.id));
+    wrap.appendChild(el('p', 'gp-partof', e !== undefined ? `Add-on: ${a.addon}.` : `Standalone add-on: ${a.addon} (in no expansion).`));
     const img = ARTICLE_IMAGES[a.id];
     if (img !== undefined) wrap.appendChild(articleFigure(img));
     for (const t of a.text) wrap.appendChild(el('p', '', t));

@@ -15,7 +15,7 @@
 // draws per recruit. The Bacon market-price noise uses clock-seeded `new Random()` in C# — here
 // galaxy.baconHabitatClockRnd (derived from the galaxy seed, plan §0; never touches Galaxy.Rnd).
 
-import { isPenalColony, penalUnrest } from './slavery';
+import { isPenalColony, penalUnrest, slaveryOn } from './slavery';
 import { RaceEventType } from './eventTypes';
 import type { Galaxy } from './galaxy';
 import { galaxyRace } from './galaxy';
@@ -337,7 +337,7 @@ export function checkSatisfaction(galaxy: Galaxy, habitat: Habitat): void {
     let approval = empireApprovalRating(galaxy, habitat);
     // mod layer (19m): the revolt reads the colony's stability ledger (martial law holds it at the leave threshold).
     if (galaxy.scenario !== null) approval = scenarioQuery(galaxy, 'colonyRevoltApproval', approval, { habitat, leaveThreshold: num5 });
-    // Not in DW:U: a penal colony's unrest the garrison does not hold (the "Allow slavery" policy, slavery.ts).
+    // Not in DW:U: a penal colony's unrest the garrison does not hold (the Slavery add-on, slavery.ts).
     const penal = habitat.slavery !== undefined && isPenalColony(habitat);
     const wasRebelling = habitat.rebelling;
     if (penal) approval -= penalUnrest(galaxy, habitat);
@@ -1004,7 +1004,8 @@ export function reviewColonyPopulationPolicy(galaxy: Galaxy, empire: Empire, tim
             habitat.population.remove(populationList3[k]);
         }
         habitat.population.recalculateTotalAmount();
-        if (num2 > 0) {
+        // Slavery add-on (slavery.ts): its staffed tax / output factors replace the stock SlaveryBonusFactor.
+        if (num2 > 0 && !slaveryOn(galaxy)) {
             const num5 = num2 / habitat.population.totalAmount;
             habitat.slaveryBonusFactor = f32(1.0 + num5 * 0.5);
         } else {
@@ -1087,6 +1088,8 @@ export function reviewColonyPopulationPolicy(galaxy: Galaxy, empire: Empire, tim
     if (!empire.controlPopulationPolicy) {
         return;
     }
+    // Slavery add-on: the penal colonies are chosen and kept by slaveryReview.ts (it replaces 3409-3437 below).
+    if (slaveryOn(galaxy)) return;
     const habitatList2: Habitat[] = [];
     for (let num15 = 0; num15 < empire.penalColonies.length; num15++) {
         const habitat2 = empire.penalColonies[num15];

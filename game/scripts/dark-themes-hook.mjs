@@ -4,14 +4,13 @@
 //            people, and per penal colony workers / target / multiplier, tax and luxury output against the same colony
 //            free, garrison held / needed, revolts;
 //   scorched earth / war crimes: their add-on state when they run.
-// A config whose name ends in "-noslave" switches AI slavery off (SLAVERY_PARAMS.AI_ADOPT_SCORE = Infinity): the baseline.
+// "allow" is the stock "Use Penal Colonies to implement 'Enslave' policy" switch (also set by race policy files in the stock game).
 const YEAR_MS = 600_000;
 let mods = null;
 let lastDay = -1;
 
 export async function start(ctx) {
     mods = { s: await ctx.load('slavery'), r: await ctx.load('slaveryReview') };
-    if (String(ctx.report.name).endsWith('-noslave')) mods.s.SLAVERY_PARAMS.AI_ADOPT_SCORE = Infinity;
     ctx.report.darkThemes = {};
 }
 
@@ -46,7 +45,7 @@ export function chunk(ctx) {
         empires.push({
             name: e.name, active: e.active, human: e === g.playerEmpire, race: e.dominantRace?.name, government: e.governmentId,
             score: r.aiSlaveryScore(e), allow: s.slaveryAllowed(e), adoptedYear: adoptedYear(g, e, s.slaveryAllowed(e)),
-            enslavable: r.enslavablePool(e), colonies: e.colonies.length, money: Math.round(e.stateMoney), penal, stats: st?.stats ?? null,
+            enslavable: r.enslavablePool(e, true), colonies: e.colonies.length, money: Math.round(e.stateMoney), penal, stats: st?.stats ?? null,
         });
     }
     const wc = g.scenario?.state?.warCrimes ?? null;

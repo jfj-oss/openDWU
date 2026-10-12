@@ -8,6 +8,7 @@
 // controls back the way method_597 does, including the readers' fallbacks for a control the panel does not show
 // (pirate empires), and builds a *new* EmpirePolicy from the class defaults exactly like `new EmpirePolicy()`.
 
+import { SLAVERY_PARAMS, slaveryOn } from '../../sim/slavery';
 import { checkEmpireHasOwnedColonies } from './buildOrder';
 import { AutomationLevel, type Empire } from '../../sim/empire';
 import {
@@ -482,9 +483,14 @@ export function buildPolicyPanel(empire: Empire, policy: PolicyData, ctx: Policy
             push({ name, label: t(label), suffix: '', control: { kind: 'combo', reader: 'population', options: POPULATION_POLICY_TEXT.map(t), index: POPULATION_POLICIES.indexOf(value) } });
         population('NewColonyPopulationPolicyYourRaceFamily', 'Default Population Policy: Your Race Family', p.newColonyPopulationPolicyYourRaceFamily);
         population('NewColonyPopulationPolicyAllRaces', 'Default Population Policy: All Other Races', p.newColonyPopulationPolicyAllRaces);
-        check('ImplementEnslavementWithPenalColonies', "Use Penal Colonies to implement 'Enslave' policy", p.implementEnslavementWithPenalColonies);
-        // Not in DW:U: "Allow slavery" (sim/slavery.ts) — lets the Colonies window make penal colonies.
-        check('AllowSlavery', 'Allow slavery (penal colonies: luxury and rare output ×3, tax ×2, large garrisons, revolts, reputation)', p.allowSlavery === true);
+        // Slavery add-on (sim/slavery.ts): the same stock switch, labelled with what it does then.
+        check(
+            'ImplementEnslavementWithPenalColonies',
+            slaveryOn(e.galaxy)
+                ? `Use Penal Colonies to implement 'Enslave' policy (Slavery add-on: luxury and rare output up to ×${SLAVERY_PARAMS.PENAL_RESOURCE_MAX_FACTOR}, tax up to ×${SLAVERY_PARAMS.PENAL_TAX_MAX_FACTOR} with staffing; large garrisons, revolts, reputation)`
+                : "Use Penal Colonies to implement 'Enslave' policy",
+            p.implementEnslavementWithPenalColonies,
+        );
 
         section('Colonies - Facility Building', [
             automation('AutomationColonyFacilityBuilding', ['Control manually', 'Suggest new colony facilities', 'Fully automate'], e.controlColonyFacilities, 'automation'),
@@ -816,9 +822,6 @@ export function applyPolicyPanel(
     p.tradeWithOtherEmpires = chk('EconomyTradeWithOtherEmpires');
     p.engageInTourism = chk('EconomyEngageInTourism');
     p.implementEnslavementWithPenalColonies = chk('ImplementEnslavementWithPenalColonies');
-    // Absent unless set, so a policy that never allowed slavery is the policy it was.
-    if (chk('AllowSlavery')) p.allowSlavery = true;
-    else if (p.allowSlavery !== undefined) p.allowSlavery = false;
     p.intelligenceUseEspionageAgainstEmpireWhen = idx('IntelligenceUseEspionageAgainstEmpireWhen');
     p.intelligenceUseSabotageAgainstEmpireWhen = idx('IntelligenceUseSabotageAgainstEmpireWhen');
     p.colonyActionForNewBuildDesign = readDesign(c, 'ColonyActionForNewBuildDesign');

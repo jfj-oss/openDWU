@@ -430,7 +430,7 @@ export const cmdLoad: CommandHandler = (ctx) => {
     let result = 0.0;
     // mod layer (19d4 §2.5): a refugee convoy is pre-loaded (its population already left the origin when its flow
     // spawned) — skip the pickup leg instead of wiping and re-pulling it from the origin's live colony population.
-    // Not in DW:U: the "Allow slavery" policy's labour convoys are pre-loaded too (slavery.ts).
+    // Not in DW:U: the Slavery add-on's labour convoys are pre-loaded too (slavery.ts).
     if ((bo.slavery !== undefined && penalConvoySkipLoad(bo)) || (galaxy.scenario !== null && (refugeeConvoySkipLoad(galaxy, bo) || labourConvoySkipLoad(galaxy, bo) || smugglerRunSkipLoad(galaxy, bo)))) {
         mission.completeCommand();
         bo.firstExecutionOfCommand = true;
@@ -824,7 +824,7 @@ export const cmdUnload: CommandHandler = (ctx) => {
                 settleRefugeeConvoyArrival(galaxy, bo, dockedAt);
                 settleLabourConvoyArrival(galaxy, bo, dockedAt); // The Voidbloom War: labour convoys (the stock unload above settled them)
             }
-            if (bo.slavery !== undefined) settlePenalConvoyArrival(bo, dockedAt); // "Allow slavery" labour convoys (slavery.ts)
+            if (bo.slavery !== undefined) settlePenalConvoyArrival(bo, dockedAt); // Slavery add-on labour convoys (slavery.ts)
             if (bo.population !== null) {
                 bo.population.items.length = 0;
                 bo.population.recalculateTotalAmount();
