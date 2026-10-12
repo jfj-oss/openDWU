@@ -57,6 +57,7 @@ import {
 } from './rimDust';
 import { SpritePool } from './fxCommon';
 import { RimWind } from './rimWind';
+import { getSettings } from '../ui/settings';
 import { buildMapLook, MAP_LOOK_LANE_SCALE, mapLookOf, updateMapLook, type RimMapLook } from './rimMapLook';
 import { BUILT_OBJECT_MAX_FACTOR } from './builtObjectLayer';
 import type { Galaxy } from '../sim/galaxy';
@@ -1148,7 +1149,7 @@ export class RimAtmosphereLayer {
             this.wash.visible = galaxyA > 0.01;
         }
         this.galaxyA = galaxyA;
-        if (this.mapLookSprites.length > 0) updateMapLook(this.mapLook, this.mapLookSprites, galaxyA, tSec);
+        if (this.mapLookSprites.length > 0) updateMapLook(this.mapLook, this.mapLookSprites, galaxyA, tSec, getSettings().animateBackdrop);
 
         // Dust space: pans at DUST_PARALLAX of the camera (about the galaxy centre). The deep field container undoes
         // the world transform so the starfield keeps its screen-space parallax.

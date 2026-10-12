@@ -24,6 +24,9 @@ export const MAP_LOOK_LANE_SCALE: Record<RimMapLook, number> = { wash: 1, haze: 
 
 /** Wisp layer drift (radians / real second about the galaxy centre): one turn in ~3 h / ~5 h, opposite ways. */
 const WISP_SPIN = [2 * Math.PI / 10800, -2 * Math.PI / 18000];
+/** Haze drift: one turn in 20 min (a slow, visible flow of the mottling round the rim), with a gentle 45 s breathing. */
+const HAZE_SPIN = 2 * Math.PI / 1200;
+const HAZE_BREATH_S = 45;
 
 function clamp01(v: number): number {
     return v < 0 ? 0 : v > 1 ? 1 : v;
@@ -142,14 +145,24 @@ export function buildMapLook(look: RimMapLook, geo: RimGeometry, p: RimParams, h
     });
 }
 
-/** Per frame: fade with the backdrop; the wisp layers drift (rotation only — a uniform, no redraw). */
-export function updateMapLook(look: RimMapLook, sprites: readonly Sprite[], galaxyA: number, tSec: number): void {
+/** Per frame: fade with the backdrop; the haze and wisp layers drift (rotation only — a uniform, no redraw). With
+ *  `animate` off (Game Options "Animate backdrop") the look holds still. */
+export function updateMapLook(look: RimMapLook, sprites: readonly Sprite[], galaxyA: number, tSec: number, animate = true): void {
     const on = galaxyA > 0.01;
     for (let i = 0; i < sprites.length; i++) {
         const s = sprites[i];
         if (s.visible !== on) s.visible = on;
         if (!on) continue;
-        s.alpha = galaxyA;
-        if (look === 'wisps') s.rotation = (tSec % 54000) * WISP_SPIN[i % 2];
+        if (!animate) {
+            s.alpha = galaxyA;
+            continue;
+        }
+        if (look === 'haze') {
+            s.rotation = (tSec % 1200) * HAZE_SPIN;
+            s.alpha = galaxyA * (0.88 + 0.12 * Math.sin((tSec % HAZE_BREATH_S) * (2 * Math.PI / HAZE_BREATH_S)));
+        } else {
+            s.alpha = galaxyA;
+            if (look === 'wisps') s.rotation = (tSec % 54000) * WISP_SPIN[i % 2];
+        }
     }
 }
