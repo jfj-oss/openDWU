@@ -54,6 +54,7 @@ import {
     vbParam,
     vbState,
     vbWarOf,
+    voidbloomId,
     voidbloomStock,
     type Crackdown,
     type VbWar,
@@ -64,7 +65,7 @@ export const CRISIS_DECISION = 'voidbloom.crisis';
 /** Re-asks a tolerated crackdown's target every this many years (the AI may escalate as the Concord weakens). */
 const REASK_YEARS = 3;
 /** Years a backed-down target keeps its word. */
-const BACKDOWN_YEARS = 10;
+const BACKDOWN_YEARS = 6;
 
 // ---------------------------------------------------------------------------------------------------------------
 // The commissioner and the start of the crackdown
@@ -186,9 +187,9 @@ export function aiCrisisChoice(galaxy: Galaxy, e: Empire): string {
     const bite = cd === null ? 0 : 0.25 * (cd.raids + cd.burns) + 0.8 * cd.occupations;
     const share = Math.min(1, profit / Math.max(1, price));
     const war = 3 * (ratio - 0.8) + aggr - 0.5 * caution + 3 * decline - 1.5;
-    const tolerate = 1 + share - bite;
+    const tolerate = 1.2 + 1.5 * share - bite;
     const pay = e.stateMoney > 3 * price ? 0.6 + 0.3 * caution : -9;
-    const back = 0.3 + 0.5 * friendly + 0.5 * caution - share - 0.2 * ratio;
+    const back = 0.1 + 0.4 * friendly + 0.4 * caution - share - 0.3 * ratio;
     const opts: [string, number][] = [['war', war], ['tolerate', tolerate], ['pay', pay], ['backDown', back]];
     let best = opts[0];
     for (const o of opts) if (o[1] > best[1]) best = o;
@@ -452,13 +453,27 @@ function huntFreighters(galaxy: Galaxy, r: Empire, cd: Crackdown, e: Empire): vo
         if (b === null || b.hasBeenDestroyed || b.cargo === null || voidbloomStock(galaxy, b) <= 0) continue;
         let hunter: BuiltObject | null = null;
         for (const t of cd.taskForce) if (!t.hasBeenDestroyed && galaxy.calculateDistance(t.xpos, t.ypos, b.xpos, b.ypos) <= reach) hunter = hunter ?? t;
-        if (hunter === null) continue;
+        // Not every freighter is caught (35 % a month within a sector of the task force).
+        if (hunter === null || !(galaxy.rnd.nextDouble() < 0.35)) continue;
         const near = cd.site ?? nearestConcordColony(galaxy, r, b.xpos, b.ypos);
         if (near !== null) seize(galaxy, b, near);
         cd.hunted++;
         st.stats.hunted++;
         if (cd.status === 'war' && b.role === BuiltObjectRole.Freight) assignMission(galaxy, hunter, BuiltObjectMissionType.Attack, b, null, BuiltObjectMissionPriority.High);
     }
+}
+
+/** Destroys `share` of every Voidbloom item at a holder (unreserved amounts). Returns units destroyed. */
+function destroyShare(galaxy: Galaxy, holder: Habitat, share: number): number {
+    const id = voidbloomId(galaxy);
+    let n = 0;
+    for (const c of holder.cargo?.items ?? []) {
+        if (c.commodity.resourceId !== id) continue;
+        const cut = Math.floor(Math.max(0, c.amount - c.reserved) * share);
+        c.amount -= cut;
+        n += cut;
+    }
+    return n;
 }
 
 function policeAction(galaxy: Galaxy, r: Empire, cd: Crackdown): void {
@@ -514,8 +529,11 @@ function policeAction(galaxy: Galaxy, r: Empire, cd: Crackdown): void {
     if (cd.siteSince < 0) cd.siteSince = now;
     const w = bloomWorldOf(galaxy, site);
     const daysThere = (now - cd.siteSince) / GAME_DAY_LENGTH;
-    // The raid: the stockpile on the planet is seized and destroyed (the "merchants' detention").
-    const stock = removeVoidbloom(galaxy, site);
+    // The raid (every 60 days on station): most of the stockpile on the planet is seized and destroyed (the
+    // "merchants' detention"); the growers hide the rest.
+    const raidDue = cd.lastRaid === undefined || now - cd.lastRaid >= 60 * GAME_DAY_LENGTH;
+    const stock = raidDue ? destroyShare(galaxy, site, 0.7) : 0;
+    if (raidDue) cd.lastRaid = now;
     if (stock > 0) {
         cd.raids++;
         st.stats.raids++;
@@ -540,7 +558,7 @@ function policeAction(galaxy: Galaxy, r: Empire, cd: Crackdown): void {
         scenarioNews(galaxy, r, scenarioText('Voidbloom Agents News', site.name, r.name), () => true, site);
     }
     // Occupation after 90 days on station when the garrison is thinner than the task force's marines.
-    if (daysThere >= 90 && garrisonOf(site) < present) {
+    if (daysThere >= 180 && garrisonOf(site) * 2 < present) {
         takeOwnershipOfColonyFull(galaxy, e, site, r, false, true);
         // The Concord frees the forced workers and shuts the world down: the people are taken to its nearest colony.
         const home = nearestConcordColony(galaxy, r, site.xpos, site.ypos);

@@ -54,13 +54,13 @@ export const VB_DEFAULTS = {
     voidbloomCorruption: 0.5,
     voidbloomCrackdownAddiction: 0.12,
     voidbloomCrackdownValue: 400000,
-    voidbloomInspectPct: 30,
+    voidbloomInspectPct: 20,
     voidbloomTaskForceShips: 8,
     voidbloomBurnDays: 540,
     voidbloomBurnYieldPct: 25,
     voidbloomPayIndemnity: 250000,
     voidbloomPayYears: 5,
-    voidbloomGateDecline: 0.45,
+    voidbloomGateDecline: 0.4,
     voidbloomHarshPoints: 600,
     voidbloomRevancheMinYears: 15,
     voidbloomRevancheMaxYears: 30,
@@ -178,6 +178,8 @@ export interface Crackdown {
     site: Habitat | null;
     siteSince: number;
     lastAction: number;
+    /** Star date of the last raid (every 60 days on station). */
+    lastRaid?: number;
     raids: number;
     burns: number;
     occupations: number;
