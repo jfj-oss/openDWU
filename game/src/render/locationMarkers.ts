@@ -24,7 +24,7 @@ import type { Empire } from '../sim/empire';
 import { hintSource, hintSubject } from '../sim/player/hintSubjects';
 import { isMarkerDismissed, waypointState, type Waypoint } from '../sim/player/waypoints';
 import { knownLocationTooltip, knownLocations, knownLocationsSignature, type KnownLocation } from '../sim/player/knownLocations';
-import type { GalaxyLocation } from '../sim/galaxyLocation';
+import { GalaxyLocationType, type GalaxyLocation } from '../sim/galaxyLocation';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
 import { overlayActive, type MapOverlayState } from '../ui/mapOverlays';
 import { getSettings } from '../ui/settings';
@@ -105,6 +105,7 @@ export function mapMarkers(galaxy: Galaxy, player: Empire | null, showWaypoints:
     if (showKnown) {
         for (const k of knownLocations(galaxy, player, reveal)) {
             if (k.kind === 'hint' && k.location !== null) continue;
+            if (k.location !== null && !locationMarkerWorthIt(galaxy, k.location)) continue;
             out.push({ kind: k.kind, key: k.key, x: k.x, y: k.y, name: k.kind === 'hint' ? `? ${k.name}` : k.name, waypoint: null, known: k });
         }
     }
@@ -119,6 +120,26 @@ export function markerTooltip(galaxy: Galaxy, player: Empire | null, m: MapMarke
     }
     if (m.known !== null) return knownLocationTooltip(galaxy, player, m.known);
     return m.name;
+}
+
+/** A black hole / supernova marker needs its star's research bonus (Habitat.ResearchBonus, %: stock 5-15 at these
+ *  stars, Galaxy.5.cs SetResearchBonus) at least this... */
+export const MARKER_MIN_RESEARCH_BONUS = 10;
+/** ...or its ScenicFactor (stock 0.3-0.9 at a black hole, Galaxy.5.cs SetScenicFactor; a supernova has none) at least
+ *  this (the top of every planet's scenic roll). */
+export const MARKER_MIN_SCENIC_FACTOR = 0.6;
+
+/**
+ * Whether a known location gets a marker: a black hole's (its Pull and Event Horizon) or a supernova's only when its
+ * star carries a substantial research or scenery bonus (every black hole and supernova is a known location once seen,
+ * mostly worth nothing); the other types always. This overlay is our addition (the original marks none of them).
+ */
+export function locationMarkerWorthIt(galaxy: Galaxy, loc: GalaxyLocation): boolean {
+    if (loc.type !== GalaxyLocationType.BlackHole && loc.type !== GalaxyLocationType.SuperNova) return true;
+    const c = loc.resolveLocationCenter();
+    const star = galaxy.fastFindNearestSystem(c.x, c.y);
+    if (star === null || Math.abs(star.xpos - c.x) > 10 || Math.abs(star.ypos - c.y) > 10) return true;
+    return star.researchBonus >= MARKER_MIN_RESEARCH_BONUS || star.scenicFactor >= MARKER_MIN_SCENIC_FACTOR;
 }
 
 /** A change key for mapMarkers' input. */

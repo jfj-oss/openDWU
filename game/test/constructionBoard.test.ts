@@ -9,14 +9,14 @@ import type { GameData } from '../src/sim/data/gameData';
 import type { Game } from '../src/sim/game';
 import type { BuiltObject } from '../src/sim/builtObject';
 import type { Design } from '../src/sim/design';
-import { HabitatCategoryType, type Habitat } from '../src/sim/types';
+import { HabitatCategoryType, HabitatType, type Habitat } from '../src/sim/types';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import { BuiltObjectMissionType, builtObjectMission, COORD_UNSET_DOUBLE } from '../src/sim/missions/mission';
 import { assignQueuedMission, clearPreviousMissionRequirements } from '../src/sim/missions/assign';
 import { isAiControlled } from '../src/sim/missions/playerOrder';
 import { runPlayerCommand } from '../src/sim/player/playerCommands';
 import { commandLog } from '../src/sim/player/commandLog';
-import { addConstructionJob, boardShipEligible, constructionBoardOf, constructionJobRows, jobInvalidReason, processConstructionBoard, type ConstructionJob } from '../src/sim/player/constructionBoard';
+import { addConstructionJob, starBuildOffset, boardShipEligible, constructionBoardOf, constructionJobRows, jobInvalidReason, processConstructionBoard, type ConstructionJob } from '../src/sim/player/constructionBoard';
 import { createMissionShipActionAt } from '../src/sim/player/shipAction';
 import { executeShipAction } from '../src/sim/player/executeShipAction';
 import { runGameSeconds } from '../src/sim/tick/harness';
@@ -266,4 +266,33 @@ describe('construction job board', () => {
         runGameSeconds(game, 20);
         for (const e of g.empires) if (e !== game.playerEmpire) expect(e.constructionBoard).toBeUndefined();
     }, 300000);
+
+    it('builds at a black hole outside its Pull and survives (an unset build point used to be the centre: dragged into the Event Horizon)', () => {
+        const game = cachedTickGame(gameData);
+        const g = game.galaxy;
+        const p = game.playerEmpire;
+        const ships = constructionShips(game);
+        for (const s of ships) makeIdle(game, s);
+        const bh = g.habitats
+            .filter((h) => h.type === HabitatType.BlackHole)
+            .sort((a, b) => Math.hypot(a.xpos - ships[0].xpos, a.ypos - ships[0].ypos) - Math.hypot(b.xpos - ships[0].xpos, b.ypos - ships[0].ypos))[0];
+        expect(bh).toBeDefined();
+        // The stock order path's own point (0.7 * Diameter out and beyond) is kept; an unset or inner one is re-rolled out.
+        expect(starBuildOffset(g, bh, bh.diameter * 0.8, bh.diameter * 0.8)).toEqual({ x: bh.diameter * 0.8, y: bh.diameter * 0.8 });
+        const inner = starBuildOffset(g, bh, 100, 100);
+        expect(Math.hypot(inner.x, inner.y)).toBeGreaterThanOrEqual(bh.diameter * 0.7);
+        const design = p.designs.find((d) => d.subRole === BuiltObjectSubRole.EnergyResearchStation && !d.isObsolete) ?? p.designs.find((d) => d.subRole === BuiltObjectSubRole.MonitoringStation)!;
+        const id = runPlayerCommand(g, p, 'constructionJobAdd', [design, bh, COORD_UNSET_DOUBLE, COORD_UNSET_DOUBLE]);
+        const job = constructionBoardOf(p).jobs.find((j) => j.id === id)!;
+        expect(Math.hypot(job.x, job.y)).toBeGreaterThanOrEqual(bh.diameter * 0.7);
+        const ship = job.ship!;
+        const pull = bh.diameter * 0.55;
+        let closest = Infinity;
+        for (let t = 0; t < 450 && !ship.hasBeenDestroyed; t += 5) {
+            runGameSeconds(game, 5);
+            closest = Math.min(closest, Math.hypot(ship.xpos - bh.xpos, ship.ypos - bh.ypos));
+        }
+        expect(ship.hasBeenDestroyed).toBe(false);
+        expect(closest).toBeGreaterThan(pull);
+    }, 600000);
 });

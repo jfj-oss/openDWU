@@ -11,6 +11,9 @@
 // NextDouble; 3030).
 
 import type { BuiltObject } from '../builtObject';
+import type { Galaxy } from '../galaxy';
+import { HabitatType } from '../types';
+import { BuiltObjectSubRole } from '../builtObjectTypes';
 import { shipGroupWarpSpeed, type ShipGroup } from '../fleets/shipGroup';
 import { shipGroupCruiseSpeed, shipGroupRemoveShipsWithoutHyperdrive, shipGroupTopSpeed } from '../fleets/shipGroupTasks';
 import type { CommandHandler } from './executeCommands';
@@ -212,6 +215,39 @@ export const cmdConditionalHyperTo: CommandHandler = (ctx) => {
 
 const hyperExit = { x: 0.0, y: 0.0 };
 
+/** How far from a black hole (in its diameters) a construction ship's jump target counts as at it (BuiltObject.2.cs
+ * EvaluateRelativeToParent's black-hole arrival distance, Diameter * 3). */
+export const BLACK_HOLE_EXIT_RANGE_DIAMETERS = 3;
+
+/**
+ * Not in the original: a construction ship jumping to a point at a black hole exits on the far side of that point from
+ * the hole (the rolled exit distance kept, its direction turned radially outwards). The stock exit scatter
+ * (SelectHyperJumpExitPoint(BaseHyperJumpAccuracy), any direction) — around the hole's centre once BaconBuiltObject
+ * CheckNearTarget re-aimed the jump there (combat/attackAI.ts) — dropped it inside the hole's Pull (radius
+ * 0.55 * Diameter) or set it a MoveTo across it; slowed there by the Diameter * 3 black-hole arrival distance,
+ * it could not out-run the Pull, was dragged into the Event Horizon (ShipDamage, Diameter hp/s) and destroyed. Exiting
+ * outwards, it flies radially in to its build point (0.7 * Diameter out, outside the Pull) and never crosses it. No Rnd.
+ */
+function constructionShipBlackHoleExit(galaxy: Galaxy, bo: BuiltObject, targetX: number, targetY: number): void {
+    if (bo.subRole !== BuiltObjectSubRole.ConstructionShip) return;
+    const star = galaxy.fastFindNearestSystem(targetX, targetY);
+    if (star === null || star.type !== HabitatType.BlackHole) return;
+    let dx = targetX - star.xpos;
+    let dy = targetY - star.ypos;
+    let d = Math.hypot(dx, dy);
+    if (d >= star.diameter * BLACK_HOLE_EXIT_RANGE_DIAMETERS) return;
+    if (d < 1) {
+        // At the centre: keep the rolled direction.
+        dx = bo.hyperjumpX;
+        dy = bo.hyperjumpY;
+        d = Math.hypot(dx, dy);
+    }
+    const len = Math.hypot(bo.hyperjumpX, bo.hyperjumpY);
+    if (d <= 0 || len <= 0) return;
+    bo.hyperjumpX = (dx / d) * len;
+    bo.hyperjumpY = (dy / d) * len;
+}
+
 /** BuiltObject.2.cs 3020 case HyperTo. Rnd: first execution — Next(0, 2000), then SelectHyperJumpExitPoint. */
 export const cmdHyperTo: CommandHandler = (ctx) => {
     const { galaxy, bo, mission, timePassed, time, starDate } = ctx;
@@ -232,6 +268,7 @@ export const cmdHyperTo: CommandHandler = (ctx) => {
         const exitPoint = galaxy.selectHyperJumpExitPoint(baseHyperJumpAccuracy);
         bo.hyperjumpX = exitPoint.x;
         bo.hyperjumpY = exitPoint.y;
+        constructionShipBlackHoleExit(galaxy, bo, num, num2);
         bo.lastHyperDistance = 536870911.0;
         bo.lastPositionX = bo.xpos;
         bo.lastPositionY = bo.ypos;

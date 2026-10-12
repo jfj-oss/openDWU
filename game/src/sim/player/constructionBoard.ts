@@ -22,7 +22,7 @@ import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
 import type { Design } from '../design';
-import { HabitatCategoryType, type Habitat } from '../types';
+import { HabitatCategoryType, HabitatType, type Habitat } from '../types';
 import { BuiltObjectRole } from '../data/designSpecifications';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
 import { BuiltObjectMission, BuiltObjectMissionPriority, BuiltObjectMissionType, COORD_UNSET_DOUBLE } from '../missions/mission';
@@ -529,6 +529,7 @@ export function constructionBoardShipFree(galaxy: Galaxy, ship: BuiltObject, que
 export function addConstructionJob(galaxy: Galaxy, empire: Empire, design: Design, habitat: Habitat | null, x: number, y: number, nextFor: BuiltObject | null = null): number {
     if (!isPlayer(galaxy, empire) || !isBoardBuildDesign(design)) return 0;
     if (habitat !== null && habitat.category === HabitatCategoryType.Star && isMining(design.subRole)) return 0;
+    if (habitat !== null && habitat.category === HabitatCategoryType.Star) ({ x, y } = starBuildOffset(galaxy, habitat, x, y));
     const board = constructionBoardOf(empire);
     const job: ConstructionJob = { id: board.nextId++, design, habitat, x, y, ship: null, active: false, basesAtStart: 0, attempts: 0 };
     if (jobInvalidReason(galaxy, empire, job) !== null) return 0;
@@ -540,6 +541,23 @@ export function addConstructionJob(galaxy: Galaxy, empire: Empire, design: Desig
     }
     evaluateConstructionBoard(galaxy, empire);
     return job.id;
+}
+
+/**
+ * A board job's build point around a star, relative to it. The stock order path (Main.Part7.cs ExecuteShipAction, port
+ * executeShipAction.ts: a base ordered at a star) always parks the base on SelectRelativeParkingPoint(Diameter * 0.7)
+ * for a black hole — outside its Pull (radius 0.55 * Diameter) and Event Horizon (ShipDamage, Diameter hp/s) — and
+ * 2000 + 0-3000 out for any other star. The board's other entries (the habitat panel's dispatch with the order menu's
+ * "Build here" point, Diameter / 2.5 out; the Expansion Planner's unset point = the star's centre) skipped that, so a
+ * construction ship building at a black hole sat inside the Pull, was dragged with its half-built base into the Event
+ * Horizon and destroyed. A point already that far out (the stock path's own) is kept; else the stock roll is made.
+ */
+export function starBuildOffset(galaxy: Galaxy, star: Habitat, x: number, y: number): { x: number; y: number } {
+    const blackHole = star.type === HabitatType.BlackHole;
+    const min = blackHole ? star.diameter * 0.7 : 2000.0;
+    const unset = x <= COORD_UNSET_DOUBLE / 2 || y <= COORD_UNSET_DOUBLE / 2;
+    if (!unset && x !== 0 && y !== 0 && Math.hypot(x, y) >= min) return { x, y };
+    return galaxy.selectRelativeParkingPoint(blackHole ? min : 2000.0 + galaxy.rnd.nextDouble() * 3000.0);
 }
 
 /** Cancel a job. An active job whose build has not started also stops its ship's mission. */

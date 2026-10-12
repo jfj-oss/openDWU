@@ -1266,6 +1266,23 @@ export function checkNearTarget(galaxy: Galaxy, builtObject: BuiltObject): void 
             y2 = secondaryTarget.ypos;
         }
     }
+    // Not in the original: a construction ship's jump to a build point at a black hole stays aimed at that point (the
+    // command's relative offset, 0.7 * Diameter out) instead of the hole's centre, whose exit scatter lands inside the
+    // Pull (cmdMovement.ts constructionShipBlackHoleExit).
+    if (
+        ship.subRole === BuiltObjectSubRole.ConstructionShip &&
+        stellarObject !== null &&
+        isHabitat(stellarObject) &&
+        stellarObject.type === HabitatType.BlackHole &&
+        Math.abs(x2) >= 0.01 &&
+        cmd.targetRelativeXpos > -2e9 &&
+        cmd.targetRelativeYpos > -2e9 &&
+        cmd.targetRelativeXpos !== 0 &&
+        cmd.targetRelativeYpos !== 0
+    ) {
+        x2 += cmd.targetRelativeXpos;
+        y2 += cmd.targetRelativeYpos;
+    }
     if (Math.abs(x2) < 0.01 && Math.abs(y2) < 0.01) {
         if (stellarObject !== null) {
             x2 = stellarObject.xpos;

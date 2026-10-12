@@ -24,9 +24,9 @@ import {
 } from '../src/sim/player/waypoints';
 import { MARKED_LOCATION_TYPES, hintPlaceName, knownLocationTooltip, knownLocations } from '../src/sim/player/knownLocations';
 import { GalaxyLocationType } from '../src/sim/galaxyLocation';
-import { HabitatCategoryType } from '../src/sim/types';
+import { HabitatCategoryType, HabitatType } from '../src/sim/types';
 import { addLocationHint } from '../src/sim/tradeItems';
-import { HintPulseClock, HINT_PULSE_PERIOD_S, labelAllowed, mapMarkers, markerTooltip } from '../src/render/locationMarkers';
+import { HintPulseClock, HINT_PULSE_PERIOD_S, MARKER_MIN_RESEARCH_BONUS, MARKER_MIN_SCENIC_FACTOR, labelAllowed, locationMarkerWorthIt, mapMarkers, markerTooltip } from '../src/render/locationMarkers';
 import { commandFailureValue } from '../src/simworker/commandFailure';
 import { KEY_BINDINGS, dispatchKey, findBinding, setWaypointKeyHandler, type WaypointKeyAction } from '../src/ui/keyboard';
 import { bindingId, findConflicts } from '../src/ui/keyBindingModel';
@@ -190,7 +190,7 @@ describe('known locations', () => {
         expect(knownLocationTooltip(g, p, list[0])).toMatch(/Location hint/);
         expect(knownLocationTooltip(g, p, list[0])).toMatch(/From: /);
         // A known point-like location (and a region, which the region labels name instead).
-        const marked = g.galaxyLocations.find((l) => MARKED_LOCATION_TYPES.has(l.type));
+        const marked = g.galaxyLocations.find((l) => MARKED_LOCATION_TYPES.has(l.type) && locationMarkerWorthIt(g, l));
         const region = g.galaxyLocations.find((l) => l.type === GalaxyLocationType.NebulaCloud);
         if (region !== undefined) p.visibility.knownGalaxyLocations.push(region);
         if (marked !== undefined) {
@@ -209,6 +209,24 @@ describe('known locations', () => {
             expect(markers.some((m) => m.kind === 'location' && m.known?.location === marked)).toBe(true);
         }
         expect(list.every((k) => k.location === null || k.location !== region)).toBe(true);
+        // A black hole / supernova is marked only for a substantial research or scenery bonus of its star (the list keeps
+        // every one).
+        for (const l of g.galaxyLocations.filter((l) => l.type === GalaxyLocationType.BlackHole || l.type === GalaxyLocationType.SuperNova)) {
+            const c = l.resolveLocationCenter();
+            const star = g.fastFindNearestSystem(c.x, c.y)!;
+            expect(star.type === HabitatType.BlackHole || star.type === HabitatType.SuperNova).toBe(true);
+            expect(locationMarkerWorthIt(g, l)).toBe(star.researchBonus >= MARKER_MIN_RESEARCH_BONUS || star.scenicFactor >= MARKER_MIN_SCENIC_FACTOR);
+            const keep = { r: star.researchBonus, s: star.scenicFactor };
+            star.researchBonus = 0;
+            star.scenicFactor = 0;
+            expect(locationMarkerWorthIt(g, l)).toBe(false);
+            expect(mapMarkers(g, p, false, true, true).some((m) => m.known?.location === l)).toBe(false);
+            expect(knownLocations(g, p, true).some((k) => k.location === l)).toBe(true);
+            star.scenicFactor = MARKER_MIN_SCENIC_FACTOR;
+            expect(locationMarkerWorthIt(g, l)).toBe(true);
+            star.researchBonus = keep.r;
+            star.scenicFactor = keep.s;
+        }
         // GodMode lists every point-like location.
         expect(knownLocations(g, p, true).filter((k) => k.kind === 'location').length).toBe(g.galaxyLocations.filter((l) => MARKED_LOCATION_TYPES.has(l.type)).length);
         // Waypoints come first, then the known ones; the sub-toggles filter.
