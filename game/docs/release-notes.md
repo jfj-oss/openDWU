@@ -4,7 +4,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
-- **Main menu Multiplayer button:** it now looks like the stock buttons: the planet icon, the glowing teal band and the gold label when hovered, focused or pressed (it was only brighter grey).
+- **Main menu Multiplayer button:** it now gets the stock hover look: the glowing teal band and the gold label when hovered, focused or pressed (it was only brighter grey).
 - **Colony link lines:** the lines joining an empire's systems on the galaxy map are now thick (3.5 px), pale (the empire colour lightened by half) dashes with rounded ends and a steady spacing, the same size at every zoom and smooth at the highest; the travelling pulses are gone.
 - **Station orders give feedback at once:** ordering a station or base from the selection panel shows "Construction queued: <design> at <planet>" immediately, and a pending "Awaiting construction ship" row in the Build Queue and Construction Yards job lists until the job is on the board. (The job itself is registered within a frame or two; it only starts building when a construction ship arrives, which is a long trip in a late-game galaxy.)
 - **Follow camera while warping:** the followed ship is no longer hidden when zoomed in (its committed position, which can be far from where it is drawn mid-warp, was used for the view cull), its hyperjump flash is anchored on its drawn position, and the camera is recentred once per frame on that same position.
