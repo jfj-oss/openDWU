@@ -99,6 +99,7 @@ import { toggleEmpirePolicy } from './screens/empirePolicy';
 // [intel] begin
 import { toggleIntelligenceScreen } from './screens/intelligence';
 // [intel] end
+import { notePendingBuildOrder } from './pendingBuildOrders';
 import { createSelectionActionBar, performAction, redrawSelectionActionBar, refreshSelectionActionBar, setSelectionExtraSlots, setSelectionIconResolvers, selectionShipIconUrl, type SelectionExtraSlot } from './orderMenu'; // [ordermenu]
 import { buildInfoModel, retrofitProgressPercent, type InfoTarget } from './selectionInfo';
 import { renderInfoModel } from './selectionInfoView';
@@ -3139,9 +3140,16 @@ function clickDispatchSlot(galaxy: Galaxy, player: Empire, h: Habitat, o: Dispat
     const end = dispatchBusy.start(`${h.habitatIndex}|${o.id}`);
     if (end === null) return;
     let ended = false;
+    // A build order takes two round trips before its job is on the board: say at once that the click was received.
+    let releasePending: (() => void) | null = null;
+    if (o.id.startsWith('build:')) {
+        showToast(`Construction queued: ${o.label} at ${h.name}`);
+        releasePending = notePendingBuildOrder(`${o.label} at ${h.name}`);
+    }
     const finish = (text: string): void => {
         if (ended) return;
         ended = true;
+        releasePending?.();
         end();
         showToast(text);
     };

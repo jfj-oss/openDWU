@@ -52,7 +52,7 @@ function slotsFor(s: Side, h: Habitat): SelectionExtraSlot[] {
 }
 
 /** The toasts shown so far, without the app loop's own "Simulation error" one (simLoop.ts). */
-const orderToasts = (): string[] => toast.mock.calls.map((c) => String(c[0])).filter((t) => !t.startsWith('Simulation error'));
+const orderToasts = (): string[] => toast.mock.calls.map((c) => String(c[0])).filter((t) => !t.startsWith('Simulation error') && !t.startsWith('Construction queued: '));
 
 /** Click the slot labelled `label` and run until its toast (the order's outcome). */
 async function click(s: Side, slots: SelectionExtraSlot[], label: string): Promise<string> {
@@ -198,11 +198,11 @@ describe('sim worker: habitat dispatch slots', () => {
         slot.onClick();
         slot.onClick();
         expect([...Array(40)].some((_, i) => dispatchSlotBusy(h, `build:${i}`))).toBe(true);
-        for (let i = 0; i < 12 && toast.mock.calls.length === 0; i++) {
+        for (let i = 0; i < 12 && orderToasts().length === 0; i++) {
             w.tick();
             await new Promise((r) => setTimeout(r, 0));
         }
-        expect(toast.mock.calls.map((c) => c[0])).toEqual([`Construction job added: ${label} at ${h.name}`]);
+        expect(toast.mock.calls.map((c) => c[0])).toEqual([`Construction queued: ${label} at ${h.name}`, `Construction job added: ${label} at ${h.name}`]);
         expect([...Array(40)].some((_, i) => dispatchSlotBusy(h, `build:${i}`))).toBe(false);
         expect(w.real.playerEmpire!.constructionBoard?.jobs.length).toBe(1);
         w.dispose();
