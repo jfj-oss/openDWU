@@ -4,6 +4,11 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+## 0.1.22
+
+- **Resource Crises withdrawn:** removed from the add-on picker and the Economy expansion, because its approval loss per
+  missing luxury could stack far too high. Saves that already use it still load.
+
 ## 0.1.21
 
 - **Fix:** removed the influence-border edge shading added in 0.1.20, which could crash the game.

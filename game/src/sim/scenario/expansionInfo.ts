@@ -77,7 +77,7 @@ export const EXPANSION_INFO: Readonly<Record<string, ExpansionInfo>> = {
         features: [
             { heading: 'Restless empires', text: 'Strong peaceful empires pick fights, overlapping borders breed incidents, and small troop fleets may invade weakly held colonies.' },
             { heading: 'War goals', text: 'Wars are fought for goals and ended on terms.' },
-            { heading: 'Emergent politics', text: 'Internal politics, resource crises, espionage consequences and refugees on top of the faithful game.' },
+            { heading: 'Emergent politics', text: 'Internal politics, espionage consequences and refugees on top of the faithful game.' },
             { heading: 'Active independents and colony defence', text: 'Independents raise militia, build mining stations and form leagues; an owner\'s orbital defence now counts against pirate influence.' },
         ],
     },

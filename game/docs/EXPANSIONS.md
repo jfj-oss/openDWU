@@ -66,7 +66,7 @@ Colonies gain designations with real trade-offs, private companies settle and tr
 
 - Changes to the base game: ●●●○○ (3 of 5)
 - Difficulty: Neutral. Neutral: new opportunities and new shocks, for you and the AI alike.
-- Members: colony-economy, exchange, chartered-companies, corporatecoup, privateers, resource-crises, wreckage-salvage
+- Members: colony-economy, exchange, chartered-companies, corporatecoup, privateers, wreckage-salvage
 
 **Colony designations.** Industrial, Trade Hub, Resort World, Mining Hub, Core World or Frontier/Garrison: bonuses and drawbacks through the game's own mechanics.
 
@@ -110,6 +110,6 @@ The mid game gets livelier: strong peaceful empires grow restless and pick fight
 
 **War goals.** Wars are fought for goals and ended on terms.
 
-**Emergent politics.** Internal politics, resource crises, espionage consequences and refugees on top of the faithful game.
+**Emergent politics.** Internal politics, espionage consequences and refugees on top of the faithful game.
 
 **Active independents and colony defence.** Independents raise militia, build mining stations and form leagues; an owner's orbital defence now counts against pirate influence.

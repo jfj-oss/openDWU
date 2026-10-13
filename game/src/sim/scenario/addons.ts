@@ -85,7 +85,8 @@ const GROUP_OF: Readonly<Record<string, AddonGroup>> = {
  * Infrastructure and test beds: never listed, pulled in automatically when something needs them. (art-bundle is not
  * here: it only changes rendering, but that is a visible, player-facing choice.)
  */
-export const HIDDEN_ADDONS: ReadonlySet<string> = new Set(['threat-framework', 'example', 'ai-parity', 'soak-15y']);
+// resource-crises: withdrawn from the picker (its per-luxury approval loss stacked to absurd values); saves that use it still load.
+export const HIDDEN_ADDONS: ReadonlySet<string> = new Set(['threat-framework', 'example', 'ai-parity', 'soak-15y', 'resource-crises']);
 
 /**
  * Add-ons set on another wizard page (not listed on the Scenario page, but named in the summaries like any other):
@@ -427,7 +428,7 @@ export interface Expansion {
 export const EXPANSIONS: readonly Expansion[] = [
     { id: 'the-rim', name: 'The Rim', description: 'The frontier beyond the core: rim trade, frontier settlement, wild fauna and herders, the rim atmosphere, and the Voidbloom War.', members: ['rimTrade', 'rim-frontier', 'rim-fauna', 'rim-herders', 'rim-atmosphere', 'new-fauna', 'voidbloom'] },
     { id: 'politics-characters', name: 'Politics & Characters', description: 'Governors, VIPs and the Galactic Council, internal security, reputation, espionage fallout, frontier autonomy, refugees and war crimes remembered.', members: ['characters-victory', 'internal-security', 'reputation', 'espionage-consequences', 'frontier-autonomy', 'refugees-demographics', 'war-crimes'] },
-    { id: 'economy', name: 'Economy', description: 'Colony economy, the exchange, chartered companies, corporate coups, privateers, resource crises and wreckage salvage.', members: ['colony-economy', 'exchange', 'chartered-companies', 'corporatecoup', 'privateers', 'resource-crises', 'wreckage-salvage'] },
+    { id: 'economy', name: 'Economy', description: 'Colony economy, the exchange, chartered companies, corporate coups, privateers and wreckage salvage.', members: ['colony-economy', 'exchange', 'chartered-companies', 'corporatecoup', 'privateers', 'wreckage-salvage'] },
     { id: 'galactic-threats', name: 'Galactic Threats', description: 'The hidden end-game threats (cult, hive, silence, greytide, ghost armada, robot mutiny, time bomb, doppelgangers, dark farms) and the early ones: generation ships, a dead probe swarm and the archive cores they leave.', members: ['threat-framework', 'generation-ships', 'probe-swarm', 'archive-cores', 'cult', 'hive', 'silence', 'greytide', 'ghostarmada', 'robotmutiny', 'timebomb', 'doppelgangers', 'darkfarms'] },
     { id: 'living-galaxy', name: 'Living Galaxy', description: 'A galaxy that moves on its own: lively events, emergent factions, active independents, colony defence and scorched earth.', members: ['lively-galaxy', 'emergent', 'independents-active', 'colony-defence', 'scorched-earth'] },
 ];
