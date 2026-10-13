@@ -31,6 +31,7 @@ import { generateVipShuttleDesign, vipComponentAllowed } from '../src/sim/scenar
 import { colonyVacancy, governorLockedUntil, requestGovernor, reviewGovernors } from '../src/sim/scenario/charactersVictory/governorsCv';
 import { cvColonySlot } from '../src/ui/scenario/charactersVictoryUi';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
+import { setEmpireMessageTap, type EmpireMessage } from '../src/sim/messages';
 import { DIET_STATE_KEY, dietState, type DietMotion } from '../src/sim/scenario/charactersVictory/diet/dietState';
 import { closeSession, declareEmperor, dietTick, hostWorldOf, strongestMember } from '../src/sim/scenario/charactersVictory/diet/diet';
 import { dietView } from '../src/sim/scenario/charactersVictory/diet/dietView';
@@ -649,6 +650,25 @@ describe('Characters & Victory: the Interstellar Diet', () => {
         expect(st.nextSessionAt).toBeGreaterThan(s.closes);
         // Delegates who made it are on their way home (or home already).
         for (const d of sent) if (d.character!.active) expect(d.character!.location === s.world && tripOfCharacter(g, d.character!) === null).toBe(false);
+    });
+
+    it('the player receives the session, each motion and each vote result in the message log', { tags: ['slow'], timeout: 1200000 }, () => {
+        const { game, g } = dietGame();
+        const player = g.playerEmpire!;
+        const got: EmpireMessage[] = [];
+        setEmpireMessageTap((m, to) => { if (to === player) got.push(m); });
+        const st = dietState(g);
+        st.nextSessionAt = 0;
+        dietTick(g);
+        const s = st.session!;
+        for (let i = 0; i < 400 && st.session !== null; i++) runGameSeconds(game, 6);
+        setEmpireMessageTap(null);
+        const titles = got.map((m) => m.title);
+        expect(titles).toContain('Interstellar Diet: session called');
+        expect(titles.filter((t) => t === 'Interstellar Diet: motion').length).toBe(s.motions.length);
+        const results = titles.filter((t) => t === 'Interstellar Diet: vote' || t === 'Interstellar Diet: results');
+        expect(results.length).toBe(s.motions.length);
+        expect(got.some((m) => /for, \d/.test(m.description) || /\(\d+(\.\d+)? for/.test(m.description))).toBe(true);
     });
 
     it('the Ancient Guardians are not Diet members: no seat, delegate, vote or dues', () => {

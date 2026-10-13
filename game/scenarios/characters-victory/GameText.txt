@@ -32,6 +32,9 @@ CV Suggestion Move;Suggested: move {0} from {2} to {1} (+{3}% fit).
 'Characters & Victory part 2: the Interstellar Diet.
 Diet Founded;The {0} have founded the Interstellar Diet. It meets every two or three years at a host world, the strongest member's colony nearest the galaxy centre; each member sends its most important governor as delegate, and only delegates present vote.
 Diet Session Title;Interstellar Diet: session called
+Diet Motion Title;Interstellar Diet: motion
+Diet Motion Proposed;The {0} moves at {1}: {2}.
+Diet Vote Title;Interstellar Diet: vote
 Diet Emergency Title;Interstellar Diet: emergency session
 Diet Results Title;Interstellar Diet: results
 Diet Session Called News;The Interstellar Diet convenes at {0} (host: the {1}). On the agenda: {2}.

@@ -374,6 +374,8 @@ export function callSession(galaxy: Galaxy, st: DietState, c: Council, emergency
         const who = d?.character !== null && d?.character !== undefined ? d.character.name : scenarioText('Diet No Delegate');
         tell(galaxy, [h], emergency ? 'Diet Emergency Title' : 'Diet Session Title', scenarioText('Diet Session Called You', s.world.name, who, list || scenarioText('Diet No Motions')), { popup: true, subject: s.world });
     }
+    // Each motion on the agenda, to every human (members and not): log and ticker only (no popup).
+    for (const m of s.motions) tell(galaxy, humanEmpires(galaxy), 'Diet Motion Title', scenarioText('Diet Motion Proposed', m.proposer.name, s.world.name, m.text), { subject: s.world });
     return s;
 }
 
@@ -459,7 +461,17 @@ export function closeSession(galaxy: Galaxy, st: DietState, c: Council, s: DietS
             if (c.results.length > 20) c.results.splice(0, c.results.length - 20);
             recordLosses(galaxy, c, asCouncilMotion(m, year, now), passed, year);
         }
-        lines.push(scenarioText('Diet Result Line', m.text, scenarioText(`Diet Result ${m.status}`), m.yes, m.no));
+        const line = scenarioText('Diet Result Line', m.text, scenarioText(`Diet Result ${m.status}`), m.yes, m.no);
+        lines.push(line);
+        // Every human gets each result in the log and ticker; it pops up when it is major or touches the player or an ally.
+        const major = passed && (m.kind === 'freeTrade' || m.kind === 'openIndependents' || m.kind === 'protectIndependents');
+        const bonded = [DiplomaticRelationType.MutualDefensePact, DiplomaticRelationType.Protectorate, DiplomaticRelationType.SubjugatedDominion];
+        for (const h of humanEmpires(galaxy)) {
+            const t = m.target;
+            const touches = t !== null && (t === h || bonded.includes(h.diplomaticRelations.byEmpire(t)?.type ?? DiplomaticRelationType.NotMet) || bonded.includes(t.diplomaticRelations.byEmpire(h)?.type ?? DiplomaticRelationType.NotMet));
+            const hostile = passed && touches && ['sanction', 'embargo', 'condemn', 'expel', 'threat', 'warCrimesTribunal'].includes(m.kind);
+            tell(galaxy, [h], hostile || major ? 'Diet Results Title' : 'Diet Vote Title', line, { popup: hostile || major, bad: hostile && t === h, subject: s.world });
+        }
         if (passed) {
             st.counters.passed[m.kind] = (st.counters.passed[m.kind] ?? 0) + 1;
             applyDietMotion(galaxy, st, c, m, year);
@@ -467,7 +479,7 @@ export function closeSession(galaxy: Galaxy, st: DietState, c: Council, s: DietS
     }
     if (st.history.length > DIET_HISTORY_CAP) st.history.splice(0, st.history.length - DIET_HISTORY_CAP);
     news(galaxy, null, scenarioText('Diet Session Closed News', s.world.name, lines.join(' ') || scenarioText('Diet No Motions')), s.world);
-    tell(galaxy, humanMembers(galaxy, c, st), 'Diet Results Title', lines.join('\n') || scenarioText('Diet No Motions'), { popup: s.motions.length > 0, subject: s.world });
+    if (s.motions.length === 0) tell(galaxy, humanEmpires(galaxy), 'Diet Vote Title', scenarioText('Diet No Motions'), { subject: s.world });
     // Delegates go home (the duty ends: Part 1 sends them back by VIP shuttle).
     for (const d of s.delegates) {
         const ch = d.character;
@@ -563,7 +575,7 @@ function applyDietMotion(galaxy: Galaxy, st: DietState, c: Council, m: DietMotio
                 st.regentUntil = now + dietParam(galaxy, 'dietRegentYears') * YEAR_LENGTH;
                 st.counters.regents++;
                 news(galaxy, m.target, scenarioText('Diet Regent News', m.target.name), null);
-                tell(galaxy, members(galaxy, c, st), 'Diet Regent Title', scenarioText('Diet Regent', m.target.name), { popup: true, good: isHumanEmpire(galaxy, m.target) });
+                tell(galaxy, [...new Set([...members(galaxy, c, st), ...humanEmpires(galaxy)])], 'Diet Regent Title', scenarioText('Diet Regent', m.target.name), { popup: true, good: isHumanEmpire(galaxy, m.target) });
             }
             break;
         case 'repeal': {
