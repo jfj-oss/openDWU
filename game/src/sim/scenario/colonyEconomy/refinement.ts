@@ -41,7 +41,7 @@ import { registerScenarioDataExtension, registerScenarioEvent, registerScenarioP
 import { registerScenarioGoods } from '../scenarioGoods';
 import { findGalaxyBuiltObjectById } from '../../builtObjectById';
 import { galaxyStarDate } from '../../tick/simTime';
-import { isHumanEmpire } from '../../humanEmpires';
+import { isHumanEmpire, isHumanSeat } from '../../humanEmpires';
 import { isBuiltObject } from '../../missions/mission';
 import { DAY, ECON_FAC_FLAG, ECON_FLAG, ECON_REFINE_FLAG, activeFacilities, econOn, empireRecord, isEconEmpire, peekEmpire, type EconEmpire, type FacilityId } from './common';
 
@@ -179,9 +179,9 @@ export function tradingPostOf(h: Habitat): Habitat | BuiltObject {
  * Story empires outside the goods chain: the Ancient Guardians (the Mechanoids, fleets/militaryAI.ts
  * identifyMechanoidEmpire) build with their own ancient means — no refinery of theirs exists to supply them. Pure.
  */
-export function goodsExempt(e: Empire): boolean {
+export function goodsExempt(galaxy: Galaxy, e: Empire): boolean {
     const n = e.dominantRace?.name;
-    return n !== undefined && n.toLowerCase() === 'mechanoid' && e.pirateEmpireBaseHabitat === null;
+    return n !== undefined && n.toLowerCase() === 'mechanoid' && e.pirateEmpireBaseHabitat === null && !isHumanSeat(galaxy, e);
 }
 
 function cargoOf(o: Habitat | BuiltObject): import('../../cargo').CargoList | null {
@@ -371,7 +371,7 @@ function slotFactor(galaxy: Galaxy, ship: BuiltObject, yard: BuiltObject | null,
     if (!refinementActive(galaxy)) return 1;
     const post = postOf(yard, habitat);
     const e = post === null ? null : post.empire;
-    if (post === null || e === null || !isEconEmpire(galaxy, e) || ship.design === null || goodsExempt(e)) return 1;
+    if (post === null || e === null || !isEconEmpire(galaxy, e) || ship.design === null || goodsExempt(galaxy, e)) return 1;
     const f = buildGoodsFactor(galaxy, e, post, ship.design);
     const id = ship.builtObjectID;
     if (f === 0) {
@@ -467,7 +467,7 @@ function orderAt(galaxy: Galaxy, e: Empire, post: Post, ids: readonly number[], 
 function orderForYards(galaxy: Galaxy, e: Empire, ids: readonly number[]): void {
     const r = peekEmpire(galaxy, e);
     // The base targets (stock for the early bonus and the soft tiers) once anything needs goods, or while the early bonus lasts.
-    if (goodsExempt(e)) return;
+    if (goodsExempt(galaxy, e)) return;
     const base = r !== null && (r.early === true || (r.goodsNow ?? []).some((t) => t >= 3));
     for (const yard of e.spacePorts as BuiltObject[]) {
         if (yard === null || yard.hasBeenDestroyed || !yard.isShipYard || !yardBusy(yard)) continue;

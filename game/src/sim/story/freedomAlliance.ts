@@ -11,6 +11,7 @@
 // treaty changes draw what ChangeDiplomaticRelation / DeclareWar draw (character events, the mutual-defense flow-on).
 // DecimateEmpire draws Next(0, 100) per built object (then NextDouble for a damaged one) and Next(0, 10) per colony.
 
+import { isHumanSeat } from '../humanEmpires';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import type { Design } from '../design';
@@ -74,7 +75,7 @@ export function generateFreedomAlliance(galaxy: Galaxy, includePlayer: boolean):
         if ((empire4.dominantRace !== null && text.toLowerCase() === 'humanoid') || (empire4.dominantRace !== null && empire4.dominantRace.name.toLowerCase() === 'ackdarian')) {
             if (empire3 === null || militaryPotency(galaxy, empire3) < militaryPotency(galaxy, empire4)) empire3 = empire4;
             empireList.push(empire4);
-        } else if (empire4.dominantRace !== null && empire4.dominantRace.name.toLowerCase() === 'mechanoid') {
+        } else if (empire4.dominantRace !== null && empire4.dominantRace.name.toLowerCase() === 'mechanoid' && !isHumanSeat(galaxy, empire4)) {
             empire2 = empire4;
             empireList.push(empire4);
         }
@@ -224,7 +225,7 @@ export function storyEventClose(galaxy: Galaxy, level: number): boolean {
     for (let i = 0; i < galaxy.empires.length; i++) {
         const e = galaxy.empires[i];
         if (e.dominantRace !== null && e.dominantRace === galaxy.shakturiActualRace) empire2 = e;
-        if (e.dominantRace !== null && e.dominantRace.name.toLowerCase() === 'mechanoid') empire = e;
+        if (e.dominantRace !== null && e.dominantRace.name.toLowerCase() === 'mechanoid' && !isHumanSeat(galaxy, e)) empire = e;
     }
     if (empire !== null && empire2 !== null) generateShakturiInvasion(galaxy, empire2, empire);
     galaxy.storyReturnOfTheShakturiEventLevel = 3;

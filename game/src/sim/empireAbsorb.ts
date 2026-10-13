@@ -12,6 +12,7 @@
 // parts (the Mechanoid lookup, the Way of the Ancients government and the per-colony population swap) left to
 // `guardiansDepart`, which passes them back in through `beforeColony` so the statement order is the C#'s.
 
+import { isHumanSeat } from './humanEmpires';
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
 import { getGovernmentsStatic } from './empire';
@@ -89,7 +90,7 @@ export function guardiansDepart(galaxy: Galaxy): void {
         }
     }
     for (let j = 0; j < galaxy.empires.length; j++) {
-        if (galaxy.empires[j].dominantRace !== null && galaxy.empires[j].dominantRace === race) {
+        if (galaxy.empires[j].dominantRace !== null && galaxy.empires[j].dominantRace === race && !isHumanSeat(galaxy, galaxy.empires[j])) {
             empire = galaxy.empires[j];
             break;
         }

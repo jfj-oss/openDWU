@@ -46,7 +46,7 @@ import { SideHub } from './sideChannel';
 import { Migration } from './migration';
 import { ChatPanel, type SavedChatLine } from './chatPanel';
 import { setSaveEntryTagger } from '../screens/saveLoad';
-import { playableRacesSorted, startGovernmentsForRace } from '../screens/newGameWizard';
+import { playerSelectableRacesSorted, startGovernmentsForRace } from '../screens/newGameWizard';
 import './multiplayer.css';
 import { exposeDevHook } from './devHooks';
 import { setAutoPauseSuppressed } from '../autoPause';
@@ -1203,7 +1203,7 @@ const PALETTE = ['#c03030', '#3060d0', '#30a040', '#d0a020', '#a040c0', '#20a0b0
 
 /** An editable empire pick (the hot-seat row) for this screen's own player. */
 function ownRowEditor(gameData: GameData, isHost: boolean, onChange: (pick: HumanPlayerStart, claim: number, ready: boolean) => void): RowEditor {
-    const races: Race[] = playableRacesSorted(gameData.races);
+    const races: Race[] = playerSelectableRacesSorted(gameData.races);
     const governments: Government[] = (gameData.governments as Government[]).filter((g) => g != null);
     const row = h('div', 'mp-pick');
     row.dataset.mp = 'own-row';

@@ -65,6 +65,15 @@ export function humanSeats(galaxy: Galaxy): readonly Empire[] {
     return fresh;
 }
 
+/**
+ * True when `empire` holds a human seat, even one the AI runs while its player is away. The story's NPC empires (the
+ * Mechanoid Ancient Guardians, the Shakturi) are never a seat: a player who picked the Mechanoid or Shakturi race is not
+ * them, so the story lookups skip every seat (playable-races change).
+ */
+export function isHumanSeat(galaxy: Galaxy, empire: Empire | null | undefined): boolean {
+    return empire != null && humanSeats(galaxy).includes(empire);
+}
+
 /** True when a human controls `empire` (false for null). With one human: `empire === galaxy.playerEmpire`. */
 export function isHumanEmpire(galaxy: Galaxy, empire: Empire | null | undefined): boolean {
     if (empire == null) return false;

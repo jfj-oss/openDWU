@@ -89,7 +89,7 @@ import { builtObjectSubject } from '../player/hintSubjects';
 import { resolveSectorDescription } from '../empireEvents';
 import { GalaxyLocationEffectType, GalaxyLocationType, type GalaxyLocation } from '../galaxyLocation';
 import { formatGameTextNow } from '../textResolver';
-import { isHumanEmpire } from '../humanEmpires';
+import { isHumanEmpire, isHumanSeat } from '../humanEmpires';
 
 // ---------------------------------------------------------------------------
 // Galaxy helpers the story needs (Galaxy.5.cs / Galaxy.7.cs / Galaxy.cs)
@@ -712,7 +712,7 @@ export function generateShakturiReturnTriggerRuins(galaxy: Galaxy): void {
     ruin.storyEventData = 1;
     let empire: Empire | null = null;
     for (let i = 0; i < galaxy.empires.length; i++) {
-        if (galaxy.empires[i].dominantRace !== null && galaxy.empires[i].dominantRace!.name.toLowerCase() === 'mechanoid') empire = galaxy.empires[i];
+        if (galaxy.empires[i].dominantRace !== null && galaxy.empires[i].dominantRace!.name.toLowerCase() === 'mechanoid' && !isHumanSeat(galaxy, galaxy.empires[i])) empire = galaxy.empires[i];
     }
     let num = 0.0;
     let num2 = 0.0;

@@ -160,7 +160,7 @@ import {
     implementBlockadeBuiltObject,
     implementBlockadeColony,
 } from './blockades';
-import { isHumanEmpire } from '../humanEmpires';
+import { isHumanEmpire, isHumanSeat } from '../humanEmpires';
 import { detPow } from '../detMath';
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -549,7 +549,7 @@ export function identifyMechanoidEmpire(galaxy: Galaxy): Empire | null {
     let result: Empire | null = null;
     for (let i = 0; i < galaxy.empires.length; i++) {
         const e = galaxy.empires[i];
-        if (e.pirateEmpireBaseHabitat === null && e.dominantRace !== null && e.dominantRace.name.toLowerCase() === 'mechanoid') {
+        if (e.pirateEmpireBaseHabitat === null && e.dominantRace !== null && e.dominantRace.name.toLowerCase() === 'mechanoid' && !isHumanSeat(galaxy, e)) {
             result = e;
             break;
         }

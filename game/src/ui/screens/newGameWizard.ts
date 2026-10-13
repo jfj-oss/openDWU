@@ -389,6 +389,15 @@ export function playableRacesSorted(races: readonly Race[]): Race[] {
     return races.filter((r) => r.playable).sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** The story races the player may also pick (their race files say Playable N, which keeps them out of every AI pick,
+ * the random-race pools and the game's other playable-race lists). Only the player's own race choice uses this. */
+export const PLAYER_ONLY_RACE_NAMES: readonly string[] = ['Mechanoid', 'Shakturi'];
+
+/** Races offered on the wizard's race pickers: the Playable races plus the player-only story races, sorted by name. */
+export function playerSelectableRacesSorted(races: readonly Race[]): Race[] {
+    return races.filter((r) => r.playable || PLAYER_ONLY_RACE_NAMES.includes(r.name)).sort((a, b) => a.name.localeCompare(b.name));
+}
+
 interface WizardRaceData {
     races: Race[];
     families: RaceFamily[];
@@ -425,7 +434,10 @@ function loadWizardRaceData(): Promise<WizardRaceData> {
         cachedRaces = races;
         // Task 06e: record each playable race's index in the sorted list so the
         // "Your Empire" page can derive deterministic flag colours by race index.
-        playableRacesSorted(races).forEach((r, i) => PLAYABLE_RACE_INDEX.set(r.name, i));
+        const stock = playableRacesSorted(races);
+        stock.forEach((r, i) => PLAYABLE_RACE_INDEX.set(r.name, i));
+        // The player-only races follow the stock ones, so no stock race's default flag colours move.
+        playerSelectableRacesSorted(races).filter((r) => !r.playable).forEach((r, i) => PLAYABLE_RACE_INDEX.set(r.name, stock.length + i));
         return { races, families, missing };
     })();
     raceDataPromise.catch(() => {
@@ -1245,7 +1257,7 @@ function buildJumpStartPage(ctx: WizardCtx): HTMLDivElement {
         setText(govAttrs, governmentAttributesText(gov));
     }
     void Promise.all([loadWizardRaceData(), loadWizardGovernments()]).then(([data, govs]) => {
-        races = playableRacesSorted(data.races);
+        races = playerSelectableRacesSorted(data.races);
         allGovernments = govs;
         // The same default as the Your Race page (whichever loads first sets it).
         if (options.raceName === '') options.raceName = defaultRaceName(data.races);
@@ -1867,7 +1879,7 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
     listPanel.appendChild(grid);
     const hotSeat = buildHotSeatPlayersPanel({
         options,
-        races: () => playableRaces(),
+        races: () => playerSelectableRacesSorted(loadWizardRacesSync()),
         governments: () => governments,
         governmentsForRace: startGovernmentsForRace,
         palette: wizardColorPalette(),
@@ -2283,7 +2295,7 @@ function buildRacePage(ctx: WizardCtx, onRaceChanged?: WizardRaceChangedHandler)
 function renderRacePage(ctx: WizardCtx, parent: HTMLElement, races: Race[], onRaceChanged?: WizardRaceChangedHandler): void {
     const options = ctx.options;
     const sorted = [...races].sort((a, b) => a.name.localeCompare(b.name));
-    const playable = sorted.filter((r) => r.playable);
+    const playable = playerSelectableRacesSorted(sorted);
 
     const raceCombo = raceDropDown({
         races: playable.map((r) => ({ name: r.name, pictureUrl: racePortraitUrls(r.pictureIndex)[0] })),
