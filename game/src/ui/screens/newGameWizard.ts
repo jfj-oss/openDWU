@@ -106,7 +106,8 @@ import { activeCustomizationSetName } from '../../sim/data/customization';
 import { selectColorFromKey } from '../../sim/empireColors';
 import { loadScenarioIndex } from '../../sim/scenario/fetchScenario';
 import type { ScenarioManifest } from '../../sim/scenario/manifest';
-import { SMARTER_AI_ADDON_ID, addonCatalog, addonPickerModel, canonicalAddons, defaultSmarterAIChoice, expansionMemberIds, expansionRows, toggleExpansion, type ExpansionRow, planAddonStart, resolveAddonSwitches, toggleAddon, withFlagAddons, withSmarterAI, type AddonCatalog, type AddonOverrides, type AddonRow, type SmarterAIChoice } from '../../sim/scenario/addons';
+import { IS_CLASSIC } from '../../appVersion';
+import { CLASSIC_BASE_ADDONS, SMARTER_AI_ADDON_ID, addonCatalog, addonPickerModel, canonicalAddons, defaultSmarterAIChoice, expansionMemberIds, expansionRows, toggleExpansion, type ExpansionRow, planAddonStart, resolveAddonSwitches, toggleAddon, withFlagAddons, withSmarterAI, type AddonCatalog, type AddonOverrides, type AddonRow, type SmarterAIChoice } from '../../sim/scenario/addons';
 import {
     COLORS,
     FONT,
@@ -230,7 +231,9 @@ export type WizardPageId = 'type' | 'jumpstart' | 'galaxy' | 'colonization' | 'r
 /** The mod layer's "Scenario" page (tasks/MODLAYER-DESIGN.md §3) sits between Victory Conditions and Start. [wizardB1] The
  * "Playstyle" page (Start.cs pnlStartNewGameYourEmpireType) comes first: its Custom buttons continue with The Galaxy, the
  * other playstyles with the one-page Jump Start (pnlStartNewGameJumpStart), which starts the game. */
-export const WIZARD_PAGES: WizardPageId[] = ['type', 'galaxy', 'colonization', 'race', 'empire', 'empires', 'victory', 'scenario', 'start'];
+// openDWU Classic has no add-on picker: the Scenario page is not a step (its logic still runs to start every game with
+// the always-on CLASSIC_BASE_ADDONS and the Other Empires page's Smarter AI choice).
+export const WIZARD_PAGES: WizardPageId[] = IS_CLASSIC ? ['type', 'galaxy', 'colonization', 'race', 'empire', 'empires', 'victory', 'start'] : ['type', 'galaxy', 'colonization', 'race', 'empire', 'empires', 'victory', 'scenario', 'start'];
 
 /** Title-bar text per page ("Start a New Game: <page title>", pnlNewGame.HeaderTitle). */
 export const WIZARD_PAGE_TITLES: Record<WizardPageId, string> = {
@@ -2886,7 +2889,7 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
 
     let cat: AddonCatalog = addonCatalog([]);
     // The Smarter AI add-on is the Other Empires page's (options.smarterAI), not a tick of this page.
-    let picked: string[] = (options.scenario?.addons ?? (options.scenario ? [options.scenario.id] : [])).filter((id) => id !== SMARTER_AI_ADDON_ID);
+    let picked: string[] = IS_CLASSIC ? [...CLASSIC_BASE_ADDONS] : (options.scenario?.addons ?? (options.scenario ? [options.scenario.id] : [])).filter((id) => id !== SMARTER_AI_ADDON_ID);
     const overrides: AddonOverrides = { flags: {}, params: {} };
     /** Settings panels the player opened (kept open across re-renders). */
     const openPanels = new Set<string>();
@@ -2894,7 +2897,7 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
     try {
         // Dev / screenshot hook: ?screen=wizard&page=scenario&addons=timebomb,robotmutiny starts with those ticked.
         const pre = new URLSearchParams(window.location.search).get('addons');
-        if (pre !== null && pre !== '') picked = pre.split(',').map((x) => x.trim());
+        if (!IS_CLASSIC && pre !== null && pre !== '') picked = pre.split(',').map((x) => x.trim());
     } catch {
         // non-browser context
     }

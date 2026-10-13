@@ -11,8 +11,8 @@
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** File names of the release assets for `version` (no leading "v"). */
-function assetFileNames(version) {
-    const base = `openDWU-${version}`;
+function assetFileNames(version, product = 'openDWU') {
+    const base = `${product}-${version}`;
     return {
         macDmg: `${base}-macos-arm64.dmg`,
         linuxAppImage: `${base}-linux-x64.AppImage`,
@@ -95,9 +95,9 @@ function releaseInfo(json) {
  * opens the release page). `kind`: 'appimage' when running from an AppImage ($APPIMAGE), 'nsis' when installed by the
  * Windows installer, otherwise the archive / disk image of the platform.
  */
-function pickDownload(release, { platform, arch, kind }) {
+function pickDownload(release, { platform, arch, kind, product }) {
     if (!release) return null;
-    const names = assetFileNames(release.version);
+    const names = assetFileNames(release.version, product === 'classic' ? 'openDWU-Classic' : 'openDWU');
     let wanted = null;
     if (platform === 'darwin' && arch === 'arm64') wanted = [names.macDmg];
     else if (platform === 'linux' && arch === 'x64') wanted = kind === 'appimage' ? [names.linuxAppImage, names.linuxTarGz] : [names.linuxTarGz, names.linuxAppImage];

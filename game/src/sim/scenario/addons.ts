@@ -85,14 +85,18 @@ const GROUP_OF: Readonly<Record<string, AddonGroup>> = {
  * Infrastructure and test beds: never listed, pulled in automatically when something needs them. (art-bundle is not
  * here: it only changes rendering, but that is a visible, player-facing choice.)
  */
+// big-galaxies: its extended palette is now automatic in the base game (empireColors.ts); old saves with the add-on still load.
 // resource-crises: withdrawn from the picker (its per-luxury approval loss stacked to absurd values); saves that use it still load.
-export const HIDDEN_ADDONS: ReadonlySet<string> = new Set(['threat-framework', 'example', 'ai-parity', 'soak-15y', 'resource-crises']);
+export const HIDDEN_ADDONS: ReadonlySet<string> = new Set(['threat-framework', 'example', 'ai-parity', 'soak-15y', 'resource-crises', 'big-galaxies']);
 
 /**
  * Add-ons set on another wizard page (not listed on the Scenario page, but named in the summaries like any other):
  * Smarter AI lives on the Other Empires page (withSmarterAI below).
  */
 export const ELSEWHERE_ADDONS: ReadonlySet<string> = new Set(['smarter-ai']);
+
+/** openDWU Classic: add-ons every game starts with (treated as base game: no picker). Smarter AI stays the Other Empires page's toggle. */
+export const CLASSIC_BASE_ADDONS: readonly string[] = ['themed-names', 'event-log'];
 
 /** The Smarter AI add-on (scenarios/smarter-ai). */
 export const SMARTER_AI_ADDON_ID = 'smarter-ai';

@@ -21,7 +21,8 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { assetFileNames } = require('../desktop/updateCheck.cjs');
 
-const APP_ID = 'local.dwureup.dwu';
+let APP_ID = 'local.dwureup.dwu';
+let PRODUCT = 'openDWU';
 
 function sha256File(file) {
     const hash = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -52,7 +53,7 @@ async function electronBuilder({ root, platform, outDir, stageDir, electronVersi
         publish: 'never',
         config: {
             appId: APP_ID,
-            productName: 'openDWU',
+            productName: PRODUCT,
             electronVersion,
             npmRebuild: false,
             directories: { output: ebOut },
@@ -70,23 +71,23 @@ async function electronBuilder({ root, platform, outDir, stageDir, electronVersi
 }
 
 /** First-launch notes inside the macOS disk image. */
-function macReadme(version) {
-    return `openDWU ${version} for macOS (Apple silicon)
+function macReadme(version, exe = 'dwu', product = 'openDWU') {
+    return `${product} ${version} for macOS (Apple silicon)
 
-1. Drag dwu.app onto the Applications folder.
+1. Drag ${exe}.app onto the Applications folder.
 
 2. First launch: this app is not signed with an Apple Developer ID, so macOS
-   blocks a plain double-click ("dwu can't be opened" / "Apple could not verify").
+   blocks a plain double-click ("${exe} can't be opened" / "Apple could not verify").
    Open it once like this:
-     - In Applications, Control-click (or right-click) dwu.app -> Open -> Open.
+     - In Applications, Control-click (or right-click) ${exe}.app -> Open -> Open.
      - macOS 15 Sequoia and later: double-click it once, then open
        System Settings -> Privacy & Security, scroll down to the message about
-       dwu, click "Open Anyway" and confirm.
+       ${exe}, click "Open Anyway" and confirm.
    Or, in Terminal:
-       xattr -dr com.apple.quarantine /Applications/dwu.app
+       xattr -dr com.apple.quarantine /Applications/${exe}.app
    After that it opens normally.
 
-3. openDWU reads the art, sounds and data of Distant Worlds: Universe from your
+3. ${product} reads the art, sounds and data of Distant Worlds: Universe from your
    own copy of the game; none of it is included. On first launch it asks for the
    folder. DW:U is a Windows game: install it with Steam inside Whisky or
    CrossOver, or copy the "Distant Worlds Universe" folder from a Windows PC to
@@ -111,20 +112,25 @@ function hdiutilCreate(args) {
     }
 }
 
-export async function makeInstallers({ root, platform, arch, version, outDir, stageDir, icons, electronVersion }) {
+export async function makeInstallers({ root, platform, arch, version, outDir, stageDir, icons, electronVersion, classic = false }) {
+    // openDWU Classic (package-desktop.mjs --edition=classic): own app id, product, executable and file names.
+    APP_ID = classic ? 'local.dwureup.dwuclassic' : 'local.dwureup.dwu';
+    PRODUCT = classic ? 'openDWU Classic' : 'openDWU';
+    const exe = classic ? 'dwu-classic' : 'dwu';
+    const filePrefix = classic ? 'openDWU-Classic' : 'openDWU';
     const uploadDir = path.join(root, 'release', 'upload');
     fs.mkdirSync(uploadDir, { recursive: true });
-    const names = assetFileNames(version);
+    const names = assetFileNames(version, filePrefix);
     // Clear this platform's previous installers (any version); other platforms' files stay (local multi-platform runs).
     const mine = { linux: /-linux-x64\.(AppImage|tar\.gz)(\.sha256)?$/, win32: /-windows-x64(-setup\.exe|\.zip)(\.sha256)?$/, darwin: /-macos-arm64\.dmg(\.sha256)?$/ }[platform];
-    for (const f of fs.readdirSync(uploadDir)) if (mine && mine.test(f)) fs.rmSync(path.join(uploadDir, f), { force: true });
+    for (const f of fs.readdirSync(uploadDir)) if (mine && mine.test(f) && f.startsWith(`${filePrefix}-`) && (classic || !f.startsWith('openDWU-Classic-'))) fs.rmSync(path.join(uploadDir, f), { force: true });
     const files = [];
 
     if (platform === 'linux') {
         if (arch !== 'x64') throw new Error('Linux installers are built for x64 only');
         // tar.gz: the packaged folder under a versioned top folder.
         const tgz = path.join(uploadDir, names.linuxTarGz);
-        const top = `openDWU-${version}-linux-x64`;
+        const top = `${filePrefix}-${version}-linux-x64`;
         execFileSync(
             'tar',
             ['--sort=name', '--owner=0', '--group=0', '--numeric-owner', '--mode=u+rwX,go+rX,go-w', `--transform=s,^${path.basename(outDir)},${top},`, '-C', path.dirname(outDir), '-czf', tgz, path.basename(outDir)],
@@ -141,14 +147,14 @@ export async function makeInstallers({ root, platform, arch, version, outDir, st
             targets: ['AppImage'],
             wanted: [names.linuxAppImage],
             config: {
-                executableName: 'dwu',
+                executableName: exe,
                 linux: {
-                    executableName: 'dwu',
+                    executableName: exe,
                     icon: icons.png,
                     category: 'Game',
                     synopsis: 'A recreation of Distant Worlds: Universe',
                     description: 'openDWU, a recreation of Distant Worlds: Universe. Reads the game files from your own install.',
-                    desktop: { entry: { Name: 'openDWU', Comment: 'A recreation of Distant Worlds: Universe', StartupWMClass: 'dwu', Categories: 'Game;StrategyGame;' } },
+                    desktop: { entry: { Name: PRODUCT, Comment: 'A recreation of Distant Worlds: Universe', StartupWMClass: exe, Categories: 'Game;StrategyGame;' } },
                 },
                 appImage: { artifactName: names.linuxAppImage },
             },
@@ -168,8 +174,8 @@ export async function makeInstallers({ root, platform, arch, version, outDir, st
             targets: ['nsis'],
             wanted: [names.winSetup],
             config: {
-                executableName: 'dwu',
-                win: { executableName: 'dwu', icon: icons.ico, signAndEditExecutable: false, verifyUpdateCodeSignature: false },
+                executableName: exe,
+                win: { executableName: exe, icon: icons.ico, signAndEditExecutable: false, verifyUpdateCodeSignature: false },
                 nsis: {
                     artifactName: names.winSetup,
                     oneClick: false,
@@ -177,8 +183,8 @@ export async function makeInstallers({ root, platform, arch, version, outDir, st
                     allowToChangeInstallationDirectory: true,
                     createDesktopShortcut: true,
                     createStartMenuShortcut: true,
-                    shortcutName: 'openDWU',
-                    uninstallDisplayName: 'openDWU',
+                    shortcutName: PRODUCT,
+                    uninstallDisplayName: PRODUCT,
                     installerIcon: icons.ico,
                     uninstallerIcon: icons.ico,
                     deleteAppDataOnUninstall: false, // keeps config.json (game folder) and saves
@@ -191,7 +197,7 @@ export async function makeInstallers({ root, platform, arch, version, outDir, st
         files.push(dest);
         // Portable zip: the packaged folder under a versioned top folder.
         const zip = path.join(uploadDir, names.winZip);
-        const top = `openDWU-${version}-windows-x64`;
+        const top = `${filePrefix}-${version}-windows-x64`;
         const zipStage = path.join(root, 'release', 'zip-stage');
         fs.rmSync(zipStage, { recursive: true, force: true });
         fs.mkdirSync(zipStage, { recursive: true });
@@ -212,11 +218,11 @@ export async function makeInstallers({ root, platform, arch, version, outDir, st
         fs.rmSync(dmgStage, { recursive: true, force: true });
         fs.mkdirSync(dmgStage, { recursive: true });
         // ditto keeps the framework symlinks, extended attributes and the ad-hoc signature intact.
-        execFileSync('ditto', [path.join(outDir, 'dwu.app'), path.join(dmgStage, 'dwu.app')], { stdio: 'inherit' });
+        execFileSync('ditto', [path.join(outDir, `${exe}.app`), path.join(dmgStage, `${exe}.app`)], { stdio: 'inherit' });
         fs.symlinkSync('/Applications', path.join(dmgStage, 'Applications'));
-        fs.writeFileSync(path.join(dmgStage, 'Read Me First.txt'), macReadme(version));
+        fs.writeFileSync(path.join(dmgStage, 'Read Me First.txt'), macReadme(version, exe, PRODUCT));
         const dmg = path.join(uploadDir, names.macDmg);
-        hdiutilCreate(['create', '-volname', `openDWU ${version}`, '-srcfolder', dmgStage, '-fs', 'HFS+', '-format', 'UDZO', '-imagekey', 'zlib-level=9', '-ov', dmg]);
+        hdiutilCreate(['create', '-volname', `${PRODUCT} ${version}`, '-srcfolder', dmgStage, '-fs', 'HFS+', '-format', 'UDZO', '-imagekey', 'zlib-level=9', '-ov', dmg]);
         execFileSync('hdiutil', ['verify', dmg], { stdio: 'inherit' });
         fs.rmSync(dmgStage, { recursive: true, force: true });
         files.push(dmg);

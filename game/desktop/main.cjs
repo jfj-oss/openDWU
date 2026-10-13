@@ -64,8 +64,11 @@ const PKG = (() => {
 })();
 const APP_VERSION = app.isPackaged ? app.getVersion() : String(PKG.version ?? app.getVersion());
 const UPDATE_REPO = updates.repoSlug(PKG.repository) ?? 'jfj-oss/openDWU';
-const APP_ID = 'local.dwureup.dwu';
-const PRODUCT = 'openDWU';
+// openDWU Classic (build:classic): its own app id, product name and userData folder, so both editions install side by side.
+const CLASSIC = PKG.dwuEdition === 'classic' || process.env.DWU_EDITION === 'classic';
+const APP_ID = CLASSIC ? 'local.dwureup.dwuclassic' : 'local.dwureup.dwu';
+const PRODUCT = CLASSIC ? 'openDWU Classic' : 'openDWU';
+if (CLASSIC && !app.isPackaged && !process.env.DWU_USER_DATA_DIR) app.setPath('userData', path.join(app.getPath('appData'), 'openDWU Classic'));
 // Where the shell menu is, for the setup window's hint (macOS: the app menu, titled with the product name).
 const MENU_SHORTCUT_LABEL = process.platform === 'darwin' ? `the ${app.name} menu` : 'Ctrl+Shift+O';
 
@@ -530,7 +533,7 @@ async function checkForUpdates({ manual }) {
             console.log(`[update] ${release.version} was skipped by the player`);
             return;
         }
-        const download = updates.pickDownload(release, { platform: process.platform, arch: process.arch, kind: installKind() });
+        const download = updates.pickDownload(release, { platform: process.platform, arch: process.arch, kind: installKind(), product: CLASSIC ? 'classic' : 'full' });
         console.log(`[update] offering ${download ? download.name : release.pageUrl ?? '(no download)'}`);
         const notes = updates.notesExcerpt(release.notes);
         const { response } = await showMessage({

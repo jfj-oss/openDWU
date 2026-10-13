@@ -25,7 +25,7 @@ import { fileURLToPath } from 'node:url';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { defineConfig, type Plugin } from 'vite';
 import type {} from 'vitest/config'; // types the `test` block below
-import { buildScenarioIndex, listScenarioFiles } from './scripts/scenarioIndex.mjs';
+import { buildScenarioIndex, editionAllowlist, listScenarioFiles } from './scripts/scenarioIndex.mjs';
 import themeIndexLib from './desktop/themeIndex.cjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -285,6 +285,8 @@ function copyOwnArt(): Plugin {
  */
 function scenarioAssets(): Plugin {
     const root = path.join(here, 'scenarios');
+    // DWU_EDITION=classic ships only the allow-listed add-ons (scripts/scenarioIndex.mjs CLASSIC_ADDONS); also in dev.
+    const allow = editionAllowlist(process.env.DWU_EDITION);
     let isBuild = false;
     return {
         name: 'scenario-assets',
@@ -301,7 +303,7 @@ function scenarioAssets(): Plugin {
                 const rel = decodeURIComponent(url.slice('/assets/scenarios/'.length));
                 if (rel === 'index.json') {
                     res.setHeader('Content-Type', 'application/json');
-                    res.end(JSON.stringify(buildScenarioIndex(root)));
+                    res.end(JSON.stringify(buildScenarioIndex(root, allow)));
                     return;
                 }
                 const abs = rel.includes('..') ? null : path.join(root, rel);
@@ -319,10 +321,11 @@ function scenarioAssets(): Plugin {
             if (!isBuild || !existsSync(root) || !existsSync(path.join(here, 'dist'))) return;
             const out = path.join(here, 'dist', 'assets', 'scenarios');
             for (const rel of listScenarioFiles(root)) {
+                if (allow !== null && !allow.includes(rel.split('/')[0])) continue;
                 mkdirSync(path.dirname(path.join(out, rel)), { recursive: true });
                 copyFileSync(path.join(root, rel), path.join(out, rel));
             }
-            writeFileSync(path.join(out, 'index.json'), JSON.stringify(buildScenarioIndex(root)));
+            writeFileSync(path.join(out, 'index.json'), JSON.stringify(buildScenarioIndex(root, allow)));
         },
     };
 }
@@ -376,7 +379,7 @@ export default defineConfig({
     base: './',
     // The app's own version (package.json), shown on the main menu and compared with the latest GitHub release.
     // The build id (buildId) for the multiplayer version check.
-    define: { __DWU_VERSION__: JSON.stringify(PKG_VERSION), __DWU_BUILD__: JSON.stringify(buildId()) },
+    define: { __DWU_EDITION__: JSON.stringify(process.env.DWU_EDITION === 'classic' ? 'classic' : 'full'), __DWU_VERSION__: JSON.stringify(PKG_VERSION), __DWU_BUILD__: JSON.stringify(buildId()) },
     // Per-checkout dep-optimizer cache. node_modules is a symlink shared by
     // every git worktree, so the default node_modules/.vite cache was
     // rewritten by other worktrees' dev servers mid-boot (504 Outdated

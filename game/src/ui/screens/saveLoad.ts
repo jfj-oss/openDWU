@@ -10,6 +10,7 @@
 // A save also carries its own savedAt timestamp inside the stored JSON.
 // .dwusave files are plain-text exports/imports of that same JSON string
 // (Blob download / <input type=file>).
+import { IS_CLASSIC } from '../../appVersion';
 import './saveLoad.css';
 import { compressedSave, type SaveText } from '../../saveData';
 import { isGzipBlob } from '../../saveCompression';
@@ -554,7 +555,7 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
         addonsFileInput.value = '';
         if (file) void openAddonPicker({ label: file.name, text: file, saveName: saveNameFromFileName(file.name), isFile: true });
     });
-    if (saveAddons !== undefined) loadBody.append(place(addonsBtn, 10, addonsRowY, 200, 33), addonsFileInput);
+    if (saveAddons !== undefined && !IS_CLASSIC) loadBody.append(place(addonsBtn, 10, addonsRowY, 200, 33), addonsFileInput);
 
     // A status line under the buttons (the old panel's toast).
     const status = place(text('', { size: FONT.normal, color: 'rgb(255, 192, 0)', shadow: true, wrapWidth: 584, className: 'save-load-status' }), 10, SL_H - 63 - 34);

@@ -170,7 +170,7 @@ import type { Empire } from './sim/empire';
 import { devValue } from './ui/multiplayer/devHooks';
 import { endMultiplayerSession, multiplayerActive, multiplayerIsClient, multiplayerSaveExtras, openMultiplayerScreen, type LoadedMultiplayerSave, type MultiplayerAppDeps } from './ui/multiplayer/multiplayerApp';
 import { engineName, noteDataRead, resetDataReads } from './net/fingerprint';
-import { APP_BUILD, APP_VERSION } from './appVersion';
+import { APP_BUILD, APP_EDITION, APP_VERSION, IS_CLASSIC } from './appVersion';
 
 // ?shape= names accepted by the boot URL.
 const SHAPE_BY_NAME: Record<string, GalaxyShape> = {
@@ -309,6 +309,7 @@ function gameDataWithScenario(base: GameData, scenarioId: string | null, include
     try {
         return applyScenarioOverlay(base, scenarioOverlayFor(scenarioId, include, scenarioOverlays));
     } catch (err) {
+        if (IS_CLASSIC) throw new Error(`This save needs add-ons from the full edition of openDWU (${scenarioId === COMPOSITE_SCENARIO_ID ? (include ?? []).join(', ') : scenarioId}). openDWU Classic only has Themed Names, Smarter AI and the Event Log. Open it in openDWU (the full edition).`);
         throw new Error(`Scenario "${scenarioId}" is not available; cannot load this game. (${err instanceof Error ? err.message : String(err)})`);
     }
 }
@@ -1765,7 +1766,7 @@ const multiplayerDeps: MultiplayerAppDeps = {
         if (lastGameData === null) throw new Error('the Distant Worlds: Universe game files did not load (multiplayer needs them)');
         return lastGameData;
     },
-    fingerprintBase: () => ({ version: APP_VERSION, build: APP_BUILD, engine: engineName(navigator.userAgent), theme: activeCustomizationSetName() }),
+    fingerprintBase: () => ({ version: APP_VERSION, build: APP_BUILD, engine: engineName(navigator.userAgent), theme: activeCustomizationSetName(), edition: APP_EDITION }),
     openWizard: (initial) =>
         new Promise((resolve) => {
             const wizard = createNewGameWizard({

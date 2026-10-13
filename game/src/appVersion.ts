@@ -11,6 +11,14 @@ declare const __DWU_BUILD__: string | undefined;
 /** The build (the git commit the app was built from; vite.config.ts buildId): the multiplayer lobby compares it. */
 export const APP_BUILD: string = typeof __DWU_BUILD__ === 'string' ? __DWU_BUILD__ : 'dev';
 
+declare const __DWU_EDITION__: string | undefined;
+
+/** 'classic' = openDWU Classic (base game + Bacon + our base changes + the wizard; only the themed-names, smarter-ai and
+ * event-log add-ons ship; `DWU_EDITION=classic` at build time); 'full' = the whole game. */
+export const APP_EDITION: 'full' | 'classic' = typeof __DWU_EDITION__ === 'string' && __DWU_EDITION__ === 'classic' ? 'classic' : 'full';
+export const IS_CLASSIC = APP_EDITION === 'classic';
+export const APP_PRODUCT_NAME = IS_CLASSIC ? 'openDWU Classic' : 'openDWU';
+
 export const RELEASES_URL = 'https://github.com/jfj-oss/openDWU/releases';
 const LATEST_RELEASE_API = 'https://api.github.com/repos/jfj-oss/openDWU/releases/latest';
 

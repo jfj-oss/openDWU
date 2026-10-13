@@ -30,6 +30,7 @@ import type { GameSaveExtras } from '../../sim/save/gameSave';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import type { PlayerOpName } from '../../sim/player/playerOps';
 import { GalaxyShape } from '../../sim/types';
+import { IS_CLASSIC } from '../../appVersion';
 import { appFingerprint, diffFingerprintFiles, fingerprintFiles, fingerprintMismatch, type AppFingerprint } from '../../net/fingerprint';
 import { checkJoinPick, ChatLimiter, decodeHello, slotOfPeerName, type LobbyJoinChoice, LOBBY_CHAT_MAX_CHARS, LOBBY_MAX_PLAYERS, LobbyClient, LobbyHost, rejoinToken, sendLobbyMessage, slotHandoff, type HandoffLink, type LobbyAddonSet, type LobbyMessage, type LobbyPlayer, type LobbyState, type MultiplayerStart } from '../../net/lobby';
 import { joinChoicesFor, MultiplayerGame, type MultiplayerStatus } from '../../net/multiplayerGame';
@@ -74,7 +75,7 @@ export interface MultiplayerAppDeps {
     /** Load the static data (game data, add-ons, system names), so the lobby rows and the fingerprint are ready. */
     prepare(): Promise<GameData>;
     /** version / build / engine / theme of this app. */
-    fingerprintBase(): { version: string; build: string; engine: string; theme: string };
+    fingerprintBase(): { version: string; build: string; engine: string; theme: string; edition?: string };
     /** The new-game wizard over `initial`; resolves with the chosen options, or null (closed). */
     openWizard(initial: StartGameOptions): Promise<StartGameOptions | null>;
     /** What createGame takes from this app's settings beside the start options (host; sent to everyone). */
@@ -1701,7 +1702,7 @@ function openClientLobby(deps: MultiplayerAppDeps, client: LobbyClient, gameData
             }
             missingBox.hidden = missing.length === 0;
             const names = (st.host?.addons?.packages ?? []).map((id, i) => (missing.includes(id) ? `${st.host!.addons!.names[i] ?? id} (${id})` : null)).filter((x): x is string => x !== null);
-            missingBox.textContent = missing.length === 0 ? '' : `This app does not have the add-on package${names.length === 1 ? '' : 's'} the host's game uses: ${names.join(', ')}. Every player needs the same openDWU release with the same add-ons (assets/scenarios/), or the host picks other add-ons.`;
+            missingBox.textContent = missing.length === 0 ? '' : `This app does not have the add-on package${names.length === 1 ? '' : 's'} the host's game uses: ${names.join(', ')}. Every player needs the same openDWU release with the same add-ons (assets/scenarios/), or the host picks other add-ons.${IS_CLASSIC ? ' openDWU Classic ships only Themed Names, Smarter AI and the Event Log: install the full edition to play this game.' : ''}`;
             status.textContent = me?.ready === true ? 'Ready. Waiting for the host to start…' : 'Tick Ready when your empire is set.';
         },
         chat(from, name, text, to) {

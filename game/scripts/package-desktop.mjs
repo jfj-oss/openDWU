@@ -41,6 +41,11 @@ function parseArgs(argv) {
 
 const args = parseArgs(process.argv);
 const { platform, arch } = args;
+// openDWU Classic (--edition=classic or DWU_EDITION=classic): same code, only the themed-names, smarter-ai and event-log
+// add-ons, its own app id / product name / userData folder / file names, so both editions install side by side.
+const classic = (args.edition ?? process.env.DWU_EDITION) === 'classic';
+const exeName = classic ? 'dwu-classic' : 'dwu';
+const productName = classic ? 'openDWU Classic' : 'openDWU';
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 const version = pkg.version;
 const repo = process.env.GITHUB_REPOSITORY || repoSlug(pkg.repository) || 'jfj-oss/openDWU';
@@ -149,7 +154,7 @@ function scanAgainstInstall(outDir, install) {
 // ---------------------------------------------------------------------------
 
 console.log(`Building game ${version} (npm run build)...`);
-execSync('npm run build', { cwd: root, stdio: 'inherit' });
+execSync('npm run build', { cwd: root, stdio: 'inherit', env: { ...process.env, DWU_EDITION: classic ? 'classic' : 'full' } });
 const distDir = path.join(root, 'dist');
 guardDist(distDir);
 // The pages the shell loads from dist/: the game, and the sim process's page (desktop/simProcess.cjs).
@@ -172,9 +177,10 @@ fs.writeFileSync(
     path.join(stageDir, 'package.json'),
     JSON.stringify(
         {
-            name: 'dwu',
+            name: exeName,
             // productName names the profile folder (config.json, saves): keep it stable across releases.
-            productName: 'Distant Worlds Universe',
+            productName: classic ? 'openDWU Classic' : 'Distant Worlds Universe',
+            ...(classic ? { dwuEdition: 'classic' } : {}),
             version,
             description: 'openDWU: a recreation of Distant Worlds: Universe (reads the game files from your own install)',
             author: 'openDWU contributors',
@@ -182,7 +188,7 @@ fs.writeFileSync(
             repository: { type: 'git', url: `https://github.com/${repo}.git` },
             main: 'desktop/main.cjs',
             // Linux: Electron's Wayland app_id / X11 WM_CLASS, matching the AppImage's dwu.desktop (window <-> launcher icon).
-            desktopName: 'dwu.desktop',
+            desktopName: `${exeName}.desktop`,
         },
         null,
         2,
@@ -199,7 +205,7 @@ const outDirs = await packager({
     // Absolute paths: packager resolves relative ones against process.cwd(), which is only the game dir when run
     // through npm.
     dir: stageDir,
-    name: 'dwu',
+    name: exeName,
     platform,
     arch,
     out: releaseDir,
@@ -210,11 +216,11 @@ const outDirs = await packager({
     extraResource: [distResDir, icons.png],
     icon: platform === 'darwin' ? icons.icns : platform === 'win32' ? icons.ico : undefined,
     // macOS bundle metadata (ignored elsewhere); defaults are com.electron.dwu and the developer-tools category.
-    appBundleId: 'local.dwureup.dwu',
+    appBundleId: classic ? 'local.dwureup.dwuclassic' : 'local.dwureup.dwu',
     appCategoryType: 'public.app-category.strategy-games',
     appCopyright: 'openDWU contributors. Distant Worlds is a trademark of its owners; no original game files are included.',
     // Windows exe metadata (resedit; no Wine needed when cross-packaging).
-    win32metadata: { CompanyName: 'openDWU', FileDescription: 'openDWU', ProductName: 'openDWU', InternalName: 'dwu', OriginalFilename: 'dwu.exe' },
+    win32metadata: { CompanyName: 'openDWU', FileDescription: productName, ProductName: productName, InternalName: exeName, OriginalFilename: `${exeName}.exe` },
     asar: true,
 });
 const outDir = outDirs[0];
@@ -222,7 +228,7 @@ const outDir = outDirs[0];
 // 6. macOS: ad-hoc signature (no Apple Developer ID: arm64 macOS refuses unsigned code, and packager's edits invalidate
 //    Electron's own signature). Only possible on a Mac; a Linux-built package must be re-signed there (desktop/README.md).
 if (platform === 'darwin') {
-    const appPath = path.join(outDir, 'dwu.app');
+    const appPath = path.join(outDir, `${exeName}.app`);
     if (process.platform === 'darwin') {
         execFileSync('xattr', ['-cr', appPath], { stdio: 'inherit' });
         execFileSync('codesign', ['--force', '--deep', '--sign', '-', appPath], { stdio: 'inherit' });
@@ -248,6 +254,6 @@ console.log(`Packaged: ${outDir} (${(totalBytes / 1024 / 1024).toFixed(1)} MB)`)
 if (args.installers) {
     const { makeInstallers } = await import('./desktop-installers.mjs');
     // Every installer wraps only outDir (checked above) plus our generated icon.
-    const files = await makeInstallers({ root, platform, arch, version, outDir, stageDir, icons, electronVersion });
+    const files = await makeInstallers({ root, platform, arch, version, outDir, stageDir, icons, electronVersion, classic });
     console.log(`Installers (release/upload/):\n  ${files.map((f) => path.basename(f)).join('\n  ')}`);
 }

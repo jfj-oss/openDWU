@@ -13,6 +13,8 @@
     "predev": "node scripts/gen-asset-manifest.mjs",
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
+    "build:classic": "node scripts/classic.mjs build",
+    "dev:classic": "node scripts/classic.mjs dev",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:fast": "DWU_TEST_TIER=fast vitest run",
@@ -22,12 +24,19 @@
     "check:player-empire": "node scripts/check-player-empire.mjs",
     "import-assets": "bash scripts/import-assets.sh",
     "desktop:dev": "npm run build && electron desktop/main.cjs",
+    "desktop:dev:classic": "node scripts/classic.mjs desktop:dev",
     "package:linux": "node scripts/package-desktop.mjs --platform=linux --arch=x64",
     "package:mac": "node scripts/package-desktop.mjs --platform=darwin --arch=arm64",
     "package:win": "node scripts/package-desktop.mjs --platform=win32 --arch=x64",
     "dist:linux": "node scripts/package-desktop.mjs --platform=linux --arch=x64 --installers",
     "dist:mac": "node scripts/package-desktop.mjs --platform=darwin --arch=arm64 --installers",
-    "dist:win": "node scripts/package-desktop.mjs --platform=win32 --arch=x64 --installers"
+    "dist:win": "node scripts/package-desktop.mjs --platform=win32 --arch=x64 --installers",
+    "package:classic:linux": "node scripts/package-desktop.mjs --platform=linux --arch=x64 --edition=classic",
+    "package:classic:mac": "node scripts/package-desktop.mjs --platform=darwin --arch=arm64 --edition=classic",
+    "package:classic:win": "node scripts/package-desktop.mjs --platform=win32 --arch=x64 --edition=classic",
+    "dist:classic:linux": "node scripts/package-desktop.mjs --platform=linux --arch=x64 --edition=classic --installers",
+    "dist:classic:mac": "node scripts/package-desktop.mjs --platform=darwin --arch=arm64 --edition=classic --installers",
+    "dist:classic:win": "node scripts/package-desktop.mjs --platform=win32 --arch=x64 --edition=classic --installers"
   },
   "dependencies": {
     "pixi.js": "^8.21.0"

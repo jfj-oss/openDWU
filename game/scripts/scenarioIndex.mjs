@@ -16,15 +16,32 @@ export function listScenarioFiles(dir, rel = '') {
     return out;
 }
 
-/** { scenarios: [...] } for every folder of `root` that has a scenario.json (its id must equal the folder name). */
-export function buildScenarioIndex(root) {
+/**
+ * openDWU Classic (DWU_EDITION=classic, vite.config.ts): the only add-ons that ship. event-log's manifest includes
+ * internal-security and threat-framework (the Emergent Galaxy and hidden threats); in Classic those are not shipped, so
+ * buildScenarioIndex drops every `include` / `requires` outside the allow-list. The event log itself (scenario/eventLog)
+ * and the Galactic History screen read only its own `eventLog` flag and the typed log, so it works standalone.
+ */
+export const CLASSIC_ADDONS = ['themed-names', 'smarter-ai', 'event-log'];
+
+/** Scenario ids a build ships: null = all (full edition), else the allow-list. */
+export function editionAllowlist(edition) {
+    return edition === 'classic' ? CLASSIC_ADDONS : null;
+}
+
+/** { scenarios: [...] } for every folder of `root` that has a scenario.json (its id must equal the folder name); `allow` (ids) limits it to those add-ons and prunes their include / requires to the same set. */
+export function buildScenarioIndex(root, allow = null) {
     const scenarios = [];
     if (!existsSync(root)) return { scenarios };
     for (const name of readdirSync(root).sort()) {
         const dir = path.join(root, name);
         if (!statSync(dir).isDirectory() || !existsSync(path.join(dir, 'scenario.json'))) continue;
         const manifest = JSON.parse(readFileSync(path.join(dir, 'scenario.json'), 'utf8'));
+        if (allow !== null && !allow.includes(name)) continue;
         if (manifest.id !== name) throw new Error(`scenarios/${name}/scenario.json: id "${String(manifest.id)}" must equal the folder name`);
+        if (allow !== null) {
+            for (const k of ['include', 'requires']) if (Array.isArray(manifest[k])) manifest[k] = manifest[k].filter((id) => allow.includes(id));
+        }
         scenarios.push({ ...manifest, id: name, files: listScenarioFiles(dir).filter((f) => f !== 'scenario.json') });
     }
     return { scenarios };

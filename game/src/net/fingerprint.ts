@@ -23,6 +23,8 @@ export interface AppFingerprint {
     protocol: number;
     /** The active theme (customization set), '' = the stock game. */
     theme: string;
+    /** 'full' or 'classic' (appVersion.ts APP_EDITION); absent = an older app = 'full'. Classic ships only three add-ons. */
+    edition?: string;
     /** Hash of the add-on (scenario overlay) files, and how many. */
     addons: string;
     addonFiles: number;
@@ -50,6 +52,8 @@ export function engineName(userAgent: string | undefined, nodeVersion?: string):
 /**
  * Why a joiner with fingerprint `mine` cannot play the host's game (`host`), phrased for the joiner; null = they match.
  * The first difference wins, in order of what a player can fix.
+ * Classic and full editions ship different add-on files, so the add-on hashes are not compared across editions: they play
+ * together when the game uses only add-ons both have (the lobby's missing-add-ons check names the ones the joiner lacks).
  */
 export function fingerprintMismatch(host: AppFingerprint, mine: AppFingerprint): string | null {
     if (host.protocol !== mine.protocol) return `The host's multiplayer protocol is version ${host.protocol}, yours is ${mine.protocol}. Both players need the same app version.`;
@@ -57,7 +61,7 @@ export function fingerprintMismatch(host: AppFingerprint, mine: AppFingerprint):
     if (host.build !== mine.build) return `The host runs build ${host.build} of ${host.version}, you run build ${mine.build}. Both players need the same build.`;
     if (host.engine !== mine.engine) return `The host runs on ${host.engine}, you run on ${mine.engine}. Different engines compute the game differently: both players need the same app (the desktop app, the same release).`;
     if (host.theme !== mine.theme) return `The host plays the theme "${host.theme === '' ? 'Default' : host.theme}", you have "${mine.theme === '' ? 'Default' : mine.theme}" active. Switch to the same theme (main menu → Change Theme).`;
-    if (host.addons !== mine.addons) return `Your add-ons differ from the host's (host: ${host.addonFiles} add-on files, ${host.addons.slice(0, 8)}; you: ${mine.addonFiles}, ${mine.addons.slice(0, 8)}). Both players need the same add-ons.`;
+    if (host.addons !== mine.addons && (host.edition ?? 'full') === (mine.edition ?? 'full')) return `Your add-ons differ from the host's (host: ${host.addonFiles} add-on files, ${host.addons.slice(0, 8)}; you: ${mine.addonFiles}, ${mine.addons.slice(0, 8)}). Both players need the same add-ons.`;
     if (host.data !== mine.data) return `Your game data files differ from the host's (host: ${host.dataFiles} files, ${host.data.slice(0, 8)}; you: ${mine.dataFiles} files, ${mine.data.slice(0, 8)}). Both players need the same Distant Worlds: Universe files (the same version, no edited or extra data files).`;
     return null;
 }
@@ -73,7 +77,7 @@ export function fingerprintDifference(host: AppFingerprint, mine: AppFingerprint
     const why = fingerprintMismatch(host, mine);
     if (why === null) return null;
     if (host.protocol !== mine.protocol || host.version !== mine.version || host.build !== mine.build || host.engine !== mine.engine) return { kind: 'hard', reason: why };
-    return { kind: 'soft', reason: why, theme: host.theme !== mine.theme, addons: host.addons !== mine.addons, data: host.data !== mine.data };
+    return { kind: 'soft', reason: why, theme: host.theme !== mine.theme, addons: host.addons !== mine.addons && (host.edition ?? 'full') === (mine.edition ?? 'full'), data: host.data !== mine.data };
 }
 
 /** The files behind a data / add-on difference: host's list vs. ours (fingerprintFiles), each as lower-cased paths. */
@@ -171,7 +175,7 @@ export async function fingerprintFiles(): Promise<Array<[string, string]>> {
 }
 
 /** This app's fingerprint from what it has read so far. */
-export async function appFingerprint(base: { version: string; build: string; engine: string; theme: string }): Promise<AppFingerprint> {
+export async function appFingerprint(base: { version: string; build: string; engine: string; theme: string; edition?: string }): Promise<AppFingerprint> {
     return {
         ...base,
         protocol: MULTIPLAYER_PROTOCOL_VERSION,

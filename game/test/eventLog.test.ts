@@ -5,7 +5,14 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { cachedTickGameRun } from './helpers/gameCache';
-import { createScenarioGame, scenarioGameData } from './helpers/scenarioGame';
+import { SCENARIOS_ROOT, createScenarioGame, scenarioGameData } from './helpers/scenarioGame';
+import { CLASSIC_ADDONS, buildScenarioIndex, editionAllowlist } from '../scripts/scenarioIndex.mjs';
+import { parseScenarioManifest } from '../src/sim/scenario/manifest';
+import { applyScenarioOverlay, resolveScenarioIncludes, type ScenarioOverlay } from '../src/sim/scenario/overlay';
+import { createGame } from '../src/sim/game';
+import { tickGameOptions } from './helpers/tickGame';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Game } from '../src/sim/game';
 import type { Galaxy } from '../src/sim/galaxy';
@@ -278,4 +285,33 @@ describe('save round trip', () => {
         expect(JSON.stringify(eventLogEntries(lg))).toBe(JSON.stringify(eventLogEntries(g)));
         expect(saveText(loaded.game)).toBe(saveText(a.game));
     }, 1200000);
+});
+
+describe('openDWU Classic edition (DWU_EDITION=classic: only themed-names, smarter-ai, event-log)', () => {
+    it('the Classic scenario index holds only the allow-listed add-ons and event-log has no includes', () => {
+        const allow = editionAllowlist('classic')!;
+        expect(allow).toEqual(CLASSIC_ADDONS);
+        expect(editionAllowlist('full')).toBeNull();
+        const idx = buildScenarioIndex(SCENARIOS_ROOT, allow).scenarios;
+        expect(idx.map((m) => m.id).sort()).toEqual([...CLASSIC_ADDONS].sort());
+        expect((idx.find((m) => m.id === 'event-log')!.include as string[])).toEqual([]);
+        // the full index is unchanged: event-log still includes internal-security and threat-framework
+        const full = buildScenarioIndex(SCENARIOS_ROOT).scenarios;
+        expect(full.length).toBeGreaterThan(CLASSIC_ADDONS.length);
+        expect((full.find((m) => m.id === 'event-log')!.include as string[])).toContain('internal-security');
+    });
+
+    it('event-log works standalone: logs entries and drives the Galactic History rows', () => {
+        const manifest = parseScenarioManifest(buildScenarioIndex(SCENARIOS_ROOT, CLASSIC_ADDONS).scenarios.find((m) => m.id === 'event-log')!);
+        const files = new Map(manifest.files.map((f) => [f, readFileSync(resolve(SCENARIOS_ROOT, 'event-log', f), 'utf8')] as const));
+        const overlay: ScenarioOverlay = resolveScenarioIncludes({ manifest, files }, new Map());
+        const gameData = applyScenarioOverlay(base, overlay);
+        const game = createGame({ ...tickGameOptions(gameData), scenarioFlags: { ...ALL_OFF, eventLog: true } });
+        const g = game.galaxy;
+        runGameSeconds(game, 300);
+        expect(galacticHistoryUsesEventLog(g)).toBe(true);
+        expect(eventLogEntries(g).length).toBeGreaterThan(0);
+        expect(eventLogHistoryRows(g, g.playerEmpire!, 'all', 'date').length).toBeGreaterThan(0);
+        expect(historyCategoryOptions().length).toBeGreaterThan(1);
+    }, 180000);
 });

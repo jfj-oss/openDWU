@@ -131,9 +131,12 @@ describe('selectUnusedMainColor pirate branch', () => {
 });
 
 describe('displayColorForEmpire (task 19k-1b: extended palette, presentation only)', () => {
-    it('is byte-identical to mainColor with the scenario flag off, at any empire count', () => {
-        const galaxy = fakePaletteGalaxy(60, false);
-        for (const e of galaxy.empires) expect(displayColorForEmpire(e)).toBe(e.mainColor);
+    it('is byte-identical to mainColor with 20 or fewer empires, and activates automatically (no flag) above 20', () => {
+        const small = fakePaletteGalaxy(20, false);
+        for (const e of small.empires) expect(displayColorForEmpire(e)).toBe(e.mainColor);
+        const big = fakePaletteGalaxy(60, false); // flag off: the old add-on flag is ignored
+        expect(big.empires.slice(20).some((e) => displayColorForEmpire(e) !== e.mainColor)).toBe(true);
+        expect(new Set(big.empires.map((e) => displayColorForEmpire(e))).size).toBe(60);
     });
 
     it('is byte-identical to mainColor with no scenario at all', () => {

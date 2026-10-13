@@ -62,8 +62,8 @@ describe('60-empire games (task 19k-1)', () => {
         expect(new Set(colors).size).toBe(empiresOn.length);
     });
 
-    it('(b) is a pure pass-through of mainColor with extendedPalette off', () => {
-        for (const e of empiresOff) expect(displayColorForEmpire(e)).toBe(e.mainColor);
+    it('(b) the extended palette is automatic: extendedPalette off still gives 60 distinct display colours', () => {
+        expect(new Set(empiresOff.map((e) => displayColorForEmpire(e))).size).toBe(EMPIRE_COUNT);
     });
 
     it('(c) duplicate races occur (>20 empires, 22 playable races): confirms this is a real test of the duplicate case', () => {

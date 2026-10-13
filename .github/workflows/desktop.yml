@@ -78,14 +78,17 @@ jobs:
           - name: Linux x64
             os: ubuntu-latest
             script: dist:linux
+            script_classic: dist:classic:linux
             artifact: openDWU-linux-x64
           - name: macOS arm64
             os: macos-14 # Apple silicon runner
             script: dist:mac
+            script_classic: dist:classic:mac
             artifact: openDWU-macos-arm64
           - name: Windows x64
             os: windows-latest
             script: dist:win
+            script_classic: dist:classic:win
             artifact: openDWU-windows-x64
     runs-on: ${{ matrix.os }}
     permissions:
@@ -110,8 +113,10 @@ jobs:
         if: runner.os != 'macOS' # the macOS disk image is made with hdiutil
         working-directory: game/scripts/installer-tools
         run: npm ci --no-audit --no-fund
-      - name: Build, package and make the installers
+      - name: Build, package and make the installers (full edition)
         run: npm run ${{ matrix.script }}
+      - name: Build, package and make the installers (openDWU Classic)
+        run: npm run ${{ matrix.script_classic }}
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}

@@ -71,6 +71,17 @@ That's all; installed apps see the new version within a day.
   `scripts/package-desktop.mjs` fails the build if anything outside its
   allow-list ends up in the package.
 
+## Two editions
+
+Every release ships two editions per platform from the same code: the full **openDWU** and **openDWU Classic**
+(base game + Bacon + our base-game changes + the new-game wizard, with only the Themed Names, Smarter AI and Event Log
+add-ons; no add-on picker). Classic is built with `DWU_EDITION=classic` (`npm run build:classic`;
+`scripts/package-desktop.mjs --edition=classic`; `npm run dist:classic:linux|mac|win`). Its files are named
+`openDWU-Classic-<v>-...`, its app id is `local.dwureup.dwuclassic` and its profile folder is "openDWU Classic", so both
+install side by side. The desktop workflow runs both `dist:<os>` and `dist:classic:<os>` per platform; the update check
+in each edition looks for its own file names. A Classic and a full copy can play multiplayer together when the game
+uses only add-ons both have.
+
 ## Building locally
 
 From `game/`: `npm run dist:linux` and `npm run dist:win` (both also work on

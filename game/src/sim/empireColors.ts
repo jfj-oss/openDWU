@@ -8,7 +8,6 @@
 
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
-import { scenarioFlag } from './scenario/state';
 
 const KEY_COLORS = [
     0x0000b0, 0x0040e8, 0x0080ff, 0x00ffff, 0x185018, 0x008000, 0x00cc00, 0xa0ff00, 0xffff20, 0xff681f, 0xff0030, 0x870000,
@@ -24,7 +23,7 @@ export function selectColorFromKey(key: number): number {
 // SelectUnusedMainColor's 20-key budget is spent and Galaxy.cs falls back to
 // a random muted RGB colour per empire (empire.mainColor keeps that value —
 // this file's sim-facing functions above are untouched, so pins stay at 0).
-// The `big-galaxies` scenario's `extendedPalette` flag swaps that random
+// Part of the base game (no flag; the old big-galaxies add-on's `extendedPalette` is ignored): with more than 20 empires the game swaps that random
 // fallback for a fixed, contrast-picked colour from a 40-entry data table
 // (20 key + 40 extended = 60, the "Big galaxies" cap) — for display only:
 // selectDisplayColor / displayColorForEmpire are called from render/UI code,
@@ -49,8 +48,7 @@ function isKeyColor(color: number): boolean {
 }
 
 /**
- * The display colour for `empire` (task 19k-1b): with the `extendedPalette` scenario flag off, or with no scenario,
- * this is exactly `empire.mainColor` (byte-identical to the faithful game). With it on, an empire whose mainColor is
+ * The display colour for `empire` (task 19k-1b): with 20 or fewer empires this is exactly `empire.mainColor` (byte-identical to the faithful game); above 20, an empire whose mainColor is
  * NOT one of the 20 key colours (i.e. it hit SelectUnusedMainColor's random-fallback branch, meaning >20 empires in
  * this galaxy already claimed the key colours) instead gets a colour from EXTENDED_COLORS, picked by that empire's
  * stable rank (by empireId) among every such "overflow" empire — deterministic and distinct for up to 40 of them
@@ -58,7 +56,7 @@ function isKeyColor(color: number): boolean {
  */
 export function displayColorForEmpire(empire: Empire): number {
     const galaxy = empire.galaxy;
-    if (galaxy == null || !scenarioFlag(galaxy, 'extendedPalette') || isKeyColor(empire.mainColor)) {
+    if (galaxy == null || galaxy.empires.length <= 20 || isKeyColor(empire.mainColor)) {
         return empire.mainColor;
     }
     const overflow = galaxy.empires
