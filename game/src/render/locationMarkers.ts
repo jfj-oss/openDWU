@@ -25,6 +25,8 @@ import { hintSource, hintSubject } from '../sim/player/hintSubjects';
 import { isMarkerDismissed, waypointState, type Waypoint } from '../sim/player/waypoints';
 import { knownLocationTooltip, knownLocations, knownLocationsSignature, type KnownLocation } from '../sim/player/knownLocations';
 import { GalaxyLocationType, type GalaxyLocation } from '../sim/galaxyLocation';
+import { MARKED_LOCATION_TYPES } from '../sim/player/knownLocations';
+import { MAX_SOLAR_SYSTEM_SIZE } from '../sim/visibility';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
 import { overlayActive, type MapOverlayState } from '../ui/mapOverlays';
 import { getSettings } from '../ui/settings';
@@ -47,7 +49,8 @@ export const HINT_PULSE_MARGIN_PX = 40;
 export const MAP_LABEL_MIN_SPACING_PX = 80;
 
 export const WAYPOINT_COLOR = 0x46d8ff;
-export const KNOWN_LOCATION_COLOR = 0xffb840;
+/** The known-location diamond: a light purple (smaller than the first version, gold). */
+export const KNOWN_LOCATION_COLOR = 0xc8a8f0;
 const WAYPOINT_LABEL = 0xc8f4ff;
 const LOCATION_LABEL = 0xffe0a8;
 const HINT_LABEL = 0xc4b8ff;
@@ -105,6 +108,7 @@ export function mapMarkers(galaxy: Galaxy, player: Empire | null, showWaypoints:
     if (showKnown) {
         for (const k of knownLocations(galaxy, player, reveal)) {
             if (k.kind === 'hint' && k.location !== null) continue;
+            if (k.kind === 'hint' && markerSuppressedAt(galaxy, k.x, k.y)) continue;
             if (k.location !== null && !locationMarkerWorthIt(galaxy, k.location)) continue;
             out.push({ kind: k.kind, key: k.key, x: k.x, y: k.y, name: k.kind === 'hint' ? `? ${k.name}` : k.name, waypoint: null, known: k });
         }
@@ -122,24 +126,47 @@ export function markerTooltip(galaxy: Galaxy, player: Empire | null, m: MapMarke
     return m.name;
 }
 
-/** A black hole / supernova marker needs its star's research bonus (Habitat.ResearchBonus, %: stock 5-15 at these
- *  stars, Galaxy.5.cs SetResearchBonus) at least this... */
-export const MARKER_MIN_RESEARCH_BONUS = 10;
-/** ...or its ScenicFactor (stock 0.3-0.9 at a black hole, Galaxy.5.cs SetScenicFactor; a supernova has none) at least
- *  this (the top of every planet's scenic roll). */
-export const MARKER_MIN_SCENIC_FACTOR = 0.6;
+/**
+ * Whether a known location gets a marker. Black holes (their Pull and Event Horizon, the wormholes) and supernovas
+ * never do: the overlay skips them, and so do the location hints that point at them (markerSuppressedAt). The other
+ * types always. This overlay is our addition (the original marks none of them).
+ */
+export function locationMarkerWorthIt(_galaxy: Galaxy, loc: GalaxyLocation): boolean {
+    return loc.type !== GalaxyLocationType.BlackHole && loc.type !== GalaxyLocationType.SuperNova;
+}
+
+/** Per galaxy: every marked-type location's centre, and whether it is a black hole / supernova (never marked). */
+const suppressionCache = new WeakMap<Galaxy, { x: number; y: number; hidden: boolean }[]>();
 
 /**
- * Whether a known location gets a marker: a black hole's (its Pull and Event Horizon) or a supernova's only when its
- * star carries a substantial research or scenery bonus (every black hole and supernova is a known location once seen,
- * mostly worth nothing); the other types always. This overlay is our addition (the original marks none of them).
+ * Whether a point (a location hint) sits at a black hole or supernova: the nearest marked-type location within
+ * MAX_SOLAR_SYSTEM_SIZE (the radius knownLocations uses to attach a hint) is one of those. Such a hint gets neither
+ * its marker nor its pulse circle.
  */
-export function locationMarkerWorthIt(galaxy: Galaxy, loc: GalaxyLocation): boolean {
-    if (loc.type !== GalaxyLocationType.BlackHole && loc.type !== GalaxyLocationType.SuperNova) return true;
-    const c = loc.resolveLocationCenter();
-    const star = galaxy.fastFindNearestSystem(c.x, c.y);
-    if (star === null || Math.abs(star.xpos - c.x) > 10 || Math.abs(star.ypos - c.y) > 10) return true;
-    return star.researchBonus >= MARKER_MIN_RESEARCH_BONUS || star.scenicFactor >= MARKER_MIN_SCENIC_FACTOR;
+export function markerSuppressedAt(galaxy: Galaxy, x: number, y: number): boolean {
+    let list = suppressionCache.get(galaxy);
+    if (list === undefined) {
+        list = [];
+        for (const l of galaxy.galaxyLocations) {
+            if (l == null || !MARKED_LOCATION_TYPES.has(l.type)) continue;
+            const c = l.resolveLocationCenter();
+            list.push({ x: c.x, y: c.y, hidden: !locationMarkerWorthIt(galaxy, l) });
+        }
+        suppressionCache.set(galaxy, list);
+    }
+    const r2 = MAX_SOLAR_SYSTEM_SIZE * MAX_SOLAR_SYSTEM_SIZE;
+    let best = Infinity;
+    let hidden = false;
+    for (const k of list) {
+        const dx = k.x - x;
+        const dy = k.y - y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 <= r2 && d2 < best) {
+            best = d2;
+            hidden = k.hidden;
+        }
+    }
+    return hidden;
 }
 
 /** A change key for mapMarkers' input. */
@@ -204,8 +231,8 @@ function drawIcon(g: Graphics, kind: MapMarker['kind']): void {
         g.poly([0, -16, 10, -12.5, 0, -9]).fill({ color: WAYPOINT_COLOR }).stroke({ width: 1, color: 0x000000, alpha: 0.7 });
         g.circle(0, 0, 2.5).fill({ color: WAYPOINT_COLOR }).stroke({ width: 1, color: 0x000000, alpha: 0.7 });
     } else if (kind === 'location') {
-        g.poly([0, -6, 6, 0, 0, 6, -6, 0]).fill({ color: 0x000000, alpha: 0.45 }).stroke({ width: 2, color: KNOWN_LOCATION_COLOR });
-        g.circle(0, 0, 1.5).fill({ color: KNOWN_LOCATION_COLOR });
+        g.poly([0, -4.7, 4.7, 0, 0, 4.7, -4.7, 0]).fill({ color: 0x000000, alpha: 0.45 }).stroke({ width: 1.6, color: KNOWN_LOCATION_COLOR });
+        g.circle(0, 0, 1.2).fill({ color: KNOWN_LOCATION_COLOR });
     } else {
         g.circle(0, 0, 5).fill({ color: 0x000000, alpha: 0.4 }).stroke({ width: 1.5, color: 0x9c88ff });
         g.circle(0, 0, 1.5).fill({ color: 0x9c88ff });
@@ -337,6 +364,7 @@ export class LocationMarkerLayer {
             const sx = Math.trunc((p.x - left) * z);
             const sy = Math.trunc((p.y - top) * z);
             if (sx < -HINT_PULSE_MARGIN_PX || sx > cam.width + HINT_PULSE_MARGIN_PX || sy < -HINT_PULSE_MARGIN_PX || sy > cam.height + HINT_PULSE_MARGIN_PX) continue;
+            if (markerSuppressedAt(this.galaxy, p.x, p.y)) continue;
             const cx = left + sx / z - ox;
             const cy = top + sy / z - oy;
             // Dashed: segments 0, 2, 4, ... of 30.

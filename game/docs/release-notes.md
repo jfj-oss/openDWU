@@ -4,6 +4,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **Map markers:** the Waypoints & Known Locations overlay and the minimap no longer mark black holes (their Pull and Event Horizon, the wormholes and gravity wells), supernovas, or the location hints that point at them; the remaining known-location diamonds are light purple and a little smaller.
 - **Playable Mechanoid and Shakturi:** the new-game wizard (and the multiplayer and hot-seat race pickers) now offer the Mechanoid
   and Shakturi races for your own empire. AI empires still never get them, and the story's Ancient Guardians and Shakturi
   lookups skip your empire, so it is never mistaken for or absorbed as the Guardians.

@@ -19,7 +19,7 @@ import { issuePlayerCommand } from '../sim/player/playerCommands';
 import { WAYPOINT_NAME_MAX, defaultWaypointName, sanitizeWaypointName, waypointState, waypoints, type Waypoint } from '../sim/player/waypoints';
 import { knownLocationTooltip, knownLocations, type KnownLocation } from '../sim/player/knownLocations';
 import type { OrderMenuItem } from '../sim/player/orderMenu';
-import { HINT_PULSE_COLOR, KNOWN_LOCATION_COLOR, WAYPOINT_COLOR, labelAllowed, type MapMarker } from '../render/locationMarkers';
+import { HINT_PULSE_COLOR, KNOWN_LOCATION_COLOR, WAYPOINT_COLOR, labelAllowed, locationMarkerWorthIt, markerSuppressedAt, type MapMarker } from '../render/locationMarkers';
 import { fogOf } from '../render/fog';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
 import { isImprovementEnabled } from './improvements';
@@ -554,6 +554,7 @@ export function drawGalaxyMapMarkers(ctx: CanvasRenderingContext2D, galaxy: Gala
     }
     if (st.waypointsShowKnown) {
         for (const k of knownLocations(galaxy, player, fogOf(galaxy).reveal)) {
+            if (k.kind === 'hint' ? markerSuppressedAt(galaxy, k.x, k.y) : k.location !== null && !locationMarkerWorthIt(galaxy, k.location)) continue;
             const x = Math.round(k.x / s) + 0.5;
             const y = Math.round(k.y / s) + 0.5;
             if (k.kind === 'hint') {
