@@ -8,6 +8,7 @@ import type { Habitat } from '../../../types';
 import type { BuiltObject } from '../../../builtObject';
 import type { Character } from '../../../characters';
 import { resolveStarDateDescription } from '../../../galaxyTime';
+import { gameYear } from '../../hooks';
 import { galaxyStarDate } from '../../../tick/simTime';
 import { isHumanEmpire } from '../../../humanEmpires';
 import { strategicValue } from '../../../territory';
@@ -81,6 +82,8 @@ export interface DietViewModel {
     sanctions: string[];
     enforcers: { target: string; ships: number; stage: string; station: string; lead: BuiltObject | null }[];
     history: { text: string; result: string; tally: string; date: string }[];
+    /** Every recorded motion, newest first (the History tab groups them by year and filters by result). */
+    motionLog: { year: number; text: string; proposer: string; result: 'passed' | 'failed' | 'vetoed'; yes: number; no: number; target: string }[];
     members: DietMemberRow[];
     governors: { character: Character; label: string; best: boolean; current: boolean }[];
     canEmergency: boolean;
@@ -284,6 +287,7 @@ export function dietView(galaxy: Galaxy, player: Empire): DietViewModel | null {
         sanctions: c.sanctions.map((x) => `${x.kind === 'sanction' ? 'Sanctions' : 'Embargo'} on the ${x.target.name} (since ${x.year})`),
         enforcers: st.enforcers.map((f) => ({ target: f.target.name, ships: f.ships.filter((b) => !b.hasBeenDestroyed).length, stage: f.stage === 'blockading' ? 'blockading' : f.stage === 'enRoute' ? 'en route' : 'gathering', station: f.station?.name ?? '—', lead: f.fleet?.leadShip ?? f.ships[0] ?? null })),
         history: [...st.history].reverse().slice(0, 12).map((h) => ({ text: h.text, result: h.result, tally: `${h.yes.toFixed(1)}–${h.no.toFixed(1)}`, date: dateOf(h.starDate) })),
+        motionLog: [...st.history].reverse().map((h) => ({ year: h.year ?? gameYear(h.starDate), text: h.text, proposer: h.proposer.name, result: h.result, yes: h.yes, no: h.no, target: h.target?.name ?? '—' })),
         members,
         governors,
         canEmergency: regentActive && st.regent === player && s === null && (lastEm < 0 || now - lastEm >= dietParam(galaxy, 'dietEmergencyYears') * 600_000),

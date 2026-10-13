@@ -19,6 +19,7 @@
 import type { Galaxy } from '../../../galaxy';
 import type { Empire } from '../../../empire';
 import type { Habitat } from '../../../types';
+import { DIET_HISTORY_CAP } from './dietState';
 import { BuiltObject } from '../../../builtObject';
 import { type Character, CharacterRole, isBuiltObjectLocation } from '../../../characters';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../../../diplomacy';
@@ -452,7 +453,7 @@ export function closeSession(galaxy: Galaxy, st: DietState, c: Council, s: DietS
     for (const m of s.motions) {
         if (m.status !== 'vetoed') m.status = m.yes > m.no ? 'passed' : 'failed';
         const passed = m.status === 'passed';
-        st.history.push({ sessionId: s.id, starDate: now, kind: m.kind, text: m.text, result: m.status as 'passed' | 'failed' | 'vetoed', yes: m.yes, no: m.no, proposer: m.proposer });
+        st.history.push({ sessionId: s.id, starDate: now, kind: m.kind, text: m.text, result: m.status as 'passed' | 'failed' | 'vetoed', yes: m.yes, no: m.no, proposer: m.proposer, year, target: m.target });
         if (STOCK_KINDS.has(m.kind) && m.target !== null) {
             c.results.push({ motionId: m.id, year, kind: m.kind as never, text: m.text, passed, yes: m.votes.filter((v) => v.vote === 'yes').length, no: m.votes.filter((v) => v.vote === 'no').length, abstain: m.votes.filter((v) => v.vote === 'abstain').length, proposer: m.proposer, target: m.target });
             if (c.results.length > 20) c.results.splice(0, c.results.length - 20);
@@ -464,7 +465,7 @@ export function closeSession(galaxy: Galaxy, st: DietState, c: Council, s: DietS
             applyDietMotion(galaxy, st, c, m, year);
         } else dietMotionKindDef(m.kind)?.failed?.(galaxy, st, m); // a registered kind's failed / vetoed motion (War Crimes)
     }
-    if (st.history.length > 40) st.history.splice(0, st.history.length - 40);
+    if (st.history.length > DIET_HISTORY_CAP) st.history.splice(0, st.history.length - DIET_HISTORY_CAP);
     news(galaxy, null, scenarioText('Diet Session Closed News', s.world.name, lines.join(' ') || scenarioText('Diet No Motions')), s.world);
     tell(galaxy, humanMembers(galaxy, c, st), 'Diet Results Title', lines.join('\n') || scenarioText('Diet No Motions'), { popup: s.motions.length > 0, subject: s.world });
     // Delegates go home (the duty ends: Part 1 sends them back by VIP shuttle).

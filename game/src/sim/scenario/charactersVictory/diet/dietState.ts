@@ -259,7 +259,12 @@ export interface DietHistoryEntry {
     yes: number;
     no: number;
     proposer: Empire;
+    /** Game year of the tally, and the empire the motion names (null: galaxy-wide). Absent in older saves. */
+    year?: number;
+    target?: Empire | null;
 }
+
+export const DIET_HISTORY_CAP = 200;
 
 export interface DietCounters {
     sessions: number;

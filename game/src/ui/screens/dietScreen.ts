@@ -15,7 +15,7 @@ import { strategicValue } from '../../sim/territory';
 import { showToast } from '../toast';
 import { COLORS, FONT, OwGrid, darkRect, dropDown, el, glassButton, messageBox, openOriginalWindow, place, scrollPanel, tabStrip, text, type OriginalWindow } from '../originalWindow';
 
-type Tab = 'session' | 'inForce' | 'members';
+type Tab = 'session' | 'inForce' | 'history' | 'members';
 
 let open: { win: OriginalWindow; timer: number } | null = null;
 
@@ -57,12 +57,13 @@ export function toggleDietScreen(galaxy: Galaxy, player: Empire): void {
         win.body.appendChild(p);
         return p;
     };
-    const pages: Record<Tab, HTMLDivElement> = { session: page(), inForce: page(), members: page() };
+    const pages: Record<Tab, HTMLDivElement> = { session: page(), inForce: page(), history: page(), members: page() };
     let tab: Tab = 'session';
     const strip = tabStrip(
         [
             { id: 'session', label: 'Session' },
             { id: 'inForce', label: 'In force' },
+            { id: 'history', label: 'History' },
             { id: 'members', label: 'Members' },
         ],
         tab,
@@ -121,11 +122,13 @@ export function toggleDietScreen(galaxy: Galaxy, player: Empire): void {
         if (vm === null) {
             pages.session.replaceChildren(place(text('The Interstellar Diet has not been founded yet: it forms once enough empires have met.', { size: FONT.large, color: GREY }), 16, 16, bw - 32));
             pages.inForce.replaceChildren();
+            pages.history.replaceChildren();
             grid.setRows([]);
             return;
         }
         renderSession(vm);
         renderInForce(vm);
+        renderHistory(vm);
         membersHead.textContent = `Vote weight: size and strength (empire score), standing with the other members, gifts and spies; a lesser delegate counts less. Only delegates present at the host world vote.`;
         grid.setRows(vm.members);
     }
@@ -298,6 +301,45 @@ export function toggleDietScreen(galaxy: Galaxy, player: Empire): void {
         if (vm.history.length === 0) y = line(sp, 'None yet.', y, GREY, FONT.normal, 16, bw - 56);
         for (const h of vm.history) y = line(sp, `${h.date}: ${h.text} — ${h.result} (${h.tally})`, y, h.result === 'passed' ? GREEN : RED, FONT.normal, 16, bw - 56);
         sp.style.height = `${bh - oy - 12}px`;
+        const filler = el('div');
+        filler.style.height = `${y}px`;
+        sp.appendChild(filler);
+    }
+
+    let showAll = false;
+    function renderHistory(vm: DietViewModel): void {
+        const p = pages.history;
+        p.replaceChildren();
+        p.appendChild(
+            place(
+                glassButton('Show failed and vetoed', {
+                    size: FONT.normal,
+                    toggled: showAll,
+                    onClick: () => {
+                        showAll = !showAll;
+                        renderHistory(vm);
+                    },
+                }),
+                8,
+                4,
+                220,
+            ),
+        );
+        const sp = place(scrollPanel('diet-history'), 8, 34, bw - 16, bh - oy - 42);
+        p.appendChild(sp);
+        let y = 4;
+        const rows = vm.motionLog.filter((r) => showAll || r.result === 'passed');
+        if (rows.length === 0) y = line(sp, showAll ? 'No motions have been voted on yet.' : 'No motions have passed yet.', y, GREY, FONT.normal, 16, bw - 56);
+        let year = Number.NaN;
+        for (const r of rows) {
+            if (r.year !== year) {
+                year = r.year;
+                y = line(sp, `Year ${year}`, y + 4, YELLOW, FONT.large, 8, bw - 48);
+            }
+            const tag = r.result === 'passed' ? '' : ` [${r.result}]`;
+            const tgt = r.target === '—' ? '' : `, target: ${r.target}`;
+            y = line(sp, `${r.text}${tag} — proposed by ${r.proposer}, vote ${r.yes.toFixed(1)}–${r.no.toFixed(1)}${tgt}`, y, r.result === 'passed' ? GREEN : RED, FONT.normal, 16, bw - 56);
+        }
         const filler = el('div');
         filler.style.height = `${y}px`;
         sp.appendChild(filler);
