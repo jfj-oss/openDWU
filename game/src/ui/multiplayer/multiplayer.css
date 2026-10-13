@@ -7,39 +7,46 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(0, 0, 0, 0.55);
-    font-family: Verdana, Arial, sans-serif;
+    background: rgba(0, 0, 0, 0.8);
+    font-family: Verdana, Arial, sans-serif; /* body text stays legible; titles and buttons use the stock font */
     font-size: 13px;
-    color: #d8d8d8;
+    color: rgb(200, 200, 200);
 }
 .mp-window {
-    width: min(560px, calc(100vw - 32px));
-    max-height: calc(100vh - 32px);
+    /* The stock windows' pixel scale (--ow-hud-k) so 1080p and 4K look alike; capped to fit the viewport. */
+    zoom: max(1, var(--ow-hud-k, 1));
+    width: min(560px, calc(100vw / max(1, var(--ow-hud-k, 1)) - 32px));
+    max-height: calc(100vh / max(1, var(--ow-hud-k, 1)) - 32px);
     overflow: auto;
     box-sizing: border-box;
     padding: 18px 22px;
-    border: 2px solid #4a5a70;
-    border-radius: 16px;
-    background: linear-gradient(#1a2230, #0b0f16);
+    border: 2px solid rgb(67, 67, 77);
+    border-radius: 20px;
+    background: linear-gradient(to bottom, rgb(39, 40, 44), rgb(22, 21, 26) 50%, rgb(51, 54, 61));
     box-shadow: 0 0 24px rgba(0, 0, 0, 0.8);
 }
 .mp-window-wide {
-    width: min(980px, calc(100vw - 32px));
+    width: min(980px, calc(100vw / max(1, var(--ow-hud-k, 1)) - 32px));
+}
+.mp-title,
+.mp-subtitle,
+.mp-btn.ow-glass {
+    font-family: 'Forgotten Futurist', sans-serif;
 }
 .mp-title {
-    font-size: 18px;
+    font-size: 22.67px;
     font-weight: bold;
-    color: #ffa000;
+    color: rgb(255, 192, 0);
     margin-bottom: 8px;
 }
 .mp-subtitle {
     font-weight: bold;
-    color: #ffc040;
+    color: rgb(255, 192, 0);
     margin-bottom: 6px;
 }
 .mp-note {
-    color: #a0a8b8;
-    font-size: 12px;
+    color: rgb(170, 170, 170);
+    font-size: 14px;
     margin: 4px 0 10px;
 }
 .mp-box {
@@ -72,29 +79,31 @@
 .mp-input-short {
     flex: 0 0 90px;
 }
-.mp-btn {
+.mp-btn.ow-glass {
+    position: relative;
+    display: inline-flex;
+    height: 28px;
     margin: 6px 8px 0 0;
-    padding: 6px 14px;
-    border: 1px solid #6a7a96;
-    border-radius: 7px;
-    background: linear-gradient(#3a4a64, #1c2434);
-    color: #f0f0f0;
-    font: inherit;
-    cursor: pointer;
+    padding: 0 16px;
+    font-size: 15.33px;
+    color: rgb(190, 190, 190);
 }
-.mp-btn:hover:not(:disabled) {
-    border-color: #ffa000;
+.mp-btn.ow-glass:hover:not(:disabled) {
+    color: #fff;
 }
-.mp-btn:disabled {
+.mp-btn.ow-glass:disabled {
     opacity: 0.45;
     cursor: default;
 }
-.mp-btn-primary {
-    background: linear-gradient(#6a5020, #3a2a0c);
-    border-color: #c08020;
+.mp-btn-primary.ow-glass {
+    --outer: rgb(56, 36, 0);
+    --shine: 255, 192, 0;
+    --glow: 255, 128, 0;
+    --inner: rgb(255, 192, 0);
+    color: #fff;
 }
-.mp-btn-secondary {
-    background: linear-gradient(#2a3040, #151a24);
+.mp-btn-secondary.ow-glass {
+    color: rgb(150, 150, 150);
 }
 .mp-status {
     min-height: 18px;

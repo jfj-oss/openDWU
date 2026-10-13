@@ -50,6 +50,7 @@ import { ChatPanel, type SavedChatLine } from './chatPanel';
 import { setSaveEntryTagger } from '../screens/saveLoad';
 import { playerSelectableRacesSorted, startGovernmentsForRace } from '../screens/newGameWizard';
 import './multiplayer.css';
+import { installHudScaleVar } from '../originalWindow';
 import { exposeDevHook } from './devHooks';
 import { setAutoPauseSuppressed } from '../autoPause';
 
@@ -786,7 +787,7 @@ function h<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text?: strin
 }
 
 function button(label: string, mp: string, onClick: () => void, cls = 'mp-btn'): HTMLButtonElement {
-    const b = h('button', cls, label);
+    const b = h('button', `ow-glass ${cls}`, label);
     b.type = 'button';
     b.dataset.mp = mp;
     b.addEventListener('click', onClick);
@@ -831,12 +832,15 @@ export function hostSettingsLines(state: LobbyState): string[] {
 
 /** Open the main menu's Multiplayer screen. `onBack`: back to the menu. */
 export function openMultiplayerScreen(deps: MultiplayerAppDeps, onBack: () => void, opts: { resume?: boolean; focus?: 'host' | 'join' } = {}): void {
+    installHudScaleVar();
     const ep = netEndpoint();
     const root = h('div', 'mp-screen');
     root.dataset.mp = 'menu';
     const win = h('div', 'mp-window');
     root.appendChild(win);
-    win.appendChild(h('div', 'mp-title', opts.resume === true ? 'Resume a Multiplayer Game' : 'Multiplayer'));
+    const title = h('div', 'mp-title', '');
+    title.dataset.mp = 'title';
+    win.appendChild(title);
     // Resume with the same players (§21): host as usual; the lobby opens on the save picker (multiplayer saves), and
     // the players rejoin it by name (or by the token their app kept from that game).
     if (opts.resume === true) {
@@ -875,11 +879,11 @@ export function openMultiplayerScreen(deps: MultiplayerAppDeps, onBack: () => vo
     mapIn.addEventListener('change', () => storage('dwu.mp.mapPort', mapIn.checked ? '1' : '0'));
     mapRow.append(mapIn, h('span', '', 'Open the port on my router automatically (UPnP / NAT-PMP), so players can also join by my public address'));
     hostBox.appendChild(mapRow);
-    const hostBtn = button('Host Game (LAN)', 'host', () => void doHost(false));
-    const hostNetBtn = button('Host on the Internet', 'host-internet', () => void doHost(true), 'mp-btn mp-btn-primary');
+    const hostBtn = button('Host on LAN / IP', 'host', () => void doHost(false), ep.canHost ? 'mp-btn mp-btn-primary' : 'mp-btn');
+    const hostNetBtn = button('Host over the Internet (invite code)', 'host-internet', () => void doHost(true), ep.canHost ? 'mp-btn' : 'mp-btn mp-btn-primary');
     hostBox.append(hostBtn, hostNetBtn);
     if (!ep.canHost) {
-        hostBtn.disabled = true;
+        hostBtn.hidden = true;
         mapRow.hidden = true;
         hostBox.appendChild(h('div', 'mp-note', 'Hosting a LAN game needs the desktop app. In the browser you can join a game, or host on the Internet by invite codes (desktop players run a different engine, so they cannot join a browser host).'));
     }
@@ -896,28 +900,47 @@ export function openMultiplayerScreen(deps: MultiplayerAppDeps, onBack: () => vo
     stopKeys(addrInput);
     addrRow.appendChild(addrInput);
     joinBox.appendChild(addrRow);
-    joinBox.appendChild(button('Join Game', 'join', () => void doJoin()));
-    joinBox.appendChild(button('Join by code…', 'join-code', () => void doJoinByCode(), 'mp-btn mp-btn-primary'));
-    joinBox.appendChild(h('div', 'mp-note', 'Join Game: by the host\'s IP address (LAN, Tailscale, or a forwarded port). Join by code: paste the invite code a host sent you over the Internet.'));
+    const joinBtn = button('Join', 'join', () => void doJoin(), 'mp-btn mp-btn-primary');
+    joinBox.appendChild(joinBtn);
+    joinBox.appendChild(button('Join with an invite code…', 'join-code', () => void doJoinByCode()));
+    joinBox.appendChild(h('div', 'mp-note', 'Join: type the host\'s IP address (LAN, Tailscale or a forwarded port). Or paste the invite code a host sent you over the Internet.'));
     win.appendChild(joinBox);
     // Opened from the main menu's Host / Join entry: bring that section into view.
-    if (opts.focus !== undefined) setTimeout(() => (opts.focus === 'join' ? joinBox : hostBox).scrollIntoView({ block: 'start' }), 0);
+    // One section at a time (fewer things to read); a button switches. The main action takes Enter, Esc goes back.
+    let mode: 'host' | 'join' = opts.focus ?? 'host';
+    const switchBtn = button('', 'switch', () => showMode(mode === 'host' ? 'join' : 'host'), 'mp-btn mp-btn-secondary');
+    const showMode = (m: 'host' | 'join'): void => {
+        mode = m;
+        hostBox.hidden = m !== 'host';
+        joinBox.hidden = m !== 'join';
+        title.textContent = opts.resume === true && m === 'host' ? 'Resume a Multiplayer Game' : m === 'host' ? 'Host a Game' : 'Join a Game';
+        switchBtn.textContent = m === 'host' ? 'Join a game instead' : 'Host a game instead';
+        setStatus('');
+        (m === 'host' ? portInput : addrInput).focus();
+    };
 
     const status = h('div', 'mp-status');
     status.dataset.mp = 'status';
     win.appendChild(status);
-    win.appendChild(button('Back', 'back', () => {
+    const goBack = (): void => {
         root.remove();
         onBack();
-    }, 'mp-btn mp-btn-secondary'));
+    };
+    const bar = h('div', 'mp-bar');
+    bar.append(button('Back', 'back', goBack, 'mp-btn mp-btn-secondary'), switchBtn);
+    win.appendChild(bar);
+    root.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Escape') goBack();
+        else if (ev.key === 'Enter' && ev.target instanceof HTMLInputElement && ev.target.type !== 'checkbox') (mode === 'host' ? (ep.canHost ? hostBtn : hostNetBtn) : joinBtn).click();
+    }, true);
     document.body.appendChild(root);
-    nameInput.focus();
 
     const setStatus = (text: string, error = false): void => {
         status.textContent = text;
         status.classList.toggle('mp-error', error);
     };
     let busy = false;
+    showMode(mode);
 
     async function fingerprint(): Promise<{ gameData: GameData; fp: AppFingerprint }> {
         const gameData = await deps.prepare();

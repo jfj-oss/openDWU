@@ -33,7 +33,7 @@ function h<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text?: strin
 }
 
 function button(label: string, mp: string, onClick: () => void, cls = 'mp-btn'): HTMLButtonElement {
-    const b = h('button', cls, label);
+    const b = h('button', `ow-glass ${cls}`, label);
     b.type = 'button';
     b.dataset.mp = mp;
     b.addEventListener('click', onClick);
@@ -321,7 +321,7 @@ export function openCodeJoin(opts: { title: string; note?: string }): Promise<Li
         stopKeys(inviteIn);
         const r1 = h('div', 'mp-code-row');
         r1.append(h('span', 'mp-code-label', 'Invite code'), inviteIn);
-        const makeBtn = button('Create Reply Code', 'make-reply', () => void make());
+        const makeBtn = button('Create Reply Code', 'make-reply', () => void make(), 'mp-btn mp-btn-primary');
         const replyOut = h('textarea', 'mp-input mp-code');
         replyOut.dataset.mp = 'reply-out';
         replyOut.readOnly = true;
@@ -339,6 +339,13 @@ export function openCodeJoin(opts: { title: string; note?: string }): Promise<Li
         help.hidden = true;
         const cancelBtn = button('Cancel', 'code-cancel', () => finish(new Error('cancelled')), 'mp-btn mp-btn-secondary');
         win.append(r1, makeBtn, r2, status, help, cancelBtn);
+        root.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Escape') cancelBtn.click();
+            else if (ev.key === 'Enter' && ev.target === inviteIn && !ev.shiftKey) {
+                ev.preventDefault();
+                makeBtn.click();
+            }
+        }, true);
         document.body.appendChild(root);
         inviteIn.focus();
 

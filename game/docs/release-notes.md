@@ -6,6 +6,9 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 - **Multiplayer host wizard fix:** Game Settings from the host lobby (LAN or Internet) opened the new-game wizard behind the
   multiplayer screen, so nothing in it could be clicked; the multiplayer screen now properly hides while the wizard is open.
+- **Multiplayer menus:** the Host / Join screen now uses the stock glass buttons, window colours and HUD scale, shows one section
+  at a time with a single highlighted main action, and takes Enter (main action) and Esc (back); the invite-code dialog too.
+
 - **Update check on every launch:** the desktop app now asks GitHub for a newer release each time it opens (it was at
   most once a day). "Skip This Version" and the checkForUpdates switch in config.json still apply.
 - **AI rulers remember negotiations:** with the diary on, an AI ruler now notes a fair deal, a generous offer or an insulting offer from you (refusals leave no trace).
