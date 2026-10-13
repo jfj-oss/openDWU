@@ -107,7 +107,7 @@ import { selectColorFromKey } from '../../sim/empireColors';
 import { loadScenarioIndex } from '../../sim/scenario/fetchScenario';
 import type { ScenarioManifest } from '../../sim/scenario/manifest';
 import { IS_CLASSIC } from '../../appVersion';
-import { CLASSIC_BASE_ADDONS, SMARTER_AI_ADDON_ID, addonCatalog, addonClosure, addonPickerModel, canonicalAddons, defaultSmarterAIChoice, expansionMemberIds, expansionRows, toggleExpansion, type ExpansionRow, planAddonStart, resolveAddonSwitches, toggleAddon, withFlagAddons, forcedFlags, withSmarterAI, type AddonCatalog, type AddonOverrides, type AddonRow, type SmarterAIChoice } from '../../sim/scenario/addons';
+import { BASE_ADDONS, SMARTER_AI_ADDON_ID, addonCatalog, addonClosure, addonPickerModel, canonicalAddons, defaultSmarterAIChoice, expansionMemberIds, expansionRows, toggleExpansion, type ExpansionRow, planAddonStart, resolveAddonSwitches, toggleAddon, withFlagAddons, forcedFlags, withSmarterAI, type AddonCatalog, type AddonOverrides, type AddonRow, type SmarterAIChoice } from '../../sim/scenario/addons';
 import {
     COLORS,
     FONT,
@@ -2888,8 +2888,10 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
     detailPanel.appendChild(place(detail, 8, 8, 860, 162));
 
     let cat: AddonCatalog = addonCatalog([]);
+    /** Base add-ons (event log, themed names) are always on in both editions. */
+    const withBase = (ids: string[]): string[] => [...new Set([...BASE_ADDONS, ...ids])];
     // The Smarter AI add-on is the Other Empires page's (options.smarterAI), not a tick of this page.
-    let picked: string[] = IS_CLASSIC ? [...CLASSIC_BASE_ADDONS] : (options.scenario?.addons ?? (options.scenario ? [options.scenario.id] : [])).filter((id) => id !== SMARTER_AI_ADDON_ID);
+    let picked: string[] = IS_CLASSIC ? [...BASE_ADDONS] : withBase((options.scenario?.addons ?? (options.scenario ? [options.scenario.id] : [])).filter((id) => id !== SMARTER_AI_ADDON_ID));
     const overrides: AddonOverrides = { flags: {}, params: {} };
     /** Settings panels the player opened (kept open across re-renders). */
     const openPanels = new Set<string>();
@@ -2897,7 +2899,7 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
     try {
         // Dev / screenshot hook: ?screen=wizard&page=scenario&addons=timebomb,robotmutiny starts with those ticked.
         const pre = new URLSearchParams(window.location.search).get('addons');
-        if (!IS_CLASSIC && pre !== null && pre !== '') picked = pre.split(',').map((x) => x.trim());
+        if (!IS_CLASSIC && pre !== null && pre !== '') picked = withBase(pre.split(',').map((x) => x.trim()));
     } catch {
         // non-browser context
     }
@@ -2924,6 +2926,11 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
         const txt = el('div', 'wizard-addon-text');
         const head = el('div', 'wizard-addon-head');
         head.appendChild(el('span', 'wizard-addon-name', r.name));
+        if (r.wip !== null) {
+            const tag = el('span', 'wizard-addon-wip', 'WIP');
+            tag.title = `Work in progress: ${r.wip}`;
+            head.appendChild(tag);
+        }
         const deps = [r.needs.length > 0 ? `needs: ${r.needs.join(', ')}` : '', r.loads.length > 0 ? `loads: ${r.loads.join(', ')}` : ''].filter((x) => x !== '');
         if (deps.length > 0) head.appendChild(el('span', 'wizard-addon-needs', deps.join(' · ')));
         txt.appendChild(head);
@@ -3016,13 +3023,16 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
             listSection.appendChild(egrid);
         }
         const inExpansion = expansionMemberIds(cat);
-        for (const g of model.groups) {
-            const rows = g.rows.filter((r) => !inExpansion.has(r.id));
-            if (rows.length === 0) continue;
-            listSection.appendChild(el('div', 'wizard-addon-group', g.group));
-            const grid = el('div', 'wizard-addon-grid');
-            for (const r of rows) grid.appendChild(rowEl(r));
-            listSection.appendChild(grid);
+        for (const sec of model.sections) {
+            const groups = sec.groups.map((g) => ({ group: g.group, rows: g.rows.filter((r) => !inExpansion.has(r.id)) })).filter((g) => g.rows.length > 0);
+            if (groups.length === 0) continue;
+            listSection.appendChild(el('div', 'wizard-addon-section', sec.section));
+            for (const g of groups) {
+                listSection.appendChild(el('div', 'wizard-addon-group', g.group));
+                const grid = el('div', 'wizard-addon-grid');
+                for (const r of g.rows) grid.appendChild(rowEl(r));
+                listSection.appendChild(grid);
+            }
         }
         listSection.scrollTop = scroll;
 

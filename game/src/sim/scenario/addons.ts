@@ -32,6 +32,63 @@ export type AddonGroup = 'Rim' | 'Hidden threats' | 'Politics & court' | 'Econom
 /** Display order of the picker's groups ("Other" collects scenarios this table does not know, e.g. a new mod). */
 export const ADDON_GROUPS: readonly AddonGroup[] = ['Rim', 'Hidden threats', 'Politics & court', 'Economy & factions', 'LLM layer', 'Visuals', 'Other'];
 
+/**
+ * Picker status, ONE table: 'recommended' = top section; any other string = "Work in progress" section, the string being the
+ * hover reason. Moving an add-on between sections is a one-line change. Visible add-ons not listed are WIP (WIP_DEFAULT_REASON).
+ */
+export const ADDON_STATUS: Readonly<Record<string, string>> = {
+    'rimTrade': 'recommended',
+    'rim-fauna': 'recommended',
+    'rim-herders': 'recommended',
+    'rim-frontier': 'recommended',
+    'new-fauna': 'recommended',
+    'rim-atmosphere': 'recommended',
+    'cult': 'recommended',
+    'hive': 'recommended',
+    'silence': 'recommended',
+    'doppelgangers': 'recommended',
+    'darkfarms': 'recommended',
+    'robotmutiny': 'recommended',
+    'internal-security': 'recommended',
+    'reputation': 'recommended',
+    'emergent': 'recommended',
+    'espionage-consequences': 'recommended',
+    'exchange': 'recommended',
+    'chartered-companies': 'balance still being tuned',
+    'art-bundle': 'visual extras, still in progress',
+    'lively-galaxy': 'still being tuned',
+    'corporatecoup': 'does not trigger in real games yet',
+    'greytide': 'drones are not real ships yet',
+    'colony-defence': 'untested, little UI',
+    'privateers': 'untested, little UI',
+    'frontier-autonomy': 'no UI yet',
+    'court-dynasties': 'on hold',
+    'characters-victory': 'new',
+    'colony-economy': 'new, balance pending',
+    'voidbloom': 'new',
+    'generation-ships': 'newest threat',
+    'archive-cores': 'newest threat',
+    'probe-swarm': 'newest threat',
+    'slavery': 'new',
+    'scorched-earth': 'new',
+    'war-crimes': 'new',
+    'timebomb': 'lightly tested; the AI rarely uses it',
+    'ghostarmada': 'lightly tested; the AI rarely uses it',
+    'wreckage-salvage': 'lightly tested; the AI rarely uses it',
+    'independents-active': 'lightly tested; the AI rarely uses it',
+    'refugees-demographics': 'lightly tested; the AI rarely uses it',
+    'llm-layer': 'new; needs a local model',
+};
+export const WIP_DEFAULT_REASON = 'still in progress';
+export const ADDON_SECTIONS = ['Recommended', 'Work in progress'] as const;
+export type AddonSection = (typeof ADDON_SECTIONS)[number];
+
+/** The hover reason of a work-in-progress add-on, or null when it is recommended. */
+export function addonWipReason(id: string): string | null {
+    const v = ADDON_STATUS[id];
+    return v === 'recommended' ? null : (v ?? WIP_DEFAULT_REASON);
+}
+
 const GROUP_OF: Readonly<Record<string, AddonGroup>> = {
     'rim-fauna': 'Rim',
     'rim-herders': 'Rim',
@@ -87,7 +144,7 @@ const GROUP_OF: Readonly<Record<string, AddonGroup>> = {
  */
 // big-galaxies: its extended palette is now automatic in the base game (empireColors.ts); old saves with the add-on still load.
 // resource-crises: withdrawn from the picker (its per-luxury approval loss stacked to absurd values); saves that use it still load.
-export const HIDDEN_ADDONS: ReadonlySet<string> = new Set(['threat-framework', 'example', 'ai-parity', 'soak-15y', 'resource-crises', 'big-galaxies']);
+export const HIDDEN_ADDONS: ReadonlySet<string> = new Set(['threat-framework', 'example', 'ai-parity', 'soak-15y', 'resource-crises', 'big-galaxies', 'galactic-council', 'themed-names', 'event-log']);
 
 /**
  * Add-ons set on another wizard page (not listed on the Scenario page, but named in the summaries like any other):
@@ -97,6 +154,8 @@ export const ELSEWHERE_ADDONS: ReadonlySet<string> = new Set(['smarter-ai']);
 
 /** openDWU Classic: add-ons every game starts with (treated as base game: no picker). Smarter AI stays the Other Empires page's toggle. */
 export const CLASSIC_BASE_ADDONS: readonly string[] = ['themed-names', 'event-log'];
+/** Add-ons every new game starts with in BOTH editions (base game: hidden from the picker, always ticked). */
+export const BASE_ADDONS: readonly string[] = CLASSIC_BASE_ADDONS;
 
 /** The Smarter AI add-on (scenarios/smarter-ai). */
 export const SMARTER_AI_ADDON_ID = 'smarter-ai';
@@ -201,6 +260,8 @@ export interface AddonInfo {
     description: string;
     group: AddonGroup;
     hidden: boolean;
+    /** Null = recommended; else the work-in-progress hover reason. */
+    wip: string | null;
     /** Direct dependencies: `include` (minus nothing) plus `requires`, each tagged "on" / "data". */
     deps: AddonDependency[];
     conflicts: string[];
@@ -234,6 +295,7 @@ export function addonCatalog(manifests: readonly ScenarioManifest[]): AddonCatal
         description: m.description,
         group: GROUP_OF[m.id] ?? 'Other',
         hidden: HIDDEN_ADDONS.has(m.id),
+        wip: addonWipReason(m.id),
         deps: addonDependencies(m),
         conflicts: [...(m.conflicts ?? [])],
         masterFlag: m.flags.length > 0 ? m.flags[0].name : null,
@@ -419,6 +481,8 @@ export function resolveAddonSwitches(cat: AddonCatalog, picked: readonly string[
         if (!onSet.has(target)) for (const f of cat.manifests.get(target)?.flags ?? []) flags[f.name] = false;
         for (const f of fl.keys()) flags[f] = true;
     }
+    // The galactic council is a hidden background part of Characters & Victory: its flag follows cvCouncil (the Interstellar Diet).
+    if (onSet.has('characters-victory') && onSet.has('galactic-council') && 'cvCouncil' in flags && 'galacticCouncil' in flags) flags.galacticCouncil = flags.cvCouncil;
     return { flags, params };
 }
 
@@ -560,11 +624,15 @@ export interface AddonRow {
     /** Greyed out: conflicts with a ticked add-on (names). */
     conflictsWith: string[];
     disabled: boolean;
+    /** Work-in-progress hover reason (null = recommended). */
+    wip: string | null;
     /** Hover text: why the checkbox is locked / disabled (empty when it is free). */
     tooltip: string;
 }
 
 export interface AddonPickerModel {
+    /** The same rows split into the picker's two sections (Recommended first), each keeping the topic groups. */
+    sections: { section: AddonSection; groups: { group: AddonGroup; rows: AddonRow[] }[] }[];
     groups: { group: AddonGroup; rows: AddonRow[] }[];
     /** Every add-on that will run (visible names, index order). */
     finalNames: string[];
@@ -610,19 +678,24 @@ export function addonPickerModel(cat: AddonCatalog, picked: readonly string[]): 
                 loadedFor,
                 conflictsWith,
                 disabled,
+                wip: a.wip,
                 tooltip: locked ? `needed by ${requiredBy.join(', ')}` : conflictsWith.length > 0 ? `conflicts with ${conflictsWith.join(', ')}` : '',
             });
         }
         rows.sort((x, y) => (x.name < y.name ? -1 : x.name > y.name ? 1 : 0));
         if (rows.length > 0) groups.push({ group, rows });
     }
+    const sections = ADDON_SECTIONS.map((section) => ({
+        section,
+        groups: groups.map((g) => ({ group: g.group, rows: g.rows.filter((r) => (r.wip === null) === (section === 'Recommended')) })).filter((g) => g.rows.length > 0),
+    })).filter((x) => x.groups.length > 0);
     const finalNames = cat.list.filter((a) => onSet.has(a.id) && !a.hidden).map((a) => a.name);
     const panels = on.filter((id) => {
         if (ELSEWHERE_ADDONS.has(id)) return false;
         const m = cat.manifests.get(id)!;
         return m.flags.length > 1 || m.params.length > 0;
     });
-    return { groups, finalNames, summary: finalNames.length === 0 ? 'None (the original game)' : finalNames.join(', '), panels };
+    return { sections, groups, finalNames, summary: finalNames.length === 0 ? 'None (the original game)' : finalNames.join(', '), panels };
 }
 
 /**

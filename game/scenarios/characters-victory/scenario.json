@@ -1,6 +1,6 @@
 {
   "id": "characters-victory",
-  "name": "Characters & Victory",
+  "name": "Characters, Diet & Victory",
   "addableToSave": true,
   "include": ["galactic-council"],
   "description": "Characters travel in person: every relocation is a free, marked VIP shuttle that can be escorted, intercepted and destroyed (its passenger dies with it; the ruler travels with decoys). Every colony needs a governor: new characters appear at the capital or the matching academy and travel to their post, the capital trains reserve governors, and a colony left without one declines after a year (no construction, falling output and approval, disrepair, emigration) and needs years to recover. Governors are moved by their skills and the colonies' needs, with suggestions for the player or full automation. The AI uses all of it. The galactic council becomes the Interstellar Diet: sessions every 2-3 years at a host world (the strongest member's colony nearest the galaxy centre, with wonder-type bonuses), 1-3 motions moved by the members, weighted votes cast only by delegates who travel there in person, enforcer fleets that blockade sanctioned empires, truces, free trade, weapon bans, outlawed pirates, protected or open independents, recognised claims, expulsions, and a Regent with a veto and emergency sessions who may declare themselves Emperor and try to hold on to win.",

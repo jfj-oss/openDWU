@@ -372,6 +372,22 @@
     font-size: 15.33px;
 }
 /* Group captions like a GroupBox's: bold, a thin rule under them. */
+.wizard-addon-section {
+    font-size: 20px;
+    font-weight: bold;
+    color: rgb(230, 230, 240);
+    margin: 14px 0 2px;
+}
+.wizard-addon-wip {
+    font-size: 11px;
+    font-weight: bold;
+    color: rgb(230, 190, 90);
+    border: 1px solid rgba(230, 190, 90, 0.6);
+    border-radius: 3px;
+    padding: 0 4px;
+    margin-left: 6px;
+    cursor: help;
+}
 .wizard-addon-group {
     font-size: 16.67px;
     font-weight: bold;

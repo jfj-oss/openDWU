@@ -29,7 +29,7 @@ const NF = 'New Fauna';
 const RH = 'Rim Herders';
 const RT = 'The Rim Trade';
 const RFR = 'Rim Frontier';
-const CV = 'Characters & Victory';
+const CV = 'Characters, Diet & Victory';
 const VB = 'The Voidbloom War';
 
 export const KIND_SUFFIX: Readonly<Record<ArticleKind, string>> = { creature: 'creature', faction: 'faction', good: 'good', ship: 'ship', mechanic: '' };

@@ -214,9 +214,9 @@ describe('entries, mapping, retention, queries, digest, history rows', () => {
         const y = d.json.years.find((x) => x.year === year)!;
         expect(y.categories.map((c) => c.category)).toContain('war');
         const politics = y.categories.find((c) => c.category === 'politics')!;
-        expect(politics.events.some((ev) => ev.text.includes('Vex') && ev.importance === 3)).toBe(true);
+        expect(politics.events.some((ev) => ev.text.includes('Emergent Coup Success') && ev.importance === 3)).toBe(true);
         expect(d.markdown).toContain(`## ${year}`);
-        expect(d.markdown).toContain('Vex');
+        expect(d.markdown).toContain('Emergent Coup Success'); // the Emergent texts are not loaded without internal-security
         expect(chronicleExport(g, 0, { minImportance: 3 }).json.years.flatMap((x) => x.categories.flatMap((c) => c.events)).every((ev) => ev.importance === 3)).toBe(true);
     });
 
@@ -234,7 +234,7 @@ describe('entries, mapping, retention, queries, digest, history rows', () => {
         const byImp = eventLogHistoryRows(g, player, 'all', 'importance');
         for (let i = 1; i < byImp.length; i++) expect(byImp[i].importance).toBeLessThanOrEqual(byImp[i - 1].importance);
         const coup = all.find((r) => r.entry.textKey === 'Emergent Coup Success')!;
-        expect(coup.text).toContain('Vex');
+        expect(coup.entry.args).toContain('Vex');
         expect(coup.location).not.toBeNull();
     });
 
@@ -295,10 +295,10 @@ describe('openDWU Classic edition (DWU_EDITION=classic: only themed-names, smart
         const idx = buildScenarioIndex(SCENARIOS_ROOT, allow).scenarios;
         expect(idx.map((m) => m.id).sort()).toEqual([...CLASSIC_ADDONS].sort());
         expect((idx.find((m) => m.id === 'event-log')!.include as string[])).toEqual([]);
-        // the full index is unchanged: event-log still includes internal-security and threat-framework
+        // the full index too: event-log is base in both editions and no longer pulls in internal-security
         const full = buildScenarioIndex(SCENARIOS_ROOT).scenarios;
         expect(full.length).toBeGreaterThan(CLASSIC_ADDONS.length);
-        expect((full.find((m) => m.id === 'event-log')!.include as string[])).toContain('internal-security');
+        expect((full.find((m) => m.id === 'event-log')!.include as string[])).toEqual([]);
     });
 
     it('event-log works standalone: logs entries and drives the Galactic History rows', () => {

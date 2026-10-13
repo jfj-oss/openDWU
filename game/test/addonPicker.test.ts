@@ -65,7 +65,7 @@ describe('dependencies derived from include / requires', () => {
         expect(deps('timebomb')).toEqual(['cult:on', 'threat-framework:on']);
         expect(deps('robotmutiny')).toEqual(['darkfarms:data', 'threat-framework:on']);
         for (const t of ['cult', 'darkfarms', 'doppelgangers', 'greytide', 'hive', 'silence', 'exchange', 'ghostarmada', 'corporatecoup']) expect(deps(t)).toEqual(['threat-framework:on']);
-        expect(deps('llm-layer')).toEqual(['event-log:on', 'threat-framework:on', 'lively-galaxy:data']);
+        expect(deps('llm-layer')).toEqual(['event-log:on', 'internal-security:on', 'threat-framework:on', 'lively-galaxy:data']);
         expect(deps('new-fauna')).toEqual(['rim-fauna:on']);
         expect(deps('independents-active')).toEqual(['rim-herders:data']);
         expect(addonCycles(cat)).toEqual([]);
@@ -286,5 +286,26 @@ describe('expansions', () => {
         const threats = toggleExpansion(cat, [], 'galactic-threats', true);
         expect(addonClosure(cat, threats, 'on')).toContain('threat-framework');
         expect(activeExpansions(cat, threats)).toEqual(['Galactic Threats']);
+    });
+});
+
+describe('picker sections, base add-ons, council follows the Diet', () => {
+    it('Recommended above Work in progress, WIP rows carry a reason, base add-ons and the council have no row', () => {
+        const model = addonPickerModel(cat, []);
+        expect(model.sections.map((x) => x.section)).toEqual(['Recommended', 'Work in progress']);
+        const rows = model.sections.flatMap((x) => x.groups.flatMap((g) => g.rows.map((r) => [x.section, r] as const)));
+        for (const [sec, r] of rows) expect(sec === 'Recommended' ? r.wip === null : typeof r.wip === 'string' && r.wip !== '').toBe(true);
+        const ids = rows.map(([, r]) => r.id);
+        for (const h of ['galactic-council', 'event-log', 'themed-names']) expect(ids).not.toContain(h);
+        expect(rows.find(([, r]) => r.id === 'cult')![0]).toBe('Recommended');
+        expect(rows.find(([, r]) => r.id === 'characters-victory')![1].name).toBe('Characters, Diet & Victory');
+        expect(cat.byId.get('event-log')!.deps).toEqual([]);
+    });
+
+    it('galacticCouncil follows cvCouncil through Characters & Victory; the council alone keeps its flag', () => {
+        expect(resolveAddonSwitches(cat, ['characters-victory']).flags).toMatchObject({ cvCouncil: true, galacticCouncil: true });
+        const off = resolveAddonSwitches(cat, ['characters-victory'], { flags: { cvCouncil: false }, params: {} }).flags;
+        expect(off.galacticCouncil).toBe(false);
+        expect(resolveAddonSwitches(cat, ['galactic-council']).flags.galacticCouncil).toBe(true);
     });
 });
