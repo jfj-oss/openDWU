@@ -35,7 +35,7 @@ import { galaxyStarDate } from '../../tick/simTime';
 import { isHumanEmpire, isMultiHuman } from '../../humanEmpires';
 import { scenarioFlag, scenarioState } from '../state';
 import { isRimTraderAI } from '../rimTrade/common';
-import { memoryLines, memoryOn } from './memory';
+import { memoryLines, memoryOn, rememberNegotiation } from './memory';
 import { identifyEmpireCapitals } from '../../forceStructure';
 import {
     addTradeItem,
@@ -732,5 +732,6 @@ export function applyNegotiation(galaxy: Galaxy, player: Empire, other: Empire, 
     }
     if (out.verdict === 'improve' || out.verdict === 'refused' || out.verdict === 'insulted') out.counters = counterCandidates(galaxy, other, player, pkg);
     logRow(galaxy, { d: galaxyStarDate(galaxy), from: player.empireId, to: other.empireId, verdict: out.verdict, give, ask, treaty: r.treaty });
+    if (!human) rememberNegotiation(galaxy, other, player, out.verdict, give, ask);
     return out;
 }

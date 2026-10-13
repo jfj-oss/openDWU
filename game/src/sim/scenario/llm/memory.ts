@@ -25,7 +25,7 @@ export const LLM_MEMORY_STATE = 'llmMemory';
 const SCENARIO_ID = 'llm-layer';
 
 export type FactKind = 'declaredWarOnUs' | 'weDeclaredWar' | 'peace' | 'treatySigned' | 'treatyBroken' | 'gift'
-    | 'helpedVsPirates' | 'tookColony' | 'cededColony' | 'spyCaught' | 'joinedWarAgainstUs';
+    | 'fairDeal' | 'generousOffer' | 'insultingOffer' | 'helpedVsPirates' | 'tookColony' | 'cededColony' | 'spyCaught' | 'joinedWarAgainstUs';
 
 export interface MemoryFact {
     k: FactKind;
@@ -54,6 +54,11 @@ const KINDS: Record<FactKind, { w: number; att: number; text: string }> = {
     treatySigned: { w: 3, att: 1, text: 'we signed a treaty' },
     treatyBroken: { w: -6, att: 0, text: 'they tore up our treaty' },
     gift: { w: 2, att: 0, text: 'they sent us a gift' },
+    // Negotiated deals (negotiation.ts). The stock trade evaluator already writes incidentEvaluation for a generous
+    // surplus (>= 1000) and for an unfair offer, so those two are text only; a plain fair deal moves nothing in stock.
+    fairDeal: { w: 2, att: 1, text: 'they made a fair deal with us' },
+    generousOffer: { w: 3, att: 0, text: 'they made us a generous offer' },
+    insultingOffer: { w: -3, att: 0, text: 'they insulted us with an offer' },
     helpedVsPirates: { w: 3, att: 1, text: 'their warships drove pirates from our space' },
     tookColony: { w: -6, att: 0, text: 'they took one of our colonies' },
     cededColony: { w: -2, att: 1, text: 'we ceded a colony to them in a treaty' },
@@ -112,6 +117,13 @@ export function remember(galaxy: Galaxy, a: Empire, b: Empire, k: FactKind, x?: 
         }
         list.splice(worst, 1);
     }
+}
+
+/** A resolved negotiation, as the AI ruler `ai` remembers the proposer. Refusals leave no trace. Gated, ordered, no Rnd. */
+export function rememberNegotiation(galaxy: Galaxy, ai: Empire, proposer: Empire, verdict: string, give: number, ask: number): void {
+    if (!memoryOn(galaxy)) return;
+    if (verdict === 'insulted') remember(galaxy, ai, proposer, 'insultingOffer');
+    else if (verdict === 'accepted') remember(galaxy, ai, proposer, give >= ask * 1.5 && give - ask >= 1000 ? 'generousOffer' : 'fairDeal');
 }
 
 /** The ruler a's decayed mood toward b (sum of w x recency). */

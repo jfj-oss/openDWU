@@ -444,6 +444,23 @@ describe('llmNegotiation packages (scenario/llm/negotiation.ts)', () => {
         expect(player.stateMoney).toBeLessThan(pm);
     });
 
+    it('llmMemory: an accepted deal is a diary fact for the AI ruler (flag-gated); a refusal leaves none', async () => {
+        const { memoryLines, LLM_MEMORY_FLAG } = await import('../src/sim/scenario/llm/memory');
+        const ask = techRef();
+        player.stateMoney = 5_000_000;
+        scenarioOn(true);
+        applyNegotiation(galaxy, player, ai, { give: [money(10)], ask: [ask], treaty: null });
+        expect(memoryLines(galaxy, ai, player, 5).lines).toEqual([]);
+        const counters = counterCandidates(galaxy, ai, player, { give: [money(10)], ask: [ask], treaty: null });
+        galaxy.scenario!.flags[LLM_MEMORY_FLAG] = false;
+        applyNegotiation(galaxy, player, ai, counters[0]);
+        expect(memoryLines(galaxy, ai, player, 5).lines).toEqual([]);
+        player.stateMoney = 5_000_000;
+        galaxy.scenario!.flags[LLM_MEMORY_FLAG] = true;
+        const res = applyNegotiation(galaxy, player, ai, counters[0]);
+        if (res.verdict === 'accepted') expect(memoryLines(galaxy, ai, player, 5).lines.join('|')).toMatch(/fair deal|generous offer/);
+    });
+
     it('a stale ref is a no-op (the package is atomic)', () => {
         scenarioOn(true);
         const ask = techRef();
