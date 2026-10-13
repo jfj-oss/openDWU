@@ -4,6 +4,11 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+## 0.1.25
+
+- **Fix:** construction ships arriving in their build system no longer get sent back out to the edge of the star's
+  gravity well (they turned back towards home instead of building).
+
 ## 0.1.24
 
 - **Resource Crises fully switched off,** including in saves that had it on: no more depleting deposits ("resources

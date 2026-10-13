@@ -1112,7 +1112,15 @@ function findRangeSquaredToTarget(ship: BuiltObject): number {
 
 /** BaconBuiltObject.cs 3744 ShouldSendShipTowardEdgeOfGravityWell. */
 export function shouldSendShipTowardEdgeOfGravityWell(galaxy: Galaxy, ship: BuiltObject | null): boolean {
-    return ship !== null && !isOutsideStarGravityWell(galaxy, ship) && ship.mission !== null && findRangeSquaredToTarget(ship) >= STAR_GRAVITY_WELL_RANGE_SQUARED * 1.3999999761581421;
+    if (ship === null || isOutsideStarGravityWell(galaxy, ship) || ship.mission === null) return false;
+    // Not in the original: a construction ship that has arrived in its build system must not be sent back out to the
+    // well's edge (the Build command's point can read as far away, so it turned back towards home instead of building).
+    const m = builtObjectMission(ship.mission);
+    if (m !== null && m.type === BuiltObjectMissionType.Build) {
+        const t = m.targetHabitat ?? m.targetBuiltObject ?? null;
+        if (t !== null && distSq(ship.xpos, ship.ypos, t.xpos, t.ypos) < STAR_GRAVITY_WELL_RANGE_SQUARED * 1.3999999761581421) return false;
+    }
+    return findRangeSquaredToTarget(ship) >= STAR_GRAVITY_WELL_RANGE_SQUARED * 1.3999999761581421;
 }
 
 /** BaconBuiltObject.cs 3746 SendShipTowardsEdgeOfGravityWell (the C# swallows exceptions; none are reachable here). */
