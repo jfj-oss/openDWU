@@ -38,6 +38,7 @@ import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import { moveWaitQueueItem, type WaitQueueMove } from '../../sim/player/playerOrders';
 import { fleetBuildProgress, fleetDesignBook } from '../../sim/player/fleetTemplates';
 import { constructionJobRows, type ConstructionJobRow } from '../../sim/player/constructionBoard';
+import { AWAITING_SHIP_TEXT, isPendingJobRow, withPendingBuildRows } from '../pendingBuildOrders';
 import { builtObjectImageUrl, resolveDrawPictureRef } from '../../render/builtObjectLayer';
 import { habitatImageUrl } from '../selectionInfo';
 import { empireFlagUrl } from '../selectionInfoView';
@@ -1078,7 +1079,7 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
         empty: 'No construction jobs. Build orders for stations and bases are queued here and taken by the construction ship that can finish them first.',
         columns: [
             { id: 'job', header: 'Job', render: (r, c) => { c.textContent = r.label; c.title = r.label; } },
-            { id: 'state', header: 'State', width: 70, render: (r, c) => { c.textContent = r.state === 'active' ? 'Building' : r.state === 'next' ? 'Next' : 'Open'; } },
+            { id: 'state', header: 'State', width: 70, render: (r, c) => { c.textContent = isPendingJobRow(r) ? 'Awaiting' : r.state === 'active' ? 'Building' : r.state === 'next' ? 'Next' : 'Open'; c.title = isPendingJobRow(r) ? AWAITING_SHIP_TEXT : ''; } },
             { id: 'ship', header: gt('Ship'), width: 150, render: (r, c) => { c.textContent = r.shipName || '—'; c.title = r.shipName; } },
             { id: 'eta', header: 'ETA', width: 75, align: 'right', render: (r, c) => { c.textContent = r.etaMs === null ? '—' : formatEta(r.etaMs); } },
         ],
@@ -1095,11 +1096,11 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
     };
     const btnJobUp = jobBtn(gt('Move Up'), 0, 'Earlier jobs are handed out first', () => {
         const r = jobGrid.selected;
-        if (r) issuePlayerCommand(galaxy, empire, 'constructionJobMoveUp', [r.id], () => refresh());
+        if (r && !isPendingJobRow(r)) issuePlayerCommand(galaxy, empire, 'constructionJobMoveUp', [r.id], () => refresh());
     });
     const btnJobCancel = jobBtn('Cancel Job', 23, 'Cancel this construction job', () => {
         const r = jobGrid.selected;
-        if (r) issuePlayerCommand(galaxy, empire, 'constructionJobCancel', [r.id], () => refresh());
+        if (r && !isPendingJobRow(r)) issuePlayerCommand(galaxy, empire, 'constructionJobCancel', [r.id], () => refresh());
     });
     const btnJobGoto = jobBtn('Go to Ship', 46, 'Select the construction ship and move the view to it', () => {
         const r = jobGrid.selected;
@@ -1282,7 +1283,7 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
         btnTop.disabled = btnUp.disabled = btnDown.disabled = btnRemove.disabled = !hasWait;
         btnCancelFleet.disabled = fleetGrid.selected === null;
         const job = jobGrid.selected;
-        btnJobUp.disabled = btnJobCancel.disabled = job === null;
+        btnJobUp.disabled = btnJobCancel.disabled = job === null || isPendingJobRow(job);
         btnJobGoto.disabled = job?.ship == null;
     }
 
@@ -1420,7 +1421,7 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
             fleetGrid.selected?.id ?? null,
         );
         setText(tabButtons[TAB_ORDER.indexOf('fleets')], `Fleet Builds${orders.length > 0 ? ` (${orders.length})` : ''}`);
-        const jobs = constructionJobRows(galaxy, empire);
+        const jobs = withPendingBuildRows(constructionJobRows(galaxy, empire));
         sync(jobGrid, jobs, (r) => `${r.id}|${r.label}|${r.state}|${r.shipName}|${r.etaMs === null ? '' : Math.round(r.etaMs / 1000)}`, jobGrid.selected?.id ?? null);
         setText(tabButtons[TAB_ORDER.indexOf('jobs')], `Construction Jobs${jobs.length > 0 ? ` (${jobs.length})` : ''}`);
         // [improvements] supplyChain

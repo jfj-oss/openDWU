@@ -15,6 +15,7 @@ import type { Habitat } from '../../sim/types';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import type { PlayerOpArgs, PlayerOpName, PlayerOpResult } from '../../sim/player/playerOps';
 import { constructionJobRows, type ConstructionJobRow } from '../../sim/player/constructionBoard';
+import { isPendingJobRow, withPendingBuildRows } from '../pendingBuildOrders';
 import type { WaitQueueMove } from '../../sim/player/playerOrders';
 import { formatThousands } from '../../sim/diplomacyTick';
 import { COLORS, FONT, OwGrid, barGraph, dropText, el, glassButton, openOriginalWindow, place, setText, type OriginalWindow } from '../originalWindow';
@@ -214,8 +215,8 @@ function createBuildQueue(opts: BuildQueueOptions): OriginalWindow {
         columns: [
             { id: 'n', header: '#', width: 40, align: 'right', render: (j, c) => cellText(c, String(jobsB.indexOf(j) + 1)) },
             { id: 'job', header: 'Job', fill: 1, render: (j, c) => cellText(c, j.label) },
-            { id: 'state', header: 'State', width: 100, render: (j, c) => cellText(c, jobStateText(j)) },
-            { id: 'ship', header: 'Construction Ship', width: 220, render: (j, c) => cellText(c, j.state === 'open' ? '' : j.shipName) },
+            { id: 'state', header: 'State', width: 170, render: (j, c) => cellText(c, jobStateText(j)) },
+            { id: 'ship', header: 'Construction Ship', width: 170, render: (j, c) => cellText(c, j.state === 'open' ? '' : j.shipName) },
             { id: 'eta', header: 'Estimate', width: 100, align: 'right', render: (j, c) => cellText(c, j.etaMs === null ? '-' : formatEtaMs(j.etaMs), 'Estimated time until the job is done (travel + build, after the ship\'s current work)') },
         ],
         onSelect: () => updateButtons(),
@@ -294,8 +295,8 @@ function createBuildQueue(opts: BuildQueueOptions): OriginalWindow {
         const m = waitMoveState(a);
         for (const [move, b] of moveButtons) b.disabled = !m[move];
         const j = gridB.selected;
-        btnJobUp.disabled = j === null || jobsB.indexOf(j) <= 0;
-        btnJobCancel.disabled = j === null;
+        btnJobUp.disabled = j === null || isPendingJobRow(j) || jobsB.indexOf(j) <= 0;
+        btnJobCancel.disabled = j === null || isPendingJobRow(j);
         btnOrderCancel.disabled = gridC.selected === null;
     }
 
@@ -303,7 +304,7 @@ function createBuildQueue(opts: BuildQueueOptions): OriginalWindow {
     function refresh(): void {
         if (win.closed) return;
         rowsA = buildQueueRows(galaxy, empire);
-        jobsB = constructionJobRows(galaxy, empire);
+        jobsB = withPendingBuildRows(constructionJobRows(galaxy, empire));
         const orders = fleetOrderRows(empire);
         // Rebuild the grids only when something shown changed (keeps hover / scroll steady on the timer).
         const key = [

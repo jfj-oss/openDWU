@@ -22,6 +22,7 @@ import { BuiltObjectMissionType, builtObjectMission } from '../../sim/missions/m
 import { resolveSubRoleDescription } from '../../sim/designGeneration';
 import { fleetBuildProgress, fleetDesignBook, sectorLabel, type FleetBuildOrder } from '../../sim/player/fleetTemplates';
 import { constructionJobRows, type ConstructionJobRow } from '../../sim/player/constructionBoard';
+import { AWAITING_SHIP_TEXT } from '../pendingBuildOrders';
 
 export type BuildQueueStatus = 'building' | 'retrofit' | 'waiting' | 'enroute';
 
@@ -255,7 +256,7 @@ export function formatEtaMs(ms: number): string {
 
 /** The job board's state column. */
 export function jobStateText(j: ConstructionJobRow): string {
-    return j.state === 'open' ? 'Open' : j.state === 'active' ? 'Building' : 'Next';
+    return j.id < 0 ? AWAITING_SHIP_TEXT : j.state === 'open' ? 'Open' : j.state === 'active' ? 'Building' : 'Next';
 }
 
 export interface FleetOrderRow {

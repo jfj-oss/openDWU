@@ -36,6 +36,7 @@ import {
 import { showToast } from './toast';
 import { glassButton, installHudScaleVar, setToolStripActive, toolStripItem, toolStripMenu, toolStripSeparator } from './originalWindow';
 import { PendingOnce } from './pendingCommands';
+import { notePendingBuildOrder } from './pendingBuildOrders';
 import { openPirateSmugglingPicker } from './pirateSmugglingPicker';
 import { saveAutomationResponse, savedAutomationResponse } from './settings'; // [gameoptions]
 import { wreckSalvageMenuItem } from './scenario/wreckageUi'; // [wreckage]
@@ -514,11 +515,19 @@ export async function performAction(action: ShipAction, fromActionMenu: boolean,
     const { galaxy, empire } = deps;
     const selected = deps.getSelected();
     playOrderSting(galaxy, empire, selected, action); // [audio] Main.Part7.cs:504 / 515 investigate → discovery.mp3
+    // Immediate feedback for a base order (it waits for a construction ship, often a long trip): a ticker line and a pending job row.
+    let orderReply: (() => void) | null = null;
+    if (action.missionType === BuiltObjectMissionType.Build && action.design !== null && action.design.role === BuiltObjectRole.Base && selected instanceof Habitat && selected.empire !== empire) {
+        const what = `${action.design.name} at ${selected.name}`;
+        showToast(`Construction queued: ${what}`);
+        orderReply = notePendingBuildOrder(what);
+    }
     // Command log: queued, applied at the next frame boundary (within one frame); the UI follow-up runs then.
     // `null`: the executor threw (the game paused with a simulation error); the button is free again all the same.
     const r = await new Promise<ShipActionResult | null>((resolve) => {
         issuePlayerCommand(galaxy, empire, 'shipAction', [selected, action, fromActionMenu, actionMenuPoint], resolve, () => resolve(null));
     });
+    orderReply?.();
     replied?.();
     if (r === null) return;
     if (deps === null) return;
