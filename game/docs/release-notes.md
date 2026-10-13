@@ -4,6 +4,11 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+## 0.1.26
+
+- **Interstellar Diet: History tab** listing the motions passed, by year (who proposed them, the vote and the target), with
+  an option to also show failed and vetoed motions.
+
 ## 0.1.25
 
 - **Fix:** construction ships arriving in their build system no longer get sent back out to the edge of the star's
