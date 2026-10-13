@@ -61,7 +61,7 @@ import {
 } from './fleetTemplates';
 import { assignFleetTemplate, replenishFleet, setFleetAutoRefill, setFleetRefillYard } from './fleetRefill';
 import { setFleetMoveTogether } from '../fleets/moveTogether';
-import { applyAcceptedProposal, submitProposal } from './diplomacyProposals';
+import { applyAcceptedProposal, listProposals, submitProposal } from './diplomacyProposals';
 import { answerConversationReply, type ConversationRelated, type ConversationReplyPart } from './conversationReplies';
 import { applyAcceptedTrade, submitTradeOffer, type TradeNegotiation } from './tradeNegotiation';
 import { answerOffer, offerNegotiation, withdrawOffer, type HumanOfferResult } from './humanDiplomacy';
@@ -83,6 +83,7 @@ import { expireAdvisorSuggestionsForEmpire, expireOldAdvisorSuggestions } from '
 import { empireMessageHistory, removeOldHistoryMessages } from '../messages';
 import { copyMessageOptions, type MessageOptions } from '../messageRouting';
 import { storeChronicleYear, type ChronicleYear } from '../scenario/llm/chronicle';
+import { applyNegotiation, type NegotiationPackage } from '../scenario/llm/negotiation';
 import { galaxyStarDate } from '../tick/simTime';
 import { applyBaconSettingsCommand } from '../baconSettings';
 import { applyOffscreenUpdateCommand, type OffscreenUpdateMode } from '../tick/offscreenUpdate';
@@ -457,7 +458,13 @@ export const PLAYER_OPS = {
                 return { ok: false, message: 'The trade is no longer possible (an item is gone).' };
             }
             if (n.player !== from || n.other !== to) return { ok: false, message: 'Not this offer\'s trade.' };
-            return applyAcceptedTrade(galaxy, n);
+            // llmNegotiation: a treaty in the package — the whole package or nothing (the treaty re-checked first).
+            const treaty = o.treaty;
+            if (treaty !== undefined && !listProposals(galaxy, from, to).some((x) => x.id === treaty && x.enabled)) return { ok: false, message: 'The treaty is no longer possible.' };
+            const tr = applyAcceptedTrade(galaxy, n);
+            if (!tr.ok || treaty === undefined) return tr;
+            const ar = applyAcceptedProposal(galaxy, from, to, treaty, 0);
+            return ar.ok ? tr : { ok: true, message: `${tr.message} (the treaty could not be signed: ${ar.message})` };
         }),
     /** Multiplayer (humanDiplomacy.ts): the sender takes its open offer back. */
     withdrawHumanOffer: (galaxy: Galaxy, empire: Empire, id: number): HumanOfferResult => withdrawOffer(galaxy, empire, Number(id)),
@@ -673,6 +680,9 @@ export const PLAYER_OPS = {
     // model's validated choice for an AI empire (`empire` = that AI), or its refusal; the only way a model choice
     // reaches the sim, so seed + command log replays it without the model.
     llmStrategic: (galaxy: Galaxy, empire: Empire, command: LlmStrategicCommand) => applyLlmStrategicCommand(galaxy, empire, command),
+    // P4 negotiation (scenario/llm/negotiation.ts; flag llmNegotiation, no-op when off): the player's confirmed package
+    // (plain-data item refs, a treaty, their words) to `other`, re-resolved on the live galaxy; ported trade / treaty code decides.
+    llmNegotiate: (galaxy: Galaxy, empire: Empire, other: Empire, pkg: NegotiationPackage) => applyNegotiation(galaxy, empire, other, pkg),
     // [llm] end
 } as const;
 

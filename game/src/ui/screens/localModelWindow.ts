@@ -41,7 +41,7 @@ export function testResultText(r: AdvisorTestResult): string {
 /** Read-only: which LLM add-on flags this game has. */
 export function llmFlagsLine(galaxy: Galaxy | null): string {
     if (galaxy === null || galaxy.scenario == null) return 'No game loaded: the LLM add-ons are chosen when a game is created.';
-    const on = ['llmFoundations', 'llmStrategic', 'llmVoices'].filter((f) => scenarioFlag(galaxy, f));
+    const on = ['llmFoundations', 'llmStrategic', 'llmVoices', 'llmMemory', 'llmNegotiation'].filter((f) => scenarioFlag(galaxy, f));
     return `This game's LLM add-ons: ${on.length > 0 ? on.join(', ') : 'none'}`;
 }
 

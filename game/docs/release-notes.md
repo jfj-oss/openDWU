@@ -4,6 +4,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **Real diplomatic negotiation (new `llmNegotiation` option of the Local LLM Layer add-on):** a Speak freely box on the Diplomacy screen turns your words into a legal proposal card (trade items, money, and treaties such as free trade or a mutual defence pact, now tradeable as part of a package), the game's own trade code decides, and a refusal comes with up to 3 counter-offers (also on the trade screen, no model needed); between human players your words go with the offer. Off by default.
 - **Local model settings window:** Game Options, Local model... has endpoint presets for Ollama / LM Studio / llama-server, a list of the installed models, a Thinking switch (forced off on OpenAI-compatible servers too) and a Test button.
 - **Rulers' memory turns Reputation on:** switching on the Local LLM Layer's rulers' memory option now also switches on the Reputation add-on and its ledger, which the attitude nudge needs (add-on options can now name the add-ons they need).
 - **Rulers' memory (new `llmMemory` option of the Local LLM Layer add-on):** each AI ruler keeps a short dated diary of what other empires did to or for them (wars, peace, treaties, gifts, colonies, pirates driven off); the lines and a mood word feed the model prompts, and a small capped, fading attitude nudge (only for things the original game does not already count; turns the Reputation ledger on) follows. Off by default.

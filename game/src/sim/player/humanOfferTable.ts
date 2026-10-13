@@ -33,6 +33,10 @@ export interface HumanOffer {
     answeredMs: number;
     /** Why it failed / was refused ('' otherwise). */
     note: string;
+    /** llmNegotiation: a treaty signed with the trade (a PACKAGE_TREATIES id), applied on accept with the items. */
+    treaty?: string;
+    /** llmNegotiation: the sender's own words, shown to the receiver. */
+    words?: string;
 }
 
 

@@ -23,6 +23,10 @@ import {
     type TradeTree,
 } from '../../sim/player/tradeNegotiation';
 import { hasRemoteCommandSink, issuePlayerCommand } from '../../sim/player/playerCommands';
+import { counterCandidates, negotiationOn, packageOfNegotiation, type NegotiationPackage } from '../../sim/scenario/llm/negotiation'; // [negotiation]
+import { proposeNegotiation } from '../../llm/negotiation'; // [negotiation]
+import { readReplica } from '../../llm/replicaReads'; // [negotiation]
+import { counterCards } from './negotiationWindow'; // [negotiation]
 import type { TradeableItem } from '../../sim/tradeItems';
 // [diplovoice] begin
 import { FONT, glassButton, openOriginalWindow, place } from '../originalWindow';
@@ -168,6 +172,9 @@ function createTradePanel(opts: TradePanelOptions): OpenPanel {
     let voice: { result: TradeOfferResult; pending: boolean; reply: VoicedReply | null; view: { showOriginal: boolean } } | null = null;
     let closed = false;
     // [diplovoice] end
+    // [negotiation] begin
+    let counters: { result: TradeOfferResult | null; list: NegotiationPackage[]; note: string } | null = null;
+    // [negotiation] end
 
     function sideKey(tree: TradeTree): string {
         const rows = tradeTreeRows(galaxy, tree);
@@ -268,6 +275,26 @@ function createTradePanel(opts: TradePanelOptions): OpenPanel {
             });
         }
 
+        // [negotiation] begin — P4: the sim's pure counter-offers after a refusal (flag llmNegotiation; no model needed).
+        if (counters !== null && counters.result === last) {
+            if (counters.note !== '') body.appendChild(el('div', 'trade-reply', counters.note));
+            if (counters.list.length > 0) {
+                body.appendChild(
+                    counterCards(galaxy, negotiation.player, other, counters.list, (p) => {
+                        counters = { result: last, list: [], note: '…' };
+                        render(true);
+                        proposeNegotiation(galaxy, negotiation.player, other, p, (nr) => {
+                            if (nr.expireMessagesFor !== null) opts.expireMessagesFor?.(nr.expireMessagesFor);
+                            if (nr.verdict === 'accepted') done = true;
+                            counters = { result: last, list: nr.counters, note: `${other.name}: ${nr.verdict === 'accepted' ? 'Agreed.' : nr.verdict === 'stale' ? `not possible (${nr.message})` : 'Refused.'}` };
+                            opts.onChange?.();
+                            if (!closed) render(true);
+                        });
+                    }),
+                );
+            }
+        }
+        // [negotiation] end
         const cols = el('div', 'trade-columns');
         cols.append(column(negotiation.them, other.name, other.mainColor), column(negotiation.us, negotiation.player.name, negotiation.player.mainColor));
         body.appendChild(cols);
@@ -295,6 +322,13 @@ function createTradePanel(opts: TradePanelOptions): OpenPanel {
 
     function proposed(r: TradeOfferResult, theyGive: string[], weGive: string[]): void {
         last = r;
+        // [negotiation] begin
+        counters = null;
+        if (r.ok && !r.accepted && r.reply !== null && negotiationOn(galaxy)) {
+            const list = readReplica(galaxy, () => counterCandidates(galaxy, other, negotiation.player, packageOfNegotiation(negotiation)));
+            counters = { result: r, list, note: '' };
+        }
+        // [negotiation] end
         replyPart = r.reply;
         if (r.ok && r.nextOptionLabel !== '') optionLabel = r.nextOptionLabel;
         if (r.ok && (r.accepted || r.nextOptionLabel === '')) done = true;

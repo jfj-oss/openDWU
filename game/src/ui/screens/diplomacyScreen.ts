@@ -120,6 +120,12 @@ import type { DialogPartType } from '../../sim/data/dialogSet';
 import { warRowSuffix, warTermsBlock } from './warTermsPanel';
 // [wargoals] end
 
+// [negotiation] begin
+import { negotiationOn } from '../../sim/scenario/llm/negotiation';
+import { currentLlmLayer } from '../../llm/llmLayer';
+import { openNegotiationWindow } from './negotiationWindow';
+// [negotiation] end
+
 // [diplovoice] begin
 import { counterNote, diplomatVoiceConfig, voiceDiplomatReply, voiceSwitch, voicedLineToggle, voicingIndicator, type VoicedReply } from '../diplomatVoice';
 // [diplovoice] end
@@ -1886,6 +1892,33 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
                 }
             }
         }
+        // [negotiation] begin — P4 "Speak freely…" (flag llmNegotiation; only with the local model layer's queue)
+        if (negotiationOn(player.galaxy) && other.pirateEmpireBaseHabitat === null && currentLlmLayer()?.queue != null) {
+            inner.appendChild(
+                link('Speak freely…', () =>
+                    openNegotiationWindow({
+                        galaxy: player.galaxy,
+                        player,
+                        other,
+                        resolveReply: (part, e) => {
+                            const rn = e.dominantRace?.name ?? '';
+                            return loadDialogSet(rn).then((set) => (set !== null ? formatNet(set.resolveDialog(part, rn), []) : part));
+                        },
+                        openTrade: () => {
+                            const o = listProposals(player.galaxy, player, other).find((x) => x.id === 'DEAL_BEGIN:trade' && x.enabled);
+                            if (o !== undefined) submit(o);
+                        },
+                        onApplied: (r) => {
+                            if (r.expireMessagesFor !== null) expireDiplomacyMessages?.(r.expireMessagesFor);
+                            proposalVersion++;
+                            renderTalk();
+                            render();
+                        },
+                    }),
+                ),
+            );
+        }
+        // [negotiation] end
         inner.appendChild(link('Goodbye', () => talk?.close()));
     }
 

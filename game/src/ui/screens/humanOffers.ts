@@ -54,13 +54,19 @@ export function offerText(o: HumanOffer, fromName: string): string {
         const get = o.trade.senderGives.map(labelText);
         const give = o.trade.receiverGives.map(labelText);
         const what = o.trade.kind === 'end-war' ? ' to end the war' : o.trade.kind === 'lift-sanctions' ? ' to lift the trade sanctions' : '';
-        return `${fromName} proposes a trade${what}. You receive: ${get.length > 0 ? get.join(', ') : 'nothing'}. You give: ${give.length > 0 ? give.join(', ') : 'nothing'}.`;
+        return `${fromName} proposes a trade${what}. You receive: ${get.length > 0 ? get.join(', ') : 'nothing'}. You give: ${give.length > 0 ? give.join(', ') : 'nothing'}.${treatyAndWords(o)}`;
     }
     // "Propose Free Trade Agreement" → "Free Trade Agreement" (the label is the sender's menu line).
     const label = resolveGameText(o.label).replace(/^(Propose|Offer)\s+/i, '');
     if (o.option.startsWith('GIFT_GIVE')) return `${fromName} offers you a gift of ${Math.round(o.cost).toLocaleString('en-US')} credits.`;
     if (o.option.startsWith('WARNING_')) return `${fromName} demands: ${label}.`;
-    return `${fromName} proposes: ${label}.`;
+    return `${fromName} proposes: ${label}.${treatyAndWords(o)}`;
+}
+
+/** llmNegotiation: the treaty signed with the trade and the sender's own words. */
+function treatyAndWords(o: HumanOffer): string {
+    const t = o.treaty === 'OFFER_FREETRADE' ? 'Free Trade Agreement' : o.treaty === 'OFFER_MUTUALDEFENSE' ? 'Mutual Defense Pact' : o.treaty === 'OFFER_PROTECTORATE' ? 'Protectorate' : '';
+    return `${t !== '' ? ` And both sign: ${t}.` : ''}${o.words !== undefined && o.words !== '' ? ` They say: "${o.words}"` : ''}`;
 }
 
 /** The sender's own pending offer, in one line ("To X: Free Trade Agreement."). */

@@ -21,9 +21,11 @@ import { createGame, type CreateGameOptions } from '../src/sim/game';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import { YEAR_LENGTH } from '../src/sim/galaxyTime';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
-import { DiplomaticRelationType, obtainDiplomaticRelation } from '../src/sim/diplomacy';
+import { DiplomaticRelationType, DiplomaticStrategy, obtainDiplomaticRelation } from '../src/sim/diplomacy';
+import { TradeableItemType } from '../src/sim/tradeItems';
+import { negotiationLog, type ItemRef, type NegotiationResult } from '../src/sim/scenario/llm/negotiation';
 import { commandLog, type CommandLogEntry } from '../src/sim/player/commandLog';
-import { flushPlayerCommands, runScheduledUntil, scheduleCommandLog } from '../src/sim/player/playerCommands';
+import { flushPlayerCommands, issuePlayerCommand, runScheduledUntil, scheduleCommandLog } from '../src/sim/player/playerCommands';
 import { nearestAiEmpires, strategicLog } from '../src/sim/scenario/llm/strategic';
 import { councilState } from '../src/sim/scenario/emergent/council';
 import { StrategicJob } from '../src/llm/strategicJob';
@@ -113,4 +115,57 @@ describe('strategic commands replay without the model', () => {
         expect(JSON.stringify(strategicLog(replay.galaxy))).toBe(liveLog);
         expect(r.save === live.save).toBe(true);
     }, 2400000);
+});
+
+// P4 negotiation (flag llmNegotiation): the player's `llmNegotiate` commands (a paid trade and a treaty bought in a
+// package) are journaled with plain-data refs and replay identically from seed + command log, without any model.
+describe('negotiation commands replay without the model', () => {
+    const SETUP = 60;
+    /** Meet the nearest AI and pin a cool strategy (deterministic; applied identically in both runs). */
+    function meet(g: Galaxy): number {
+        const [a] = nearestAiEmpires(g, g.playerEmpire, 1);
+        for (const [p, q] of [[g.playerEmpire!, a], [a, g.playerEmpire!]] as const) {
+            const r = obtainDiplomaticRelation(p, q);
+            r.type = DiplomaticRelationType.None;
+            r.strategy = DiplomaticStrategy.Defend;
+        }
+        a.reclusive = false;
+        g.playerEmpire!.stateMoney = 200000;
+        return a.empireId;
+    }
+
+    it('record llmNegotiate commands, replay from seed + command log: identical digest, save and negotiation log', () => {
+        const gameData = scenarioGameData(base, 'llm-layer');
+        const ON = Object.fromEntries(gameData.scenario!.manifest.flags.map((f) => [f.name, f.name === 'llmNegotiation' || f.name === 'llmFoundations']));
+        const { game } = createScenarioGame(base, { scenario: 'llm-layer', flags: ON });
+        const g = game.galaxy;
+        runGameSeconds(game, SETUP);
+        const setupMs = g.nowMs;
+        const aiId = meet(g);
+        const ai = g.empires.find((e) => e.empireId === aiId)!;
+        const money = (n: number): ItemRef => ({ t: TradeableItemType.Money, k: 'n', n });
+        const results: NegotiationResult[] = [];
+        issuePlayerCommand(g, g.playerEmpire!, 'llmNegotiate', [ai, { give: [money(1000)], ask: [], treaty: null, words: 'A gift between neighbours.' }], (r) => results.push(r));
+        issuePlayerCommand(g, g.playerEmpire!, 'llmNegotiate', [ai, { give: [money(50000)], ask: [], treaty: 'OFFER_FREETRADE' }], (r) => results.push(r));
+        flushPlayerCommands(g);
+        expect(results.map((r) => r.verdict)).toEqual(['accepted', 'accepted']);
+        expect(obtainDiplomaticRelation(g.playerEmpire!, ai).type).toBe(DiplomaticRelationType.FreeTradeAgreement);
+        runGameSeconds(game, 20);
+        const endMs = g.nowMs;
+        const live = fullDigest(game);
+        const liveLog = JSON.stringify(negotiationLog(g));
+        const log = commandLog(g).map((e) => JSON.parse(JSON.stringify(e)) as CommandLogEntry);
+        expect(log.filter((e) => e.source === 'player' && e.op === 'llmNegotiate').length).toBe(2);
+
+        const replay = createGame({ ...tickGameOptions(gameData), scenarioFlags: ON });
+        runGameSeconds(replay, SETUP);
+        expect(replay.galaxy.nowMs).toBe(setupMs);
+        expect(meet(replay.galaxy)).toBe(aiId);
+        scheduleCommandLog(replay.galaxy, log);
+        runScheduledUntil(replay.galaxy, endMs);
+        const r = fullDigest(replay);
+        expect(r.digest).toBe(live.digest);
+        expect(JSON.stringify(negotiationLog(replay.galaxy))).toBe(liveLog);
+        expect(r.save === live.save).toBe(true);
+    }, 600000);
 });

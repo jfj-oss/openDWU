@@ -193,6 +193,7 @@ export const COMMAND_FAILURE: FailureTable = {
     vbStartDetox: no,
     vbBribeOfficials: no,
     llmStrategic: () => null,
+    llmNegotiate: (message) => ({ ok: false, verdict: 'stale', message, reply: null, treaty: null, counters: [], expireMessagesFor: null }),
 };
 
 /** The failure value `op`'s callback gets (see the file header); undefined for an op the table does not know. */

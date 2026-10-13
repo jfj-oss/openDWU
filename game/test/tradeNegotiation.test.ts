@@ -39,6 +39,25 @@ import {
 } from '../src/sim/player/tradeNegotiation';
 import { submitProposal } from '../src/sim/player/diplomacyProposals';
 import { SystemVisibilityStatus } from '../src/sim/visibility';
+import { GalaxyScenario } from '../src/sim/scenario/state';
+import { setHumanEmpires } from '../src/sim/humanEmpires';
+import { humanOffers } from '../src/sim/player/humanDiplomacy';
+import { PLAYER_OPS } from '../src/sim/player/playerOps';
+import '../src/sim/player/playerCommands';
+import { DiplomaticStrategy } from '../src/sim/diplomacy';
+import {
+    LLM_NEGOTIATION_FLAG,
+    applyNegotiation,
+    counterCandidates,
+    estimateTradeResponse,
+    mapNegotiationAnswer,
+    negotiationMenu,
+    refOf,
+    resolvePackage,
+    treatyTerms,
+    type ItemRef,
+    type NegotiationPackage,
+} from '../src/sim/scenario/llm/negotiation';
 
 let gameData: GameData;
 let galaxy: Galaxy;
@@ -365,5 +384,130 @@ describe('trade panel helpers ([tradenego] tradePanel.ts)', () => {
         const n = beginTradeNegotiation(galaxy, player, ai, 'trade')!;
         addTradeItem(galaxy, n.us, moneyRow(n.us, 10));
         expect(tradeReplyClass(submitTradeOffer(galaxy, n))).toBe('trade-reply trade-reply-accepted');
+    });
+});
+
+// P4 real negotiation (sim/scenario/llm/negotiation.ts, flag llmNegotiation): the pure estimate agrees with the ported
+// evaluator on its no-Rnd branches, every counter-offer is Accepted by it, a stale ref is a no-op, and a treaty bought
+// inside a package follows the bounded rule.
+describe('llmNegotiation packages (scenario/llm/negotiation.ts)', () => {
+    const scenarioOn = (on: boolean): void => {
+        galaxy.scenario = new GalaxyScenario();
+        galaxy.scenario.flags[LLM_NEGOTIATION_FLAG] = on;
+    };
+    const techRef = (): ItemRef => {
+        setAttitude(ai, player, 25 * galaxy.difficultyLevel);
+        const n = beginTradeNegotiation(galaxy, player, ai, 'trade')!;
+        const tech = findRow(n.them, (t) => t.type === TradeableItemType.ResearchProject);
+        return refOf(tech);
+    };
+    const money = (n: number): ItemRef => ({ t: TradeableItemType.Money, k: 'n', n });
+
+    it('estimateTradeResponse = evaluateTradeOffer on the no-Rnd branches (lowball refuse, improve, accept); writes nothing', () => {
+        const ask = techRef();
+        const value = beginTradeNegotiation(galaxy, player, ai, 'trade')!.them.tradeableItems.find((t) => refOf(t).k === ask.k)!.value;
+        player.stateMoney = value * 3 + 100000;
+        const f = acceptFactor(ai);
+        for (const [amount, want] of [[10, 'refuse'], [value, 'improve'], [Math.trunc(value * f) + 1, 'accept']] as const) {
+            const r = resolvePackage(galaxy, player, ai, { give: [money(amount)], ask: [ask], treaty: null });
+            if (typeof r === 'string') throw new Error(r);
+            const before = galaxy.rnd.drawCount;
+            const est = estimateTradeResponse(galaxy, ai, player, r.negotiation.us.selected, r.negotiation.them.selected);
+            expect(galaxy.rnd.drawCount).toBe(before);
+            expect(est).toBe(want);
+            const real = evaluateTradeOffer(galaxy, ai, player, r.negotiation.us.selected, r.negotiation.them.selected, true);
+            expect(real).toBe(want === 'refuse' ? TradeOfferResponse.Refuse : want === 'improve' ? TradeOfferResponse.PromptForImprovement : TradeOfferResponse.Accept);
+        }
+    });
+
+    it('flag off: the command does nothing; on: a refusal returns counters, and every counter is Accepted by the ported evaluator', () => {
+        const ask = techRef();
+        player.stateMoney = 5_000_000;
+        scenarioOn(false);
+        expect(applyNegotiation(galaxy, player, ai, { give: [money(10)], ask: [ask], treaty: null })).toMatchObject({ ok: false, verdict: 'off' });
+        scenarioOn(true);
+        const pkg: NegotiationPackage = { give: [money(10)], ask: [ask], treaty: null };
+        const counters = counterCandidates(galaxy, ai, player, pkg);
+        expect(counters.length).toBeGreaterThan(0);
+        expect(counters.length).toBeLessThanOrEqual(3);
+        for (const c of counters) {
+            const r = resolvePackage(galaxy, player, ai, c);
+            if (typeof r === 'string') throw new Error(r);
+            expect(evaluateTradeOffer(galaxy, ai, player, r.negotiation.us.selected, r.negotiation.them.selected, true)).toBe(TradeOfferResponse.Accept);
+        }
+        const res = applyNegotiation(galaxy, player, ai, pkg);
+        expect(res).toMatchObject({ ok: true, verdict: 'refused', reply: 'DEAL_REJECT' });
+        expect(res.counters).toEqual(counterCandidates(galaxy, ai, player, pkg));
+        const pm = player.stateMoney;
+        const ok = applyNegotiation(galaxy, player, ai, res.counters[0]);
+        expect(ok).toMatchObject({ ok: true, verdict: 'accepted', reply: 'DEAL_ACCEPT' });
+        expect(player.stateMoney).toBeLessThan(pm);
+    });
+
+    it('a stale ref is a no-op (the package is atomic)', () => {
+        scenarioOn(true);
+        const ask = techRef();
+        player.stateMoney = 1000;
+        const pm = player.stateMoney;
+        const before = galaxy.rnd.drawCount;
+        expect(applyNegotiation(galaxy, player, ai, { give: [money(500)], ask: [ask, { t: TradeableItemType.Colony, k: 'h999999' }], treaty: null })).toMatchObject({ ok: false, verdict: 'stale' });
+        expect(applyNegotiation(galaxy, player, ai, { give: [money(5000)], ask: [ask], treaty: null })).toMatchObject({ ok: false, verdict: 'stale' });
+        expect([player.stateMoney, galaxy.rnd.drawCount]).toEqual([pm, before]);
+    });
+
+    it('a treaty in a package: priced by attitude above the floor, bought with money, signed on Accept; refused below the floor', () => {
+        scenarioOn(true);
+        const rel = obtainDiplomaticRelation(ai, player);
+        rel.strategy = DiplomaticStrategy.Defend; // the AI would not sign free trade by itself
+        setAttitude(ai, player, 0);
+        const tt = treatyTerms(galaxy, ai, player, 'OFFER_FREETRADE');
+        expect(tt).toMatchObject({ ok: true, price: 8000 });
+        // Alone: exactly the stock proposal (refused).
+        expect(applyNegotiation(galaxy, player, ai, { give: [], ask: [], treaty: 'OFFER_FREETRADE' })).toMatchObject({ ok: true, verdict: 'refused', reply: 'FREETRADE_REJECT' });
+        player.stateMoney = 100000;
+        const pkg: NegotiationPackage = { give: [money(100)], ask: [], treaty: 'OFFER_FREETRADE' };
+        const res = applyNegotiation(galaxy, player, ai, pkg);
+        expect(res.verdict).not.toBe('accepted');
+        const top = res.counters.find((c) => c.give.some((g) => g.t === TradeableItemType.Money))!;
+        expect(top.give.find((g) => g.t === TradeableItemType.Money)!.n).toBeGreaterThanOrEqual(Math.trunc(8000 * acceptFactor(ai)));
+        expect(applyNegotiation(galaxy, player, ai, top)).toMatchObject({ ok: true, verdict: 'accepted' });
+        expect(obtainDiplomaticRelation(player, ai).type).toBe(DiplomaticRelationType.FreeTradeAgreement);
+        setRelation(player, ai, DiplomaticRelationType.None);
+        setAttitude(ai, player, -40);
+        expect(treatyTerms(galaxy, ai, player, 'OFFER_FREETRADE').ok).toBe(false);
+        expect(applyNegotiation(galaxy, player, ai, { give: [money(90000)], ask: [], treaty: 'OFFER_FREETRADE' })).toMatchObject({ ok: true, verdict: 'refused', counters: [] });
+        expect(obtainDiplomaticRelation(player, ai).type).toBe(DiplomaticRelationType.None);
+    });
+
+    it('to another human: the package becomes their incoming offer with the treaty and the words; accepting applies both', () => {
+        scenarioOn(true);
+        setHumanEmpires(galaxy, [player, ai]);
+        player.stateMoney = 50000;
+        const am = ai.stateMoney;
+        const res = applyNegotiation(galaxy, player, ai, { give: [money(3000)], ask: [], treaty: 'OFFER_FREETRADE', words: 'Let us trade freely.' });
+        expect(res).toMatchObject({ ok: true, verdict: 'offered', counters: [] });
+        const offer = humanOffers(galaxy).at(-1)!;
+        expect(offer).toMatchObject({ kind: 'trade', from: player.empireId, to: ai.empireId, treaty: 'OFFER_FREETRADE', words: 'Let us trade freely.', state: 'pending' });
+        expect(obtainDiplomaticRelation(player, ai).type).toBe(DiplomaticRelationType.None);
+        const r = PLAYER_OPS.answerHumanOffer(galaxy, ai, offer.id, 'accept');
+        expect(r.ok).toBe(true);
+        expect(ai.stateMoney).toBeCloseTo(am + 3000, 6);
+        expect(obtainDiplomaticRelation(player, ai).type).toBe(DiplomaticRelationType.FreeTradeAgreement);
+        setHumanEmpires(galaxy, []);
+    });
+
+    it('the clerk answer is validated against the menu: invented id refused, money clamped, duplicates dropped, clarify', () => {
+        const menu = negotiationMenu(galaxy, player, ai);
+        expect(menu.give.every((g, i) => g.id === `g${i + 1}`)).toBe(true);
+        const ans = (o: Record<string, unknown>): string => JSON.stringify({ understood: 'x', give: [], ask: [], giveMoney: 0, askMoney: 0, treaty: 'none', unmapped: '', clarify: '', ...o });
+        expect(mapNegotiationAnswer(menu, ans({ give: ['g999'] })).status).toBe('refused');
+        expect(mapNegotiationAnswer(menu, ans({ treaty: 't9' })).status).toBe('refused');
+        expect(mapNegotiationAnswer(menu, 'not json').status).toBe('refused');
+        expect(mapNegotiationAnswer(menu, ans({ clarify: 'Which colony?' }))).toEqual({ status: 'clarify', text: 'Which colony?' });
+        const m = mapNegotiationAnswer(menu, ans({ give: menu.give.length > 0 ? [menu.give[0].id, menu.give[0].id] : [], giveMoney: 1e12 }), 'my words');
+        if (m.status !== 'card') throw new Error(m.status);
+        expect(m.pkg.give.filter((r) => r.t === TradeableItemType.Money)[0].n).toBe(menu.ourMoney);
+        expect(m.pkg.give.length).toBe((menu.give.length > 0 ? 1 : 0) + (menu.ourMoney > 0 ? 1 : 0));
+        expect(m.pkg.words).toBe('my words');
     });
 });
