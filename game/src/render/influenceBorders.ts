@@ -326,15 +326,21 @@ export function computeRegions(cs: CellSet, owner: Int16Array): Region[] {
 
 export interface BorderGeometry {
     /** Tiles of the galaxy; each holds the cells to fill and the border segments to stroke. */
-    tiles: Array<{ minX: number; minY: number; maxX: number; maxY: number; fills: Array<{ owner: number; verts: number[] }>; borders: Array<{ owner: number; seg: number[] }> }>;
+    tiles: Array<{ minX: number; minY: number; maxX: number; maxY: number; fills: Array<{ owner: number; verts: number[] }>; borders: Array<{ owner: number; seg: number[] }>; edges: Array<{ owner: number; quads: number[] }> }>;
     regions: Region[];
     claimed: number;
 }
 export const TILES = 6;
 
-export function buildGeometry(cs: CellSet, owner: Int16Array, sizeX: number, sizeY: number): BorderGeometry {
+/** Shared-edge mode: 'both' = each side draws its own darker strip, 'darker' = only the darker empire's, 'off' = none. */
+export type SharedEdgeMode = 'both' | 'darker' | 'off';
+/** Depth of the shared-edge strip, in mean star spacings. */
+export const SHARED_EDGE_DEPTH_SPACINGS = 0.14;
+
+export function buildGeometry(cs: CellSet, owner: Int16Array, sizeX: number, sizeY: number, edgeMode: SharedEdgeMode = 'off', lum: (owner: number) => number = () => 0): BorderGeometry {
+    const depth = SHARED_EDGE_DEPTH_SPACINGS * cs.spacing;
     const tiles: BorderGeometry['tiles'] = [];
-    for (let i = 0; i < TILES * TILES; i++) tiles.push({ minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity, fills: [], borders: [] });
+    for (let i = 0; i < TILES * TILES; i++) tiles.push({ minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity, fills: [], borders: [], edges: [] });
     let claimed = 0;
     for (let i = 0; i < owner.length; i++) {
         const e = owner[i];
@@ -367,6 +373,30 @@ export function buildGeometry(cs: CellSet, owner: Int16Array, sizeX: number, siz
             seg.push(v[2 * k], v[2 * k + 1], v[2 * b], v[2 * b + 1]);
         }
         if (seg.length > 0) t.borders.push({ owner: e, seg });
+        if (edgeMode !== 'off') {
+            // Shared edges (a claimed neighbour of another empire): one flat quad per edge, inset into this cell. Each cell
+            // draws its own side of the boundary, so 'both' needs no extra pass; 'darker' keeps only the darker empire's.
+            const quads: number[] = [];
+            for (let k = 0; k < n; k++) {
+                const nb = c.tags[k];
+                const no = nb >= 0 ? owner[nb] : -1;
+                if (no < 0 || no === e) continue;
+                if (edgeMode === 'darker') {
+                    const le = lum(e), lo = lum(no);
+                    if (le > lo || (le === lo && e > no)) continue;
+                }
+                const b = (k + 1) % n;
+                const ax = v[2 * k], ay = v[2 * k + 1], bx = v[2 * b], by = v[2 * b + 1];
+                const dx = bx - ax, dy = by - ay;
+                const len = Math.hypot(dx, dy);
+                if (len < 1e-6) continue;
+                // Cells are CCW, so the inward normal is the left of the edge direction.
+                const d = Math.min(depth, len * 0.5);
+                const ix = (-dy / len) * d, iy = (dx / len) * d;
+                quads.push(ax, ay, bx, by, bx + ix, by + iy, ax + ix, ay + iy);
+            }
+            if (quads.length > 0) t.edges.push({ owner: e, quads });
+        }
     }
     return { tiles, regions: computeRegions(cs, owner), claimed };
 }
@@ -380,6 +410,12 @@ function mix(c: number, k: number): number {
 }
 export const FILL_DARKEN = 0.55;
 export const FILL_ALPHA = 0.2;
+/** Shared-edge strip colour = the empire's fill colour scaled by this, at this alpha. */
+export const EDGE_DARKEN = 0.4;
+export const EDGE_ALPHA = 0.65;
+function luminance(c: number): number {
+    return 0.2126 * ((c >> 16) & 255) + 0.7152 * ((c >> 8) & 255) + 0.0722 * (c & 255);
+}
 
 /** Empire names on influence borders: Source Serif 4 (SIL OFL 1.1, bundled under public/fonts/source-serif-4), a
  *  calm book serif; falls back to the system serifs until it has loaded. */
@@ -429,7 +465,7 @@ export class InfluenceBorderLayer {
     private signature(owner: Int16Array): string {
         let h = 2166136261;
         for (let i = 0; i < owner.length; i++) h = Math.imul(h ^ (owner[i] + 2), 16777619);
-        return `${h}:${this.galaxy.empires.length}`;
+        return `${h}:${this.galaxy.empires.length}:${getSettings().influenceSharedEdges}`;
     }
 
     /** Recompute now (ignoring the throttle); returns whether the geometry changed. */
@@ -448,11 +484,12 @@ export class InfluenceBorderLayer {
             this.sig = '';
         }
         const { owner } = computeOwners(galaxy, fogOf(galaxy).player, this.xs, this.ys, this.cells.spacing);
+        const edgeMode = getSettings().influenceSharedEdges;
         const sig = this.signature(owner);
         this.lastComputeMs = performance.now() - t0;
         if (sig === this.sig) return false;
         this.sig = sig;
-        const geo = buildGeometry(this.cells, owner, galaxy.sizeX, galaxy.sizeY);
+        const geo = buildGeometry(this.cells, owner, galaxy.sizeX, galaxy.sizeY, edgeMode, (e) => luminance(this.colour(e)));
         this.apply(geo);
         this.lastComputeMs = performance.now() - t0;
         return true;
@@ -475,6 +512,10 @@ export class InfluenceBorderLayer {
                 const col = mix(this.colour(b.owner), FILL_DARKEN);
                 for (let k = 0; k < b.seg.length; k += 4) g.moveTo(b.seg[k], b.seg[k + 1]).lineTo(b.seg[k + 2], b.seg[k + 3]);
                 g.stroke({ color: col, alpha: FILL_ALPHA, width: 1, pixelLine: true });
+            }
+            for (const ed of tile.edges) {
+                for (let k = 0; k < ed.quads.length; k += 8) g.poly(ed.quads.slice(k, k + 8), true);
+                g.fill({ color: mix(this.colour(ed.owner), EDGE_DARKEN), alpha: EDGE_ALPHA });
             }
             this.root.addChild(g);
             this.tiles.push({ g, minX: tile.minX, minY: tile.minY, maxX: tile.maxX, maxY: tile.maxY });

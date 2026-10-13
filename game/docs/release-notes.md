@@ -4,6 +4,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **Shared border edges:** with influence borders on, where two empires' regions touch each side gets a darker edge of its own colour (Game Options -> Advanced Display -> Map Display -> Shared border edges: Both darker / Darker only, which keeps only the darker empire's edge / Off); built once per border rebuild from flat strips, not the old per-frame strokes.
 - **Main menu Multiplayer button:** it now gets the stock hover look: the glowing teal band and the gold label when hovered, focused or pressed (it was only brighter grey).
 - **Colony link lines:** with the new borders on, the lines joining an empire's systems on the galaxy map are wide (5 px), pale, slightly faded dashes with rounded ends and wide, steady spacing, the same size at every zoom and smooth at the highest; with the new borders off they stay the classic thin dashed lines. The travelling pulses are gone.
 - **Station orders give feedback at once:** ordering a station or base from the selection panel shows "Construction queued: <design> at <planet>" immediately, and a pending "Awaiting construction ship" row in the Build Queue and Construction Yards job lists until the job is on the board. (The job itself is registered within a frame or two; it only starts building when a construction ship arrives, which is a long trip in a late-game galaxy.)

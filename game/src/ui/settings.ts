@@ -81,6 +81,8 @@ export interface UiSettings {
     influenceBorders: boolean;
     /** With influence borders on: write the empire names across the large regions. */
     influenceBorderNames: boolean;
+    /** With influence borders on: where two empires' regions touch, darker edges on the shared border (render only). */
+    influenceSharedEdges: 'both' | 'darker' | 'off';
     /** Cosmetic (not in the original): draw stations pulled in toward their planet's / moon's centre. */
     pullStationsToCentre: boolean;
     /** Bacon mod (BaconMain.cs 442 DrawWeaponRanges, opt-in like its showRangeCircles / "!rangecircles"): weapon-range
@@ -245,6 +247,7 @@ export const DEFAULT_SETTINGS: UiSettings = {
     ditherGradients: true,
     influenceBorders: false,
     influenceBorderNames: true,
+    influenceSharedEdges: 'both',
     pullStationsToCentre: false,
     showWeaponRangeCircles: false,
     edgeScroll: true,
@@ -376,6 +379,7 @@ export function loadSettings(): UiSettings {
         if (typeof parsed.ditherGradients === 'boolean') out.ditherGradients = parsed.ditherGradients;
         if (typeof parsed.influenceBorders === 'boolean') out.influenceBorders = parsed.influenceBorders;
         if (typeof parsed.influenceBorderNames === 'boolean') out.influenceBorderNames = parsed.influenceBorderNames;
+        if (parsed.influenceSharedEdges === 'both' || parsed.influenceSharedEdges === 'darker' || parsed.influenceSharedEdges === 'off') out.influenceSharedEdges = parsed.influenceSharedEdges;
         if (typeof parsed.pullStationsToCentre === 'boolean') out.pullStationsToCentre = parsed.pullStationsToCentre;
         if (typeof parsed.cleanGalaxyView === 'boolean') out.cleanGalaxyView = parsed.cleanGalaxyView;
         if (typeof parsed.animateBackdrop === 'boolean') out.animateBackdrop = parsed.animateBackdrop;
