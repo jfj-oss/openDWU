@@ -73,6 +73,8 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
   only when overwhelmingly ahead (2.5x the next empire's score, 40% of the galaxy) and then only rarely. When any empire
   bids, nearly every other major empire declares a locked war on it; the bidder must hold its capital for 10 years to win (a failed bid ends the wars' lock). The Diet screen shows
   the countdown, and the yearly ticker keeps count.
+- **Emperor bid uprising:** when an Emperor bid starts, the uprising empires' idle attack fleets are refuelled and sent
+  straight at the bidder's nearest colony, and re-sent every 10 days, instead of sitting out of range.
 - **VIP shuttle crash fix:** a VIP trip could crash the game while naming its shuttle when it was started from a read of the
   game outside a sim update; such reads now never start a trip. Nothing changes in a normal game.
 

@@ -19,7 +19,7 @@
 import type { Galaxy } from '../../../galaxy';
 import type { Empire } from '../../../empire';
 import type { Habitat } from '../../../types';
-import { DIET_HISTORY_CAP, EMPEROR_AI_CHECK_DAYS, EMPEROR_ATTACK_REFRESH_DAYS, EMPEROR_EXEMPT_MIN_ATTITUDE, EMPEROR_UPRISING_EXEMPT_SHARE } from './dietState';
+import { DIET_HISTORY_CAP, EMPEROR_AI_CHECK_DAYS, EMPEROR_ATTACK_REFRESH_DAYS, EMPEROR_DISPATCH_DAYS, EMPEROR_EXEMPT_MIN_ATTITUDE, EMPEROR_UPRISING_EXEMPT_SHARE } from './dietState';
 import { BuiltObject } from '../../../builtObject';
 import { type Character, CharacterRole, isBuiltObjectLocation } from '../../../characters';
 import { DiplomaticRelationType, WarObjective, obtainDiplomaticRelation } from '../../../diplomacy';
@@ -35,7 +35,8 @@ import { GameEndEventArgs, GameEndOutcome, humansGameEnd, onGameEnd } from '../.
 import { isAiControlled } from '../../../missions/playerOrder';
 import type { ShipGroup } from '../../../fleets/shipGroup';
 import { SystemVisibilityStatus } from '../../../visibility';
-import { identifyMechanoidEmpire, identifyMilitaryObjectives, sendAttackFleets } from '../../../fleets/militaryAI';
+import { identifyMechanoidEmpire, identifyMilitaryObjectives } from '../../../fleets/militaryAI';
+import { shipGroupAssignMission } from '../../../fleets/shipGroupTasks';
 import { YEAR_LENGTH, resolveStarDateDescription } from '../../../galaxyTime';
 import { galaxyStarDate } from '../../../tick/simTime';
 import { humanEmpires, isHumanEmpire, isMultiHuman } from '../../../humanEmpires';
@@ -780,7 +781,45 @@ function marchOnBidder(galaxy: Galaxy, st: DietState, em: NonNullable<DietState[
             sg.postureRangeSquared = Number.MAX_VALUE;
         }
         identifyMilitaryObjectives(galaxy, x);
-        sendAttackFleets(galaxy, x, e);
+        dispatchUprising(galaxy, x, e);
+    }
+}
+
+/**
+ * The stock objectives name only colonies next to the attacker's own, and its fleet walk wants troop ships, so a bidder far
+ * from the uprising gets no attack point at all. Each attack fleet of an uprising empire is therefore aimed at the bidder's
+ * colony nearest to it, its ships are topped up with fuel (the bidder is beyond the depots the fleets could reach, and a
+ * refuelling hop stalls at them), and it is sent straight at that colony with an Attack mission. A fleet still on a
+ * refuel mission (a stock one) is taken over; busy fleets (retrofit, a move, an attack with priority) are left alone.
+ */
+function dispatchUprising(galaxy: Galaxy, x: Empire, e: Empire): void {
+    if (e.colonies.length === 0) return;
+    for (const sg of x.shipGroups as (ShipGroup | null)[]) {
+        if (sg === null || sg.leadShip === null || !isAiControlled(sg.leadShip) || sg.posture !== FleetPosture.Attack) continue;
+        if (sg.mission !== null && sg.mission.type !== BuiltObjectMissionType.Undefined && sg.mission.type !== BuiltObjectMissionType.Refuel && sg.mission.priority !== BuiltObjectMissionPriority.Low) continue;
+        let best: Habitat | null = null;
+        let bd = Infinity;
+        for (const h of e.colonies) {
+            if (h === null || h.hasBeenDestroyed) continue;
+            const d = galaxy.calculateDistance(sg.leadShip.xpos, sg.leadShip.ypos, h.xpos, h.ypos);
+            if (d < bd) {
+                bd = d;
+                best = h;
+            }
+        }
+        if (best === null) continue;
+        sg.attackPoint = best;
+        for (const ship of sg.ships) if (ship !== null) ship.currentFuel = ship.fuelCapacity;
+        shipGroupAssignMission(galaxy, sg, BuiltObjectMissionType.Attack, best, null, BuiltObjectMissionPriority.High, false);
+    }
+}
+
+/** Every warring uprising empire re-dispatches its idle attack fleets at the bidder (see dispatchUprising). */
+function dispatchUprisingAll(galaxy: Galaxy, st: DietState, em: NonNullable<DietState['emperor']>): void {
+    const e = em.empire;
+    for (const x of emperorContenders(galaxy, st)) {
+        if (x === e || isHumanEmpire(galaxy, x) || !atWar(x, e)) continue;
+        dispatchUprising(galaxy, x, e);
     }
 }
 
@@ -849,6 +888,11 @@ function reviewEmperor(galaxy: Galaxy, st: DietState, c: Council | null): void {
         em.refreshedAt = now;
         uprising(galaxy, st, em);
         marchOnBidder(galaxy, st, em);
+    }
+    // Idle attack fleets are re-sent (a fleet that refuelled at a waypoint goes on from there).
+    if (now - (em.dispatchedAt ?? 0) >= EMPEROR_DISPATCH_DAYS * DAY) {
+        em.dispatchedAt = now;
+        dispatchUprisingAll(galaxy, st, em);
     }
 }
 

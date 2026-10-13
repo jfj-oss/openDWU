@@ -66,6 +66,8 @@ export const EMPEROR_UPRISING_EXEMPT_SHARE = 0.1;
 export const EMPEROR_EXEMPT_MIN_ATTITUDE = 60;
 /** Days between refreshes of the attackers' war targets (colonies, then stations) and fleet orders during a bid. */
 export const EMPEROR_ATTACK_REFRESH_DAYS = 60;
+/** Idle uprising attack fleets are re-sent at the bidder this often (a fleet out of fuel range goes on hop by hop). */
+export const EMPEROR_DISPATCH_DAYS = 10;
 export type DietParamName = keyof typeof DIET_PARAMS;
 
 export function dietParam(galaxy: Galaxy, name: DietParamName): number {
@@ -328,7 +330,7 @@ export interface DietState {
      * The bidder's countdown. Survival rule: the bidder wins when it still holds its capital at `until`; losing the capital
      * at any time fails the bid at once. `colonies0` is its colony count at the start (shown in the UI, not a rule).
      */
-    emperor: { empire: Empire; capital: Habitat; world: Habitat; since: number; until: number; colonies0?: number; yearsAnnounced?: number; refreshedAt?: number; exempt?: number[]; joined?: number[]; heldWorld?: boolean } | null;
+    emperor: { empire: Empire; capital: Habitat; world: Habitat; since: number; until: number; colonies0?: number; yearsAnnounced?: number; refreshedAt?: number; dispatchedAt?: number; exempt?: number[]; joined?: number[]; heldWorld?: boolean } | null;
     laws: DietLaw[];
     enforcers: DietEnforcerFleet[];
     faction: Empire | null;
