@@ -40,7 +40,7 @@ const profileDir = mkdtempSync(join(tmpdir(), 'dwu-memprobe-'));
 const dbgPort = 9200 + Math.floor(Math.random() * 400);
 const chrome = spawn(process.env.CHROMIUM || '/usr/bin/chromium', [
     '--headless=new', `--remote-debugging-port=${dbgPort}`, `--user-data-dir=${profileDir}`, `--window-size=${W},${H}`,
-    '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--enable-precise-memory-info',
+    '--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu', '--enable-precise-memory-info',
     '--no-first-run', '--no-default-browser-check', '--disable-background-timer-throttling', '--disable-renderer-backgrounding',
     'about:blank',
 ], { stdio: ['ignore', 'ignore', 'pipe'], detached: true }); // own process group: stopped whole at the end

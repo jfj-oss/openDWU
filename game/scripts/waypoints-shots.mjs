@@ -19,7 +19,7 @@ const out = opt('out', 'shots/waypoints');
 mkdirSync(out, { recursive: true });
 const prefix = worker ? 'worker-' : '';
 const url = `${base}?load=${encodeURIComponent(load)}&simWorker=${worker ? 1 : 0}`;
-const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu'] });
 const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
 const logs = [];
 page.on('console', (m) => {

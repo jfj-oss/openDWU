@@ -99,7 +99,7 @@ async function main() {
 
         browser = await chromium.launch({
             executablePath: process.env.CHROMIUM || '/usr/bin/chromium',
-            args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+            args: ['--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu'],
         });
         const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
 

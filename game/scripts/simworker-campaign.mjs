@@ -44,7 +44,7 @@ const detectWrites = flag('detect-writes') && !inThread;
 const years = Number(opt('years', kind === 'late2500' ? '0.25' : '1.5'));
 const out = opt('out', `shots/campaign/${kind}-${mode}`);
 mkdirSync(out, { recursive: true });
-const gpuArgs = [...(opt('gpu', 'swiftshader') === 'egl' ? ['--use-gl=angle', '--use-angle=gl-egl', '--ignore-gpu-blocklist', '--enable-gpu'] : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']), '--js-flags=--expose-gc', '--enable-precise-memory-info'];
+const gpuArgs = [...(opt('gpu', 'egl') === 'egl' ? ['--use-gl=angle', '--use-angle=gl-egl', '--ignore-gpu-blocklist', '--enable-gpu'] : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']), '--js-flags=--expose-gc', '--enable-precise-memory-info'];
 const sw = `simWorker=${inThread ? 0 : 1}${detectWrites ? '&detectWrites=1' : ''}`;
 const GAME_YEAR_MS = 600_000;
 

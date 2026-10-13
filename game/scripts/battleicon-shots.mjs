@@ -6,7 +6,7 @@ import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 const [url = 'http://localhost:5173/?autostart=1', out = 'shots/battleicon', prefix = '', dpr = '1'] = process.argv.slice(2);
 mkdirSync(out, { recursive: true });
-const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: +dpr });
 const logs = [];
 page.on('console', (m) => { if (m.type() === 'error') logs.push(`[error] ${m.text()}`); });

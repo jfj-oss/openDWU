@@ -20,7 +20,7 @@ const out = opt('out', 'shots/parityC3');
 mkdirSync(out, { recursive: true });
 const overlays = 'fleetPostures,longRangeScanners,travelVectorsState,travelVectorsPrivate';
 const url = `${base}?load=${encodeURIComponent(load)}&simWorker=${worker ? 1 : 0}&overlays=${overlays}&rangeCircles=1`;
-const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu'] });
 const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
 const logs = [];
 page.on('console', (m) => {

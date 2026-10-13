@@ -12,7 +12,7 @@ const slug = theme.replace(/[^A-Za-z0-9]+/g, '_');
 const worker = process.env.SIMWORKER === '1' ? '&simWorker=1' : '';
 const browser = await chromium.launch({
     executablePath: process.env.CHROMIUM || '/usr/bin/chromium',
-    args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+    args: ['--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu'],
 });
 const logs = [];
 const themed = new Set();

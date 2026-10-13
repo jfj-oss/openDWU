@@ -2,7 +2,7 @@
 import { chromium } from 'playwright-core';
 import { writeFileSync } from 'node:fs';
 const [base = 'http://localhost:5183/', outDir = 'shots'] = process.argv.slice(2);
-const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu'] });
 const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
 page.on('console', (m) => console.log(`[${m.type()}] ${m.text()}`));
 page.on('pageerror', (e) => console.log(`[pageerror] ${e.message}`));

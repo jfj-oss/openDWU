@@ -5,7 +5,7 @@ const [base = 'http://localhost:5173/', outDir = 'shots/galactopedia', tag = 'af
 mkdirSync(outDir, { recursive: true });
 const browser = await chromium.launch({
     executablePath: process.env.CHROMIUM || '/usr/bin/chromium',
-    args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+    args: ['--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu'],
 });
 const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
 page.on('console', (m) => (m.type() === 'error' ? console.log(`[error] ${m.text()}`) : undefined));

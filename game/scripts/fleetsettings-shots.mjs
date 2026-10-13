@@ -17,7 +17,7 @@ const w = +opt('w', 1920);
 const h = +opt('h', 1080);
 mkdirSync(out, { recursive: true });
 const url = `${base}?autostart=1&simWorker=${inThread ? 0 : 1}`;
-const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu'] });
 const page = await browser.newPage({ viewport: { width: w, height: h } });
 const logs = [];
 page.on('console', (m) => {

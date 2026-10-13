@@ -19,7 +19,7 @@ const worker = opt('worker', '0');
 // --load=/dev-saves/late2500.dwusave boots a save (main.ts ?load=) instead of a new seed-`seed` game.
 const load = opt('load', '');
 mkdirSync(out, { recursive: true });
-const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu'] });
 const logs = [];
 const shots = [];
 let failed = 0;

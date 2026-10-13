@@ -4,7 +4,7 @@ import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
 const [base = 'http://localhost:5173/', outDir = 'shots/tcycle'] = process.argv.slice(2);
 mkdirSync(outDir, { recursive: true });
-const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu'] });
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
 page.on('pageerror', (e) => console.log(`[pageerror] ${e.message}`));
 await page.goto(`${base}?autostart=1`);

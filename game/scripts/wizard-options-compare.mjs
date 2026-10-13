@@ -6,7 +6,7 @@ import { chromium } from 'playwright-core';
 const [a = 'http://localhost:5173/', b = 'http://localhost:5174/'] = process.argv.slice(2);
 const browser = await chromium.launch({
     executablePath: process.env.CHROMIUM || '/usr/bin/chromium',
-    args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+    args: ['--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu'],
 });
 
 /** Each flow: the playstyle button, then optional edits on the Galaxy page (shared class names in both builds). */

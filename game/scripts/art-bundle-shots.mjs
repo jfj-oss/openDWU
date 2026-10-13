@@ -14,7 +14,7 @@ const views = [
 ];
 const browser = await chromium.launch({
     executablePath: process.env.CHROMIUM || '/usr/bin/chromium',
-    args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+    args: ['--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu'],
 });
 for (const [view, file] of views) {
     if (only !== '' && !only.split(',').includes(view)) continue;

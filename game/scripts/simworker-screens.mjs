@@ -16,7 +16,7 @@ mkdirSync(out, { recursive: true });
 // Worker mode also turns on chunk 0's replica write detector (writeDetector.ts): a main-thread write to the replica
 // made by a chunk 6 screen fails the run.
 const url = `${base}?${load ? `load=${encodeURIComponent(load)}` : 'autostart=1'}&simWorker=${inThread ? 0 : 1}${inThread ? '' : '&detectWrites=1'}`;
-const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu'] });
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
 const logs = [];
 page.on('console', (m) => {

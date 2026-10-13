@@ -14,7 +14,7 @@ const inThread = process.argv.includes('--inthread');
 const out = opt('out', `shots/simworker-orders${inThread ? '-inthread' : ''}`);
 mkdirSync(out, { recursive: true });
 const url = `${base}?autostart=1&simWorker=${inThread ? 0 : 1}`;
-const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu'] });
 const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
 const logs = [];
 page.on('console', (m) => logs.push(`[${m.type()}] ${m.text()}`));

@@ -46,7 +46,7 @@ async function tour() {
     if ((await x.count()) > 0) await x.first().click().catch(() => {});
     await page.evaluate(async () => (await import('/src/ui/hud.ts')).setSelection(null));
 }
-const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--js-flags=--expose-gc', '--enable-precise-memory-info'] });
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu', '--js-flags=--expose-gc', '--enable-precise-memory-info'] });
 const page = await browser.newPage({ viewport: { width: 1400, height: 800 } });
 page.on('dialog', (d) => void d.accept());
 page.on('pageerror', (e) => console.log(`[pageerror] ${e.message}`));

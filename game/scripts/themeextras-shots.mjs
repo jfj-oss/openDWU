@@ -18,7 +18,7 @@ const out = opt('out', 'shots/themeextras');
 const themes = opt('themes', 'RetreatUE Bacon,DW Universe-STPE Ver 2').split(',').filter((t) => t !== '');
 const only = opt('only', '');
 mkdirSync(out, { recursive: true });
-const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu'] });
 const logs = [];
 const shots = [];
 const themed = new Map();

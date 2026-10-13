@@ -6,7 +6,7 @@ const [base = 'http://localhost:5196/', outDir = 'shots/customdifficulty'] = pro
 mkdirSync(outDir, { recursive: true });
 const browser = await chromium.launch({
     executablePath: process.env.CHROMIUM || '/usr/bin/chromium',
-    args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+    args: ['--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu'],
 });
 const read = (page) => page.evaluate(() => {
     const q = (sel) => [...document.querySelectorAll(sel)].find((e) => e.closest('.wizard-page')?.offsetParent != null);

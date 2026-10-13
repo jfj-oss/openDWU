@@ -39,7 +39,7 @@ if (opts.electron) {
 } else {
     const browser = await pw.chromium.launch({
         executablePath: process.env.CHROMIUM || '/usr/bin/chromium',
-        args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+        args: ['--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu'],
     });
     page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: DPR });
     await page.goto(url);

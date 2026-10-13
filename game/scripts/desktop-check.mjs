@@ -747,7 +747,7 @@ async function checkDev(results) {
         await waitFor(async () => (await fetch(base)).status < 500, 30000, 'vite dev server');
         browser = await chromium.launch({
             executablePath: process.env.CHROMIUM || '/usr/bin/chromium',
-            args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+            args: ['--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu'],
         });
         const page = await browser.newPage();
         const c = watchPage(page, 'dev');

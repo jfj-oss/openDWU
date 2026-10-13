@@ -460,7 +460,7 @@ async function openElectron() {
 async function openChromium() {
     const browser = await chromium.launch({
         executablePath: process.env.CHROMIUM || '/usr/bin/chromium',
-        args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', ...BROWSER_ARGS],
+        args: ['--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu', ...BROWSER_ARGS],
     });
     const page = await browser.newPage({ viewport: { width: 2048, height: 2048 }, deviceScaleFactor: 1 });
     return { page, close: () => browser.close() };

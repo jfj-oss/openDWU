@@ -9,7 +9,7 @@ const out = (process.argv.find((a) => a.startsWith('--out=')) ?? '--out=shots/ma
 mkdirSync(out, { recursive: true });
 const prefix = worker ? 'worker-' : '';
 const url = `${base}?newgame=${encodeURIComponent(JSON.stringify({ seed: 1, starCountIndex: 0, dimensionIndex: 0 }))}&simWorker=${worker ? 1 : 0}`;
-const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu'] });
 const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
 const logs = [];
 page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') logs.push(`[${m.type()}] ${m.text()}`); });

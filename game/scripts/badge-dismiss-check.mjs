@@ -2,7 +2,7 @@
 // events) dismisses each kind. Usage: node scripts/badge-dismiss-check.mjs <baseUrl> [outPng]
 import { chromium } from 'playwright-core';
 const [base = 'http://localhost:5173/', out = 'shots/badges.png'] = process.argv.slice(2);
-const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu'] });
 const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
 const logs = [];
 page.on('console', (m) => (m.type() === 'error' || m.text().startsWith('queued')) && logs.push(`[${m.type()}] ${m.text()}`));

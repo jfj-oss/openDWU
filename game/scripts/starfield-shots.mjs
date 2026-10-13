@@ -67,7 +67,7 @@ const CROP = { x: 720, y: 405, w: 480, h: 270 };
 
 const browser = await chromium.launch({
     executablePath: process.env.CHROMIUM || '/usr/bin/chromium',
-    args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+    args: ['--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu'],
 });
 const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: DPR });
 const logs = [];

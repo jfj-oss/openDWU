@@ -61,7 +61,7 @@ const DAYS = +(args.days ?? (LOAD ? 0 : 60));
 const SPEED = +(args.speed ?? 1);
 const SECS = +(args.secs ?? 6);
 const TOP = +(args.top ?? 15);
-const GPU = args.gpu ?? 'swiftshader';
+const GPU = args.gpu ?? 'egl';
 const PROFILE = args.profile === 'true';
 const PAUSED = args.paused === 'true';
 const CALLERS = args.callers === 'true';

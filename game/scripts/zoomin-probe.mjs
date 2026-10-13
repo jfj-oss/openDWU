@@ -24,7 +24,7 @@ const AWAY = +(args.away ?? 45);
 const SECS = +(args.secs ?? 60);
 const SPEED = +(args.speed ?? 1);
 const REPEAT = +(args.repeat ?? 1);
-const GPU = args.gpu ?? 'swiftshader';
+const GPU = args.gpu ?? 'egl';
 const GPU_ARGS = {
     swiftshader: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
     egl: ['--use-gl=angle', '--use-angle=gl-egl', '--ignore-gpu-blocklist', '--enable-gpu'],

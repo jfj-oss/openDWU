@@ -36,7 +36,7 @@ const detectArg = process.argv.find((a) => a === '--detect-writes' || a.startsWi
 const detectWrites = detectArg === undefined ? '' : detectArg.includes('=') ? detectArg.split('=')[1] : '1';
 const qs = opt('qs', '');
 const sw = `simWorker=${inThread ? 0 : 1}${detectWrites ? `&detectWrites=${detectWrites}` : ''}${qs ? `&${qs}` : ''}`;
-const gpuArgs = opt('gpu', 'swiftshader') === 'egl' ? ['--use-gl=angle', '--use-angle=gl-egl', '--ignore-gpu-blocklist', '--enable-gpu'] : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'];
+const gpuArgs = opt('gpu', 'egl') === 'egl' ? ['--use-gl=angle', '--use-angle=gl-egl', '--ignore-gpu-blocklist', '--enable-gpu'] : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'];
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: gpuArgs });
 const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
 const logs = [];

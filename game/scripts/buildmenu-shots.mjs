@@ -1,7 +1,7 @@
 // Build Order panel with a design picked per category. Usage: node scripts/buildmenu-shots.mjs <baseUrl> <outDir>
 import { chromium } from 'playwright-core';
 const [base = 'http://localhost:5173/', outDir = 'shots'] = process.argv.slice(2);
-const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu'] });
 const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
 const logs = [];
 page.on('console', (m) => m.type() === 'error' && !m.text().includes('ERR_CONNECTION') && logs.push(m.text()));
