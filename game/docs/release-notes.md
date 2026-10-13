@@ -4,21 +4,54 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
-- **Shared border edges:** with influence borders on, where two empires' regions touch each side gets a darker edge of its own colour (Game Options -> Advanced Display -> Map Display -> Shared border edges: Both darker / Darker only, which keeps only the darker empire's edge / Off); built once per border rebuild from flat strips, not the old per-frame strokes.
-- **Main menu Multiplayer button:** it now gets the stock hover look: the glowing teal band and the gold label when hovered, focused or pressed (it was only brighter grey).
-- **Colony link lines:** with the new borders on, the lines joining an empire's systems on the galaxy map are wide (5 px), pale, slightly faded dashes with rounded ends and wide, steady spacing, the same size at every zoom and smooth at the highest; with the new borders off they stay the classic thin dashed lines. The travelling pulses are gone.
-- **Station orders give feedback at once:** ordering a station or base from the selection panel shows "Construction queued: <design> at <planet>" immediately, and a pending "Awaiting construction ship" row in the Build Queue and Construction Yards job lists until the job is on the board. (The job itself is registered within a frame or two; it only starts building when a construction ship arrives, which is a long trip in a late-game galaxy.)
-- **Follow camera while warping:** the followed ship is no longer hidden when zoomed in (its committed position, which can be far from where it is drawn mid-warp, was used for the view cull), its hyperjump flash is anchored on its drawn position, and the camera is recentred once per frame on that same position.
-- **Selection panel buttons:** the eight icon buttons under the selection panel look and behave like the original again: original glass colours (the body in the border colour, the disabled hatch and grey icon, the hover glow), icon-only with the build count centred, the hint shown as the yellow message above the panel (disabled buttons too) instead of a tooltip, the mercenary smuggling icon fixed, and our own extras (fleet settings, dispatch orders, charter) moved out of the empty slots to a "More" button left of the strip.
-- **Build button resource shortage:** a build button whose yard lacks resources the design needs now shows the original warning overlay (the exclamation icon beside the ship) and its hint gains " (RESOURCE SHORTAGE: <resources>)".
-- **Map markers:** the Waypoints & Known Locations overlay and the minimap no longer mark black holes (their Pull and Event Horizon, the wormholes and gravity wells), supernovas, or the location hints that point at them; the remaining known-location diamonds are light purple and a little smaller.
-- **VIP shuttle rings:** the rings around VIP shuttles are now a thin, faint dark orange and stay smooth at maximum zoom (they no longer turn blotchy).
-- **Emperor bids are a late-game endgame:** the Interstellar Diet's Emperor bid cannot start before year 65. AI Regents bid only when overwhelmingly ahead (2.5x the next empire's score, 40% of the galaxy) and then only rarely. When any empire bids, nearly every other major empire declares a locked war on it and sends its fleets against its colonies and stations; the bidder must hold its capital for 10 years to win (a failed bid ends the wars' lock). The Diet screen shows the countdown, and the yearly ticker keeps count.
-- **Playable Mechanoid and Shakturi:** the new-game wizard (and the multiplayer and hot-seat race pickers) now offer the Mechanoid
-  and Shakturi races for your own empire. AI empires still never get them, and the story's Ancient Guardians and Shakturi
-  lookups skip your empire, so it is never mistaken for or absorbed as the Guardians.
-- **Galaxy nebula clouds:** the galaxy map draws its nebula clouds from the original nebula art again, with the original's lighter grey patches inside them on the Original backdrop and faint smoke on Deep; switching backdrop mid-game updates them.
-- **Treasure fleet beacon:** the galaxy map's gold ring around the Concord treasure fleet is smaller, thinner and dark purple, fading out in a soft halo, so it no longer dominates the map.
+- **Colony link lines:** the lines joining an empire's systems on the galaxy map. With the new influence borders on they are
+  thick, pale, slightly faded dashes with rounded ends, 5 px wide on screen, static (the travelling pulses are gone), and
+  they keep their screen size while you zoom in; zoomed far out past the galaxy scale they shrink with the map (to 30% at
+  most) so they don't swamp it. With the new borders off they stay the classic thin 1 px dashed lines, now antialiased with
+  no stair-stepping on near-vertical links.
+- **Shared border edges:** with influence borders on, where two empires' regions touch, each side gets a darker edge of its
+  own colour. Game Options -> Advanced Display -> Map Display -> Shared border edges: Both darker / Darker only (only the
+  darker empire's edge) / Off.
+- **Galaxy nebula clouds:** the galaxy map draws its nebula clouds from the original nebula art again. On the Original
+  backdrop they have the original's lighter grey patches; on Deep they show as faint smoke. Switching backdrop mid-game
+  updates them.
+- **Map markers:** the Waypoints & Known Locations overlay and the minimap no longer mark black holes (their Pull and Event
+  Horizon, the wormholes and gravity wells), supernovas, or the location hints that point at them. The remaining
+  known-location diamonds are light purple and a little smaller.
+- **Treasure fleet beacon:** the galaxy map's ring around the Concord treasure fleet is smaller, thinner and dark purple,
+  a little stronger, with a soft fading halo, so it no longer dominates the map.
+- **VIP shuttle rings:** the rings around VIP shuttles are a thin, translucent dark orange and stay smooth at maximum zoom.
+- **Follow camera while warping:** the followed ship stays visible when zoomed in, even mid-warp, and its hyperjump flash
+  is drawn where the ship is shown.
+- **Main menu Multiplayer buttons:** on hover, focus or press they get the stock treatment: a teal band that fades in from
+  the left, with a gold label (no planet icon). Their letters have a soft edge like the stock art instead of a halo, and the
+  multiplayer submenu's Resume Multiplayer Game is just Resume.
+- **Selection panel buttons:** the eight icon buttons under the selection panel look and behave like the original again:
+  original glass colours, icon-only with the build count centred, and the hint shown as the yellow message above the panel
+  (disabled buttons too) instead of a tooltip. The mercenary smuggling icon is fixed, and our own extras (fleet settings,
+  dispatch orders, charter) sit behind a "More" button left of the strip.
+- **Build buttons:** a build button whose yard lacks resources the design needs shows the original warning overlay (the
+  exclamation icon beside the ship), and its hint gains " (RESOURCE SHORTAGE: <resources>)".
+- **Station orders give feedback at once:** ordering a station or base from the selection panel (or the More menu's dispatch
+  build slots) shows "Construction queued: <design> at <planet>" immediately, with a pending "Awaiting construction ship" row
+  in the Build Queue and Construction Yards job lists until the job is on the board. The job only starts building when a
+  construction ship arrives, which can be a long trip in a late-game galaxy.
+- **Playable Mechanoid and Shakturi:** the new-game wizard (and the multiplayer and hot-seat race pickers) now offer the
+  Mechanoid and Shakturi races for your own empire. AI empires still never get them, and the story's Ancient Guardians and
+  Shakturi lookups skip your empire, so it is never mistaken for or absorbed as the Guardians.
+- **Robot Mutiny rework:** the Broadcast's beacon fleet is sized to the strongest normal empire's military: about 1.3 times
+  its firepower in the first year, rising 0.1 times a year (to 1.8 times) while the transmitter stands, with losses
+  replaced and nothing more. At the rising every BattleBot garrison defects at tech level 5 and is at war with everyone
+  for good. Usually it takes an eighth of the Ancient Guardians' fleet, 30 troop transports and three founded worlds, and
+  attacks the weakest-garrisoned colonies near the transmitter. One time in five it absorbs the whole of the Ancient
+  Guardians and turtles: it builds and defends stations but sends no fleets beyond them.
+- **Diet enforcers never hold a colony:** the Interstellar Diet's enforcers cannot capture, colonise or peacefully take over
+  a colony, and in saves made before this a colony they held goes to the independents.
+- **Emperor bids are a late-game endgame:** the Interstellar Diet's Emperor bid cannot start before year 65. AI Regents bid
+  only when overwhelmingly ahead (2.5x the next empire's score, 40% of the galaxy) and then only rarely. When any empire
+  bids, nearly every other major empire declares a locked war on it and sends its fleets against its colonies and
+  stations; the bidder must hold its capital for 10 years to win (a failed bid ends the wars' lock). The Diet screen shows
+  the countdown, and the yearly ticker keeps count.
 
 ## 0.1.28
 
