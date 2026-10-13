@@ -768,9 +768,19 @@ describe('Characters & Victory: the Interstellar Diet', () => {
         }
         expect(f.stage).toBe('blockading');
         expect(blockadeFor(g, f.station!)?.initiator).toBe(st.faction);
+        // The enforcers never hold a colony: a capture by them is refused (combatCaptureAllowed), and one handed to them (an older save) goes to the independents.
+        const fac = st.faction!;
+        const legacy = g.habitats.find((h) => h.empire === null && h.parent !== null)!;
+        legacy.empire = legacy.owner = fac;
+        fac.colonies.push(legacy);
+        dietTick(g);
+        expect(fac.colonies.length).toBe(0);
+        expect(legacy.empire).toBe(g.independentEmpire);
+        expect(fac.active).toBe(true);
         // Lifting the sanction sends them home (despawned).
         c.sanctions = [];
         dietTick(g);
+        expect(fac.colonies.length).toBe(0);
         expect(st.enforcers.length).toBe(0);
         expect(f.ships.every((b) => b.hasBeenDestroyed)).toBe(true);
     });

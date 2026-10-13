@@ -43,6 +43,7 @@ import { scenarioMessage, scenarioNews, scenarioText } from '../../messages';
 import type { Council } from '../../emergent/council';
 import { type DietEnforcerFleet, type DietState, byId, dietParam } from './dietState';
 import { dietMembership, personality } from './dietAi';
+import { takeOwnershipOfColonyFull } from '../../../combat/ownership';
 
 /** The base blockade unit (the user's composition): 6 cruisers, 2 carriers, 2 battleships, 2 resupply ships. */
 export const ENFORCER_UNIT: readonly [BuiltObjectSubRole, number][] = [
@@ -63,6 +64,32 @@ const STATION_RANGE = 2800;
 /** Is `e` the Diet Enforcers faction? Pure. */
 export function isEnforcerFaction(st: DietState | null, e: Empire | null): boolean {
     return st !== null && e !== null && st.faction === e;
+}
+
+/**
+ * The enforcers are a fleet faction and never hold ground (a capture by them leaves the colony ownerless, so its
+ * original owner re-adopts it; combatCaptureAllowed). Saves made before that guard: any colony the faction holds goes
+ * to the independents (the previous owner is not tracked). Deterministic (colony order); the faction is kept alive
+ * (a last-colony loss would tear it and its fleets down). Returns the count handed over.
+ */
+export function releaseEnforcerColonies(galaxy: Galaxy, st: DietState): number {
+    const f = st.faction;
+    const indep = galaxy.independentEmpire;
+    if (f === null || indep === null || f.colonies.length === 0) return 0;
+    let n = 0;
+    for (const colony of [...f.colonies]) {
+        if (colony.empire !== f) {
+            const i = f.colonies.indexOf(colony);
+            if (i >= 0) f.colonies.splice(i, 1);
+            continue;
+        }
+        const last = f.colonies.length === 1;
+        if (last) f.colonies.push(colony); // keeps the elimination branch (empireCompleteTeardown) from firing
+        takeOwnershipOfColonyFull(galaxy, f, colony, indep, false, false);
+        if (last) for (let i = f.colonies.length - 1; i >= 0; i--) if (f.colonies[i] === colony) f.colonies.splice(i, 1);
+        n++;
+    }
+    return n;
 }
 
 /** The enforcer fleet `bo` belongs to (null: none). Pure. */

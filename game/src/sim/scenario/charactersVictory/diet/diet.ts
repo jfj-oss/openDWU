@@ -84,7 +84,7 @@ import {
 } from './dietState';
 import { asCouncilMotion, atWar, dietMembership, inDiet, attacksDelegates, dietCandidates, dietVoteScore, emergencyCase, emperorBidBlock, joinsWarOnEmperor, memberScores, voteWeight } from './dietAi';
 import { militaryPotency } from '../../../diplomacyTick';
-import { aiDefiance, collectDues, enforcerFleetOf, enforcerUpkeep, ensureFaction, isEnforcerFaction, recallEnforcers, reviewEnforcers, spawnEnforcers } from './dietEnforcers';
+import { aiDefiance, collectDues, enforcerFleetOf, enforcerUpkeep, ensureFaction, isEnforcerFaction, recallEnforcers, releaseEnforcerColonies, reviewEnforcers, spawnEnforcers } from './dietEnforcers';
 import type { DietCandidate as Cand, DietCandidate } from './dietAi';
 
 const DAY = YEAR_LENGTH / 360;
@@ -797,6 +797,7 @@ export function dietTick(galaxy: Galaxy): void {
         st.nextSessionAt = now + 120 * DAY;
     }
     if (st.host === null) updateSeat(galaxy, st, c);
+    releaseEnforcerColonies(galaxy, st); // never holds ground (older saves)
     // Laws lapse; a fulfilled or stale claim ends.
     for (const l of [...st.laws]) {
         if (l.until >= 0 && now >= l.until) {
@@ -1370,6 +1371,11 @@ registerScenarioQuery({
 registerScenarioQuery({ id: 'charactersVictory.dietNoDocking', flag: CV_FLAG, query: 'blockadeEngagesDocking', run: (g, v, a) => (v && factionShip(g, a.builtObject) ? false : v) });
 registerScenarioQuery({ id: 'charactersVictory.dietMissions', flag: CV_FLAG, query: 'assignMissionAllowed', run: missionAllowed });
 registerScenarioQuery({ id: 'charactersVictory.dietWars', flag: CV_FLAG, order: 1000, query: 'declareWarBlocked', run: warBlocked });
+// The enforcers never own a colony: no capture, no colonisation target, no peaceful takeover (ruins, absorbed populations).
+registerScenarioQuery({ id: 'charactersVictory.dietNoCapture', flag: CV_FLAG, query: 'combatCaptureAllowed', run: (g, v, a) => v && !isEnforcerFaction(peekDietState(g), a.capturingEmpire) });
+registerScenarioQuery({ id: 'charactersVictory.dietNoTakeover', flag: CV_FLAG, query: 'peacefulColonyTakeoverAllowed', run: (g, v, a) => v && !isEnforcerFaction(peekDietState(g), a.empire) });
+registerScenarioQuery({ id: 'charactersVictory.dietNoColonise', flag: CV_FLAG, query: 'colonizationTargetValue', run: (g, v, a) => (isEnforcerFaction(peekDietState(g), a.empire) ? 0 : v) });
+registerScenarioQuery({ id: 'charactersVictory.dietNoColonyShips', flag: CV_FLAG, query: 'colonizationBuildAllowed', run: (g, v, a) => v && !isEnforcerFaction(peekDietState(g), a.empire) });
 registerScenarioQuery({ id: 'charactersVictory.dietFactionDormant', flag: CV_FLAG, query: 'stateAIDormant', run: (g, v, a) => v || isEnforcerFaction(peekDietState(g), a.empire) });
 
 export { CV_FLAG, ensureFaction };
