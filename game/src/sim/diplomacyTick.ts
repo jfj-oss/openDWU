@@ -1373,11 +1373,15 @@ function identifyDisputedBasesOf(galaxy: Galaxy, self: Empire, otherEmpire: Empi
  * openDWU only, not in the original: the war-objective ranges (1.5 sectors for enemy colonies, 1.0 for enemy bases,
  * Empire.9.cs 3581 / 3619) grow with the galaxy. Sectors are a fixed size, so in a 40x40 galaxy a distant empire would
  * never name a target. REF_SECTORS = 15, the largest galaxy the original's own size options make (sectorsFor 4..15,
- * the Galaxy ctor clamp); up to that the multiplier is exactly 1 and the C# ranges are unchanged.
+ * the Galaxy ctor clamp); up to that the multiplier is exactly 1 and the C# ranges are unchanged. Past it the multiplier
+ * grows linearly, WAR_OBJECTIVE_GROWTH_PER_SECTOR per sector, so a 40-sector galaxy reaches 1 + 25 × 0.1733 ≈ 5.33:
+ * colonies within about 8 sectors, bases about 5.3 (26 sectors: about 2.9×, colonies about 4.4).
  */
 const WAR_OBJECTIVE_REF_SECTORS = 15;
+const WAR_OBJECTIVE_GROWTH_PER_SECTOR = 13 / 75;
 export function warObjectiveRangeMultiplier(galaxy: Galaxy): number {
-    return Math.max(1, Math.max(galaxy.sectorWidth, galaxy.sectorHeight) / WAR_OBJECTIVE_REF_SECTORS);
+    const extra = Math.max(galaxy.sectorWidth, galaxy.sectorHeight) - WAR_OBJECTIVE_REF_SECTORS;
+    return extra <= 0 ? 1 : 1 + extra * WAR_OBJECTIVE_GROWTH_PER_SECTOR;
 }
 
 /** Empire.9.cs 3578 IdentifyDesiredForeignColonies(empire, proximityValueThreshold). */
