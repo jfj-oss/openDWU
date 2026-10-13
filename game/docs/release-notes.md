@@ -9,7 +9,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
   and Shakturi races for your own empire. AI empires still never get them, and the story's Ancient Guardians and Shakturi
   lookups skip your empire, so it is never mistaken for or absorbed as the Guardians.
 - **Galaxy nebula clouds:** the galaxy map draws its nebula clouds from the original nebula art again, with the original's lighter grey patches inside them on the Original backdrop and faint smoke on Deep; switching backdrop mid-game updates them.
-- **Treasure fleet beacon:** the galaxy map's gold ring around the Concord treasure fleet is smaller, thinner and dark blue, with a faint soft halo, so it no longer dominates the map.
+- **Treasure fleet beacon:** the galaxy map's gold ring around the Concord treasure fleet is smaller, thinner and dark purple, fading out in a soft halo, so it no longer dominates the map.
 
 ## 0.1.28
 
