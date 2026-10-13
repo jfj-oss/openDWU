@@ -193,6 +193,7 @@
     display: flex;
     flex-wrap: wrap;
 }
+.mp-screen[hidden],
 [hidden].mp-btn,
 .mp-pick [hidden] {
     display: none;
