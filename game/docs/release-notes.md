@@ -4,6 +4,10 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+## 0.1.21
+
+- **Fix:** removed the influence-border edge shading added in 0.1.20, which could crash the game.
+
 ## 0.1.20
 
 - **Notifications volume:** a new slider in Options → Sound Volume for the message and alert sounds (new message,
