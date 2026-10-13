@@ -240,6 +240,7 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
                 b.type = 'button';
                 b.setAttribute('data-id', id);
                 b.textContent = label;
+                b.style.setProperty('--mm-s', String(s));
                 b.style.width = `${280 * s}px`;
                 b.style.height = `${72 * s}px`;
                 b.style.fontSize = `${34 * s}px`;

@@ -51,15 +51,55 @@
     display: block;
 }
 
-/* Multiplayer (ours, no original art): the stock items' font and grey (no shadow), same width and row height (set inline in
-   mainMenu.ts), brighter on hover like the art's Active variant. */
+/* Multiplayer (ours, no original art): the same treatment as the stock Menu_* buttons, built from their art at runtime
+   (nothing copied). The planet is the left 70px of Menu_LoadGame_{Inactive,Active} (dim, then lit), the band the
+   Active art's sampled teal glow, and the label the stock grey (no shadow) turning gold (#ffc000) when hovered, focused
+   or pressed. --mm-s is the menu scale (set inline in mainMenu.ts). */
 .main-menu-item-text {
+    --mm-icon: url('/assets/dwu/images/ui/chrome/Menu_LoadGame_Inactive.png');
+    position: relative;
+    isolation: isolate;
+    text-align: left;
+    padding-left: calc(78px * var(--mm-s, 1));
+    white-space: nowrap;
     font-family: 'Forgotten Futurist', sans-serif;
     font-weight: bold;
     color: #aaaaaa; /* the stock Menu_* art's text grey (sampled), no drop shadow */
 }
-.main-menu-item-text:hover {
-    color: #e0e0e0;
+.main-menu-item-text::before,
+.main-menu-item-text::after {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    pointer-events: none;
+}
+.main-menu-item-text::before {
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: calc(70px * var(--mm-s, 1));
+    background: var(--mm-icon) left center / calc(280px * var(--mm-s, 1)) auto no-repeat;
+}
+.main-menu-item-text::after {
+    left: calc(70px * var(--mm-s, 1));
+    right: 0;
+    top: 24%;
+    bottom: 22%;
+    opacity: 0;
+    background: linear-gradient(to right, rgba(126, 223, 255, 0.34), rgba(126, 223, 255, 0.34) 40%, rgba(126, 223, 255, 0.22) 75%, rgba(126, 223, 255, 0));
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 18%, #000 82%, transparent);
+    mask-image: linear-gradient(to bottom, transparent, #000 18%, #000 82%, transparent);
+}
+.main-menu-item-text:hover,
+.main-menu-item-text:focus-visible,
+.main-menu-item-text:active {
+    --mm-icon: url('/assets/dwu/images/ui/chrome/Menu_LoadGame_Active.png');
+    color: #ffc000;
+}
+.main-menu-item-text:hover::after,
+.main-menu-item-text:focus-visible::after,
+.main-menu-item-text:active::after {
+    opacity: 1;
 }
 
 /* Menu_* art renders at natural size × s (set inline in mainMenu.ts); no
