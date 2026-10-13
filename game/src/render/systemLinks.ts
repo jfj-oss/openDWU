@@ -34,19 +34,21 @@
 // plus half a view on each side). Pieces are particles with static properties (one upload per rebuild), cut to the
 // cull rectangle. Read only: works on the sim-worker replica (the link lists are cold-synced object fields).
 //
-// Look (not the original's 1 px dotted line): thick, pale, static capsule dashes. In screen px: LINK_WIDTH_PX wide,
+// Two looks, picked by Settings.influenceBorders (the "new borders" setting; part of the rebuild key, so a flip rebuilds).
+// Off: the classic port look above, unchanged (dashPieces, white quads, the full-alpha empire colour, 1 px).
+// On (not the original's 1 px dotted line): thick, pale, faded, static capsule dashes. In screen px: LINK_WIDTH_PX wide,
 // LINK_DASH_PX dashes with LINK_GAP_PX gaps (stretched a little per link so both ends are a dash), round caps, the
 // empire colour mixed LINK_PALE toward white at LINK_ALPHA. Each dash is a body quad plus two half-disc cap particles
 // (no overlap, so the alpha does not double). Static: the geometry is rebuilt only with the network / zoom / sector
 // range, never per frame; pieces are sized in world units from the zoom, so they stay the same screen size and smooth.
 
 /** Dash look, in screen px. */
-export const LINK_WIDTH_PX = 3.5;
-export const LINK_DASH_PX = 14;
-export const LINK_GAP_PX = 9;
+export const LINK_WIDTH_PX = 5;
+export const LINK_DASH_PX = 15;
+export const LINK_GAP_PX = 16;
 /** Fraction of the way from the empire colour to white, and the dash alpha. */
-export const LINK_PALE = 0.52;
-export const LINK_ALPHA = 0.65;
+export const LINK_PALE = 0.68;
+export const LINK_ALPHA = 0.5;
 
 import { Container, Particle, ParticleContainer, Texture } from 'pixi.js';
 import { makeTextureCanvas, textureFromCanvas } from './textureCanvas';
@@ -59,6 +61,7 @@ import { displayColorForEmpire } from '../sim/empireColors';
 import { resolveSectorClamped } from '../ui/systemView';
 import { fogOf } from './fog';
 import { localViewerEmpire } from '../localViewer';
+import { getSettings } from '../ui/settings';
 
 /** XnaDrawingHelper.cs 584: float x2 = 6f — the dash / gap length in screen px. */
 export const SYSTEM_LINK_DASH_PX = 6;
@@ -302,8 +305,11 @@ function capTexture(): Texture {
 const CAP_TEX_DIAMETER = 62;
 
 export class SystemLinkLayer {
-    /** Holds the body and cap particle layers (positioned at the build origin). */
+    /** Holds the classic, body and cap particle layers (positioned at the build origin). */
     readonly root = new Container();
+    /** Classic look (influenceBorders off): the original 1 px dash pieces. */
+    private readonly classic: ParticleContainer;
+    private readonly classicPool: Particle[] = [];
     private readonly bodies: ParticleContainer;
     private readonly caps: ParticleContainer;
     readonly stats: SystemLinkStats = { network: 0, drawn: 0, pieces: 0, collects: 0, builds: 0, lastCollectMs: 0, lastBuildMs: 0, maxBuildMs: 0 };
@@ -315,14 +321,15 @@ export class SystemLinkLayer {
     private readonly capPool: Particle[] = [];
     private readonly pieces: number[] = [];
     private readonly selected: SystemLink[] = [];
-    private key = { v: -1, z: NaN, sx0: -1, sx1: -1, sy0: -1, sy1: -1, x0: 0, y0: 0, x1: 0, y1: 0 };
+    private key = { v: -1, z: NaN, caps: false, sx0: -1, sx1: -1, sy0: -1, sy1: -1, x0: 0, y0: 0, x1: 0, y1: 0 };
 
     constructor(private readonly galaxy: Galaxy) {
         // Every property static: the pieces are uploaded once per rebuild (update()), not every frame.
         const dyn = { position: false, vertex: false, rotation: false, uvs: false, color: false };
         this.bodies = new ParticleContainer({ texture: Texture.WHITE, dynamicProperties: dyn });
         this.caps = new ParticleContainer({ texture: capTexture(), dynamicProperties: dyn });
-        this.root.addChild(this.bodies, this.caps);
+        this.classic = new ParticleContainer({ texture: Texture.WHITE, dynamicProperties: dyn });
+        this.root.addChild(this.classic, this.bodies, this.caps);
         this.root.visible = false;
     }
 
@@ -360,15 +367,17 @@ export class SystemLinkLayer {
             this.refresh();
         }
         const range = viewSectorRange(this.galaxy, cam.x, cam.y, cam.width, cam.height, f);
+        const capsules = getSettings().influenceBorders;
         const k = this.key;
         const hw = cam.width / (2 * z);
         const hh = cam.height / (2 * z);
         const inRect = cam.x - hw >= k.x0 && cam.x + hw <= k.x1 && cam.y - hh >= k.y0 && cam.y + hh <= k.y1;
-        if (!(k.v === this.version && k.z === z && inRect && k.sx0 === range.x0 && k.sx1 === range.x1 && k.sy0 === range.y0 && k.sy1 === range.y1)) this.rebuild(f, z, cam, range);
+        if (!(k.v === this.version && k.z === z && inRect && k.caps === capsules && k.sx0 === range.x0 && k.sx1 === range.x1 && k.sy0 === range.y0 && k.sy1 === range.y1)) this.rebuild(f, z, cam, range, capsules);
     }
 
-    private rebuild(f: number, z: number, cam: Camera, range: SectorRange): void {
+    private rebuild(f: number, z: number, cam: Camera, range: SectorRange, capsules: boolean): void {
         const k = this.key;
+        k.caps = capsules;
         const hw = cam.width / (2 * z);
         const hh = cam.height / (2 * z);
         const t0 = performance.now();
@@ -382,14 +391,85 @@ export class SystemLinkLayer {
         k.x1 = cam.x + 2 * hw;
         k.y0 = cam.y - 2 * hh;
         k.y1 = cam.y + 2 * hh;
-        this.build(f, range);
+        this.build(f, range, capsules);
         const ms = performance.now() - t0;
         this.stats.builds++;
         this.stats.lastBuildMs = ms;
         if (ms > this.stats.maxBuildMs) this.stats.maxBuildMs = ms;
     }
 
-    private build(f: number, range: SectorRange): void {
+    private build(f: number, range: SectorRange, capsules: boolean): void {
+        if (capsules) this.buildCapsules(f, range);
+        else this.buildClassic(f, range);
+    }
+
+    /** The classic look: the port's 1 px dashed lines (dashPieces), full-alpha empire colour. */
+    private buildClassic(f: number, range: SectorRange): void {
+        const k = this.key;
+        const sel = this.selected;
+        sel.length = 0;
+        selectSystemLinks(this.network, range, sel);
+        // Camera-local origin (float32 particle positions).
+        const ox = (k.x0 + k.x1) / 2;
+        const oy = (k.y0 + k.y1) / 2;
+        this.root.position.set(ox, oy);
+        this.classic.visible = true;
+        this.bodies.visible = false;
+        this.caps.visible = false;
+        const out = this.classic.particleChildren;
+        const width = SYSTEM_LINK_WIDTH_PX * f;
+        // Cut two pieces beyond the cull rectangle, so a piece crossing its edge is kept whole.
+        const pad = 2 * SYSTEM_LINK_DASH_PX * f;
+        const pieces = this.pieces;
+        let n = 0;
+        for (const l of sel) {
+            const dx = l.x1 - l.x0;
+            const dy = l.y1 - l.y0;
+            const lenW = Math.sqrt(dx * dx + dy * dy);
+            const lenPx = lenW / f;
+            if (lenPx < SYSTEM_LINK_DASH_PX) continue;
+            const clip = clipSegment(l.x0, l.y0, l.x1, l.y1, k.x0 - pad, k.y0 - pad, k.x1 + pad, k.y1 + pad);
+            if (clip === null) continue;
+            pieces.length = 0;
+            dashPieces(lenPx, pieces, clip[0] * lenPx, clip[1] * lenPx);
+            const ux = dx / lenW;
+            const uy = dy / lenW;
+            const rot = Math.atan2(dy, dx);
+            for (let i = 0; i < pieces.length; i += 3) {
+                const s = pieces[i] * f;
+                let part = this.classicPool[n];
+                if (part === undefined) {
+                    part = new Particle({ texture: Texture.WHITE, anchorX: 0, anchorY: 0 });
+                    this.classicPool.push(part);
+                }
+                part.x = l.x0 + ux * s - ox;
+                part.y = l.y0 + uy * s - oy;
+                part.rotation = rot;
+                part.scaleX = (pieces[i + 1] - pieces[i]) * f;
+                part.scaleY = width;
+                part.anchorY = pieces[i + 2] === 1 ? 0.5 : 0;
+                part.tint = l.color;
+                part.alpha = 1;
+                out[n++] = part;
+            }
+        }
+        out.length = n;
+        this.bodies.particleChildren.length = 0;
+        this.caps.particleChildren.length = 0;
+        this.classic.update();
+        this.bodies.update();
+        this.caps.update();
+        this.stats.drawn = sel.length;
+        this.stats.pieces = n;
+    }
+
+    /** The new-borders look: pale, faded capsule dashes. */
+    private buildCapsules(f: number, range: SectorRange): void {
+        this.classic.visible = false;
+        this.bodies.visible = true;
+        this.caps.visible = true;
+        this.classic.particleChildren.length = 0;
+        this.classic.update();
         const k = this.key;
         const sel = this.selected;
         sel.length = 0;
