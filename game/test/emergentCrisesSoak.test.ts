@@ -1,3 +1,4 @@
+// Resource Crises is withdrawn (scenario/state.ts WITHDRAWN_FLAGS): its tests are skipped.
 // 19d2 Resource crises soak (tasks/19d2-resource-crises.md §7/§8): seed 1 with the resource-crises scenario at its
 // defaults for SOAK_YEARS game years (default 30; DWU_CRISES_SOAK_YEARS overrides). Checks the reserve calibration over
 // the first five years, then the §8 acceptance: at least one depletion and one crisis price, no NaN prices, no resource

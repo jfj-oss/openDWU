@@ -4,6 +4,11 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+## 0.1.24
+
+- **Resource Crises fully switched off,** including in saves that had it on: no more depleting deposits ("resources
+  being drained") and no more "Shortages" unrest from it.
+
 ## 0.1.23
 
 - **Fix: colonies at −70 approval from "Shortages".** Resource Crises was still switched on behind the scenes by Internal

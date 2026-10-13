@@ -1,3 +1,4 @@
+import { WITHDRAWN_FLAGS } from '../state';
 // 19d2 Resource crises — the light half (tasks/19d2-resource-crises.md §2): saved state, the pure propagation formulas
 // (crisis prices, smuggle cap, shortage unrest) and the record hooks the ported code calls. Not a port. This module
 // imports no sim logic beyond the price table so ported modules (market.ts, industry.ts, missionsMarket.ts, invasion.ts,
@@ -98,7 +99,7 @@ export function crisesOn(galaxy: Galaxy): boolean {
 /** The state if the package runs and it exists (pure readers must not create it). */
 function stateIfAny(galaxy: Galaxy): CrisesState | null {
     const s = galaxy.scenario;
-    if (s === null || s.flags[CRISES_FLAG] !== true || !('crises' in s.state)) return null;
+    if (s === null || s.flags[CRISES_FLAG] !== true || WITHDRAWN_FLAGS.has(CRISES_FLAG) || !('crises' in s.state)) return null;
     return s.state.crises as CrisesState;
 }
 

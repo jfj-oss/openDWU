@@ -77,9 +77,13 @@ export function scenarioRuns(s: GalaxyScenario | null, id: string): boolean {
 }
 
 /** The value of a scenario flag; false with no scenario or an unknown flag. */
+/** Add-on flags withdrawn from the game: always off, including in saves that switched them on (resource-crises:
+ *  its luxury-loss unrest and finite reserves were pulled in silently by Internal Security / Reputation). */
+export const WITHDRAWN_FLAGS: ReadonlySet<string> = new Set(['resourceCrises']);
+
 export function scenarioFlag(galaxy: Galaxy, name: string): boolean {
     const s = galaxy.scenario;
-    return s !== null && s.flags[name] === true;
+    return s !== null && s.flags[name] === true && !WITHDRAWN_FLAGS.has(name);
 }
 
 /** A scenario param; `fallback` with no scenario or an unknown param. */

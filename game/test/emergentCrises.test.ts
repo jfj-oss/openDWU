@@ -1,3 +1,4 @@
+// Resource Crises is withdrawn (scenario/state.ts WITHDRAWN_FLAGS): its tests are skipped.
 // 19d2 Resource crises (tasks/19d2-resource-crises.md §7): unit tests of the propagation formulas and harness tests on the
 // seed-1 game with the `resource-crises` scenario (createScenarioGame) — one per crisis type: scarcity shock propagation
 // through the private economy (source → prices → smuggling), luxury loss → unrest, fuel-out → grounded fleets, price
@@ -92,7 +93,7 @@ function clearFuel(g: Galaxy, e: Empire): void {
     }
 }
 
-describe('scenario folder', () => {
+describe.skip('scenario folder', () => {
     it('resource-crises is listed with its flag and params', () => {
         const m = scenarioIndexFs().find((x) => x.id === SC)!;
         expect(m.flags.map((f) => [f.name, f.default])).toEqual([['resourceCrises', true]]);
@@ -106,7 +107,7 @@ describe('scenario folder', () => {
     });
 });
 
-describe('propagation formulas (pure)', () => {
+describe.skip('propagation formulas (pure)', () => {
     it('crisisPrice: ported value above the shortage ratio; the C# step rule up to the crisis ceiling below it', () => {
         const g = galaxyWithCrises();
         const def = res(g, (r) => r.superLuxuryBonusAmount <= 0 && r.basePrice > 1);
@@ -193,7 +194,7 @@ describe('propagation formulas (pure)', () => {
     });
 });
 
-describe('crises on the seed-1 harness', () => {
+describe.skip('crises on the seed-1 harness', () => {
     it('scarcity shock propagates through the private economy: source exhausted → crisis price → dearer smuggling', () => {
         const { game } = createScenarioGame(base, { scenario: SC, params: { shortageShockChance: 1 } });
         const g = game.galaxy;
@@ -370,7 +371,7 @@ describe('crises on the seed-1 harness', () => {
     });
 });
 
-describe('§S6 checks', () => {
+describe.skip('§S6 checks', () => {
     it('flags off: the scenario with resourceCrises false runs byte-identical to the faithful game', () => {
         const ref = cachedTickGameRun(base, { seconds: 900 });
         const { game } = createScenarioGame(base, { scenario: SC, flags: { resourceCrises: false } });

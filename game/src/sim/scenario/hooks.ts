@@ -1,3 +1,4 @@
+import { WITHDRAWN_FLAGS } from './state';
 // Scenario hook points (tasks/MODLAYER-DESIGN.md §4). Not a port. Each hook is a no-op unless the game runs a scenario
 // that asks for it, so the faithful game's state and Galaxy.Rnd stream are untouched when no scenario is chosen.
 //
@@ -61,7 +62,7 @@ export function scenarioGateOpenFor(s: GalaxyScenario | null, h: ScenarioHandler
     if (s === null) return false;
     if (h.scenarioId === undefined && h.flag === undefined) return false;
     if (h.scenarioId !== undefined && !scenarioRuns(s, h.scenarioId)) return false;
-    if (h.flag !== undefined && s.flags[h.flag] !== true) return false;
+    if (h.flag !== undefined && (s.flags[h.flag] !== true || WITHDRAWN_FLAGS.has(h.flag))) return false;
     return true;
 }
 
