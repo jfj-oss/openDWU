@@ -1409,8 +1409,11 @@ export class EffectsLayer {
 
     private addHyper(frames: FrameSet, bo: BuiltObject, nowMs: number): void {
         const p = hyperAnimationPlacement(bo.size, bo.targetHeading, this.place);
+        // Anchored on the ship's drawn (render-interpolated) position, as the ship sprite is: at warp the committed position
+        // is a whole step's travel away from it, so the flash would sit off the ship and read as the ship vanishing.
+        const at = this.drawnAt(bo);
         // Animation(rotationAngle = -TargetHeading) drawn at -rotationAngle on the load-rotated frames.
-        this.animations.add(frames, nowMs, 30, bo.xpos + p.dx, bo.ypos + p.dy, p.size, p.size, bo.targetHeading + ROT90);
+        this.animations.add(frames, nowMs, 30, at.xpos + p.dx, at.ypos + p.dy, p.size, p.size, bo.targetHeading + ROT90);
     }
 
     /** Drop running one-shot animations and cached bolts (e.g. on game teardown). */

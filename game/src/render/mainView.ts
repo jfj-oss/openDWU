@@ -122,7 +122,7 @@ import { MotionInterpolator, PresentationClock, copyRenderTime, createRenderTime
 import { isDrag, objectsInBox, resolveBoxSelection, screenBox, shiftClickSelection, type ScreenBox } from './boxSelect';
 import { isObjectVisibleToThisEmpire } from '../sim/independentTraders';
 import { showsMapIndicators } from './mainViewDisplay';
-import { createFollowState, followTargetAlive, followTargetPosition, isFollowing, stopFollow, type FollowState, type FollowTarget } from './followCamera';
+import { createFollowState, followTargetAlive, isFollowing, stopFollow, type FollowState, type FollowTarget } from './followCamera';
 import { localViewerEmpire } from '../localViewer';
 import { GalaxyBackdropLayer } from './galaxyBackdrop';
 import { buildDeepBackdrop } from './deepBackdrop';
@@ -2011,6 +2011,9 @@ export class MainView {
         // culling read the camera (the per-frame recentre at the end of update ran a frame late, so a fast or warping
         // ship shook around the centre and was culled in and out of view). drawnBuiltObjectPos samples it into this
         // frame's motion cache, so every layer draws it at exactly this point.
+        // The same drawn position is the one the followed sprite is drawn at (builtObjectLayer: followed), so the view and
+        // the ship cannot disagree; it is the only recentre of the frame (the end-of-frame stop checks below read it).
+        let followed: object | null = null;
         if (isFollowing(this.followState)) {
             const target = this.followState.target as FollowTarget;
             if (followTargetAlive(target)) {
@@ -2018,9 +2021,11 @@ export class MainView {
                 if (ship != null) {
                     const p = drawnBuiltObjectPos(this.motion, ship);
                     cam.centerOn(p.x, p.y);
+                    followed = ship;
                 }
             }
         }
+        this.builtObjectLayer.followed = followed;
         this.world.scale.set(z);
         this.world.x = cam.width / 2 - cam.x * z;
         this.world.y = cam.height / 2 - cam.y * z;
@@ -2217,22 +2222,15 @@ export class MainView {
             }
         }
 
-        // Follow camera (task followcam): recentre every frame on the followed ship/fleet's drawn
-        // (render-interpolated) position, keeping zoom. Edge-scroll stops it here; a drag-pan or any map click
-        // stops it immediately at mousedown (attachInput, below); a keyboard scroll stops it in keyboard.ts; a
-        // selection change stops it in hud.ts (followOnSelectionChanged). Wheel-zoom is untouched, so zooming
-        // keeps following.
+        // Follow camera (task followcam): the recentre on the followed ship/fleet's drawn position happened at the top of
+        // this frame (above). Here only the stops: edge-scroll stops it; a drag-pan or any map click stops it immediately
+        // at mousedown (attachInput, below); a keyboard scroll stops it in keyboard.ts; a selection change stops it in
+        // hud.ts (followOnSelectionChanged). Wheel-zoom is untouched, so zooming keeps following.
         if (isFollowing(this.followState)) {
             if (edgeDx !== 0 || edgeDy !== 0) {
                 this.stopFollowing();
-            } else {
-                const target = this.followState.target as FollowTarget;
-                if (!followTargetAlive(target)) {
-                    this.stopFollowing();
-                } else {
-                    const p = followTargetPosition(this.motion, target);
-                    cam.centerOn(p.x, p.y);
-                }
+            } else if (!followTargetAlive(this.followState.target as FollowTarget)) {
+                this.stopFollowing();
             }
         }
 

@@ -538,6 +538,11 @@ export class BuiltObjectLayer {
     private swarmFx = new SwarmFxLayer();
     /** Render interpolation between sim steps (renderInterp.ts; set by MainView). Null: draw the sim positions. */
     motion: MotionInterpolator | null = null;
+    /** The ship the follow camera is centred on this frame (set by MainView before update; null when not following). Its
+     * sprite is never culled, and it is drawn even when its committed position is outside the view: the camera sits on
+     * its drawn position, which at warp (or on a parent's orbit) can be far from xpos / ypos, so the committed-position
+     * cull would hide it exactly when zoomed in. */
+    followed: object | null = null;
     /** At zoom factor <= 3: the ships / bases drawn this frame with their drawn centre and their image side at zoom
      * factor 1 (MainView.1.cs 1251-1295 bitmap5 — combatBars.ts BattleBarLayer). Pooled records; empty above f = 3. */
     readonly battleBarShips: DrawnBarShip[] = [];
@@ -637,6 +642,9 @@ export class BuiltObjectLayer {
         // gives it. Liveries still observe every live object.
         const index = this.index;
         const list: readonly (BuiltObject | null)[] = index !== null ? index.near(camX, camY, halfW / z, halfH / z, 101 / z, false, this.nearScratch) : this.galaxy.builtObjects;
+        // The followed ship is centred on its drawn position, so it is in view even when its committed position is not.
+        const followed = this.followed as BuiltObject | null;
+        if (followed !== null && index !== null && !followed.hasBeenDestroyed && !this.nearScratch.includes(followed)) this.nearScratch.push(followed);
         if (liveries) {
             for (const bo of index !== null ? index.live : this.galaxy.builtObjects) if (bo !== null && !bo.hasBeenDestroyed) this.liveries.observe(bo);
         }
@@ -652,8 +660,9 @@ export class BuiltObjectLayer {
             const sx = (bo.xpos - camX) * z + halfW;
             const sy = (bo.ypos - camY) * z + halfH;
             let sprite = this.sprites.get(bo);
-            // Cull more than 100 px outside the viewport.
-            if (sx < -100 || sx > maxX || sy < -100 || sy > maxY) {
+            // Cull more than 100 px outside the viewport (on the committed position; the followed ship is never culled:
+            // the camera sits on its drawn position, which can be far from the committed one).
+            if (bo !== followed && (sx < -100 || sx > maxX || sy < -100 || sy > maxY)) {
                 if (sprite !== undefined) sprite.visible = false;
                 this.drawnPx.delete(bo);
                 continue;

@@ -9,8 +9,9 @@
 // - src/ui/hud.ts: the toggle button (start/stop/toggle) and `followOnSelectionChanged` (a new selection, or a
 //   deselect, stops following unless it is the same object already being followed — e.g. a live refresh
 //   re-delivering the same fleet).
-// - src/render/mainView.ts: recentres the camera on `followTargetPosition` every frame while following, and
-//   stops it (`stopFollow`) on a manual drag/edge-scroll or when `followTargetAlive` goes false (the ship was
+// - src/render/mainView.ts: recentres the camera on the followed ship's drawn position once per frame, at the top of
+//   update() (before the world transform and the culls; followTargetPosition gives the same point), and stops it
+//   (`stopFollow`) on a manual drag/edge-scroll or when `followTargetAlive` goes false (the ship was
 //   destroyed, or the fleet disbanded — src/sim/fleets/shipGroupTasks.ts disbandShipGroup empties `ships`).
 // - src/ui/keyboard.ts: stops it on a keyboard scroll (arrow keys).
 // Wheel-zoom is untouched by all three, so zooming keeps following, per spec.

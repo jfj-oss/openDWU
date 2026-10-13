@@ -4,6 +4,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **Follow camera while warping:** the followed ship is no longer hidden when zoomed in (its committed position, which can be far from where it is drawn mid-warp, was used for the view cull), its hyperjump flash is anchored on its drawn position, and the camera is recentred once per frame on that same position.
 - **Map markers:** the Waypoints & Known Locations overlay and the minimap no longer mark black holes (their Pull and Event Horizon, the wormholes and gravity wells), supernovas, or the location hints that point at them; the remaining known-location diamonds are light purple and a little smaller.
 - **Playable Mechanoid and Shakturi:** the new-game wizard (and the multiplayer and hot-seat race pickers) now offer the Mechanoid
   and Shakturi races for your own empire. AI empires still never get them, and the story's Ancient Guardians and Shakturi
