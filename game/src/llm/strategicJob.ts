@@ -40,7 +40,7 @@ import type { LlmQueue, LlmResult } from './queue';
 import { readReplica } from './replicaReads';
 
 /** Bump when the prompt changes (part of the situation-cache key). */
-export const STRATEGIC_PROMPT_VERSION = 1;
+export const STRATEGIC_PROMPT_VERSION = 2;
 
 /** The system + user messages for one empire's yearly choice. */
 export function buildStrategicMessages(galaxy: Galaxy, empire: Empire, moves: readonly LegalMove[]): { messages: ChatMessage[]; situation: string } {

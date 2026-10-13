@@ -15,3 +15,4 @@ Reputation Cause exchange.contract;The Exchange paid pirates to strike us
 Reputation Cause slavery.penalColonies;You keep slaves in penal colonies
 Reputation Cause scorchedEarth;You burned your own world rather than yield it
 Reputation Cause warCrimes;Your war crimes are remembered
+Reputation Cause llmMemory.diary;Your ruler's long memory of what we did to them (and for them)

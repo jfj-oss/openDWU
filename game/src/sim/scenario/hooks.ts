@@ -251,6 +251,8 @@ export interface ScenarioEvents {
     abandonedShipClaimed: { builtObject: BuiltObject; empire: Empire };
     /** A diplomatic relation changed type (diplomacyTick changeDiplomaticRelation, end): war declared, treaty signed, ... */
     diplomaticRelationChanged: { empire: Empire; other: Empire; from: number; to: number };
+    /** A money gift was received (diplomacyTick GiveGift message; player/diplomacyProposals GIFT_GIVE). No Rnd in handlers. */
+    giftGiven: { giver: Empire; receiver: Empire; amount: number };
     /** diplomacyTick.ts declareWar (Empire.7.cs 4883 DeclareWar): end of the new-war branch, after both sides' war objectives are set. */
     warDeclared: { empire: Empire; target: Empire };
     /**

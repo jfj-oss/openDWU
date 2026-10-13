@@ -19,6 +19,8 @@ export interface DiplomatGrounding {
     claims?: { oursOnTheirColonies: DigestClaim[]; theirClaimsOnOurs: number; casusBelliAgainst: string[] };
     /** 19g-3: the war between us, when at war (score −100..100 for us, the goals). */
     war?: DigestWar;
+    /** llmMemory: how the AI ruler remembers the player (mood and the newest diary lines). */
+    memory?: { mood: string; lines: string[] };
 }
 
 /** The grounding of `ai` speaking to `player`; null with voices off or nothing to say. */
@@ -29,6 +31,7 @@ export function diplomatGrounding(galaxy: Galaxy, ai: Empire, player: Empire): D
     const rep = d.other?.reputation;
     if (rep !== undefined) out.ledger = { sum: rep.sum, ourCauses: rep.causes, theyHoldAgainstUs: rep.held };
     if (d.claims !== undefined) out.claims = { oursOnTheirColonies: d.claims.ours, theirClaimsOnOurs: d.claims.theirs, casusBelliAgainst: d.claims.casusBelli };
+    if (d.other?.memory !== undefined) out.memory = { mood: d.other.memory.mood, lines: d.other.memory.lines };
     const war = d.wars?.find((w) => w.vs === d.other?.name);
     if (war !== undefined) out.war = war;
     return Object.keys(out).length > 0 ? out : null;

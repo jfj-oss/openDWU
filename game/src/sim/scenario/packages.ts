@@ -41,6 +41,7 @@ import './emergent/council'; // 19d8 galactic council (flag galacticCouncil)
 import './wreckage/wreckage'; // 19e-7 battle wreckage & salvage (flag wreckage)
 import './lively/peaceTerms';
 import './lively/warGoals';
+import './llm/memory';
 import './lively/pirateAmbition';
 import './lively/livingCalendar';
 import './reputation/ledger'; // 19o reputation & grievances ledger (flag reputationLedger; fills the attitude channel)

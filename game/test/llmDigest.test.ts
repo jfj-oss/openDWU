@@ -20,6 +20,8 @@ import { defaultStartGameOptions } from '../src/sim/startGameOptions';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../src/sim/diplomacy';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
 import { appendEvent, empireActor } from '../src/sim/scenario/eventLog/log';
+import { scenarioEmit } from '../src/sim/scenario/hooks';
+import { MEMORY_MAX_FACTS, memoryAttitude, memoryLines, peekMemory, remember } from '../src/sim/scenario/llm/memory';
 import { DIGEST_MAX_CHARS, digestFor, digestJson, digestSize, digestText, estimateTokens, type LlmDigest } from '../src/sim/scenario/llm/digest';
 
 const SC = 'llm-layer';
@@ -41,7 +43,7 @@ function majors(g: Galaxy): Empire[] {
     return g.empires.filter((e): e is Empire => e !== null && e.active && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null);
 }
 
-const SCHEMA_KEYS = ['v', 'date', 'self', 'other', 'claims', 'leads', 'council', 'wars', 'economy', 'rim', 'events'];
+const SCHEMA_KEYS = ['v', 'date', 'self', 'other', 'claims', 'leads', 'council', 'wars', 'memory', 'economy', 'rim', 'events'];
 
 describe('flags off = faithful game', () => {
     it('llm-layer with every flag off, and with only llmFoundations on, runs byte-identical and writes no state', () => {
@@ -257,6 +259,40 @@ describe('sections from package states (presence-checked)', () => {
         expect(d.events.length).toBeGreaterThan(0);
         // Deterministic trimming.
         expect(digestJson(digestFor(g, a, b, { events: 12 }))).toBe(digestJson(d));
+    });
+});
+
+describe('llmMemory: the rulers\' diary', () => {
+    function fresh(on: boolean): { g: Galaxy; a: Empire; b: Empire } {
+        const g = createScenarioGame(base, { scenario: SC, flags: { ...ALL_OFF, llmFoundations: true, llmMemory: on } }).game.galaxy;
+        const [a, b] = majors(g);
+        return { g, a, b };
+    }
+    it('captures war, peace and a gift; merges repeats; caps the pair; shapes the digest', () => {
+        const { g, a, b } = fresh(true);
+        scenarioEmit(g, 'warDeclared', { empire: a, target: b });
+        scenarioEmit(g, 'peaceSigned', { empire: a, other: b });
+        scenarioEmit(g, 'giftGiven', { giver: a, receiver: b, amount: 1000 });
+        scenarioEmit(g, 'giftGiven', { giver: a, receiver: b, amount: 500 });
+        const m = memoryLines(g, b, a, 8);
+        expect(m.lines.map((l) => l.replace(/^\d+ /, ''))).toEqual(expect.arrayContaining(['they declared war on us', 'we made peace', 'they sent us a gift (1500 credits) (x2)']));
+        expect(memoryLines(g, a, b, 8).lines.join('|')).toContain('we declared war on them');
+        // Attitude counts only what the stock game does not: peace yes, the war declaration no.
+        expect(memoryAttitude(g, b, a)).toBe(3);
+        for (const k of ['treatyBroken', 'tookColony', 'spyCaught', 'cededColony', 'joinedWarAgainstUs', 'treatySigned', 'helpedVsPirates'] as const) remember(g, b, a, k);
+        for (let i = 0; i < 20; i++) { remember(g, b, a, 'gift', 1); }
+        expect(peekMemory(g)!.pairs[`${b.empireId}>${a.empireId}`].length).toBeLessThanOrEqual(MEMORY_MAX_FACTS);
+        const d = digestFor(g, b, a);
+        expect(d.other!.memory!.lines.length).toBeLessThanOrEqual(4);
+        expect(digestSize(d)).toBeLessThanOrEqual(DIGEST_MAX_CHARS);
+        expect(digestFor(g, b).memory!.grudges.length + digestFor(g, b).memory!.favours.length).toBeGreaterThan(0);
+        expect(Math.abs(memoryAttitude(g, b, a))).toBeLessThanOrEqual(6);
+    });
+    it('flag off: nothing is captured and the digest has no memory', () => {
+        const { g, a, b } = fresh(false);
+        scenarioEmit(g, 'warDeclared', { empire: a, target: b });
+        expect(peekMemory(g)).toBeNull();
+        expect(digestFor(g, b, a).other?.memory).toBeUndefined();
     });
 });
 

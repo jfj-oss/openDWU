@@ -917,6 +917,7 @@ function evaluateProposal(galaxy: Galaxy, initiator: Empire, empire: Empire, opt
             empire.pirateEconomy.performIncome(cost, PirateIncomeType.Undefined, now);
             const diplomaticRelation2 = obtainDiplomaticRelation(initiator, empire);
             diplomaticRelation2.lastGiftDate = now;
+            if (galaxy.scenario !== null) scenarioEmit(galaxy, 'giftGiven', { giver: initiator, receiver: empire, amount: cost }); // mod layer
             reply('GIFT_THANKS');
             result.accepted = true;
             break;

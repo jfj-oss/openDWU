@@ -19,6 +19,7 @@ import { galaxyStarDate } from '../../tick/simTime';
 import { tryGetText } from '../../textResolver';
 import { RACE_FAMILY_NAMES, governmentName } from '../../player/diplomatBrief';
 import { scenarioFlag, scenarioParam } from '../state';
+import { memoryLines, memoryOn, memorySummary } from './memory';
 import { eventsBetween, timeline } from '../eventLog/log';
 import { resolveEntryText } from '../eventLog/chronicle';
 import { enemySideOf, peekWarLedger, sideOf, sideScore, type WarGoal } from '../lively/warGoals';
@@ -61,6 +62,8 @@ export interface DigestStanding {
     theirAttitude: number | null;
     /** 19o ledger (when present): our sum about them, our top causes, what they hold against us. */
     reputation?: { sum: number; causes: DigestCause[]; held: DigestCause[] };
+    /** llmMemory: how our ruler remembers them (mood score, <= 4 short lines, newest first). */
+    memory?: { score: number; mood: string; lines: string[] };
 }
 
 export interface DigestClaim {
@@ -122,6 +125,8 @@ export interface LlmDigest {
     leads?: { open: number; top: DigestLead[] };
     council?: DigestCouncil;
     wars?: DigestWar[];
+    /** llmMemory, no `other`: the empire's top grudges and favours among the majors. */
+    memory?: { grudges: string[]; favours: string[] };
     economy: { money: number; cashflow: number; colonies: number };
     rim?: { concord?: 'self' | { credit: number; debit: number }; herders?: number };
     /** Resolved one-liners from the event log (19p), oldest first: "YYYY.MM.DD text". */
@@ -409,6 +414,7 @@ export function estimateTokens(text: string): number {
 /** Shrinks the optional parts, least valuable first, until the digest fits `max` characters. Mutates `d`. */
 function fit(d: LlmDigest, max: number): void {
     const steps: (() => boolean)[] = [
+        () => (d.other?.memory?.lines.length ?? 0) > 2 && (d.other!.memory!.lines.pop(), true),
         () => d.events.length > 3 && (d.events.shift(), true),
         () => (d.wars?.length ?? 0) > 1 && (d.wars!.pop(), true),
         () => (d.council?.recent.length ?? 0) > 1 && (d.council!.recent.shift(), true),
@@ -418,6 +424,7 @@ function fit(d: LlmDigest, max: number): void {
         () => (d.self.seats?.length ?? 0) > 0 && (delete d.self.seats, true),
         () => (d.other?.reputation?.held.length ?? 0) > 1 && (d.other!.reputation!.held.pop(), true),
         () => d.events.length > 0 && (d.events.shift(), true),
+        () => d.memory !== undefined && (delete d.memory, true),
         () => d.council?.threats !== undefined && (delete d.council.threats, true),
         () => (d.council?.recent.length ?? 0) > 0 && (d.council!.recent.shift(), true),
     ];
@@ -442,7 +449,16 @@ export function digestFor(galaxy: Galaxy, empire: Empire, other?: Empire | null,
     const o = other ?? null;
     const n = Math.max(0, Math.trunc(opts.events ?? scenarioParam(galaxy, 'llmDigestEvents', DIGEST_DEFAULT_EVENTS)));
     const d: LlmDigest = { v: 1, date: resolveStarDateDescription(galaxyStarDate(galaxy)), self: identity(galaxy, empire), economy: economy(galaxy, empire), events: events(galaxy, empire, o, n) };
-    if (o !== null && o !== empire) d.other = standing(galaxy, empire, o);
+    if (o !== null && o !== empire) {
+        d.other = standing(galaxy, empire, o);
+        if (memoryOn(galaxy)) {
+            const m = memoryLines(galaxy, empire, o, 4);
+            if (m.lines.length > 0) d.other.memory = { score: m.score, mood: m.mood, lines: m.lines.map((l) => l.slice(0, 64)) };
+        }
+    } else if (memoryOn(galaxy)) {
+        const ms = memorySummary(galaxy, empire);
+        if (ms !== null && (ms.grudges.length > 0 || ms.favours.length > 0)) d.memory = ms;
+    }
     const cl = claims(galaxy, empire, o);
     if (cl !== undefined) d.claims = cl;
     const ld = leads(galaxy, empire);
@@ -463,6 +479,7 @@ export function digestFor(galaxy: Galaxy, empire: Empire, other?: Empire | null,
         ...(d.leads !== undefined ? { leads: d.leads } : {}),
         ...(d.council !== undefined ? { council: d.council } : {}),
         ...(d.wars !== undefined ? { wars: d.wars } : {}),
+        ...(d.memory !== undefined ? { memory: d.memory } : {}),
         economy: d.economy,
         ...(d.rim !== undefined ? { rim: d.rim } : {}),
         events: d.events,
@@ -492,7 +509,12 @@ export function digestText(d: LlmDigest): string {
             line += ` Ledger ${o.reputation.sum}${causes !== '' ? ` (${causes})` : ''}.`;
             if (o.reputation.held.length > 0) line += ` They hold against us: ${o.reputation.held.map((c) => `${c.c} ${c.v}`).join(', ')}.`;
         }
+        if (o.memory !== undefined) line += ` Our ruler is ${o.memory.mood} toward them: ${o.memory.lines.join('; ')}.`;
         lines.push(line);
+    }
+    if (d.memory !== undefined) {
+        if (d.memory.grudges.length > 0) lines.push(`Grudges: ${d.memory.grudges.join('; ')}.`);
+        if (d.memory.favours.length > 0) lines.push(`Favours: ${d.memory.favours.join('; ')}.`);
     }
     if (d.claims !== undefined) {
         const c = d.claims;

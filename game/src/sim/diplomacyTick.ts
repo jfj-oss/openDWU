@@ -3167,6 +3167,7 @@ export function processMessages(galaxy: Galaxy, empire: Empire): void {
                 if (sender!.pirateEmpireBaseHabitat === null && self.pirateEmpireBaseHabitat === null) {
                     diplomaticRelation = obtainDiplomaticRelation(sender!, self);
                     diplomaticRelation.lastGiftDate = galaxyStarDate(galaxy);
+                    if (galaxy.scenario !== null) scenarioEmit(galaxy, 'giftGiven', { giver: sender!, receiver: self, amount: empireMessage.money }); // mod layer
                 }
                 break;
             }
