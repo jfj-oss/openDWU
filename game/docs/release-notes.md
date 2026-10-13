@@ -4,6 +4,13 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+## 0.1.20
+
+- **Notifications volume:** a new slider in Options → Sound Volume for the message and alert sounds (new message,
+  event, alarm), on top of Effects.
+- **Influence borders:** empire names in a serif font (Source Serif 4, bundled), and each region darkens softly
+  towards its edges.
+
 ## 0.1.19
 
 - **The treasure fleet no longer gives away the Concord's homeworld.** Until you have met the Concord it follows normal
