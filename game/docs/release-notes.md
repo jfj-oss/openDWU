@@ -4,6 +4,11 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+## 0.1.28
+
+- **Diet notifications:** every motion and every result (with the tally) now reaches the message log and ticker, also for
+  empires outside the Diet; results that hit you or your allies, and major ones, pop up.
+
 ## 0.1.27
 
 - **VIP shuttles say who they carry:** "VIP Shuttle — <name>, <role>" (Governor of <colony>, Diet delegate, Leader,
