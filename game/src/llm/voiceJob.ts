@@ -28,6 +28,7 @@ import { FACTION_ULTIMATUM_PROMPT_VERSION, FACTION_ULTIMATUM_SYSTEM, FACTION_ULT
 import { COUNCIL_SPEECH_PROMPT_VERSION, COUNCIL_SPEECH_SYSTEM, COUNCIL_SPEECH_USER, SPEECH_STANCE } from './prompts/councilSpeech';
 import { CONCORD_SYSTEM, CONCORD_USER, HERDERS_SYSTEM, HERDERS_USER, RIM_LORE_PROMPT_VERSION } from './prompts/rimLore';
 import { LETTER_PROMPT_VERSION, LETTER_SYSTEM, LETTER_TASKS, LETTER_USER } from './prompts/letter';
+import { PEACE_LETTER_PROMPT_VERSION, PEACE_LETTER_SYSTEM, PEACE_LETTER_USER } from './prompts/peaceLetter';
 import { remoteSimHost, type RemoteSimHost } from '../simworker/remoteHost';
 import { readReplica } from './replicaReads';
 
@@ -103,6 +104,11 @@ export function buildVoiceRequest(galaxy: Galaxy, cue: VoiceCue): VoiceRequest {
             const task = LETTER_TASKS[cue.facts.scheme === 'exposure' ? 'exposure' : 'blackmail'];
             const system = fillPrompt(LETTER_SYSTEM, { ...base, task, player: cue.empire.name, rules: fillPrompt(VOICE_RULES, { words }) });
             return request('voice.letter', LETTER_PROMPT_VERSION, system, LETTER_USER, words);
+        }
+        case 'peace': {
+            const words = 110;
+            const system = fillPrompt(PEACE_LETTER_SYSTEM, { ...base, player: cue.empire.name, rules: fillPrompt(VOICE_RULES, { words }) });
+            return request('voice.peace', PEACE_LETTER_PROMPT_VERSION, system, PEACE_LETTER_USER, words);
         }
         case 'speech':
             throw new Error('buildVoiceRequest: a speech cue is voiced per side (buildSpeechRequest)');

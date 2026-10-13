@@ -67,6 +67,7 @@ import {
 } from './warGoals';
 import { acceptProposal } from '../../player/playerOrders';
 import { isHumanEmpire } from '../../humanEmpires';
+import { messageAbout, noteVoiceCue, voicesOn } from '../llm/voiceCues';
 import { applyReputation } from '../reputation/ledger';
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -452,7 +453,7 @@ export function pendingPeaceDecision(galaxy: Galaxy, player: Empire, other: Empi
 function raisePeaceDecision(galaxy: Galaxy, player: Empire, other: Empire, terms: PeaceTerms): void {
     const pending = pendingPeaceDecision(galaxy, player, other);
     if (pending !== null) answerScenarioDecision(galaxy, pending, 'decline', 'expired');
-    raiseScenarioDecision(galaxy, player, {
+    const dec = raiseScenarioDecision(galaxy, player, {
         kind: PEACE_DECISION,
         title: scenarioText('Lively Peace Offer Title', other.name),
         text: scenarioText('Lively Peace Offer Text', other.name, describeTerms(terms).join('; ')),
@@ -465,6 +466,26 @@ function raisePeaceDecision(galaxy: Galaxy, player: Empire, other: Empire, terms
         expiresDays: scenarioParam(galaxy, 'peaceDecisionDays', 60),
         context: { other },
     });
+    // 19s-2 voices (flag llmVoices; inert otherwise, no state): the offering empire's envoy writes the offer letter.
+    if (voicesOn(galaxy)) {
+        const view = warView(galaxy, other, player);
+        noteVoiceCue(galaxy, {
+            kind: 'peace',
+            empire: player,
+            message: messageAbout(player, dec),
+            voice: other,
+            other: player,
+            speaker: other.leader ?? null,
+            role: `an envoy of the ${other.name}`,
+            facts: {
+                terms: describeTerms(terms).join('; '),
+                warScoreOurs: view?.us.score ?? 0,
+                warScoreTheirs: view?.them.score ?? 0,
+                warDays: view?.days ?? 0,
+            },
+            ref: dec,
+        });
+    }
 }
 
 registerScenarioEvent({
@@ -702,4 +723,25 @@ export function termsChoices(galaxy: Galaxy, player: Empire, other: Empire): { t
         theirSubjects: subjectsOf(other),
         ourSubjects: subjectsOf(player),
     };
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Acceptance preview (pure: the terms panel's live line; run it through readReplica, it writes and draws nothing)
+// ---------------------------------------------------------------------------------------------------------------
+
+export interface AcceptancePreview {
+    /** 'human': a person answers (no verdict); 'accept' / 'refuse': the AI's verdict now. */
+    verdict: 'human' | 'accept' | 'refuse';
+    /** War-score points still missing for the value bar (0 when the bar is met but another gate holds). */
+    shortBy: number;
+}
+
+/** What `accepter` would say to `proposer`'s `terms` now, without asking it (considerEndWar and acceptsTerms only read). */
+export function previewAcceptance(galaxy: Galaxy, proposer: Empire, accepter: Empire, terms: PeaceTerms): AcceptancePreview {
+    if (isHumanEmpire(galaxy, accepter)) return { verdict: 'human', shortBy: 0 };
+    const t = sanitiseTerms(galaxy, terms, proposer, accepter);
+    const stockEnd = considerEndWar(galaxy, accepter, proposer, false).end;
+    if (acceptsTerms(galaxy, accepter, proposer, t, stockEnd)) return { verdict: 'accept', shortBy: 0 };
+    const gap = requiredValue(galaxy, accepter, proposer) - termsValueFor(galaxy, t, accepter);
+    return { verdict: 'refuse', shortBy: Math.max(0, Math.ceil(gap)) };
 }

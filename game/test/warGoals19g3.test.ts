@@ -36,6 +36,9 @@ import {
     type PeaceTerms,
 } from '../src/sim/scenario/lively/warGoals';
 import { setHumanEmpires } from '../src/sim/humanEmpires';
+import { previewAcceptance } from '../src/sim/scenario/lively/peaceTerms';
+import { parsePeaceAnswer, peaceChoices, peaceDraftSchema } from '../src/llm/peaceDraft';
+import { stateDigest } from '../src/sim/tick/digest';
 import { applyTerms, peaceOffer, PEACE_DECISION, statusQuo, warView } from '../src/sim/scenario/lively/peaceTerms';
 
 let base: GameData;
@@ -298,6 +301,39 @@ describe('19g-3 peace terms', () => {
         expect(obtainDiplomaticRelation(player, ai).type).toBe(DiplomaticRelationType.None);
         expect(player.stateMoney).toBeLessThan(before);
         expect(humiliation(g, player, ai)).toBeGreaterThan(0);
+    }, 180000);
+});
+
+describe('19g-3 peace talks (plain words, preview)', () => {
+    it('the acceptance preview matches the verdict and writes nothing; the answer maps to terms, dropping invented ids', () => {
+        const { g } = warGame();
+        const player = g.playerEmpire!;
+        const other = aiEmpires(g)[0];
+        meet(player, other);
+        declareWar(g, other, player);
+        ageWar(other, player);
+        spareColony(g, other);
+        const ch = peaceChoices(g, player, other);
+        expect(ch.theirColonies.length).toBeGreaterThan(0);
+        const before = stateDigest(g);
+        const rndBefore = JSON.stringify(g.rnd);
+        const none = previewAcceptance(g, player, other, statusQuo());
+        const big = parsePeaceAnswer(g, player, other, ch, JSON.stringify({ understood: 'u', cedeTheirs: ['tc1', 'tc99', 'zz'], cedeOurs: ['oc77'], payer: 'they', lump: 5e12, perYear: 100, years: 99, demil: ['ts9'], demilYears: 500, release: true, extra: ['x4'], unmapped: 'fleets' }))!;
+        expect(big.terms.cede.map((c) => c.colony)).toEqual([ch.theirColonies[0]]);
+        expect(big.terms.reparations!.years).toBe(20);
+        expect(big.terms.reparations!.lump).toBeLessThanOrEqual(2_000_000_000);
+        expect(big.terms.demilitarise).toBeNull();
+        expect(big.unmapped).toBe('fleets');
+        const p2 = previewAcceptance(g, player, other, big.terms);
+        expect(p2.verdict === 'refuse' ? p2.shortBy : 0).toBeGreaterThanOrEqual(0);
+        expect(none.verdict).not.toBe('human');
+        expect(parsePeaceAnswer(g, player, other, ch, 'not json')).toBeNull();
+        expect(JSON.stringify(peaceDraftSchema(ch))).toContain('tc1');
+        expect(stateDigest(g)).toBe(before);
+        expect(JSON.stringify(g.rnd)).toBe(rndBefore);
+        // A human on the other side answers for themselves.
+        setHumanEmpires(g, [player, other]);
+        expect(previewAcceptance(g, player, other, statusQuo()).verdict).toBe('human');
     }, 180000);
 });
 

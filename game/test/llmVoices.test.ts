@@ -42,6 +42,12 @@ import { DEFAULT_LLM_POLICY, LlmQueue, galaxyLlmClock, type LlmRequest, type Llm
 import { VoiceJob, activeVoiceJob, buildVoiceRequest, layerVoiceOf, voicedDescription } from '../src/llm/voiceJob';
 import { VOICE_SCHEMA, parseVoiceAnswer } from '../src/llm/prompts/voice';
 import { SEAT_TASKS } from '../src/llm/prompts/councilSeat';
+import { declareWar } from '../src/sim/diplomacyTick';
+import { obtainDiplomaticRelation } from '../src/sim/diplomacy';
+import { setHumanEmpires } from '../src/sim/humanEmpires';
+import { YEAR_LENGTH } from '../src/sim/galaxyTime';
+import { runPlayerCommand } from '../src/sim/player/playerCommands';
+import { PEACE_DECISION, statusQuo } from '../src/sim/scenario/lively/peaceTerms';
 import { startLlmLayer } from '../src/llm/llmLayer';
 import { estimateTokens } from '../src/sim/scenario/llm/digest';
 import { buildDiplomatBrief, governmentName } from '../src/sim/player/diplomatBrief';
@@ -202,6 +208,38 @@ describe('council seats', () => {
         expect(buildVoiceRequest(g, cue).messages[0].content).toContain(SEAT_TASKS.chancellor);
         await run(job(g, p, transport()));
         expect(m.description).toContain(SAY);
+    });
+});
+
+describe('peace offers', () => {
+    it('19g-3: an offer to a human leaves a peace cue; voiced in place; scripted when no model; off without the flag', async () => {
+        const { g, p, ais } = game({ warGoals: true });
+        const enemy = ais[0];
+        for (const r of [obtainDiplomaticRelation(enemy, p), obtainDiplomaticRelation(p, enemy)]) r.type = DiplomaticRelationType.None;
+        declareWar(g, enemy, p);
+        for (const r of [obtainDiplomaticRelation(enemy, p), obtainDiplomaticRelation(p, enemy)]) r.startDateOfLastChange -= 2 * YEAR_LENGTH;
+        setHumanEmpires(g, [p, enemy]);
+        drainVoiceCues(g);
+        expect(runPlayerCommand(g, enemy, 'proposePeaceTerms', [p, statusQuo()]).ok).toBe(true);
+        const d = pendingScenarioDecisions(g, p).find((x) => x.kind === PEACE_DECISION)!;
+        const cue = peekVoiceCues(g).find((c) => c.kind === 'peace')!;
+        expect(cue).toBeDefined();
+        expect(cue.message!.subject).toBe(d);
+        expect(cue.voice).toBe(enemy);
+        const sys = buildVoiceRequest(g, cue).messages[0].content;
+        expect(sys).toContain('offering to end the war');
+        // No model: the scripted text stays.
+        await run(job(g, p, transport(() => new Error('down'))));
+        expect(cue.message!.description).toBe(cue.scripted);
+    });
+    it('inert with llmVoices off', () => {
+        const { g, p, ais } = game({ warGoals: true }, false);
+        const enemy = ais[0];
+        for (const r of [obtainDiplomaticRelation(enemy, p), obtainDiplomaticRelation(p, enemy)]) r.type = DiplomaticRelationType.None;
+        declareWar(g, enemy, p);
+        setHumanEmpires(g, [p, enemy]);
+        runPlayerCommand(g, enemy, 'proposePeaceTerms', [p, statusQuo()]);
+        expect(peekVoiceCues(g)).toHaveLength(0);
     });
 });
 

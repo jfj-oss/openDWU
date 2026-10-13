@@ -36,9 +36,10 @@ export function voicesOn(galaxy: Galaxy | null | undefined): boolean {
  * - speech: a council member empire speaks for / against the motion on the floor (19d8; council screen);
  * - concord: the Rim Concord's mask-ritual greeting (19a first contact / treasure fleet at our port);
  * - herders: the herder elders' migration lore (19j herd path announced);
+ * - peace: an empire's peace-terms offer to the player (19g-3; the offer decision's letter);
  * - letter: a blackmail / exposure letter (19n-2 schemes).
  */
-export type VoiceKind = 'spymaster' | 'chancellor' | 'marshal' | 'ultimatum' | 'speech' | 'concord' | 'herders' | 'letter';
+export type VoiceKind = 'spymaster' | 'chancellor' | 'marshal' | 'ultimatum' | 'speech' | 'concord' | 'herders' | 'letter' | 'peace';
 
 export interface VoiceCue {
     kind: VoiceKind;

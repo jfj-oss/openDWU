@@ -6,8 +6,11 @@
 import type { Empire } from '../../sim/empire';
 import type { Habitat } from '../../sim/types';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
-import { buildTerms, describeTerms, termsChoices, warView, type PeaceTermsResult } from '../../sim/scenario/lively/peaceTerms';
+import { buildTerms, describeTerms, previewAcceptance, termsChoices, warView, type PeaceTermsResult } from '../../sim/scenario/lively/peaceTerms';
 import type { PeaceTerms } from '../../sim/scenario/lively/warGoals';
+import { currentLlmLayer } from '../../llm/llmLayer';
+import { interpretPeaceWords } from '../../llm/peaceDraft';
+import { readReplica } from '../../llm/replicaReads';
 import { FONT, checkBox, dropDown, glassButton, numericUpDown } from '../originalWindow';
 import { voidbloomTermChoices, voidbloomTermText } from '../../sim/scenario/voidbloom/treaty'; // [voidbloom]
 
@@ -196,6 +199,49 @@ function composer(player: Empire, other: Empire, rerender: () => void): HTMLElem
             group.appendChild(line);
         }
         box.appendChild(group);
+    }
+
+    // The live read-out of the other side's answer (pure: nothing is asked of them, nothing is drawn).
+    const previewLine = el('div', 'diplomacy-factor');
+    const refreshPreview = (): void => {
+        const p = readReplica(galaxy, () => previewAcceptance(galaxy, player, other, termsFromDraft(d, player, other, subject)));
+        previewLine.textContent = p.verdict === 'human' ? `${other.name} will answer for themselves.` : p.verdict === 'accept' ? `${other.name} would accept these terms.` : p.shortBy > 0 ? `${other.name} would refuse: they need about ${p.shortBy} more points.` : `${other.name} would refuse these terms for now.`;
+    };
+    refreshPreview();
+    box.addEventListener('change', refreshPreview); // the controls update the draft first (target phase), then this runs
+    box.addEventListener('input', refreshPreview);
+    box.appendChild(previewLine);
+
+    // [llm] Plain words -> the draft (only with the model layer on and the endpoint answering). The player still presses Offer terms.
+    const layer = currentLlmLayer();
+    if (layer !== null && layer.on && layer.queue !== null && layer.queue.metrics().endpoint === 'up') {
+        const queue = layer.queue;
+        const words = document.createElement('input');
+        words.type = 'text';
+        words.placeholder = 'Or say it in words: "Give me Kygnos and 2,000 a year for five years"';
+        words.style.cssText = `width:100%;font-size:${FONT.normal}px`;
+        const note = el('div', 'diplomacy-factor');
+        let busy = false;
+        const go = (): void => {
+            if (busy || words.value.trim() === '') return;
+            busy = true;
+            note.textContent = 'Drafting…';
+            void interpretPeaceWords(galaxy, player, other, queue, words.value).then((r) => {
+                busy = false;
+                if (r === null) {
+                    note.textContent = 'No draft came back: set the terms by hand.';
+                    return;
+                }
+                drafts.set(other, draftFromTerms(r.terms, player));
+                note.textContent = [r.understood, r.unmapped !== '' ? `Not mapped: ${r.unmapped}` : ''].filter((x) => x !== '').join(' ');
+                version++;
+                rerender();
+            });
+        };
+        words.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') go();
+        });
+        box.append(words, button('Draft', go), note);
     }
 
     const row = el('div', 'diplomacy-propose-options');
