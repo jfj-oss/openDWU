@@ -1426,6 +1426,8 @@ export class MainView {
      * previous/current step positions shared by every layer that draws a moving object. Render-only. */
     renderTime: RenderTime = createRenderTime();
     readonly motion = new MotionInterpolator();
+    /** Whether the followed ship was on a warp leg at the last frame (PresentationClock.steady). */
+    private followWarping = false;
     /** Presentation clock (renderInterp.ts): the loop's raw render time → an evenly advancing drawn instant when steps
      * land unevenly (late game, sim worker bursts). `?renderClock=0` draws the raw render time (A/B). */
     readonly presentClock: PresentationClock | null = renderClockEnabled() ? new PresentationClock() : null;
@@ -1986,8 +1988,10 @@ export class MainView {
         // Render interpolation between sim steps (renderInterp.ts): read-only on the sim.
         const rt = this.renderTime;
         if (renderTime !== undefined) {
-            if (this.presentClock !== null) this.presentClock.present(renderTime, frameTimeMs(), rt);
-            else copyRenderTime(renderTime, rt);
+            if (this.presentClock !== null) {
+                this.presentClock.steady = this.followWarping;
+                this.presentClock.present(renderTime, frameTimeMs(), rt);
+            } else copyRenderTime(renderTime, rt);
         } else {
             rt.alpha = 0;
             rt.stepGameMs = 0;
@@ -2014,6 +2018,7 @@ export class MainView {
         // The same drawn position is the one the followed sprite is drawn at (builtObjectLayer: followed), so the view and
         // the ship cannot disagree; it is the only recentre of the frame (the end-of-frame stop checks below read it).
         let followed: object | null = null;
+        this.followWarping = false;
         if (isFollowing(this.followState)) {
             const target = this.followState.target as FollowTarget;
             if (followTargetAlive(target)) {
@@ -2022,6 +2027,8 @@ export class MainView {
                     const p = drawnBuiltObjectPos(this.motion, ship);
                     cam.centerOn(p.x, p.y);
                     followed = ship;
+                    // (Read by the next frame's presentation clock: steadier speed while the followed ship warps.)
+                    this.followWarping = (ship as { currentSpeed?: number; topSpeed?: number }).currentSpeed! > (ship as { topSpeed?: number }).topSpeed!;
                 }
             }
         }

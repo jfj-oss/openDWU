@@ -138,6 +138,14 @@ export class PresentationClock {
     /** Rate change per step of (filtered) error above / below the target (bounded by MAX_UP / MAX_DOWN). */
     static readonly GAIN_ABOVE = 0.03;
     static readonly GAIN_BELOW = 0.06;
+    /**
+     * `steady` (set by MainView while the camera follows a ship on a warp leg): the speed correction is scaled by
+     * STEADY_GAIN, the arrival rate eased over STEADY_RATE_EASE_MS and STEADY_DELAY steps more are held, so the drawn
+     * speed stays near constant (under a locked camera a few percent of speed wobble at warp shakes the whole map).
+     */
+    static readonly STEADY_GAIN = 0.3;
+    static readonly STEADY_RATE_EASE_MS = 2500;
+    static readonly STEADY_DELAY = 1.5;
     static readonly MAX_UP = 0.4;
     static readonly MAX_DOWN = 0.6;
     /** Lag beyond the target (steps) from which the catch-up grows past MAX_UP, up to MAX_CATCH_UP (2.5× rate). */
@@ -156,6 +164,7 @@ export class PresentationClock {
     /** Slack kept above the measured irregularity: a share of the dip, plus a fixed MARGIN (steps). */
     static readonly DIP_SLACK = 1;
     static readonly MARGIN = 0.05;
+    steady = false;
     /** The presented position (cumulative step serial, fractional); NaN until the first frame. */
     serial = Number.NaN;
     /** Steps the clock aims to stay behind raw. */
@@ -239,6 +248,7 @@ export class PresentationClock {
             if (f < 0) gain = Math.max(-PresentationClock.MAX_DOWN, f * PresentationClock.GAIN_BELOW);
             else if (f <= PresentationClock.CATCH_UP_FROM) gain = Math.min(PresentationClock.MAX_UP, f * PresentationClock.GAIN_ABOVE);
             else gain = Math.min(PresentationClock.MAX_CATCH_UP, PresentationClock.MAX_UP + (f - PresentationClock.CATCH_UP_FROM) * PresentationClock.GAIN_ABOVE * 2);
+            if (this.steady && f <= PresentationClock.CATCH_UP_FROM) gain *= PresentationClock.STEADY_GAIN;
             s += step * (1 + gain);
         }
         if (s > c) {
@@ -343,7 +353,7 @@ export class PresentationClock {
         // Corner to corner over the window, eased over ~0.3 s (one burst more or less must not step the speed).
         const inst = Math.min(8, Math.max(0.05, ((raw - r0) * FRAME_REAL_MS) / span));
         const pi = ((this.cHead + this.cLen - 2) % cCap) * 2;
-        this.rate += (inst - this.rate) * (1 - Math.exp(-(t - cr[pi]) / PresentationClock.RATE_EASE_MS));
+        this.rate += (inst - this.rate) * (1 - Math.exp(-(t - cr[pi]) / (this.steady ? PresentationClock.STEADY_RATE_EASE_MS : PresentationClock.RATE_EASE_MS)));
         this.interval = span / (this.cLen - 1);
         // Raw's dip below its steady line at that rate: the time-mean of (raw − rate · t) minus its LOW_QUANTILE quantile
         // (LOW_QUANTILE: one late spell must not hold a big delay for the whole window; the clock then only waits a moment).
@@ -367,7 +377,7 @@ export class PresentationClock {
         const low = sorted[Math.floor(n * PresentationClock.LOW_QUANTILE)];
         // Plus slack for the clock's own wander around its target, which grows with the staircase's size.
         const dip = Math.max(0, mean - low);
-        const want = Math.min(PresentationClock.MAX_DELAY, dip * (1 + PresentationClock.DIP_SLACK) + PresentationClock.MARGIN);
+        const want = Math.min(PresentationClock.MAX_DELAY, dip * (1 + PresentationClock.DIP_SLACK) + PresentationClock.MARGIN + (this.steady ? PresentationClock.STEADY_DELAY : 0));
         this.delay += (want - this.delay) * (want > this.delay ? 0.5 : 0.1);
     }
 }
