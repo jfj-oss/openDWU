@@ -324,23 +324,134 @@ export function computeRegions(cs: CellSet, owner: Int16Array): Region[] {
     return out;
 }
 
+/** One shared-edge band: a chained polyline along the boundary between two empires, drawn into one side of it. */
+export interface EdgeChain {
+    /** Empire whose band this is (its darker colour). */
+    owner: number;
+    /** +1: the band lies on the left of the path direction (x,y -> -dy,dx), -1: on the right. */
+    side: 1 | -1;
+    /** Polyline vertices x0,y0,x1,y1,... (world units, on the boundary itself). */
+    pts: number[];
+    closed: boolean;
+}
+
 export interface BorderGeometry {
-    /** Tiles of the galaxy; each holds the cells to fill and the border segments to stroke. */
-    tiles: Array<{ minX: number; minY: number; maxX: number; maxY: number; fills: Array<{ owner: number; verts: number[] }>; borders: Array<{ owner: number; seg: number[] }>; edges: Array<{ owner: number; quads: number[] }> }>;
+    /** Tiles of the galaxy; each holds the cells to fill, the border segments to stroke and the shared-edge chains. */
+    tiles: Array<{ minX: number; minY: number; maxX: number; maxY: number; fills: Array<{ owner: number; verts: number[] }>; borders: Array<{ owner: number; seg: number[] }>; edges: EdgeChain[] }>;
     regions: Region[];
     claimed: number;
 }
 export const TILES = 6;
 
-/** Shared-edge mode: 'both' = each side draws its own darker strip, 'darker' = only the darker empire's, 'off' = none. */
+/** Shared-edge mode: 'both' = each side draws its own darker band, 'darker' = only the darker empire's, 'off' = none. */
 export type SharedEdgeMode = 'both' | 'darker' | 'off';
-/** Depth of the shared-edge strip, in mean star spacings. */
-export const SHARED_EDGE_DEPTH_SPACINGS = 0.14;
+/** Cap on shared-edge polyline vertices per tile (keeps the stroke geometry bounded on huge galaxies). */
+export const MAX_EDGE_POINTS_PER_TILE = 8000;
+
+/**
+ * Chain directed boundary segments (ax,ay,bx,by each, all oriented the same way round the boundary) into polylines.
+ * Endpoints computed independently by neighbouring cells differ by rounding only, so they are matched within `tol`.
+ */
+export function chainSegments(segs: number[], tol: number): Array<{ pts: number[]; closed: boolean }> {
+    const m = segs.length / 4;
+    const q = tol;
+    const key = (x: number, y: number): string => `${Math.round(x / q)},${Math.round(y / q)}`;
+    const starts = new Map<string, number[]>();
+    for (let s = 0; s < m; s++) {
+        const k = key(segs[4 * s], segs[4 * s + 1]);
+        let l = starts.get(k);
+        if (l === undefined) starts.set(k, (l = []));
+        l.push(s);
+    }
+    const used = new Uint8Array(m);
+    const find = (x: number, y: number, skipUsed: boolean): number => {
+        const kx = Math.round(x / q), ky = Math.round(y / q);
+        for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+                const l = starts.get(`${kx + dx},${ky + dy}`);
+                if (l === undefined) continue;
+                for (const s of l) {
+                    if (skipUsed && used[s]) continue;
+                    if (Math.abs(segs[4 * s] - x) <= tol && Math.abs(segs[4 * s + 1] - y) <= tol) return s;
+                }
+            }
+        }
+        return -1;
+    };
+    // A segment starts a chain when no other segment ends at its start point.
+    const hasPred = new Uint8Array(m);
+    for (let s = 0; s < m; s++) {
+        const n = find(segs[4 * s + 2], segs[4 * s + 3], false);
+        if (n >= 0 && n !== s) hasPred[n] = 1;
+    }
+    const out: Array<{ pts: number[]; closed: boolean }> = [];
+    const walk = (s0: number): void => {
+        used[s0] = 1;
+        const pts = [segs[4 * s0], segs[4 * s0 + 1], segs[4 * s0 + 2], segs[4 * s0 + 3]];
+        let cur = s0;
+        for (;;) {
+            const n = find(segs[4 * cur + 2], segs[4 * cur + 3], true);
+            if (n < 0) break;
+            used[n] = 1;
+            pts.push(segs[4 * n + 2], segs[4 * n + 3]);
+            cur = n;
+        }
+        const L = pts.length;
+        const closed = L >= 8 && Math.abs(pts[L - 2] - pts[0]) <= tol && Math.abs(pts[L - 1] - pts[1]) <= tol;
+        if (closed) pts.length = L - 2;
+        out.push({ pts, closed });
+    };
+    for (let s = 0; s < m; s++) if (!used[s] && !hasPred[s]) walk(s);
+    for (let s = 0; s < m; s++) if (!used[s]) walk(s); // loops (enclaves) and leftovers
+    return out;
+}
+
+/**
+ * Offset a boundary polyline by `d` world units to its left (negative = right), with mitred vertices (capped), dropping
+ * vertices closer than `minLen` to the previous one first so tiny Voronoi edges do not fold the offset line.
+ */
+export function offsetPolyline(pts: number[], closed: boolean, d: number, minLen: number): number[] {
+    const p: number[] = [pts[0], pts[1]];
+    for (let k = 2; k < pts.length; k += 2) {
+        const lx = p[p.length - 2], ly = p[p.length - 1];
+        const last = k === pts.length - 2;
+        if (Math.hypot(pts[k] - lx, pts[k + 1] - ly) < minLen) {
+            if (last && !closed && p.length > 2) { p[p.length - 2] = pts[k]; p[p.length - 1] = pts[k + 1]; }
+            continue;
+        }
+        p.push(pts[k], pts[k + 1]);
+    }
+    if (closed && p.length >= 6 && Math.hypot(p[p.length - 2] - p[0], p[p.length - 1] - p[1]) < minLen) p.length -= 2;
+    const n = p.length / 2;
+    if (n < 2) return [];
+    const nx: number[] = [], ny: number[] = [];
+    const segs = closed ? n : n - 1;
+    for (let k = 0; k < segs; k++) {
+        const b = (k + 1) % n;
+        const dx = p[2 * b] - p[2 * k], dy = p[2 * b + 1] - p[2 * k + 1];
+        const len = Math.hypot(dx, dy) || 1;
+        nx.push(-dy / len);
+        ny.push(dx / len);
+    }
+    const out: number[] = [];
+    for (let k = 0; k < n; k++) {
+        const hasIn = closed || k > 0, hasOut = closed || k < n - 1;
+        const i0 = hasIn ? (k - 1 + segs) % segs : k, i1 = hasOut ? k % segs : i0;
+        let mx = nx[i0] + nx[i1], my = ny[i0] + ny[i1];
+        const ml = Math.hypot(mx, my);
+        if (ml < 1e-6) { mx = nx[i0]; my = ny[i0]; } else { mx /= ml; my /= ml; }
+        const c = Math.max(0.25, mx * nx[i0] + my * ny[i0]); // miter limit 4
+        out.push(p[2 * k] + (mx * d) / c, p[2 * k + 1] + (my * d) / c);
+    }
+    return out;
+}
 
 export function buildGeometry(cs: CellSet, owner: Int16Array, sizeX: number, sizeY: number, edgeMode: SharedEdgeMode = 'off', lum: (owner: number) => number = () => 0): BorderGeometry {
-    const depth = SHARED_EDGE_DEPTH_SPACINGS * cs.spacing;
     const tiles: BorderGeometry['tiles'] = [];
     for (let i = 0; i < TILES * TILES; i++) tiles.push({ minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity, fills: [], borders: [], edges: [] });
+    const tileAt = (x: number, y: number): BorderGeometry['tiles'][number] => tiles[Math.max(0, Math.min(TILES - 1, Math.floor((y / sizeY) * TILES))) * TILES + Math.max(0, Math.min(TILES - 1, Math.floor((x / sizeX) * TILES)))];
+    // Shared-boundary segments per empire pair (lo, hi), oriented with `lo` on the left (taken from lo's CCW cells).
+    const pairSegs = new Map<number, number[]>();
     let claimed = 0;
     for (let i = 0; i < owner.length; i++) {
         const e = owner[i];
@@ -353,7 +464,7 @@ export function buildGeometry(cs: CellSet, owner: Int16Array, sizeX: number, siz
         let mx = 0, my = 0;
         for (let k = 0; k < v.length; k += 2) { mx += v[k]; my += v[k + 1]; }
         mx /= v.length / 2; my /= v.length / 2;
-        const t = tiles[Math.max(0, Math.min(TILES - 1, Math.floor((my / sizeY) * TILES))) * TILES + Math.max(0, Math.min(TILES - 1, Math.floor((mx / sizeX) * TILES)))];
+        const t = tileAt(mx, my);
         for (let k = 0; k < v.length; k += 2) {
             if (v[k] < t.minX) t.minX = v[k];
             if (v[k] > t.maxX) t.maxX = v[k];
@@ -367,35 +478,45 @@ export function buildGeometry(cs: CellSet, owner: Int16Array, sizeX: number, siz
             const nb = c.tags[k];
             const no = nb >= 0 ? owner[nb] : -1;
             if (no === e) continue;
+            const b = (k + 1) % n;
+            if (edgeMode !== 'off' && no > e && cs.cells[nb].verts.length >= 6) {
+                const key = e * 65536 + no;
+                let l = pairSegs.get(key);
+                if (l === undefined) pairSegs.set(key, (l = []));
+                l.push(v[2 * k], v[2 * k + 1], v[2 * b], v[2 * b + 1]);
+            }
             // A shared border between two claimed cells is drawn once (from the lower system index).
             if (no >= 0 && nb < i) continue;
-            const b = (k + 1) % n;
             seg.push(v[2 * k], v[2 * k + 1], v[2 * b], v[2 * b + 1]);
         }
         if (seg.length > 0) t.borders.push({ owner: e, seg });
-        if (edgeMode !== 'off') {
-            // Shared edges (a claimed neighbour of another empire): one flat quad per edge, inset into this cell. Each cell
-            // draws its own side of the boundary, so 'both' needs no extra pass; 'darker' keeps only the darker empire's.
-            const quads: number[] = [];
-            for (let k = 0; k < n; k++) {
-                const nb = c.tags[k];
-                const no = nb >= 0 ? owner[nb] : -1;
-                if (no < 0 || no === e) continue;
-                if (edgeMode === 'darker') {
-                    const le = lum(e), lo = lum(no);
-                    if (le > lo || (le === lo && e > no)) continue;
-                }
-                const b = (k + 1) % n;
-                const ax = v[2 * k], ay = v[2 * k + 1], bx = v[2 * b], by = v[2 * b + 1];
-                const dx = bx - ax, dy = by - ay;
-                const len = Math.hypot(dx, dy);
-                if (len < 1e-6) continue;
-                // Cells are CCW, so the inward normal is the left of the edge direction.
-                const d = Math.min(depth, len * 0.5);
-                const ix = (-dy / len) * d, iy = (dx / len) * d;
-                quads.push(ax, ay, bx, by, bx + ix, by + iy, ax + ix, ay + iy);
+    }
+    if (edgeMode !== 'off') {
+        // Shared edges: chain each pair's boundary into continuous polylines; each chain gives one band per side
+        // ('both') or only the darker empire's band ('darker'). Bands are offset into their own side at draw time.
+        const tol = cs.spacing * 1e-4;
+        const tilePts = new Int32Array(TILES * TILES);
+        for (const key of [...pairSegs.keys()].sort((a, b) => a - b)) {
+            const lo = Math.floor(key / 65536), hi = key % 65536;
+            const sides: Array<[number, 1 | -1]> = [];
+            if (edgeMode === 'both') sides.push([lo, 1], [hi, -1]);
+            else {
+                const ll = lum(lo), lh = lum(hi);
+                sides.push(ll <= lh ? [lo, 1] : [hi, -1]);
             }
-            if (quads.length > 0) t.edges.push({ owner: e, quads });
+            for (const ch of chainSegments(pairSegs.get(key)!, tol)) {
+                const t = tileAt(ch.pts[0], ch.pts[1]);
+                const ti = tiles.indexOf(t);
+                if (tilePts[ti] + (ch.pts.length / 2) * sides.length > MAX_EDGE_POINTS_PER_TILE) continue;
+                tilePts[ti] += (ch.pts.length / 2) * sides.length;
+                for (let k = 0; k < ch.pts.length; k += 2) {
+                    if (ch.pts[k] < t.minX) t.minX = ch.pts[k];
+                    if (ch.pts[k] > t.maxX) t.maxX = ch.pts[k];
+                    if (ch.pts[k + 1] < t.minY) t.minY = ch.pts[k + 1];
+                    if (ch.pts[k + 1] > t.maxY) t.maxY = ch.pts[k + 1];
+                }
+                for (const [o, side] of sides) t.edges.push({ owner: o, side, pts: ch.pts, closed: ch.closed });
+            }
         }
     }
     return { tiles, regions: computeRegions(cs, owner), claimed };
@@ -410,11 +531,24 @@ function mix(c: number, k: number): number {
 }
 export const FILL_DARKEN = 0.55;
 export const FILL_ALPHA = 0.2;
-/** Shared-edge strip colour = the empire's fill colour scaled by this, at this alpha. */
-export const EDGE_DARKEN = 0.4;
-export const EDGE_ALPHA = 0.65;
+/** Shared-edge band colour = the empire's colour scaled by this, at this alpha. */
+export const EDGE_DARKEN = 0.5;
+export const EDGE_ALPHA = 0.9;
+/** Shared-edge band width in screen px ('both': each side; 'darker': the single band). */
+export const EDGE_WIDTH_PX = 3;
+export const EDGE_WIDTH_DARKER_PX = 3.5;
+/** The bands are rebuilt (stroke widths in world units) when the zoom moves by this ratio, at most every EDGE_REBUILD_MS. */
+export const EDGE_ZOOM_STEP = 1.12;
+export const EDGE_REBUILD_MS = 120;
 function luminance(c: number): number {
     return 0.2126 * ((c >> 16) & 255) + 0.7152 * ((c >> 8) & 255) + 0.0722 * (c & 255);
+}
+/** Shared-edge band colour: the empire colour darkened by EDGE_DARKEN, but never below EDGE_MIN_LUM (very dark empire
+ *  colours would otherwise give a black band). */
+export const EDGE_MIN_LUM = 36;
+export function edgeColour(c: number): number {
+    const l = luminance(c);
+    return mix(c, l <= 0 ? EDGE_DARKEN : Math.min(1, Math.max(EDGE_DARKEN, EDGE_MIN_LUM / l)));
 }
 
 /** Empire names on influence borders: Source Serif 4 (SIL OFL 1.1, bundled under public/fonts/source-serif-4), a
@@ -443,7 +577,14 @@ function loadNameFont(onReady: () => void): void {
 
 export class InfluenceBorderLayer {
     readonly root = new Container();
-    private tiles: Array<{ g: Graphics; minX: number; minY: number; maxX: number; maxY: number }> = [];
+    private tiles: Array<{ g: Graphics | null; eg: Graphics | null; edges: EdgeChain[]; minX: number; minY: number; maxX: number; maxY: number }> = [];
+    private readonly fillLayer = new Container();
+    private readonly edgeLayer = new Container();
+    private readonly nameLayer = new Container();
+    /** Zoom bucket the edge bands were last built for (NaN = never), and when. */
+    private edgeBucket = NaN;
+    private edgeBuiltMs = -Infinity;
+    private edgeMode: SharedEdgeMode = 'off';
     private names: Array<{ t: Text; r: Region }> = [];
     private cells: CellSet | null = null;
     private xs: Float64Array = new Float64Array(0);
@@ -459,6 +600,7 @@ export class InfluenceBorderLayer {
             this.sig = ''; // rebuild once the serif has loaded, so the names don't stay in the fallback font
         });
         this.root.visible = false;
+        this.root.addChild(this.fillLayer, this.edgeLayer, this.nameLayer);
     }
 
     /** Signature of the ownership (cheap): owner per system. */
@@ -489,6 +631,7 @@ export class InfluenceBorderLayer {
         this.lastComputeMs = performance.now() - t0;
         if (sig === this.sig) return false;
         this.sig = sig;
+        this.edgeMode = edgeMode;
         const geo = buildGeometry(this.cells, owner, galaxy.sizeX, galaxy.sizeY, edgeMode, (e) => luminance(this.colour(e)));
         this.apply(geo);
         this.lastComputeMs = performance.now() - t0;
@@ -500,25 +643,28 @@ export class InfluenceBorderLayer {
     }
 
     private apply(geo: BorderGeometry): void {
-        for (const t of this.tiles) t.g.destroy();
+        for (const t of this.tiles) {
+            t.g?.destroy();
+            t.eg?.destroy();
+        }
         for (const n of this.names) n.t.destroy();
         this.tiles = [];
         this.names = [];
+        this.edgeBucket = NaN;
         for (const tile of geo.tiles) {
-            if (tile.fills.length === 0) continue;
-            const g = new Graphics();
-            for (const f of tile.fills) g.poly(f.verts, true).fill({ color: mix(this.colour(f.owner), FILL_DARKEN), alpha: FILL_ALPHA });
-            for (const b of tile.borders) {
-                const col = mix(this.colour(b.owner), FILL_DARKEN);
-                for (let k = 0; k < b.seg.length; k += 4) g.moveTo(b.seg[k], b.seg[k + 1]).lineTo(b.seg[k + 2], b.seg[k + 3]);
-                g.stroke({ color: col, alpha: FILL_ALPHA, width: 1, pixelLine: true });
+            if (tile.fills.length === 0 && tile.edges.length === 0) continue;
+            let g: Graphics | null = null;
+            if (tile.fills.length > 0) {
+                g = new Graphics();
+                for (const f of tile.fills) g.poly(f.verts, true).fill({ color: mix(this.colour(f.owner), FILL_DARKEN), alpha: FILL_ALPHA });
+                for (const b of tile.borders) {
+                    const col = mix(this.colour(b.owner), FILL_DARKEN);
+                    for (let k = 0; k < b.seg.length; k += 4) g.moveTo(b.seg[k], b.seg[k + 1]).lineTo(b.seg[k + 2], b.seg[k + 3]);
+                    g.stroke({ color: col, alpha: FILL_ALPHA, width: 1, pixelLine: true });
+                }
+                this.fillLayer.addChild(g);
             }
-            for (const ed of tile.edges) {
-                for (let k = 0; k < ed.quads.length; k += 8) g.poly(ed.quads.slice(k, k + 8), true);
-                g.fill({ color: mix(this.colour(ed.owner), EDGE_DARKEN), alpha: EDGE_ALPHA });
-            }
-            this.root.addChild(g);
-            this.tiles.push({ g, minX: tile.minX, minY: tile.minY, maxX: tile.maxX, maxY: tile.maxY });
+            this.tiles.push({ g, eg: null, edges: tile.edges, minX: tile.minX, minY: tile.minY, maxX: tile.maxX, maxY: tile.maxY });
         }
         const sp = this.cells?.spacing ?? 1;
         for (const r of geo.regions) {
@@ -532,8 +678,45 @@ export class InfluenceBorderLayer {
             const s = Math.min(fitW, fitH);
             t.scale.set(s);
             t.rotation = Math.abs(r.angle) < 0.7 ? r.angle : 0;
-            this.root.addChild(t);
+            this.nameLayer.addChild(t);
             this.names.push({ t, r });
+        }
+    }
+
+    /**
+     * (Re)build the shared-edge bands for a zoom factor (world units per screen px): each chain is offset by half the
+     * band width into its own side and stroked once (mitred joins), so the two bands of a boundary meet exactly on it.
+     * Runs only on border rebuilds and zoom-bucket changes, never per frame.
+     */
+    private buildEdges(factor: number): void {
+        const px = this.edgeMode === 'darker' ? EDGE_WIDTH_DARKER_PX : EDGE_WIDTH_PX;
+        const w = px * factor;
+        for (const t of this.tiles) {
+            t.eg?.destroy();
+            t.eg = null;
+            if (t.edges.length === 0) continue;
+            const eg = new Graphics();
+            // One path per owner (each chain its own subpath), stroked once.
+            const byOwner = new Map<number, EdgeChain[]>();
+            for (const ch of t.edges) {
+                let l = byOwner.get(ch.owner);
+                if (l === undefined) byOwner.set(ch.owner, (l = []));
+                l.push(ch);
+            }
+            for (const [o, chains] of byOwner) {
+                let any = false;
+                for (const ch of chains) {
+                    const off = offsetPolyline(ch.pts, ch.closed, (ch.side * w) / 2, w * 0.75);
+                    if (off.length < 4) continue;
+                    eg.moveTo(off[0], off[1]);
+                    for (let k = 2; k < off.length; k += 2) eg.lineTo(off[k], off[k + 1]);
+                    if (ch.closed) eg.closePath();
+                    any = true;
+                }
+                if (any) eg.stroke({ color: edgeColour(this.colour(o)), alpha: EDGE_ALPHA, width: w, join: 'miter', miterLimit: 4, cap: 'butt' });
+            }
+            this.edgeLayer.addChild(eg);
+            t.eg = eg;
         }
     }
 
@@ -553,10 +736,26 @@ export class InfluenceBorderLayer {
         this.root.visible = show && this.tiles.length > 0;
         if (!this.root.visible) return;
         const smooth = fade * fade * (3 - 2 * fade);
+        if (this.edgeMode !== 'off') {
+            const bucket = Math.round(Math.log(factor) / Math.log(EDGE_ZOOM_STEP));
+            const now = performance.now();
+            if (bucket !== this.edgeBucket && (Number.isNaN(this.edgeBucket) || now - this.edgeBuiltMs >= EDGE_REBUILD_MS)) {
+                this.edgeBucket = bucket;
+                this.edgeBuiltMs = now;
+                this.buildEdges(Math.pow(EDGE_ZOOM_STEP, bucket));
+            }
+        }
         const hw = cam.width / (2 * z), hh = cam.height / (2 * z);
         for (const t of this.tiles) {
-            t.g.visible = !(t.maxX < cam.x - hw || t.minX > cam.x + hw || t.maxY < cam.y - hh || t.minY > cam.y + hh);
-            t.g.alpha = smooth;
+            const vis = !(t.maxX < cam.x - hw || t.minX > cam.x + hw || t.maxY < cam.y - hh || t.minY > cam.y + hh);
+            if (t.g !== null) {
+                t.g.visible = vis;
+                t.g.alpha = smooth;
+            }
+            if (t.eg !== null) {
+                t.eg.visible = vis;
+                t.eg.alpha = smooth;
+            }
         }
         const namesOn = getSettings().influenceBorderNames;
         for (const n of this.names) {

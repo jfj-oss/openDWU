@@ -11,8 +11,8 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
   most) so they don't swamp it. With the new borders off they stay the classic thin 1 px dashed lines, now antialiased with
   no stair-stepping on near-vertical links.
 - **Shared border edges:** with influence borders on, where two empires' regions touch, each side gets a darker edge of its
-  own colour. Game Options -> Advanced Display -> Map Display -> Shared border edges: Both darker / Darker only (only the
-  darker empire's edge) / Off.
+  own colour: thin continuous bands (about 3 screen px) that sit side by side on the shared line. Game Options ->
+  Advanced Display -> Map Display -> Shared border edges: Both darker / Darker only (only the darker empire's edge) / Off.
 - **Galaxy nebula clouds:** the galaxy map draws its nebula clouds from the original nebula art again. On the Original
   backdrop they have the original's lighter grey patches; on Deep they show as faint smoke. Switching backdrop mid-game
   updates them.
