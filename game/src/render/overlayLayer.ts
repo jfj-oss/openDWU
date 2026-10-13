@@ -145,6 +145,8 @@ export function threatMarker(site: KnownThreatSite, z: number): { kind: 'ring' |
  * `System.Drawing.Color.FromArgb(255, 255, 255, 0)`), reused by
  * method_206/207/208/209 for these overlay markers. */
 export const OVERLAY_MARKER_COLOR = 0xffff00;
+/** Scenario map beacon (treasure fleet ring and flag): a dark blue, drawn faint. */
+const BEACON_BLUE = 0x1a3a7a;
 
 /** Drawn on-screen size of a habitat at the current zoom, matching
  * MainView.ts's own per-category size functions (duplicated here rather
@@ -1003,11 +1005,14 @@ export class OverlayLayer {
             return;
         }
         g.clear();
+        // The treasure fleet beacon (the only scenario marker so far): a small dark-blue ring, thin, with three faint
+        // rings outside it that fall off softly. Circles are screen-res tessellated, so the edge stays smooth at any zoom.
         for (const m of this.scenarioMarkerList) {
-            const r = 12 / z;
-            circleAtScreenRes(g, m.x, m.y, r, z).stroke({ width: 2 / z, color: m.color, alpha: 1 });
-            circleAtScreenRes(g, m.x, m.y, r + 5 / z, z).stroke({ width: 1 / z, color: m.color, alpha: 0.5 });
-            g.moveTo(m.x, m.y - r).lineTo(m.x, m.y - r - 14 / z).lineTo(m.x + 9 / z, m.y - r - 10 / z).lineTo(m.x, m.y - r - 6 / z).stroke({ width: 2 / z, color: m.color, alpha: 1 });
+            const r = 8 / z;
+            circleAtScreenRes(g, m.x, m.y, r, z).stroke({ width: 1 / z, color: BEACON_BLUE, alpha: 0.55 });
+            circleAtScreenRes(g, m.x, m.y, r + 2 / z, z).stroke({ width: 1 / z, color: BEACON_BLUE, alpha: 0.2 });
+            circleAtScreenRes(g, m.x, m.y, r + 4 / z, z).stroke({ width: 1 / z, color: BEACON_BLUE, alpha: 0.1 });
+            g.moveTo(m.x, m.y - r).lineTo(m.x, m.y - r - 10 / z).lineTo(m.x + 7 / z, m.y - r - 7 / z).lineTo(m.x, m.y - r - 4 / z).stroke({ width: 1 / z, color: BEACON_BLUE, alpha: 0.55 });
         }
         g.visible = true;
     }
