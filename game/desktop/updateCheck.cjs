@@ -1,5 +1,5 @@
 // Update check for the desktop app: the pure parts (no Electron imports, unit-tested in test/desktopShell.test.ts).
-// desktop/main.cjs asks the GitHub Releases API for the latest published release at most once a day and, when it is
+// desktop/main.cjs asks the GitHub Releases API for the latest published release on every launch and, when it is
 // newer than the running version, offers to download the installer for this platform in the browser. There is no
 // silent self-update: the apps are not code-signed, and Squirrel.Mac refuses to install unsigned updates, so every
 // platform gets the same "new version: Download / Later / Skip" prompt.

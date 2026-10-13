@@ -4,6 +4,8 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **Update check on every launch:** the desktop app now asks GitHub for a newer release each time it opens (it was at
+  most once a day). "Skip This Version" and the checkForUpdates switch in config.json still apply.
 - **Add-on picker:** the new threats, Privateers, Characters, Diet & Victory, the Voidbloom War, Slavery and War Crimes
   are now Recommended; the Work in progress section is folded until you open it (or one of its add-ons is ticked).
 - **The local model layer brings in war goals:** switching on the Local LLM Layer now also switches on Lively Galaxy's War goals & peace terms (the peace talks need them) and nothing else of Lively Galaxy unless you tick it; in the add-on settings that option shows as required.

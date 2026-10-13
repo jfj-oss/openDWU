@@ -58,8 +58,8 @@ Nothing from the original game ships with the app.
   (the game never sees that key). Changing the folder reloads the game.
 - Update check (`desktop/updateCheck.cjs`): packaged apps ask the GitHub
   Releases API (`/repos/<repo>/releases/latest`; `<repo>` from the packaged
-  `package.json`, i.e. the repository the release was built in) at most once
-  a day, 8 s after the game window shows. If that release is newer than the
+  `package.json`, i.e. the repository the release was built in) on every
+  launch, 8 s after the game window shows. If that release is newer than the
   running version (semver), a dialog offers **Download** (opens this
   platform's installer from the release in the browser: the `.dmg`, the
   AppImage when running from one, else the `.tar.gz`, the setup `.exe` when
@@ -69,7 +69,7 @@ Nothing from the original game ships with the app.
   self-update: the apps are unsigned, and Squirrel.Mac (Electron's macOS
   updater) refuses unsigned updates, so every platform gets the same prompt.
   `config.json` keeps `lastUpdateCheck` and `skippedVersion`;
-  `"checkForUpdates": false` turns the daily check off, as does
+  `"checkForUpdates": false` turns the launch check off, as does
   `DWU_UPDATE_CHECK=0`; `DWU_UPDATE_URL` points the check at another API URL
   (tests). Unpackaged runs never check on their own.
 - Window: 1600×900 (min 1280×720), title "Distant Worlds: Universe", black
@@ -190,7 +190,7 @@ colour-profile art byte-compared against `colorProfile.cjs` → the runtime
 with an empty `$HOME` (refuses a wrong folder, accepts the install's parent
 folder, saves it, opens the game; the next launch remembers it), and the
 update check against a local fake GitHub API (offers this platform's download,
-records the check, does not ask again within a day). It fails on page/console
+records the check, asks again on the next launch). It fails on page/console
 errors and on any `/assets/dwu/` request that does not go through `dwu://` or
 fails; 404s for optional files the install lacks (e.g.
 `designTemplates/<race>/pirate/planetdestroyer.txt`) are listed but tolerated.

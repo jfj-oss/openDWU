@@ -31,8 +31,8 @@
 //     the game, accepts the install's parent folder (finding the game inside), saves it to config.json and opens the
 //     game; the next launch goes straight to the game;
 //   - the update check against a local fake of the GitHub Releases API (DWU_UPDATE_URL) with a newer release: the
-//     offer names this platform's download, the check time is saved, and a second launch within a day does not ask
-//     GitHub again (the dialog itself is native and is not clicked).
+//     offer names this platform's download, the check time is saved, and a second launch asks
+//     GitHub again (every launch checks) (the dialog itself is native and is not clicked).
 // saving 1920x1080 captures to shots/pkg-*.png. Every request whose URL has
 // /assets/dwu/ must go through dwu:// and succeed; console errors, page errors
 // and failed/4xx requests fail the check (exit 1) — except 404s for files the
@@ -616,7 +616,7 @@ async function checkPackaged(results) {
         if (!args['skip-setup']) await checkSetupFlow(results, rec, common, tmpRoot);
 
         // 3. The update check: a fake GitHub API with a newer release; the offer names this platform's download; the
-        //    next launch within a day does not ask again.
+        //    next launch asks again (every launch checks).
         if (!args['skip-update']) await checkUpdateFlow(results, rec, common, tmpRoot);
     } finally {
         await stop(kwin, 'kwin_wayland');
@@ -719,10 +719,10 @@ async function checkUpdateFlow(results, rec, common, tmpRoot) {
         const before = requests.length;
         h = await launchApp({ ...common, userDataDir, env, cdp: false });
         try {
-            await waitFor(() => /\[update\] checked less than a day ago/.test(h.log()), 60000, 'the throttled check');
-            rec('a second launch within a day does not query GitHub again', requests.length === before, `${requests.length - before} new request(s)`);
+            await waitFor(() => requests.length > before, 60000, 'the second launch check');
+            rec('a second launch checks GitHub again', requests.length > before, `${requests.length - before} new request(s)`);
         } catch (err) {
-            rec('a second launch within a day does not query GitHub again', false, `${err.message}\n${h.log().slice(-1500)}`);
+            rec('a second launch checks GitHub again', false, `${err.message}\n${h.log().slice(-1500)}`);
         } finally {
             await h.stop();
         }

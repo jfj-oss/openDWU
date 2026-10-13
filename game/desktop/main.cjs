@@ -14,7 +14,7 @@
 //
 // Also here: finding the install (installDir.cjs) or asking for it in the
 // setup window (setup.html), the menu (game folder, update check), the
-// daily update check against GitHub Releases (updateCheck.cjs), and the
+// update check on every launch against GitHub Releases (updateCheck.cjs), and the
 // game's sim process: a hidden window running the sim worker in a renderer
 // process of its own (simProcess.cjs, simPreload.cjs, sim.html).
 //
@@ -491,13 +491,8 @@ let updateCheckRunning = false;
 /** Check GitHub for a newer release. manual: from the menu (always runs, reports "up to date" and errors). */
 async function checkForUpdates({ manual }) {
     if (updateCheckRunning) return;
-    if (!manual) {
-        if (!updateChecksEnabled()) return;
-        if (!updates.isCheckDue(readConfig().lastUpdateCheck, Date.now())) {
-            console.log('[update] checked less than a day ago; skipping');
-            return;
-        }
-    }
+    // Automatic checks run on every launch (no once-a-day throttle).
+    if (!manual && !updateChecksEnabled()) return;
     updateCheckRunning = true;
     const apiUrl = process.env.DWU_UPDATE_URL || updates.latestReleaseApiUrl(UPDATE_REPO);
     try {
@@ -734,7 +729,7 @@ function createWindow() {
 
     win.once('ready-to-show', () => {
         win.show();
-        // The daily update check, once the game is up (and off the startup path).
+        // The update check on every launch, once the game is up (and off the startup path).
         setTimeout(() => checkForUpdates({ manual: false }), 8000);
     });
 

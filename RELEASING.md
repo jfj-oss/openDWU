@@ -13,7 +13,7 @@ ordinary pushes.
 | `openDWU-<v>-windows-x64.zip` | Windows x64, portable |
 
 Each comes with a `.sha256` file. The installed apps check this repository's
-latest release once a day and offer the new download.
+latest release every time it opens and offer the new download.
 
 ## Making a release
 
