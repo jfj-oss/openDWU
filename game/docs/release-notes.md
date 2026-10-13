@@ -4,6 +4,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **War objectives scale with galaxy size:** an empire at war now looks for enemy colonies and bases to capture within a range that grows with the galaxy (the original's fixed 1.5 and 1.0 sectors, multiplied by sectors across / 15 in galaxies larger than the biggest stock size). Stock-size galaxies are unchanged, and huge ones no longer leave distant empires with nothing to attack.
 - **Potential Colonies shows future sites:** the Galaxy Map's Potential Colonies view and the map overlay now also show habitable planets you cannot colonise yet. They are drawn in blue (a dashed ring on the map), say which colonisation technology they need, and help you plan your research. Yellow still means colonisable now; colony ship targeting is unchanged.
 - **Colony link lines:** the lines joining an empire's systems on the galaxy map. With the new influence borders on they are
   thick, pale, slightly faded dashes with rounded ends, 5 px wide on screen, static (the travelling pulses are gone), and

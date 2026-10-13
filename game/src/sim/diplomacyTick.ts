@@ -1369,10 +1369,21 @@ function identifyDisputedBasesOf(galaxy: Galaxy, self: Empire, otherEmpire: Empi
     return builtObjectList;
 }
 
+/**
+ * openDWU only, not in the original: the war-objective ranges (1.5 sectors for enemy colonies, 1.0 for enemy bases,
+ * Empire.9.cs 3581 / 3619) grow with the galaxy. Sectors are a fixed size, so in a 40x40 galaxy a distant empire would
+ * never name a target. REF_SECTORS = 15, the largest galaxy the original's own size options make (sectorsFor 4..15,
+ * the Galaxy ctor clamp); up to that the multiplier is exactly 1 and the C# ranges are unchanged.
+ */
+const WAR_OBJECTIVE_REF_SECTORS = 15;
+export function warObjectiveRangeMultiplier(galaxy: Galaxy): number {
+    return Math.max(1, Math.max(galaxy.sectorWidth, galaxy.sectorHeight) / WAR_OBJECTIVE_REF_SECTORS);
+}
+
 /** Empire.9.cs 3578 IdentifyDesiredForeignColonies(empire, proximityValueThreshold). */
 function identifyDesiredForeignColoniesOf(galaxy: Galaxy, self: Empire, empire: Empire, proximityValueThreshold: number): HabitatPrioritization[] {
     const list: HabitatPrioritization[] = [];
-    const num = 1.5;
+    const num = 1.5 * warObjectiveRangeMultiplier(galaxy);
     const num2 = SECTOR_SIZE * num * (SECTOR_SIZE * num);
     for (let i = 0; i < empire.colonies.length; i++) {
         const habitat = empire.colonies[i];
@@ -1392,7 +1403,7 @@ function identifyDesiredForeignColoniesOf(galaxy: Galaxy, self: Empire, empire: 
 
 /** Empire.9.cs 3616 IdentifyDesiredForeignBases(empire, proximityValueThreshold). */
 function identifyDesiredForeignBasesOf(galaxy: Galaxy, self: Empire, empire: Empire, proximityValueThreshold: number): BuiltObject[] {
-    const num = 1.0;
+    const num = 1.0 * warObjectiveRangeMultiplier(galaxy);
     const num2 = SECTOR_SIZE * num * (SECTOR_SIZE * num);
     const builtObjectList2: BuiltObject[] = [];
     const pairs: { k: number; v: BuiltObject }[] = [];
