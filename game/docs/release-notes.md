@@ -4,6 +4,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **Potential Colonies shows future sites:** the Galaxy Map's Potential Colonies view and the map overlay now also show habitable planets you cannot colonise yet. They are drawn in blue (a dashed ring on the map), say which colonisation technology they need, and help you plan your research. Yellow still means colonisable now; colony ship targeting is unchanged.
 - **Colony link lines:** the lines joining an empire's systems on the galaxy map. With the new influence borders on they are
   thick, pale, slightly faded dashes with rounded ends, 5 px wide on screen, static (the travelling pulses are gone), and
   they keep their screen size while you zoom in; zoomed far out past the galaxy scale they shrink with the map (to 30% at

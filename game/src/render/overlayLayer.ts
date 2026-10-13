@@ -145,6 +145,8 @@ export function threatMarker(site: KnownThreatSite, z: number): { kind: 'ring' |
  * `System.Drawing.Color.FromArgb(255, 255, 255, 0)`), reused by
  * method_206/207/208/209 for these overlay markers. */
 export const OVERLAY_MARKER_COLOR = 0xffff00;
+/** Potential Colonies that still need a colonisation tech: a dim blue, dashed ring. */
+export const FUTURE_MARKER_COLOR = 0x6fa8ff;
 /** Scenario map beacon (treasure fleet ring and flag): a dark purple, fading outward. */
 const BEACON_PURPLE = 0x5b2a8c;
 
@@ -162,15 +164,28 @@ function drawnPx(h: Habitat, z: number): number {
  * comment above: unowned (or independent-owned) + system explored + a
  * colonizable habitat type for the player race + quality >= 0.5. */
 export function isPotentialColony(h: Habitat, galaxy: Galaxy, colonizable?: readonly HabitatType[]): boolean {
+    return potentialColonyKind(h, galaxy, colonizable) === 'now';
+}
+
+/** The colonisation tech that unlocks habitat type `type` for `empire` (the lowest-level project), or null. Read-only. */
+export function colonyTechNameFor(empire: Empire, type: HabitatType): string | null {
+    const rs = empire.research;
+    return rs.getLowestProjectForColonization(rs.techTree, type)?.def.name ?? null;
+}
+
+/** UI only: 'now' = colonisable today (isPotentialColony); 'future' = same test but the empire lacks the colonisation
+ * tech for the habitat type (one exists to research); null = not a potential colony. Read-only. */
+export function potentialColonyKind(h: Habitat, galaxy: Galaxy, colonizable?: readonly HabitatType[]): 'now' | 'future' | null {
     const empire = localViewerEmpire(galaxy);
-    if (empire === null) return false;
-    if (h.category !== HabitatCategoryType.Planet && h.category !== HabitatCategoryType.Moon) return false;
+    if (empire === null) return null;
+    if (h.category !== HabitatCategoryType.Planet && h.category !== HabitatCategoryType.Moon) return null;
     const owner = h.owner ?? h.empire;
-    if (owner !== null && owner !== undefined && owner !== galaxy.independentEmpire) return false;
-    if (!empire.visibility.checkSystemExplored(h.systemIndex)) return false;
+    if (owner !== null && owner !== undefined && owner !== galaxy.independentEmpire) return null;
+    if (!empire.visibility.checkSystemExplored(h.systemIndex)) return null;
+    if (h.quality < 0.5) return null;
     // `colonizable`: ColonizableHabitatTypesForEmpire computed once for a whole pass.
-    if (!(colonizable ?? empire.colonizableHabitatTypesForEmpire()).includes(h.type)) return false;
-    return h.quality >= 0.5;
+    if ((colonizable ?? empire.colonizableHabitatTypesForEmpire()).includes(h.type)) return 'now';
+    return colonyTechNameFor(empire, h.type) !== null ? 'future' : null;
 }
 
 /** Port of Galaxy.1.cs DetermineSystemInfo's `hasScenery` per-habitat test
@@ -574,6 +589,9 @@ export class OverlayLayer {
     /** World-space layer: marker rings live above everything else. */
     root = new Container();
     private potentialColonies: MarkerRing[] = [];
+    /** Potential colonies that need a colonisation tech the player lacks (drawn dim and dashed). */
+    private futureColonies: MarkerRing[] = [];
+    private futureTechSig = 0;
     private scenicLocations: MarkerRing[] = [];
     private researchLocations: MarkerRing[] = [];
     private unsubscribe: () => void;
@@ -733,16 +751,21 @@ export class OverlayLayer {
         const reveal = fogOf(galaxy).reveal;
         const explored = (h: Habitat): boolean => player === null || reveal || player.visibility.checkSystemExplored(h.systemIndex);
         const colonizable = player !== null ? player.colonizableHabitatTypesForEmpire() : [];
+        this.futureTechSig = player !== null ? colonizable.length : 0;
         const pc: Habitat[] = [];
+        const fc: Habitat[] = [];
         const sc: Habitat[] = [];
         const rs: Habitat[] = [];
         for (const h of galaxy.habitats) {
             if (h.category !== HabitatCategoryType.Planet && h.category !== HabitatCategoryType.Moon && h.category !== HabitatCategoryType.Star) continue;
-            if (isPotentialColony(h, galaxy, colonizable)) pc.push(h);
+            const kind = potentialColonyKind(h, galaxy, colonizable);
+            if (kind === 'now') pc.push(h);
+            else if (kind === 'future') fc.push(h);
             if (isScenicLocation(h) && explored(h)) sc.push(h);
             if (isResearchLocation(h) && explored(h)) rs.push(h);
         }
         this.potentialColonies = this.syncMarkers(this.potentialColonies, pc);
+        this.futureColonies = this.syncMarkers(this.futureColonies, fc);
         this.scenicLocations = this.syncMarkers(this.scenicLocations, sc);
         this.researchLocations = this.syncMarkers(this.researchLocations, rs);
     }
@@ -769,7 +792,7 @@ export class OverlayLayer {
         if (this.markersFrame++ % 30 !== 0) return;
         const player = localViewerEmpire(this.galaxy);
         if (player === null) return;
-        if (colonyTargetSignature(this.galaxy, player) !== this.markersSig) this.rebuildMarkers();
+        if (colonyTargetSignature(this.galaxy, player) !== this.markersSig || player.colonizableHabitatTypesForEmpire().length !== this.futureTechSig) this.rebuildMarkers();
     }
 
     /** Hover text of an Improvements overlay mark under world (wx, wy) (nothing picked there), or null. */
@@ -783,6 +806,9 @@ export class OverlayLayer {
         const c = this.colonyScores.habitatTooltipExtra(h);
         if (c !== null) lines.push(c);
         const player = localViewerEmpire(this.galaxy);
+        if (this.state.potentialColonies && player !== null && this.futureColonies.some((m) => m.habitat === h)) {
+            lines.push(`Future colony site (quality ${Math.round(h.quality * 100)}%)\nNeeds: ${colonyTechNameFor(player, h.type) ?? 'a colonization technology'}`);
+        }
         if (this.resources.root.visible && player !== null) {
             const index = knownResourceIndexFor(this.galaxy, player, fogOf(this.galaxy).reveal);
             const sys = index.bySystem.get(h.systemIndex);
@@ -801,7 +827,7 @@ export class OverlayLayer {
         this.empireLayer.setTerritoryEnabled(this.state.empireTerritory);
     }
 
-    private updateGroup(markers: MarkerRing[], enabled: boolean, z: number, cam: Camera, skip: ReadonlyMap<Habitat, unknown> | null = null): void {
+    private updateGroup(markers: MarkerRing[], enabled: boolean, z: number, cam: Camera, skip: ReadonlyMap<Habitat, unknown> | null = null, future = false): void {
         for (const m of markers) {
             if (!enabled) {
                 m.graphics.visible = false;
@@ -831,7 +857,17 @@ export class OverlayLayer {
             // Geometry around (0, 0), rebuilt only on a radius / width change; moved to the body each frame.
             if (m.key.changed(r, 4 / z)) {
                 m.graphics.clear();
-                circleAtScreenRes(m.graphics, 0, 0, r, z).stroke({ width: 4 / z, color: OVERLAY_MARKER_COLOR, alpha: 1 });
+                if (future) {
+                    // Future (tech not yet researched): a dim blue dashed ring.
+                    const n = 24;
+                    for (let i = 0; i < n; i += 2) {
+                        const a0 = (i / n) * Math.PI * 2;
+                        const a1 = ((i + 1) / n) * Math.PI * 2;
+                        m.graphics.moveTo(r * Math.cos(a0), r * Math.sin(a0));
+                        m.graphics.arc(0, 0, r, a0, a1);
+                    }
+                    m.graphics.stroke({ width: 3 / z, color: FUTURE_MARKER_COLOR, alpha: 0.7 });
+                } else circleAtScreenRes(m.graphics, 0, 0, r, z).stroke({ width: 4 / z, color: OVERLAY_MARKER_COLOR, alpha: 1 });
             }
             m.graphics.position.set(hx, hy);
             m.graphics.visible = true;
@@ -855,6 +891,7 @@ export class OverlayLayer {
         this.runOverlay('Fuel Range', FUEL_KEYS, () => this.fuel.update(z, cam));
         // [dw2overlays] end
         this.updateGroup(this.potentialColonies, atSystemZoom && this.state.potentialColonies, z, cam, this.colonyScores.active?.byHabitat ?? null);
+        this.updateGroup(this.futureColonies, atSystemZoom && this.state.potentialColonies, z, cam, this.colonyScores.active?.byHabitat ?? null, true);
         this.updateGroup(this.scenicLocations, atSystemZoom && this.state.scenicLocations, z, cam);
         this.updateGroup(this.researchLocations, atSystemZoom && this.state.researchLocations, z, cam);
         const f = 1 / z;

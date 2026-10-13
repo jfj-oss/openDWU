@@ -23,6 +23,7 @@ import { DiplomaticRelationType } from '../../sim/diplomacy';
 import { GalaxyLocationType } from '../../sim/galaxyLocation';
 import { HabitatCategoryType, HabitatType, type Habitat } from '../../sim/types';
 import { fogOf } from '../../render/fog';
+import { potentialColonyKind, colonyTechNameFor } from '../../render/overlayLayer';
 import { drawGalaxyMapLayers } from './galaxyMapLayers';
 import { landscapeImageUrl } from '../landscapeImages';
 import { SystemVisibilityStatus } from '../../sim/visibility';
@@ -59,6 +60,8 @@ export const CROSSHAIR_COLOR = 'rgb(96, 96, 255)';
 // GalaxyMap.cs method_6: unselected systems while a filter/selection is active.
 export const DIMMED_COLOR = 'rgb(80, 80, 80)';
 export const SELECTED_COLOR = 'rgb(255, 255, 0)'; // Color.Yellow
+/** Potential Colonies view: systems whose sites all need a colonisation tech the player lacks. */
+export const FUTURE_COLOR = 'rgb(111, 168, 255)';
 
 // Port of GalaxyMap.cs method_4 with the brushes from Main.Part13.cs 249-256.
 export function starBrushColor(h: Habitat): string | null {
@@ -209,6 +212,8 @@ export interface GalaxyMapPlayer {
     colonies(): readonly Habitat[];
     // C#: IdentifyColonizationTargets(galaxy, false, 0, 500) habitats, in order.
     colonizationTargets(): readonly Habitat[];
+    // UI only: the colonisation tech a listed target still needs (null = colonisable now / not applicable).
+    colonyTechNeeded?(h: Habitat): string | null;
     // C#: colonies of empires at War with the player.
     enemyColonies(): readonly Habitat[];
     // C#: PlayerEmpire.KnownPirateBases[i].ParentHabitat.
@@ -232,8 +237,21 @@ export function empireGalaxyMapPlayer(empire: Empire): GalaxyMapPlayer {
         systemExplored: (i) => i >= 0 && i < empire.visibility.systemVisibility.length && empire.visibility.checkSystemExplored(i),
         resourcesKnown: (h) => empire.resourceMap.checkResourcesKnown(h),
         colonies: () => empire.colonies,
-        // TODO(port): Empire.IdentifyColonizationTargets(galaxy, false, 0, 500) — not in sim.
-        colonizationTargets: () => [],
+        // UI only (read-only): every explored, unowned, quality >= 0.5 planet or moon the empire could colonise now or once
+        // it has the colonisation tech for its type (the sim's IdentifyColonizationTargets list is not in the UI).
+        colonizationTargets: () => {
+            const galaxy = empire.galaxy;
+            const colonizable = empire.colonizableHabitatTypesForEmpire();
+            const now: Habitat[] = [];
+            const later: Habitat[] = [];
+            for (const h of galaxy.habitats) {
+                const kind = potentialColonyKind(h, galaxy, colonizable);
+                if (kind === 'now') now.push(h);
+                else if (kind === 'future') later.push(h);
+            }
+            return [...now, ...later];
+        },
+        colonyTechNeeded: (h) => (empire.colonizableHabitatTypesForEmpire().includes(h.type) ? null : colonyTechNameFor(empire, h.type)),
         enemyColonies: (): readonly Habitat[] => {
             const out: Habitat[] = [];
             for (const rel of empire.diplomaticRelations) {
@@ -260,6 +278,8 @@ export interface ViewModeSelection {
     systems: Habitat[] | null;
     /** C# habitatList_2: the individual habitats (for the side list). */
     habitats: Habitat[] | null;
+    /** Potential Colonies: the systems in `systems` whose listed sites all still need a colonisation tech. */
+    futureSystems?: Set<Habitat>;
 }
 
 // Port of Main.Part9.cs cmbGalaxyMapViewMode_SelectedValueChanged (3663).
@@ -284,13 +304,18 @@ export function computeViewModeSelection(
             return { systems, habitats: [...player.colonies()] };
         case GalaxyMapViewMode.PotentialColonies: {
             const t = opts.habitatType ?? HabitatType.Undefined;
+            const nowStars = new Set<Habitat>();
             for (const h of player.colonizationTargets()) {
                 if (t === HabitatType.Undefined || t === h.type) {
                     habitats.push(h);
                     addStar(h);
+                    if (player.colonyTechNeeded?.(h) == null) {
+                        const star = galaxy.determineHabitatSystemStar(h);
+                        if (star !== null) nowStars.add(star);
+                    }
                 }
             }
-            return { systems, habitats };
+            return { systems, habitats, futureSystems: new Set(systems.filter((st) => !nowStars.has(st))) };
         }
         case GalaxyMapViewMode.KnownResources: {
             const id = opts.resourceId;
@@ -660,8 +685,17 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
     // The match list (the recreation's lvwHabitats): its own column to the right of the picture column.
     const listPanel = place(gradientPanel({ corners: { tr: true, br: true }, className: 'gmap-list-panel' }), 930, 40, LIST_W - 10, MAP_PX);
     const listHead = place(owText('', { color: COLORS.label }), 935, 10);
+    const legend = place(owText('Yellow: colonisable now. Blue: needs tech.', { size: FONT.tiny, color: FUTURE_COLOR }), 935, 25);
     const listGrid = new OwGrid<Habitat>({
-        columns: [{ id: 'name', header: 'Name', render: (h, c) => { c.textContent = h.name; } }],
+        columns: [{
+            id: 'name',
+            header: 'Name',
+            render: (h, c) => {
+                const need = mode === GalaxyMapViewMode.PotentialColonies ? player.colonyTechNeeded?.(h) ?? null : null;
+                c.textContent = need === null ? h.name : `${h.name} - needs ${need}`;
+                if (need !== null) c.style.color = FUTURE_COLOR;
+            },
+        }],
         key: (h) => h,
         headers: false,
         fontSize: FONT.small,
@@ -674,7 +708,7 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
 
     /** Fill the opened window's body / header with the screen's controls. */
     const mount = (w: OriginalWindow): void => {
-        w.body.append(mapWrap, viewLabel, viewSel, typeSel, resSel, keyBtn, gotoBtn, backBtn, fwdBtn, sysCanvas, info, landscape, listHead, listPanel);
+        w.body.append(mapWrap, viewLabel, viewSel, typeSel, resSel, keyBtn, gotoBtn, backBtn, fwdBtn, sysCanvas, info, landscape, listHead, legend, listPanel);
         w.header?.append(nebulaToggle, regionToggle);
     };
 
@@ -683,6 +717,7 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
     const updateFilterVisibility = (): void => {
         setShown(typeSel, mode === GalaxyMapViewMode.PotentialColonies);
         setShown(resSel, mode === GalaxyMapViewMode.KnownResources);
+        setShown(legend, mode === GalaxyMapViewMode.PotentialColonies);
     };
 
     const recompute = (): void => {
@@ -691,6 +726,13 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
         renderList();
         draw();
         drawSystemMap();
+    };
+
+    /** Potential Colonies view: the tech a future colony site still needs. */
+    const techNote = (h: Habitat): string | null => {
+        if (mode !== GalaxyMapViewMode.PotentialColonies || selection.habitats === null || !selection.habitats.includes(h)) return null;
+        const t = player.colonyTechNeeded?.(h) ?? null;
+        return t === null ? null : `Needs: ${t}`;
     };
 
     const renderInfo = (): void => {
@@ -707,9 +749,13 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
             const box = el('div', 'sel-content-box gmap-habitat-info');
             info.appendChild(box);
             opts.renderHabitatInfo(box, h);
+            const note = techNote(h);
+            if (note !== null) info.append(el('div', 'gmap-muted', note));
             return;
         }
         info.append(el('div', 'gmap-sel-name', h.name));
+        const note = techNote(h);
+        if (note !== null) info.append(el('div', 'gmap-muted', note));
         const sx = Math.trunc(h.xpos / galaxy.sectorSize);
         const sy = Math.trunc(h.ypos / galaxy.sectorSize);
         if (h !== sys) {
@@ -752,7 +798,8 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
             listGrid.setRows([]);
             return;
         }
-        setText(listHead, `${hs.length} ${hs.length === 1 ? 'match' : 'matches'} in ${countLabel(selection.systems?.length ?? 0, 'system')}`);
+        const later = mode === GalaxyMapViewMode.PotentialColonies ? hs.filter((x) => player.colonyTechNeeded?.(x) != null).length : 0;
+        setText(listHead, `${hs.length} ${hs.length === 1 ? 'match' : 'matches'} in ${countLabel(selection.systems?.length ?? 0, 'system')}` + (later > 0 ? ` (${later} need tech)` : ''));
         listGrid.setRows(hs.slice(0, 200));
     };
 
@@ -854,7 +901,7 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
             if (filterSet !== null) {
                 color = DIMMED_COLOR;
                 if (filterSet.has(h)) {
-                    color = SELECTED_COLOR;
+                    color = selection.futureSystems?.has(h) ? FUTURE_COLOR : SELECTED_COLOR;
                     size = sizes.selected;
                 }
             }
