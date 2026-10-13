@@ -53,6 +53,7 @@ import { ResourceGroup, resourceGroupOf } from '../resourceSystem';
 import { PlanetaryFacilityType, WonderType, facilityType } from '../researchSystem';
 import { generateNewTroop } from '../builtObjectPlacement';
 import { identifyStrongestRaceAttackTroop } from '../troops';
+import { checkDesignResourcesAtConstructionYard } from './designEditor';
 import { canBuildDesign, findNewestCanBuild, getBuildableDesignsBySubRoles, findNewestCanBuildFullEvaluate, resolveSubRoleDescription, checkDesignWithinConstructionSize, canBuildDesignTech } from '../designGeneration';
 import { findNewestIncludingObsolete, getDesignsBySubRoles } from '../design';
 import { checkRuinsHaveBenefit, canEmpireColonizeHabitat, canEmpireColonizeHabitatRange } from '../exploration';
@@ -2379,6 +2380,8 @@ export interface SelectionButton {
     style: SelectionButtonStyle;
     /** Build buttons: ships of this sub-role under construction at the yard (the yellow number). */
     count: number;
+    /** Build buttons: the yard lacks resources the design needs (the exclamation.png overlay; the hint says which). */
+    warning?: boolean;
 }
 
 /** Main.Part3.cs 1949 method_591(missingTech, sizeTooBig): " (CANNOT BUILD - Missing Tech / Size too big)". */
@@ -3537,6 +3540,7 @@ export function selectionButton(ctx: SelectionContext, action: ShipAction | null
     if (action === null) return out;
     let tag: ShipAction | null = action;
     let style: SelectionButtonStyle = '';
+    let hintOverride: string | null = null;
     if (action.actionType !== ShipActionType.Undefined) {
         switch (action.actionType) {
             case ShipActionType.RecruitTroops:
@@ -3603,13 +3607,22 @@ export function selectionButton(ctx: SelectionContext, action: ShipAction | null
             case BuiltObjectMissionType.Build:
                 if (action.design !== null) {
                     const sel = ctx.selected;
+                    // Main.Part3.cs 1478-1535: `flag` = the yard is a BuiltObject, or a Habitat with a queue of the player's own.
+                    let flag = false;
                     if (isBuiltObject(sel) || isHabitat(sel)) {
                         const q = sel.constructionQueue as { countUnderConstruction?: (subRole: BuiltObjectSubRole) => number } | null;
                         if (q !== null && typeof q.countUnderConstruction === 'function') out.count = q.countUnderConstruction(action.design.subRole);
+                        flag = isBuiltObject(sel) || (q !== null && sel.owner === ctx.empire);
                     }
-                    // TODO(port): Empire.CheckDesignResourcesAtConstructionYard (Empire.1.cs 3374) — the button's
-                    // " (RESOURCE SHORTAGE: …)" hint suffix and warning overlay; ResolveResourcesFromComponents + cargo
-                    // availability are not ported to src/sim yet.
+                    if (flag && (isBuiltObject(sel) || isHabitat(sel))) {
+                        // Empire.CheckDesignResourcesAtConstructionYard: a short yard gets the exclamation overlay and a hint suffix.
+                        const check = checkDesignResourcesAtConstructionYard(ctx.empire, action.design, sel);
+                        if (!check.ok) {
+                            out.warning = true;
+                            const names = check.deficientResources.map((r) => ctx.galaxy.resourceSystem.resources[r.resourceId]?.name ?? '').join(', ');
+                            hintOverride = (action.hint ?? '') + ' (' + upper(T('Resource shortage')) + ': ' + names + ')';
+                        }
+                    }
                     style = 'build';
                 } else if (isBuiltObject(action.target) && action.target.damagedComponentCount > 0 && action.target.empire === ctx.empire) {
                     // the repair button
@@ -3628,7 +3641,7 @@ export function selectionButton(ctx: SelectionContext, action: ShipAction | null
     // `glassButton.Enabled = shipAction.Enabled` (a cleared Tag makes the click a no-op).
     out.enabled = tag !== null && action.enabled;
     out.style = style;
-    out.hint = action.hint !== null && action.hint !== '' ? action.hint : selectionActionHint(ctx, tag);
+    out.hint = hintOverride ?? (action.hint !== null && action.hint !== '' ? action.hint : selectionActionHint(ctx, tag));
     return out;
 }
 

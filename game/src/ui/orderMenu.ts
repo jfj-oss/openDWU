@@ -754,6 +754,48 @@ export function selectionButtonIcon(
     return null;
 }
 
+const warningCache = new Map<string, Promise<string | null>>();
+function loadImage(url: string): Promise<HTMLImageElement | null> {
+    return new Promise((resolve) => {
+        const im = new Image();
+        im.onload = () => resolve(im);
+        im.onerror = () => resolve(null);
+        im.src = url;
+    });
+}
+/** Main.Part2.cs method_653/654: the bitmap (already rotated) with exclamation.png (Main.Part12.cs, scaled to fit the
+ *  bitmap's height) appended on its right, both vertically centred. A data URL, or null while an image is missing. */
+function warningComposite(url: string, rotate: number): Promise<string | null> {
+    const key = `${url}|${rotate}`;
+    let p = warningCache.get(key);
+    if (p === undefined) {
+        p = (async () => {
+            const [ship, ex] = await Promise.all([loadImage(url), loadImage(`${CHROME_DIR}/exclamation.png`)]);
+            if (ship === null || ex === null) return null;
+            const quarter = rotate === 90 || rotate === 270;
+            const sw = quarter ? ship.naturalHeight : ship.naturalWidth;
+            const h = quarter ? ship.naturalWidth : ship.naturalHeight;
+            const scale = Math.min(h / ex.naturalWidth, h / ex.naturalHeight);
+            const ew = Math.max(1, Math.round(ex.naturalWidth * scale));
+            const eh = Math.max(1, Math.round(ex.naturalHeight * scale));
+            const c = document.createElement('canvas');
+            c.width = sw + ew;
+            c.height = h;
+            const g = c.getContext('2d');
+            if (g === null) return null;
+            g.save();
+            g.translate(sw / 2, h / 2);
+            g.rotate((rotate * Math.PI) / 180);
+            g.drawImage(ship, -ship.naturalWidth / 2, -ship.naturalHeight / 2);
+            g.restore();
+            g.drawImage(ex, sw, Math.round((h - eh) / 2), ew, eh);
+            return c.toDataURL();
+        })();
+        warningCache.set(key, p);
+    }
+    return p;
+}
+
 /** One of our own controls with no button in the original (small tweak): listed by the HUD's "More" button beside
  *  the action strip, never in one of the eight original slots. */
 export interface SelectionExtraSlot {
@@ -905,6 +947,12 @@ export function createSelectionActionBar(): HTMLElement {
                 img.alt = '';
                 if (icon.rotate !== 0) img.style.transform = `rotate(${icon.rotate}deg)`;
                 img.draggable = false;
+                if (b.warning === true && b.action?.design) {
+                    // method_653(ship, exclamation.png, height): the warning icon drawn to the right of the ship picture.
+                    void warningComposite(icon.url, icon.rotate).then((u) => {
+                        if (u !== null && img.isConnected) { img.src = u; img.style.transform = ''; }
+                    });
+                }
                 btn.appendChild(img);
             }
             if (b.count > 0) {

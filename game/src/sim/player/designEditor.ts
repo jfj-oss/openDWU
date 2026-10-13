@@ -17,6 +17,7 @@
 // so the running sim never sees a half-edited design. The saved end state is the same object the C# ends with
 // (Empire.Designs[num] stays the same Design instance for Edit / View).
 
+import { ResourceRef, type CargoList } from '../cargo';
 import { Design, BuiltObjectStance, designFighterMix } from '../design';
 import type { Empire } from '../empire';
 import type { Galaxy } from '../galaxy';
@@ -803,6 +804,31 @@ export function resolveResourcesFromComponents(components: readonly ComponentDef
         }
     }
     return list;
+}
+
+/**
+ * Port of Empire.1.cs 3374 CheckDesignResourcesAtConstructionYard(design, constructionYard, out deficientResources):
+ * the resources the design's components need that the yard's cargo (this empire's) does not hold in full (Available <
+ * Quantity, or no cargo entry at all). Read-only. No design, components or yard cargo: nothing is short.
+ */
+export function checkDesignResourcesAtConstructionYard(
+    empire: unknown,
+    design: Design | null,
+    constructionYard: { cargo: CargoList | null } | null,
+): { ok: boolean; deficientResources: { resourceId: number; quantity: number }[] } {
+    const deficientResources: { resourceId: number; quantity: number }[] = [];
+    if (design !== null && design.components !== null && constructionYard !== null && constructionYard.cargo !== null) {
+        const componentResourceList = resolveResourcesFromComponents(design.components);
+        for (const required of componentResourceList) {
+            const index = constructionYard.cargo.indexOf(new ResourceRef(required.resourceId), empire);
+            const cargo = index >= 0 ? constructionYard.cargo.items[index] : null;
+            if (cargo !== null) {
+                if (cargo.available < required.quantity) deficientResources.push(required);
+            } else deficientResources.push(required);
+        }
+        if (deficientResources.length > 0) return { ok: false, deficientResources };
+    }
+    return { ok: true, deficientResources };
 }
 
 const SUPER_WEAPON_TYPES = new Set<ComponentType>([T.WeaponSuperBeam, T.WeaponSuperArea, T.WeaponSuperTorpedo, T.WeaponSuperMissile, T.WeaponSuperPhaser, T.WeaponSuperRailGun]);
