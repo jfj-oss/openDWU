@@ -30,6 +30,7 @@ import {
     scenarioOverlayFor,
     toggleAddon,
     withFlagAddons,
+    forcedFlags,
     EXPANSIONS,
     toggleExpansion,
     expansionRows,
@@ -64,7 +65,7 @@ describe('dependencies derived from include / requires', () => {
         expect(deps('timebomb')).toEqual(['cult:on', 'threat-framework:on']);
         expect(deps('robotmutiny')).toEqual(['darkfarms:data', 'threat-framework:on']);
         for (const t of ['cult', 'darkfarms', 'doppelgangers', 'greytide', 'hive', 'silence', 'exchange', 'ghostarmada', 'corporatecoup']) expect(deps(t)).toEqual(['threat-framework:on']);
-        expect(deps('llm-layer')).toEqual(['event-log:on', 'threat-framework:on']);
+        expect(deps('llm-layer')).toEqual(['event-log:on', 'threat-framework:on', 'lively-galaxy:data']);
         expect(deps('new-fauna')).toEqual(['rim-fauna:on']);
         expect(deps('independents-active')).toEqual(['rim-herders:data']);
         expect(addonCycles(cat)).toEqual([]);
@@ -99,6 +100,22 @@ describe('flag-level add-on dependencies', () => {
         expect(addonChoiceFor(cat, ['llm-layer'], on)!.addons).toContain('reputation');
         expect(addonChoiceFor(cat, ['llm-layer'], none)!.addons).not.toContain('reputation');
         expect(withFlagAddons(cat, [], on)).toEqual([]);
+    });
+});
+
+describe('flag-level requiresFlags (LLM layer forces war goals)', () => {
+    it('data-only Lively Galaxy: only warGoals on; ticked Lively keeps its settings with warGoals forced', () => {
+        const none = { flags: {}, params: {} };
+        const only = resolveAddonSwitches(cat, ['llm-layer'], none).flags;
+        expect(only.warGoals).toBe(true);
+        for (const f of ['ambitionPressure', 'borderFriction', 'smallerInvasions', 'pirateAmbition', 'livingCalendar']) expect(only[f]).toBe(false);
+        const ticked = resolveAddonSwitches(cat, ['llm-layer', 'lively-galaxy'], { flags: { warGoals: false, borderFriction: false }, params: {} }).flags;
+        expect(ticked.warGoals).toBe(true);
+        expect(ticked.ambitionPressure).toBe(true);
+        expect(ticked.borderFriction).toBe(false);
+        const on = addonClosure(cat, ['llm-layer', 'lively-galaxy'], 'on');
+        expect(forcedFlags(cat, ticked, on).get('lively-galaxy')!.get('warGoals')).toEqual(['Local LLM Layer']);
+        expect(resolveAddonSwitches(cat, ['lively-galaxy'], none).flags.warGoals).toBe(false);
     });
 });
 

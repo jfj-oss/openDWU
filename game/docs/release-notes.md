@@ -4,6 +4,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **The local model layer brings in war goals:** switching on the Local LLM Layer now also switches on Lively Galaxy's War goals & peace terms (the peace talks need them) and nothing else of Lively Galaxy unless you tick it; in the add-on settings that option shows as required.
 - **Real diplomatic negotiation (new `llmNegotiation` option of the Local LLM Layer add-on):** a Speak freely box on the Diplomacy screen turns your words into a legal proposal card (trade items, money, and treaties such as free trade or a mutual defence pact, now tradeable as part of a package), the game's own trade code decides, and a refusal comes with up to 3 counter-offers (also on the trade screen, no model needed); between human players your words go with the offer. Off by default.
 - **Local model settings window:** Game Options, Local model... has endpoint presets for Ollama / LM Studio / llama-server, a list of the installed models, a Thinking switch (forced off on OpenAI-compatible servers too) and a Test button.
 - **Rulers' memory turns Reputation on:** switching on the Local LLM Layer's rulers' memory option now also switches on the Reputation add-on and its ledger, which the attitude nudge needs (add-on options can now name the add-ons they need).

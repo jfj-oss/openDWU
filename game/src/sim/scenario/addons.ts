@@ -185,6 +185,8 @@ export const DATA_ONLY_INCLUDES: Readonly<Record<string, readonly string[]>> = {
     'independents-active': ['rim-herders'],
     // "includes darkfarms for the Harvester race the faction wears" (robotMutiny.ts header); the farms stay off.
     robotmutiny: ['darkfarms'],
+    // Loaded only so the war goals (peace talks) can run: llmFoundations requiresFlags forces warGoals on and the rest off.
+    'llm-layer': ['lively-galaxy'],
 };
 
 export interface AddonDependency {
@@ -411,7 +413,34 @@ export function resolveAddonSwitches(cat: AddonCatalog, picked: readonly string[
     }
     for (const [k, v] of Object.entries(overrides.flags)) if (k in flags && !masters.has(k)) flags[k] = v;
     for (const [k, v] of Object.entries(overrides.params)) if (k in params && Number.isFinite(v)) params[k] = v;
+    // Flag-level requiresFlags: an add-on that is only loaded (not on) gets every flag off but the forced ones.
+    const forced = forcedFlags(cat, flags, on);
+    for (const [target, fl] of forced) {
+        if (!onSet.has(target)) for (const f of cat.manifests.get(target)?.flags ?? []) flags[f.name] = false;
+        for (const f of fl.keys()) flags[f] = true;
+    }
     return { flags, params };
+}
+
+/**
+ * Flags forced on by requiresFlags: target add-on id -> (flag -> names of the requiring flags' add-ons). A requirer
+ * counts when its add-on is on and its flag is on in `flags`.
+ */
+export function forcedFlags(cat: AddonCatalog, flags: Readonly<Record<string, boolean>>, on: readonly string[]): Map<string, Map<string, string[]>> {
+    const out = new Map<string, Map<string, string[]>>();
+    for (const id of on) {
+        const m = cat.manifests.get(id);
+        for (const f of m?.flags ?? []) {
+            if (flags[f.name] !== true || f.requiresFlags === undefined) continue;
+            for (const [target, names] of Object.entries(f.requiresFlags)) {
+                if (!cat.byId.has(target)) continue;
+                const t = out.get(target) ?? new Map<string, string[]>();
+                for (const n of names) t.set(n, [...(t.get(n) ?? []), m!.name]);
+                out.set(target, t);
+            }
+        }
+    }
+    return out;
 }
 
 /**

@@ -107,7 +107,7 @@ import { selectColorFromKey } from '../../sim/empireColors';
 import { loadScenarioIndex } from '../../sim/scenario/fetchScenario';
 import type { ScenarioManifest } from '../../sim/scenario/manifest';
 import { IS_CLASSIC } from '../../appVersion';
-import { CLASSIC_BASE_ADDONS, SMARTER_AI_ADDON_ID, addonCatalog, addonPickerModel, canonicalAddons, defaultSmarterAIChoice, expansionMemberIds, expansionRows, toggleExpansion, type ExpansionRow, planAddonStart, resolveAddonSwitches, toggleAddon, withFlagAddons, withSmarterAI, type AddonCatalog, type AddonOverrides, type AddonRow, type SmarterAIChoice } from '../../sim/scenario/addons';
+import { CLASSIC_BASE_ADDONS, SMARTER_AI_ADDON_ID, addonCatalog, addonClosure, addonPickerModel, canonicalAddons, defaultSmarterAIChoice, expansionMemberIds, expansionRows, toggleExpansion, type ExpansionRow, planAddonStart, resolveAddonSwitches, toggleAddon, withFlagAddons, forcedFlags, withSmarterAI, type AddonCatalog, type AddonOverrides, type AddonRow, type SmarterAIChoice } from '../../sim/scenario/addons';
 import {
     COLORS,
     FONT,
@@ -3042,9 +3042,11 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
             });
             pnl.appendChild(el('summary', '', m.name));
             const body = el('div', 'wizard-addon-panel-body');
+            const forcedBy = forcedFlags(cat, choice.flags, addonClosure(cat, choice.addons ?? [], 'on')).get(id);
             for (const f of m.flags) {
                 if (f.name === a.masterFlag) continue; // the tick is the master switch
-                const c = checkBox(f.label, choice.flags[f.name] ?? f.default, (x) => {
+                const by = forcedBy?.get(f.name);
+                const c = checkBox(f.label, by !== undefined ? true : choice.flags[f.name] ?? f.default, by !== undefined ? null : (x) => {
                     overrides.flags[f.name] = x;
                     const withDeps = withFlagAddons(cat, picked, overrides);
                     if (withDeps.length !== picked.length) {
@@ -3055,6 +3057,7 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
                     options.scenario = addonChoiceFor(cat, picked, overrides, options.smarterAI ?? null);
                 }, FONT.normal);
                 c.classList.add('wizard-checkbox', 'wizard-flow');
+                if (by !== undefined) c.title = `Required by ${by.join(', ')}`;
                 body.appendChild(c);
                 if (f.description) body.appendChild(el('div', 'wizard-todo wizard-scenario-note', f.description));
             }
