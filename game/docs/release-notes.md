@@ -4,6 +4,11 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+## 0.1.27
+
+- **VIP shuttles say who they carry:** "VIP Shuttle — <name>, <role>" (Governor of <colony>, Diet delegate, Leader,
+  Admiral, …) on the map and in the selection panel. The ruler's decoys carry the same label as the real one.
+
 ## 0.1.26
 
 - **Interstellar Diet: History tab** listing the motions passed, by year (who proposed them, the vote and the target), with
