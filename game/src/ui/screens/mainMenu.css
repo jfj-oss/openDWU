@@ -67,12 +67,12 @@
     position: absolute;
     z-index: -1;
     pointer-events: none;
-    left: calc(30px * var(--mm-s, 1));
+    left: 0;
     right: 0;
     top: 24%;
     bottom: 22%;
     opacity: 0;
-    background: linear-gradient(to right, rgba(126, 223, 255, 0.34), rgba(126, 223, 255, 0.34) 40%, rgba(126, 223, 255, 0.22) 75%, rgba(126, 223, 255, 0));
+    background: linear-gradient(to right, rgba(126, 223, 255, 0), rgba(126, 223, 255, 0.3) 22%, rgba(126, 223, 255, 0.34) 45%, rgba(126, 223, 255, 0.22) 75%, rgba(126, 223, 255, 0));
     -webkit-mask-image: linear-gradient(to bottom, transparent, #000 18%, #000 82%, transparent);
     mask-image: linear-gradient(to bottom, transparent, #000 18%, #000 82%, transparent);
 }
