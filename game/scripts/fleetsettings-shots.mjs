@@ -72,6 +72,7 @@ try {
     check(fleetName !== null, `a player fleet: ${fleetName}`);
     await wait(1500);
     await shot('selection-panel');
+    await page.locator('.sel-more-btn').click(); // our add-ons sit behind the "More" button beside the strip
     const settingsBtn = page.locator('.sel-extra-btn', { hasText: 'Settings' });
     check((await settingsBtn.count()) === 1, 'the selection panel offers "Settings" for the fleet');
     await settingsBtn.first().click();

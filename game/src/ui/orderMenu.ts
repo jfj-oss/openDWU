@@ -700,7 +700,7 @@ export function selectionButtonIcon(
             case ShipActionType.SetFleetHomeBase: return chrome('fleetHomeBase.png');
             case ShipActionType.GeneratePirateMissionAttack: return chrome('pirateMissionAttack.png');
             case ShipActionType.GeneratePirateMissionDefend: return chrome('pirateMissionDefend.png');
-            case ShipActionType.GeneratePirateMissionSmuggling: return chrome('pirateMissionSmuggling.png');
+            case ShipActionType.GeneratePirateMissionSmuggling: return chrome('pirateMissionSmuggle.png') // bitmap_102;
             case ShipActionType.BuildPlanetaryFacility: {
                 const ref = (a.target as { pictureRef?: number } | null)?.pictureRef;
                 return ref !== undefined ? { url: `/assets/dwu/images/environment/planetaryfacilities/facility_${ref}.png`, rotate: 0 } : null;
@@ -745,30 +745,25 @@ export function selectionButtonIcon(
     return null;
 }
 
-/** One of our own controls shown in an empty action-button slot (small tweak: the original has no such buttons). */
+/** One of our own controls with no button in the original (small tweak): listed by the HUD's "More" button beside
+ *  the action strip, never in one of the eight original slots. */
 export interface SelectionExtraSlot {
     label: string;
     title: string;
     icon?: string;
     active?: boolean;
     disabled?: boolean;
-    /** A small number badge in the corner (the "more" slot's hidden-button count). */
-    count?: number;
     onClick: () => void;
 }
-/** The "more" slot's icon: a double chevron in the strip's light grey (ours; the original strip has no overflow). */
-const MORE_SLOT_ICON =
-    'data:image/svg+xml,' +
-    encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><path d="M9 9 L16 16 L9 23 M17 9 L24 16 L17 23" fill="none" stroke="#d0d0d8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>');
 let extraSlotProvider: () => SelectionExtraSlot[] = () => [];
-let extraOverflow: (rest: SelectionExtraSlot[], behindMore: boolean) => void = () => {};
-let extraMoreToggle: () => void = () => {};
-/** The HUD supplies the extras for the current selection and receives those that found no empty slot
- *  (`behindMore`: a "More…" slot opens them; else there was no empty slot at all). */
-export function setSelectionExtraSlots(provider: () => SelectionExtraSlot[], overflow: (rest: SelectionExtraSlot[], behindMore: boolean) => void, moreToggle: () => void): void {
+let extraSink: (extras: SelectionExtraSlot[]) => void = () => {};
+let hintRefresh: () => void = () => {};
+/** The HUD supplies the extras for the current selection (`provider`) and receives them on every redraw (`sink`);
+ *  `onDrawn` runs after the buttons are redrawn (to refresh the hover message of the hovered button). */
+export function setSelectionExtraSlots(provider: () => SelectionExtraSlot[], sink: (extras: SelectionExtraSlot[]) => void, onDrawn: () => void): void {
     extraSlotProvider = provider;
-    extraOverflow = overflow;
-    extraMoreToggle = moreToggle;
+    extraSink = sink;
+    hintRefresh = onDrawn;
 }
 
 /** Icon resolvers the selection bar uses (installed by the HUD: they need the galaxy's race count / ship art). */
@@ -864,22 +859,12 @@ export function createSelectionActionBar(): HTMLElement {
     };
     // Eight persistent buttons, updated in place (no DOM rebuild on refresh).
     const btns: HTMLButtonElement[] = [];
-    // Our extra controls placed in the empty slots (slotExtras[i] set: that slot is an extra, not an action).
-    const slotExtras: (SelectionExtraSlot | null)[] = new Array(8).fill(null);
     for (let i = 0; i < 8; i++) {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'order-action-btn';
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
-            const extra = slotExtras[i];
-            if (extra !== null) {
-                if (!extra.disabled) {
-                    extra.onClick();
-                    draw();
-                }
-                return;
-            }
             const b = buttons[i];
             if (b === undefined || b.action === null || !b.enabled) return;
             // The buttons are a picture of the game when they were drawn (a toggle's direction, the page): until the
@@ -900,73 +885,38 @@ export function createSelectionActionBar(): HTMLElement {
             btn.className = 'order-action-btn';
             if (b.style !== '') btn.classList.add(`order-style-${b.style}`);
             if (b.action === null) btn.classList.add('order-action-empty');
+            // Icon only, like the original (the caption is the accessible name; the long text is the hover message).
+            const label = selectionButtonLabel(b);
             const icon = selectionButtonIcon(b, selected, iconResolvers.troop, iconResolvers.ship);
+            btn.replaceChildren();
             if (icon !== null) {
                 const img = document.createElement('img');
                 img.className = 'order-action-icon';
                 img.src = icon.url;
-                img.alt = selectionButtonLabel(b);
+                img.alt = '';
                 if (icon.rotate !== 0) img.style.transform = `rotate(${icon.rotate}deg)`;
                 img.draggable = false;
-                btn.replaceChildren(img);
-            } else {
-                btn.textContent = selectionButtonLabel(b);
+                btn.appendChild(img);
             }
             if (b.count > 0) {
+                // A build button's yellow number (glassButton.Text, centred with a black shadow: GlassButton.DrawText).
                 const c = document.createElement('span');
                 c.className = 'order-action-count';
                 c.textContent = String(b.count);
                 btn.appendChild(c);
             }
-            btn.title = b.hint;
+            if (label !== '') btn.setAttribute('aria-label', label);
+            else btn.removeAttribute('aria-label');
+            // The hint is shown as the yellow hover message over the panel (Main.Part10.cs 738-793 → string_17), for a
+            // disabled button too; no native tooltip.
+            btn.dataset.hint = b.hint;
+            btn.removeAttribute('title');
             btn.disabled = !b.enabled;
         });
-        // Fill the empty slots with the extras (follow, dispatch, charter); the rest overflow to the HUD's row.
-        let extras = extraSlotProvider();
-        const empty = btns.filter((_, i) => buttons[i]?.action == null).length;
-        let rest: SelectionExtraSlot[] = [];
-        if (extras.length > empty) {
-            // More extras than empty slots: the last empty slot opens the rest ("More…" popup).
-            const keep = Math.max(0, empty - 1);
-            rest = extras.slice(keep);
-            extras = extras.slice(0, keep);
-            if (empty > 0) extras.push({ label: 'More', title: `More: ${rest.map((x) => x.label).join(', ')}`, icon: MORE_SLOT_ICON, count: rest.length, onClick: () => extraMoreToggle() });
-        }
-        let next = 0;
-        for (let i = 0; i < 8; i++) {
-            slotExtras[i] = null;
-            if (buttons[i]?.action != null || next >= extras.length) continue;
-            const x = extras[next++];
-            slotExtras[i] = x;
-            const btn = btns[i];
-            btn.className = 'order-action-btn order-action-extra';
-            if (x.active) btn.classList.add('order-action-extra-on');
-            btn.replaceChildren();
-            if (x.icon !== undefined) {
-                const img = document.createElement('img');
-                img.className = 'order-action-icon';
-                img.src = x.icon;
-                img.alt = '';
-                img.draggable = false;
-                btn.appendChild(img);
-            }
-            // Icon buttons are icon-only like the original strip (the label is in the tooltip).
-            if (x.icon === undefined) {
-                const cap = document.createElement('span');
-                cap.className = 'order-action-caption';
-                cap.textContent = x.label;
-                btn.appendChild(cap);
-            }
-            if (x.count !== undefined && x.count > 0) {
-                const c = document.createElement('span');
-                c.className = 'order-action-count';
-                c.textContent = String(x.count);
-                btn.appendChild(c);
-            }
-            btn.title = x.title;
-            btn.disabled = x.disabled === true;
-        }
-        extraOverflow(rest, empty > 0);
+        // Our controls with no button in the original (fleet settings, dispatch orders, charter) never take an action
+        // slot: they go to the HUD's "More" button beside the strip.
+        extraSink(extraSlotProvider());
+        hintRefresh();
     };
     bar = self;
     // Main.Part11.cs 661-728: refresh the page every 500 ms from the first button's Tag.

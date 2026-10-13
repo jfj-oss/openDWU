@@ -62,7 +62,7 @@ async function drag(b, shot) {
             name: document.querySelector('.sel-title')?.textContent,
             sub: document.querySelector('.sel-line')?.textContent,
             rows: document.querySelectorAll('.sel-cell').length,
-            buttons: Array.from(document.querySelectorAll('.order-action-btn')).map((b) => b.title),
+            buttons: Array.from(document.querySelectorAll('.order-action-btn')).map((b) => b.dataset.hint ?? b.title),
         };
     });
 }

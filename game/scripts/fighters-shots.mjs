@@ -51,7 +51,7 @@ const view = (x, y, f) =>
         [x, y, f],
     );
 /** The action-bar buttons' hints (the selection panel). */
-const buttonHints = () => page.evaluate(() => [...document.querySelectorAll('.order-action-btn')].map((b) => `${b.title || '-'}${b.disabled ? ' (off)' : ''}`));
+const buttonHints = () => page.evaluate(() => [...document.querySelectorAll('.order-action-btn')].map((b) => `${b.dataset.hint || b.title || "-"}${b.disabled ? ' (off)' : ''}`));
 
 try {
     await page.goto(url);

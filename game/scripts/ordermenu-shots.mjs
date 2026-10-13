@@ -67,7 +67,7 @@ await page.evaluate(async () => {
     camera.zoomAt(hud.SYSTEM_LEVEL_ZOOM, camera.width / 2, camera.height / 2);
 });
 await page.waitForTimeout(1200);
-const shipBtns = await page.evaluate(() => Array.from(document.querySelectorAll('.order-action-btn')).map((b) => `${b.textContent}${b.disabled ? ' [off]' : ''} | ${b.title}`));
+const shipBtns = await page.evaluate(() => Array.from(document.querySelectorAll('.order-action-btn')).map((b) => `${b.textContent}${b.disabled ? ' [off]' : ''} | ${b.dataset.hint ?? b.title}`));
 console.log('ship buttons', JSON.stringify(shipBtns));
 await page.screenshot({ path: `${outDir}/ordermenu-selection-ship.png` });
 await page.evaluate(async () => {
@@ -79,7 +79,7 @@ await page.evaluate(async () => {
     camera.zoomAt(hud.SYSTEM_LEVEL_ZOOM, camera.width / 2, camera.height / 2);
 });
 await page.waitForTimeout(1200);
-const colBtns = await page.evaluate(() => Array.from(document.querySelectorAll('.order-action-btn')).map((b) => `${b.textContent}${b.disabled ? ' [off]' : ''} | ${b.title}`));
+const colBtns = await page.evaluate(() => Array.from(document.querySelectorAll('.order-action-btn')).map((b) => `${b.textContent}${b.disabled ? ' [off]' : ''} | ${b.dataset.hint ?? b.title}`));
 console.log('colony buttons', JSON.stringify(colBtns));
 await page.screenshot({ path: `${outDir}/ordermenu-selection-colony.png` });
 await browser.close();

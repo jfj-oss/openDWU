@@ -25,7 +25,7 @@ const check = (ok, what) => {
     if (!ok) failed++;
 };
 const wait = (ms) => page.waitForTimeout(ms);
-const enabledButtons = () => page.evaluate(() => [...document.querySelectorAll('.order-actions .order-action-btn')].filter((b) => !b.classList.contains('order-action-empty') && !b.classList.contains('order-action-extra')).map((b) => ({ title: b.title, disabled: b.disabled, cls: b.className })));
+const enabledButtons = () => page.evaluate(() => [...document.querySelectorAll('.order-actions .order-action-btn')].filter((b) => !b.classList.contains('order-action-empty') && !b.classList.contains('order-action-extra')).map((b) => ({ title: b.dataset.hint ?? b.title, disabled: b.disabled, cls: b.className })));
 try {
     await page.goto(url);
     await page.waitForFunction(() => window.__dwu?.time !== undefined && window.__dwu?.view !== undefined, null, { timeout: 600000 });
@@ -135,12 +135,14 @@ try {
         hud.selectStellarObject(window.__body, true);
     });
     await wait(1500);
-    const extras = await page.evaluate(() => [...document.querySelectorAll('.order-action-extra, .sel-extra-row button')].map((b) => b.title || b.textContent));
+    const extras = await page.evaluate(() => [...document.querySelectorAll('.sel-more .sel-extra-btn')].map((b) => b.title || b.textContent));
     const bodyButtons = await enabledButtons();
     check(bodyButtons.length + extras.length > 0, `${at.name}: ${bodyButtons.length} buttons, extras ${JSON.stringify(extras.map((x) => x.slice(0, 40)))}`);
     await page.screenshot({ path: `${out}/body-buttons.png` });
     // A dispatch slot (re-resolved by a query at click time, then a command): its reply shows a toast.
-    const slot = await page.$('.order-actions .order-action-extra:not([disabled])');
+    // Our dispatch orders sit behind the "More" button beside the strip.
+    await page.$eval('.sel-more-btn', (b) => b.click()).catch(() => {});
+    const slot = await page.$('.sel-more .sel-extra-btn:not(.ow-ts-disabled)');
     if (slot) await slot.click();
     await page.evaluate(() => { window.__dwu.time.paused = false; });
     await page.waitForFunction(() => [...document.querySelectorAll('.dwu-toast')].some((t) => /sent|job|No available|not possible/.test(t.textContent ?? '')), null, { timeout: 8000 }).catch(() => {});

@@ -1454,9 +1454,11 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     hoverMsg.hidden = true;
     panel.appendChild(hoverMsg);
     let hoverPoint: { x: number; y: number } | null = null;
+    /** The hovered action button's hint (it wins over the info area's hotspot message). */
+    let actionHint = '';
     const syncHoverMessage = (): void => {
-        let text = '';
-        if (hoverPoint !== null) {
+        let text = actionHint;
+        if (text === '' && hoverPoint !== null) {
             const under = document.elementFromPoint(hoverPoint.x, hoverPoint.y);
             if (under instanceof HTMLElement && (detail.contains(under) || infoFrame.contains(under)) && under.closest('button') === null) {
                 text = selectionPanelHint(under.closest<HTMLElement>('[data-hover]')?.dataset.hover);
@@ -1492,12 +1494,6 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         cam.centerOn(t.x, t.y);
         syncLock();
     });
-    // Our controls with no button in the original (follow, the dispatch orders, charter) go into the action strip's
-    // empty slots (orderMenu.ts setSelectionExtraSlots); any that don't fit overflow into this compact row.
-    const extras = document.createElement('div');
-    extras.className = 'sel-extras';
-    extras.hidden = true;
-    detail.appendChild(extras);
 
     // [followcam] begin — Follow toggle: offered only while the selection is a ship or fleet (bases and colonies
     // don't move). Toggling flips the shared FollowState the Main View recentres the camera on every frame
@@ -1541,41 +1537,44 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         }
         return out;
     };
-    // The extras beyond the empty slots: a popup over the strip opened by the "More…" slot, or (no empty slot at all)
-    // a compact row at the bottom of the info area.
+    // Our controls with no button in the original (fleet settings, the dispatch orders, charter): never in the eight
+    // original action slots (orderMenu.ts setSelectionExtraSlots) but behind one "More" glass button left of the strip
+    // (mirroring btnCycleShipStance on the right), which opens them as an original-style ToolStrip menu.
     const more = document.createElement('div');
     more.className = 'sel-more';
     more.hidden = true;
     panel.appendChild(more);
     let moreOpen = false;
-    const extraButton = (x: SelectionExtraSlot, after: () => void): HTMLButtonElement => {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'sel-extra-btn';
-        if (x.active) b.classList.add('hud-follow-toggle-active');
-        b.textContent = x.label;
-        b.title = x.title;
-        b.disabled = x.disabled === true;
-        b.addEventListener('click', (e) => {
-            e.stopPropagation();
-            x.onClick();
-            after();
-        });
-        return b;
+    let moreCount = 0;
+    const moreBtn = glassButton('sel-more-btn', 0, 276, 56, 28, null, '', 'all', () => {
+        moreOpen = !moreOpen && moreCount > 0;
+        more.hidden = !moreOpen;
+        moreBtn.classList.toggle('sel-glass-on', moreOpen);
+    });
+    moreBtn.textContent = 'More';
+    moreBtn.hidden = true;
+    panel.appendChild(moreBtn);
+    // The action buttons' hints: the yellow hover message over the panel (Main.Part10.cs 738-793 sets string_17 from
+    // the hovered button's Hint / method_590(Tag), disabled buttons included).
+    let actionHintBtn: HTMLElement | null = null;
+    const syncActionHint = (): void => {
+        actionHint = actionHintBtn !== null && actionHintBtn.isConnected ? actionHintBtn.dataset.hint ?? '' : '';
+        syncHoverMessage();
     };
     setSelectionExtraSlots(
         extraSlots,
-        (rest, behindMore) => {
-            const inline = behindMore ? [] : rest;
-            extras.hidden = inline.length === 0;
-            extras.replaceChildren(...inline.map((x) => extraButton(x, () => refreshSelectionActionBar())));
-            const popup = behindMore ? rest : [];
-            if (popup.length === 0) moreOpen = false;
-            more.hidden = !moreOpen || popup.length === 0;
-            // The hidden extras as an original-style menu (CustomToolStripRenderer, originalWindow.ts toolStripMenu).
+        (list) => {
+            moreCount = list.length;
+            moreBtn.hidden = list.length === 0;
+            moreBtn.dataset.hint = list.length === 0 ? '' : `More: ${list.map((x) => x.label).join(', ')}`;
+            if (list.length === 0) moreOpen = false;
+            more.hidden = !moreOpen;
+            moreBtn.classList.toggle('sel-glass-on', moreOpen);
+            // The extras as an original-style menu (CustomToolStripRenderer, originalWindow.ts toolStripMenu).
             const menu = toolStripMenu('sel-more-menu');
-            for (const x of popup) {
+            for (const x of list) {
                 const row = toolStripItem(x.label, { enabled: x.disabled !== true, title: x.title, tag: 'button' });
+                row.classList.add('sel-extra-btn');
                 if (x.icon !== undefined) {
                     const img = document.createElement('img');
                     img.className = 'sel-more-icon';
@@ -1592,15 +1591,14 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
                     x.onClick();
                     moreOpen = false;
                     more.hidden = true;
+                    moreBtn.classList.remove('sel-glass-on');
+                    refreshSelectionActionBar();
                 });
                 menu.appendChild(row);
             }
             more.replaceChildren(menu);
         },
-        () => {
-            moreOpen = !moreOpen;
-            more.hidden = !moreOpen || more.childElementCount === 0;
-        },
+        syncActionHint,
     );
 
     // An Improvement switched on / off in Game Options: its selection-panel button appears / goes.
@@ -1611,6 +1609,32 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     const actionBar = createSelectionActionBar();
     actionBar.classList.add('sel-actions');
     panel.appendChild(actionBar);
+    // The disabled image's grey (GlassButton.DrawForegroundFromButton's ColorMatrix: luma weights + 0.38).
+    const ns = 'http://www.w3.org/2000/svg';
+    const greySvg = document.createElementNS(ns, 'svg');
+    greySvg.setAttribute('width', '0');
+    greySvg.setAttribute('height', '0');
+    greySvg.style.position = 'absolute';
+    const greyFilter = document.createElementNS(ns, 'filter');
+    greyFilter.id = 'sel-action-disabled';
+    greyFilter.setAttribute('color-interpolation-filters', 'sRGB');
+    const greyMatrix = document.createElementNS(ns, 'feColorMatrix');
+    greyMatrix.setAttribute('type', 'matrix');
+    greyMatrix.setAttribute('values', '0.2125 0.2577 0.0361 0 0.38  0.2125 0.2577 0.0361 0 0.38  0.2125 0.2577 0.0361 0 0.38  0 0 0 1 0');
+    greyFilter.appendChild(greyMatrix);
+    greySvg.appendChild(greyFilter);
+    document.getElementById('sel-action-disabled')?.closest('svg')?.remove();
+    document.body.appendChild(greySvg);
+    for (const el of [actionBar, moreBtn]) {
+        el.addEventListener('mouseover', (e) => {
+            actionHintBtn = e.target instanceof Element ? e.target.closest<HTMLElement>('.order-action-btn, .sel-more-btn') : null;
+            syncActionHint();
+        });
+        el.addEventListener('mouseleave', () => {
+            actionHintBtn = null;
+            syncActionHint();
+        });
+    }
     if (wiring.galaxy) {
         const galaxy = wiring.galaxy;
         setSelectionIconResolvers({

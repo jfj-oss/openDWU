@@ -380,50 +380,6 @@ span.sel-corner.sel-text {
     height: 16px;
 }
 
-/* The extras row (follow / automate / dispatch / charter): small buttons along the info area's bottom. */
-.sel-extras {
-    flex: none;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 2px;
-    padding: 1px 2px 2px;
-    background: rgba(10, 10, 20, 0.55);
-    border-top: 1px solid rgba(67, 67, 77, 0.8);
-}
-.sel-extras[hidden] {
-    display: none;
-}
-.sel-frame .sel-extra-btn,
-.sel-frame .sel-extras button {
-    pointer-events: auto;
-    font-family: inherit;
-    font-size: 8.5px;
-    line-height: 11px;
-    height: 13px;
-    padding: 0 5px;
-    margin: 0;
-    color: rgb(200, 200, 200);
-    background: linear-gradient(to bottom, rgba(112, 112, 176, 0.45), rgba(0, 0, 64, 0.9) 55%);
-    border: 1px solid rgb(0, 0, 64);
-    border-radius: 3px;
-    box-shadow: inset 0 0 0 1px rgba(67, 67, 77, 0.8);
-    cursor: pointer;
-    white-space: nowrap;
-}
-.sel-frame .sel-extras button:hover:not(:disabled) {
-    color: #fff;
-    background: linear-gradient(to bottom, rgba(112, 112, 176, 0.55), rgba(40, 40, 140, 0.95) 55%);
-}
-.sel-frame .sel-extras button:disabled {
-    color: rgb(110, 110, 120);
-    cursor: default;
-}
-.sel-frame .sel-extras .hud-follow-toggle-active,
-.sel-frame .sel-extras .hud-automation-on {
-    color: #fff;
-    background: linear-gradient(to bottom, rgba(79, 195, 247, 0.5), rgba(0, 60, 100, 0.95) 55%);
-}
-
 /* GlassButton (GlassButton.cs DrawButtonBackground): outer border + fill, a shine gradient on the top half, the
    inner border, and the radial glow from the bottom on hover. */
 .sel-glass {
@@ -477,7 +433,12 @@ span.sel-corner.sel-text {
     --glow: 96, 96, 255;
 }
 
-/* btnSelectionAction1-8: 35 × 28 each from (60, 282). */
+/* btnSelectionAction1-8: 35 × 28 each from (60, 282), edge to edge (Main.Part12.cs 2055-2071), square corners
+   (SetCornerCurves all false, Main.Part12.cs 1907-1930), IntensifyColors on, EmphasizeDisabled on (method_588).
+   GlassButton.DrawButtonBackground: a 1 px outer border in OuterBorderColor, the body filled with OuterBorderColor
+   (BackColor itself is never painted), a 50 % hatch whose background is opaque black over a disabled body, the shine
+   gradient (alpha 153 → 51, ×0.4 pressed or disabled) over the top half, the bottom radial glow (alpha 178) on hover,
+   then the 1 px inner border. Colours per family: method_589. */
 .sel-frame .order-actions.sel-actions {
     position: absolute;
     left: 60px;
@@ -491,70 +452,81 @@ span.sel-corner.sel-text {
     pointer-events: none;
 }
 .sel-frame .order-actions.sel-actions .order-action-btn {
+    /* method_589 "" / "default" (+ IntensifyColors' glow); InnerBorderColor stays the designer's (67, 67, 77). */
     --outer: rgb(0, 0, 64);
     --shine: 112, 112, 176;
     --glow: 128, 128, 255;
-    --back: rgb(0, 0, 48);
+    --inner: rgb(67, 67, 77);
+    --shine-a: 0.6;
     position: relative;
     visibility: visible;
     pointer-events: auto;
     width: 35px;
     height: 28px;
     min-height: 0;
-    padding: 2px;
-    font-size: 7px;
-    line-height: 8px;
-    white-space: normal;
-    text-align: center;
-    color: rgb(200, 200, 200);
+    padding: 0;
+    color: rgb(255, 255, 0);
     border: 1px solid var(--outer);
     border-radius: 0;
     background:
-        linear-gradient(to bottom, rgba(var(--shine), 0.6), rgba(var(--shine), 0.2) 50%, transparent 50%),
-        linear-gradient(to bottom, var(--back), rgba(var(--glow), 0.25));
-    box-shadow: inset 0 0 0 1px rgb(67, 67, 77);
+        linear-gradient(to bottom, rgba(var(--shine), var(--shine-a)), rgba(var(--shine), calc(var(--shine-a) / 3))) top / 100% 50% no-repeat,
+        var(--outer);
+    box-shadow: inset 0 0 0 1px var(--inner);
     display: flex;
     align-items: center;
     justify-content: center;
     overflow: hidden;
+    cursor: default;
 }
 .sel-frame .order-actions.sel-actions .order-action-btn:hover:not(:disabled) {
     background:
-        linear-gradient(to bottom, rgba(var(--shine), 0.6), rgba(var(--shine), 0.2) 50%, transparent 50%),
-        radial-gradient(ellipse 70% 60% at 50% 100%, rgba(var(--glow), 0.75), rgba(var(--glow), 0) 100%),
-        var(--back);
+        linear-gradient(to bottom, rgba(var(--shine), var(--shine-a)), rgba(var(--shine), calc(var(--shine-a) / 3))) top / 100% 50% no-repeat,
+        radial-gradient(ellipse 85% 115% at 50% 100%, rgba(var(--glow), 0.7), rgba(var(--glow), 0)),
+        var(--outer);
+}
+.sel-frame .order-actions.sel-actions .order-action-btn:active:not(:disabled) {
+    --shine-a: 0.24;
+    background:
+        linear-gradient(to bottom, rgba(var(--shine), var(--shine-a)), rgba(var(--shine), calc(var(--shine-a) / 3))) top / 100% 50% no-repeat,
+        var(--outer);
 }
 .sel-frame .order-actions.sel-actions .order-action-btn:disabled {
-    cursor: default;
-}
-.sel-frame .order-actions.sel-actions .order-action-btn:disabled .order-action-icon {
-    opacity: 0.45;
-}
-.sel-frame .order-actions.sel-actions .order-action-btn.order-action-empty {
-    visibility: visible;
+    --shine-a: 0.24;
     background:
-        linear-gradient(to bottom, rgba(112, 112, 176, 0.25), rgba(112, 112, 176, 0.08) 50%, transparent 50%),
-        rgb(0, 0, 40);
+        linear-gradient(to bottom, rgba(var(--shine), var(--shine-a)), rgba(var(--shine), calc(var(--shine-a) / 3))) top / 100% 50% no-repeat,
+        repeating-conic-gradient(#000 0 25%, transparent 0 50%) 0 0 / 2px 2px,
+        var(--outer);
 }
+/* A disabled button's image: the grey ColorMatrix of DrawForegroundFromButton (luma weights, +0.38). */
+.sel-frame .order-actions.sel-actions .order-action-btn:disabled .order-action-icon {
+    filter: url('#sel-action-disabled');
+}
+/* method_586(bitmap, 25, 19): shrunk to fit 25 × 19, never enlarged; centred (ImageAlign MiddleCenter). */
 .sel-frame .order-action-icon {
     max-width: 25px;
-    max-height: 22px;
+    max-height: 19px;
     object-fit: contain;
     pointer-events: none;
 }
-.sel-frame .order-actions.sel-actions .order-style-build { --back: rgb(120, 96, 0); --outer: rgb(51, 40, 20); --shine: 180, 168, 84; --glow: 204, 160, 80; }
-.sel-frame .order-actions.sel-actions .order-style-buildprivate { --back: rgb(120, 76, 0); --outer: rgb(51, 40, 20); --shine: 192, 128, 64; --glow: 255, 160, 80; }
-.sel-frame .order-actions.sel-actions .order-style-fighter { --back: rgb(76, 51, 128); --outer: rgb(32, 20, 51); --shine: 153, 108, 192; --glow: 128, 80, 204; }
-.sel-frame .order-actions.sel-actions .order-style-facility { --back: rgb(10, 70, 20); --outer: rgb(0, 48, 16); --shine: 64, 192, 96; --glow: 80, 255, 112; }
-.sel-frame .order-actions.sel-actions .order-style-wonder { --back: rgb(96, 10, 64); --outer: rgb(40, 0, 32); --shine: 224, 80, 184; --glow: 255, 64, 192; }
-.sel-frame .order-actions.sel-actions .order-style-plague { --back: rgb(96, 10, 0); --outer: rgb(40, 0, 0); --shine: 224, 80, 0; --glow: 255, 64, 0; }
+.sel-frame .order-actions.sel-actions .order-style-build { --outer: rgb(51, 40, 20); --shine: 180, 168, 84; --glow: 255, 153, 0; }
+.sel-frame .order-actions.sel-actions .order-style-buildprivate { --outer: rgb(51, 40, 20); --shine: 192, 128, 64; --glow: 255, 144, 64; }
+.sel-frame .order-actions.sel-actions .order-style-fighter { --outer: rgb(32, 20, 51); --shine: 153, 108, 192; --glow: 153, 0, 255; }
+.sel-frame .order-actions.sel-actions .order-style-facility { --outer: rgb(0, 48, 16); --shine: 64, 192, 96; --glow: 80, 255, 112; }
+.sel-frame .order-actions.sel-actions .order-style-wonder { --outer: rgb(40, 0, 32); --shine: 224, 80, 184; --glow: 255, 64, 192; }
+.sel-frame .order-actions.sel-actions .order-style-plague { --outer: rgb(40, 0, 0); --shine: 224, 80, 0; --glow: 255, 64, 0; }
+/* A build button's count: glassButton.Text in yellow, Verdana bold 8 px, centred over the image with a black shadow. */
 .sel-frame .order-actions.sel-actions .order-action-count {
     position: absolute;
-    top: 0;
-    right: 2px;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: Verdana, sans-serif;
+    font-weight: bold;
     font-size: 8px;
     color: rgb(255, 255, 0);
     text-shadow: 1px 1px 0 #000;
+    pointer-events: none;
 }
 
 .sel-flag.sel-corner {
@@ -564,35 +536,23 @@ span.sel-corner.sel-text {
     width: 14px;
     height: 14px;
 }
-/* Extras in empty action slots: an icon (if any) over a tiny caption. */
-.sel-frame .order-actions.sel-actions .order-action-btn.order-action-extra {
-    flex-direction: column;
-    gap: 0;
-    padding: 1px;
-    --back: rgb(0, 0, 40);
+/* The "More" button left of the strip (our add-ons with no original button) and its ToolStrip menu above it. */
+.sel-frame .sel-more-btn {
+    font-family: Verdana, sans-serif;
+    font-weight: bold;
+    font-size: 8px;
+    color: rgb(120, 120, 120);
 }
-.sel-frame .order-action-extra .order-action-icon {
-    max-height: 14px;
+.sel-frame .sel-more-btn:hover,
+.sel-frame .sel-more-btn.sel-glass-on {
+    color: rgb(255, 255, 255);
 }
-.sel-frame .order-action-caption {
-    font-size: 6.5px;
-    line-height: 7px;
-    max-height: 21px;
-    overflow: hidden;
-    word-break: break-word;
+.sel-frame .sel-more-btn[hidden] {
+    display: none;
 }
-.sel-frame .order-actions.sel-actions .order-action-btn.order-action-extra-on {
-    --back: rgb(0, 60, 100);
-    --shine: 79, 195, 247;
-    color: #fff;
-}
-.sel-frame .order-actions.sel-actions .order-action-btn.order-action-extra:disabled {
-    color: rgb(110, 110, 120);
-}
-/* The "more" popup over the action strip (the extras that found no empty slot): an original-style ToolStrip menu. */
 .sel-more {
     position: absolute;
-    left: 60px;
+    left: 0;
     bottom: 30px;
     pointer-events: auto;
     z-index: 2;
