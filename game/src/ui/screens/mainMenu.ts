@@ -254,7 +254,7 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
                 panel.replaceChildren(
                     textItem('hostMultiplayer', 'Host Game', () => onMp('host')),
                     textItem('joinMultiplayer', 'Join Game', () => onMp('join')),
-                    textItem('resumeMultiplayer', 'Resume Multiplayer Game', () => onRs?.()),
+                    textItem('resumeMultiplayer', 'Resume', () => onRs?.()),
                     textItem('multiplayerBack', 'Back', showMain),
                 );
             };

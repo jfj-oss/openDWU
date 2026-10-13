@@ -420,7 +420,7 @@ export interface SavePanelWiring {
     textStore?: SaveTextStore;
     /** Hide the Save tab (main menu: there is no running game to save). */
     loadOnly?: boolean;
-    /** Open the Load list on the multiplayer saves only (the "Multiplayer saves only" box; Resume Multiplayer Game). */
+    /** Open the Load list on the multiplayer saves only (the "Multiplayer saves only" box; the multiplayer menu's Resume). */
     multiplayerOnly?: boolean;
 }
 
