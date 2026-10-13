@@ -383,9 +383,11 @@ export const FILL_ALPHA = 0.2;
 /** Edge shading: the fill darkens towards each region's boundary. Stacked strokes along the border, widths in mean
  *  star spacings (widest, faintest first), so the darkening fades inward over about half a spacing. */
 export const EDGE_SHADE_PASSES: ReadonlyArray<readonly [width: number, alpha: number]> = [
-    [1.0, 0.07],
-    [0.6, 0.08],
-    [0.3, 0.1],
+    [1.2, 0.05],
+    [0.9, 0.05],
+    [0.65, 0.06],
+    [0.42, 0.07],
+    [0.22, 0.09],
 ];
 export const EDGE_SHADE_COLOUR = 0x000000;
 
@@ -415,7 +417,7 @@ function loadNameFont(onReady: () => void): void {
 
 export class InfluenceBorderLayer {
     readonly root = new Container();
-    private tiles: Array<{ g: Graphics; minX: number; minY: number; maxX: number; maxY: number }> = [];
+    private tiles: Array<{ g: Container; minX: number; minY: number; maxX: number; maxY: number }> = [];
     private names: Array<{ t: Text; r: Region }> = [];
     private cells: CellSet | null = null;
     private xs: Float64Array = new Float64Array(0);
@@ -477,18 +479,28 @@ export class InfluenceBorderLayer {
         this.names = [];
         for (const tile of geo.tiles) {
             if (tile.fills.length === 0) continue;
-            const g = new Graphics();
-            for (const f of tile.fills) g.poly(f.verts, true).fill({ color: mix(this.colour(f.owner), FILL_DARKEN), alpha: FILL_ALPHA });
+            const g = new Container();
+            const fill = new Graphics();
+            const mask = new Graphics();
+            const shade = new Graphics();
+            const line = new Graphics();
+            for (const f of tile.fills) {
+                fill.poly(f.verts, true).fill({ color: mix(this.colour(f.owner), FILL_DARKEN), alpha: FILL_ALPHA });
+                mask.poly(f.verts, true).fill({ color: 0xffffff });
+            }
             const spc = this.cells?.spacing ?? 1;
             for (const b of tile.borders) {
                 for (const [w, a] of EDGE_SHADE_PASSES) {
-                    for (let k = 0; k < b.seg.length; k += 4) g.moveTo(b.seg[k], b.seg[k + 1]).lineTo(b.seg[k + 2], b.seg[k + 3]);
-                    g.stroke({ color: EDGE_SHADE_COLOUR, alpha: a, width: w * spc, cap: 'round', join: 'round' });
+                    for (let k = 0; k < b.seg.length; k += 4) shade.moveTo(b.seg[k], b.seg[k + 1]).lineTo(b.seg[k + 2], b.seg[k + 3]);
+                    shade.stroke({ color: EDGE_SHADE_COLOUR, alpha: a, width: w * spc, cap: 'round', join: 'round' });
                 }
                 const col = mix(this.colour(b.owner), FILL_DARKEN);
-                for (let k = 0; k < b.seg.length; k += 4) g.moveTo(b.seg[k], b.seg[k + 1]).lineTo(b.seg[k + 2], b.seg[k + 3]);
-                g.stroke({ color: col, alpha: FILL_ALPHA, width: 1, pixelLine: true });
+                for (let k = 0; k < b.seg.length; k += 4) line.moveTo(b.seg[k], b.seg[k + 1]).lineTo(b.seg[k + 2], b.seg[k + 3]);
+                line.stroke({ color: col, alpha: FILL_ALPHA, width: 1, pixelLine: true });
             }
+            // The strokes straddle the border: clip them to the region fills so nothing darkens outside (or in a neighbour's gap).
+            shade.setMask({ mask, inverse: false });
+            g.addChild(fill, mask, shade, line);
             this.root.addChild(g);
             this.tiles.push({ g, minX: tile.minX, minY: tile.minY, maxX: tile.maxX, maxY: tile.maxY });
         }
