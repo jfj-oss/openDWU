@@ -1018,6 +1018,15 @@ export function generateRaceSummary(
         other.push(`${T('Historical Locations Known at Game Start')}: ${race.knownStartingGalacticHistoryLocations}`);
     }
     if (other.length > 0) sections.push({ heading: T('Other'), items: other });
+    // The player-only story races (newGameWizard.ts PLAYER_ONLY_RACE_NAMES): their stock pages do not know they can be picked.
+    if (race.name === 'Mechanoid' || race.name === 'Shakturi') {
+        sections.push({
+            heading: 'Playable in openDWU',
+            items: [
+                'You may pick this race for your own empire in the new-game wizard (and the multiplayer and hot-seat race pickers). AI empires never get it, and the story\'s Ancient Guardians and Shakturi never treat your empire as theirs.',
+            ],
+        });
+    }
     return sections;
 }
 
