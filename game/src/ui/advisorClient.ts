@@ -40,6 +40,8 @@ export interface AdvisorReply {
     /** Wall-clock time of the request, ms. */
     latencyMs: number;
     api: AdvisorApi;
+    /** The reply carried a <think> block or reasoning content (the model thinks whatever the Thinking setting says). */
+    thought?: boolean;
 }
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -83,6 +85,68 @@ export async function probeAdvisorEndpoint(cfg: AdvisorEndpointConfig, fetchImpl
     return null;
 }
 
+/** Models the server lists: Ollama GET /api/tags, an OpenAI-compatible server GET /v1/models. [] when it cannot be read. */
+export async function listAdvisorModels(cfg: { endpoint: string; api: 'auto' | AdvisorApi }, fetchImpl: FetchLike = fetch, timeoutMs = 3000): Promise<string[]> {
+    const order: AdvisorApi[] = cfg.api === 'openai' ? ['openai'] : cfg.api === 'ollama' ? ['ollama'] : ['ollama', 'openai'];
+    for (const api of order) {
+        const t = withTimeout(timeoutMs);
+        try {
+            const r = await fetchImpl(api === 'ollama' ? `${base(cfg.endpoint)}/api/tags` : `${base(cfg.endpoint)}/v1/models`, { signal: t.signal });
+            if (!r.ok) continue;
+            const j = (await r.json()) as { models?: { name?: unknown; model?: unknown }[]; data?: { id?: unknown }[] };
+            const raw = api === 'ollama' ? (j.models ?? []).map((m) => m.name ?? m.model) : (j.data ?? []).map((m) => m.id);
+            const ids = raw.filter((x): x is string => typeof x === 'string' && x !== '');
+            if (ids.length > 0) return ids;
+        } catch {
+            // not this one
+        } finally {
+            t.done();
+        }
+    }
+    return [];
+}
+
+/** The reply contained a <think> block or reasoning content. */
+function replyThought(api: AdvisorApi, body: unknown): boolean {
+    const b = body as { message?: { content?: unknown; thinking?: unknown; reasoning_content?: unknown }; choices?: { message?: { content?: unknown; reasoning_content?: unknown; reasoning?: unknown } }[] };
+    const m = api === 'ollama' ? b?.message : b?.choices?.[0]?.message;
+    if (m === undefined || m === null) return false;
+    const x = m as Record<string, unknown>;
+    const some = (v: unknown): boolean => typeof v === 'string' && v.trim() !== '';
+    return (typeof x.content === 'string' && x.content.includes('<think>')) || some(x.thinking) || some(x.reasoning_content) || some(x.reasoning);
+}
+
+export interface AdvisorTestResult {
+    ok: boolean;
+    api: AdvisorApi | null;
+    model: string;
+    latencyMs: number;
+    /** Thinking is off in the settings but the model thought anyway. */
+    alwaysThinks: boolean;
+    error?: string;
+}
+
+/** The Settings [Test] button: probe, then one tiny schema-constrained request (so JSON mode is known to work). */
+export async function testAdvisorEndpoint(cfg: AdvisorEndpointConfig & { think?: boolean }, fetchImpl: FetchLike = fetch): Promise<AdvisorTestResult> {
+    const fail = (error: string, api: AdvisorApi | null = null): AdvisorTestResult => ({ ok: false, api, model: cfg.model, latencyMs: 0, alwaysThinks: false, error });
+    const api = await probeAdvisorEndpoint(cfg, fetchImpl);
+    if (api === null) return fail('no model server answered at that address');
+    try {
+        const schema = { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'] };
+        const r = await requestAdvisor({ endpoint: cfg.endpoint, model: cfg.model, api, think: cfg.think }, [{ role: 'user', content: 'Reply with JSON {"ok": true}.' }], {
+            fetchImpl,
+            timeoutMs: 60000,
+            schema,
+            schemaName: 'ping',
+            temperature: 0,
+        });
+        JSON.parse(r.raw);
+        return { ok: true, api, model: cfg.model, latencyMs: r.latencyMs, alwaysThinks: r.thought === true && cfg.think !== true };
+    } catch (e) {
+        return fail(e instanceof Error ? e.message : String(e), api);
+    }
+}
+
 /** The persona + rules + brief the model sees as its system message. */
 export function buildAdvisorSystemPrompt(brief: AdvisorBrief): string {
     const who = brief.admiral !== null ? `${brief.admiral.name}, ${brief.admiral.role === 'FleetAdmiral' ? 'Fleet Admiral' : 'ruling Leader acting as fleet admiral'} of the ${brief.empire.name}` : `the Fleet Admiral of the ${brief.empire.name}`;
@@ -120,6 +184,16 @@ export function extractReplyText(api: AdvisorApi, body: unknown): string {
     return text.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/^\s*```(?:json)?\s*|\s*```\s*$/g, '').trim();
 }
 
+/** Qwen3 soft switch: a "/no_think" line at the end of the LAST system message (a system message is added when none). */
+function noThinkMessages(messages: ChatMessage[]): ChatMessage[] {
+    let i = -1;
+    messages.forEach((m, k) => {
+        if (m.role === 'system') i = k;
+    });
+    if (i < 0) return [{ role: 'system', content: '/no_think' }, ...messages];
+    return messages.map((m, k) => (k === i ? { ...m, content: `${m.content}\n/no_think` } : m));
+}
+
 /** Send the conversation and get the model's structured answer. Throws on HTTP / network errors and on timeout. */
 export async function requestAdvisor(
     cfg: { endpoint: string; model: string; api: AdvisorApi; think?: boolean },
@@ -140,14 +214,19 @@ export async function requestAdvisor(
     const url = cfg.api === 'ollama' ? `${base(cfg.endpoint)}/api/chat` : `${base(cfg.endpoint)}/v1/chat/completions`;
     const schema = opts.schema ?? ADVISOR_RESPONSE_SCHEMA;
     const temperature = opts.temperature ?? 0.2;
+    const sent = cfg.api === 'openai' && cfg.think !== true ? noThinkMessages(messages) : messages;
     const body =
         cfg.api === 'ollama'
             ? { model: cfg.model, messages, format: schema, stream: false, think: cfg.think === true, options: { temperature } }
             : {
                   model: cfg.model,
-                  messages,
+                  messages: sent,
                   temperature,
                   stream: false,
+                  // Thinking off must hold on every server: llama-server / vLLM read chat_template_kwargs, and
+                  // Qwen3 templates honour the /no_think soft switch. (reasoning_effort is omitted: LM Studio's
+                  // docs name no "minimum" value.)
+                  ...(cfg.think === true ? {} : { chat_template_kwargs: { enable_thinking: false } }),
                   response_format: { type: 'json_schema', json_schema: { name: opts.schemaName ?? 'advisor_response', schema } },
               };
     const t = withTimeout(opts.timeoutMs ?? 120000, opts.signal);
@@ -164,7 +243,7 @@ export async function requestAdvisor(
             throw new Error(`model server answered HTTP ${r.status}${detail ? `: ${detail}` : ''}`);
         }
         const json: unknown = await r.json();
-        return { raw: extractReplyText(cfg.api, json), latencyMs: Math.round(now() - t0), api: cfg.api };
+        return { raw: extractReplyText(cfg.api, json), latencyMs: Math.round(now() - t0), api: cfg.api, thought: replyThought(cfg.api, json) };
     } finally {
         t.done();
     }

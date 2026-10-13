@@ -59,6 +59,7 @@ import { systemMemoryGiB } from '../../systemMemory';
 import { GALAXY_BACKDROP_OPTIONS, getGalaxyBackdrop, setGalaxyBackdrop } from '../../render/galaxyBackdropChoice';
 import { galaxyBackdropStructure, systemUvs } from '../../render/galaxyBackdrop';
 import { createBackdropThumbnail } from '../galaxyBackdropPreview';
+import { LOCAL_MODEL_TITLE, openLocalModelWindow } from './localModelWindow';
 import { MUSIC_MOOD_TITLE, openMusicMoodWindow } from './musicMoodWindow'; // [musicmood]
 import { scenarioFlag } from '../../sim/scenario/state';
 import { buildNewGameAutomationGroup, closeNewGameEmpireSettings } from './newGameDefaultsPanel';
@@ -258,7 +259,7 @@ interface OpenState {
 
 let open: OpenState | null = null;
 /** The open sub-windows (closed with the Options window, like method_413). */
-type SubWindowKind = 'empire' | 'messages' | 'advanced' | 'improvements' | 'bacon' | 'musicmood';
+type SubWindowKind = 'empire' | 'messages' | 'advanced' | 'improvements' | 'bacon' | 'musicmood' | 'localmodel';
 const subWindows = new Map<SubWindowKind, OriginalWindow>();
 /** The values this Options session issued as commands (gameOptionsModel.ts gameOptionsFromEmpire). */
 let pendingEmpireValues: PendingEmpireValues = {};
@@ -424,7 +425,9 @@ function createGameOptionsPanel(opts: GameOptionsPanelOptions): OpenState {
     notify.el.title = 'Volume of message and alert sounds (new message, event, alarm), on top of Effects. Follows the Effects mute.';
     // [musicmood] Options → Music & Mood (musicMoodWindow.ts): background mood + music source / user playlists.
     const rimAvailable = empire !== null ? scenarioFlag(empire.galaxy, 'rimAtmosphere') : null;
-    button(volume, `${MUSIC_MOOD_TITLE}...`, 535, 18, 112, 47, () => openSubWindow('musicmood', () => openMusicMoodWindow(rimAvailable, () => subWindows.delete('musicmood')))).dataset.id = 'musicmood';
+    button(volume, `${MUSIC_MOOD_TITLE}...`, 535, 14, 112, 26, () => openSubWindow('musicmood', () => openMusicMoodWindow(rimAvailable, () => subWindows.delete('musicmood')))).dataset.id = 'musicmood';
+
+    button(volume, `${LOCAL_MODEL_TITLE}...`, 535, 42, 112, 26, () => openSubWindow('localmodel', () => openLocalModelWindow(empire?.galaxy ?? null, () => subWindows.delete('localmodel')))).dataset.id = 'localmodel';
 
     // --- grpOptionsAutoSave (12, 228) 180 × 54: chkOptionsAutoSave "Every [num] minutes" (7, 19), num (72, 20) 35 × 21.
     const autoSave = place(groupBox('Auto Save', 180, 54, F2), 12, 228);

@@ -9,6 +9,7 @@ import {
 } from '../src/ui/screens/gameOptionsPanel';
 import { getMessageOptions, MessageCategory, resetMessageOptions } from '../src/ui/messageRouting';
 import { AutomationLevel, type Empire } from '../src/sim/empire';
+import { ENDPOINT_PRESETS, applyLocalModelSettings, llmFlagsLine, localModelDraft, testResultText } from '../src/ui/screens/localModelWindow';
 import { isKeyActionAvailable } from '../src/ui/keyboard';
 
 // Task 16d: Game Options rows (Main.Part6.cs:2524-2539, Main.Part3.cs:934-972).
@@ -54,5 +55,17 @@ describe('MESSAGE_OPTION_ROWS', () => {
 describe('keyboard', () => {
     it('O is implemented', () => {
         expect(isKeyActionAvailable('gameOptionsScreen')).toBe(true);
+    });
+});
+
+describe('Local model settings', () => {
+    it('apply saves the fields (trimmed) and loads them back into a draft', () => {
+        const d = localModelDraft();
+        applyLocalModelSettings({ ...d, advisorEndpoint: ' http://127.0.0.1:1234 ', advisorModel: ' m ', advisorApi: 'openai', advisorThink: true, diplomatVoice: false });
+        expect(localModelDraft()).toEqual({ advisorEndpoint: 'http://127.0.0.1:1234', advisorModel: 'm', advisorApi: 'openai', advisorThink: true, diplomatVoice: false });
+        applyLocalModelSettings(d);
+        expect(ENDPOINT_PRESETS.map((p) => p.value)).toContain('http://127.0.0.1:8080');
+        expect(testResultText({ ok: true, api: 'openai', model: 'm', latencyMs: 12, alwaysThinks: true })).toContain('always thinks');
+        expect(llmFlagsLine(null)).toContain('No game');
     });
 });

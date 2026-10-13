@@ -239,6 +239,24 @@ describe('LlmQueue', () => {
     });
 });
 
+describe('resetEndpoint', () => {
+    it('forgets the probe, clears the cache and the transport api so the next poll probes again', async () => {
+        const t = fakeTransport(true);
+        let resets = 0;
+        t.reset = () => resets++;
+        const clock = fakeClock();
+        const q = queue(t, clock);
+        await q.ensureProbe();
+        expect(t.probes).toBe(1);
+        expect(q.metrics().endpoint).toBe('up');
+        q.resetEndpoint();
+        expect(q.metrics().endpoint).toBe('unknown');
+        expect(resets).toBe(1);
+        await q.ensureProbe();
+        expect(t.probes).toBe(2);
+    });
+});
+
 describe('the model never runs inside the tick', () => {
     it('nothing under src/sim imports src/llm or the endpoint client', () => {
         const root = resolve(__dirname, '../src/sim');

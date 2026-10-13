@@ -14,6 +14,8 @@ import {
     buildAdvisorMessages,
     buildAdvisorSystemPrompt,
     extractReplyText,
+    listAdvisorModels,
+    testAdvisorEndpoint,
     probeAdvisorEndpoint,
     requestAdvisor,
     runAdvisorTurn,
@@ -184,5 +186,42 @@ describe('buildAdvisorMessages', () => {
         expect(m[0].content).toBe(`${buildAdvisorSystemPrompt(brief)}\n\nEARLIER IN THIS CHAT (context only, do not copy):\nPlayer said: u8\nYou answered: a8\nPlayer said: u9\nYou answered: a9`);
         expect(m[0].content).toContain('the Fleet Admiral of the E');
         expect(buildAdvisorMessages(brief, [], 'x')[0].content).toBe(buildAdvisorSystemPrompt(brief));
+    });
+});
+
+describe('listAdvisorModels / testAdvisorEndpoint / thinking off on OpenAI servers', () => {
+    const ollamaTags = async (u: string): Promise<Response> =>
+        u.endsWith('/api/tags') ? new Response(JSON.stringify({ models: [{ name: 'qwen3:4b' }, { name: 'llama3' }] })) : new Response('', { status: 404 });
+    const openaiModels = async (u: string): Promise<Response> => (u.endsWith('/v1/models') ? new Response(JSON.stringify({ data: [{ id: 'm1' }, { id: 'm2' }] })) : new Response('', { status: 404 }));
+
+    it('lists models for both APIs through a fake fetch', async () => {
+        expect(await listAdvisorModels({ endpoint: 'http://x', api: 'auto' }, ollamaTags)).toEqual(['qwen3:4b', 'llama3']);
+        expect(await listAdvisorModels({ endpoint: 'http://x/', api: 'auto' }, openaiModels)).toEqual(['m1', 'm2']);
+        expect(await listAdvisorModels({ endpoint: 'http://x', api: 'ollama' }, openaiModels)).toEqual([]);
+    });
+
+    it('OpenAI path with think off sends enable_thinking:false and /no_think on the LAST system message', async () => {
+        let sent: { chat_template_kwargs?: unknown; messages: { role: string; content: string }[]; reasoning_effort?: unknown } | null = null;
+        const f = async (_u: string, init?: RequestInit): Promise<Response> => {
+            sent = JSON.parse(String(init?.body));
+            return new Response(JSON.stringify({ choices: [{ message: { content: '{"ok":true}' } }] }));
+        };
+        await requestAdvisor({ endpoint: 'http://x', model: 'm', api: 'openai' }, [{ role: 'system', content: 'a' }, { role: 'system', content: 'b' }, { role: 'user', content: 'u' }], { fetchImpl: f });
+        expect(sent!.chat_template_kwargs).toEqual({ enable_thinking: false });
+        expect(sent!.messages.map((m) => m.content)).toEqual(['a', 'b\n/no_think', 'u']);
+        expect(sent!.reasoning_effort).toBeUndefined();
+        await requestAdvisor({ endpoint: 'http://x', model: 'm', api: 'openai', think: true }, [{ role: 'system', content: 'a' }], { fetchImpl: f });
+        expect(sent!.chat_template_kwargs).toBeUndefined();
+        expect(sent!.messages[0].content).toBe('a');
+    });
+
+    it('Test: ok with latency, warns when the model thinks although Thinking is off, fails without a server', async () => {
+        const f = async (u: string): Promise<Response> =>
+            u.endsWith('/v1/models') ? new Response('{"data":[]}') : u.endsWith('/api/version') ? new Response('', { status: 404 }) : new Response(JSON.stringify({ choices: [{ message: { content: '<think>hm</think>{"ok":true}' } }] }));
+        const r = await testAdvisorEndpoint({ endpoint: 'http://x', model: 'm', api: 'auto' }, f);
+        expect(r).toMatchObject({ ok: true, api: 'openai', alwaysThinks: true });
+        expect((await testAdvisorEndpoint({ endpoint: 'http://x', model: 'm', api: 'auto', think: true }, f)).alwaysThinks).toBe(false);
+        const down = await testAdvisorEndpoint({ endpoint: 'http://x', model: 'm', api: 'auto' }, async () => Promise.reject(new Error('no')));
+        expect(down.ok).toBe(false);
     });
 });

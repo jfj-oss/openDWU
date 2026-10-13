@@ -59,6 +59,8 @@ export interface LlmResult {
 export interface LlmTransport {
     /** True when a model server answers. */
     probe(): Promise<boolean>;
+    /** Forget what was learned about the endpoint (the protocol that answered); the next probe starts afresh. */
+    reset?(): void;
     complete(req: LlmRequest, signal: AbortSignal): Promise<{ text: string; promptTokens?: number; completionTokens?: number }>;
     /** Model id (part of the cache key). */
     model(): string;
@@ -184,6 +186,8 @@ export class LlmQueue {
     private readonly cache = new Map<string, { text: string; day: number }>();
     private probePromise: Promise<boolean> | null = null;
     private lastProbeAt = -Infinity;
+    /** Bumped by resetEndpoint: a probe started before it must not write its (stale) answer. */
+    private probeEpoch = 0;
     private disposed = false;
     private readonly aborts = new Set<AbortController>();
     private readonly m: LlmMetrics = {
@@ -234,10 +238,12 @@ export class LlmQueue {
         if (this.m.endpoint === 'down' && this.now() - this.lastProbeAt < this.policy().probeRetryMs) return Promise.resolve(false);
         this.lastProbeAt = this.now();
         this.m.endpoint = 'probing';
+        const epoch = this.probeEpoch;
         this.probePromise = this.transport
             .probe()
             .catch(() => false)
             .then((up) => {
+                if (epoch !== this.probeEpoch) return up;
                 this.m.endpoint = up ? 'up' : 'down';
                 this.probePromise = null;
                 return up;
@@ -390,6 +396,16 @@ export class LlmQueue {
         }
     }
 
+    /** The endpoint settings changed: forget the probe result and the cache so the next poll probes the new address. */
+    resetEndpoint(): void {
+        this.m.endpoint = 'unknown';
+        this.probePromise = null;
+        this.lastProbeAt = -Infinity;
+        this.probeEpoch++;
+        this.cache.clear();
+        this.transport.reset?.();
+    }
+
     /** Drop the cache (e.g. after the model changed). */
     clearCache(): void {
         this.cache.clear();
@@ -418,6 +434,9 @@ export function advisorTransport(settings: () => EndpointSettings, fetchImpl?: F
     let api: AdvisorApi | null = null;
     return {
         model: () => settings().model,
+        reset: () => {
+            api = null;
+        },
         probe: async () => {
             const s = settings();
             if (s.endpoint.trim() === '' || s.model.trim() === '') return false;
