@@ -2895,6 +2895,7 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
     const overrides: AddonOverrides = { flags: {}, params: {} };
     /** Settings panels the player opened (kept open across re-renders). */
     const openPanels = new Set<string>();
+    let wipOpen = false; // the Work in progress section starts folded
     const openExpansions = new Set<string>();
     try {
         // Dev / screenshot hook: ?screen=wizard&page=scenario&addons=timebomb,robotmutiny starts with those ticked.
@@ -3026,12 +3027,25 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
         for (const sec of model.sections) {
             const groups = sec.groups.map((g) => ({ group: g.group, rows: g.rows.filter((r) => !inExpansion.has(r.id)) })).filter((g) => g.rows.length > 0);
             if (groups.length === 0) continue;
-            listSection.appendChild(el('div', 'wizard-addon-section', sec.section));
+            let host: HTMLElement = listSection;
+            if (sec.section === 'Work in progress') {
+                // Folded unless opened (or one of its add-ons is already ticked).
+                const fold = el('details', 'wizard-addon-wip-fold');
+                fold.open = wipOpen || groups.some((g) => g.rows.some((r) => r.checked));
+                fold.addEventListener('toggle', () => {
+                    wipOpen = fold.open;
+                });
+                fold.appendChild(el('summary', 'wizard-addon-section', `${sec.section} (${groups.reduce((n, g) => n + g.rows.length, 0)})`));
+                listSection.appendChild(fold);
+                host = fold;
+            } else {
+                listSection.appendChild(el('div', 'wizard-addon-section', sec.section));
+            }
             for (const g of groups) {
-                listSection.appendChild(el('div', 'wizard-addon-group', g.group));
+                host.appendChild(el('div', 'wizard-addon-group', g.group));
                 const grid = el('div', 'wizard-addon-grid');
                 for (const r of g.rows) grid.appendChild(rowEl(r));
-                listSection.appendChild(grid);
+                host.appendChild(grid);
             }
         }
         listSection.scrollTop = scroll;

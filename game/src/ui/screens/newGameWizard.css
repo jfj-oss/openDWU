@@ -378,6 +378,9 @@
     color: rgb(230, 230, 240);
     margin: 14px 0 2px;
 }
+.wizard-addon-wip-fold > summary {
+    cursor: pointer;
+}
 .wizard-addon-wip {
     font-size: 11px;
     font-weight: bold;
