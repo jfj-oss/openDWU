@@ -288,6 +288,18 @@ export function capsuleDashes(lengthPx: number, out: number[], fromPx = 0, toPx 
     return added;
 }
 
+let aaLineTex: Texture | null = null;
+/** The classic dash texture: 4×4, rows 1–2 white and rows 0 / 3 transparent. Drawn twice the line width tall, so linear
+ * filtering fades each long edge over half a pixel: a thin rotated quad no longer stair-steps (no MSAA on the map). */
+function aaLineTexture(): Texture {
+    if (aaLineTex !== null) return aaLineTex;
+    const { canvas, ctx } = makeTextureCanvas(4, 4);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 1, 4, 2);
+    aaLineTex = textureFromCanvas(canvas, 'systemLinkAaLine');
+    return aaLineTex;
+}
+
 let capTex: Texture | null = null;
 /** The right half of a disc (flat edge on the left, vertically centred): the round end of a dash. 31 texels of radius,
  * 1 texel of transparent margin; the disc diameter is 62 texels of the 64 tall. */
@@ -328,7 +340,7 @@ export class SystemLinkLayer {
         const dyn = { position: false, vertex: false, rotation: false, uvs: false, color: false };
         this.bodies = new ParticleContainer({ texture: Texture.WHITE, dynamicProperties: dyn });
         this.caps = new ParticleContainer({ texture: capTexture(), dynamicProperties: dyn });
-        this.classic = new ParticleContainer({ texture: Texture.WHITE, dynamicProperties: dyn });
+        this.classic = new ParticleContainer({ texture: aaLineTexture(), dynamicProperties: dyn });
         this.root.addChild(this.classic, this.bodies, this.caps);
         this.root.visible = false;
     }
@@ -439,15 +451,17 @@ export class SystemLinkLayer {
                 const s = pieces[i] * f;
                 let part = this.classicPool[n];
                 if (part === undefined) {
-                    part = new Particle({ texture: Texture.WHITE, anchorX: 0, anchorY: 0 });
+                    part = new Particle({ texture: aaLineTexture(), anchorX: 0, anchorY: 0 });
                     this.classicPool.push(part);
                 }
                 part.x = l.x0 + ux * s - ox;
                 part.y = l.y0 + uy * s - oy;
                 part.rotation = rot;
-                part.scaleX = (pieces[i + 1] - pieces[i]) * f;
-                part.scaleY = width;
-                part.anchorY = pieces[i + 2] === 1 ? 0.5 : 0;
+                // The 4-texel texture: x spans the piece; y is 2 × width with the opaque core (rows 1–2) the line width.
+                part.scaleX = ((pieces[i + 1] - pieces[i]) * f) / 4;
+                part.scaleY = (2 * width) / 4;
+                // Anchor 0.25 puts the core's top edge where anchor 0 put the 1-texel quad's (0.5 stays centred).
+                part.anchorY = pieces[i + 2] === 1 ? 0.5 : 0.25;
                 part.tint = l.color;
                 part.alpha = 1;
                 out[n++] = part;
