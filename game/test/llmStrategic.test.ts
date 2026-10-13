@@ -31,6 +31,7 @@ import {
     familyMoves,
     legalMoves,
     nearestAiEmpires,
+    strategicDecided,
     strategicLog,
     strategicOn,
     strategicSchema,
@@ -286,6 +287,15 @@ describe('decision families (fake endpoint, hand-built state)', () => {
             const refused = applyLlmStrategicCommand(g, c.e, { year: thisYear(g), offered: [bogus], choice: bogus, reason: 'forged' })!;
             expect(refused.status).toBe('refused');
             expect(c.snap()).toBe(snap0);
+            // A second command for the same empire and year (another client's) is refused whatever it says.
+            const logged = strategicLog(g).length;
+            if (strategicDecided(g, c.e, thisYear(g))) {
+                const dup = applyLlmStrategicCommand(g, c.e, { year: thisYear(g), offered: [c.move], choice: c.move, reason: 'twice' })!;
+                expect(dup.status).toBe('refused');
+                expect(dup.text).toMatch(/Already decided/);
+                expect(strategicLog(g).length).toBe(logged + 1);
+                expect(c.snap()).toBe(snap0);
+            }
             // The model's choice: the job asks, validates and ISSUES a command; nothing changes until the boundary.
             const t = transport(pick(c.move));
             const j = job(g, t);

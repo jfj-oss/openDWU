@@ -568,6 +568,17 @@ export function proposePeaceTerms(galaxy: Galaxy, empire: Empire, other: Empire,
     res.ok = true;
     const st = warGoalsState(galaxy);
     warLedger(galaxy, empire, other); // a war begun outside DeclareWar gets its ledger now
+    if (isHumanEmpire(galaxy, other)) {
+        // A human target answers for itself: the terms stand as `empire`'s offer with a decision for that player (accept
+        // → acceptProposal, as for an AI's proposal); nothing is applied or answered on their behalf.
+        st.offers[pairKey(empire, other)] = t;
+        if (other.proposedDiplomaticRelations.byEmpire(empire) === null) {
+            other.proposedDiplomaticRelations.add(new DiplomaticRelation(DiplomaticRelationType.None, empire, empire, other, galaxyStarDate(galaxy), rel.supplyRestrictedResources));
+        }
+        raisePeaceDecision(galaxy, other, empire, t);
+        res.message = scenarioText('Lively Peace Offer Title', other.name);
+        return res;
+    }
     const stockEnd = considerEndWar(galaxy, other, empire, false).end;
     if (acceptsTerms(galaxy, other, empire, t, stockEnd)) {
         st.offers[pairKey(empire, other)] = t;

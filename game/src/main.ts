@@ -168,7 +168,7 @@ import { humanEmpires } from './sim/humanEmpires';
 import type { Empire } from './sim/empire';
 // LAN multiplayer (docs/MULTIPLAYER.md §10).
 import { devValue } from './ui/multiplayer/devHooks';
-import { endMultiplayerSession, multiplayerActive, multiplayerSaveExtras, openMultiplayerScreen, type LoadedMultiplayerSave, type MultiplayerAppDeps } from './ui/multiplayer/multiplayerApp';
+import { endMultiplayerSession, multiplayerActive, multiplayerIsClient, multiplayerSaveExtras, openMultiplayerScreen, type LoadedMultiplayerSave, type MultiplayerAppDeps } from './ui/multiplayer/multiplayerApp';
 import { engineName, noteDataRead, resetDataReads } from './net/fingerprint';
 import { APP_BUILD, APP_VERSION } from './appVersion';
 
@@ -870,12 +870,13 @@ export async function startGameView(
     (window as unknown as { __dwu: Record<string, unknown> }).__dwu.aiAdvisor = aiAdvisor.driver;
     // [aiadvisor] end
     // [llm] begin — 19s-1: the local-model layer (queue + yearly chronicle); nothing is created with llmFoundations off.
+    const llmAiJobs = (): boolean => !multiplayerIsClient();
     const llmLayer = startLlmLayer({ galaxy, get player() {
             return currentViewer();
         }, settings: () => {
             const st = getSettings();
             return { endpoint: st.advisorEndpoint, model: st.advisorModel, api: st.advisorApi, think: st.advisorThink };
-        }, search: window.location.search });
+        }, search: window.location.search, aiJobs: llmAiJobs() });
     (window as unknown as { __dwu: Record<string, unknown> }).__dwu.llm = llmLayer;
     // [llm] end
     // Task 10d: the HUD's money panel refreshes from the player empire.

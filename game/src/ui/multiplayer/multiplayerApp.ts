@@ -44,6 +44,7 @@ import { DEFAULT_MULTIPLAYER_PORT, netEndpoint, type NetAddress, type PortMappin
 import { InternetHost, openCodeJoin } from './internetUi';
 import { SideHub } from './sideChannel';
 import { Migration } from './migration';
+import { currentLlmLayer } from '../../llm/llmLayer';
 import { ChatPanel, type SavedChatLine } from './chatPanel';
 import { setSaveEntryTagger } from '../screens/saveLoad';
 import { playerSelectableRacesSorted, startGovernmentsForRace } from '../screens/newGameWizard';
@@ -170,6 +171,11 @@ let running: Running | null = null;
 /** A LAN game is running (main.ts: no hot-seat switch, no intro, LAN save extras). */
 export function multiplayerActive(): boolean {
     return running !== null;
+}
+
+/** A multiplayer game is running and this peer is not its host (the AI-empire LLM jobs belong to the host). */
+export function multiplayerIsClient(): boolean {
+    return running !== null && running.mp.role !== 'host';
 }
 // Event pop-ups and screen windows do not pause a multiplayer game for everyone (§27): the local player sees the
 // pop-up while the game runs. The pause button and the Escape menu still pause (they ask the host).
@@ -401,6 +407,7 @@ async function runGame(deps: MultiplayerAppDeps, mp: MpHandle, side: SideHub, na
             console.info(`[migration] this peer is the host now (${survivors.length} survivor(s) reconnecting)`);
             r.hosting = true;
             r.rejoin = null;
+            currentLlmLayer()?.enableAiJobs(); // the AI-empire LLM jobs follow the host
             const ep = netEndpoint();
             if (ep.canHost && !migration.lanHosting) {
                 migration.lanHosting = true;

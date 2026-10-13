@@ -35,6 +35,7 @@ import {
     pairKey,
     type PeaceTerms,
 } from '../src/sim/scenario/lively/warGoals';
+import { setHumanEmpires } from '../src/sim/humanEmpires';
 import { applyTerms, peaceOffer, PEACE_DECISION, statusQuo, warView } from '../src/sim/scenario/lively/peaceTerms';
 
 let base: GameData;
@@ -255,6 +256,25 @@ describe('19g-3 peace terms', () => {
         const ops = commandLog(g).map((e) => (e as { op?: string }).op);
         expect(ops).toContain('proposePeaceTerms');
         expect(ops).toContain('answerDecision');
+    }, 180000);
+
+    it('terms sent to another human raise a decision for that player and are not answered for them', () => {
+        const { g } = warGame();
+        const player = g.playerEmpire!;
+        const other = aiEmpires(g)[0];
+        meet(player, other);
+        declareWar(g, other, player);
+        ageWar(other, player);
+        setHumanEmpires(g, [player, other]);
+        const res = runPlayerCommand(g, player, 'proposePeaceTerms', [other, statusQuo()]);
+        expect(res.ok).toBe(true);
+        expect(res.accepted).toBe(false);
+        expect(res.counter).toBeNull();
+        expect(obtainDiplomaticRelation(player, other).type).toBe(DiplomaticRelationType.War);
+        const d = pendingScenarioDecisions(g, other).find((x) => x.kind === PEACE_DECISION)!;
+        expect(d).toBeDefined();
+        expect(runPlayerCommand(g, other, 'answerDecision', [d.id, 'accept'])).toBe(true);
+        expect(obtainDiplomaticRelation(player, other).type).toBe(DiplomaticRelationType.None);
     }, 180000);
 
     it('an AI offer to the player raises a peace decision (EndWarRequest → peaceProposed)', () => {

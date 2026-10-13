@@ -31,6 +31,8 @@ export interface LlmLayerOptions {
     /** 19s-2: a surface was upgraded by a voice. */
     onVoiced?: VoiceJobOptions['onVoiced'];
     pollMs?: number;
+    /** Run the AI-empire jobs (strategic moves). False on multiplayer clients: only the host asks (default true). */
+    aiJobs?: boolean;
 }
 
 export interface LlmLayer {
@@ -39,6 +41,8 @@ export interface LlmLayer {
     chronicle: ChronicleJob | null;
     /** 19s-3 (flag llmStrategic): the yearly strategic pass. */
     strategic: StrategicJob | null;
+    /** Start the AI-empire jobs if not running (a multiplayer client promoted to host). */
+    enableAiJobs: () => void;
     /** 19s-2 voices (null with llmVoices off). */
     voices: VoiceJob | null;
     dispose: () => void;
@@ -52,7 +56,7 @@ export function currentLlmLayer(): LlmLayer | null {
 }
 
 export function startLlmLayer(opts: LlmLayerOptions): LlmLayer {
-    if (!llmOn(opts.galaxy)) return { on: false, queue: null, chronicle: null, strategic: null, voices: null, dispose: () => {} };
+    if (!llmOn(opts.galaxy)) return { on: false, queue: null, chronicle: null, strategic: null, enableAiJobs: () => {}, voices: null, dispose: () => {} };
     const transport = opts.transport ?? advisorTransport(opts.settings);
     const queue = new LlmQueue({ transport, clock: galaxyLlmClock(opts.galaxy), policy: () => llmPolicyFromGalaxy(opts.galaxy) });
     // `opts.player` is read at each use (main.ts passes a getter: the local viewer, which the hot seat moves).
@@ -65,15 +69,17 @@ export function startLlmLayer(opts: LlmLayerOptions): LlmLayer {
         model: () => transport.model(),
         onStored: opts.onChronicle,
     });
-    const strategic = strategicOn(opts.galaxy)
-        ? new StrategicJob({
-              galaxy: opts.galaxy,
-              get player() {
-                  return opts.player;
-              },
-              queue,
-          })
-        : null;
+    const makeStrategic = (): StrategicJob | null =>
+        strategicOn(opts.galaxy)
+            ? new StrategicJob({
+                  galaxy: opts.galaxy,
+                  get player() {
+                      return opts.player;
+                  },
+                  queue,
+              })
+            : null;
+    let strategic = opts.aiJobs === false ? null : makeStrategic();
     const voices = voicesOn(opts.galaxy) ? new VoiceJob({ galaxy: opts.galaxy, player: opts.player, queue, onVoiced: opts.onVoiced }) : null;
     if (voices !== null) setActiveVoiceJob(voices);
     const timer = setInterval(() => {
@@ -91,7 +97,12 @@ export function startLlmLayer(opts: LlmLayerOptions): LlmLayer {
         on: true,
         queue,
         chronicle,
-        strategic,
+        get strategic() {
+            return strategic;
+        },
+        enableAiJobs: () => {
+            if (strategic === null) strategic = makeStrategic();
+        },
         voices,
         dispose: () => {
             if (current === layer) current = null;

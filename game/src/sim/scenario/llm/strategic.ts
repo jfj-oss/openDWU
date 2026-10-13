@@ -569,6 +569,8 @@ export function applyLlmStrategicCommand(galaxy: Galaxy, empire: Empire, cmd: Ll
         choice: typeof cmd.choice === 'string' ? cmd.choice : null,
         reason: clipReason(String(cmd.reason ?? '')),
     };
+    // Multiplayer: every client may issue a command for the same pass; only the first one applies (deterministic).
+    if (strategicDecided(galaxy, empire, base.year)) return log(galaxy, { ...base, family: '', status: 'refused', text: 'Already decided this year' });
     if (base.choice === null) return log(galaxy, { ...base, family: '', status: 'refused', text: 'No usable answer: the rules decide' });
     if (base.choice === 'none') return log(galaxy, { ...base, family: '', status: 'none', text: 'No move this year' });
     const fam = familyOfId(base.choice);
