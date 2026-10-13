@@ -29,6 +29,7 @@ import {
     resolveAddonSwitches,
     scenarioOverlayFor,
     toggleAddon,
+    withFlagAddons,
     EXPANSIONS,
     toggleExpansion,
     expansionRows,
@@ -84,6 +85,20 @@ describe('dependencies derived from include / requires', () => {
         // Explicit `requires` counts as an "on" dependency and is only in the parsed manifest when present.
         expect(addonCatalog([m({ id: 'x', requires: ['y'] }), m({ id: 'y' })]).byId.get('x')!.deps).toEqual([{ id: 'y', kind: 'on' }]);
         expect('requires' in m({ id: 'z' })).toBe(false);
+    });
+});
+
+describe('flag-level add-on dependencies', () => {
+    it('llmMemory on pulls in Reputation (and its ledger); off or untouched changes nothing', () => {
+        const none = { flags: {}, params: {} };
+        expect(withFlagAddons(cat, ['llm-layer'], none)).toEqual(['llm-layer']);
+        const on = { flags: { llmMemory: true }, params: {} };
+        const p = withFlagAddons(cat, ['llm-layer'], on);
+        expect(p).toContain('reputation');
+        expect(resolveAddonSwitches(cat, p, on).flags.reputationLedger).toBe(true);
+        expect(addonChoiceFor(cat, ['llm-layer'], on)!.addons).toContain('reputation');
+        expect(addonChoiceFor(cat, ['llm-layer'], none)!.addons).not.toContain('reputation');
+        expect(withFlagAddons(cat, [], on)).toEqual([]);
     });
 });
 

@@ -411,6 +411,32 @@ export function resolveAddonSwitches(cat: AddonCatalog, picked: readonly string[
 }
 
 /**
+ * Flag-level dependencies (manifest flag `requiresAddons`): every switched-on flag of a running add-on pulls its
+ * required add-ons into the picks (repeated until stable; a dependency that conflicts with a running add-on, or that
+ * the index lacks, is skipped). Pure and deterministic; a selection with no such flag on is returned unchanged.
+ */
+export function withFlagAddons(cat: AddonCatalog, picked: readonly string[], overrides: AddonOverrides = { flags: {}, params: {} }): string[] {
+    let p = canonicalAddons(cat, picked);
+    for (let guard = 0; guard < 16; guard++) {
+        const { on } = addonSets(cat, p);
+        const flags = resolveAddonSwitches(cat, p, overrides).flags;
+        const add: string[] = [];
+        for (const id of on) {
+            for (const f of cat.manifests.get(id)?.flags ?? []) {
+                if (flags[f.name] !== true) continue;
+                for (const dep of f.requiresAddons ?? []) {
+                    if (cat.byId.has(dep) && !on.includes(dep) && !add.includes(dep)) add.push(dep);
+                }
+            }
+        }
+        const next = add.filter((d) => toggleAddon(cat, p, d, true).includes(d));
+        if (next.length === 0) return p;
+        p = canonicalAddons(cat, [...p, ...next]);
+    }
+    return p;
+}
+
+/**
  * Expansions: ONE picker switch that ticks a group of add-ons. Purely a picker grouping: the switch ticks / unticks
  * the members as ordinary explicit picks, so a game (and its save, and the lobby's package list) records the members
  * exactly as if they had been ticked one by one, each member's manifest flags, params and placement included. Each

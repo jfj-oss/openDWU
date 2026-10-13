@@ -7,6 +7,8 @@ export interface ScenarioFlagDef {
     label: string;
     description?: string;
     default: boolean;
+    /** Add-ons this flag needs: switching the flag on ticks them (addons.ts withFlagAddons). */
+    requiresAddons?: string[];
 }
 
 /** A numeric knob the wizard shows as a number box; read with scenarioParam(galaxy, name, fallback). */
@@ -108,12 +110,14 @@ export function parseScenarioManifest(input: unknown): ScenarioManifest {
     };
     const flags = arr(o.flags, 'flags').map((f, i): ScenarioFlagDef => {
         const r = f as Record<string, unknown>;
-        return {
+        const def: ScenarioFlagDef = {
             name: unique(str(r.name, `flags[${i}].name`), 'flag/param'),
             label: typeof r.label === 'string' ? r.label : String(r.name),
             description: typeof r.description === 'string' ? r.description : undefined,
             default: r.default === true,
         };
+        if (r.requiresAddons !== undefined) def.requiresAddons = arr(r.requiresAddons, `flags[${i}].requiresAddons`).map((x, j) => str(x, `flags[${i}].requiresAddons[${j}]`));
+        return def;
     });
     const params = arr(o.params, 'params').map((p, i): ScenarioParamDef => {
         const r = p as Record<string, unknown>;

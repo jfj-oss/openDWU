@@ -97,7 +97,7 @@ import { loadScenarioIndex, loadScenarioOverlay } from './sim/scenario/fetchScen
 import { applyScenarioOverlay, type ScenarioOverlay } from './sim/scenario/overlay';
 import { isTextLoaded, loadBaseTextUnderAdded } from './sim/textResolver';
 import { resolveThemedDataUrl } from './sim/data/paths';
-import { COMPOSITE_SCENARIO_ID, activeExpansions, addonCatalog, addonsAddableToSave, expansionsAddableToSave, compositeScenarioManifest, planAddonStart, planSaveAddonAddition, resolveAddonSwitches, savedScenarioPackages, scenarioOverlayFor } from './sim/scenario/addons';
+import { COMPOSITE_SCENARIO_ID, activeExpansions, addonCatalog, addonsAddableToSave, expansionsAddableToSave, compositeScenarioManifest, planAddonStart, planSaveAddonAddition, resolveAddonSwitches, withFlagAddons, savedScenarioPackages, scenarioOverlayFor } from './sim/scenario/addons';
 // [leftovers] begin
 import { closeGalacticHistory } from './ui/screens/galacticHistory';
 import { installEventLogDevHook } from './ui/eventLogDev';
@@ -2110,7 +2110,7 @@ async function buildAutostartGame(
     if (scenarioId !== null && scenarioId.includes(',')) {
         await preloadScenarioOverlays();
         const cat = addonCatalog([...scenarioOverlays.values()].map((o) => o.manifest));
-        const picked = scenarioId.split(',').map((x) => x.trim()).filter((x) => x !== '');
+        const picked = withFlagAddons(cat, scenarioId.split(',').map((x) => x.trim()).filter((x) => x !== ''));
         const plan = planAddonStart(cat, picked);
         if (plan !== null) {
             const sw = resolveAddonSwitches(cat, picked);

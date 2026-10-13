@@ -106,7 +106,7 @@ import { activeCustomizationSetName } from '../../sim/data/customization';
 import { selectColorFromKey } from '../../sim/empireColors';
 import { loadScenarioIndex } from '../../sim/scenario/fetchScenario';
 import type { ScenarioManifest } from '../../sim/scenario/manifest';
-import { SMARTER_AI_ADDON_ID, addonCatalog, addonPickerModel, canonicalAddons, defaultSmarterAIChoice, expansionMemberIds, expansionRows, toggleExpansion, type ExpansionRow, planAddonStart, resolveAddonSwitches, toggleAddon, withSmarterAI, type AddonCatalog, type AddonOverrides, type AddonRow, type SmarterAIChoice } from '../../sim/scenario/addons';
+import { SMARTER_AI_ADDON_ID, addonCatalog, addonPickerModel, canonicalAddons, defaultSmarterAIChoice, expansionMemberIds, expansionRows, toggleExpansion, type ExpansionRow, planAddonStart, resolveAddonSwitches, toggleAddon, withFlagAddons, withSmarterAI, type AddonCatalog, type AddonOverrides, type AddonRow, type SmarterAIChoice } from '../../sim/scenario/addons';
 import {
     COLORS,
     FONT,
@@ -2843,7 +2843,8 @@ let wizardScenarios: ScenarioManifest[] = [];
  * choice folded in (addons.ts withSmarterAI).
  */
 export function addonChoiceFor(cat: AddonCatalog, picked: readonly string[], overrides: AddonOverrides, smart: SmarterAIChoice | null = null): StartGameOptions['scenario'] {
-    const w = withSmarterAI(picked, overrides, smart);
+    const w0 = withSmarterAI(picked, overrides, smart);
+    const w = { picked: withFlagAddons(cat, w0.picked, w0.overrides), overrides: w0.overrides };
     const plan = planAddonStart(cat, w.picked);
     if (plan === null) return null;
     const sw = resolveAddonSwitches(cat, w.picked, w.overrides);
@@ -3042,6 +3043,12 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
                 if (f.name === a.masterFlag) continue; // the tick is the master switch
                 const c = checkBox(f.label, choice.flags[f.name] ?? f.default, (x) => {
                     overrides.flags[f.name] = x;
+                    const withDeps = withFlagAddons(cat, picked, overrides);
+                    if (withDeps.length !== picked.length) {
+                        picked = withDeps; // the flag needs another add-on: tick it (shown as a dependency)
+                        update();
+                        return;
+                    }
                     options.scenario = addonChoiceFor(cat, picked, overrides, options.smarterAI ?? null);
                 }, FONT.normal);
                 c.classList.add('wizard-checkbox', 'wizard-flow');

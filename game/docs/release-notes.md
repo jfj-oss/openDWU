@@ -4,7 +4,9 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
-- **Rulers' memory (new `llmMemory` option of the Local LLM Layer add-on):** each AI ruler keeps a short dated diary of what other empires did to or for them (wars, peace, treaties, gifts, colonies, pirates driven off); the lines and a mood word feed the model prompts, and a small capped, fading attitude nudge (only for things the original game does not already count; needs the Reputation ledger) follows. Off by default.
+- **Local model settings window:** Game Options, Local model... has endpoint presets for Ollama / LM Studio / llama-server, a list of the installed models, a Thinking switch (forced off on OpenAI-compatible servers too) and a Test button.
+- **Rulers' memory turns Reputation on:** switching on the Local LLM Layer's rulers' memory option now also switches on the Reputation add-on and its ledger, which the attitude nudge needs (add-on options can now name the add-ons they need).
+- **Rulers' memory (new `llmMemory` option of the Local LLM Layer add-on):** each AI ruler keeps a short dated diary of what other empires did to or for them (wars, peace, treaties, gifts, colonies, pirates driven off); the lines and a mood word feed the model prompts, and a small capped, fading attitude nudge (only for things the original game does not already count; turns the Reputation ledger on) follows. Off by default.
 - **Peace talks in plain words:** with the local model on, the peace-terms panel has a words box ("give me Kygnos and 2,000 a year for five years") that fills in the real terms for you to edit and offer, a live line saying whether the other empire would accept, and offers of peace come with a voiced cover letter. Without a model the panel works as before.
 - **War objectives scale with galaxy size:** an empire at war now looks for enemy colonies and bases to capture within a
   range that grows with the galaxy past the biggest stock size (15 sectors): the original 1.5 / 1.0 sectors become about
