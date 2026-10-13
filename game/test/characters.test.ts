@@ -537,6 +537,8 @@ describe('Characters & Victory add-on', () => {
         // Every shuttle shows the same foreign label until the spy reveals the real one.
         const labels = () => vipMarkers(g, spy, () => true).filter((m) => m.shuttle.empire === e).map((m) => m.label);
         expect(new Set(labels()).size).toBe(1);
+        expect(labels()[0]).toBe(`VIP Shuttle — ${ruler.name}, Leader`);
+        expect(new Set([t, ...decoys].map((x) => x.shuttle.name)).size).toBe(1);
         scenarioEmit(g, 'intelMissionCompleted', { empire: spy, mission: { type: IntelligenceMissionType.StealOperationsMap, targetEmpire: e }, outcome: IntelligenceMissionOutcome.SucceedNotDetect });
         expect(t.revealedTo).toContain(spy.empireId);
         expect(new Set(labels()).size).toBe(2);

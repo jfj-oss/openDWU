@@ -66,7 +66,7 @@ export class VipMarkerLayer {
         for (const m of this.list) {
             if (m.shuttle.hasBeenDestroyed) continue;
             const p = drawnPositionOf(this.motion, m.shuttle, this.pt);
-            if ((p.x - x) ** 2 + (p.y - y) ** 2 <= r * r) return `${m.shuttle.name}\n${m.label}`;
+            if ((p.x - x) ** 2 + (p.y - y) ** 2 <= r * r) return m.label;
         }
         return null;
     }

@@ -15,6 +15,7 @@ import { BuiltObject } from '../../builtObject';
 import { BuiltObjectSubRole } from '../../builtObjectTypes';
 import { BuiltObjectRole } from '../../data/designSpecifications';
 import { type Character, CharacterRole, isBuiltObjectLocation } from '../../characters';
+import { DIET_TRIP_REASON } from './diet/dietState';
 import { CharacterDeathType, characterSendDeathMessage } from '../../characterRuntime';
 import { generateNewBuiltObject } from '../../empireEvents';
 import { assignMission, clearPreviousMissionRequirements } from '../../missions/assign';
@@ -171,6 +172,29 @@ function spawnShuttle(galaxy: Galaxy, empire: Empire, x: number, y: number, trip
     return bo;
 }
 
+/**
+ * "VIP Shuttle — <name>, <role>" for a trip. A decoy carries the ruler's text exactly (the label never gives it away).
+ * Pure; no draws. The role comes from the character's role and the trip's purpose.
+ */
+export function vipShuttleLabel(t: VipTrip): string {
+    const c = t.character;
+    if (c === null) return scenarioText('CV VIP Shuttle');
+    const dest = t.destination;
+    const reason = t.reason;
+    let role: string;
+    if (c.role === CharacterRole.ColonyGovernor) role = reason === DIET_TRIP_REASON ? scenarioText('CV Role Diet') : scenarioText('CV Role ColonyGovernor Of', dest.name);
+    else role = scenarioText('CV Role ' + CharacterRole[c.role]);
+    return scenarioText('CV VIP Label', c.name, role);
+}
+
+/** Names the trip's shuttle (and its decoys) with the passenger label. */
+function nameTripShuttles(galaxy: Galaxy, t: VipTrip): void {
+    const real = t.decoyOf === 0 ? t : (peekCvState(galaxy)?.trips.find((x) => x.id === t.decoyOf) ?? null);
+    if (real === null) return;
+    const label = vipShuttleLabel(real);
+    for (const x of peekCvState(galaxy)!.trips) if (x === real || x.decoyOf === real.id) x.shuttle.name = label;
+}
+
 /** Despawns a shuttle that arrived (no passenger aboard any more). */
 function despawn(galaxy: Galaxy, bo: BuiltObject): void {
     if (bo.hasBeenDestroyed) return;
@@ -218,6 +242,8 @@ export function startVipTrip(galaxy: Galaxy, c: Character, destination: BuiltObj
         existing.destination = destination;
         existing.reason = reason;
         c.retargetTransfer(destination);
+        existing.reason = reason;
+        nameTripShuttles(galaxy, existing);
         existing.deadline = Math.max(existing.deadline, now + tripDeadlineMs(galaxy, existing.shuttle.xpos, existing.shuttle.ypos, destination));
         if (existing.waitUntil === 0) vipAssign(galaxy, existing.shuttle, BuiltObjectMissionType.Move, destination);
         return existing;
@@ -252,6 +278,7 @@ export function startVipTrip(galaxy: Galaxy, c: Character, destination: BuiltObj
     if (cvOn(galaxy, CV_ESCORT_FLAG)) assignEscorts(galaxy, t);
     if (t.waitUntil === 0) vipAssign(galaxy, shuttle, BuiltObjectMissionType.Move, destination);
     if (c.role === CharacterRole.Leader && cvOn(galaxy, CV_DECOY_FLAG)) spawnDecoys(galaxy, t, from);
+    nameTripShuttles(galaxy, t);
     if (c.role === CharacterRole.Leader && isHumanEmpire(galaxy, empire)) {
         scenarioMessage(galaxy, empire, scenarioText('CV Ruler Trip Title'), scenarioText('CV Ruler Trip', c.name, destination.name), { type: EmpireMessageType.CharacterAppearance, subject: shuttle });
     }
@@ -587,7 +614,7 @@ registerScenarioQuery({ id: 'charactersVictory.vipNoExplore', flag: CV_FLAG, que
 
 export interface VipMarker {
     shuttle: BuiltObject;
-    /** The passenger's name for the owner; for others "VIP shuttle" (or "Ruler aboard" once revealed). */
+    /** "VIP Shuttle — name, role" for everyone who sees the shuttle (decoys identical; "(decoy)" only for a viewer who revealed the ruler). */
     label: string;
     own: boolean;
     destination: { x: number; y: number } | null;
@@ -603,10 +630,10 @@ export function vipMarkers(galaxy: Galaxy, viewer: Empire | null, visible: (bo: 
         if (s.hasBeenDestroyed) continue;
         const own = viewer !== null && t.empire === viewer;
         if (!own && !visible(s)) continue;
-        let label: string;
-        if (own) label = t.character !== null ? `${t.character.name} (${scenarioText('CV Role ' + CharacterRole[t.character.role])})` : scenarioText('CV Decoy');
-        else if (viewer !== null && t.character !== null && t.character.role === CharacterRole.Leader && t.revealedTo.includes(viewer.empireId)) label = scenarioText('CV Ruler Aboard', t.character.name);
-        else label = scenarioText('CV VIP Shuttle');
+        // Same text for the real shuttle and every decoy; only a viewer whose spies revealed the ruler sees the decoys marked.
+        const real = t.decoyOf === 0 ? t : (st.trips.find((x) => x.id === t.decoyOf) ?? null);
+        let label = real !== null ? vipShuttleLabel(real) : scenarioText('CV VIP Shuttle');
+        if (t.decoyOf !== 0 && real !== null && viewer !== null && real.revealedTo.includes(viewer.empireId)) label += ` ${scenarioText('CV Decoy Suffix')}`;
         out.push({ shuttle: s, label, own, destination: own ? { x: t.destination.xpos, y: t.destination.ypos } : null });
     }
     return out;

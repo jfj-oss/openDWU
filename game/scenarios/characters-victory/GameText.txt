@@ -4,9 +4,13 @@ CV Shuttle Name;VIP Shuttle {0}
 CV VIP Shuttle;VIP shuttle
 CV Decoy;Decoy shuttle
 CV Ruler Aboard;Ruler aboard: {0}
-CV Role Leader;Ruler
+CV Role Leader;Leader
 CV Role Ambassador;Ambassador
 CV Role ColonyGovernor;Governor
+CV Role ColonyGovernor Of;Governor of {0}
+CV Role Diet;Diet delegate
+CV VIP Label;VIP Shuttle — {0}, {1}
+CV Decoy Suffix;(decoy)
 CV Role FleetAdmiral;Admiral
 CV Role TroopGeneral;General
 CV Role IntelligenceAgent;Agent
