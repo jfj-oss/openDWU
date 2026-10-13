@@ -376,22 +376,26 @@ the clash with rimTrade's Concord cannot happen (the council is always the Diet)
   member aggressor, sanctions on an outsider) or **a sanctioned target openly defies the enforcers** (expulsion of a
   member, else a declared threat) — unless the case is against itself, its bloc, or an empire it likes far more than
   the victim — and otherwise for its own case of weight ≥ 60 (a crime, a spy crisis) when the next session is more
-  than 300 days away. Bids for Emperor when it holds its capital and either holds the host world or
-  has 1.5× its holder's military (it then declares war on the holder to take it), has served a year, is the strongest rival by score with a large share (score or military: `dietEmperorMinSharePct`
-  25 %, or the mean rival's share when that is lower — above average; the Ancient Guardians are not counted as
-  rivals), has a military of at least 0.35 of the next rival's (a gamble: a failed bid costs −20 attitude with every
-  member and the Regency), is ambitious (not a Pacifist leader, not a clearly peaceful race), and has not
-  failed a bid in the last ten years.
+  than 300 days away. Bids for Emperor only from year 65 (`dietEmperorMinYear`), after a year as Regent, when it holds its
+  capital, has not failed a bid in ten years, is not a Pacifist or clearly peaceful, and is far ahead of everyone
+  (`dietAi.ts`: score at least 2.5x the next empire's and 40 % of the galaxy total, military at least 2x the next's;
+  `EMPEROR_AI_*` constants); even then it rolls only 2 % once every 30 days (a deterministic hash, no game RNG).
 - **Delegates.** Defended by the escort rules (importance ≥ 5), on the way there and back. Struck at by any AI empire
   at war with the delegate's empire that is **aggressive** (aggression − caution > 0.1, ConcernForOwnReputation ≤ 1.1)
   or **desperate** (under 0.6 of that enemy's military): its nearest warship within four sectors and fuel range
   (leaving its fleet if need be) takes an Attack mission on the shuttle — only a shuttle still waiting at its origin
   for its escort, or one within a sector (a shuttle at warp outruns a chase) — at most once per attacker and victim
   every 120 days. The attack itself (when it lands) is the crime.
-- **The Emperor.** The countdown is `dietEmperorYears` (5). Everyone may declare war on the Emperor (the Diet's
-  `declareWarBlocked` handler runs last and unblocks it); AI empires that dislike them or are aggressive and not
-  hopelessly outmatched (≥ 0.25 of their military) do. The bid fails when the Emperor loses its capital, or the host
-  world after holding it; at the end it wins if it holds both. A win ends the game through victory.ts: single
+- **The Emperor.** A bid (player Regent or AI) cannot start before year 65 of the game. The countdown is `dietEmperorYears`
+  (10). At the start nearly every other major AI empire (non-independent, non-pirate, not the enforcers or Guardians)
+  declares a **locked** war on the bidder; the exceptions are at most 10 % of them, the bidder's closest allies,
+  protectors or subjects with attitude >= 60. The attackers' fleets go to Attack posture (one in ten stays home), learn
+  where the bidder's colonies are, and the military AI targets colonies first, then stations; this refreshes every 60 days
+  and latecomers join. Human players are never forced into war. Survival rule: the bidder wins by still holding its
+  capital after the ten years, and loses at once if it loses it. Failure: no victory, the wars are unlocked (they go on
+  until the usual diplomacy ends them), -20 attitude with the members, no new bid for ten years. Ticker and log lines at
+  the start, every year, and at success or failure; the Diet screen shows the countdown, and the Emperor button is
+  disabled with "Available from year 65" before then. A win ends the game through victory.ts: single
   player `onGameEnd` (Victory for the player as Emperor, Defeat otherwise; codes 2101 / 2102); multiplayer
   `humansGameEnd` with the Emperor as the only winner when human (the first human to win ends the game), Defeat for
   every human when an AI wins. Flag `cvDietVictory` off: no game end.

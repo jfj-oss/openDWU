@@ -48,10 +48,24 @@ export const DIET_PARAMS = {
     dietRegentYears: 6,
     dietEmergencyYears: 4,
     dietEmergencyGatherDays: 90,
-    dietEmperorYears: 5,
-    dietEmperorMinSharePct: 25,
+    /** Years the bidder must survive. */
+    dietEmperorYears: 10,
+    /** A bid cannot start before this many game years after the game's start. */
+    dietEmperorMinYear: 65,
     dietExpelYears: 10,
 } as const;
+/** AI bid reluctance: score >= LEAD_RATIO x the next empire's, >= MIN_SHARE of the galaxy total, military >= MIL_RATIO x the next's, then a low roll per check. */
+export const EMPEROR_AI_LEAD_RATIO = 2.5;
+export const EMPEROR_AI_MIN_SHARE = 0.4;
+export const EMPEROR_AI_MIL_RATIO = 2.0;
+export const EMPEROR_AI_CHECK_CHANCE = 0.02;
+export const EMPEROR_AI_CHECK_DAYS = 30;
+/** The rising: at most this share of the other major AI empires may stay out (the bidder's closest allies / subjects). */
+export const EMPEROR_UPRISING_EXEMPT_SHARE = 0.1;
+/** An exempt empire must like the bidder at least this much (attitude) and be allied/pacted/protected/subject to it. */
+export const EMPEROR_EXEMPT_MIN_ATTITUDE = 60;
+/** Days between refreshes of the attackers' war targets (colonies, then stations) and fleet orders during a bid. */
+export const EMPEROR_ATTACK_REFRESH_DAYS = 60;
 export type DietParamName = keyof typeof DIET_PARAMS;
 
 export function dietParam(galaxy: Galaxy, name: DietParamName): number {
@@ -310,7 +324,11 @@ export interface DietState {
     regent: Empire | null;
     regentUntil: number;
     lastEmergency: number;
-    emperor: { empire: Empire; capital: Habitat; world: Habitat; since: number; until: number } | null;
+    /**
+     * The bidder's countdown. Survival rule: the bidder wins when it still holds its capital at `until`; losing the capital
+     * at any time fails the bid at once. `colonies0` is its colony count at the start (shown in the UI, not a rule).
+     */
+    emperor: { empire: Empire; capital: Habitat; world: Habitat; since: number; until: number; colonies0?: number; yearsAnnounced?: number; refreshedAt?: number; exempt?: number[]; joined?: number[]; heldWorld?: boolean } | null;
     laws: DietLaw[];
     enforcers: DietEnforcerFleet[];
     faction: Empire | null;

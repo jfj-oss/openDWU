@@ -256,10 +256,11 @@ export function toggleDietScreen(galaxy: Galaxy, player: Empire): void {
                         glassButton('Declare ourselves Emperor', {
                             size: FONT.normal,
                             disabled: !vm.canEmperor,
+                            title: vm.emperorNote !== '' ? vm.emperorNote : 'Nearly every empire goes to war with us; hold our capital to win',
                             onClick: () => {
                                 void messageBox({
                                     caption: 'Declare ourselves Emperor',
-                                    text: `Every empire may go to war with us. We must hold our capital and ${vm.worldName} until the countdown ends to win the galaxy.`,
+                                    text: `Nearly every empire will rise against us at once, with their fleets marching on our colonies and stations. We must hold our capital for ten years to win the galaxy.`,
                                     buttons: ['Yes', 'No'],
                                     defaultButton: 'No',
                                     icon: 'warning',

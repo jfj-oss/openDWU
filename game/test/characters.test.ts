@@ -40,7 +40,8 @@ import { spawnEnforcers } from '../src/sim/scenario/charactersVictory/diet/dietE
 import { councilState, type Council } from '../src/sim/scenario/emergent/council';
 import { blockadeFor } from '../src/sim/fleets/blockades';
 import { BuiltObjectStance } from '../src/sim/design';
-import { obtainEmpireEvaluation } from '../src/sim/diplomacy';
+import { DiplomaticRelationType, obtainEmpireEvaluation } from '../src/sim/diplomacy';
+import { isHumanEmpire } from '../src/sim/humanEmpires';
 import { colonyNeglectOf, governorBribeScale } from '../src/sim/scenario/governors';
 import { autonomyDrift } from '../src/sim/scenario/frontier/frontier';
 
@@ -812,10 +813,16 @@ describe('Characters & Victory: the Interstellar Diet', () => {
         st.regent = em;
         st.regentUntil = 1e15;
         expect(c.members.includes(em)).toBe(true);
+        expect(declareEmperor(g, em)).toBe(false); // not before year 65
+        g.nowMs = 65 * 600_000;
         expect(declareEmperor(g, em)).toBe(true);
         expect(declareEmperor(g, em)).toBe(false);
         const other = members.find((e) => e !== em)!;
         expect(scenarioQuery(g, 'declareWarBlocked', true, { empire: other, target: em })).toBe(false);
+        // The rising: nearly every other AI empire is at locked war with the bidder.
+        const aiOthers = g.empires.filter((x) => x !== null && x !== em && x.active && x !== g.independentEmpire && x.pirateEmpireBaseHabitat === null && x.dominantRace !== null && !isHumanEmpire(g, x));
+        const warring = aiOthers.filter((x) => x!.diplomaticRelations.byEmpire(em)?.type === DiplomaticRelationType.War);
+        expect(warring.length).toBeGreaterThanOrEqual(Math.ceil(aiOthers.length * 0.9));
         st.emperor!.until = 0;
         dietTick(g);
         expect(st.emperor).toBeNull();

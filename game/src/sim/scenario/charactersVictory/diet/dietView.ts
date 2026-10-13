@@ -18,7 +18,8 @@ import { empireGovernors, mostImportantGovernor } from '../governorsCv';
 import { tripOfCharacter } from '../vip';
 import { type DietMotion, type DietMotionKind, type DietState, DIET_NAME, byId, dietWarCrimesLine, dietMotionKindDef, dietOn, dietParam, peekDietState, registeredDietKinds } from './dietState';
 import { dietMembership, dietVoteScore, memberScores, voteWeight } from './dietAi';
-import { dietCouncil } from './diet';
+import { dietCouncil, emperorBidNote } from './diet';
+import { YEAR_LENGTH } from '../../../galaxyTime';
 
 export interface DietMotionRow {
     id: number;
@@ -88,6 +89,8 @@ export interface DietViewModel {
     governors: { character: Character; label: string; best: boolean; current: boolean }[];
     canEmergency: boolean;
     canEmperor: boolean;
+    /** Why a bid cannot start now ('' = it can), e.g. 'Available from year 65'. */
+    emperorNote: string;
     fund: number;
     /** Kinds the player may propose, with the targets they take. */
     proposable: { kind: DietMotionKind; label: string; needs: 'none' | 'empire' | 'pirate' | 'pair' | 'colony' | 'law' }[];
@@ -279,7 +282,8 @@ export function dietView(galaxy: Galaxy, player: Empire): DietViewModel | null {
         hostBonuses: `+${dietParam(galaxy, 'dietHostIncomePct')}% income, +${dietParam(galaxy, 'dietHostHappinessPct')}% happiness, +${dietParam(galaxy, 'dietHostGrowthPct')}% growth, +${dietParam(galaxy, 'dietHostConstructionPct')}% construction, scenic ${dietParam(galaxy, 'dietHostScenic')}; visitor trade during sessions`,
         regent: regentActive ? `${st.regent!.name} (until ${dateOf(st.regentUntil)})` : 'none',
         regentIsYou: regentActive && st.regent === player,
-        emperor: em !== null ? `${em.empire.name}: must hold ${em.capital.name} and ${em.world.name} until ${dateOf(em.until)}` : '',
+        emperor: em !== null ? `${em.empire.name}: must hold ${em.capital.name} until ${dateOf(em.until)} (${Math.max(0, Math.ceil((em.until - now) / YEAR_LENGTH))} years left)` : '',
+        emperorNote: em === null ? emperorBidNote(galaxy, st, player) : '',
         nextSession: s !== null ? 'in session' : dateOf(st.nextSessionAt),
         warCrimes: dietWarCrimesLine.fn?.(galaxy) ?? '',
         session,
@@ -291,7 +295,7 @@ export function dietView(galaxy: Galaxy, player: Empire): DietViewModel | null {
         members,
         governors,
         canEmergency: regentActive && st.regent === player && s === null && (lastEm < 0 || now - lastEm >= dietParam(galaxy, 'dietEmergencyYears') * 600_000),
-        canEmperor: regentActive && st.regent === player && em === null,
+        canEmperor: regentActive && st.regent === player && em === null && emperorBidNote(galaxy, st, player) === '',
         fund: Math.round(st.fund),
         proposable: [
             ...(Object.keys(KIND_LABEL) as DietMotionKind[]).map((k): DietViewModel['proposable'][number] => ({

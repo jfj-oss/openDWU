@@ -19,11 +19,11 @@
 import type { Galaxy } from '../../../galaxy';
 import type { Empire } from '../../../empire';
 import type { Habitat } from '../../../types';
-import { DIET_HISTORY_CAP } from './dietState';
+import { DIET_HISTORY_CAP, EMPEROR_AI_CHECK_DAYS, EMPEROR_ATTACK_REFRESH_DAYS, EMPEROR_EXEMPT_MIN_ATTITUDE, EMPEROR_UPRISING_EXEMPT_SHARE } from './dietState';
 import { BuiltObject } from '../../../builtObject';
 import { type Character, CharacterRole, isBuiltObjectLocation } from '../../../characters';
-import { DiplomaticRelationType, obtainDiplomaticRelation } from '../../../diplomacy';
-import { changeDiplomaticRelation, declareWar, setCivilityRating } from '../../../diplomacyTick';
+import { DiplomaticRelationType, WarObjective, obtainDiplomaticRelation } from '../../../diplomacy';
+import { FleetPosture, changeDiplomaticRelation, declareWar, setCivilityRating } from '../../../diplomacyTick';
 import { EmpireMessageType } from '../../../messages';
 import { WonderType } from '../../../researchSystem';
 import { BuiltObjectMissionType, BuiltObjectMissionPriority } from '../../../missions/mission';
@@ -32,7 +32,10 @@ import { leaveShipGroup } from '../../../fleets/shipGroup';
 import { BuiltObjectRole } from '../../../data/designSpecifications';
 import { BuiltObjectSubRole } from '../../../builtObjectTypes';
 import { GameEndEventArgs, GameEndOutcome, humansGameEnd, onGameEnd } from '../../../victory';
-import { identifyMechanoidEmpire } from '../../../fleets/militaryAI';
+import { isAiControlled } from '../../../missions/playerOrder';
+import type { ShipGroup } from '../../../fleets/shipGroup';
+import { SystemVisibilityStatus } from '../../../visibility';
+import { identifyMechanoidEmpire, identifyMilitaryObjectives, sendAttackFleets } from '../../../fleets/militaryAI';
 import { YEAR_LENGTH, resolveStarDateDescription } from '../../../galaxyTime';
 import { galaxyStarDate } from '../../../tick/simTime';
 import { humanEmpires, isHumanEmpire, isMultiHuman } from '../../../humanEmpires';
@@ -82,7 +85,7 @@ import {
     lawInForce,
     peekDietState,
 } from './dietState';
-import { asCouncilMotion, atWar, dietMembership, inDiet, attacksDelegates, dietCandidates, dietVoteScore, emergencyCase, emperorBidBlock, joinsWarOnEmperor, memberScores, voteWeight } from './dietAi';
+import { asCouncilMotion, atWar, dietMembership, inDiet, attacksDelegates, dietCandidates, dietVoteScore, emergencyCase, emperorBidBlock, emperorBidBlockHard, emperorContenders, emperorYearsElapsed, memberScores, voteWeight } from './dietAi';
 import { militaryPotency } from '../../../diplomacyTick';
 import { aiDefiance, collectDues, enforcerFleetOf, enforcerUpkeep, ensureFaction, isEnforcerFaction, recallEnforcers, releaseEnforcerColonies, reviewEnforcers, spawnEnforcers } from './dietEnforcers';
 import type { DietCandidate as Cand, DietCandidate } from './dietAi';
@@ -690,24 +693,105 @@ export function callEmergency(galaxy: Galaxy, empire: Empire, first: Cand | null
     return true;
 }
 
-/** The Regent declares themselves Emperor: a countdown in which everyone may make war on them. */
+/** Why a bid cannot start now, in words for the player ('' = it can). */
+export function emperorBidNote(galaxy: Galaxy, st: DietState, e: Empire): string {
+    const why = emperorBidBlockHard(galaxy, st, e);
+    const minYear = dietParam(galaxy, 'dietEmperorMinYear');
+    switch (why) {
+        case 'tooEarly':
+            return `Available from year ${minYear} (${Math.ceil(minYear - emperorYearsElapsed(galaxy))} years to go)`;
+        case 'noCapital':
+            return 'We need our capital';
+        case 'failedRecently':
+            return 'A failed bid bars a new one for ten years';
+        case 'notHost':
+            return 'The Diet has no seat world';
+        default:
+            return '';
+    }
+}
+
+/**
+ * The Regent declares themselves Emperor (not before year dietEmperorMinYear): nearly every other major AI empire goes to
+ * war with them at once (locked, so no peace until it ends), except the bidder's closest allies and subjects (at most
+ * EMPEROR_UPRISING_EXEMPT_SHARE of them, and only those with attitude >= EMPEROR_EXEMPT_MIN_ATTITUDE). The bidder wins by
+ * holding its capital for dietEmperorYears.
+ */
 export function declareEmperor(galaxy: Galaxy, empire: Empire): boolean {
     const st = peekDietState(galaxy);
     const c = dietCouncil(galaxy);
     if (st === null || c === null || st.emperor !== null || activeRegent(galaxy, st, c) !== empire) return false;
-    if (empire.capital === null || st.world === null) return false;
+    if (empire.capital === null || st.world === null || emperorBidBlockHard(galaxy, st, empire) !== '') return false;
     const now = galaxyStarDate(galaxy);
-    st.emperor = { empire, capital: empire.capital, world: st.world, since: now, until: now + dietParam(galaxy, 'dietEmperorYears') * YEAR_LENGTH };
-    (st.emperor as { joined?: number[] }).joined = [];
+    const years = Math.round(dietParam(galaxy, 'dietEmperorYears'));
+    const em = { empire, capital: empire.capital, world: st.world, since: now, until: now + years * YEAR_LENGTH, colonies0: empire.colonies.length, yearsAnnounced: 0, refreshedAt: now, joined: [] as number[], exempt: [] as number[] };
+    st.emperor = em;
     st.counters.emperorBids++;
-    // A Regent who does not hold the host world goes to war for it (its holder may resist).
-    const holder = st.world.empire;
-    if (holder !== null && holder !== empire && !atWar(empire, holder) && holder.pirateEmpireBaseHabitat === null) declareWar(galaxy, empire, holder);
-    scenarioNews(galaxy, empire, scenarioText('Diet Emperor News', empire.name, st.world.name, empire.capital.name, Math.round(dietParam(galaxy, 'dietEmperorYears'))), (e) => !isHumanEmpire(galaxy, e), st.world, { category: 'council' });
+    // The rising: the exempt are the bidder's closest friends (allies, protectors, subjects) up to a tenth of the field.
+    const others = emperorContenders(galaxy, st).filter((x) => x !== empire && !isHumanEmpire(galaxy, x));
+    const friends = others
+        .filter((x) => {
+            const t = x.diplomaticRelations.byEmpire(empire)?.type;
+            return (t === DiplomaticRelationType.MutualDefensePact || t === DiplomaticRelationType.SubjugatedDominion || t === DiplomaticRelationType.Protectorate) && attitudeOf(x, empire) >= EMPEROR_EXEMPT_MIN_ATTITUDE;
+        })
+        .sort((x, y) => attitudeOf(y, empire) - attitudeOf(x, empire) || x.empireId - y.empireId);
+    em.exempt = friends.slice(0, Math.floor(others.length * EMPEROR_UPRISING_EXEMPT_SHARE)).map((x) => x.empireId);
+    uprising(galaxy, st, em);
+    marchOnBidder(galaxy, st, em);
+    const yrs = String(years);
+    scenarioNews(galaxy, empire, scenarioText('Diet Emperor News', empire.name, st.world.name, empire.capital.name, yrs), (e) => !isHumanEmpire(galaxy, e), st.world, { category: 'council' });
     for (const h of humanEmpires(galaxy)) {
-        scenarioMessage(galaxy, h, scenarioText('Diet Emperor Title'), h === empire ? scenarioText('Diet Emperor You', st.world.name, empire.capital.name) : scenarioText('Diet Emperor Other', empire.name, st.world.name, empire.capital.name), { type: h === empire ? EmpireMessageType.GeneralGoodEvent : EmpireMessageType.GeneralBadEvent, subject: st.world, log: { category: 'council' } });
+        scenarioMessage(galaxy, h, scenarioText('Diet Emperor Title'), h === empire ? scenarioText('Diet Emperor You', empire.capital.name, yrs) : scenarioText('Diet Emperor Other', empire.name, empire.capital.name, yrs), { type: h === empire ? EmpireMessageType.GeneralGoodEvent : EmpireMessageType.GeneralBadEvent, subject: empire.capital, log: { category: 'council' }, popup: true });
     }
     return true;
+}
+
+/** Every non-exempt AI contender is at locked war with the bidder (declares it if not yet); their fleets then march on it. */
+function uprising(galaxy: Galaxy, st: DietState, em: NonNullable<DietState['emperor']>): void {
+    const e = em.empire;
+    const exempt = em.exempt ?? [];
+    const joined = (em.joined ??= []);
+    for (const x of emperorContenders(galaxy, st)) {
+        if (x === e || isHumanEmpire(galaxy, x) || exempt.includes(x.empireId)) continue;
+        if (atWar(x, e) && obtainDiplomaticRelation(x, e).locked) continue;
+        declareWar(galaxy, x, e, null, true);
+        if (atWar(x, e) && !joined.includes(x.empireId)) joined.push(x.empireId);
+    }
+}
+
+/** The warring empires re-aim at the bidder's colonies, then stations, and their idle attack fleets are sent (no teleporting: the military AI moves them). */
+function marchOnBidder(galaxy: Galaxy, st: DietState, em: NonNullable<DietState['emperor']>): void {
+    const e = em.empire;
+    for (const x of emperorContenders(galaxy, st)) {
+        if (x === e || isHumanEmpire(galaxy, x) || !atWar(x, e)) continue;
+        // The Emperor's colonies are common knowledge: the attackers know their systems, so the military AI can target them.
+        const vis = x.visibility;
+        if (vis !== null && vis !== undefined) for (const h of e.colonies) if (!vis.checkSystemExplored(h.systemIndex)) vis.setSystemVisibility(h, SystemVisibilityStatus.Explored);
+        // Nearly all fleets go on the offensive: Defend-posture fleets switch to Attack (one in ten stays home), and the
+        // war aims at the Emperor's colonies and stations; the military AI then assigns the attack missions and flies them.
+        const rel = obtainDiplomaticRelation(x, e);
+        if (rel.warObjective !== WarObjective.CaptureObjectives) rel.warObjective = WarObjective.CaptureObjectives;
+        const groups = x.shipGroups as (ShipGroup | null)[];
+        let n = 0;
+        for (const sg of groups) {
+            if (sg === null || sg.leadShip === null || !isAiControlled(sg.leadShip) || sg.posture !== FleetPosture.Defend) continue;
+            if (++n % 10 === 0) continue;
+            sg.posture = FleetPosture.Attack;
+            sg.postureRangeSquared = Number.MAX_VALUE;
+        }
+        identifyMilitaryObjectives(galaxy, x);
+        sendAttackFleets(galaxy, x, e);
+    }
+}
+
+/** The wars end locked-in: the AI may make peace again (the wars themselves are left to the usual diplomacy). */
+function unlockWars(e: Empire): void {
+    for (let i = 0; i < e.diplomaticRelations.count; i++) {
+        const r = e.diplomaticRelations.at(i);
+        if (r.type !== DiplomaticRelationType.War || !r.locked || r.otherEmpire === null) continue;
+        r.locked = false;
+        obtainDiplomaticRelation(r.otherEmpire, e).locked = false;
+    }
 }
 
 function emperorEnds(galaxy: Galaxy, st: DietState, c: Council | null, won: boolean): void {
@@ -715,11 +799,12 @@ function emperorEnds(galaxy: Galaxy, st: DietState, c: Council | null, won: bool
     if (em === null) return;
     st.emperor = null;
     const e = em.empire;
+    unlockWars(e);
     if (won) {
         st.counters.emperorWins++;
-        news(galaxy, e, scenarioText('Diet Emperor Won News', e.name), em.world);
+        news(galaxy, e, scenarioText('Diet Emperor Won News', e.name), em.capital);
         if (scenarioFlag(galaxy, CV_DIET_VICTORY_FLAG)) {
-            const text = scenarioText('Diet Emperor Won Text', e.name);
+            const text = scenarioText('Diet Emperor Won Text', e.name, String(Math.round(dietParam(galaxy, 'dietEmperorYears'))));
             if (isMultiHuman(galaxy)) humansGameEnd(galaxy, e, isHumanEmpire(galaxy, e) ? [e] : [], text, DIET_EMPEROR_VICTORY_CODE);
             else {
                 const playerWon = isHumanEmpire(galaxy, e); // one human: the player
@@ -728,12 +813,13 @@ function emperorEnds(galaxy: Galaxy, st: DietState, c: Council | null, won: bool
         }
         return;
     }
+    // A failed bid: no victory, the wars stay but are no longer locked (peace may come), no new bid for ten years.
     st.counters.emperorFails++;
     (st.emperorFailedAt ??= {})[e.empireId] = galaxyStarDate(galaxy);
     if (st.regent === e) st.regent = null;
     if (c !== null) for (const m of members(galaxy, c, st)) if (m !== e) applyReputation(galaxy, m, e, -20, { cause: 'dietUsurper', labelKey: 'Diet Reputation Usurper', source: 'interstellarDiet' });
     news(galaxy, e, scenarioText('Diet Emperor Failed News', e.name), null);
-    for (const h of humanEmpires(galaxy)) scenarioMessage(galaxy, h, scenarioText('Diet Emperor Title'), scenarioText('Diet Emperor Failed', e.name), { type: h === e ? EmpireMessageType.GeneralBadEvent : EmpireMessageType.GeneralGoodEvent, log: { category: 'council' } });
+    for (const h of humanEmpires(galaxy)) scenarioMessage(galaxy, h, scenarioText('Diet Emperor Title'), scenarioText('Diet Emperor Failed', e.name), { type: h === e ? EmpireMessageType.GeneralBadEvent : EmpireMessageType.GeneralGoodEvent, log: { category: 'council' }, popup: true });
 }
 
 function reviewEmperor(galaxy: Galaxy, st: DietState, c: Council | null): void {
@@ -741,26 +827,28 @@ function reviewEmperor(galaxy: Galaxy, st: DietState, c: Council | null): void {
     if (em === null) return;
     const e = em.empire;
     const now = galaxyStarDate(galaxy);
-    // The bid fails when the Emperor loses its capital, or the host world after having held it.
-    if (!e.active || em.capital.empire !== e || (em.world.empire !== e && heldWorldOnce(em))) {
+    // The bid fails when the bidder is gone or loses its capital.
+    if (!e.active || em.capital.empire !== e) {
         emperorEnds(galaxy, st, c, false);
         return;
     }
-    if (em.world.empire === e) (em as { heldWorld?: boolean }).heldWorld = true;
     if (now >= em.until) {
-        emperorEnds(galaxy, st, c, em.capital.empire === e && em.world.empire === e);
+        emperorEnds(galaxy, st, c, true);
         return;
     }
-    // Everyone may go to war with the Emperor: the AI decides by attitude, aggression and the odds.
-    const joined = ((em as { joined?: number[] }).joined ??= []);
-    for (const x of galaxy.empires) {
-        if (x === null || x === e || !x.active || x === galaxy.independentEmpire || x.pirateEmpireBaseHabitat !== null || x.dominantRace === null || isHumanEmpire(galaxy, x) || isEnforcerFaction(st, x)) continue;
-        if (joined.includes(x.empireId) || atWar(x, e)) continue;
-        const r = x.diplomaticRelations.byEmpire(e);
-        if (r === null || r.type === DiplomaticRelationType.NotMet) continue;
-        if (!joinsWarOnEmperor(galaxy, x, e)) continue;
-        joined.push(x.empireId);
-        declareWar(galaxy, x, e);
+    // A yearly ticker line with the years left.
+    const elapsed = Math.floor((now - em.since) / YEAR_LENGTH);
+    if (elapsed > (em.yearsAnnounced ?? 0)) {
+        em.yearsAnnounced = elapsed;
+        const left = String(Math.max(1, Math.round((em.until - now) / YEAR_LENGTH)));
+        news(galaxy, e, scenarioText('Diet Emperor Year News', e.name, left), em.capital);
+        for (const h of humanEmpires(galaxy)) scenarioMessage(galaxy, h, scenarioText('Diet Emperor Title'), scenarioText('Diet Emperor Year', e.name, left), { type: h === e ? EmpireMessageType.GeneralNeutralEvent : EmpireMessageType.GeneralBadEvent, subject: e.capital, log: { category: 'council' } });
+    }
+    // Latecomers join the rising; the attackers re-aim at colonies and stations every couple of months.
+    if (now - (em.refreshedAt ?? 0) >= EMPEROR_ATTACK_REFRESH_DAYS * DAY) {
+        em.refreshedAt = now;
+        uprising(galaxy, st, em);
+        marchOnBidder(galaxy, st, em);
     }
 }
 
@@ -775,9 +863,6 @@ function regentAnswers(galaxy: Galaxy, c: Council, st: DietState, regent: Empire
     return true;
 }
 
-function heldWorldOnce(em: NonNullable<DietState['emperor']>): boolean {
-    return (em as { heldWorld?: boolean }).heldWorld === true;
-}
 
 // ---------------------------------------------------------------------------------------------------------------
 // The periodic tick (every long block) and the yearly upkeep
@@ -836,9 +921,11 @@ export function dietTick(galaxy: Galaxy): void {
             const cand = emergencyCase(galaxy, c, st, regent, gameYear(now));
             if (cand !== null) callEmergency(galaxy, regent, cand);
         }
-        // A Regent of at least a year's standing.
+        // A Regent of at least a year's standing; the AI looks once a month, and rarely bids (emperorBidBlock).
         const served = now - (st.regentUntil - dietParam(galaxy, 'dietRegentYears') * YEAR_LENGTH) >= YEAR_LENGTH;
-        if (st.emperor === null && served) {
+        const bidChecked = (st as { bidCheckedAt?: number }).bidCheckedAt ?? -1e18;
+        if (st.emperor === null && served && now - bidChecked >= EMPEROR_AI_CHECK_DAYS * DAY) {
+            (st as { bidCheckedAt?: number }).bidCheckedAt = now;
             const why = emperorBidBlock(galaxy, c, st, regent);
             const rec = ((st.counters as { bidBlocks?: Record<string, number> }).bidBlocks ??= {});
             rec[why === '' ? 'bid' : why] = (rec[why === '' ? 'bid' : why] ?? 0) + 1;

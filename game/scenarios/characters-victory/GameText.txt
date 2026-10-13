@@ -84,11 +84,13 @@ Diet Enforcers Sent News;The Interstellar Diet sends {0} enforcer ships from {2}
 Diet Enforcers Sent You;The Interstellar Diet has sent {0} enforcer ships from {1} to blockade us. They only return fire; attacking them is open defiance of every member.
 Diet Enforcers Destroyed News;The Interstellar Diet's enforcers blockading the {0} have been destroyed.
 Diet Emperor Title;Interstellar Diet: an Emperor
-Diet Emperor News;The Regent, the {0}, declare themselves Emperor! If they hold {1} and their capital {2} for {3} years, the galaxy is theirs. Every empire may go to war with them.
-Diet Emperor You;We have declared ourselves Emperor. Hold {0} and our capital {1} until the countdown ends.
-Diet Emperor Other;The {0} have declared themselves Emperor. If they hold {1} and {2} until the countdown ends, they win the galaxy.
-Diet Emperor Won News;The {0} hold out: they rule the galaxy as Emperor.
-Diet Emperor Won Text;The {0} have held their capital and the Diet's world through the countdown and rule the galaxy as Emperor.
+Diet Emperor News;The Regent, the {0}, declare themselves Emperor! If they hold their capital {2} for {3} years, the galaxy is theirs. Nearly every empire rises against them.
+Diet Emperor You;We have declared ourselves Emperor. Nearly every empire is now at war with us. Hold our capital {0} for {1} years to win the galaxy.
+Diet Emperor Other;The {0} have declared themselves Emperor. Nearly every empire rises against them. If they hold their capital {1} for {2} years, they win the galaxy.
+Diet Emperor Won News;The {0} held out against the whole galaxy: they rule as Emperor.
+Diet Emperor Won Text;The {0} have held their capital through {1} years of war against nearly the whole galaxy and rule as Emperor.
+Diet Emperor Year News;The {0}'s bid to be Emperor endures: {1} years remain on the countdown.
+Diet Emperor Year;The Emperor's countdown: the {0} must hold out {1} more years against the galaxy.
 Diet Emperor Failed News;The Emperor's bid of the {0} has failed.
 Diet Emperor Failed;The {0} could not hold on: their bid to become Emperor has failed.
 Diet Reputation Crime;Crime against the Interstellar Diet

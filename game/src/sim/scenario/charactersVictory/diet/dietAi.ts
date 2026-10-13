@@ -32,7 +32,7 @@ import {
     type Motion,
     type MotionKind,
 } from '../../emergent/council';
-import { type DietLaw, type DietMotion, type DietMotionKind, type DietState, STOCK_KINDS, byId, dietMotionKindDef, dietParam, dietSeatExcluded, lawInForce, registeredDietKinds } from './dietState';
+import { EMPEROR_AI_CHECK_CHANCE, EMPEROR_AI_CHECK_DAYS, EMPEROR_AI_LEAD_RATIO, EMPEROR_AI_MIL_RATIO, EMPEROR_AI_MIN_SHARE, type DietLaw, type DietMotion, type DietMotionKind, type DietState, STOCK_KINDS, byId, dietMotionKindDef, dietParam, dietSeatExcluded, lawInForce, registeredDietKinds } from './dietState';
 import { scenarioQuery } from '../../hooks';
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -454,10 +454,30 @@ export function emergencyCase(galaxy: Galaxy, c: Council, st: DietState, a: Empi
     return best;
 }
 
+/** The empires that count in the race for the throne: the active major empires (no independents, pirates, enforcers, the Guardians). */
+export function emperorContenders(galaxy: Galaxy, st: DietState): Empire[] {
+    const guardians = identifyMechanoidEmpire(galaxy);
+    return galaxy.empires.filter((x): x is Empire => x !== null && x.active && x !== galaxy.independentEmpire && x.pirateEmpireBaseHabitat === null && x.dominantRace !== null && x !== st.faction && x !== guardians);
+}
+
+/** Game years since the game began (a bid opens at dietEmperorMinYear). */
+export function emperorYearsElapsed(galaxy: Galaxy): number {
+    return galaxy.nowMs / YEAR_LENGTH;
+}
+
+/** Deterministic roll in [0, 1) from the galaxy seed, an empire and a time slot: no draw from the game's random stream. */
+function bidRoll(galaxy: Galaxy, e: Empire, slot: number): number {
+    let h = (Math.imul(galaxy.randomSeed | 0, 0x9e3779b1) ^ Math.imul(e.empireId + 1, 0x85ebca6b) ^ Math.imul(slot + 7, 0xc2b2ae35)) | 0;
+    h = Math.imul(h ^ (h >>> 16), 0x45d9f3b);
+    h = Math.imul(h ^ (h >>> 16), 0x45d9f3b);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
 /**
- * The AI Regent's Emperor bid: it holds the host world and its capital, carries a large share of the members'
- * strength (≥ dietEmperorMinSharePct of their score, or of their military), at least 1.2× the next member's military,
- * is not a pacifist, and has not failed a bid in the last eight years.
+ * The AI Regent's Emperor bid: only from year dietEmperorMinYear, with a Regent who holds its capital, has not failed a
+ * bid lately, is not a pacifist, and is overwhelmingly ahead: its score is at least EMPEROR_AI_LEAD_RATIO times the next
+ * empire's and EMPEROR_AI_MIN_SHARE of the whole galaxy's, its military EMPEROR_AI_MIL_RATIO times the next's. Even then
+ * it only rolls EMPEROR_AI_CHECK_CHANCE once per EMPEROR_AI_CHECK_DAYS.
  */
 export function wantsEmperorBid(galaxy: Galaxy, c: Council, st: DietState, regent: Empire): boolean {
     return emperorBidBlock(galaxy, c, st, regent) === '';
@@ -465,45 +485,42 @@ export function wantsEmperorBid(galaxy: Galaxy, c: Council, st: DietState, regen
 
 /** Why the AI Regent does not bid now ('' = it bids). Pure. */
 export function emperorBidBlock(galaxy: Galaxy, c: Council, st: DietState, regent: Empire): string {
-    if (st.world === null) return 'notHost';
-    // Not the host: it must take the host world, so only with a military at least the host's.
-    const host = st.world.empire;
-    if (host !== regent && (host === null || militaryPotency(regent) < 1.0 * Math.max(1, militaryPotency(host)))) return 'notHost';
-    if (regent.capital === null || regent.capital.empire !== regent) return 'noCapital';
-    const failed = st.emperorFailedAt?.[regent.empireId];
-    if (failed !== undefined && galaxyStarDate(galaxy) - failed < 8 * YEAR_LENGTH) return 'failedRecently';
-    // The rivals: the other members (the aloof Ancient Guardians do not contend for the galaxy).
-    const guardians = identifyMechanoidEmpire(galaxy);
-    const rivals = dietMembership(galaxy, c).filter((m) => m !== guardians);
+    void c;
+    const early = emperorBidBlockHard(galaxy, st, regent);
+    if (early !== '') return early;
+    const rivals = emperorContenders(galaxy, st);
+    if (!rivals.includes(regent)) return 'notContender';
     const scores = memberScores(galaxy, rivals);
     let total = 0;
-    for (const v of scores.values()) total += v;
-    const share = (scores.get(regent) ?? 0) / Math.max(1, total);
-    const mine = militaryPotency(regent);
-    let next = 1;
-    let mil = 0;
+    let nextScore = 1;
+    let nextMil = 1;
     for (const m of rivals) {
-        const p = Math.max(0, militaryPotency(m));
-        mil += p;
-        if (m !== regent) next = Math.max(next, p);
+        const v = scores.get(m) ?? 0;
+        total += v;
+        if (m !== regent) {
+            nextScore = Math.max(nextScore, v);
+            nextMil = Math.max(nextMil, militaryPotency(m));
+        }
     }
-    // Near the top by score (within 80 % of the strongest rival), with a large share (dietEmperorMinSharePct, or the mean rival's when lower)
-    // and at least 0.35 of the next rival's military; ambitious enough (not a peaceful race, not a Pacifist).
-    for (const [m, v] of scores) if (m !== regent && 0.8 * v > (scores.get(regent) ?? 0)) return 'notTop'; // within 80 % of the top
-    const need = Math.min(dietParam(galaxy, 'dietEmperorMinSharePct') / 100, 1 / Math.max(1, rivals.length));
-    if (share < need && mine / Math.max(1, mil) < need) return 'smallShare';
-    if (mine < 0.35 * next) return 'weakMilitary';
+    const mine = scores.get(regent) ?? 0;
+    if (mine < EMPEROR_AI_LEAD_RATIO * nextScore) return 'notFarAhead';
+    if (mine / Math.max(1, total) < EMPEROR_AI_MIN_SHARE) return 'smallShare';
+    if (militaryPotency(regent) < EMPEROR_AI_MIL_RATIO * nextMil) return 'weakMilitary';
     const p = personality(regent);
     if (has(p, CharacterTraitType.Pacifist) > 0 || p.aggression + 0.5 * has(p, CharacterTraitType.Expansionist) < -0.8) return 'peaceful';
+    const slot = Math.floor(galaxyStarDate(galaxy) / (EMPEROR_AI_CHECK_DAYS * (YEAR_LENGTH / 360)));
+    if (bidRoll(galaxy, regent, slot) >= EMPEROR_AI_CHECK_CHANCE) return 'reluctant';
     return '';
 }
 
-/** An AI empire joins the war on the Emperor: it dislikes them or is aggressive, and is not hopelessly outmatched. */
-export function joinsWarOnEmperor(galaxy: Galaxy, e: Empire, emperor: Empire): boolean {
-    void galaxy;
-    const p = personality(e);
-    const ratio = Math.max(1, militaryPotency(e)) / Math.max(1, militaryPotency(emperor));
-    return (attitudeOf(e, emperor) < 20 || p.aggression > 0.2) && ratio >= 0.25 && !(has(p, CharacterTraitType.Pacifist) && ratio < 0.6);
+/** The rules every bidder (player or AI) meets: not before year dietEmperorMinYear, a capital, no failed bid in the last ten years. */
+export function emperorBidBlockHard(galaxy: Galaxy, st: DietState, e: Empire): string {
+    if (emperorYearsElapsed(galaxy) < dietParam(galaxy, 'dietEmperorMinYear')) return 'tooEarly';
+    if (st.world === null) return 'notHost';
+    if (e.capital === null || e.capital.empire !== e) return 'noCapital';
+    const failed = st.emperorFailedAt?.[e.empireId];
+    if (failed !== undefined && galaxyStarDate(galaxy) - failed < 10 * YEAR_LENGTH) return 'failedRecently';
+    return '';
 }
 
 /** An AI member attacks an enemy member's delegate: aggressive, careless of its reputation, at war with the delegate's empire. */
