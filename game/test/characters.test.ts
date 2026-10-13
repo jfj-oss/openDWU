@@ -23,6 +23,7 @@ import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission 
 import { builtObjectCompleteTeardown } from '../src/sim/combat/teardown';
 import { charactersCanGenerateAmountNonIntelligenceAgent } from '../src/sim/troops';
 import { CV_LIVE_KEY, CV_STATE_KEY, peekCvState } from '../src/sim/scenario/charactersVictory/common';
+import { markUiGalaxy } from '../src/sim/readOnlyQuery';
 import { assignEscorts, isVipShuttle, tripOfCharacter, vipMarkers } from '../src/sim/scenario/charactersVictory/vip';
 import { IntelligenceMissionOutcome, IntelligenceMissionType } from '../src/sim/espionage';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
@@ -403,6 +404,20 @@ describe('Characters & Victory add-on', () => {
             expect(e.builtObjects.includes(t.shuttle)).toBe(false);
         } finally {
             off();
+        }
+    }, 600000);
+
+    it('a transfer read on the UI thread outside a sim frame (read-only galaxy) starts no trip and does not crash', () => {
+        const game = cvGame();
+        const g = game.galaxy;
+        const e = g.playerEmpire!;
+        const c = getEmpireCharacters(e).find((x) => x.active && x.location === e.capital && x.role !== CharacterRole.Leader)!;
+        const dest = g.empires.filter((x) => x !== e && x.capital !== null).sort((a, b) => b.empireId - a.empireId)[0].capital!;
+        markUiGalaxy(g);
+        try {
+            expect(() => c.transferToNewLocation(dest, g)).not.toThrow();
+        } finally {
+            markUiGalaxy(g, false);
         }
     }, 600000);
 

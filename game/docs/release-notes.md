@@ -52,6 +52,8 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
   bids, nearly every other major empire declares a locked war on it and sends its fleets against its colonies and
   stations; the bidder must hold its capital for 10 years to win (a failed bid ends the wars' lock). The Diet screen shows
   the countdown, and the yearly ticker keeps count.
+- **VIP shuttle crash fix:** a VIP trip could crash the game while naming its shuttle when it was started from a read of the
+  game outside a sim update; such reads now never start a trip. Nothing changes in a normal game.
 
 ## 0.1.28
 

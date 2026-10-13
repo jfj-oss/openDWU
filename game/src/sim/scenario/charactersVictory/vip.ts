@@ -53,6 +53,7 @@ import {
     tripOfShuttle,
 } from './common';
 import { ensureVipDesign } from './shuttleDesign';
+import { isReadOnlyGalaxy } from '../../readOnlyQuery';
 
 /** A shuttle has arrived when this close to its destination (world units). */
 export const VIP_ARRIVE_RANGE = 3000;
@@ -189,10 +190,13 @@ export function vipShuttleLabel(t: VipTrip): string {
 
 /** Names the trip's shuttle (and its decoys) with the passenger label. */
 function nameTripShuttles(galaxy: Galaxy, t: VipTrip): void {
-    const real = t.decoyOf === 0 ? t : (peekCvState(galaxy)?.trips.find((x) => x.id === t.decoyOf) ?? null);
+    // No state (a read-only galaxy: cvState answers with a detached bag, so no trip on record to name): nothing to name.
+    const st = peekCvState(galaxy);
+    if (st === null) return;
+    const real = t.decoyOf === 0 ? t : (st.trips.find((x) => x.id === t.decoyOf) ?? null);
     if (real === null) return;
     const label = vipShuttleLabel(real);
-    for (const x of peekCvState(galaxy)!.trips) if (x === real || x.decoyOf === real.id) x.shuttle.name = label;
+    for (const x of st.trips) if (x === real || x.decoyOf === real.id) x.shuttle.name = label;
 }
 
 /** Despawns a shuttle that arrived (no passenger aboard any more). */
@@ -235,6 +239,8 @@ function originOf(c: Character): { xpos: number; ypos: number } | null {
 export function startVipTrip(galaxy: Galaxy, c: Character, destination: BuiltObject | Habitat, reason = 'transfer'): VipTrip | null {
     const empire = c.empire;
     if (!cvOn(galaxy, CV_VIP_FLAG) || !isCvEmpire(galaxy, empire)) return null;
+    // A read-only galaxy (a UI read outside a sim frame, or a worker replica) never starts a trip: no shuttle, no Rnd draw.
+    if (isReadOnlyGalaxy(galaxy)) return null;
     const st = cvState(galaxy);
     const now = galaxyStarDate(galaxy);
     const existing = tripOfCharacter(galaxy, c);
