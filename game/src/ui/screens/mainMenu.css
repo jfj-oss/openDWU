@@ -61,8 +61,8 @@
     font-family: 'Forgotten Futurist', sans-serif;
     font-weight: bold;
     color: #aaaaaa; /* the stock Menu_* art's text grey (sampled), no drop shadow */
-    /* The art's letters are soft-edged (scaled bitmap text); a faint same-colour halo softens the crisp HTML glyphs to match. */
-    text-shadow: 0 0 calc(1.2px * var(--mm-s, 1)) currentColor, 0 0 calc(2.2px * var(--mm-s, 1)) color-mix(in srgb, currentColor 35%, transparent);
+    /* The art's letters are soft-edged (scaled bitmap text): a slight blur makes the crisp HTML bold glyphs read as light. */
+    filter: blur(calc(0.45px * var(--mm-s, 1)));
 }
 .main-menu-item-text::after {
     content: '';
