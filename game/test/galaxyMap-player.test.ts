@@ -67,9 +67,9 @@ describe('empireGalaxyMapPlayer (task 13e)', () => {
         expect(empireGalaxyMapPlayer(ep).knownPirateBaseHabitats()).toEqual([ph]);
     });
 
-    it('colonies() is the empire own array; colonizationTargets() is empty', () => {
+    it('colonies() is the empire own array; colonizationTargets() is empty with no habitats', () => {
         const cols = [{} as Habitat];
-        const ep = { ...emp, colonies: cols } as unknown as Empire;
+        const ep = { ...emp, colonies: cols, galaxy: { habitats: [] }, colonizableHabitatTypesForEmpire: () => [] } as unknown as Empire;
         const q = empireGalaxyMapPlayer(ep);
         expect(q.colonies()).toBe(cols);
         expect(q.colonizationTargets()).toEqual([]);

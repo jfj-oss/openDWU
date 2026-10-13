@@ -169,8 +169,8 @@ export function isPotentialColony(h: Habitat, galaxy: Galaxy, colonizable?: read
 
 /** The colonisation tech that unlocks habitat type `type` for `empire` (the lowest-level project), or null. Read-only. */
 export function colonyTechNameFor(empire: Empire, type: HabitatType): string | null {
-    const rs = empire.research;
-    return rs.getLowestProjectForColonization(rs.techTree, type)?.def.name ?? null;
+    const rs = empire.research as Empire['research'] | undefined;
+    return rs?.getLowestProjectForColonization(rs.techTree, type)?.def.name ?? null;
 }
 
 /** UI only: 'now' = colonisable today (isPotentialColony); 'future' = same test but the empire lacks the colonisation
