@@ -8,6 +8,8 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 - **Rulers' memory turns Reputation on:** switching on the Local LLM Layer's rulers' memory option now also switches on the Reputation add-on and its ledger, which the attitude nudge needs (add-on options can now name the add-ons they need).
 - **Rulers' memory (new `llmMemory` option of the Local LLM Layer add-on):** each AI ruler keeps a short dated diary of what other empires did to or for them (wars, peace, treaties, gifts, colonies, pirates driven off); the lines and a mood word feed the model prompts, and a small capped, fading attitude nudge (only for things the original game does not already count; turns the Reputation ledger on) follows. Off by default.
 - **Peace talks in plain words:** with the local model on, the peace-terms panel has a words box ("give me Kygnos and 2,000 a year for five years") that fills in the real terms for you to edit and offer, a live line saying whether the other empire would accept, and offers of peace come with a voiced cover letter. Without a model the panel works as before.
+- **LLM multiplayer fixes:** with several humans, each empire's strategic moves are no longer repeated twice in a year, the
+  AI's strategic planning runs on the host only, and peace terms offered to a human now raise a decision for them to answer.
 - **War objectives scale with galaxy size:** an empire at war now looks for enemy colonies and bases to capture within a
   range that grows with the galaxy past the biggest stock size (15 sectors): the original 1.5 / 1.0 sectors become about
   4.4 / 2.9 at 26 sectors and about 8 / 5.3 at 40. Stock-size galaxies are unchanged.
@@ -23,14 +25,17 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 - **Galaxy nebula clouds:** the galaxy map draws its nebula clouds from the original nebula art again. On the Original
   backdrop they have the original's lighter grey patches; on Deep they show as faint smoke. Switching backdrop mid-game
   updates them.
+- **Galaxy backdrops centred:** the backdrop structure is centred and scaled on the galaxy's own layout, so it sits
+  behind the map rather than at a fixed spot.
 - **Map markers:** the Waypoints & Known Locations overlay and the minimap no longer mark black holes (their Pull and Event
   Horizon, the wormholes and gravity wells), supernovas, or the location hints that point at them. The remaining
   known-location diamonds are light purple and a little smaller.
 - **Treasure fleet beacon:** the galaxy map's ring around the Concord treasure fleet is smaller, thinner and dark purple,
   a little stronger, with a soft fading halo, so it no longer dominates the map.
 - **VIP shuttle rings:** the rings around VIP shuttles are a thin, translucent dark orange and stay smooth at maximum zoom.
+- **VIP shuttles:** no crash when the trip shuttles cannot be named, and a VIP trip is never started in a read-only galaxy.
 - **Follow camera while warping:** the followed ship stays visible when zoomed in, even mid-warp, and its hyperjump flash
-  is drawn where the ship is shown.
+  is drawn where the ship is shown. The camera's motion is steadier when the simulation delivers its steps in bursts.
 - **Main menu Multiplayer buttons:** on hover, focus or press they get the stock treatment: a teal band that fades in from
   the left, with a gold label (no planet icon). Their letters have a soft edge like the stock art instead of a halo, and the
   multiplayer submenu's Resume Multiplayer Game is just Resume.
@@ -47,18 +52,19 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 - **Playable Mechanoid and Shakturi:** the new-game wizard (and the multiplayer and hot-seat race pickers) now offer the
   Mechanoid and Shakturi races for your own empire. AI empires still never get them, and the story's Ancient Guardians and
   Shakturi lookups skip your empire, so it is never mistaken for or absorbed as the Guardians.
+- **Galactopedia:** the Mechanoid and Shakturi race pages say they are playable for the player, and the Emperor bid article
+  is rewritten for the year-65 rules and the locked uprising.
 - **Robot Mutiny rework:** the Broadcast's beacon fleet is sized to the strongest normal empire's military: about 1.3 times
   its firepower in the first year, rising 0.1 times a year (to 1.8 times) while the transmitter stands, with losses
   replaced and nothing more. At the rising every BattleBot garrison defects at tech level 5 and is at war with everyone
   for good. Usually it takes an eighth of the Ancient Guardians' fleet, 30 troop transports and three founded worlds, and
   attacks the weakest-garrisoned colonies near the transmitter. One time in five it absorbs the whole of the Ancient
-  Guardians and turtles: it builds and defends stations but sends no fleets beyond them.
+  Guardians and turtles: it defends its worlds and sends no fleets beyond them.
 - **Diet enforcers never hold a colony:** the Interstellar Diet's enforcers cannot capture, colonise or peacefully take over
   a colony, and in saves made before this a colony they held goes to the independents.
 - **Emperor bids are a late-game endgame:** the Interstellar Diet's Emperor bid cannot start before year 65. AI Regents bid
   only when overwhelmingly ahead (2.5x the next empire's score, 40% of the galaxy) and then only rarely. When any empire
-  bids, nearly every other major empire declares a locked war on it and sends its fleets against its colonies and
-  stations; the bidder must hold its capital for 10 years to win (a failed bid ends the wars' lock). The Diet screen shows
+  bids, nearly every other major empire declares a locked war on it; the bidder must hold its capital for 10 years to win (a failed bid ends the wars' lock). The Diet screen shows
   the countdown, and the yearly ticker keeps count.
 - **VIP shuttle crash fix:** a VIP trip could crash the game while naming its shuttle when it was started from a read of the
   game outside a sim update; such reads now never start a trip. Nothing changes in a normal game.
