@@ -34,27 +34,22 @@
 // plus half a view on each side). Pieces are particles with static properties (one upload per rebuild), cut to the
 // cull rectangle. Read only: works on the sim-worker replica (the link lists are cold-synced object fields).
 //
-// DW2 look (not the original; only while Settings.influenceBorders is on — off keeps the classic lines above exactly):
-// the dashes drawn softer (DW2_DASH_ALPHA), plus small glowing pulses travelling along each drawn link AWAY from its
-// empire's capital. The direction comes from the link graph: per empire, hop counts from the capital's system over the
-// (viewer-known) links, recomputed only when the network hash changes; the end with fewer hops is the inner end. Each
-// link gets a hashed phase so the pulses do not move in lockstep. Pulses are pooled particles in their own additive
-// ParticleContainer; per frame only their positions / alphas are written (no allocation), culled to the view, faded in
-// over the bottom of the links' zoom band, and hidden with Settings.animateBackdrop off.
+// Look (not the original's 1 px dotted line): thick, pale, static capsule dashes. In screen px: LINK_WIDTH_PX wide,
+// LINK_DASH_PX dashes with LINK_GAP_PX gaps (stretched a little per link so both ends are a dash), round caps, the
+// empire colour mixed LINK_PALE toward white at LINK_ALPHA. Each dash is a body quad plus two half-disc cap particles
+// (no overlap, so the alpha does not double). Static: the geometry is rebuilt only with the network / zoom / sector
+// range, never per frame; pieces are sized in world units from the zoom, so they stay the same screen size and smooth.
 
-/** DW2 look: the dash alpha (softer than the classic full-alpha dashes). */
-export const DW2_DASH_ALPHA = 0.55;
-/** DW2 look: pulse travel speed and spacing along a link, in screen px. */
-const PULSE_SPEED_PX = 38;
-const PULSE_SPACING_PX = 180;
-/** DW2 look: pulse glow diameter in screen px. */
-const PULSE_SIZE_PX = 11;
-/** DW2 look: pulses fade in from f = 150 (the links' gate) to f = 150 + PULSE_FADE_F. */
-const PULSE_FADE_F = 90;
+/** Dash look, in screen px. */
+export const LINK_WIDTH_PX = 3.5;
+export const LINK_DASH_PX = 14;
+export const LINK_GAP_PX = 9;
+/** Fraction of the way from the empire colour to white, and the dash alpha. */
+export const LINK_PALE = 0.52;
+export const LINK_ALPHA = 0.65;
 
-import { Particle, ParticleContainer, Texture } from 'pixi.js';
+import { Container, Particle, ParticleContainer, Texture } from 'pixi.js';
 import { makeTextureCanvas, textureFromCanvas } from './textureCanvas';
-import { getSettings } from '../ui/settings';
 import type { Camera } from './camera';
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
@@ -265,98 +260,70 @@ export interface SystemLinkStats {
     lastCollectMs: number;
     lastBuildMs: number;
     maxBuildMs: number;
-    /** DW2 look: pulse lanes (drawn links) in the last build, pulses drawn last frame, last per-frame pulse pass ms. */
-    pulseLanes: number;
-    pulses: number;
-    lastPulseMs: number;
 }
 
-let pulseTex: Texture | null = null;
-/** A soft round glow with a bright core (white; tinted per empire). */
-function pulseTexture(): Texture {
-    if (pulseTex !== null) return pulseTex;
-    const n = 32;
-    const { canvas, ctx } = makeTextureCanvas(n, n);
-    const g = ctx.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2);
-    g.addColorStop(0, 'rgba(255,255,255,1)');
-    g.addColorStop(0.18, 'rgba(255,255,255,0.95)');
-    g.addColorStop(0.4, 'rgba(255,255,255,0.35)');
-    g.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, n, n);
-    pulseTex = textureFromCanvas(canvas, 'systemLinkPulse');
-    return pulseTex;
+/** The pale dash colour: the empire colour mixed toward white. */
+export function paleLinkColor(c: number): number {
+    const m = (v: number): number => Math.round(v + (255 - v) * LINK_PALE);
+    return m((c >> 16) & 255) * 65536 + m((c >> 8) & 255) * 256 + m(c & 255);
 }
 
-/** Lane record stride in SystemLinkLayer.lanes: ax, ay (inner end, layer-local), dx, dy (to the outer end), lenPx,
- * phase, count, tint. */
-const LANE = 8;
+/** Dashes along a line of `lengthPx` screen px: (start, end) px pairs appended to `out`, evenly stretched so the line
+ * starts and ends on a dash. Only dashes overlapping [fromPx, toPx] are appended. */
+export function capsuleDashes(lengthPx: number, out: number[], fromPx = 0, toPx = lengthPx): number {
+    if (lengthPx < LINK_WIDTH_PX) return 0;
+    const n = Math.max(1, Math.round((lengthPx + LINK_GAP_PX) / (LINK_DASH_PX + LINK_GAP_PX)));
+    const period = (lengthPx + LINK_GAP_PX) / n;
+    const dash = period - LINK_GAP_PX;
+    const i0 = Math.max(0, Math.floor(fromPx / period) - 1);
+    const i1 = Math.min(n - 1, Math.ceil(toPx / period));
+    let added = 0;
+    for (let i = i0; i <= i1; i++) {
+        out.push(i * period, i * period + dash);
+        added++;
+    }
+    return added;
+}
+
+let capTex: Texture | null = null;
+/** The right half of a disc (flat edge on the left, vertically centred): the round end of a dash. 31 texels of radius,
+ * 1 texel of transparent margin; the disc diameter is 62 texels of the 64 tall. */
+function capTexture(): Texture {
+    if (capTex !== null) return capTex;
+    const { canvas, ctx } = makeTextureCanvas(32, 64);
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(0, 32, 31, -Math.PI / 2, Math.PI / 2);
+    ctx.closePath();
+    ctx.fill();
+    capTex = textureFromCanvas(canvas, 'systemLinkCap');
+    return capTex;
+}
+const CAP_TEX_DIAMETER = 62;
 
 export class SystemLinkLayer {
-    readonly root: ParticleContainer;
-    /** DW2 look: the travelling pulses (added beside `root` by galaxyMarkers.ts). */
-    readonly pulseRoot: ParticleContainer;
-    readonly stats: SystemLinkStats = { network: 0, drawn: 0, pieces: 0, collects: 0, builds: 0, lastCollectMs: 0, lastBuildMs: 0, maxBuildMs: 0, pulseLanes: 0, pulses: 0, lastPulseMs: 0 };
-    /** Per empire id: hop count from the capital's system per system index (-1 unreached); rebuilt with the hash. */
-    private hops = new Map<number, Int32Array>();
-    private lanes = new Float32Array(LANE * 256);
-    private laneCount = 0;
-    private readonly pulsePool: Particle[] = [];
-    private pulseOx = 0;
-    private pulseOy = 0;
+    /** Holds the body and cap particle layers (positioned at the build origin). */
+    readonly root = new Container();
+    private readonly bodies: ParticleContainer;
+    private readonly caps: ParticleContainer;
+    readonly stats: SystemLinkStats = { network: 0, drawn: 0, pieces: 0, collects: 0, builds: 0, lastCollectMs: 0, lastBuildMs: 0, maxBuildMs: 0 };
     private network: SystemLink[] = [];
     private networkHash = -1;
     private version = 0;
     private lastRefresh = -Infinity;
-    private readonly pool: Particle[] = [];
+    private readonly bodyPool: Particle[] = [];
+    private readonly capPool: Particle[] = [];
     private readonly pieces: number[] = [];
     private readonly selected: SystemLink[] = [];
-    private key = { v: -1, z: NaN, dw2: false, sx0: -1, sx1: -1, sy0: -1, sy1: -1, x0: 0, y0: 0, x1: 0, y1: 0 };
+    private key = { v: -1, z: NaN, sx0: -1, sx1: -1, sy0: -1, sy1: -1, x0: 0, y0: 0, x1: 0, y1: 0 };
 
     constructor(private readonly galaxy: Galaxy) {
-        // Every property static: the pieces are uploaded once per rebuild (root.update()), not every frame.
-        this.root = new ParticleContainer({ texture: Texture.WHITE, dynamicProperties: { position: false, vertex: false, rotation: false, uvs: false, color: false } });
+        // Every property static: the pieces are uploaded once per rebuild (update()), not every frame.
+        const dyn = { position: false, vertex: false, rotation: false, uvs: false, color: false };
+        this.bodies = new ParticleContainer({ texture: Texture.WHITE, dynamicProperties: dyn });
+        this.caps = new ParticleContainer({ texture: capTexture(), dynamicProperties: dyn });
+        this.root.addChild(this.bodies, this.caps);
         this.root.visible = false;
-        this.pulseRoot = new ParticleContainer({ texture: pulseTexture(), blendMode: 'add', dynamicProperties: { position: true, vertex: false, rotation: false, uvs: false, color: true } });
-        this.pulseRoot.visible = false;
-    }
-
-    /** DW2 look: hop counts from each empire's capital over the collected network (undirected). */
-    private computeHops(): void {
-        const n = this.galaxy.systems.length;
-        const adj = new Map<number, Map<number, number[]>>();
-        for (const l of this.network) {
-            let m = adj.get(l.empireId);
-            if (m === undefined) adj.set(l.empireId, (m = new Map()));
-            let a = m.get(l.fromSystem);
-            if (a === undefined) m.set(l.fromSystem, (a = []));
-            a.push(l.toSystem);
-            let b = m.get(l.toSystem);
-            if (b === undefined) m.set(l.toSystem, (b = []));
-            b.push(l.fromSystem);
-        }
-        const hops = new Map<number, Int32Array>();
-        for (const e of this.galaxy.empires) {
-            if (e == null) continue;
-            const m = adj.get(e.empireId);
-            if (m === undefined) continue;
-            const h = new Int32Array(n).fill(-1);
-            const cap = e.capital?.systemIndex ?? -1;
-            if (cap >= 0 && cap < n) {
-                const q = [cap];
-                h[cap] = 0;
-                for (let i = 0; i < q.length; i++) {
-                    const s = q[i];
-                    for (const t of m.get(s) ?? []) {
-                        if (h[t] >= 0) continue;
-                        h[t] = h[s] + 1;
-                        q.push(t);
-                    }
-                }
-            }
-            hops.set(e.empireId, h);
-        }
-        this.hops = hops;
     }
 
     /** Recollect the network (view-independent); bumps the version only when what it would draw changed. */
@@ -376,7 +343,6 @@ export class SystemLinkLayer {
         if (hash !== this.networkHash) {
             this.networkHash = hash;
             this.version++;
-            this.computeHops();
         }
         this.stats.network = next.length;
         this.stats.collects++;
@@ -387,12 +353,7 @@ export class SystemLinkLayer {
     update(f: number, z: number, cam: Camera, on: boolean): void {
         const shown = on && f > SYSTEM_LINK_MIN_FACTOR;
         this.root.visible = shown;
-        const st = getSettings();
-        const dw2 = st.influenceBorders;
-        if (!shown) {
-            this.pulseRoot.visible = false;
-            return;
-        }
+        if (!shown) return;
         const now = performance.now();
         if (now - this.lastRefresh >= REFRESH_MS) {
             this.lastRefresh = now;
@@ -403,18 +364,14 @@ export class SystemLinkLayer {
         const hw = cam.width / (2 * z);
         const hh = cam.height / (2 * z);
         const inRect = cam.x - hw >= k.x0 && cam.x + hw <= k.x1 && cam.y - hh >= k.y0 && cam.y + hh <= k.y1;
-        if (!(k.v === this.version && k.z === z && inRect && k.dw2 === dw2 && k.sx0 === range.x0 && k.sx1 === range.x1 && k.sy0 === range.y0 && k.sy1 === range.y1)) this.rebuild(f, z, cam, range, dw2);
-        const animate = dw2 && st.animateBackdrop && this.laneCount > 0;
-        this.pulseRoot.visible = animate;
-        if (animate) this.updatePulses(f, cam, hw, hh, now);
+        if (!(k.v === this.version && k.z === z && inRect && k.sx0 === range.x0 && k.sx1 === range.x1 && k.sy0 === range.y0 && k.sy1 === range.y1)) this.rebuild(f, z, cam, range);
     }
 
-    private rebuild(f: number, z: number, cam: Camera, range: SectorRange, dw2: boolean): void {
+    private rebuild(f: number, z: number, cam: Camera, range: SectorRange): void {
         const k = this.key;
         const hw = cam.width / (2 * z);
         const hh = cam.height / (2 * z);
         const t0 = performance.now();
-        k.dw2 = dw2;
         k.v = this.version;
         k.z = z;
         k.sx0 = range.x0;
@@ -425,14 +382,14 @@ export class SystemLinkLayer {
         k.x1 = cam.x + 2 * hw;
         k.y0 = cam.y - 2 * hh;
         k.y1 = cam.y + 2 * hh;
-        this.build(f, range, dw2);
+        this.build(f, range);
         const ms = performance.now() - t0;
         this.stats.builds++;
         this.stats.lastBuildMs = ms;
         if (ms > this.stats.maxBuildMs) this.stats.maxBuildMs = ms;
     }
 
-    private build(f: number, range: SectorRange, dw2: boolean): void {
+    private build(f: number, range: SectorRange): void {
         const k = this.key;
         const sel = this.selected;
         sel.length = 0;
@@ -441,144 +398,86 @@ export class SystemLinkLayer {
         const ox = (k.x0 + k.x1) / 2;
         const oy = (k.y0 + k.y1) / 2;
         this.root.position.set(ox, oy);
-        const out = this.root.particleChildren;
-        const width = SYSTEM_LINK_WIDTH_PX * f;
-        // Cut two pieces beyond the cull rectangle, so a piece crossing its edge is kept whole.
-        const pad = 2 * SYSTEM_LINK_DASH_PX * f;
+        const bodyOut = this.bodies.particleChildren;
+        const capOut = this.caps.particleChildren;
+        const width = LINK_WIDTH_PX * f;
+        const r = width / 2;
+        const capScale = width / CAP_TEX_DIAMETER;
+        // A hair of overlap between a body and its caps, so no seam shows between the abutting edges.
+        const eps = 0.15 * f;
+        const pad = 2 * (LINK_DASH_PX + LINK_GAP_PX) * f;
         const pieces = this.pieces;
-        const alpha = dw2 ? DW2_DASH_ALPHA : 1;
-        let n = 0;
-        this.laneCount = 0;
-        this.pulseOx = ox;
-        this.pulseOy = oy;
+        let nb = 0;
+        let nc = 0;
+        const take = (pool: Particle[], i: number, tex: Texture): Particle => {
+            let part = pool[i];
+            if (part === undefined) {
+                part = new Particle({ texture: tex, anchorX: 0, anchorY: 0.5 });
+                pool.push(part);
+            }
+            return part;
+        };
+        const cap = capTexture();
         for (const l of sel) {
             const dx = l.x1 - l.x0;
             const dy = l.y1 - l.y0;
             const lenW = Math.sqrt(dx * dx + dy * dy);
             const lenPx = lenW / f;
-            if (lenPx < SYSTEM_LINK_DASH_PX) continue;
+            if (lenPx < LINK_WIDTH_PX) continue;
             const clip = clipSegment(l.x0, l.y0, l.x1, l.y1, k.x0 - pad, k.y0 - pad, k.x1 + pad, k.y1 + pad);
             if (clip === null) continue;
-            if (dw2) this.addLane(l, lenPx, ox, oy);
             pieces.length = 0;
-            dashPieces(lenPx, pieces, clip[0] * lenPx, clip[1] * lenPx);
+            capsuleDashes(lenPx, pieces, clip[0] * lenPx, clip[1] * lenPx);
             const ux = dx / lenW;
             const uy = dy / lenW;
             const rot = Math.atan2(dy, dx);
-            for (let i = 0; i < pieces.length; i += 3) {
-                const s = pieces[i] * f;
-                let part = this.pool[n];
-                if (part === undefined) {
-                    part = new Particle({ texture: Texture.WHITE, anchorX: 0, anchorY: 0 });
-                    this.pool.push(part);
+            const tint = paleLinkColor(l.color);
+            for (let i = 0; i < pieces.length; i += 2) {
+                const s0 = pieces[i] * f;
+                const s1 = pieces[i + 1] * f;
+                const bodyLen = s1 - s0 - width;
+                // Body between the two cap centres (a dash shorter than it is thick: just the two caps).
+                if (bodyLen > 0) {
+                    const b = take(this.bodyPool, nb, Texture.WHITE);
+                    b.x = l.x0 + ux * (s0 + r - eps) - ox;
+                    b.y = l.y0 + uy * (s0 + r - eps) - oy;
+                    b.rotation = rot;
+                    b.scaleX = bodyLen + 2 * eps;
+                    b.scaleY = width;
+                    b.tint = tint;
+                    b.alpha = LINK_ALPHA;
+                    bodyOut[nb++] = b;
                 }
-                part.x = l.x0 + ux * s - ox;
-                part.y = l.y0 + uy * s - oy;
-                part.rotation = rot;
-                part.scaleX = (pieces[i + 1] - pieces[i]) * f;
-                part.scaleY = width;
-                part.anchorY = pieces[i + 2] === 1 ? 0.5 : 0;
-                part.tint = l.color;
-                part.alpha = alpha;
-                out[n++] = part;
+                // Start cap: flat edge at s0 + r, round side facing back; end cap: the mirror.
+                const c0 = take(this.capPool, nc, cap);
+                c0.x = l.x0 + ux * (s0 + r) - ox;
+                c0.y = l.y0 + uy * (s0 + r) - oy;
+                c0.rotation = rot + Math.PI;
+                c0.scaleX = capScale;
+                c0.scaleY = capScale;
+                c0.tint = tint;
+                c0.alpha = LINK_ALPHA;
+                capOut[nc++] = c0;
+                const c1 = take(this.capPool, nc, cap);
+                c1.x = l.x0 + ux * (s1 - r) - ox;
+                c1.y = l.y0 + uy * (s1 - r) - oy;
+                c1.rotation = rot;
+                c1.scaleX = capScale;
+                c1.scaleY = capScale;
+                c1.tint = tint;
+                c1.alpha = LINK_ALPHA;
+                capOut[nc++] = c1;
             }
         }
-        out.length = n;
-        this.root.update();
+        bodyOut.length = nb;
+        capOut.length = nc;
+        this.bodies.update();
+        this.caps.update();
         this.stats.drawn = sel.length;
-        this.stats.pieces = n;
-        this.stats.pulseLanes = this.laneCount;
-    }
-
-    /** DW2 look: one pulse lane per drawn link, oriented capital → outward by hop count. */
-    private addLane(l: SystemLink, lenPx: number, ox: number, oy: number): void {
-        const h = this.hops.get(l.empireId);
-        const hf = h?.[l.fromSystem] ?? -1;
-        const ht = h?.[l.toSystem] ?? -1;
-        // Inner end: the one with fewer hops (an unreached end, -1, counts as farthest); ties keep from → to.
-        const flip = ht >= 0 && (hf < 0 || ht < hf);
-        if (this.lanes.length < (this.laneCount + 1) * LANE) {
-            const next = new Float32Array(this.lanes.length * 2);
-            next.set(this.lanes);
-            this.lanes = next;
-        }
-        const a = this.lanes;
-        const o = this.laneCount * LANE;
-        const ax = flip ? l.x1 : l.x0;
-        const ay = flip ? l.y1 : l.y0;
-        a[o] = ax - ox;
-        a[o + 1] = ay - oy;
-        a[o + 2] = (flip ? l.x0 : l.x1) - ax;
-        a[o + 3] = (flip ? l.y0 : l.y1) - ay;
-        a[o + 4] = lenPx;
-        // Stable per-link phase (both ends hashed, order-independent).
-        const lo = Math.min(l.fromSystem, l.toSystem);
-        const hi = Math.max(l.fromSystem, l.toSystem);
-        a[o + 5] = ((Math.imul(lo * 7919 + hi * 104729 + l.empireId * 31, 0x9e3779b1) >>> 0) % 1000) / 1000;
-        a[o + 6] = Math.max(1, Math.round(lenPx / PULSE_SPACING_PX));
-        // The empire colour lifted halfway to white: a bright pulse that keeps the link's hue (a third was too faint on dark colours).
-        const c = l.color;
-        const lift = (v: number): number => Math.round(v + (255 - v) / 2);
-        a[o + 7] = lift((c >> 16) & 255) * 65536 + lift((c >> 8) & 255) * 256 + lift(c & 255);
-        this.laneCount++;
-    }
-
-    /** DW2 look, per frame: place the pooled pulses (no allocation), culled to the view. */
-    private updatePulses(f: number, cam: Camera, hw: number, hh: number, now: number): void {
-        const t0 = performance.now();
-        const root = this.pulseRoot;
-        root.position.set(this.pulseOx, this.pulseOy);
-        const out = root.particleChildren;
-        const pool = this.pulsePool;
-        const fade = Math.min(1, (f - SYSTEM_LINK_MIN_FACTOR) / PULSE_FADE_F);
-        const scale = (PULSE_SIZE_PX * f) / 32;
-        const margin = PULSE_SIZE_PX * f;
-        const vx0 = cam.x - hw - margin - this.pulseOx;
-        const vx1 = cam.x + hw + margin - this.pulseOx;
-        const vy0 = cam.y - hh - margin - this.pulseOy;
-        const vy1 = cam.y + hh + margin - this.pulseOy;
-        const sec = now / 1000;
-        const a = this.lanes;
-        const prev = out.length;
-        let n = 0;
-        for (let i = 0, o = 0; i < this.laneCount; i++, o += LANE) {
-            const ax = a[o];
-            const ay = a[o + 1];
-            const dx = a[o + 2];
-            const dy = a[o + 3];
-            // Whole lane off-screen: skip.
-            if (Math.max(ax, ax + dx) < vx0 || Math.min(ax, ax + dx) > vx1 || Math.max(ay, ay + dy) < vy0 || Math.min(ay, ay + dy) > vy1) continue;
-            const cnt = a[o + 6];
-            const base = (sec * PULSE_SPEED_PX) / a[o + 4] + a[o + 5];
-            for (let j = 0; j < cnt; j++) {
-                let t = base + j / cnt;
-                t -= Math.floor(t);
-                const x = ax + dx * t;
-                const y = ay + dy * t;
-                if (x < vx0 || x > vx1 || y < vy0 || y > vy1) continue;
-                let p = pool[n];
-                if (p === undefined) {
-                    p = new Particle({ texture: root.texture, anchorX: 0.5, anchorY: 0.5 });
-                    pool.push(p);
-                }
-                p.x = x;
-                p.y = y;
-                p.scaleX = scale;
-                p.scaleY = scale;
-                p.tint = a[o + 7];
-                // Fade in leaving the inner star, out arriving at the outer one.
-                p.alpha = fade * Math.sin(Math.PI * t);
-                out[n++] = p;
-            }
-        }
-        out.length = n;
-        if (n !== prev) root.update();
-        this.stats.pulses = n;
-        this.stats.lastPulseMs = performance.now() - t0;
+        this.stats.pieces = nb + nc;
     }
 
     destroy(): void {
         this.root.destroy({ children: true });
-        this.pulseRoot.destroy({ children: true });
     }
 }

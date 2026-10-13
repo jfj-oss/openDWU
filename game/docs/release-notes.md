@@ -4,6 +4,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **Colony link lines:** the lines joining an empire's systems on the galaxy map are now thick (3.5 px), pale (the empire colour lightened by half) dashes with rounded ends and a steady spacing, the same size at every zoom and smooth at the highest; the travelling pulses are gone.
 - **Follow camera while warping:** the followed ship is no longer hidden when zoomed in (its committed position, which can be far from where it is drawn mid-warp, was used for the view cull), its hyperjump flash is anchored on its drawn position, and the camera is recentred once per frame on that same position.
 - **Selection panel buttons:** the eight icon buttons under the selection panel look and behave like the original again: original glass colours (the body in the border colour, the disabled hatch and grey icon, the hover glow), icon-only with the build count centred, the hint shown as the yellow message above the panel (disabled buttons too) instead of a tooltip, the mercenary smuggling icon fixed, and our own extras (fleet settings, dispatch orders, charter) moved out of the empty slots to a "More" button left of the strip.
 - **Map markers:** the Waypoints & Known Locations overlay and the minimap no longer mark black holes (their Pull and Event Horizon, the wormholes and gravity wells), supernovas, or the location hints that point at them; the remaining known-location diamonds are light purple and a little smaller.
