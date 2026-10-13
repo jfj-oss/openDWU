@@ -15,10 +15,11 @@ import { gameYear, registerScenarioPeriodic, registerScenarioYearly } from '../s
 import { galaxyStarDate } from '../src/sim/tick/simTime';
 import { setGameEndHandler, type GameEndEventArgs } from '../src/sim/victory';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../src/sim/diplomacy';
+import { createEmpireMidGame } from '../src/sim/scenario/empireMidGame';
 import { takeOwnershipOfColonyFull } from '../src/sim/combat/ownership';
 import { TroopList, TroopType } from '../src/sim/cargo';
 import { generateNewTroop } from '../src/sim/builtObjectPlacement';
-import { FleetPosture } from '../src/sim/diplomacyTick';
+import { FleetPosture, calculateOverallStrengthFactorWithoutShields, militaryPotency } from '../src/sim/diplomacyTick';
 import { empireShipGroups } from '../src/sim/fleets/shipGroup';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { taskShipGroups } from '../src/sim/fleets/militaryAI';
@@ -28,6 +29,9 @@ import {
     ROBOT_MUTINY_CODE_DEFEAT,
     ROBOT_MUTINY_HANDLER_IDS,
     beaconShipCount,
+    beaconFirepowerTarget,
+    strongestEmpireFirepower,
+    assaultCandidates,
     beaconTechLevel,
     empireTechLevel,
     isRobotTroop,
@@ -52,12 +56,12 @@ beforeAll(async () => {
 
 const age3 = (o: CreateGameOptions): CreateGameOptions => ({ ...o, player: { ...o.player, age: 3 }, aiEmpires: o.aiEmpires.map((e) => ({ ...e, age: 3 })) });
 
-/** Small beacon (10/20/30) so the forced tests stay fast; the seed-1 comparison test runs the defaults. */
+/** Small beacon (10 % scale) so the forced tests stay fast; the seed-1 comparison test runs the defaults. */
 function rmGame(flags: Record<string, boolean> = {}, params: Record<string, number> = {}, older = true): { game: Game; g: Galaxy } {
     const { game } = createScenarioGame(base, {
         scenario: 'robotmutiny',
         flags: { threatRobotMutiny: true, ...flags },
-        params: { mutinyYear: 0, mutinyMinRobots: 1, mutinyShipFlipPct: 100, mutinyBeaconScalePct: 10, robotMutinyExistChancePct: 100, robotMutinyMinYear: 0, ...params },
+        params: { mutinyYear: 0, mutinyMinRobots: 1, mutinyShipFlipPct: 100, mutinyBeaconScalePct: 10, mutinyInitialTransports: 0, mutinyFoundWorlds: 0, mutinyFullTakeoverPct: 0, robotMutinyExistChancePct: 100, robotMutinyMinYear: 0, ...params },
         options: older ? age3 : undefined,
     });
     return { game, g: game.galaxy };
@@ -159,7 +163,7 @@ describe('Robot Mutiny: seeding, sleepers, risings, empire, beacon', () => {
         expect(mutinySleepersAt(st, a)).toBe(30);
     }, 300000);
 
-    it('rising: a colony whose robots win rises (sleepers materialise); one whose robots lose stays dormant', () => {
+    it('rising: every colony with robots rises at once (sleepers materialise)', () => {
         const { g } = rmGame();
         const st = seeded(g);
         const [a, b] = twoColonies(g);
@@ -180,18 +184,9 @@ describe('Robot Mutiny: seeding, sleepers, risings, empire, beacon', () => {
         expect(a.invadingTroops!.items.every((t) => isRobotTroop(g, t) && t.empire === faction)).toBe(true);
         expect(a.troops!.items.some((t) => isRobotTroop(g, t))).toBe(false);
         expect(mutinySleepersAt(st, a)).toBe(0);
-        // B stayed dormant: robots still in its owner's garrison, sleepers still hidden.
-        expect(mutinyRobotsWin(g, st, b, faction)).toBe(false);
-        expect(b.invadingTroops === null || b.invadingTroops.count === 0).toBe(true);
-        expect(b.troops!.items.filter((t) => isRobotTroop(g, t) && t.empire === b.empire).length).toBe(2);
-        expect(mutinySleepersAt(st, b)).toBe(3);
-        // The balance flips (the guard leaves): B rises next period.
-        const guard = b.troops!.items.find((t) => t.name === 'Guard')!;
-        b.troops!.remove(guard);
-        b.empire!.troops.remove(guard);
-        for (const t of [...b.troops!.items]) if (!isRobotTroop(g, t)) b.troops!.remove(t);
-        mutinyPeriodic(g);
+        // Every BattleBot defects at the rising, win or lose (the stock ground war decides): B's 2 robots + 3 sleepers too.
         expect(b.invadingTroops!.count).toBe(5);
+        expect(mutinySleepersAt(st, b)).toBe(0);
     }, 600000);
 
     it('empire: the first captured colony makes the faction a full empire under the stock AI', () => {
@@ -212,7 +207,7 @@ describe('Robot Mutiny: seeding, sleepers, risings, empire, beacon', () => {
         expect(faction.dominantRace!.expanding).toBe(true);
         expect(faction.pirateEmpireBaseHabitat).toBeNull();
         expect(obtainDiplomaticRelation(faction, host).type).toBe(DiplomaticRelationType.War);
-        expect(obtainDiplomaticRelation(faction, host).locked).toBe(false);
+        expect(obtainDiplomaticRelation(faction, host).locked).toBe(true); // at war with everyone, for good
         expect(faction.controlMilitaryFleets && faction.controlDesigns && faction.controlTroopGeneration && faction.initiateConstruction).toBe(true);
         expect(normalEmpires(g)).toContain(faction);
         // The stock AI runs it: its long/huge touches advance with the game.
@@ -246,63 +241,95 @@ describe('Robot Mutiny: seeding, sleepers, risings, empire, beacon', () => {
         expect(faction.capital).toBe(a);
     }, 600000);
 
-    it('beacon: yearly targets (x scale), replenishment, Attack fleets, tech = best + 1 clamped', () => {
-        const { g } = rmGame();
+    it('beacon: firepower scaled to the strongest normal empire (x scale), replenishment, Attack fleets, tech = best + 1 clamped', () => {
+        const { g } = rmGame({}, { mutinyBeaconScalePct: 100, mutinyBeaconMinFirepower: 0 });
         const st = seeded(g);
         const [a] = twoColonies(g);
         placeGarrisonRobot(g, a, a.empire!);
+        const strongest = strongestEmpireFirepower(g, null);
+        expect(strongest).toBeGreaterThan(0);
         expect(mutinyTrigger(g, st)).toBe(true);
         const faction = st.faction!;
         const y0 = st.risingYear!;
         const best = Math.max(...normalEmpires(g, faction).map(empireTechLevel));
         expect(st.beaconTech).toBe(Math.min(best + 1, maxDesignTechLevel(g)));
-        expect(beaconShipCount(st)).toBe(10); // 100 x 10 %
+        const warFp = () => st.beaconShips!.filter((b) => !b.hasBeenDestroyed).reduce((s, b) => s + calculateOverallStrengthFactorWithoutShields(b), 0);
+        const maxShip = Math.max(...st.beaconShips!.map((b) => calculateOverallStrengthFactorWithoutShields(b)));
+        // Year 1: about 1.3x the strongest empire (never short, over by less than one ship).
+        const t1 = beaconFirepowerTarget(g, faction, 1);
+        expect(t1).toBeCloseTo(strongest * 1.3, 3);
+        expect(militaryPotency(faction)).toBeGreaterThanOrEqual(t1);
+        expect(militaryPotency(faction)).toBeLessThan(t1 + maxShip + 1);
         expect(st.beaconShips!.every((b) => b.role === BuiltObjectRole.Military && b.actualEmpire === faction)).toBe(true);
+        expect((st.beaconTransports ?? []).length).toBeGreaterThan(0);
         const groups = empireShipGroups(faction).filter((sg) => sg !== null && sg.ships.some((b) => st.beaconShips!.includes(b)));
         expect(groups.length).toBeGreaterThan(0);
         expect(groups.every((sg) => sg!.posture === FleetPosture.Attack)).toBe(true);
         // Same year: nothing more.
         expect(mutinyBeacon(g, st, y0).length).toBe(0);
-        // Year 2: up to 20.
+        // Growth +0.1x a year, capped at 1.8x.
+        expect(beaconFirepowerTarget(g, faction, 2)).toBeCloseTo(strongest * 1.4, 3);
+        expect(beaconFirepowerTarget(g, faction, 20)).toBeCloseTo(strongest * 1.8, 3);
         mutinyBeacon(g, st, y0 + 1);
-        expect(beaconShipCount(st)).toBe(20);
-        // Losses are replenished: year 3 target 30.
+        const t2 = beaconFirepowerTarget(g, faction, 2);
+        expect(militaryPotency(faction)).toBeGreaterThanOrEqual(t2);
+        expect(militaryPotency(faction)).toBeLessThan(t2 + maxShip + 1);
+        // Losses are replenished, no unlimited stacking.
         for (const b of st.beaconShips!.slice(0, 5)) b.hasBeenDestroyed = true;
-        expect(mutinyBeacon(g, st, y0 + 2).length).toBe(15);
-        expect(beaconShipCount(st)).toBe(30);
-        // Year 4+: the year-3 target stays.
-        expect(mutinyBeacon(g, st, y0 + 3).length).toBe(0);
+        const before = militaryPotency(faction);
+        mutinyBeacon(g, st, y0 + 2);
+        expect(militaryPotency(faction)).toBeGreaterThanOrEqual(beaconFirepowerTarget(g, faction, 3));
+        expect(militaryPotency(faction)).toBeLessThan(Math.max(before, beaconFirepowerTarget(g, faction, 3)) + 2 * maxShip + 1);
+        void warFp;
         // Clamp: a huge bonus caps at the generator's maximum tech level.
         g.scenario!.params.mutinyTechBonus = 100;
         expect(beaconTechLevel(g, faction)).toBe(maxDesignTechLevel(g));
-        // Neutralised source: no more spawning, the faction keeps what it holds.
+        // Neutralised source: no more spawning.
         for (const b of st.beaconShips!.slice(0, 5)) b.hasBeenDestroyed = true;
         st.sourceTaken = true;
         expect(mutinyBeacon(g, st, y0 + 4).length).toBe(0);
-        expect(beaconShipCount(st)).toBe(25);
     }, 600000);
 
-    it('seed-1 comparison: the default beacon (100 ships in year 1) against the largest empire fleet', () => {
-        const { g } = rmGame({}, { mutinyBeaconScalePct: 100 });
+    it('rising: 30 transports, 3 founded worlds, tech 5, purple colour; full takeover absorbs the Guardians and turtles', () => {
+        const mkMech = (g: Galaxy) => {
+            const donor = normalEmpires(g).find((e) => e !== g.playerEmpire && e.colonies.length > 1)!;
+            const ships = donor.builtObjects.filter((b) => b.role === BuiltObjectRole.Military && b.topSpeed > 0).slice(0, 16);
+            return createEmpireMidGame(g, { race: 'Mechanoid', name: 'Ancient Guardians', adoptOnly: true, adopt: { colonies: [donor.colonies[donor.colonies.length - 1]], builtObjects: ships } })!;
+        };
+        const mobile = (e: Empire) => e.builtObjects.filter((b) => !b.hasBeenDestroyed && b.role === BuiltObjectRole.Military && b.topSpeed > 0).length;
+        // Aggressive variant: an eighth of the Guardians' fleet, transports, worlds.
+        const a = rmGame({}, { mutinyInitialTransports: 30, mutinyFoundWorlds: 3 });
+        const sa = seeded(a.g);
+        const mechA = mkMech(a.g);
+        const before = mobile(mechA);
+        expect(mutinyTrigger(a.g, sa)).toBe(true);
+        const fa = sa.faction!;
+        expect(sa.turtle).toBe(false);
+        expect(mobile(mechA)).toBe(before - Math.round(before / 8));
+        expect(fa.colonies.length).toBeGreaterThanOrEqual(3);
+        expect(sa.beaconTransports!.length).toBeGreaterThanOrEqual(30);
+        expect(fa.mainColor).toBe(0x4b3586);
+        expect(fa.secondaryColor).toBe(0x0080ff);
+        expect(obtainDiplomaticRelation(fa, mechA).locked).toBe(true);
+        // Full takeover: the whole Guardians absorbed, no transports, the turtle posture.
+        const t = rmGame({}, { mutinyFullTakeoverPct: 100 });
+        const stt = seeded(t.g);
+        const mechT = mkMech(t.g);
+        expect(mutinyTrigger(t.g, stt)).toBe(true);
+        expect(stt.turtle).toBe(true);
+        expect(mechT.active).toBe(false);
+        expect(stt.faction!.colonies.length).toBeGreaterThan(0);
+        expect(stt.beaconTransports!.length).toBe(0);
+    }, 600000);
+
+    it('assault: the weakest-garrisoned colony near the transmitter is the target', () => {
+        const { g } = rmGame();
         const st = seeded(g);
-        const [a] = twoColonies(g);
-        placeGarrisonRobot(g, a, a.empire!);
         expect(mutinyTrigger(g, st)).toBe(true);
-        const faction = st.faction!;
-        const beacon = st.beaconShips!.filter((b) => !b.hasBeenDestroyed);
-        const stat = (ships: { size: number; firepowerRaw: number }[]) => ({ ships: ships.length, size: ships.reduce((s, b) => s + b.size, 0), firepower: ships.reduce((s, b) => s + b.firepowerRaw, 0) });
-        let biggest: Empire | null = null;
-        let biggestStat = { ships: 0, size: 0, firepower: 0 };
-        for (const e of normalEmpires(g, faction)) {
-            const s = stat(e.builtObjects.filter((b) => b.role === BuiltObjectRole.Military && !b.hasBeenDestroyed));
-            if (s.firepower > biggestStat.firepower) {
-                biggest = e;
-                biggestStat = s;
-            }
-        }
-        const beaconStat = stat(beacon);
-        console.log(`[robotMutiny seed-1] beacon tech ${st.beaconTech} (best ${Math.max(...normalEmpires(g, faction).map(empireTechLevel))}, max ${maxDesignTechLevel(g)}): ${JSON.stringify(beaconStat)}; largest empire ${biggest?.name}: ${JSON.stringify(biggestStat)}`);
-        expect(beaconStat.ships).toBe(100);
+        const c = assaultCandidates(g, st);
+        expect(c.length).toBeGreaterThan(0);
+        const def = (h: Habitat) => (h.troops !== null ? h.troops.totalDefendStrength : 0);
+        for (let i = 1; i < c.length; i++) expect(def(c[i - 1])).toBeLessThanOrEqual(def(c[i]));
     }, 600000);
 
     it('end: the faction holding enough population share ends the game in defeat (1919)', () => {

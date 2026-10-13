@@ -414,8 +414,8 @@ capture, and the transmitter keeps pouring out warships a tech level ahead of th
 **Data.** GameText `Mutiny *` (incl. `Mutiny Empire Name`, `Mutiny Empire`, `Mutiny Silenced`, `Mutiny Beacon`);
 faction race = Harvester from 19b (via D3 include, else its own `BasedOn` copy). Params: `mutinyYear` (70),
 `mutinyMinRobots` (30 galaxy-wide), `mutinyShipFlipPct` (100), `mutinySourceDetectPct` (8), `mutinyDefeatPopulationPct`
-(40), `mutinySleeperMinRobots` (2), `mutinySleepersPerYear` (15), `mutinyBeaconShipsYear1/2/3` (100/200/300, tuned for
-large galaxies), `mutinyBeaconScalePct` (100, multiplies the three targets), `mutinyTechBonus` (1).
+(40), `mutinySleeperMinRobots` (2), `mutinySleepersPerYear` (15), `mutinyBeaconFirepowerPct` (130), `mutinyBeaconGrowthPct` (10),
+`mutinyBeaconMaxPct` (180), `mutinyBeaconMinFirepower` (700) (fleet firepower vs the strongest normal empire's, replacing the fixed 100/200/300 ships), `mutinyBeaconScalePct` (100, multiplies the target), `mutinyTechBonus` (1).
 **Hidden state / spread.** `{source: Habitat (a ruin world), sleepers: {colony, count}[], risingYear, becameEmpire,
 beaconShips, beaconYear, beaconTech, beaconDesigns}`. The empires spread it by recruiting robots (RoboticTroopFoundry;
 robot troops are identified as `troop.race === null && troop.pictureRef === galaxy.races.length`, the stock BattleBot

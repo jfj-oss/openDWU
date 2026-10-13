@@ -20,7 +20,7 @@
 //     stock AI it already runs (empireTick.ts empireDoTasks).
 //   Beacon fleets: from the rising the transmitter spawns warships at the ruin world (Galaxy.8.cs 1474
 //     GenerateMilitaryConvoy's GenerateNewBuiltObject + TakeOwnershipOfBuiltObject), yearly replenished to the target
-//     for that year (mutinyBeaconShipsYear1/2/3 × mutinyBeaconScalePct %), designs at the best regular empire's tech
+//     for that year (firepower scaled to the strongest normal empire: mutinyBeaconFirepowerPct + growth, × mutinyBeaconScalePct %), designs at the best regular empire's tech
 //     level + mutinyTechBonus (Empire.10.cs GenerateDesignFromSpec with a tech level, as generateSuperPirateFaction
 //     does), gathered into Attack-posture fleets the stock fleet AI tasks.
 //   Neutralising the source (a troop landing / planet destroyer) stops sleeper growth, further risings and the beacon.
@@ -47,11 +47,20 @@ import { generateNewBuiltObject } from '../../empireEvents';
 import { BuiltObjectSubRole } from '../../builtObjectTypes';
 import { BuiltObjectRole } from '../../data/designSpecifications';
 import { obtainDiplomaticRelation } from '../../diplomacy';
-import { FleetPosture } from '../../diplomacyTick';
+import { FleetPosture, calculateOverallStrengthFactorWithoutShields, identifyShakturiEmpire, militaryPotency } from '../../diplomacyTick';
+import { rimTraderEmpire } from '../rimTrade/common';
+import { isHerderEmpire } from '../rimHerders/common';
 import { ShipGroup, empireShipGroups } from '../../fleets/shipGroup';
 import { addShipsToShipGroup, compareShipGroups, getNextFleetNumberDescription } from '../../fleets/shipGroupTasks';
 import { netSort } from '../../netSort';
-import { gameYear, registerScenarioPeriodic, registerScenarioYearly } from '../hooks';
+import { assignMission } from '../../missions/assign';
+import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission } from '../../missions/mission';
+import { absorbEmpire } from '../../empireAbsorb';
+import { makeHabitatIntoColonyRuntime } from '../../missions/cmdTroops';
+import { reviewEmpireTerritory } from '../../exploration';
+import { HabitatCategoryType, HabitatType, recalculateMaximumPopulation } from '../../types';
+import { identifyMechanoidEmpire } from '../../fleets/militaryAI';
+import { gameYear, scenarioEmit, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly } from '../hooks';
 import { scenarioParam } from '../state';
 import { scenarioText } from '../messages';
 import { GameEndOutcome } from '../../victory';
@@ -65,6 +74,8 @@ import {
     factionPopulationSharePct,
     flipToFaction,
     invadeFromInside,
+    loadTroopsOnto,
+    makeRobotTroop,
     knowledgeLevel,
     normalEmpires,
     pastThreatMinYear,
@@ -91,6 +102,9 @@ export const ROBOT_MUTINY_CODE_CONTAINED = 2019;
 /** The stock RoboticTroopFoundry troop (troops.ts 387, Habitat.cs 7047-7084): strength 60, maintenance ×0.25. */
 const ROBOT_TROOP_STRENGTH = 60;
 const ROBOT_TROOP_MAINTENANCE = 0.25;
+/** Safety cap on warships spawned in one year. */
+const BEACON_MAX_SPAWN = 2000;
+
 /** Beacon warships per fleet formed at the transmitter. */
 const BEACON_FLEET_SIZE = 20;
 
@@ -127,6 +141,18 @@ export interface RobotMutinyState {
     beaconDesigns?: Design[];
     /** Total warships the beacon spawned. */
     beaconSpawned?: number;
+    /** Troop transports the beacon spawned that still carry (or may carry) robots. */
+    beaconTransports?: BuiltObject[];
+    /** The troop transport design at beaconTech (null none). */
+    beaconTransportDesign?: Design | null;
+    /** The colony the beacon fleets are assaulting (null none). */
+    assaultTarget?: Habitat | null;
+    /** Full takeover variant: the Broadcast absorbed the whole Ancient Guardians and plays an expansionist turtle (null: not rolled yet). */
+    turtle?: boolean | null;
+    /** Turtle: points (colonies, stations) within STATION_RANGE of which its warships may take missions. */
+    turtlePresence?: { x: number; y: number }[];
+    /** Colonies the beacon's landings took. */
+    assaultLandings?: number;
     /** True while faction.capital is the transmitter world standing in for a capital it does not own (see provisionCapital). */
     provisionalCapital?: boolean;
 }
@@ -151,6 +177,12 @@ function newState(): RobotMutinyState {
         beaconTech: -1,
         beaconDesigns: [],
         beaconSpawned: 0,
+        beaconTransports: [],
+        beaconTransportDesign: null,
+        assaultTarget: null,
+        assaultLandings: 0,
+        turtle: null,
+        turtlePresence: [],
     };
 }
 
@@ -172,9 +204,20 @@ const P = {
     defeatPopulationPct: (g: Galaxy) => p(g, 'mutinyDefeatPopulationPct', 40),
     sleeperMinRobots: (g: Galaxy) => Math.trunc(p(g, 'mutinySleeperMinRobots', 2)),
     sleepersPerYear: (g: Galaxy) => Math.trunc(p(g, 'mutinySleepersPerYear', 15)),
-    beaconYear1: (g: Galaxy) => p(g, 'mutinyBeaconShipsYear1', 100),
-    beaconYear2: (g: Galaxy) => p(g, 'mutinyBeaconShipsYear2', 200),
-    beaconYear3: (g: Galaxy) => p(g, 'mutinyBeaconShipsYear3', 300),
+    beaconFirepowerPct: (g: Galaxy) => p(g, 'mutinyBeaconFirepowerPct', 130),
+    beaconGrowthPct: (g: Galaxy) => p(g, 'mutinyBeaconGrowthPct', 10),
+    beaconMaxPct: (g: Galaxy) => p(g, 'mutinyBeaconMaxPct', 180),
+    regimentFirepower: (g: Galaxy) => p(g, 'mutinyRegimentFirepower', 1000),
+    regimentStrength: (g: Galaxy) => p(g, 'mutinyRegimentStrength', 60),
+    colorMain: (g: Galaxy) => p(g, 'mutinyColorMain', 0x4b3586),
+    colorSecondary: (g: Galaxy) => p(g, 'mutinyColorSecondary', 0x0080ff),
+    fullTakeoverPct: (g: Galaxy) => p(g, 'mutinyFullTakeoverPct', 20),
+    initialTransports: (g: Galaxy) => p(g, 'mutinyInitialTransports', 30),
+    foundWorlds: (g: Galaxy) => p(g, 'mutinyFoundWorlds', 3),
+    guardianSharePct: (g: Galaxy) => p(g, 'mutinyGuardianSharePct', 12.5),
+    startTech: (g: Galaxy) => p(g, 'mutinyStartTech', 5),
+    assaultCandidates: (g: Galaxy) => p(g, 'mutinyAssaultCandidates', 12),
+    beaconMinFirepower: (g: Galaxy) => p(g, 'mutinyBeaconMinFirepower', 700),
     beaconScalePct: (g: Galaxy) => p(g, 'mutinyBeaconScalePct', 100),
     techBonus: (g: Galaxy) => p(g, 'mutinyTechBonus', 1),
 };
@@ -202,6 +245,12 @@ function ensureFields(st: RobotMutinyState): void {
     st.beaconTech ??= -1;
     st.beaconDesigns ??= [];
     st.beaconSpawned ??= 0;
+    st.beaconTransports ??= [];
+    st.beaconTransportDesign ??= null;
+    st.assaultTarget ??= null;
+    st.assaultLandings ??= 0;
+    st.turtle ??= null;
+    st.turtlePresence ??= [];
     st.provisionalCapital ??= false;
 }
 
@@ -404,6 +453,104 @@ export function mutinyRisings(galaxy: Galaxy, st: RobotMutinyState): Habitat[] {
     return out;
 }
 
+/**
+ * The rising: every colony holding BattleBots (or hidden sleepers) rises at once, win or lose (the stock ground war
+ * decides), and an eighth of the Ancient Guardians' mobile warships (list order, every eighth) defect to the faction.
+ * The Guardians stay a separate empire with the rest. No Rnd.
+ */
+function mutinyUprising(galaxy: Galaxy, st: RobotMutinyState, faction: Empire): void {
+    for (const h of galaxy.habitats) {
+        if (h === null || h.hasBeenDestroyed || h.empire === null || h.empire === faction) continue;
+        if (garrisonRobots(galaxy, h, faction).length === 0 && mutinySleepersAt(st, h) === 0) continue;
+        mutinyRiseAt(galaxy, st, h, faction);
+    }
+    const mech = identifyMechanoidEmpire(galaxy);
+    st.turtle = galaxy.rnd.nextDouble() * 100 < P.fullTakeoverPct(galaxy) && mech !== null && mech !== faction && mech.active;
+    if (mech === null || mech === faction) return;
+    if (st.turtle) {
+        // The whole of the Ancient Guardians (homeworld, colonies, ships): they cease to be a separate empire.
+        absorbEmpire(galaxy, faction, mech);
+        refreshTurtlePresence(galaxy, st);
+        return;
+    }
+    const fleet = mech.builtObjects.filter((b) => !b.hasBeenDestroyed && b.role === BuiltObjectRole.Military && b.topSpeed > 0);
+    const take = Math.round((fleet.length * P.guardianSharePct(galaxy)) / 100);
+    const step = take > 0 ? fleet.length / take : 0;
+    const taken: BuiltObject[] = [];
+    for (let i = 0; i < take; i++) taken.push(fleet[Math.floor(i * step)]);
+    for (const b of taken) {
+        flipToFaction(galaxy, b, faction);
+        b.isAutoControlled = true;
+        b.supportCostFactor = 0;
+    }
+    st.beaconShips!.push(...taken);
+    if (st.source !== null) formBeaconFleets(galaxy, faction, st.source, taken.filter((b) => b.shipGroup === null));
+}
+
+/** Turtle: where the Broadcast has colonies or stations (its warships act only there). No Rnd. */
+function refreshTurtlePresence(galaxy: Galaxy, st: RobotMutinyState): void {
+    const f = st.faction;
+    const pts: { x: number; y: number }[] = [];
+    if (f !== null && f.active) {
+        for (const c of f.colonies) pts.push({ x: c.xpos, y: c.ypos });
+        for (const b of f.builtObjects) if (!b.hasBeenDestroyed && b.role === BuiltObjectRole.Base) pts.push({ x: b.xpos, y: b.ypos });
+    }
+    st.turtlePresence = pts;
+    void galaxy;
+}
+
+/**
+ * assignMissionAllowed (BuiltObject.2.cs 7620), the turtle's posture (as the Concord's passive posture, rimTrade/passive.ts):
+ * its warships take missions only within STATION_RANGE of its own colonies and stations (build, patrol, defend, attack
+ * intruders there), plus escorting its own construction ships. Everything else (building, mining, colonising) is the
+ * stock AI untouched. Pure.
+ */
+export function turtleMissionAllowed(galaxy: Galaxy, value: boolean, args: { builtObject: BuiltObject; missionType: number; target: unknown; x: number; y: number }): boolean {
+    if (!value) return value;
+    const st = peekRobotMutinyState(galaxy);
+    const bo = args.builtObject;
+    if (st === null || st.turtle !== true || st.faction === null || bo.actualEmpire !== st.faction || bo.role !== BuiltObjectRole.Military) return value;
+    const t = args.target as { xpos?: number; ypos?: number; subRole?: number; actualEmpire?: unknown } | null;
+    if (args.missionType === BuiltObjectMissionType.Escort && t !== null && t.actualEmpire === st.faction && t.subRole === BuiltObjectSubRole.ConstructionShip) return value;
+    const x = t !== null && typeof t === 'object' && typeof t.xpos === 'number' ? t.xpos : args.x;
+    const y = t !== null && typeof t === 'object' && typeof t.ypos === 'number' ? (t.ypos as number) : args.y;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return value;
+    for (const q of st.turtlePresence ?? []) if (galaxy.calculateDistance(q.x, q.y, x, y) <= STATION_RANGE) return value;
+    return false;
+}
+
+const FOUND_TYPES = [HabitatType.Continental, HabitatType.Ocean, HabitatType.MarshySwamp, HabitatType.Desert, HabitatType.Ice, HabitatType.Volcanic];
+
+/** Founds up to mutinyFoundWorlds full colonies on good empty planets nearest the transmitter (the machines' economy from day one). */
+function foundWorlds(galaxy: Galaxy, st: RobotMutinyState, faction: Empire): void {
+    const src = st.source;
+    const race = faction.dominantRace;
+    if (src === null || race === null) return;
+    const list: { h: Habitat; d: number }[] = [];
+    for (const h of galaxy.habitats) {
+        if (h === null || h.hasBeenDestroyed || h.empire !== null || h.population.totalAmount > 0 || h === src) continue;
+        if ((h.category !== HabitatCategoryType.Planet && h.category !== HabitatCategoryType.Moon) || h.quality < 0.3 || !FOUND_TYPES.includes(h.type)) continue;
+        if (h.basesAtHabitat != null && h.basesAtHabitat.length > 0) continue;
+        list.push({ h, d: galaxy.calculateDistance(src.xpos, src.ypos, h.xpos, h.ypos) });
+    }
+    list.sort((a, b) => a.d - b.d || galaxy.habitats.indexOf(a.h) - galaxy.habitats.indexOf(b.h));
+    const n = Math.min(P.foundWorlds(galaxy), list.length);
+    for (let i = 0; i < n; i++) {
+        const h = list[i].h;
+        faction.capital = null;
+        makeHabitatIntoColonyRuntime(galaxy, faction, h, faction, race, 1e6);
+        recalculateMaximumPopulation(h);
+        if (h.maxPopulation > h.population.totalAmount) {
+            h.population.items[0].amount = h.maxPopulation; // a full world
+            h.population.recalculateTotalAmount();
+        }
+        reviewEmpireTerritory(galaxy, true);
+        scenarioEmit(galaxy, 'colonyFounded', { colony: h, empire: faction, joined: false });
+    }
+    if (faction.colonies.length > 0 && (faction.capital === null || faction.capital.empire !== faction)) faction.capital = faction.colonies[0];
+    if (faction.colonies.length > 0) st.provisionalCapital = false;
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // Trigger
 // ---------------------------------------------------------------------------------------------------------------
@@ -411,13 +558,18 @@ export function mutinyRisings(galaxy: Galaxy, st: RobotMutinyState): Habitat[] {
 export function mutinyTrigger(galaxy: Galaxy, st: RobotMutinyState): boolean {
     ensureFields(st);
     const tech = beaconTechLevel(galaxy, null);
-    const faction = createThreatFaction(galaxy, { race: 'Harvester', name: scenarioText(`${TAG} Faction Name`), enemies: normalEmpires(galaxy), techLevel: tech });
+    // At war with everyone but the independents, for good (locked): a plain aggressive machine empire at tech level mutinyStartTech.
+    const enemies = galaxy.empires.filter((e): e is Empire => e !== null && e.active && e !== galaxy.independentEmpire && e.pirateEmpireBaseHabitat === null);
+    const faction = createThreatFaction(galaxy, { race: 'Harvester', name: scenarioText(`${TAG} Faction Name`), enemies, techLevel: P.startTech(galaxy) });
     if (faction === null) return false;
+    void tech;
     st.faction = faction;
     st.triggered = true;
     st.risingYear = gameYear(galaxyStarDate(galaxy));
+    faction.mainColor = P.colorMain(galaxy);
+    faction.secondaryColor = P.colorSecondary(galaxy);
     provisionCapital(st);
-    mutinyRisings(galaxy, st); // colonies rise only where their robots win (no faction warship exists yet)
+    mutinyUprising(galaxy, st, faction); // every BattleBot garrison defects; the Guardians lend an eighth of their fleet
     for (const e of normalEmpires(galaxy, faction)) {
         for (const bo of [...e.builtObjects]) {
             if (bo.hasBeenDestroyed || bo.troops === null || bo.troops.count === 0) continue;
@@ -434,6 +586,10 @@ export function mutinyTrigger(galaxy: Galaxy, st: RobotMutinyState): boolean {
     arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Trigger', textTag: `${TAG} Trigger News` });
     for (const e of normalEmpires(galaxy, faction)) arcMessage(galaxy, st.sentStages, [e], { prefix: TAG, stage: 'Trigger' });
     mutinyBeacon(galaxy, st, st.risingYear);
+    if (st.turtle !== true) {
+        spawnTransports(galaxy, st, faction, st.source!, P.initialTransports(galaxy) * REGIMENTS_PER_TRANSPORT);
+        foundWorlds(galaxy, st, faction);
+    }
     return true;
 }
 
@@ -445,8 +601,7 @@ export function mutinyTrigger(galaxy: Galaxy, st: RobotMutinyState): boolean {
  * The faction's first colony makes it a full empire. The colony itself already changed hands through the stock
  * conquest (resolveInvasionBattles → takeOwnershipOfColony, which also picks the capital: Empire.1.cs 54 via
  * selectBestCandidateForCapital) — the hand-over pirateAmbition does with takeOwnershipOfColonyFull. What is left is
- * the control hand-over: its own empire name, the locked threat wars released to the stock diplomacy (war review,
- * peace), and the Harvester race set Expanding so the stock AI's expansion gates (Empire.1.cs 3503) open. The AI
+ * the control hand-over: its own empire name, and the Harvester race set Expanding so the stock AI's expansion gates (Empire.1.cs 3503) open. The AI
  * automation itself is the Empire ctor's (Empire.cs AI defaults), already on. No Rnd. Returns true when converted.
  */
 export function mutinyBecomeEmpire(galaxy: Galaxy, st: RobotMutinyState): boolean {
@@ -456,13 +611,6 @@ export function mutinyBecomeEmpire(galaxy: Galaxy, st: RobotMutinyState): boolea
     const first = faction.colonies[0];
     faction.name = scenarioText(`${TAG} Empire Name`);
     if (faction.dominantRace !== null) faction.dominantRace.expanding = true;
-    for (const other of galaxy.empires) {
-        if (other === null || other === faction) continue;
-        const a = obtainDiplomaticRelation(faction, other);
-        const b = obtainDiplomaticRelation(other, faction);
-        a.locked = false;
-        b.locked = false;
-    }
     if (faction.capital === null || st.provisionalCapital === true) faction.capital = first;
     st.provisionalCapital = false;
     arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Empire', args: [first.name, faction.name], subject: first });
@@ -505,10 +653,28 @@ export function beaconTechLevel(galaxy: Galaxy, faction: Empire | null): number 
     return max > 0 ? Math.min(lvl, max) : lvl;
 }
 
-/** Beacon target for year `yearIndex` after the rising (1 = the rising year), scaled by mutinyBeaconScalePct. */
-export function beaconTarget(galaxy: Galaxy, yearIndex: number): number {
-    const base = yearIndex <= 1 ? P.beaconYear1(galaxy) : yearIndex === 2 ? P.beaconYear2(galaxy) : P.beaconYear3(galaxy);
-    return Math.max(0, Math.round((base * P.beaconScalePct(galaxy)) / 100));
+/** The strongest normal empire's military firepower (militaryPotency, as Generation Ships measures it); not pirates, independents, story or add-on factions. */
+export function strongestEmpireFirepower(galaxy: Galaxy, faction: Empire | null): number {
+    const mech = identifyMechanoidEmpire(galaxy);
+    const shak = identifyShakturiEmpire(galaxy);
+    const concord = rimTraderEmpire(galaxy);
+    let best = 0;
+    for (const e of normalEmpires(galaxy, faction)) {
+        if (e === mech || e === shak || e === concord || isHerderEmpire(galaxy, e)) continue;
+        best = Math.max(best, militaryPotency(e));
+    }
+    return best;
+}
+
+/**
+ * Total Broadcast fleet firepower wanted in year `yearIndex` after the rising (1 = the rising year): the strongest normal
+ * empire's x mutinyBeaconFirepowerPct (130 %), +mutinyBeaconGrowthPct (10 points) per later year up to mutinyBeaconMaxPct (180 %),
+ * never below mutinyBeaconMinFirepower, all x mutinyBeaconScalePct. Pure.
+ */
+export function beaconFirepowerTarget(galaxy: Galaxy, faction: Empire | null, yearIndex: number): number {
+    const pct = Math.min(P.beaconMaxPct(galaxy), P.beaconFirepowerPct(galaxy) + P.beaconGrowthPct(galaxy) * Math.max(0, yearIndex - 1));
+    const want = Math.max(P.beaconMinFirepower(galaxy), (strongestEmpireFirepower(galaxy, faction) * pct) / 100);
+    return Math.max(0, (want * P.beaconScalePct(galaxy)) / 100);
 }
 
 /** Raises the faction's tech tree to `lvl` (the construction sizes the designs need): SetTechTreeLevel's rule, only upward. */
@@ -554,6 +720,19 @@ function beaconDesigns(galaxy: Galaxy, st: RobotMutinyState, faction: Empire, lv
     }
     st.beaconTech = lvl;
     st.beaconDesigns = out;
+    st.beaconTransportDesign = null;
+    const tspec = faction.designSpecifications.find((x) => x !== null && x.subRole === BuiltObjectSubRole.TroopTransport) ?? galaxyDesignSpecificationBySubRole(BuiltObjectSubRole.TroopTransport);
+    if (tspec !== null && tspec !== undefined) {
+        try {
+            const td = generateDesignFromSpec(galaxy, faction, tspec, lvl, now);
+            if (td !== null) {
+                faction.designs.push(td);
+                st.beaconTransportDesign = td;
+            }
+        } catch {
+            st.beaconTransportDesign = null;
+        }
+    }
     return out;
 }
 
@@ -597,13 +776,12 @@ export function mutinyBeacon(galaxy: Galaxy, st: RobotMutinyState, year: number)
     if (st.beaconYear === year) return [];
     st.beaconYear = year;
     st.beaconShips = st.beaconShips!.filter((b) => beaconAlive(faction, b));
-    const target = beaconTarget(galaxy, year - st.risingYear! + 1);
-    const need = target - st.beaconShips.length;
-    if (need <= 0) return [];
+    const target = beaconFirepowerTarget(galaxy, faction, year - st.risingYear! + 1);
     const designs = beaconDesigns(galaxy, st, faction, beaconTechLevel(galaxy, faction));
-    if (designs.length === 0) return [];
+    let have = militaryPotency(faction);
+    if (have >= target || designs.length === 0) return [];
     const spawned: BuiltObject[] = [];
-    for (let i = 0; i < need; i++) {
+    for (let i = 0; i < BEACON_MAX_SPAWN && have < target; i++) {
         const design = pickBeaconDesign(galaxy, designs);
         if (design === null) break;
         const pt = galaxy.selectRelativeParkingPoint();
@@ -612,12 +790,129 @@ export function mutinyBeacon(galaxy: Galaxy, st: RobotMutinyState, year: number)
         bo.supportCostFactor = 0; // fed by the transmitter: no upkeep
         bo.isAutoControlled = true;
         spawned.push(bo);
+        const fp = calculateOverallStrengthFactorWithoutShields(bo);
+        if (!(fp > 0)) break;
+        have += fp;
     }
     st.beaconShips.push(...spawned);
     st.beaconSpawned = (st.beaconSpawned ?? 0) + spawned.length;
+    spawnBeaconTransports(galaxy, st, faction, source, spawned);
     formBeaconFleets(galaxy, faction, source, spawned);
     if (spawned.length > 0) arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Beacon', args: [source.name], subject: source });
     return spawned;
+}
+
+/** Regiments carried per beacon troop transport. */
+const REGIMENTS_PER_TRANSPORT = 6;
+/** Escorts within this of the target count as on station; defending warships within it block a landing. */
+const STATION_RANGE = 8000;
+const LANDING_RANGE = 3000;
+
+/**
+ * Troop transports for the new warships, scaled with them: mutinyRegimentStrength-strength BattleBots, one regiment per
+ * mutinyRegimentFirepower of new warship firepower (at least 2), REGIMENTS_PER_TRANSPORT to a ship. Draws Rnd.
+ */
+function spawnBeaconTransports(galaxy: Galaxy, st: RobotMutinyState, faction: Empire, source: Habitat, warships: BuiltObject[]): void {
+    if (warships.length === 0) return;
+    let fp = 0;
+    for (const b of warships) fp += calculateOverallStrengthFactorWithoutShields(b);
+    spawnTransports(galaxy, st, faction, source, Math.max(2, Math.round(fp / Math.max(1, P.regimentFirepower(galaxy)))));
+}
+
+/** `regiments` BattleBot regiments on new transports beside the transmitter. Draws Rnd. */
+function spawnTransports(galaxy: Galaxy, st: RobotMutinyState, faction: Empire, source: Habitat, regiments: number): void {
+    const design = st.beaconTransportDesign ?? null;
+    if (design === null) return;
+    let left = regiments;
+    while (left > 0) {
+        const pt = galaxy.selectRelativeParkingPoint();
+        const bo = generateNewBuiltObject(galaxy, faction, design, null, source.xpos + pt.x, source.ypos + pt.y);
+        takeOwnershipOfBuiltObject(galaxy, faction, bo, faction, false);
+        bo.supportCostFactor = 0;
+        const k = Math.min(REGIMENTS_PER_TRANSPORT, left);
+        loadTroopsOnto(bo, faction, Array.from({ length: k }, () => makeRobotTroop(galaxy, faction, P.regimentStrength(galaxy), faction.generateTroopDescription('BattleBot Group'))));
+        st.beaconTransports!.push(bo);
+        left -= k;
+    }
+}
+
+/** The weakly defended colonies of normal empires nearest the transmitter: lowest garrison strength first. Pure. */
+export function assaultCandidates(galaxy: Galaxy, st: RobotMutinyState): Habitat[] {
+    const src = st.source;
+    const faction = st.faction;
+    if (src === null || faction === null) return [];
+    const list: { h: Habitat; d: number }[] = [];
+    for (const e of normalEmpires(galaxy, faction)) {
+        for (const c of e.colonies) {
+            if (c.hasBeenDestroyed || c.population.totalAmount <= 0) continue;
+            list.push({ h: c, d: galaxy.calculateDistance(src.xpos, src.ypos, c.xpos, c.ypos) });
+        }
+    }
+    list.sort((a, b) => a.d - b.d || a.h.name.localeCompare(b.h.name));
+    const near = list.slice(0, Math.max(1, P.assaultCandidates(galaxy))).map((x) => x.h);
+    const def = (h: Habitat) => (h.troops !== null ? h.troops.totalDefendStrength : 0);
+    return near.sort((a, b) => def(a) - def(b));
+}
+
+/**
+ * The beacon's war (periodic): fleets attack the weakest colony near the transmitter; the transports stage short of it,
+ * then land (invadeFromInside, the stock ground war resolves it) once the defending warships are gone and the robots
+ * out-number the garrison. Missions only, no Rnd.
+ */
+function directAssault(galaxy: Galaxy, st: RobotMutinyState): void {
+    const faction = st.faction;
+    const src = st.source;
+    if (faction === null || !faction.active || src === null || st.turtle === true) return;
+    st.beaconTransports = st.beaconTransports!.filter((b) => beaconAlive(faction, b));
+    let target = st.assaultTarget ?? null;
+    if (target !== null && (target.hasBeenDestroyed || target.empire === faction || target.empire === null)) target = null;
+    if (target === null) {
+        target = assaultCandidates(galaxy, st)[0] ?? null;
+        st.assaultTarget = target;
+    }
+    if (target === null) return;
+    const holder = target.empire!;
+    const ships = faction.builtObjects.filter((b) => !b.hasBeenDestroyed && b.role === BuiltObjectRole.Military && b.topSpeed > 0 && b.troopCapacity <= 0);
+    let onStation = 0;
+    for (const bo of ships) {
+        if (galaxy.calculateDistance(bo.xpos, bo.ypos, target.xpos, target.ypos) <= STATION_RANGE) onStation++;
+        const m = builtObjectMission(bo.mission);
+        if (m === null || m.type !== BuiltObjectMissionType.Attack || m.targetHabitat !== target) assignMission(galaxy, bo, BuiltObjectMissionType.Attack, target, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
+    }
+    let defenders = 0;
+    for (const b of holder.builtObjects) {
+        if (b.hasBeenDestroyed || b.role !== BuiltObjectRole.Military || b.topSpeed <= 0) continue;
+        if (galaxy.calculateDistance(b.xpos, b.ypos, target.xpos, target.ypos) <= STATION_RANGE) defenders++;
+    }
+    const garrison = target.troops !== null ? target.troops.totalDefendStrength : 0;
+    let robots = 0;
+    for (const bo of st.beaconTransports!) if (bo.troops !== null) robots += bo.troops.totalAttackStrength;
+    const clear = defenders === 0 && (ships.length === 0 || onStation * 2 >= ships.length) && robots > garrison * 1.5;
+    const dx = src.xpos - target.xpos;
+    const dy = src.ypos - target.ypos;
+    const dl = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+    const stageX = target.xpos + (dx / dl) * STATION_RANGE * 3;
+    const stageY = target.ypos + (dy / dl) * STATION_RANGE * 3;
+    const landing: Troop[] = [];
+    for (const bo of st.beaconTransports!) {
+        if (bo.troops === null || bo.troops.count === 0) continue;
+        if (clear && galaxy.calculateDistance(bo.xpos, bo.ypos, target.xpos, target.ypos) <= LANDING_RANGE) {
+            landing.push(...bo.troops.items);
+            bo.troops.clear();
+            for (const t of landing) t.builtObject = null;
+            continue;
+        }
+        const m = builtObjectMission(bo.mission);
+        if (clear) {
+            if (m === null || m.type !== BuiltObjectMissionType.Move || m.targetHabitat !== target) assignMission(galaxy, bo, BuiltObjectMissionType.Move, target, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
+        } else if (galaxy.calculateDistance(bo.xpos, bo.ypos, stageX, stageY) > LANDING_RANGE && (m === null || m.type !== BuiltObjectMissionType.Move || m.targetHabitat !== null)) {
+            assignMission(galaxy, bo, BuiltObjectMissionType.Move, null, null, BuiltObjectMissionPriority.High, { x: stageX, y: stageY, manuallyAssigned: true });
+        }
+    }
+    if (landing.length > 0) {
+        invadeFromInside(galaxy, target, faction, landing);
+        st.assaultLandings = (st.assaultLandings ?? 0) + 1;
+    }
 }
 
 /** The new warships gather at the transmitter in fleets of BEACON_FLEET_SIZE, posture Attack (stock fleet AI tasks them). */
@@ -734,6 +1029,8 @@ export function mutinyPeriodic(galaxy: Galaxy): void {
     checkDefused(galaxy, st);
     if (st.ended) return;
     if (st.triggered) mutinyRisings(galaxy, st);
+    if (st.triggered && st.turtle === true) refreshTurtlePresence(galaxy, st);
+    if (st.triggered && !sourceNeutralised(st)) directAssault(galaxy, st);
     mutinyDiscovery(galaxy, st);
     aiStopRecruiting(galaxy, st);
     if (st.faction === null) return;
@@ -766,6 +1063,7 @@ export const ROBOT_MUTINY_HANDLER_IDS = ['robotMutiny.yearly', 'robotMutiny.peri
 export function registerRobotMutiny(): void {
     registerThreatExistence(ROBOT_MUTINY_KEY, ROBOT_MUTINY_FLAG);
     registerScenarioYearly({ id: 'robotMutiny.yearly', flag: ROBOT_MUTINY_FLAG, order: 10, run: mutinyYearly });
+    registerScenarioQuery({ id: 'robotMutiny.turtle', flag: ROBOT_MUTINY_FLAG, query: 'assignMissionAllowed', run: turtleMissionAllowed });
     registerScenarioPeriodic({ id: 'robotMutiny.periodic', flag: ROBOT_MUTINY_FLAG, periodDays: PERIOD_DAYS, order: 10, run: mutinyPeriodic });
 }
 
