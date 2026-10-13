@@ -69,7 +69,7 @@ import type { Empire } from '../sim/empire';
 import { GalaxyLocation, GalaxyLocationType } from '../sim/galaxyLocation';
 import { Habitat, HabitatCategoryType, HabitatType, SystemInfo } from '../sim/types';
 import { NebulaCloudGenerator } from './nebulaClouds';
-import { buildGalaxyNebulaeImage } from './galaxyNebulae';
+import { buildGalaxyNebulaeImages } from './galaxyNebulae';
 import { textureFromCanvas } from './textureCanvas';
 import { SystemNebulaLayer, type NebulaSystem } from './systemNebula';
 import { EmpireLayer } from './empireLayer';
@@ -2891,6 +2891,12 @@ export class MainView {
     private deepKind = false;
     /** The galaxy nebulae image (Main.bitmap_182, galaxyNebulae.ts), top of the backdrop group; null until built. */
     private galaxyNebulae: Sprite | null = null;
+    /** Its two variants (galaxyNebulae.ts): bitmap_182 as built for the Original backdrop, the tint-only clouds for Deep.
+     *  The texture of the variant not in use is made on the first switch to it. */
+    private nebulaeImages: { original: HTMLCanvasElement; deep: HTMLCanvasElement } | null = null;
+    private nebulaeTextures: { original: Texture | null; deep: Texture | null } = { original: null, deep: null };
+    /** Set by dispose(): a nebulae build still running for this view is dropped. */
+    private nebulaeDisposed = false;
     /** The "Deep (DW2-style)" texture built from the loaded original (deepBackdrop.ts), or the original if it fails. */
     private deepBackdropTexture(): Texture {
         const orig = this.textures.backdrop;
@@ -2922,8 +2928,8 @@ export class MainView {
             ...files.map((f) => this.store.loadRawImage(`/assets/dwu/images/environment/nebulae/${f}`)),
         ]);
         const ok = clouds.filter((c): c is ImageBitmap => c !== null);
-        if (bd === null || ok.length !== files.length || ok.length === 0 || this.backdropGroup.destroyed) return;
-        const canvas = buildGalaxyNebulaeImage({
+        if (bd === null || ok.length !== files.length || ok.length === 0 || this.backdropGroup.destroyed || this.nebulaeDisposed) return;
+        const images = buildGalaxyNebulaeImages({
             randomSeed: this.galaxy.randomSeed,
             sizeX: this.galaxy.sizeX,
             sizeY: this.galaxy.sizeY,
@@ -2933,20 +2939,29 @@ export class MainView {
         });
         bd.close();
         for (const c of ok) c.close();
-        if (this.backdropGroup.destroyed) return;
-        const sprite = new Sprite(textureFromCanvas(canvas, 'galaxyNebulae'));
+        if (this.backdropGroup.destroyed || this.nebulaeDisposed) return;
+        this.nebulaeImages = images;
+        const sprite = new Sprite(Texture.EMPTY);
         sprite.eventMode = 'none';
-        sprite.scale.set(this.galaxy.sizeX / canvas.width, this.galaxy.sizeY / canvas.height);
         this.galaxyNebulae = sprite;
         this.backdropGroup.addChild(sprite);
         this.applyNebulaeBlend();
     }
 
-    /** Over the original backdrop the clouds are composited as the original does (source-over: dark smoke on the jpg).
-     *  Deviation for the Deep backdrop (darkened jpg, near black): the same image is added instead, so the clouds read as
-     *  faint grey-brown smoke rather than disappearing into the dark. */
+    /** Show the nebulae variant for the current backdrop (on build and on every backdrop change). Over the original
+     *  backdrop the clouds are bitmap_182 composited as the original does (source-over: dark smoke with lighter grey
+     *  patches on the jpg). Deviation for the Deep backdrop (darkened jpg, near black): the tint-only clouds are added
+     *  instead, so they read as faint grey-brown smoke rather than disappearing into the dark. */
     private applyNebulaeBlend(): void {
-        if (this.galaxyNebulae !== null) this.galaxyNebulae.blendMode = this.deepKind ? 'add' : 'normal';
+        const sprite = this.galaxyNebulae;
+        const images = this.nebulaeImages;
+        if (sprite === null || images === null || sprite.destroyed) return;
+        const which = this.deepKind ? 'deep' : 'original';
+        const canvas = images[which];
+        const tex = (this.nebulaeTextures[which] ??= textureFromCanvas(canvas, `galaxyNebulae-${which}`));
+        sprite.texture = tex;
+        sprite.scale.set(this.galaxy.sizeX / canvas.width, this.galaxy.sizeY / canvas.height);
+        sprite.blendMode = this.deepKind ? 'add' : 'normal';
     }
 
     /** Show the chosen galaxy backdrop: a generated variant, or the original image (also when a variant cannot run). */
@@ -2994,6 +3009,12 @@ export class MainView {
         this.offGalaxyBackdropChange = null;
         this.galaxyBackdropLayer?.destroy();
         this.deepAnim?.destroy();
+        this.nebulaeDisposed = true;
+        if (this.galaxyNebulae !== null && !this.galaxyNebulae.destroyed) this.galaxyNebulae.texture = Texture.EMPTY;
+        this.nebulaeTextures.original?.destroy(true);
+        this.nebulaeTextures.deep?.destroy(true);
+        this.nebulaeTextures = { original: null, deep: null };
+        this.nebulaeImages = null;
         this.deepAnim = null;
         this.galaxyBackdropLayer = null;
     }

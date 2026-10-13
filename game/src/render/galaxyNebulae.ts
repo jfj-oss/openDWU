@@ -8,12 +8,17 @@
 //     DetermineAngle(location centre, galaxy centre) - pi/2, RotateBitmap onto its rotated bounding box);
 //   - it is fully tinted (CalculateImageAttributesFullTint: RGB replaced by the tint, alpha kept) with
 //     DetermineLocationColor = the mean of a cloud colour ((17,13,20) or (14,13,24)) and the galaxy_backdrop.jpg pixel
-//     at the location centre;
+//     at the location centre. TintBitmap draws that tinted copy source-over onto `new Bitmap(inputImage)`, a copy of
+//     the untinted grey cloud, so where the png is partly transparent some of its own (grey) luminance shows through
+//     the tint (colour (T + c (1 - a)) / (2 - a), alpha a (2 - a)): the lighter patches inside the clouds;
 //   - it is drawn (source-over) into an image the size of galaxy_backdrop.jpg over ConvertLocationToRectangle: the
 //     location rect enlarged 1.4x about its centre, in backdrop pixels (galaxyScaleFactor = SizeX / image width).
 // Then FbmNoise(seed).MakeTurbulence(512, 0.4, 2.5) + TileNoise(48) multiplies every coloured pixel's RGB by noise/255
 // (ApplyNoiseToImageTransparent). Main.Part12.cs 3366-3371 composites jpg + this image into the galaxy backdrop
 // (bitmap_178 → bitmap_177), so the clouds share the backdrop's zoom band and fade.
+//
+// Two images come out of one pass: `original`, the port above (drawn source-over on the Original backdrop), and `deep`,
+// the tinted copy alone without the grey underlay (added over the Deep backdrop, where it reads as faint smoke).
 //
 // Deviation: SelectCloudColor's _Rnd.Next(0, 2) is drawn from the generator's location stream in the original; the
 // sim ports the location path without it, so here the colour choice comes from a render-only Random(RandomSeed) (the
@@ -90,12 +95,20 @@ export interface GalaxyNebulaeInput {
     clouds: readonly (CanvasImageSource & { width: number; height: number })[];
 }
 
-/** Build bitmap_182 (the size of the backdrop image, transparent outside the clouds). Needs a DOM. */
-export function buildGalaxyNebulaeImage(input: GalaxyNebulaeInput): HTMLCanvasElement {
+export interface GalaxyNebulaeImages {
+    /** bitmap_182 as the original builds it (TintBitmap over the grey cloud): for the Original backdrop. */
+    original: HTMLCanvasElement;
+    /** The full-tint clouds alone (no grey underlay): added over the Deep backdrop. */
+    deep: HTMLCanvasElement;
+}
+
+/** Build bitmap_182 (the size of the backdrop image, transparent outside the clouds) in both variants. Needs a DOM. */
+export function buildGalaxyNebulaeImages(input: GalaxyNebulaeInput): GalaxyNebulaeImages {
     const W = Math.max(1, input.backdrop.width);
     const H = Math.max(1, input.backdrop.height);
-    const { canvas, ctx } = makeTextureCanvas(W, H);
-    if (input.clouds.length === 0) return canvas;
+    const orig = makeTextureCanvas(W, H);
+    const deep = makeTextureCanvas(W, H);
+    if (input.clouds.length === 0) return { original: orig.canvas, deep: deep.canvas };
     // SampleColorAtPoint reads the backdrop's pixels.
     const bg = makeTextureCanvas(W, H);
     bg.ctx.drawImage(input.backdrop, 0, 0, W, H);
@@ -104,7 +117,9 @@ export function buildGalaxyNebulaeImage(input: GalaxyNebulaeInput): HTMLCanvasEl
     const gsf = input.sizeX / W;
     const rnd = new Random(input.randomSeed);
     const tmp = makeTextureCanvas(1, 1);
-    ctx.imageSmoothingQuality = 'high';
+    const tint = makeTextureCanvas(1, 1);
+    orig.ctx.imageSmoothingQuality = 'high';
+    deep.ctx.imageSmoothingQuality = 'high';
     for (const loc of input.locations) {
         if (loc.type !== GalaxyLocationType.NebulaCloud) continue;
         const img = input.clouds[((loc.pictureRef % input.clouds.length) + input.clouds.length) % input.clouds.length];
@@ -135,7 +150,7 @@ export function buildGalaxyNebulaeImage(input: GalaxyNebulaeInput): HTMLCanvasEl
         t.imageSmoothingQuality = 'high';
         t.drawImage(img, -hw, -hh);
         t.setTransform(1, 0, 0, 1, 0, 0);
-        // DetermineLocationColor + full tint (RGB = tint, alpha kept).
+        // DetermineLocationColor + full tint (RGB = tint, alpha kept), on a copy of the rotated cloud.
         const cc = CLOUD_COLORS[rnd.next(0, CLOUD_COLORS.length)];
         const sx = Math.min(W - 1, Math.max(0, Math.trunc(cx / gsf)));
         const sy = Math.min(H - 1, Math.max(0, Math.trunc(cy / gsf)));
@@ -143,29 +158,39 @@ export function buildGalaxyNebulaeImage(input: GalaxyNebulaeInput): HTMLCanvasEl
         const r = Math.min(255, Math.trunc((bgPx[o] + cc[0]) / 2));
         const g = Math.min(255, Math.trunc((bgPx[o + 1] + cc[1]) / 2));
         const b = Math.min(255, Math.trunc((bgPx[o + 2] + cc[2]) / 2));
-        t.globalCompositeOperation = 'source-in';
-        t.fillStyle = `rgb(${r},${g},${b})`;
-        t.fillRect(0, 0, rw, rh);
-        t.globalCompositeOperation = 'source-over';
+        tint.canvas.width = rw;
+        tint.canvas.height = rh;
+        const tt = tint.ctx;
+        tt.drawImage(tmp.canvas, 0, 0);
+        tt.globalCompositeOperation = 'source-in';
+        tt.fillStyle = `rgb(${r},${g},${b})`;
+        tt.fillRect(0, 0, rw, rh);
+        tt.globalCompositeOperation = 'source-over';
+        // TintBitmap: the tinted copy drawn source-over onto the untinted cloud (new Bitmap(inputImage)).
+        t.drawImage(tint.canvas, 0, 0);
         const rect = nebulaImageRect(loc, gsf);
-        ctx.drawImage(tmp.canvas, 0, 0, rw, rh, rect.x, rect.y, rect.w, rect.h);
+        orig.ctx.drawImage(tmp.canvas, 0, 0, rw, rh, rect.x, rect.y, rect.w, rect.h);
+        deep.ctx.drawImage(tint.canvas, 0, 0, rw, rh, rect.x, rect.y, rect.w, rect.h);
     }
     tmp.canvas.width = 1;
+    tint.canvas.width = 1;
     // ApplyNoiseToImageTransparent(image, whole image, noise, 255): RGB *= noise[X % 512][Y % 512] / 255 where A > 0.
     const noise = galaxyNebulaNoise(input.randomSeed);
-    const data = ctx.getImageData(0, 0, W, H);
-    const px = data.data;
-    for (let y = 0; y < H; y++) {
-        const ny = y % NOISE_SIZE;
-        for (let x = 0; x < W; x++) {
-            const o = (y * W + x) * 4;
-            if (px[o + 3] === 0) continue;
-            const f = noise[(x % NOISE_SIZE) * NOISE_SIZE + ny] / 255;
-            px[o] = Math.trunc(px[o] * f);
-            px[o + 1] = Math.trunc(px[o + 1] * f);
-            px[o + 2] = Math.trunc(px[o + 2] * f);
+    for (const ctx of [orig.ctx, deep.ctx]) {
+        const data = ctx.getImageData(0, 0, W, H);
+        const px = data.data;
+        for (let y = 0; y < H; y++) {
+            const ny = y % NOISE_SIZE;
+            for (let x = 0; x < W; x++) {
+                const o = (y * W + x) * 4;
+                if (px[o + 3] === 0) continue;
+                const f = noise[(x % NOISE_SIZE) * NOISE_SIZE + ny] / 255;
+                px[o] = Math.trunc(px[o] * f);
+                px[o + 1] = Math.trunc(px[o + 1] * f);
+                px[o + 2] = Math.trunc(px[o + 2] * f);
+            }
         }
+        ctx.putImageData(data, 0, 0);
     }
-    ctx.putImageData(data, 0, 0);
-    return canvas;
+    return { original: orig.canvas, deep: deep.canvas };
 }

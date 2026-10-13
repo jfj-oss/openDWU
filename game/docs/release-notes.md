@@ -7,6 +7,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 - **Playable Mechanoid and Shakturi:** the new-game wizard (and the multiplayer and hot-seat race pickers) now offer the Mechanoid
   and Shakturi races for your own empire. AI empires still never get them, and the story's Ancient Guardians and Shakturi
   lookups skip your empire, so it is never mistaken for or absorbed as the Guardians.
+- **Galaxy nebula clouds:** the galaxy map draws its nebula clouds from the original nebula art again, with the original's lighter grey patches inside them on the Original backdrop and faint smoke on Deep; switching backdrop mid-game updates them.
 
 ## 0.1.28
 
