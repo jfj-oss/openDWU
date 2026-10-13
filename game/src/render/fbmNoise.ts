@@ -103,4 +103,17 @@ export class CFractal {
         }
         return sum < -0.99999 ? -0.99999 : sum > 0.99999 ? 0.99999 : sum;
     }
+
+    /** CFractal.Turbulence(x, y, octaves): sum of |noise(x * lac^i, y * lac^i)| * lac^(-i * H), clamped to ±0.99999. */
+    turbulence(x: number, y: number, octaves: number): number {
+        let sum = 0;
+        let x2 = x;
+        let y2 = y;
+        for (let i = 0; i < octaves; i++) {
+            sum = f32(sum + f32(Math.abs(this.noise(x2, y2)) * this.exponent[i]));
+            x2 = f32(x2 * this.lacunarity);
+            y2 = f32(y2 * this.lacunarity);
+        }
+        return sum < -0.99999 ? -0.99999 : sum > 0.99999 ? 0.99999 : sum;
+    }
 }

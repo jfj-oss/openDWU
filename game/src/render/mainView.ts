@@ -69,6 +69,8 @@ import type { Empire } from '../sim/empire';
 import { GalaxyLocation, GalaxyLocationType } from '../sim/galaxyLocation';
 import { Habitat, HabitatCategoryType, HabitatType, SystemInfo } from '../sim/types';
 import { NebulaCloudGenerator } from './nebulaClouds';
+import { buildGalaxyNebulaeImage } from './galaxyNebulae';
+import { textureFromCanvas } from './textureCanvas';
 import { SystemNebulaLayer, type NebulaSystem } from './systemNebula';
 import { EmpireLayer } from './empireLayer';
 import { OverlayLayer } from './overlayLayer';
@@ -418,15 +420,6 @@ export function regionLabelFont(type: GalaxyLocationType, factor: number, maxFac
         return { size: 15.33, bold: false };
     }
     return { size: 16.67, bold: false };
-}
-
-// Task 08f2 (Controls/MainView.cs FadeGalaxyNebulae ~4111-4152): the nebula
-// cloud images are visible at galaxy/sector zoom and fade out as the sector
-// starfield takes over — the same window the backdrop fades out over
-// ([m*2.5, m*14], m = minZoom). At full-galaxy zoom they are fully opaque;
-// they are gone by the time the dense starfield is opaque.
-export function nebulaAlpha(z: number, m: number): number {
-    return fadeOut(z, m * 2.5, m * 14);
 }
 
 /** Screen-pixel part of a system's cull bounds (render: perf pass): minimum sprite sizes, the map icon, and the
@@ -1292,68 +1285,6 @@ class RegionLabel {
     }
 }
 
-// Task 08f2 (NebulaCloudGenerator): a procedurally generated translucent
-// nebula image placed over the location's rectangle. The texture is generated
-// lazily the first time the cloud becomes visible (the original generates all
-// clouds on a background thread at galaxy load; lazy generation keeps the
-// same per-location seed = location index, so results are identical).
-class NebulaView {
-    location: GalaxyLocation;
-    sprite: Sprite;
-    private generator: NebulaCloudGenerator;
-    constructor(private view: MainView, location: GalaxyLocation) {
-        this.location = location;
-        // Port of MainView.cs:1438-1452: two generators, seeds 1 and 2.
-        // Nebula locations use the second one (nebulaCloudGenerator_1); the
-        // color scheme stays -1 (random per generation, seeded by the call).
-        this.generator = new NebulaCloudGenerator(2);
-        this.sprite = new Sprite(Texture.EMPTY);
-        this.sprite.anchor.set(0.5);
-        this.sprite.x = location.xpos + location.width / 2;
-        this.sprite.y = location.ypos + location.height / 2;
-        this.sprite.alpha = 0;
-        this.sprite.visible = false;
-        this.view.world.addChild(this.sprite);
-    }
-
-    /** Generate (once) and draw the cloud for the current camera state. */
-    update(zoom: number, cam: Camera, alpha: number): void {
-        if (alpha <= 0.01) {
-            this.sprite.visible = false;
-            return;
-        }
-        const c = this.location.resolveLocationCenter();
-        const halfW = cam.width / 2 + this.location.width * zoom * 0.5 + 100;
-        const halfH = cam.height / 2 + this.location.height * zoom * 0.5 + 100;
-        if (c.x < cam.x - halfW || c.x > cam.x + halfW || c.y < cam.y - halfH || c.y > cam.y + halfH) {
-            this.sprite.visible = false;
-            return;
-        }
-        if (this.sprite.texture === Texture.EMPTY) {
-            // Lazy first-time generation (see class comment). The C# sizes
-            // the cloud to the location rect via minimumSize/maximumSize; we
-            // derive them from the rect in world units (the generator caps
-            // the texture at 512 px and the sprite is stretched to the rect).
-            const size = Math.max(64, Math.min(this.location.width, this.location.height));
-            const result = this.generator.generateNebulaBackdrop(
-                this.location.pictureRef >= 0 ? this.location.pictureRef : this.location.effectRandomSeed,
-                114, // TransparencyLevel set in method_41 (double_2 == 4.5 default)
-                -1,
-                Math.trunc(size),
-                Math.trunc(size * 1.5),
-                true,
-                false,
-                false,
-            );
-            this.sprite.texture = this.generator.toTexture(result);
-        }
-        // Stretch the (<=512 px) texture over the location rectangle.
-        this.sprite.scale.set(this.location.width / this.sprite.texture.width, this.location.height / this.sprite.texture.height);
-        this.sprite.alpha = alpha;
-        this.sprite.visible = true;
-    }
-}
-
 // ---------------------------------------------------------------------------
 
 export interface MainViewTextures {
@@ -1438,8 +1369,6 @@ export class MainView {
     /** nebulaCloudGenerator_1 (MainView.cs 1446, seed 2): GenerateNebulaBackdrop for the gas clouds (method_135). */
     private gasCloudGenerator: NebulaCloudGenerator | null = null;
     private lastGasCloudGeneration = -Infinity;
-    /** Task 08f2: nebula cloud images, world-space between backdrop and stars. */
-    nebulae: NebulaView[] = [];
     /** Task M2e: empire ownership overlays (colony rings, markers, territory). */
     private empireLayer!: EmpireLayer;
     /** Task M3: the Overlays HUD toggles this renderer implements (potential
@@ -1936,15 +1865,8 @@ export class MainView {
         }
         this.fx.addChild(this.regionLabels);
 
-        // Task 08f2: nebula cloud images over each NebulaCloud location rect,
-        // in world space between the backdrop and the map stars.
-        for (const location of this.galaxy.galaxyLocations) {
-            if (location.type === GalaxyLocationType.NebulaCloud) {
-                const nv = new NebulaView(this, location);
-                this.nebulae.push(nv);
-                this.world.addChildAt(nv.sprite, 1); // just above the backdrop
-            }
-        }
+        // The galaxy nebulae image (bitmap_182), composited over the backdrop as Main.Part12.cs 3366-3371 does.
+        void this.loadGalaxyNebulae();
 
         // [rimatmo] begin
         // 19i: rim wash / derelicts / eyes in the dark just above the backdrop + nebulae, murk above the systems
@@ -1954,11 +1876,11 @@ export class MainView {
         this.rimLayer.mount({
             world: this.world,
             fx: this.fx,
-            backgroundIndex: 1 + this.nebulae.length,
+            backgroundIndex: 1,
             starfieldFar: this.deepStarfield.far,
             starfieldNear: this.deepStarfield.near,
             fxIndex: 0,
-            nebulae: this.nebulae.map((nv) => ({ sprite: nv.sprite, x: nv.sprite.x, y: nv.sprite.y })),
+            nebulae: [],
             mapIcons: this.systems.map((sv) => ({ sprite: sv.mapIcon, x: sv.system.systemStar.xpos, y: sv.system.systemStar.ypos })),
         });
         // [rimatmo] end
@@ -2216,13 +2138,6 @@ export class MainView {
             this.novaFill.update(inNova, f, view, Date.now());
         }
 
-        // Task 08f2: nebula clouds fade out over the same window the backdrop
-        // fades out (FadeGalaxyNebulae), so they are fully visible at
-        // galaxy/sector zoom and gone by system zoom.
-        const nebA = nebulaAlpha(z, m);
-        for (const nv of this.nebulae) {
-            nv.update(z, cam, nebA);
-        }
         // [rimatmo] begin
         this.rimLayer?.update(z, cam, bdA);
         // [rimatmo] end
@@ -2974,6 +2889,8 @@ export class MainView {
     /** Animated dust, glows and godrays over the Deep backdrop (deepBackdropAnim.ts); null when it cannot run. */
     deepAnim: DeepNebulaAnim | null = null;
     private deepKind = false;
+    /** The galaxy nebulae image (Main.bitmap_182, galaxyNebulae.ts), top of the backdrop group; null until built. */
+    private galaxyNebulae: Sprite | null = null;
     /** The "Deep (DW2-style)" texture built from the loaded original (deepBackdrop.ts), or the original if it fails. */
     private deepBackdropTexture(): Texture {
         const orig = this.textures.backdrop;
@@ -2996,11 +2913,48 @@ export class MainView {
         return this.deepTex;
     }
 
+    /** Build the galaxy nebulae image (galaxyNebulae.ts) from the install's galaxy_backdrop.jpg and nebulae/*.png and put it
+     *  over the backdrop, inside the backdrop group (it is part of bitmap_177, so it shares the backdrop's fade). */
+    private async loadGalaxyNebulae(): Promise<void> {
+        const files = manifestFiles('nebulae') ?? [];
+        const [bd, ...clouds] = await Promise.all([
+            this.store.loadRawImage(BACKDROP_URLS[0]),
+            ...files.map((f) => this.store.loadRawImage(`/assets/dwu/images/environment/nebulae/${f}`)),
+        ]);
+        const ok = clouds.filter((c): c is ImageBitmap => c !== null);
+        if (bd === null || ok.length !== files.length || ok.length === 0 || this.backdropGroup.destroyed) return;
+        const canvas = buildGalaxyNebulaeImage({
+            randomSeed: this.galaxy.randomSeed,
+            sizeX: this.galaxy.sizeX,
+            sizeY: this.galaxy.sizeY,
+            locations: this.galaxy.galaxyLocations,
+            backdrop: bd,
+            clouds: ok,
+        });
+        bd.close();
+        for (const c of ok) c.close();
+        if (this.backdropGroup.destroyed) return;
+        const sprite = new Sprite(textureFromCanvas(canvas, 'galaxyNebulae'));
+        sprite.eventMode = 'none';
+        sprite.scale.set(this.galaxy.sizeX / canvas.width, this.galaxy.sizeY / canvas.height);
+        this.galaxyNebulae = sprite;
+        this.backdropGroup.addChild(sprite);
+        this.applyNebulaeBlend();
+    }
+
+    /** Over the original backdrop the clouds are composited as the original does (source-over: dark smoke on the jpg).
+     *  Deviation for the Deep backdrop (darkened jpg, near black): the same image is added instead, so the clouds read as
+     *  faint grey-brown smoke rather than disappearing into the dark. */
+    private applyNebulaeBlend(): void {
+        if (this.galaxyNebulae !== null) this.galaxyNebulae.blendMode = this.deepKind ? 'add' : 'normal';
+    }
+
     /** Show the chosen galaxy backdrop: a generated variant, or the original image (also when a variant cannot run). */
     private applyGalaxyBackdrop(kind: GalaxyBackdropKind): void {
         const generated = this.galaxyBackdropLayer?.setKind(kind) ?? false;
         this.backdrop.visible = !generated;
         this.deepKind = kind === 'deep' && !generated;
+        this.applyNebulaeBlend();
         if (this.textures !== undefined) {
             const tex = kind === 'deep' ? this.deepBackdropTexture() : this.textures.backdrop;
             this.backdrop.texture = tex;
