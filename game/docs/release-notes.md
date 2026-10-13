@@ -4,6 +4,12 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+## 0.1.23
+
+- **Fix: colonies at −70 approval from "Shortages".** Resource Crises was still switched on behind the scenes by Internal
+  Security and Reputation (Politics & Characters). They no longer include it, and its shortage penalty is now capped at
+  −12, which also fixes existing saves.
+
 ## 0.1.22
 
 - **Resource Crises withdrawn:** removed from the add-on picker and the Economy expansion, because its approval loss per

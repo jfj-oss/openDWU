@@ -231,8 +231,10 @@ export function shortageTerm(galaxy: Galaxy, h: Habitat): number {
         if (age >= 2) continue;
         sum += e.count * (1 - age / 2);
     }
-    return sum === 0 ? 0 : -shortageUnrest(galaxy) * sum;
+    // Capped like the stock shortage term (−15, taxes.ts): uncapped, a colony that lost a dozen luxuries fell to −72.
+    return sum === 0 ? 0 : Math.max(-SHORTAGE_TERM_CAP, -shortageUnrest(galaxy) * sum);
 }
+export const SHORTAGE_TERM_CAP = 12;
 
 /** The approval breakdown lines this package adds (UI tooltip). */
 export function crisesApprovalBreakdown(galaxy: Galaxy, h: Habitat): { label: string; value: number }[] {
