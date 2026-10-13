@@ -75,7 +75,7 @@ export function ownOfferText(o: HumanOffer, toName: string): string {
         const give = o.trade.senderGives.map(labelText);
         const get = o.trade.receiverGives.map(labelText);
         const what = o.trade.kind === 'end-war' ? ' to end the war' : o.trade.kind === 'lift-sanctions' ? ' to lift the trade sanctions' : '';
-        return `Trade with ${toName}${what}. You give: ${give.length > 0 ? give.join(', ') : 'nothing'}. You receive: ${get.length > 0 ? get.join(', ') : 'nothing'}.`;
+        return `Trade with ${toName}${what}. You give: ${give.length > 0 ? give.join(', ') : 'nothing'}. You receive: ${get.length > 0 ? get.join(', ') : 'nothing'}.${treatyAndWords(o).replace(' They say:', ' You said:')}`;
     }
     if (o.option.startsWith('GIFT_GIVE')) return `To ${toName}: a gift of ${Math.round(o.cost).toLocaleString('en-US')} credits.`;
     return `To ${toName}: ${resolveGameText(o.label).replace(/^(Propose|Offer)\s+/i, '')}.`;
