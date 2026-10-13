@@ -183,7 +183,7 @@ describe('picker UI model (tick / lock)', () => {
         expect(model.finalNames).toEqual(['New Fauna', 'Rim Fauna', 'Robot Mutiny']);
         expect(model.summary).toBe('New Fauna, Rim Fauna, Robot Mutiny');
         expect(model.panels).toEqual(expect.arrayContaining(['threat-framework', 'robotmutiny', 'new-fauna', 'rim-fauna']));
-        expect(model.groups.map((g) => g.group)).toEqual(['Rim', 'Hidden threats', 'Politics & court', 'Economy & factions', 'LLM layer', 'Visuals']);
+        expect(model.groups.map((g) => g.group)).toEqual(['Hidden threats', 'Economy & factions', 'Politics & court', 'Rim', 'LLM layer', 'Visuals']);
         expect(scenarioChoiceSummary(addonChoiceFor(cat, ['robotmutiny', 'new-fauna'], { flags: {}, params: {} }), scenarioIndexFs())).toBe('New Fauna, Rim Fauna, Robot Mutiny');
         expect(firstSentence('End-game hidden threat. A creed spreads. More.')).toBe('End-game hidden threat. A creed spreads.');
     });

@@ -29,8 +29,8 @@ export const COMPOSITE_SCENARIO_ID = 'addons';
 
 export type AddonGroup = 'Rim' | 'Hidden threats' | 'Politics & court' | 'Economy & factions' | 'LLM layer' | 'Visuals' | 'Other';
 
-/** Display order of the picker's groups ("Other" collects scenarios this table does not know, e.g. a new mod). */
-export const ADDON_GROUPS: readonly AddonGroup[] = ['Rim', 'Hidden threats', 'Politics & court', 'Economy & factions', 'LLM layer', 'Visuals', 'Other'];
+/** Display order of the picker's groups, from the most vanilla-like to the most changes ("Other" collects scenarios this table does not know, e.g. a new mod). */
+export const ADDON_GROUPS: readonly AddonGroup[] = ['Hidden threats', 'Economy & factions', 'Politics & court', 'Rim', 'LLM layer', 'Visuals', 'Other'];
 
 /**
  * Picker status, ONE table: 'recommended' = top section; any other string = "Work in progress" section, the string being the
