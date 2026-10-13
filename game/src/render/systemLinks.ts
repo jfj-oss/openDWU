@@ -48,6 +48,15 @@ export const LINK_DASH_PX = 15;
 export const LINK_GAP_PX = 16;
 /** Fraction of the way from the empire colour to white, and the dash alpha. */
 export const LINK_PALE = 0.68;
+/** Zoomed out past LINK_SCALE_REF_F (world units per screen px) the dash look shrinks on screen with the zoom, as
+ * (REF / f)^LINK_SCALE_POW, down to LINK_SCALE_MIN of its size, so the dashes don't dwarf the map at galaxy zoom. */
+export const LINK_SCALE_REF_F = 300;
+export const LINK_SCALE_POW = 0.75;
+export const LINK_SCALE_MIN = 0.3;
+/** Screen-size factor of the dash look at zoom factor `f`. */
+export function linkScreenScale(f: number): number {
+    return f <= LINK_SCALE_REF_F ? 1 : Math.max(LINK_SCALE_MIN, Math.pow(LINK_SCALE_REF_F / f, LINK_SCALE_POW));
+}
 export const LINK_ALPHA = 0.5;
 
 import { Container, Particle, ParticleContainer, Texture } from 'pixi.js';
@@ -478,7 +487,9 @@ export class SystemLinkLayer {
     }
 
     /** The new-borders look: pale, faded capsule dashes. */
-    private buildCapsules(f: number, range: SectorRange): void {
+    private buildCapsules(zoomF: number, range: SectorRange): void {
+        // World units per (scaled) dash-look px: the look's px sizes shrink on screen when zoomed far out.
+        const f = zoomF * linkScreenScale(zoomF);
         this.classic.visible = false;
         this.bodies.visible = true;
         this.caps.visible = true;
