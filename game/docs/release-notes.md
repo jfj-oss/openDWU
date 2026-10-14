@@ -6,6 +6,12 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 - **Hot seat hidden:** the new-game wizard no longer offers "Human Players..." (several humans sharing one PC); LAN and
   Internet multiplayer are unchanged. A hot-seat list remembered from older settings is dropped.
+- **Windows / stock installs: the right font and the missing pictures.** The game's font (Forgotten Futurist) and the
+  pictures the original keeps inside DistantWorlds.exe (the new-game wizard's Playstyle buttons and page pictures, the
+  map zoom buttons, the game-menu header, the expansion planner picture) were read from a folder only the developer's
+  install had, so on a normal install every window used Arial (much wider: text overflowed and overlapped everywhere)
+  and those pictures were blank. Both now ship with the game. Verdana text falls back to DejaVu Sans where Verdana is
+  not installed (Linux).
 - **Threats & Leads (Characters / Intelligence screen):** with any Galactic Threat add-on or Internal Security on, a
   **Threats & Leads** button under the Galactopedia link switches the screen to a list of every threat site and
   security lead your empire knows: what it is, where, suspected or confirmed, when it was found and what is being done.

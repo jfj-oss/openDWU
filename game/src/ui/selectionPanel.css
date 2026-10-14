@@ -521,7 +521,7 @@ span.sel-corner.sel-text {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-family: Verdana, sans-serif;
+    font-family: Verdana, 'DejaVu Sans', sans-serif;
     font-weight: bold;
     font-size: 8px;
     color: rgb(255, 255, 0);
@@ -538,7 +538,7 @@ span.sel-corner.sel-text {
 }
 /* The "More" button left of the strip (our add-ons with no original button) and its ToolStrip menu above it. */
 .sel-frame .sel-more-btn {
-    font-family: Verdana, sans-serif;
+    font-family: Verdana, 'DejaVu Sans', sans-serif;
     font-weight: bold;
     font-size: 8px;
     color: rgb(120, 120, 120);

@@ -888,12 +888,20 @@ core-engine work.
 
 ### Licence / assets note
 
-This repository contains no original *Distant Worlds: Universe* art, sound,
-data files, code or decompiled source; none of it is redistributed here.
-The decompiled original was used only as a reference for gameplay accuracy. The game
-reads those files live from your own install folder at runtime. Art under
+This repository contains no original *Distant Worlds: Universe* sound,
+data files, code or decompiled source, and almost none of its art. The
+decompiled original was used only as a reference for gameplay accuracy. The game
+reads the original's files live from your own install folder at runtime. Art under
 `game/public/art/` is original artwork created for this project (procedural
-code and our own generated sprites), not from the original game.
+code and our own generated sprites), except `game/public/art/original-resx/`:
+a few pictures the original keeps inside DistantWorlds.exe (new-game wizard
+pictures, map zoom buttons, game-menu header), which a stock install has no
+other copy of; they are bundled unmodified with the publisher's permission.
+
+**Fonts.** *Forgotten Futurist* (the original's UI font; © 1999 Ray Larabie,
+freeware, Larabie Fonts / Typodermic, www.typodermic.com) is bundled unmodified
+in `game/public/fonts/forgotten-futurist/`, not sold separately. *Source Serif 4*
+(Adobe, SIL Open Font License) is bundled in `game/public/fonts/source-serif-4/`.
 
 openDWU is non-commercial and will stay that way: it is free, it is not sold,
 and it takes no donations, payments or in-app purchases.

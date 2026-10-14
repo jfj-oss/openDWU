@@ -23,7 +23,7 @@ The original game files (data, art, sounds, manuals, decompiled source) are NOT 
 
 ## Art
 Use the original art directly from `/assets/dwu/images/...` (e.g. `/assets/dwu/images/environment/planets/ocean/...`).
-Never commit or copy the ORIGINAL game's art into the repo. Art we create ourselves (procedural code, runtime composites of the original frames, or our own generated sprite sheets) is fine to commit under `public/art/` — see tasks/19-mod-layer-scenarios.md §19g-7b.
+Never commit or copy the ORIGINAL game's art into the repo, with one exception: original art may be bundled where stock installs lack it (it exists only inside DistantWorlds.exe, e.g. the Main.resx / Start.resx pictures in `public/art/original-resx/`), with the publisher's permission; everything else stays read from the install. Art we create ourselves (procedural code, runtime composites of the original frames, or our own generated sprite sheets) is fine to commit under `public/art/` — see tasks/19-mod-layer-scenarios.md §19g-7b.
 
 ## Layout
 - `src/sim/` — headless game model. **No DOM or Pixi imports.** Deterministic given a seed.

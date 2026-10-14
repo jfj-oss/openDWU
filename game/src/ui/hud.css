@@ -1,6 +1,8 @@
 /* HUD overlay (task 05c streamlined redesign). Original font: Forgotten
-   Futurist, served from the DW:U install folder via /assets/dwu/... (desktop
-   shell maps the prefix; in dev the public symlink does).
+   Futurist (Ray Larabie freeware), bundled under public/fonts/forgotten-futurist/:
+   a stock DW:U install has no copy outside DistantWorlds.exe (only the decompiled
+   source tree under Customization/ had one), so Windows players got Arial, ~45%
+   wider, and every panel overflowed.
    Task fix8ui: the font's U+0020 glyph advances only 0.131 em (bold 0.192 em),
    about 1 px at 11 px, so every DOM panel and Pixi label using it read as
    "1Leader,1Ambassador". The unicode-range leaves U+0020 out of both faces so
@@ -8,13 +10,15 @@
    everywhere at once; no per-panel word-spacing needed. */
 @font-face {
     font-family: 'Forgotten Futurist';
-    src: url('/assets/dwu/Customization/DistantWorldsExpanded-main/DistantWorldsExpanded/DistantWorlds/Resources/Forgotte.ttf');
+    src: url('/fonts/forgotten-futurist/Forgotte.ttf') format('truetype'),
+        url('/assets/dwu/Customization/DistantWorldsExpanded-main/DistantWorldsExpanded/DistantWorlds/Resources/Forgotte.ttf') format('truetype');
     unicode-range: U+0000-001F, U+0021-10FFFF;
 }
 @font-face {
     font-family: 'Forgotten Futurist';
     font-weight: bold;
-    src: url('/assets/dwu/Customization/DistantWorldsExpanded-main/DistantWorldsExpanded/DistantWorlds/Resources/Forgottb.ttf');
+    src: url('/fonts/forgotten-futurist/Forgottb.ttf') format('truetype'),
+        url('/assets/dwu/Customization/DistantWorldsExpanded-main/DistantWorldsExpanded/DistantWorlds/Resources/Forgottb.ttf') format('truetype');
     unicode-range: U+0000-001F, U+0021-10FFFF;
 }
 

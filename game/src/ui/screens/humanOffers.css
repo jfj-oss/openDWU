@@ -20,7 +20,7 @@
     background: linear-gradient(rgba(26, 34, 48, 0.96), rgba(11, 15, 22, 0.96));
     box-shadow: 0 0 18px rgba(0, 0, 0, 0.8);
     color: #d8d8d8;
-    font-family: Verdana, Arial, sans-serif;
+    font-family: Verdana, 'DejaVu Sans', Arial, sans-serif;
     font-size: 13px;
 }
 .human-offer-title {

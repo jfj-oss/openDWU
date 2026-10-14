@@ -26,7 +26,7 @@
     background: linear-gradient(to bottom, rgb(39, 40, 44) 0%, rgb(22, 21, 26) 50%, rgb(51, 54, 61) 100%);
     text-align: center;
     color: rgb(220, 220, 220);
-    font-family: Verdana, Tahoma, sans-serif;
+    font-family: Verdana, 'DejaVu Sans', Tahoma, sans-serif;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
     max-width: calc(100vw - 32px);
     box-sizing: border-box;

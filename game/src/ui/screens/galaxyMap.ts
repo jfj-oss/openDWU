@@ -849,7 +849,7 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
         ctx.strokeStyle = GRID_COLOR;
         ctx.fillStyle = GRID_COLOR;
         ctx.lineWidth = 1;
-        ctx.font = '9px Verdana, sans-serif';
+        ctx.font = '9px Verdana, "DejaVu Sans", sans-serif';
         ctx.textBaseline = 'top';
         const cols = galaxy.sectorWidth;
         const rows = galaxy.sectorHeight;

@@ -759,7 +759,7 @@ export async function startGameView(
         autoDensity: true,
         background: 0x000000,
         antialias: true,
-        preference: 'webgl',
+        preference: rendererPreference(),
     });
     initOutputDither(app);
     initFrameLimiter(app); // [gameoptions]
@@ -2002,6 +2002,13 @@ interface BootOptions {
     select: string | null;
 }
 
+/** The Pixi renderer order: WebGL first (every custom shader is GLSL), then Pixi's own fallbacks. `?renderer=canvas`
+ *  (or webgpu) forces a fallback path, to see what a PC without WebGL gets. */
+function rendererPreference(): 'webgl' | 'webgpu' | 'canvas' {
+    const r = new URLSearchParams(window.location.search).get('renderer');
+    return r === 'canvas' || r === 'webgpu' ? r : 'webgl';
+}
+
 /** Parse `bootGame`'s URL-param path into a BootOptions (task 06a defaults:
  * seed=1, spiral, 700 stars, 4x4 sectors; ?stars=N, ?sectors=N override). */
 function parseBootOptions(params: URLSearchParams): BootOptions {
@@ -2211,7 +2218,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
         autoDensity: true,
         background: 0x000000,
         antialias: true,
-        preference: 'webgl',
+        preference: rendererPreference(),
     });
     initOutputDither(app);
     initFrameLimiter(app); // [gameoptions]

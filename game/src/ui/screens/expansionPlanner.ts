@@ -1318,7 +1318,7 @@ function createExpansionPlanner(opts: ExpansionPlannerOptions): OpenState {
         }
         ctx.stroke();
         ctx.fillStyle = 'rgb(96, 96, 170)';
-        ctx.font = '9px Verdana, sans-serif';
+        ctx.font = '9px Verdana, "DejaVu Sans", sans-serif';
         ctx.textBaseline = 'top';
         for (let i = 0; i < galaxy.sectorWidth; i += sectorLabelStride(galaxy.sectorWidth, secPx)) ctx.fillText(sectorColumnLabel(i), Math.trunc(i * secPx + secPx / 2 - 3), 2);
         for (let j = 0; j < galaxy.sectorHeight; j += sectorLabelStride(galaxy.sectorHeight, secPx)) ctx.fillText(String(j + 1), 2, Math.trunc(j * secPx + secPx / 2 - 5));

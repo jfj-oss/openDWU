@@ -287,7 +287,7 @@ export function drawSystemView(ctx: CanvasRenderingContext2D, p: SystemViewParam
             ctx.fill();
         }
     }
-    ctx.font = 'bold 12px Verdana, sans-serif'; // font_2 (18.67 px bold) at the control's 250-280 px
+    ctx.font = 'bold 12px Verdana, "DejaVu Sans", sans-serif'; // font_2 (18.67 px bold) at the control's 250-280 px
     ctx.textBaseline = 'top';
     if (status === SystemVisibilityStatus.Unexplored && star.category !== HabitatCategoryType.GasCloud) {
         const s = '(Not Explored)';
