@@ -21,7 +21,7 @@
 // The renderer stays platform-neutral: no Node APIs in src/, everything goes
 // through URLs under /assets/dwu/.
 
-const { app, BrowserWindow, Menu, MessageChannelMain, dialog, protocol, net, nativeImage, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, MessageChannelMain, dialog, protocol, net, nativeImage, ipcMain, shell, session } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -194,9 +194,40 @@ function themeBody(name) {
 
 const json = (body) => new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } });
 
+// Local model servers (Ollama, LM Studio, llama-server) on this machine: Ollama answers 403 to an Origin it does not
+// know, and the game's pages come from dwu://app, so every LLM request failed unless the user set OLLAMA_ORIGINS.
+// For requests to localhost only, drop the dwu:// Origin, accept the answer for the page (CORS headers) and answer
+// the CORS preflight ourselves. No other host is touched.
+const LOCAL_MODEL_URLS = ['http://127.0.0.1/*', 'http://localhost/*', 'http://[::1]/*'];
+function allowLocalModelServers(ses) {
+    const fromApp = new Set();
+    ses.webRequest.onBeforeSendHeaders({ urls: LOCAL_MODEL_URLS }, (details, callback) => {
+        const h = details.requestHeaders;
+        const origin = h.Origin ?? h.origin ?? '';
+        if (/^dwu:/i.test(origin)) {
+            delete h.Origin;
+            delete h.origin;
+            fromApp.add(details.id);
+        }
+        callback({ requestHeaders: h });
+    });
+    ses.webRequest.onHeadersReceived({ urls: LOCAL_MODEL_URLS }, (details, callback) => {
+        if (!fromApp.delete(details.id)) return callback({});
+        const headers = {};
+        for (const [k, v] of Object.entries(details.responseHeaders ?? {})) if (!/^access-control-/i.test(k)) headers[k] = v;
+        headers['Access-Control-Allow-Origin'] = ['dwu://app'];
+        headers['Access-Control-Allow-Headers'] = ['*'];
+        headers['Access-Control-Allow-Methods'] = ['GET, POST, OPTIONS'];
+        // The preflight reaches the server without an Origin (a 404 there): it is ours to allow.
+        if (details.method === 'OPTIONS') return callback({ responseHeaders: headers, statusLine: 'HTTP/1.1 204 No Content' });
+        callback({ responseHeaders: headers });
+    });
+}
+
 // Must be registered after app ready: protocol.handle touches the default
 // session, which is only available once the app is ready.
 app.whenReady().then(() => {
+    allowLocalModelServers(session.defaultSession);
     protocol.handle('dwu', async (request) => {
         try {
             const url = new URL(request.url);

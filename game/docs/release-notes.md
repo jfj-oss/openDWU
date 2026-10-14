@@ -4,6 +4,9 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **Local model fix (desktop app):** Ollama refused every request from the app (it rejects the app's `dwu://` page
+  origin with 403), so Refresh, Test and all local-model features failed unless `OLLAMA_ORIGINS` was set. The app now
+  allows its requests to model servers on this machine (localhost only); no Ollama setup is needed.
 - **Intercept (new command):** select a ship, fleet, base or space creature that is not yours and an **Intercept**
   button (crosshair) appears in a free slot of the selection panel's action buttons; its hover message names the force
   it sends, e.g. "Intercept: 1st Fleet (ETA 101 d)" — the best free fleet (or, failing one, a single warship) strong
