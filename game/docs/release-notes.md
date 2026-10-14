@@ -5,6 +5,9 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 ## Unreleased
 
 - **Game menu:** "Save Game As" is gone — Save Game opens the same save window, where you can type a new name.
+- **Layout fixes from a full UI audit** (docs/windows-ui-audit.md): the Local model window's Test / Apply buttons are
+  inside the window again, the Research screen's instructions no longer run into the tabs, the Improvements
+  descriptions and the wizard's galaxy-shape description are no longer cut off.
 - **New games start again** when the sim runs in its own process / worker (the default): an import-order bug in the
   Orbital superiority add-on stopped the sim from starting ("Cannot access 'ORBITAL_SUPERIORITY_FLAG' before
   initialization").
