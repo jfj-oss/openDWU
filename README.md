@@ -922,9 +922,20 @@ about this project, please
 [open an issue](https://github.com/jfj-oss/openDWU/issues) or email
 [jfj@tutanota.de](mailto:jfj@tutanota.de), and I will respond promptly.
 
-**Privacy.** openDWU has no telemetry, analytics or accounts and sends no
-data about you or your games anywhere, with one exception: the desktop app
-sends crash reports (error, stack, app version, OS, graphics card; no IP
+**Privacy.** openDWU has no accounts and sends no personal data, saves or
+file names anywhere. The desktop app sends two things, both anonymous and
+with no setting to turn them off: (1) **usage statistics** to
+[Aptabase](https://aptabase.com) (EU servers, no IP address kept, no user
+id): app version, edition, OS, CPU architecture, graphics vendor and
+renderer mode, language; the setup of each game you start or load (galaxy
+size, number of empires, shape, age, difficulty, which add-ons and theme,
+multiplayer or not and player count); minutes played and game year reached
+when you quit, and whether the game was won or lost; which screens were
+opened (once per session each); and plain counts of multiplayer desyncs and
+installed updates. Nothing is sent from a development build, and the
+events are batched in the background and dropped when you are offline.
+(2) Crash reports:
+the desktop app also sends crash reports (error, stack, app version, OS, graphics card; no IP
 address, saves or personal files; your user name and home folder are replaced
 by "~") to Sentry to help fix bugs. The network use is:
 

@@ -45,6 +45,11 @@ contextBridge.exposeInMainWorld('dwuDesktop', {
     checkForUpdates: () => ipcRenderer.invoke('dwu:check-updates'),
     // Background self-update (desktop/selfUpdate.cjs): onReady(cb) gets the version of a downloaded update (also when it was
     // ready before the page asked); setBusy(true) pauses the download while a multiplayer game runs.
+    // Anonymous usage statistics (desktop/aptabase.cjs): the shell whitelists events and props, batches and sends them.
+    analytics: {
+        track: (name, props) => ipcRenderer.send('dwu:analytics', { name: String(name), props: props && typeof props === 'object' ? props : {} }),
+        session: (props) => ipcRenderer.send('dwu:analytics', { name: 'session', props: props && typeof props === 'object' ? props : {} }),
+    },
     updates: {
         onReady: (cb) => {
             if (typeof cb !== 'function') return;

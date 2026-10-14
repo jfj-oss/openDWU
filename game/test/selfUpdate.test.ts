@@ -126,3 +126,41 @@ describe('install helpers', () => {
         expect(fs.readdirSync(root)).toEqual(['0.2.0']);
     });
 });
+
+describe('anonymous statistics payloads (desktop/aptabase.cjs, src/analytics.ts)', () => {
+    const ap = require('../desktop/aptabase.cjs');
+    const system = { locale: 'en-US', osName: 'Linux', osVersion: '7.0', engineVersion: '40.0.0', appVersion: '0.1.31' };
+    it('keeps only whitelisted events and props, with clean values', () => {
+        expect(ap.sanitizeProps('nope', {})).toBeNull();
+        expect(ap.sanitizeProps('screen_opened', { screen: '/home/me/secret dir!', extra: 1 })).toEqual({ screen: 'homemesecret dir' });
+        expect(ap.sanitizeProps('game_started', { stars: 700, empires: '8', multiplayer: false, addons: 'a,b', name: 'x' })).toEqual({ stars: 700, multiplayer: false, addons: 'a,b' });
+        expect(ap.gpuVendor('ANGLE (NVIDIA GeForce RTX)')).toBe('nvidia');
+        expect(ap.gpuVendor('')).toBe('unknown');
+    });
+    it('builds Aptabase events', () => {
+        const e = ap.buildEvent({ name: 'app_started', props: { version: '0.1.31', os: 'linux' }, sessionId: 's1', now: 0, system });
+        expect(e).toMatchObject({ eventName: 'app_started', sessionId: 's1', timestamp: '1970-01-01T00:00:00.000Z', props: { version: '0.1.31', os: 'linux' }, systemProps: { osName: 'Linux', engineName: 'Electron', appVersion: '0.1.31' } });
+        expect(ap.hostFor('A-EU-4193350005')).toBe('https://eu.aptabase.com');
+    });
+    it('batches, sends once per screen, and drops events when the request fails', async () => {
+        const sent: unknown[][] = [];
+        let fail = false;
+        const t = ap.createTracker({ enabled: true, system, timer: () => null, fetchFn: async (_u: string, init: { body: string }) => { if (fail) throw new Error('offline'); sent.push(JSON.parse(init.body)); return { status: 200 }; } });
+        t.track('screen_opened', { screen: 'a' });
+        t.track('screen_opened', { screen: 'a' });
+        t.track('mp_desync');
+        await t.flush();
+        expect(sent).toHaveLength(1);
+        expect(sent[0]).toHaveLength(2);
+        fail = true;
+        t.track('mp_desync');
+        await t.flush();
+        expect(t.queued()).toBe(0);
+        expect(ap.createTracker({ enabled: false, system }).track('mp_desync')).toBe(false);
+    });
+    it('game payload builder', async () => {
+        const an = await import('../src/analytics');
+        expect(an.gameEventProps({ stars: 700, empires: 8, shape: 'Spiral', age: 1, difficulty: 1, edition: 'classic', addons: ['b', 'a'], multiplayer: false, players: 1, theme: '' })).toEqual({ stars: 700, empires: 8, shape: 'Spiral', age: 1, difficulty: 1, edition: 'classic', addons: 'a,b', multiplayer: false, players: 1, theme: 'default' });
+        expect(an.sessionProps(0, 90_000, 12.7, true, false)).toEqual({ minutes: 1.5, year: 12, result: 'lost' });
+    });
+});

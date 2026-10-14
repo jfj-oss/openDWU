@@ -78,6 +78,38 @@ const CLASSIC = PKG.dwuEdition === 'classic' || process.env.DWU_EDITION === 'cla
 // Crash reporting (desktop/crashReport.cjs): started as early as the version / edition are known.
 const crashReport = require('./crashReport.cjs');
 crashReport.init({ app, version: APP_VERSION, classic: CLASSIC });
+// Anonymous usage statistics (desktop/aptabase.cjs): packaged builds only (DWU_APTABASE=1 forces, =0 disables).
+const aptabase = require('./aptabase.cjs');
+const analytics = aptabase.createTracker({
+    fetchFn: (url, init) => net.fetch(url, init),
+    enabled: process.env.DWU_APTABASE === '1' || (app.isPackaged && process.env.DWU_APTABASE !== '0'),
+    system: {
+        get locale() {
+            return app.getLocale();
+        },
+        osName: aptabase.OS_NAMES[process.platform] ?? process.platform,
+        osVersion: os.release(),
+        engineVersion: process.versions.electron,
+        appVersion: APP_VERSION,
+    },
+    log: (m) => (process.env.DWU_APTABASE === '1' ? console.log(m) : undefined),
+});
+let analyticsSession = { minutes: 0, year: 0, result: 'none' }; // the page's latest report, sent as session_ended at quit
+let appStartedSent = false;
+setTimeout(() => trackAppStarted({ renderer: 'unknown', gpu: '' }), 45000).unref(); // the page never reported its renderer
+function trackAppStarted(info) {
+    if (appStartedSent) return;
+    appStartedSent = true;
+    analytics.track('app_started', {
+        version: APP_VERSION,
+        edition: CLASSIC ? 'classic' : 'full',
+        os: process.platform,
+        arch: process.arch,
+        gpu_vendor: aptabase.gpuVendor(info.gpu),
+        renderer: info.renderer,
+        locale: app.getLocale(),
+    });
+}
 const APP_ID = CLASSIC ? 'local.dwureup.dwuclassic' : 'local.dwureup.dwu';
 const PRODUCT = CLASSIC ? 'openDWU Classic' : 'openDWU';
 if (CLASSIC && !app.isPackaged && !process.env.DWU_USER_DATA_DIR) app.setPath('userData', path.join(app.getPath('appData'), 'openDWU Classic'));
@@ -479,6 +511,7 @@ ipcMain.on('dwu:report-error', (event, info) => {
 });
 ipcMain.on('dwu:report-renderer', (event, info) => {
     if (mainWin === null || event.sender !== mainWin.webContents || !info || typeof info !== 'object') return;
+    trackAppStarted({ renderer: String(info.renderer).slice(0, 12), gpu: String(info.gpu ?? '') });
     crashReport.setTags({ renderer_mode: String(info.renderer).slice(0, 20), gpu: String(info.gpu ?? '').slice(0, 120) });
     let status = null;
     try {
@@ -707,6 +740,7 @@ function applyPendingUpdate(relaunch) {
     const u = pendingUpdate;
     if (!u) return;
     pendingUpdate = null;
+    updateConfig({ installedUpdateFrom: APP_VERSION, installedUpdateTo: u.version });
     try {
         if (u.kind === 'appimage') {
             const target = process.env.APPIMAGE;
@@ -738,6 +772,24 @@ async function offerRestart(notes) {
 }
 
 app.on('quit', () => applyPendingUpdate(false));
+ipcMain.on('dwu:analytics', (event, msg) => {
+    if (mainWin === null || event.sender !== mainWin.webContents || !msg || typeof msg !== 'object') return;
+    if (msg.name === 'session') {
+        const p = aptabase.sanitizeProps('session_ended', msg.props);
+        if (p) analyticsSession = { ...analyticsSession, ...p };
+        return;
+    }
+    if (typeof msg.name === 'string') analytics.track(msg.name, msg.props);
+});
+// session_ended goes out with the last batch when the player quits (at most 2.5 s, never blocks for longer).
+let analyticsFlushed = false;
+app.on('before-quit', (event) => {
+    if (analyticsFlushed || !analytics.enabled) return;
+    analyticsFlushed = true;
+    if (analyticsSession.minutes > 0) analytics.track('session_ended', analyticsSession);
+    event.preventDefault();
+    Promise.race([analytics.flush(), new Promise((resolve) => setTimeout(resolve, 2500))]).finally(() => app.quit());
+});
 ipcMain.on('dwu:mp-busy', (event, busy) => {
     if (mainWin !== null && event.sender === mainWin.webContents) mpBusy = busy === true;
 });
@@ -971,6 +1023,13 @@ function createWindow() {
             })
             .catch(() => {});
         // The update check on every launch, once the game is up (and off the startup path).
+        {
+            const cfg = readConfig();
+            if (cfg.installedUpdateTo) {
+                if (cfg.installedUpdateTo === APP_VERSION) analytics.track('update_installed', { from: cfg.installedUpdateFrom, to: APP_VERSION });
+                updateConfig({ installedUpdateFrom: undefined, installedUpdateTo: undefined });
+            }
+        }
         selfUpdate.cleanupStaged(UPDATES_DIR(), APP_VERSION, updates.compareVersions);
         setTimeout(() => checkForUpdates({ manual: false }), 8000);
     });

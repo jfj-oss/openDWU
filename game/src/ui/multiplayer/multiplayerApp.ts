@@ -39,6 +39,7 @@ import type { Link } from '../../net/transport';
 import { SimWorkerClient, type MpSideChannel, type ReplicaGameData } from '../../simworker/workerClient';
 import type { SimEndpoint } from '../../simworker/simEndpoint';
 import type { WorkerBoot } from '../../simworker/protocol';
+import { trackEvent } from '../../analytics';
 import { InThreadMp, WorkerMp, type MpHandle } from './mpHandle';
 import { setLocalViewerEmpire } from '../../localViewer';
 import { DEFAULT_MULTIPLAYER_PORT, netEndpoint, type NetAddress, type PortMapping } from './netBridge';
@@ -1651,7 +1652,10 @@ function openHostLobby(deps: MultiplayerAppDeps, gameData: GameData, fp: AppFing
                     startOptions: start.startOptions,
                     ...it.hooks(),
                     onDropped: (op, reason) => console.warn(`[lockstep] dropped ${op}: ${reason}`),
-                    log: (m) => console.info(`[lockstep] ${m}`),
+                    log: (m) => {
+                        console.info(`[lockstep] ${m}`);
+                        if (m.startsWith('desync')) trackEvent('mp_desync'); // anonymous count (src/analytics.ts)
+                    },
                     ...(adaptiveDelay ? { adaptiveDelay: {} } : {}),
                 });
                 setLockstepStepper(game.galaxy, it.mp.stepper);
