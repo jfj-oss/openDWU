@@ -149,6 +149,11 @@ const CONFIGS = [
     ...[['dt-slavery-s1', ['slavery']], ['dt-base-s1-noslave', null], ['dt-scorch-s1', ['scorched-earth']], ['dt-warcrimes-s1', ['characters-victory', 'war-crimes', 'scorched-earth', 'slavery']]].map(([name, scenario]) => ({
         name, set: 'dark-themes', seed: 1, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 } }, ...(scenario === null ? {} : { scenario, flags: 'all' }),
     })),
+    // `--set orbital` (--hook scripts/orbital-soak-hook.mjs): Orbital superiority on (os-on-s1) and off (os-off-s1: the same
+    // galaxy, the stock invasion rules), 700 stars, 7 empires, 20 years: invasions started / succeeded / failed, relief fleets.
+    ...[['os-on-s1', true], ['os-off-s1', false]].map(([name, on]) => SCN('orbital-superiority', { name, set: 'orbital', seed: 1, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 } }, flags: { orbitalSuperiority: on } })),
+    // os-war-*: the same with aggressive AI empires on an older galaxy (more wars, so more invasions to count).
+    ...[['os-war-on-s1', true], ['os-war-off-s1', false]].map(([name, on]) => SCN('orbital-superiority', { name, set: 'orbital-war', seed: 1, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, flags: { orbitalSuperiority: on } })),
     // `--set long`: the many-decade runs (not in the default set).
     { name: 'long-s1-30y', set: 'long', seed: 1, years: 30, wizard: {} },
     { name: 'long-s7-small-50y', set: 'long', seed: 7, years: 50, wizard: { starCountIndex: 1, dimensionIndex: 1, otherEmpires: { empireCount: 5 } } },

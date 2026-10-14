@@ -158,6 +158,16 @@ export interface StartGameOptions {
      */
     smarterAI?: SmarterAIChoice;
     /**
+     * The Other Empires page's "Gameplay changes: Orbital superiority" checkbox (scenarios/orbital-superiority). The
+     * wizard folds it into `scenario` (addons.ts withOrbitalSuperiority); absent / false = off.
+     */
+    orbitalSuperiority?: boolean;
+    /**
+     * The Other Empires page's "Gameplay changes: Longer ground battles (2×)" checkbox (scenarios/longer-ground-combat;
+     * the wizard ticks it for new games). Folded into `scenario` (addons.ts withLongerGroundCombat); absent / false = off.
+     */
+    longerGroundCombat?: boolean;
+    /**
      * Multiplayer Phase 2 (hot seat, docs/MULTIPLAYER.md §7): the EXTRA human players (players 2..N) from the Other
      * Empires page's "Human players (hot seat)" list; player 1 is this start's own race / empire. Absent = one human
      * (today's game; the wizard deletes the key when the list empties, so a single-player start saves the same text).

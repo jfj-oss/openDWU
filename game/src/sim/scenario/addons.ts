@@ -70,6 +70,8 @@ export const ADDON_STATUS: Readonly<Record<string, string>> = {
     'probe-swarm': 'recommended',
     'slavery': 'recommended',
     'scorched-earth': 'new',
+    'orbital-superiority': 'new',
+    'longer-ground-combat': 'new',
     'war-crimes': 'recommended',
     'timebomb': 'lightly tested; the AI rarely uses it',
     'ghostarmada': 'lightly tested; the AI rarely uses it',
@@ -125,6 +127,8 @@ const GROUP_OF: Readonly<Record<string, AddonGroup>> = {
     'colony-defence': 'Economy & factions',
     'scorched-earth': 'Politics & court',
     'war-crimes': 'Politics & court',
+    'orbital-superiority': 'Other',
+    'longer-ground-combat': 'Other',
     slavery: 'Economy & factions',
     exchange: 'Economy & factions',
     privateers: 'Economy & factions',
@@ -148,9 +152,9 @@ export const HIDDEN_ADDONS: ReadonlySet<string> = new Set(['threat-framework', '
 
 /**
  * Add-ons set on another wizard page (not listed on the Scenario page, but named in the summaries like any other):
- * Smarter AI lives on the Other Empires page (withSmarterAI below).
+ * Smarter AI and Orbital superiority live on the Other Empires page (withSmarterAI / withOrbitalSuperiority below).
  */
-export const ELSEWHERE_ADDONS: ReadonlySet<string> = new Set(['smarter-ai']);
+export const ELSEWHERE_ADDONS: ReadonlySet<string> = new Set(['smarter-ai', 'orbital-superiority', 'longer-ground-combat']);
 
 /** openDWU Classic: add-ons every game starts with (treated as base game: no picker). Smarter AI stays the Other Empires page's toggle. */
 export const CLASSIC_BASE_ADDONS: readonly string[] = ['themed-names', 'event-log'];
@@ -231,6 +235,32 @@ export function withSmarterAI(picked: readonly string[], overrides: AddonOverrid
             params: { ...overrides.params, smarterAIGrowthTaxThreshold: smart.growthTaxThreshold, smarterAIOpeningPopShare: smart.openingPopShare ?? 90 },
         },
     };
+}
+
+/** The Orbital superiority gameplay change (scenarios/orbital-superiority; the Other Empires page's "Gameplay changes"). */
+export const ORBITAL_SUPERIORITY_ADDON_ID = 'orbital-superiority';
+
+/**
+ * The picks with the Other Empires page's Orbital superiority checkbox folded in (StartGameOptions.orbitalSuperiority):
+ * ticked = the add-on picked (its master flag on), unticked = dropped. Pure.
+ */
+export function withOrbitalSuperiority(picked: readonly string[], overrides: AddonOverrides, on: boolean | null | undefined): { picked: string[]; overrides: AddonOverrides } {
+    return withToggleAddon(picked, overrides, ORBITAL_SUPERIORITY_ADDON_ID, 'orbitalSuperiority', on);
+}
+
+/** The Longer ground battles gameplay change (scenarios/longer-ground-combat; also under "Gameplay changes"). */
+export const LONGER_GROUND_COMBAT_ADDON_ID = 'longer-ground-combat';
+
+/** The picks with the Other Empires page's Longer ground battles checkbox folded in (StartGameOptions.longerGroundCombat). Pure. */
+export function withLongerGroundCombat(picked: readonly string[], overrides: AddonOverrides, on: boolean | null | undefined): { picked: string[]; overrides: AddonOverrides } {
+    return withToggleAddon(picked, overrides, LONGER_GROUND_COMBAT_ADDON_ID, 'longerGroundCombat', on);
+}
+
+/** A one-checkbox add-on folded into the picks: ticked = picked with its master flag on, unticked = dropped. Pure. */
+function withToggleAddon(picked: readonly string[], overrides: AddonOverrides, id: string, flag: string, on: boolean | null | undefined): { picked: string[]; overrides: AddonOverrides } {
+    const p = picked.filter((x) => x !== id);
+    if (on !== true) return { picked: p, overrides };
+    return { picked: [...p, id], overrides: { flags: { ...overrides.flags, [flag]: true }, params: overrides.params } };
 }
 
 /**

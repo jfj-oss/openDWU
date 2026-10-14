@@ -22,6 +22,15 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
   eight action slots are taken, as they usually are for a fleet): with the fleet's automation off it stays there defending it, flies off
   to the best refuel point when low on fuel and comes back by itself. The selection panel shows "Watching <system>"; a
   new order to the fleet or turning its automation on ends the watch.
+- **Orbital superiority (new gameplay change, off by default):** a "Gameplay changes" checkbox on the new game's Other
+  Empires page (also in openDWU Classic). During a ground invasion, who holds the orbit decides more than the original's
+  flat +25%: attackers holding it get +50%; a contested orbit costs the invaders -35% to -50% and a little strength
+  every day ("Supply lines disrupted"); a defender-held orbit costs them -50%, heavier losses and any further landings
+  ("Supply lines cut"). AI empires invade where they can hold the orbit, keep troops aboard until they do, keep their
+  fleet over the planet, send relief fleets to invaded colonies and withdraw from orbits they cannot win.
+- **Longer ground battles (new gameplay change, on by default for new games):** a second "Gameplay changes" checkbox,
+  "Longer ground battles (2×)": ground battles take twice as long (both sides lose troops at half the rate); who wins is
+  decided as before. Untick it for the original pace.
 - **Galaxy Backdrop picker:** new **Dimmed Original** (the original's colours, darkened halfway toward Deep, faint grey
   dust), **Deep Azure** (navy and steel-blue dust, teal accents), **Deep Ember** (crimson and ember dust, the odd dull
   gold) and **Deep Violet** (purple and magenta dust, blue accents), all built like Deep from the original image. Galactic

@@ -5,7 +5,7 @@ export { applyScenarioOverlay, mergeRecordsByName, normaliseOverlayPath, resolve
 export type { ScenarioOverlay, LoadedScenario } from './overlay';
 export {
     COMPOSITE_SCENARIO_ID, ADDON_GROUPS, HIDDEN_ADDONS, DATA_ONLY_INCLUDES, addonCatalog, addonClosure, addonCycles, addonSets, canonicalAddons,
-    planAddonStart, compositeScenarioManifest, ELSEWHERE_ADDONS, SMARTER_AI_ADDON_ID, defaultSmarterAIChoice, withSmarterAI, withFlagAddons, compositeOverlay, addonStartOverlay, scenarioOverlayFor, resolveAddonSwitches, addonPickerModel, toggleAddon, EXPANSIONS, expansionMembers, toggleExpansion, expansionRows, expansionMemberIds, activeExpansions, expansionsAddableToSave,
+    planAddonStart, compositeScenarioManifest, ELSEWHERE_ADDONS, SMARTER_AI_ADDON_ID, ORBITAL_SUPERIORITY_ADDON_ID, LONGER_GROUND_COMBAT_ADDON_ID, defaultSmarterAIChoice, withSmarterAI, withOrbitalSuperiority, withLongerGroundCombat, withFlagAddons, compositeOverlay, addonStartOverlay, scenarioOverlayFor, resolveAddonSwitches, addonPickerModel, toggleAddon, EXPANSIONS, expansionMembers, toggleExpansion, expansionRows, expansionMemberIds, activeExpansions, expansionsAddableToSave,
 } from './addons';
 export type { SmarterAIChoice, AddonGroup, AddonInfo, AddonCatalog, AddonDependency, AddonStartPlan, AddonOverrides, AddonRow, AddonPickerModel } from './addons';
 export { GalaxyScenario, createGalaxyScenario, scenarioActive, scenarioFlag, scenarioParam, scenarioState } from './state';

@@ -1360,7 +1360,11 @@ function checkFleetCanAttackTarget(galaxy: Galaxy, self: Empire, fleet: ShipGrou
         let num4 = 1.2;
         if (supportingOtherAttack) num4 = 0.5;
         const totalTroopAttackStrength = shipGroupTotalTroopAttackStrength(fleet);
-        if (totalTroopAttackStrength > csDoubleToInt(d.troopStrength * num4)) return true;
+        if (totalTroopAttackStrength > csDoubleToInt(d.troopStrength * num4)) {
+            // Mod layer (orbital-superiority): only where the fleet can hold the orbit (scenario query; stock true).
+            if (galaxy.scenario !== null && !scenarioQuery(galaxy, 'invasionTargetOrbitOk', true, { empire: self, fleet, target })) return false;
+            return true;
+        }
         return false;
     }
     return true;

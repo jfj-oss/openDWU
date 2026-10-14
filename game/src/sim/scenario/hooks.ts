@@ -517,6 +517,13 @@ export interface ScenarioQueries {
     /** Share of the required troop strength a troop fleet must carry (stock 0.5: Empire.8.cs 1049 `>= num3 / 2`). */
     invasionTroopRatio: { value: number; args: { empire: Empire; target: Habitat } };
     /**
+     * Orbital superiority (orbitalAI.ts): false = the AI fleet `fleet` of `empire` should not invade colony `target`
+     * now (it could not hold the orbit against the defenders near it, or withdrew from it lately). Asked at
+     * fleets/militaryAI.ts checkFleetCanAttackTarget (habitat targets) and combat/invasion.ts
+     * invadeUnwillingColonizationTargets. Pure.
+     */
+    invasionTargetOrbitOk: { value: boolean; args: { empire: Empire; fleet: ShipGroup; target: Habitat } };
+    /**
      * combat/attackAI.ts shouldAttack (BuiltObject.1.cs ShouldAttack), stance AttackEnemies, right before the diplomatic
      * relation test (War → attack; otherwise only a ship's own Attack-mission target): true lets `empire`'s ship engage
      * `target`'s ships and bases without a war, as pirates do. Stock false. 19a tit-for-tat strikes. Never draws.

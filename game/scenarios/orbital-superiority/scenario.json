@@ -1,0 +1,24 @@
+{
+  "id": "orbital-superiority",
+  "name": "Orbital superiority",
+  "description": "A gameplay change (off by default; set on the new-game wizard's Other Empires page). During a ground invasion it matters who holds the orbit above the planet (the armed ships and bases of each side within 2000 of it, the original game's Space Control measure). Attackers clearly stronger: their Space Control bonus is +50% instead of +25%. Contested: the invaders get no bonus, -35% attack rising to -50% the longer it lasts, and lose a little strength every day (supply lines disrupted). Defenders clearly stronger: invaders -50% attack, heavier daily losses and no further landings there (supply lines cut). AI empires weigh it: they invade where they can hold the orbit, keep their fleet over the planet, keep their troops aboard until the orbit is theirs, send relief fleets to their invaded colonies, and pull back from fights they cannot win.",
+  "flags": [
+    { "name": "orbitalSuperiority", "label": "Orbital superiority", "description": "Master switch.", "default": true }
+  ],
+  "params": [
+    { "name": "orbitalSuperiorityRatio", "label": "A side holds the orbit when its space strength is at least this many times the other's", "default": 1.5, "min": 1, "max": 10 },
+    { "name": "orbitalSuperiorityAttackerBonus", "label": "Invaders' attack bonus while they hold the orbit (stock Space Control: 0.25)", "default": 0.5, "min": 0, "max": 2 },
+    { "name": "orbitalContestedPenaltyStart", "label": "Contested orbit: invaders' attack penalty at first", "default": 0.35, "min": 0, "max": 1 },
+    { "name": "orbitalContestedPenaltyMax", "label": "Contested orbit: invaders' attack penalty at the end of the ramp", "default": 0.5, "min": 0, "max": 1 },
+    { "name": "orbitalContestedRampDays", "label": "Contested orbit: days of continuous contest for the penalty to reach its maximum", "default": 30, "min": 1, "max": 360 },
+    { "name": "orbitalContestedAttritionPct", "label": "Contested orbit: invaders lose this % of their strength per day", "default": 1, "min": 0, "max": 50 },
+    { "name": "orbitalCutPenalty", "label": "Defenders hold the orbit: invaders' attack penalty", "default": 0.5, "min": 0, "max": 1 },
+    { "name": "orbitalCutAttritionPct", "label": "Defenders hold the orbit: invaders lose this % of their strength per day", "default": 3, "min": 0, "max": 50 },
+    { "name": "orbitalAttritionMinReadiness", "label": "An invading unit worn below this readiness (of 100) is lost", "default": 5, "min": 0, "max": 100 },
+    { "name": "orbitalAiThreatRange", "label": "AI: defending ships within this distance of a target planet count against an invasion", "default": 23000, "min": 2000, "max": 2000000 },
+    { "name": "orbitalAiReliefRange", "label": "AI: fleets within this distance are sent to relieve an invaded colony or reinforce an invasion", "default": 4000000, "min": 10000, "max": 40000000 },
+    { "name": "orbitalAiReliefMinRatio", "label": "AI: a relief fleet needs at least this share of the attackers' space strength", "default": 1, "min": 0.1, "max": 10 },
+    { "name": "orbitalAiHoldDays", "label": "AI: days invasion troops wait aboard for the orbit before the fleet withdraws", "default": 20, "min": 1, "max": 360 },
+    { "name": "orbitalAiLosingDays", "label": "AI: days in a defender-held orbit (waiting or on the ground) before the invader withdraws or reinforces", "default": 4, "min": 1, "max": 360 }
+  ]
+}

@@ -40,6 +40,7 @@ import {
 import { attackEnemyTargets, handleWeaponsFiringHabitat } from '../combat/weapons';
 import { doExplosionHabitat, doExplosionsHabitat } from '../combat/damage';
 import { calculateSpaceControlStrengths, resolveInvasionBattles, scanForNewOwnerHabitat } from '../combat/invasion';
+import { orbitalTrackInvasion, orbitalTrackNoInvasion } from '../scenario/orbital/orbitalSuperiority';
 import { clearTroopsAwaitingPickup, independentColoniesRecruitAndTrainTroops } from '../combat/troopsRuntime';
 import { reviewPirateControl, updateRaidCountdownHabitat } from '../pirates/pirateAI';
 import { checkForShipsDiscoveringRuins, checkForShipsOfNewEmpiresInSystem } from '../exploration';
@@ -120,9 +121,11 @@ export function habitatDoTasks(galaxy: Galaxy, habitat: Habitat, time: number): 
                 spaceControlStrengthAttackers = strengths.attackers;
                 h.invasionSpaceControlStrengthDefenders = spaceControlStrengthDefenders;
                 h.invasionSpaceControlStrengthAttackers = spaceControlStrengthAttackers;
+                if (galaxy.scenario !== null) orbitalTrackInvasion(galaxy, h); // mod layer (orbital-superiority)
             } else {
                 h.invasionSpaceControlStrengthDefenders = -1;
                 h.invasionSpaceControlStrengthAttackers = -1;
+                if (galaxy.scenario !== null) orbitalTrackNoInvasion(galaxy, h); // mod layer (orbital-superiority)
             }
             if (h.colonyInvasion === null) {
                 // RND: Empire.ProcessColonyTroops (troops.ts) draws per completed recruit; with performRecruitment false none.

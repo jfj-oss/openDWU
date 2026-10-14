@@ -24,6 +24,8 @@
 import { isAiControlled } from '../missions/playerOrder';
 import { recordRaidLoss } from '../scenario/emergent/crisesCore';
 import { scenarioEmit, scenarioQuery } from '../scenario/hooks';
+import { orbitalAttrition, orbitalTroopModifiers } from '../scenario/orbital/orbitalSuperiority';
+import { groundCombatTimeSpan } from '../scenario/groundCombat/longerGroundCombat';
 import { registerTodo, todo } from '../tick/todo';
 import { cancelBlockadeColony } from '../fleets/blockades';
 import { getNearbyBuiltObjects } from '../pirates/pirateAI';
@@ -518,7 +520,10 @@ export function determineTroopModifiers(
         attack.amounts.push(0.25);
         attack.reasons.push(getText('Special Operations'));
     }
-    if (habitat.invasionSpaceControlStrengthDefenders > habitat.invasionSpaceControlStrengthAttackers) {
+    // Mod layer (orbital-superiority, flag orbitalSuperiority): its orbit states replace this block; flag off = stock.
+    if (galaxy.scenario !== null && orbitalTroopModifiers(galaxy, habitat, attackingTroops, defend, attack, getText('Space Control'))) {
+        // the rule pushed its modifiers
+    } else if (habitat.invasionSpaceControlStrengthDefenders > habitat.invasionSpaceControlStrengthAttackers) {
         defend.amounts.push(0.25);
         defend.reasons.push(getText('Space Control'));
     } else if (habitat.invasionSpaceControlStrengthAttackers > habitat.invasionSpaceControlStrengthDefenders) {
@@ -1265,7 +1270,8 @@ function defendersGainExperience(galaxy: Galaxy, habitat: Habitat, raid: boolean
  */
 export function resolveInvasionBattles(galaxy: Galaxy, habitat: Habitat, timeSpanSeconds: number): void {
     const self = habitat;
-    const timePassedSeconds = timeSpanSeconds;
+    // Mod layer (longer-ground-combat): the fight runs on a slowed clock (stock: the real span).
+    const timePassedSeconds = galaxy.scenario !== null ? groundCombatTimeSpan(galaxy, timeSpanSeconds) : timeSpanSeconds;
     const chars0 = invadingCharacters(self);
     if ((self.invadingTroops === null || self.invadingTroops.count <= 0) && (chars0 === null || chars0.length <= 0)) return;
     const resolved = resolveInvasionEmpires(self);
@@ -1357,6 +1363,8 @@ export function resolveInvasionBattles(galaxy: Galaxy, habitat: Habitat, timeSpa
             self.population.recalculateTotalAmount();
         }
     }
+    // Mod layer (orbital-superiority): daily supply attrition under a contested / defender-held orbit. No Rnd.
+    if (galaxy.scenario !== null) orbitalAttrition(galaxy, self, defender, timeSpanSeconds, invasionStatsOf(self)); // per real day
     if (self.invadingTroops === null || self.invadingTroops.totalAttackStrength <= 0) {
         invasionRepelled(galaxy, self, defender!, invader, flag, flag2);
         return;
@@ -1943,6 +1951,8 @@ export function invadeUnwillingColonizationTargets(galaxy: Galaxy, empire: Empir
             const shipGroup = findNearestAvailableFleet(galaxy, empire, habitat.xpos, habitat.ypos, BuiltObjectMissionPriority.Low, 0, FleetPosture.Attack, true, 0.1, false, false, false, true, 40000);
             if (
                 shipGroup !== null &&
+                // Mod layer (orbital-superiority): only where the fleet can hold the orbit (scenario query; stock true).
+                (galaxy.scenario === null || scenarioQuery(galaxy, 'invasionTargetOrbitOk', true, { empire, fleet: shipGroup, target: habitat })) &&
                 (isAiControlled(shipGroup.leadShip!) || empire.controlMilitaryAttacks === AutomationLevel.PartiallyAutomated) &&
                 checkTaskAuthorized(galaxy, empire, empire.controlMilitaryAttacks, refusalCount, generateAutomationMessageInvadeIndependent(galaxy, habitat, shipGroup), habitat, AdvisorMessageType.InvadeIndependent, null, shipGroup, null)
             ) {

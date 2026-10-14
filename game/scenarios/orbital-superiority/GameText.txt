@@ -1,0 +1,4 @@
+'Orbital superiority: invasion modifier reasons (Colony invasion screen) and the Galactopedia text. {n} items are filled by the scenario code.
+OrbitalSuperiority Held;Orbital superiority
+OrbitalSuperiority Disrupted;Supply lines disrupted ({0})
+OrbitalSuperiority Cut;Supply lines cut
