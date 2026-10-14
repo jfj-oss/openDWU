@@ -118,7 +118,7 @@ export function improvementViewRows(): Improvement[] {
 }
 
 /** Row pitch of the options group (check box line + up to two wrapped description lines). */
-const ROW_H = 66;
+const ROW_H = 74; // room for three description lines (66 clipped the longer ones)
 
 /** Tallest the group grows before its list scrolls. */
 export const IMPROVEMENTS_GROUP_MAX_H = 520;

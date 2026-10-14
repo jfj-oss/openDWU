@@ -1,8 +1,12 @@
 /* Research screen (researchScreen.ts) on the original-style window (originalWindow.css). Sizes are the original's
    pixels; colours are ResearchTree.cs / Main.Part6.cs Color.FromArgb values. */
 
+/* lblResearchInstructions: MaximumSize 800 × 60 above the tabs at y 75. Four lines at 15 px fit the 60 px (1.2 em ran
+   them into the tabs). */
 .ow-screen-research .rs-instructions {
-    line-height: 1.2;
+    line-height: 15px;
+    max-height: 60px;
+    overflow: hidden;
 }
 
 /* The industry tabs (GlassButton, top corners curved). */

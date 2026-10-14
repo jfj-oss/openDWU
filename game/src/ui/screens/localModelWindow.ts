@@ -46,7 +46,7 @@ export function llmFlagsLine(galaxy: Galaxy | null): string {
 }
 
 const W = 520;
-const H = 420;
+const H = 460; // the Test / Apply row at body y 380 needs 26 px plus the margin (420 cut it off)
 
 export function openLocalModelWindow(galaxy: Galaxy | null, onClose: () => void): OriginalWindow {
     const win = openOriginalWindow({ id: 'gameoptions-localmodel', title: LOCAL_MODEL_TITLE, width: W, height: H, onClose });

@@ -447,7 +447,7 @@ function createGameOptionsPanel(opts: GameOptionsPanelOptions): OpenState {
     const info = currentRendererInfo();
     const gfx = graphicsLine(info);
     if (gfx !== null) {
-        const n = label(body, gfx, 12, 628, F4 - 4);
+        const n = label(body, gfx, 12, 622, F4 - 6);
         n.classList.add('go-renderer-line');
         n.dataset.go = 'graphics';
         if (noWebglNotice(info) !== null) {
@@ -516,16 +516,16 @@ function createGameOptionsPanel(opts: GameOptionsPanelOptions): OpenState {
     if (empire !== null) buildAutomationGroup(body, empire);
     else buildNewGameAutomationGroup(body, 12, 288);
 
-    // btnGameOptionsShowMessages (12, 589) 660 × 35 — shortened for our [improvements] and Bacon Mod Settings buttons
+    // btnGameOptionsShowMessages (12, 589) 660 × 35 — 31 px tall here (room for our Graphics line under them), shortened for our [improvements] and Bacon Mod Settings buttons
     // beside it (the latter only in a game: the settings are the game's).
     const bottomW = empire !== null ? 213 : 325;
-    button(body, 'Show Message Settings', 12, 589, bottomW, 35, () => openMessageSettings());
+    button(body, 'Show Message Settings', 12, 589, bottomW, 31, () => openMessageSettings());
     // [improvements] Game Options → Improvements (ui/improvements.ts): the DW2-inspired additions, each on / off.
-    button(body, `${IMPROVEMENTS_TITLE}...`, 12 + bottomW + 10, 589, bottomW, 35, () => openSubWindow('improvements', () => createImprovementsWindow()));
+    button(body, `${IMPROVEMENTS_TITLE}...`, 12 + bottomW + 10, 589, bottomW, 31, () => openSubWindow('improvements', () => createImprovementsWindow()));
     // Game Options → Bacon Mod Settings (ours, baconSettingsWindow.ts): this game's BaconSettings.txt values.
     if (empire !== null) {
         const emp = empire;
-        button(body, 'Bacon Mod Settings...', 12 + 2 * (bottomW + 10), 589, bottomW, 35, () => openSubWindow('bacon', () => openBaconSettingsWindow(emp, () => subWindows.delete('bacon'))));
+        button(body, 'Bacon Mod Settings...', 12 + 2 * (bottomW + 10), 589, bottomW, 31, () => openSubWindow('bacon', () => openBaconSettingsWindow(emp, () => subWindows.delete('bacon'))));
     }
 
     function openAdvancedDisplaySettings(): void {
