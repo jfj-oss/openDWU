@@ -1147,6 +1147,40 @@ export async function startGameView(
     }
     // Dev / screenshot hook (scripts/battlereports-shots.mjs): the current game's save text (both modes).
     Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { serialize: serializeCurrent });
+    // UI audit hook (scripts/ui-audit.mjs): select a thing of a kind for the selection-panel screenshots (read-only).
+    Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, {
+        ui: {
+            auditSelect: (kind: string): string | null => {
+                const player = currentViewer();
+                const own = player.builtObjects.filter((b) => !b.hasBeenDestroyed);
+                const pick = (t: Parameters<typeof selectStellarObject>[0] | null | undefined): string | null => {
+                    if (!t) return null;
+                    camera.centerOn(t.xpos, t.ypos);
+                    camera.zoomAt(SYSTEM_LEVEL_ZOOM, camera.width / 2, camera.height / 2);
+                    selectStellarObject(t, false);
+                    return t.name;
+                };
+                switch (kind) {
+                    case 'colony':
+                        return pick(player.capital);
+                    case 'ship':
+                        return pick(own.find((b) => b.role === 1) ?? own[0]);
+                    case 'fleet': {
+                        const sg = player.shipGroups.find((g): g is ShipGroup => g instanceof ShipGroup);
+                        if (sg === undefined) return null;
+                        selectShipGroup(sg, true);
+                        return sg.name;
+                    }
+                    case 'star':
+                        return pick(player.capital !== null ? galaxy.systems[player.capital.systemIndex]?.habitats[0] ?? null : null);
+                    case 'foreign':
+                        return pick(galaxy.empires.find((e) => e !== player && e.capital !== null && e !== galaxy.independentEmpire)?.capital ?? null);
+                    default:
+                        return null;
+                }
+            },
+        },
+    });
 
     // [leftovers] begin
     // Autosave every GameOptions.AutoSaveInterval minutes (Main.Part12.cs:4013 method_97).

@@ -236,7 +236,7 @@ if (only.includes('game')) {
         const got = await page.evaluate((k) => window.__dwu?.ui?.auditSelect?.(k) ?? null, kind);
         if (got === null) continue;
         await page.waitForTimeout(1500);
-        await shoot(`game-select-${kind}`, { scope: '#selection-panel, .selection-panel' });
+        await shoot(`game-select-${kind}`, { scope: '.hud-selection' });
     }
     // Every toolbar button (data-hud), one at a time.
     const huds = await page.$$eval('[data-hud]', (bs) => [...new Set(bs.filter((b) => b.getBoundingClientRect().width > 0).map((b) => b.dataset.hud))]);
