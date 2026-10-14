@@ -155,7 +155,9 @@ describe('context loss recovery', () => {
         let lost = true;
         let nudged = 0;
         let stuck = 0;
-        const gl = { isContextLost: () => lost, getExtension: () => ({ restoreContext: () => nudged++ }) } as unknown as WebGLRenderingContext;
+        // getExtension answers null once the context is lost (as browsers do): the watcher must have fetched it before.
+        lost = false;
+        const gl = { isContextLost: () => lost, getExtension: () => (lost ? null : { restoreContext: () => nudged++ }) } as unknown as WebGLRenderingContext;
         const quiet = [vi.spyOn(console, 'warn').mockImplementation(() => {}), vi.spyOn(console, 'error').mockImplementation(() => {})];
         const r = installContextLossRecovery(canvas, { resolution: 1 }, { onGpuContextRestored: () => {}, useLowGpuMode: () => {} }, {
             gl: () => gl,
@@ -166,6 +168,7 @@ describe('context loss recovery', () => {
                 if (t) t.fn = () => {};
             },
         });
+        lost = true;
         canvas.dispatchEvent(new Event('webglcontextlost'));
         expect(timers.map((t) => t.ms)).toEqual([RESTORE_NUDGE_MS, STUCK_MS]);
         for (const t of timers) t.fn();

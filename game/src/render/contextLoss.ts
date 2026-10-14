@@ -76,6 +76,13 @@ export function installContextLossRecovery(
     let notified = false;
     const setT = options.setTimeout ?? ((fn: () => void, ms: number) => setTimeout(fn, ms));
     const clearT = options.clearTimeout ?? ((id: unknown) => clearTimeout(id as ReturnType<typeof setTimeout>));
+    // WEBGL_lose_context, fetched while the context is alive: getExtension answers null on a lost context.
+    let loseExt: { restoreContext(): void } | null = null;
+    const grabExt = (): void => {
+        const gl = options.gl?.();
+        if (gl && !gl.isContextLost()) loseExt = gl.getExtension('WEBGL_lose_context') ?? loseExt;
+    };
+    grabExt();
     let nudge: unknown = null;
     let stuck: unknown = null;
     const clearTimers = (): void => {
@@ -97,7 +104,7 @@ export function installContextLossRecovery(
             if (!gl || !gl.isContextLost()) return;
             console.warn(`WebGL context still lost after ${RESTORE_NUDGE_MS} ms: asking for it back`);
             try {
-                gl.getExtension('WEBGL_lose_context')?.restoreContext();
+                loseExt?.restoreContext();
             } catch {
                 /* only valid after loseContext(); a real loss is the browser's to restore */
             }
@@ -113,6 +120,7 @@ export function installContextLossRecovery(
     };
     const onRestored = (): void => {
         clearTimers();
+        grabExt();
         state.restores++;
         if (pendingLevel > state.level) {
             state.level = pendingLevel;
