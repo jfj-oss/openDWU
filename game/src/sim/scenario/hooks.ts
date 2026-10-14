@@ -500,11 +500,15 @@ export interface ScenarioQueries {
     /**
      * cmdMovement.ts HyperTo while the jump spools (BuiltObject.2.cs 3020: `starDate >= HyperjumpCountdown` waits): the
      * countdown to use this step. `spoolMs` >= 0 on the command's first execution (the stock HyperjumpInitiate roll,
-     * started at `spoolStart`), -1 on later steps. Jump interdiction (scenario/interdiction). No Rnd.
+     * started at `spoolStart`; the countdown already has the hyperjumpSpoolFactor total), -1 on later steps. Jump interdiction (scenario/interdiction). No Rnd.
      */
     hyperjumpCountdown: { value: number; args: { ship: BuiltObject; starDate: number; spoolStart: number; spoolMs: number } };
-    /** player/intercept.ts: the factor on `ship`'s jump spool if it started a jump where it is now (1 = stock). Pure. */
-    hyperjumpSpoolFactor: { value: number; args: { ship: BuiltObject } };
+    /**
+     * The total factor on `ship`'s stock jump spool (1 = stock): cmdHyperTo's first execution (the countdown), the
+     * move-together jump start (fleets/moveTogether.ts), intercept ETAs and construction-board estimates. `here`: a
+     * jump started where the ship is now (position-based rules such as jump interdiction apply), else anywhere. Pure.
+     */
+    hyperjumpSpoolFactor: { value: number; args: { ship: BuiltObject; here: boolean } };
     /** pirates/pirateFleets.ts raid choices (Empire.9.cs 1045-1116): the fleet strength a raid at `habitat` (a colony, or a mining station's habitat) needs. */
     raidRequiredStrength: { value: number; args: { empire: Empire; habitat: Habitat } };
     /** industry.ts industrialProcessing (BuiltObject.2.cs 7859 extraction block): true = the extractor mines nothing this pass. */

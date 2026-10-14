@@ -46,6 +46,7 @@ import { calculateOverallStrengthFactor } from '../src/sim/combat/threats';
 import {
     borderChokepoints, hostileInterdictionStrength, interdictingBaseFor, interdictingBasesInSystem, interdictionInfoLine, interdictionRadius, interdictionRing, interdictionStateIfAny, isInterdictingBase,
 } from '../src/sim/scenario/interdiction/jumpInterdiction';
+import { slowSpoolFactor } from '../src/sim/scenario/hyperdrive/slowHyperdrive';
 
 function missionOfForce(f: InterceptForce): BuiltObjectMission | null {
     return f instanceof ShipGroup ? f.mission : builtObjectMission(f.mission);
@@ -494,12 +495,12 @@ describe('Defensive jump interdiction add-on', () => {
         expect(interdictionInfoLine(g, base)).toBe(`Interdiction field: ${Math.round(interdictionRadius(g, base))}`);
     });
 
-    it('3x spool for hostile ships only, in the field; moving out of it restores the stock spool', () => {
+    it('5x (total) spool for hostile ships only, in the field; moving out of it restores the stock spool', () => {
         const g = jg.galaxy;
         const { base, pirate, own } = setup();
         expect(interdictingBaseFor(g, pirate)).toBe(base);
         expect(interdictingBaseFor(g, own)).toBeNull(); // friendly
-        expect(interdictionInfoLine(g, pirate)).toBe(`Interdicted by ${base.name}: jump spool 3×`);
+        expect(interdictionInfoLine(g, pirate)).toBe(`Interdicted by ${base.name}: jump spool 5×`);
         expect(interdictionInfoLine(g, own)).toBeNull();
         // a protected pirate is not held back
         obtainPirateRelation(pirate.empire!, base.empire!).type = PirateRelationType.Protection;
@@ -509,18 +510,18 @@ describe('Defensive jump interdiction add-on', () => {
         pirate.xpos = base.xpos + interdictionRadius(g, base) + 10;
         expect(interdictingBaseFor(g, pirate)).toBeNull();
         pirate.xpos = base.xpos + 1000;
-        // the cmdHyperTo query: the first execution triples the stock roll (12 s here) ...
+        // the cmdHyperTo query: the first execution: 5x the stock roll in total (12 s here) ...
         const t0 = galaxyStarDate(g);
         const stock = 12000;
         const st0 = interdictionStateIfAny(g)?.stats.interdicted ?? 0;
         let c = scenarioQuery(g, 'hyperjumpCountdown', t0 + stock, { ship: pirate, starDate: t0, spoolStart: t0, spoolMs: stock });
-        expect(c).toBe(t0 + 3 * stock);
+        expect(c).toBe(t0 + 5 * stock);
         expect(scenarioQuery(g, 'hyperjumpCountdown', t0 + stock, { ship: own, starDate: t0, spoolStart: t0, spoolMs: stock })).toBe(t0 + stock);
         const st = interdictionStateIfAny(g)!;
         expect(st.stats.interdicted).toBe(st0 + 1);
         // ... held while it stays in the field (even when something else, e.g. move-together, lowered it) ...
         c = scenarioQuery(g, 'hyperjumpCountdown', t0 + stock, { ship: pirate, starDate: t0 + 5000, spoolStart: 0, spoolMs: -1 });
-        expect(c).toBe(t0 + 3 * stock);
+        expect(c).toBe(t0 + 5 * stock);
         // ... and back to the stock spool once it has cruised out of the field
         pirate.xpos = base.xpos + 7000;
         c = scenarioQuery(g, 'hyperjumpCountdown', c, { ship: pirate, starDate: t0 + 6000, spoolStart: 0, spoolMs: -1 });
@@ -529,7 +530,7 @@ describe('Defensive jump interdiction add-on', () => {
         expect(st.spools.some((e) => e.ship === pirate)).toBe(false);
     });
 
-    it('a real jump out of the field spools 3x (cmdHyperTo), then the ship jumps', () => {
+    it('a real jump out of the field spools 5x (cmdHyperTo), then the ship jumps', () => {
         const g = jg.galaxy;
         const { pirate } = setup();
         const far = pointAway(jg, pirate, 400000);
@@ -538,7 +539,7 @@ describe('Defensive jump interdiction add-on', () => {
         runGameSeconds(jg, 1);
         const e = interdictionStateIfAny(g)!.spools.find((s) => s.ship === pirate);
         expect(e).toBeDefined();
-        expect(pirate.hyperjumpCountdown).toBe(e!.start + 3 * e!.stock);
+        expect(pirate.hyperjumpCountdown).toBe(e!.start + 5 * e!.stock);
         expect(pirate.currentSpeed).toBeLessThanOrEqual(pirate.topSpeed); // still spooling
         // past the stock spool: still held in the field (it cruises meanwhile, well short of the field's edge)
         const x0 = pirate.xpos;
@@ -546,12 +547,12 @@ describe('Defensive jump interdiction add-on', () => {
         runGameSeconds(jg, e!.stock / 1000 + 1);
         expect(pirate.currentSpeed).toBeLessThanOrEqual(pirate.topSpeed);
         expect(Math.hypot(pirate.xpos - x0, pirate.ypos - y0)).toBeLessThan(2000);
-        // after the 3x spool it jumps
-        runGameSeconds(jg, (2 * e!.stock) / 1000 + 2);
+        // after the 5x spool it jumps
+        runGameSeconds(jg, (4 * e!.stock) / 1000 + 2);
         expect(Math.hypot(pirate.xpos - x0, pirate.ypos - y0)).toBeGreaterThan(20000);
     }, 300000);
 
-    it('intercept ETA: an interdicted target waits 3x its jump initiation before warping', () => {
+    it('intercept ETA: an interdicted target waits 5x its jump initiation before warping', () => {
         const g = jg.galaxy;
         const { pirate, base } = setup();
         const far = pointAway(jg, pirate, 400000);
@@ -562,14 +563,54 @@ describe('Defensive jump interdiction add-on', () => {
         const wait = (): number => predictTargetPath(g, pirate).legs.find((l) => l.x0 === l.x1 && l.y0 === l.y1)?.t1 ?? 0;
         const init = Math.max(0, pirate.hyperjumpInitiate) * 1000;
         expect(init).toBeGreaterThan(0);
-        expect(wait()).toBeCloseTo(3 * init, 6);
-        expect(scenarioQuery(g, 'hyperjumpSpoolFactor', 1, { ship: pirate })).toBe(3);
+        expect(wait()).toBeCloseTo(5 * init, 6);
+        expect(scenarioQuery(g, 'hyperjumpSpoolFactor', 1, { ship: pirate, here: true })).toBe(5);
         // a force in the field spools longer too
-        expect(forceMotion(pirate, g).initiateMs).toBeCloseTo(3 * init, 6);
+        expect(forceMotion(pirate, g).initiateMs).toBeCloseTo(5 * init, 6);
         expect(forceMotion(pirate).initiateMs).toBeCloseTo(init, 6);
+        expect(scenarioQuery(g, 'hyperjumpSpoolFactor', 1, { ship: pirate, here: false })).toBe(1); // elsewhere: stock
         pirate.xpos = base.xpos + 9000;
         expect(wait()).toBeCloseTo(init, 6);
     });
+
+    it('Slower hyperdrive spool: every ship 3x; an interdicted one 5x in total (not 15x); escaping restores 3x', () => {
+        const g = jg.galaxy;
+        const { base, pirate, own } = setup();
+        g.scenario!.flags.slowHyperdrive = true;
+        try {
+            expect(slowSpoolFactor(g)).toBe(3);
+            expect(scenarioQuery(g, 'hyperjumpSpoolFactor', 1, { ship: own, here: true })).toBe(3); // friendly: slow only
+            expect(scenarioQuery(g, 'hyperjumpSpoolFactor', 1, { ship: pirate, here: true })).toBe(5); // interdicted: total 5
+            expect(scenarioQuery(g, 'hyperjumpSpoolFactor', 1, { ship: pirate, here: false })).toBe(3);
+            const t0 = galaxyStarDate(g);
+            const stock = 10000;
+            let c = scenarioQuery(g, 'hyperjumpCountdown', t0 + 5 * stock, { ship: pirate, starDate: t0, spoolStart: t0, spoolMs: stock });
+            expect(c).toBe(t0 + 5 * stock);
+            pirate.xpos = base.xpos + 7000;
+            c = scenarioQuery(g, 'hyperjumpCountdown', c, { ship: pirate, starDate: t0 + 1000, spoolStart: 0, spoolMs: -1 });
+            expect(c).toBe(t0 + 3 * stock); // out of the field: the slow 3x, not stock
+            // intercept: the own ship's later legs and its force motion use 3x; the interdicted pirate 5x where it is
+            pirate.xpos = base.xpos + 1000;
+            const init = Math.max(0, own.hyperjumpInitiate) * 1000;
+            expect(forceMotion(own, g).initiateMs).toBeCloseTo(3 * init, 6);
+            expect(forceMotion(pirate, g).initiateMs).toBeCloseTo(5 * Math.max(0, pirate.hyperjumpInitiate) * 1000, 6);
+            // a real jump of the friendly ship: its countdown is 3x the stock roll (initiate ±1 s)
+            const far = pointAway(jg, own, 400000);
+            assignMission(g, own, BuiltObjectMissionType.Move, null, null, BuiltObjectMissionPriority.High, { x: far.x, y: far.y });
+            own.isAutoControlled = false;
+            own.firstExecutionOfCommand = true;
+            const start = galaxyStarDate(g);
+            runGameSeconds(jg, 1);
+            const left = own.hyperjumpCountdown - start;
+            expect(left).toBeGreaterThanOrEqual(3 * (init - 1000) - 1);
+            expect(left).toBeLessThanOrEqual(3 * (init + 1000) + 1000);
+            expect(interdictionStateIfAny(g)!.spools.some((e) => e.ship === own)).toBe(false);
+        } finally {
+            g.scenario!.flags.slowHyperdrive = false;
+        }
+        expect(slowSpoolFactor(g)).toBe(1);
+        expect(scenarioQuery(g, 'hyperjumpSpoolFactor', 1, { ship: own, here: true })).toBe(1);
+    }, 300000);
 
     it('AI: pirate raids into a defended system need 1.5x the bases; AI empires add border colonies for bases', () => {
         const g = jg.galaxy;
@@ -607,7 +648,7 @@ describe('Defensive jump interdiction add-on', () => {
         try {
             const t0 = galaxyStarDate(g);
             expect(scenarioQuery(g, 'hyperjumpCountdown', t0 + 12000, { ship: pirate, starDate: t0, spoolStart: t0, spoolMs: 12000 })).toBe(t0 + 12000);
-            expect(scenarioQuery(g, 'hyperjumpSpoolFactor', 1, { ship: pirate })).toBe(1);
+            expect(scenarioQuery(g, 'hyperjumpSpoolFactor', 1, { ship: pirate, here: true })).toBe(1);
             expect(scenarioQuery(g, 'raidRequiredStrength', 10, { empire: pirate.empire!, habitat: base.parentHabitat! })).toBe(10);
             expect(interdictionInfoLine(g, pirate)).toBeNull();
             expect(interdictionRing(g, base)).toBeNull();
@@ -617,7 +658,7 @@ describe('Defensive jump interdiction add-on', () => {
         // the stock game: no scenario, nothing saved
         const stock = cachedTickGame(gameData).galaxy;
         expect(stock.scenario).toBeNull();
-        expect(scenarioQuery(stock, 'hyperjumpSpoolFactor', 1, { ship: pirate })).toBe(1);
+        expect(scenarioQuery(stock, 'hyperjumpSpoolFactor', 1, { ship: pirate, here: true })).toBe(1);
     }, 300000);
 });
 

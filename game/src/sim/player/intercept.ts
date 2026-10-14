@@ -320,8 +320,9 @@ function shipPath(galaxy: Galaxy, bo: BuiltObject): TargetPath {
             pushMove(legs, cur, ex.x, ex.y, bo.currentSpeed, 0);
         } else if (hyper && warp > 0 && d > threshold) {
             let wait = Math.max(0, bo.hyperjumpInitiate) * 1000;
-            // Mod layer (jump interdiction): a jump out of a hostile field spools longer (an open spool's countdown has it).
-            if (first && galaxy.scenario !== null) wait *= scenarioQuery(galaxy, 'hyperjumpSpoolFactor', 1, { ship: bo });
+            // Mod layer (slow hyperdrive / jump interdiction): the spool's total factor (a field only where it is now; an open
+            // spool's countdown already has it).
+            if (galaxy.scenario !== null) wait *= scenarioQuery(galaxy, 'hyperjumpSpoolFactor', 1, { ship: bo, here: first });
             if (first && !bo.firstExecutionOfCommand) wait = Math.max(0, bo.hyperjumpCountdown - starDate);
             pushMove(legs, cur, p.x, p.y, warp, wait);
         } else {
@@ -369,8 +370,8 @@ export interface ForceMotion {
 
 export function forceMotion(f: InterceptForce, galaxy: Galaxy | null = null): ForceMotion {
     const p = posOf(f);
-    // Mod layer (jump interdiction): our own ships held in a hostile field spool longer too.
-    const k = (b: BuiltObject): number => (galaxy !== null && galaxy.scenario !== null ? scenarioQuery(galaxy, 'hyperjumpSpoolFactor', 1, { ship: b }) : 1);
+    // Mod layer (slow hyperdrive / jump interdiction): our own spool's total factor (a hostile field where it is now).
+    const k = (b: BuiltObject): number => (galaxy !== null && galaxy.scenario !== null ? scenarioQuery(galaxy, 'hyperjumpSpoolFactor', 1, { ship: b, here: true }) : 1);
     if (isFleet(f)) {
         let initiate = 0;
         for (const b of f.ships) initiate = Math.max(initiate, b.hyperjumpInitiate * k(b));

@@ -33,6 +33,7 @@ import { BuiltObjectMissionType, Command, CommandAction, builtObjectMission, isB
 import { warpSpeedWithBonuses } from '../movement';
 import { galaxyStarDate } from '../tick/simTime';
 import { isHumanEmpire } from '../humanEmpires';
+import { scenarioQuery } from '../scenario/hooks';
 
 /** The rule's constants (game ms / world units / portions). */
 export const MOVE_TOGETHER = {
@@ -382,7 +383,17 @@ function decideJump(st: MoveTogetherState, starDate: number): void {
     if (pending.length > 0 && starDate - st.jumpFirst < MOVE_TOGETHER.jumpWaitMs) return;
     for (const b of pending) leaveBehind(st, b);
     let at = 0;
-    for (let i = 0; i < st.jumpMembers.length; i++) at = Math.max(at, st.jumpEnteredAt[i] + Math.max(0, st.jumpMembers[i].hyperjumpInitiate) * 1000);
+    for (let i = 0; i < st.jumpMembers.length; i++) {
+        const m = st.jumpMembers[i];
+        let spool = Math.max(0, m.hyperjumpInitiate) * 1000;
+        // Mod layer (slow hyperdrive / jump interdiction): the member's spool total factor.
+        const g = m._galaxy;
+        if (g !== null && g.scenario !== null) {
+            const k = scenarioQuery(g, 'hyperjumpSpoolFactor', 1, { ship: m, here: true });
+            if (k !== 1) spool = Math.round(spool * k);
+        }
+        at = Math.max(at, st.jumpEnteredAt[i] + spool);
+    }
     st.jumpAt = at;
 }
 

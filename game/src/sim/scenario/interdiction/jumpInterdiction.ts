@@ -11,9 +11,11 @@
 // The rule (flag on): every armed defensive base or space port (role Base, fully built, not destroyed, firepower > 0,
 // owned by an empire other than the independents) projects an interdiction field around itself in its own system:
 //   radius = interdictionRadius × (1 + interdictionFirepowerBonus × min(1, firepower / interdictionFirepowerFull)),
-// capped at the system size. A HOSTILE ship that starts a jump inside a field spools interdictionSpoolFactor (3) times
-// as long as the stock roll (the roll itself is the stock draw: no extra Rnd). It keeps cruising toward its target while
-// spooling; once out of every field it may jump as soon as the stock spool is over. Jumping in is unchanged.
+// capped at the system size. A HOSTILE ship that starts a jump inside a field spools interdictionSpoolFactor (5) times
+// as long as the stock roll in total (the roll itself is the stock draw: no extra Rnd; with Slower hyperdrive on it is
+// still 5×, not 5 × 3: the query hyperjumpSpoolFactor's handler here runs after that add-on's and replaces its factor).
+// It keeps cruising toward its target while spooling; once out of every field it may jump as soon as its ordinary
+// spool (stock, or Slower hyperdrive's 3×) is over. Jumping in is unchanged.
 // Hostile: at war; a pirate ship against any empire's base unless that empire pays it protection; a pirate base against
 // the ships of empires with no pirate relation (None, as the original Hyper Stop rule). Friendly / neutral / independent
 // ships are unaffected. Monsters are excluded: creatures do not use hyperdrives (their lunges are unchanged).
@@ -38,6 +40,7 @@ import { noteBuiltObjectEffect } from '../../combat/effectWatch';
 import { isHumanEmpire } from '../../humanEmpires';
 import { registerScenarioEvent, registerScenarioQuery } from '../hooks';
 import { scenarioFlag, scenarioParam, scenarioState } from '../state';
+import { slowSpoolFactor } from '../hyperdrive/slowHyperdrive';
 
 export const JUMP_INTERDICTION_FLAG = 'jumpInterdiction';
 export const JUMP_INTERDICTION_ADDON_ID = 'jump-interdiction';
@@ -88,8 +91,14 @@ export function jumpInterdictionOn(galaxy: Galaxy): boolean {
     return scenarioFlag(galaxy, JUMP_INTERDICTION_FLAG);
 }
 
+/** An interdicted ship's TOTAL spool factor over the stock roll (not stacked on Slower hyperdrive's). */
 export function spoolFactor(galaxy: Galaxy): number {
-    return Math.max(1, scenarioParam(galaxy, 'interdictionSpoolFactor', 3));
+    return Math.max(1, scenarioParam(galaxy, 'interdictionSpoolFactor', 5));
+}
+
+/** An interdicted spool's length: the stock roll × the total factor (the same rounding as cmdHyperTo). */
+function longSpool(galaxy: Galaxy, stock: number): number {
+    return Math.round(stock * spoolFactor(galaxy));
 }
 
 function isPirate(e: Empire): boolean {
@@ -188,13 +197,12 @@ function findSpool(st: InterdictionState, ship: BuiltObject): number {
 
 /** cmdHyperTo's spool countdown (query hyperjumpCountdown; see the header). */
 export function interdictedCountdown(galaxy: Galaxy, value: number, ship: BuiltObject, starDate: number, spoolStart: number, spoolMs: number): number {
-    const factor = spoolFactor(galaxy);
     if (spoolMs >= 0) {
         // First execution: a new spool (a previous entry of this ship is stale).
         const prev = interdictionStateIfAny(galaxy);
         if (prev !== null && prev.spools.length > 0) {
             // Drop this ship's stale entry and every finished / abandoned spool.
-            prev.spools = prev.spools.filter((e) => e.ship !== ship && !e.ship.hasBeenDestroyed && starDate < e.start + e.stock * factor);
+            prev.spools = prev.spools.filter((e) => e.ship !== ship && !e.ship.hasBeenDestroyed && starDate < e.start + longSpool(galaxy, e.stock));
         }
         const base = interdictingBaseFor(galaxy, ship);
         if (base === null) return value;
@@ -202,14 +210,14 @@ export function interdictedCountdown(galaxy: Galaxy, value: number, ship: BuiltO
         st.spools.push({ ship, base, start: spoolStart, stock: spoolMs });
         st.stats.interdicted++;
         if (ship.empire !== null && isPirate(ship.empire)) st.stats.interdictedPirates++;
-        return held(galaxy, ship, value, spoolStart + spoolMs * factor);
+        return held(galaxy, ship, value, spoolStart + longSpool(galaxy, spoolMs));
     }
     const st = interdictionStateIfAny(galaxy);
     if (st === null || st.spools.length === 0) return value;
     const i = findSpool(st, ship);
     if (i < 0) return value;
     const e = st.spools[i];
-    const long = e.start + e.stock * factor;
+    const long = e.start + longSpool(galaxy, e.stock);
     if (starDate >= long) {
         st.spools.splice(i, 1);
         return value;
@@ -220,12 +228,13 @@ export function interdictedCountdown(galaxy: Galaxy, value: number, ship: BuiltO
         e.base = base;
         return held(galaxy, ship, value, long);
     }
-    // Out of every field: the stock spool applies again.
+    // Out of every field: the ordinary spool applies again (stock, or Slower hyperdrive's factor).
     st.spools.splice(i, 1);
     st.stats.escaped++;
     if (value === long) {
         noteBuiltObjectEffect(galaxy, ship);
-        return e.start + e.stock;
+        const k = slowSpoolFactor(galaxy);
+        return e.start + (k === 1 ? e.stock : Math.round(e.stock * k));
     }
     return value;
 }
@@ -325,9 +334,10 @@ registerScenarioQuery({
 
 registerScenarioQuery({
     id: 'jumpInterdiction.predict',
+    order: 10, // after Slower hyperdrive (order 0): the interdicted total replaces its factor
     flag: JUMP_INTERDICTION_FLAG,
     query: 'hyperjumpSpoolFactor',
-    run: (g, v, { ship }) => (interdictingBaseFor(g, ship) !== null ? v * spoolFactor(g) : v),
+    run: (g, v, { ship, here }) => (here && interdictingBaseFor(g, ship) !== null ? spoolFactor(g) : v),
 });
 
 registerScenarioQuery({

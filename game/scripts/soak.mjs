@@ -167,6 +167,8 @@ const CONFIGS = [
         name, set: 'mothballing', seed, years: 30, wizard: {}, scenario: 'mothballing', flags,
     }))),
     ...[['mb-war-on-s1', true], ['mb-war-off-s1', false]].map(([name, on]) => SCN('mothballing', { name, set: 'mothballing', seed: 1, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, flags: { mothballing: on, mothballingAI: on } })),
+    // `--set slow-hyperdrive` (same hook): Slower hyperdrive spool on / off on the os-war galaxy: war AI pace.
+    ...[['sh-war-on-s1', true], ['sh-war-off-s1', false]].map(([name, on]) => SCN('slow-hyperdrive', { name, set: 'slow-hyperdrive', seed: 1, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, flags: { slowHyperdrive: on } })),
     // `--set long`: the many-decade runs (not in the default set).
     { name: 'long-s1-30y', set: 'long', seed: 1, years: 30, wizard: {} },
     { name: 'long-s7-small-50y', set: 'long', seed: 7, years: 50, wizard: { starCountIndex: 1, dimensionIndex: 1, otherEmpires: { empireCount: 5 } } },

@@ -1,0 +1,11 @@
+{
+  "id": "slow-hyperdrive",
+  "name": "Slower hyperdrive spool",
+  "description": "A gameplay change (set on the new-game wizard's Other Empires page, on by default for new games): every ship's hyperdrive takes hyperjumpSpoolFactor (3) times as long to spool up before a jump (the original's jump initiation time, about 5 to 15 seconds, becomes about 15 to 45). All ships of every empire, pirates and the player alike; the jump itself, its speed and its exit are unchanged. With Defensive jump interdiction an interdicted ship's spool is that add-on's total (5 times the original), not stacked on top.",
+  "flags": [
+    { "name": "slowHyperdrive", "label": "Slower hyperdrive spool", "description": "Master switch.", "default": true }
+  ],
+  "params": [
+    { "name": "hyperjumpSpoolFactor", "label": "Hyperjump spool (jump initiation) takes this many times as long as in the original", "default": 3, "min": 1, "max": 10 }
+  ]
+}
