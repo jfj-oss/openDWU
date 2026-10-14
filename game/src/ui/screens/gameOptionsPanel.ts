@@ -29,6 +29,7 @@
 // (Performance) under Advanced Display Settings, the DW2-inspired additions in the Improvements window.
 // The HotKeys button opens the key remapping screen (BaconDistantWorlds/HotKeys, hotkeysScreen.ts).
 
+import { currentRendererInfo, noWebglNotice } from '../../render/rendererInfo';
 import './gameOptionsPanel.css';
 import { openHotkeysScreen } from './hotkeysScreen';
 import { openBaconSettingsWindow } from './baconSettingsWindow';
@@ -364,6 +365,24 @@ function issueSetting(empire: Empire, field: EmpireSettingField, value: number |
     issuePlayerCommand(empire.galaxy, empire, 'setEmpireSetting', [field, value]);
 }
 
+interface FullscreenControl {
+    get(): Promise<boolean>;
+    set(on: boolean): Promise<unknown>;
+    onChange(cb: (on: boolean) => void): void;
+}
+
+/** The desktop shell's fullscreen (gamePreload.cjs), else the browser's Fullscreen API; null when neither exists. */
+function fullscreenControl(): FullscreenControl | null {
+    const desk = (window as unknown as { dwuDesktop?: { fullscreen?: FullscreenControl } }).dwuDesktop?.fullscreen;
+    if (desk !== undefined) return desk;
+    if (typeof document.documentElement.requestFullscreen !== 'function') return null;
+    return {
+        get: () => Promise.resolve(document.fullscreenElement !== null),
+        set: (on) => (on ? document.documentElement.requestFullscreen() : document.fullscreenElement !== null ? document.exitFullscreen() : Promise.resolve()).catch(() => undefined),
+        onChange: (cb) => document.addEventListener('fullscreenchange', () => cb(document.fullscreenElement !== null)),
+    };
+}
+
 function createGameOptionsPanel(opts: GameOptionsPanelOptions): OpenState {
     const { empire } = opts;
     const s = getSettings();
@@ -408,6 +427,28 @@ function createGameOptionsPanel(opts: GameOptionsPanelOptions): OpenState {
     // fourth row. HotKeys opens the remapping screen (hotkeysScreen.ts; the "?" overlay lists the current keys).
     button(display, 'HotKeys', 15, 110, 250, 22, () => openHotkeysScreen());
     button(display, 'Advanced Settings...', 395, 110, 250, 22, () => openAdvancedDisplaySettings());
+    // Ours: Fullscreen (F11 / Alt+Enter toggle it too; the desktop app remembers it in config.json). Laptop F11 is
+    // often a brightness key without Fn, so the checkbox is the discoverable way in.
+    const fs = fullscreenControl();
+    if (fs !== null) {
+        const box = check(display, 'Fullscreen', false, 285, 112, (v) => void fs.set(v));
+        box.title = 'Fullscreen window (F11 or Alt+Enter)';
+        box.dataset.go = 'fullscreen';
+        const input = box.querySelector('input');
+        void fs.get().then((on) => {
+            if (input) input.checked = on;
+        });
+        fs.onChange((on) => {
+            if (input) input.checked = on;
+        });
+    }
+    // Ours: the renderer fallback, in one line (rendererInfo.ts): planets and ships look flat without WebGL.
+    const notice = noWebglNotice(currentRendererInfo());
+    if (notice !== null) {
+        const n = label(body, notice, 12, 628, F4 - 4);
+        n.classList.add('go-renderer-notice');
+        n.title = 'WebGL is not available (GPU driver blocklisted or missing). Updating the graphics driver usually fixes it. The desktop app writes what it got to gpu-log.txt in its settings folder.';
+    }
 
     // --- grpOptionsVolume (12, 147) 659 × 74: Music (17, 22) / Effects (17, 47), sliders (81, 24 / 49). The sliders
     // leave room for our mute boxes and the [musicmood] Music & Mood button (568 → 370 px).

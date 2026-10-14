@@ -36,6 +36,7 @@ const updates = require('./updateCheck.cjs');
 const { createSimProcesses } = require('./simProcess.cjs');
 const { createNetHost } = require('./netHost.cjs');
 const userMusic = require('./userMusic.cjs');
+const displayMode = require('./displayMode.cjs');
 
 // A second profile (DWU_USER_DATA_DIR): its own saves, settings and single-instance lock, so two copies of the app can
 // run on one PC — a LAN host and a client on 127.0.0.1 (docs/MULTIPLAYER.md §10). Set before anything reads userData.
@@ -46,6 +47,10 @@ if (process.env.DWU_USER_DATA_DIR) app.setPath('userData', path.resolve(process.
 // Tailscale, nor between two copies on one PC under some setups). The addresses only reach the players a code is
 // given to.
 app.commandLine.appendSwitch('disable-features', 'WebRtcHideLocalIpsWithMdns');
+// WebGL on blocklisted Windows laptop GPUs (displayMode.cjs): without it Pixi draws with its Canvas fallback.
+for (const [name, value] of displayMode.gpuSwitches(process.platform, process.env)) {
+    if (!app.commandLine.hasSwitch(name)) app.commandLine.appendSwitch(name, value);
+}
 
 // dist/ lives next to desktop/ in the repo; when packaged it is copied into
 // resources/ by @electron/packager (extraResource in scripts/package-desktop.mjs).
@@ -75,7 +80,7 @@ const MENU_SHORTCUT_LABEL = process.platform === 'darwin' ? `the ${app.name} men
 const CONFIG_FILE = () => path.join(app.getPath('userData'), 'config.json');
 
 // ---------------------------------------------------------------------------
-// config.json: { installDir, lastUpdateCheck, skippedVersion, checkForUpdates }
+// config.json: { installDir, lastUpdateCheck, skippedVersion, checkForUpdates, fullscreen }
 // ---------------------------------------------------------------------------
 
 function readConfig() {
@@ -452,6 +457,31 @@ ipcMain.handle('dwu:open-music-folder', async (event) => {
     userMusic.ensureMusicFolder(MUSIC_DIR());
     return (await shell.openPath(MUSIC_DIR())) === '';
 });
+// Game Options → Fullscreen (game window only).
+ipcMain.handle('dwu:fullscreen-get', (event) => (mainWin !== null && event.sender === mainWin.webContents ? mainWin.isFullScreen() : false));
+ipcMain.handle('dwu:fullscreen-set', (event, on) => {
+    if (mainWin === null || event.sender !== mainWin.webContents) return false;
+    setFullscreen(mainWin, on === true);
+    return true;
+});
+// The page's renderer (Pixi WebGL / WebGPU / Canvas and the WebGL renderer string), for the log.
+ipcMain.on('dwu:report-renderer', (event, info) => {
+    if (mainWin === null || event.sender !== mainWin.webContents || !info || typeof info !== 'object') return;
+    let status = null;
+    try {
+        status = app.getGPUFeatureStatus();
+    } catch {
+        /* not available */
+    }
+    const line = displayMode.gpuLogLine(status, { renderer: String(info.renderer).slice(0, 40), webgl: String(info.webgl).slice(0, 40), gpu: String(info.gpu ?? '').slice(0, 160) });
+    console.log(line);
+    try {
+        // userData/gpu-log.txt: this launch's GPU path, for bug reports ("planets look full-bright").
+        fs.writeFileSync(path.join(app.getPath('userData'), 'gpu-log.txt'), `${new Date().toISOString()} version=${APP_VERSION} ${process.platform} ${line}\n`);
+    } catch {
+        /* best effort */
+    }
+});
 ipcMain.handle('dwu:check-updates', async (event) => {
     if (mainWin === null || event.sender !== mainWin.webContents) return false;
     await checkForUpdates({ manual: true });
@@ -669,7 +699,14 @@ function popupShellMenu(win) {
 let mainWin = null;
 
 function toggleFullscreen(win) {
-    win.setFullScreen(!win.isFullScreen());
+    setFullscreen(win, !win.isFullScreen());
+}
+
+/** Fullscreen on / off; the choice goes to config.json (restored at the next launch) and the page hears of it. */
+function setFullscreen(win, on) {
+    if (win.isDestroyed()) return;
+    console.log(`[window] fullscreen ${on ? 'on' : 'off'}`);
+    win.setFullScreen(on);
 }
 
 function createWindow() {
@@ -694,6 +731,13 @@ function createWindow() {
         },
     });
     mainWin = win;
+    const onFullscreenChange = () => {
+        const on = win.isFullScreen();
+        if (readConfig().fullscreen !== on) updateConfig({ fullscreen: on });
+        if (!win.webContents.isDestroyed()) win.webContents.send('dwu:fullscreen-changed', on);
+    };
+    win.on('enter-full-screen', onFullscreenChange);
+    win.on('leave-full-screen', onFullscreenChange);
     win.on('closed', () => {
         if (mainWin === win) mainWin = null;
     });
@@ -760,16 +804,23 @@ function createWindow() {
 
     win.once('ready-to-show', () => {
         win.show();
+        if (readConfig().fullscreen === true) setFullscreen(win, true);
+        // Which GPU path the app got (the page adds its renderer through dwu:report-renderer).
+        try {
+            console.log(displayMode.gpuLogLine(app.getGPUFeatureStatus(), null));
+        } catch {
+            /* not available */
+        }
         // The update check on every launch, once the game is up (and off the startup path).
         setTimeout(() => checkForUpdates({ manual: false }), 8000);
     });
 
-    // F11 / Ctrl/Cmd+F toggles fullscreen; Ctrl+Shift+O opens the shell menu on Windows/Linux (no menu bar there).
+    // F11 / Alt+Enter / Ctrl/Cmd+F toggles fullscreen; Ctrl+Shift+O opens the shell menu on Windows/Linux (no menu bar there).
     win.webContents.on('before-input-event', (event, input) => {
         if (input.type !== 'keyDown') return;
-        const isF11 = input.key === 'F11';
-        const isCtrlCmdF = input.key === 'f' && (input.controlKey || input.metaKey);
-        if (isF11 || isCtrlCmdF) {
+        // F11 still reaches the page as well (the original's Ships and Bases key); Alt+Enter / Ctrl+F do not.
+        if (displayMode.isFullscreenToggle(input, process.platform)) {
+            if (input.key !== 'F11') event.preventDefault();
             toggleFullscreen(win);
         }
         if (process.platform !== 'darwin' && input.control && input.shift && !input.alt && !input.meta && input.key.toLowerCase() === 'o') {

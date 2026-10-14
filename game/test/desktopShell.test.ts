@@ -502,3 +502,32 @@ describe('user music folder', () => {
         expect(sessionPlaylistName('Root/x.mp3')).toBe('Root');
     });
 });
+
+describe('desktop/displayMode.cjs (fullscreen keys, GPU switches)', () => {
+    const dm = require('../desktop/displayMode.cjs') as {
+        isFullscreenToggle(input: Record<string, unknown>, platform: string): boolean;
+        gpuSwitches(platform: string, env?: Record<string, string>): string[][];
+        gpuLogLine(status: Record<string, string> | null, page: Record<string, string> | null): string;
+    };
+    const key = (k: string, mods: Record<string, boolean> = {}) => ({ type: 'keyDown', key: k, control: false, alt: false, meta: false, shift: false, ...mods });
+    it('F11, Alt+Enter and Ctrl+F (Cmd+F on macOS) toggle; repeats, key-ups and other chords do not', () => {
+        expect(dm.isFullscreenToggle(key('F11'), 'win32')).toBe(true);
+        expect(dm.isFullscreenToggle(key('Enter', { alt: true }), 'win32')).toBe(true);
+        expect(dm.isFullscreenToggle(key('f', { control: true }), 'win32')).toBe(true);
+        expect(dm.isFullscreenToggle(key('f', { control: true }), 'darwin')).toBe(false);
+        expect(dm.isFullscreenToggle(key('f', { meta: true }), 'darwin')).toBe(true);
+        expect(dm.isFullscreenToggle({ ...key('F11'), isAutoRepeat: true }, 'win32')).toBe(false);
+        expect(dm.isFullscreenToggle({ ...key('F11'), type: 'keyUp' }, 'win32')).toBe(false);
+        expect(dm.isFullscreenToggle(key('F11', { shift: true }), 'linux')).toBe(false);
+        expect(dm.isFullscreenToggle(key('Enter'), 'linux')).toBe(false);
+    });
+    it('Windows ignores the GPU blocklist and uses ANGLE D3D11 unless told otherwise; other platforms add nothing', () => {
+        expect(dm.gpuSwitches('win32', {})).toEqual([['ignore-gpu-blocklist'], ['use-angle', 'd3d11']]);
+        expect(dm.gpuSwitches('win32', { DWU_GPU_BLOCKLIST: '1', DWU_USE_ANGLE: 'gl' })).toEqual([['use-angle', 'gl']]);
+        expect(dm.gpuSwitches('win32', { DWU_USE_ANGLE: 'bogus;--x' })).toEqual([['ignore-gpu-blocklist']]);
+        expect(dm.gpuSwitches('linux', {})).toEqual([]);
+        const line = dm.gpuLogLine({ webgl: 'enabled', webgl2: 'unavailable_off' }, { renderer: 'canvas', webgl: 'none' });
+        expect(line).toContain('webgl2=unavailable_off');
+        expect(line).toContain('page renderer=canvas webgl=none');
+    });
+});

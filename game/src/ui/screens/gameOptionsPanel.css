@@ -46,3 +46,8 @@
 .go-body .go-mode-panel {
     background: rgba(192, 0, 128, 0.5);
 }
+/* Ours: the no-WebGL notice under the bottom buttons (rendererInfo.ts). */
+.go-body .go-renderer-notice {
+    color: rgb(255, 170, 90);
+    white-space: nowrap;
+}

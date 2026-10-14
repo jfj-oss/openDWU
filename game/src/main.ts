@@ -4,6 +4,7 @@
 // install folder by the desktop shell; under `npm run dev` a public symlink
 // plus the probe middleware in vite.config.ts does the same).
 
+import { recordRenderer } from './render/rendererInfo';
 import { fogOf } from './render/fog';
 import { goToMessage, messageGoToTarget } from './ui/messageGoto';
 import { Application } from 'pixi.js';
@@ -761,6 +762,7 @@ export async function startGameView(
         antialias: true,
         preference: rendererPreference(),
     });
+    recordRenderer(app);
     initOutputDither(app);
     initFrameLimiter(app); // [gameoptions]
     document.body.appendChild(app.canvas);
@@ -2220,6 +2222,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
         antialias: true,
         preference: rendererPreference(),
     });
+    recordRenderer(app);
     initOutputDither(app);
     initFrameLimiter(app); // [gameoptions]
     document.body.appendChild(app.canvas);

@@ -70,7 +70,7 @@ function walkFiles(dir, base = dir, out = []) {
 
 const sameBytes = (a, b) => fs.statSync(a).size === fs.statSync(b).size && fs.readFileSync(a).equals(fs.readFileSync(b));
 
-/** dist/ may hold only the game code, the repo's scenarios/ and our own public/art/ (byte-identical to the repo's). */
+/** dist/ may hold only the game code, the repo's scenarios/ and our own public/art/ + public/fonts/ (byte-identical to the repo's). */
 function guardDist(distDir) {
     const problems = [];
     for (const f of walkFiles(distDir)) {
@@ -81,7 +81,7 @@ function guardDist(distDir) {
             const src = path.join(root, 'scenarios', f.rel.slice('assets/scenarios/'.length));
             if (fs.existsSync(src) && sameBytes(src, f.abs)) continue;
         }
-        if (f.rel.startsWith('art/')) {
+        if (f.rel.startsWith('art/') || f.rel.startsWith('fonts/')) {
             const src = path.join(root, 'public', f.rel);
             if (fs.existsSync(src) && sameBytes(src, f.abs)) continue;
         }
@@ -139,6 +139,9 @@ function scanAgainstInstall(outDir, install) {
     let n = 0;
     for (const f of walkFiles(outDir)) {
         if (f.link) continue;
+        // Bundled on purpose: the original's UI font (Ray Larabie freeware, public/fonts/forgotten-futurist/README.txt),
+        // which a stock install has only inside DistantWorlds.exe (the developer's install also has the TTFs).
+        if (/(^|\/)fonts\/forgotten-futurist\//.test(f.rel)) continue;
         n++;
         const cands = bySize.get(fs.statSync(f.abs).size);
         if (!cands) continue;

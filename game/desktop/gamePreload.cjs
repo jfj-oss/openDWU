@@ -1,4 +1,5 @@
 // Preload for the game window: the shell calls the game makes. No Node APIs reach the page.
+// - fullscreen: Game Options' Fullscreen checkbox (get / set / onChange); reportRenderer: the renderer for the log.
 // - checkForUpdates: the main menu's Check for Updates runs the same check as the shell menu's "Check for Updates…",
 //   with its dialogs.
 // - simProcess: the game's simulation in a process of its own (desktop/simProcess.cjs, src/simworker/simEndpoint.ts).
@@ -12,6 +13,10 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 const exitListeners = [];
+const fullscreenListeners = [];
+ipcRenderer.on('dwu:fullscreen-changed', (_event, on) => {
+    for (const cb of fullscreenListeners) cb(on === true);
+});
 const errorListeners = [];
 ipcRenderer.on('dwu:sim-port', (event, msg) => {
     if (msg && typeof msg.id === 'number' && event.ports.length === 1) window.postMessage({ dwuSimPort: msg.id }, '*', event.ports);
@@ -38,6 +43,16 @@ contextBridge.exposeInMainWorld('dwuDesktop', {
         mapPort: () => ipcRenderer.invoke('dwu:net-map-port'),
     },
     checkForUpdates: () => ipcRenderer.invoke('dwu:check-updates'),
+    // Game Options → Fullscreen (desktop/displayMode.cjs; F11 / Alt+Enter toggle it too; remembered in config.json).
+    fullscreen: {
+        get: () => ipcRenderer.invoke('dwu:fullscreen-get'),
+        set: (on) => ipcRenderer.invoke('dwu:fullscreen-set', on === true),
+        onChange: (cb) => {
+            if (typeof cb === 'function') fullscreenListeners.push(cb);
+        },
+    },
+    // The page's renderer for the log (Pixi renderer name, WebGL renderer string).
+    reportRenderer: (info) => ipcRenderer.send('dwu:report-renderer', { renderer: String(info?.renderer ?? ''), webgl: String(info?.webgl ?? ''), gpu: String(info?.gpu ?? '') }),
     // Options → Music & Mood: open the user-data Music folder (desktop/userMusic.cjs) in the file manager.
     openMusicFolder: () => ipcRenderer.invoke('dwu:open-music-folder'),
     simProcess: {

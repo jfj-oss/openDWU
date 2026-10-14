@@ -68,6 +68,11 @@ function measureInPage(scopeSel) {
     const hasOwnText = (el) => [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim() !== '') || ['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(el.tagName);
     const all = [...scope.querySelectorAll('*')].filter((el) => !['CANVAS', 'svg', 'path', 'IMG', 'OPTION', 'STYLE', 'SCRIPT'].includes(el.tagName) && vis(el));
     const textEls = all.filter(hasOwnText);
+    // Inside a scrolled-away / closed part (a list row below the fold, a closed <details>): not visible, not measured.
+    const inScrollerLate = (el) => {
+        for (let a = el.parentElement; a && a !== scope; a = a.parentElement) if (a.tagName === 'DETAILS' && !a.open) return true;
+        return false;
+    };
     const overflow = [];
     const lightBg = [];
     const fonts = {};
@@ -80,7 +85,7 @@ function measureInPage(scopeSel) {
         const sx = cs.overflowX === 'auto' || cs.overflowX === 'scroll';
         const sy = cs.overflowY === 'auto' || cs.overflowY === 'scroll';
         const ellipsis = cs.textOverflow === 'ellipsis';
-        if (el.clientWidth > 0 && ((ow > 2 && !sx) || (oh > 3 && !sy && el.tagName !== 'SELECT' && el.tagName !== 'INPUT'))) {
+        if (el.clientWidth > 0 && !inScrollerLate(el) && ((ow > 2 && !sx) || (oh > 3 && !sy && el.tagName !== 'SELECT' && el.tagName !== 'INPUT'))) {
             overflow.push({ el: desc(el), dx: ow, dy: oh, clip: cs.overflowX !== 'visible' || cs.overflowY !== 'visible', ellipsis });
         }
         const m = cs.backgroundColor.match(/rgba?\(([\d.]+), ([\d.]+), ([\d.]+)(?:, ([\d.]+))?\)/);
@@ -115,10 +120,18 @@ function measureInPage(scopeSel) {
     // Outside the window (only when the scope is a window) or outside the viewport.
     const outside = [];
     const bound = scope === document.body ? { left: 0, top: 0, right: innerWidth, bottom: innerHeight } : sr;
+    const inScroller = (el) => {
+        for (let a = el.parentElement; a && a !== scope; a = a.parentElement) {
+            const cs = getComputedStyle(a);
+            if (/(auto|scroll)/.test(cs.overflowX + cs.overflowY)) return true;
+            if (a.tagName === 'DETAILS' && !a.open) return true;
+        }
+        return false;
+    };
     for (const el of textEls) {
         const r = el.getBoundingClientRect();
         const d = Math.max(bound.left - r.left, bound.top - r.top, r.right - bound.right, r.bottom - bound.bottom);
-        if (d > 3) outside.push({ el: desc(el), by: Math.round(d) });
+        if (d > 3 && !inScroller(el)) outside.push({ el: desc(el), by: Math.round(d) });
     }
     const ff = [...document.fonts].filter((f) => f.family.replace(/["']/g, '') === 'Forgotten Futurist').map((f) => `${f.weight}:${f.status}`);
     return { scope: desc(scope).slice(0, 60), scopeRect: [Math.round(sr.left), Math.round(sr.top), Math.round(sr.width), Math.round(sr.height)], textEls: textEls.length, overflow, overlap, outside, lightBg, fonts, forgottenFuturistFaces: ff };

@@ -13,6 +13,27 @@
                 overflow: hidden;
                 background: #000;
             }
+            /* Dark defaults for every form control, list box, option and scroll bar the game does not style itself
+               (Chromium's light defaults drew white boxes behind text, notably on Linux). */
+            html {
+                color-scheme: dark;
+            }
+            /* Game text is not page text: a double-click (opening a detail screen) or a drag must not paint the
+               browser's white / blue selection behind it. Inputs and the few copyable texts opt back in. */
+            body {
+                -webkit-user-select: none;
+                user-select: none;
+            }
+            input,
+            textarea,
+            [contenteditable='true'] {
+                -webkit-user-select: text;
+                user-select: text;
+            }
+            ::selection {
+                background: rgba(70, 110, 180, 0.55);
+                color: inherit;
+            }
             canvas {
                 display: block;
             }

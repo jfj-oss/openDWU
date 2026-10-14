@@ -263,7 +263,8 @@ function themeManifest(): Plugin {
 }
 
 /**
- * Copy our own art (public/art/, e.g. the Ossuvan herders' portrait: src/ui/empireEmblem.ts) into dist/art/ after build:
+ * Copy our own art (public/art/, e.g. the Ossuvan herders' portrait: src/ui/empireEmblem.ts) into dist/art/ and the
+ * bundled fonts (public/fonts/) into dist/fonts/ after build:
  * copyPublicDir is off (see header), so without this the desktop shell answers /art/... with 404. Never the install.
  */
 function copyOwnArt(): Plugin {
@@ -271,9 +272,13 @@ function copyOwnArt(): Plugin {
         name: 'copy-own-art',
         apply: 'build',
         closeBundle() {
-            const src = path.join(here, 'public', 'art');
-            if (!existsSync(src) || !existsSync(path.join(here, 'dist'))) return;
-            cpSync(src, path.join(here, 'dist', 'art'), { recursive: true, dereference: false });
+            if (!existsSync(path.join(here, 'dist'))) return;
+            // public/fonts/ too (the bundled Forgotten Futurist and Source Serif 4): without it the packaged app fell
+            // back to Arial / the system serif.
+            for (const dir of ['art', 'fonts']) {
+                const src = path.join(here, 'public', dir);
+                if (existsSync(src)) cpSync(src, path.join(here, 'dist', dir), { recursive: true, dereference: false });
+            }
         },
     };
 }
