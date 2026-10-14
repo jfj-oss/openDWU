@@ -90,7 +90,11 @@ describe('Cult: forced conversion on seed 1', () => {
     it('spread: a converted character converts a co-located character at cultSpreadPct (forced 100%)', () => {
         const st = cultState(g);
         const [empireA] = normalEmpires(g);
-        const other = generateNewCharacter(g, empireA, CharacterRole.ShipCaptain, governor.location).character;
+        // A birth at a cult-held colony starts converted 25% of the time (onCharacterCreated), so draw until one is not.
+        let other = generateNewCharacter(g, empireA, CharacterRole.ShipCaptain, governor.location).character;
+        for (let i = 0; i < 30 && other !== undefined && st.converted.some((r) => r.character === other); i++) {
+            other = generateNewCharacter(g, empireA, CharacterRole.ShipCaptain, governor.location).character;
+        }
         expect(other).toBeDefined();
         expect(st.converted.some((r) => r.character === other)).toBe(false);
         cultSpread(g, st);

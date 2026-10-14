@@ -61,7 +61,7 @@ describe('ParityAudit on a short run', () => {
         expect(JSON.stringify(audit.rows())).toBe(rows);
         expect(audit.samples).toBe(6);
         const present = new Set(audit.rows().filter((r) => r.present).map((r) => r.system));
-        for (const s of ['Internal security (19m)', 'War goals (19g-3)', 'Crises (19d2)', 'Rim herders (19j)', 'Independents (19k)']) expect(present.has(s), s).toBe(true);
+        for (const s of ['Internal security (19m)', 'War goals (19g-3)', 'Rim herders (19j)', 'Independents (19k)']) expect(present.has(s), s).toBe(true);
         // The event log is read too.
         expect([...audit.eventSources.values()].reduce((a, b) => a + b, 0)).toBeGreaterThan(0);
         // Every answered decision in the history is counted once, in its column.

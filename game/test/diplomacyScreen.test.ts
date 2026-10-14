@@ -28,7 +28,7 @@ import type { Galaxy } from '../src/sim/galaxy';
 // only the pure row / label logic (task 15a). Empire ids start at 1:
 // DiplomaticRelationList.byEmpire indexes by empireId - 1.
 
-const galaxy = { aggressionLevel: 1, independentEmpire: null, scenario: null } as unknown as Galaxy;
+const galaxy = { aggressionLevel: 1, independentEmpire: null, scenario: null, empires: [] } as unknown as Galaxy;
 function fake(id: number, name: string, extra: Record<string, unknown> = {}): Empire {
     const proposed = new DiplomaticRelationList();
     proposed.invertEmpireIndexing = true;
@@ -123,7 +123,7 @@ describe('relationshipFactors (task 15a)', () => {
     });
 
     it('scales with aggression level', () => {
-        const g2 = { aggressionLevel: 2, independentEmpire: null } as unknown as Galaxy;
+        const g2 = { aggressionLevel: 2, independentEmpire: null, empires: [] } as unknown as Galaxy;
         const player = fake(10, 'Player', { galaxy: g2 });
         const other = fake(1, 'Other');
         const ev = evalOf(other, player, g2);

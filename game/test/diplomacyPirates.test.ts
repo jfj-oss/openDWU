@@ -30,7 +30,7 @@ beforeAll(async () => {
     gameData = await loadGameDataFs();
 }, 120000);
 
-const galaxy = { aggressionLevel: 1, independentEmpire: null, scenario: null } as unknown as Galaxy;
+const galaxy = { aggressionLevel: 1, independentEmpire: null, scenario: null, empires: [] } as unknown as Galaxy;
 function fake(id: number, name: string, extra: Record<string, unknown> = {}): Empire {
     const proposed = new DiplomaticRelationList();
     proposed.invertEmpireIndexing = true;

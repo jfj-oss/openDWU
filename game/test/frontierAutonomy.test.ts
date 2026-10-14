@@ -77,7 +77,6 @@ const ALL_OFF: Record<string, boolean> = {
     internalSecurity: false,
     internalPolitics: false,
     livingCharacters: false,
-    resourceCrises: false,
     espionageConsequences: false,
     refugees: false,
     rimFauna: false,
