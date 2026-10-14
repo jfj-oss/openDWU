@@ -893,7 +893,7 @@ export function genShipsKnownSites(galaxy: Galaxy, empire: Empire): KnownThreatS
     if (st === null || st.worldShip === null || st.phase === 'settled' || st.phase === 'ended') return [];
     const level = st.knowledge.find((k) => k.empireId === empire.empireId)?.level ?? 0;
     if (level <= 0) return [];
-    return [{ threat: GEN_SHIPS_KEY, kind: 'ship', target: st.worldShip, level, label: scenarioText(`${TAG} Site Row ${flavourText(st)}`) }];
+    return [{ threat: GEN_SHIPS_KEY, kind: 'ship', target: st.worldShip, level, site: st, label: scenarioText(`${TAG} Site Row ${flavourText(st)}`) }];
 }
 
 // ---------------------------------------------------------------------------------------------------------------

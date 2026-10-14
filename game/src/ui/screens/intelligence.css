@@ -147,45 +147,32 @@
     padding-right: 6px;
 }
 
-/* Internal security (19m) leads table. */
-.ch-security {
-    position: absolute;
-    overflow-y: auto;
+/* Threats & Leads section (threat add-ons / 19m internal security): replaces the list / summary / mission area. */
+.ch-body.ch-threats-on > :not(.ch-keep) {
+    display: none !important;
 }
-.ch-sec-table {
-    display: grid;
-    grid-template-columns: 110px 170px 70px 90px 1fr auto;
-    font-size: 14px;
-    color: rgb(170, 170, 170);
+.ch-body:not(.ch-threats-on) > .ch-threats {
+    display: none;
 }
-.ch-sec-row {
-    display: contents;
-}
-.ch-sec-row > span {
-    padding: 4px 6px;
-    background: rgb(32, 32, 40);
+.ch-threat-actions {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
 }
-.ch-sec-row:nth-child(odd) > span {
-    background: rgb(48, 48, 56);
-}
-.ch-sec-head > span {
-    background: rgb(24, 24, 24) !important;
-}
-.ch-sec-actions .ow-glass {
+.ch-threat-actions .ow-glass {
     position: relative;
+    height: 26px;
+    padding: 0 10px;
+}
+.ch-threat-actions .ow-select {
+    position: static;
     height: 24px;
-    padding: 0 8px;
+    min-width: 160px;
 }
-.ch-sec-actions .ow-select {
-    height: 22px;
-}
-.ch-lead-high > span {
+.ch-lead-confirmed .ow-grid-cell {
     color: rgb(255, 128, 96);
 }
-.ch-lead-closed > span {
+.ch-lead-closed .ow-grid-cell {
     opacity: 0.55;
 }
 

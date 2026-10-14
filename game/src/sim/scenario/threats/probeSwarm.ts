@@ -541,7 +541,7 @@ export function probeSwarmKnownSites(galaxy: Galaxy, empire: Empire): KnownThrea
     if (st === null || st.phase !== 'active' || st.mothercore === null) return [];
     const level = knowledgeLevel(st, empire);
     if (level <= 0) return [];
-    return [{ threat: PROBE_SWARM_KEY, kind: 'ship', target: st.mothercore, level, label: scenarioText(`${TAG} Site Row`) }];
+    return [{ threat: PROBE_SWARM_KEY, kind: 'ship', target: st.mothercore, level, site: st, label: scenarioText(`${TAG} Site Row`) }];
 }
 
 // ---------------------------------------------------------------------------------------------------------------

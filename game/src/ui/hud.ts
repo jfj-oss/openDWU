@@ -112,8 +112,6 @@ import type { Creature } from '../sim/creature';
 import { Fighter } from '../sim/combat/fighters';
 import { localViewerEmpire } from '../localViewer';
 import { interceptStrip } from './interceptSlots';
-import { toggleDietScreen } from './screens/dietScreen'; // [charactersVictory]
-import { dietOn } from '../sim/scenario/charactersVictory/diet/dietState'; // [charactersVictory]
 
 // Port of Main.Part12.cs LoadUiChromeButtons (381–520): the control → chrome
 // button image mapping. The original loads each control's image from
@@ -1177,8 +1175,8 @@ export const TOP_MORE_ITEMS: readonly { key: string; label: string }[] = [
     { key: 'gameOptions', label: 'Game Options (O)' },
     { key: 'advisor', label: 'Talk to your admiral (K)' },
     { key: 'shortcuts', label: 'Keyboard shortcuts (?)' },
-    // [charactersVictory] the Interstellar Diet: listed only while it runs (no top-bar button of its own; Diplomacy has one too).
-    { key: 'diet', label: 'The Interstellar Diet' },
+    // [charactersVictory] the Interstellar Diet is opened from the Diplomacy screen's Diet block (no HUD entry: menu audit,
+    // docs/addon-ui-inventory.md).
 ];
 
 function runTopMoreItem(key: string, wiring: HudWiring): void {
@@ -1208,9 +1206,6 @@ function runTopMoreItem(key: string, wiring: HudWiring): void {
         case 'advisor':
             if (src) toggleAdvisorPanel({ galaxy: src.empire.galaxy, player: src.empire });
             return;
-        case 'diet':
-            if (wiring.galaxy && src) toggleDietScreen(wiring.galaxy, src.empire);
-            return;
         case 'shortcuts':
             // The "?" overlay belongs to main.ts's key handler.
             window.dispatchEvent(new KeyboardEvent('keydown', { key: '?' }));
@@ -1221,7 +1216,7 @@ function runTopMoreItem(key: string, wiring: HudWiring): void {
 function buildTopMoreButton(wiring: HudWiring): HTMLElement {
     const wrap = document.createElement('div');
     wrap.className = 'top-more';
-    const btn = topGlass('top-btn top-more-btn', [false, false, true, true], 'More screens: Galaxy Map, Empires, Game Options, Advisor, Keyboard shortcuts (and the Interstellar Diet while it runs)');
+    const btn = topGlass('top-btn top-more-btn', [false, false, true, true], 'More screens: Galaxy Map, Empires, Game Options, Advisor, Keyboard shortcuts');
     btn.textContent = '•••';
     btn.style.width = '100%';
     btn.style.height = '100%';
@@ -1230,13 +1225,6 @@ function buildTopMoreButton(wiring: HudWiring): HTMLElement {
     menu.hidden = true;
     for (const item of TOP_MORE_ITEMS) {
         const row = toolStripItem(item.label, { tag: 'button', className: 'top-more-item' });
-        if (item.key === 'diet') {
-            const sync = (): void => {
-                row.style.display = dietOn(wiring.galaxy ?? null) ? '' : 'none';
-            };
-            sync();
-            whileInDocument(row, sync, 2000);
-        }
         row.addEventListener('click', (e) => {
             e.stopPropagation();
             menu.hidden = true;

@@ -1,5 +1,5 @@
 // [charactersVictory] The Interstellar Diet window (docs/CHARACTERS_AND_VICTORY.md §7, §9): one original-style
-// ScreenPanel from the top bar with three tabs — Session (the motions with their effects and projected result, our
+// ScreenPanel (opened from the Diplomacy screen's Diet block) with three tabs — Session (the motions with their effects and projected result, our
 // vote, the Regent's veto, our delegate, proposing), In force (measures, sanctions, enforcer fleets, past votes) and
 // Members (weights, delegates and their presence). Every action is a journaled player command (multiplayer-safe).
 

@@ -1121,13 +1121,13 @@ export function darkFarmsKnownSites(galaxy: Galaxy, empire: Empire): KnownThreat
         if (f.state === 'dead') continue;
         const level = f.state === 'turned' ? KNOWLEDGE_CONFIRMED : knowledgeLevel(f, empire);
         if (level <= 0) continue;
-        out.push({ threat: DARK_FARMS_KEY, kind: 'colony', target: f.habitat, level, label: scenarioText(level >= KNOWLEDGE_CONFIRMED ? `${TAG} Farm Confirmed Row` : `${TAG} Farm Suspected Row`) });
+        out.push({ threat: DARK_FARMS_KEY, kind: 'colony', target: f.habitat, level, site: f, label: scenarioText(level >= KNOWLEDGE_CONFIRMED ? `${TAG} Farm Confirmed Row` : `${TAG} Farm Suspected Row`) });
     }
     for (const s of st.sleepers) {
         if (s.bo.hasBeenDestroyed) continue;
         const level = knowledgeLevel(s, empire);
         if (level <= 0) continue;
-        out.push({ threat: DARK_FARMS_KEY, kind: 'ship', target: s.bo, level, label: scenarioText(`${TAG} Sleeper Role`) });
+        out.push({ threat: DARK_FARMS_KEY, kind: 'ship', target: s.bo, level, site: s, label: scenarioText(`${TAG} Sleeper Role`) });
     }
     return out;
 }

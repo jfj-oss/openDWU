@@ -1479,7 +1479,7 @@ export function exchangeKnownSites(galaxy: Galaxy, empire: Empire): KnownThreatS
     if (st === null || st.station === null) return [];
     const level = knowledgeLevel(st.station, empire);
     if (level <= 0) return [];
-    return [{ threat: EXCHANGE_KEY, kind: 'ship', target: st.station.bo, level, label: scenarioText(level >= KNOWLEDGE_CONFIRMED ? `${TAG} Confirmed Row` : `${TAG} Suspected Row`) }];
+    return [{ threat: EXCHANGE_KEY, kind: 'ship', target: st.station.bo, level, site: st.station, label: scenarioText(level >= KNOWLEDGE_CONFIRMED ? `${TAG} Confirmed Row` : `${TAG} Suspected Row`) }];
 }
 
 // ---------------------------------------------------------------------------------------------------------------

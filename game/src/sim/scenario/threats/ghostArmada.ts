@@ -302,7 +302,7 @@ export function ghostArmadaKnownSites(galaxy: Galaxy, empire: Empire): KnownThre
         if (!r.faction.active || r.field === null) continue;
         const level = r.knowledge.find((k) => k.empireId === empire.empireId)?.level ?? 0;
         if (level <= 0) continue;
-        out.push({ threat: GHOST_ARMADA_KEY, kind: 'colony', target: r.field, level, label: scenarioText(`${TAG} Field Row`) });
+        out.push({ threat: GHOST_ARMADA_KEY, kind: 'colony', target: r.field, level, site: r, label: scenarioText(`${TAG} Field Row`) });
     }
     return out;
 }

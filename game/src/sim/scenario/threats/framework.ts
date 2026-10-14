@@ -111,6 +111,9 @@ export interface KnownThreatSite {
     level: number;
     /** Display label (e.g. "Dark Farm (suspected)"). */
     label: string;
+    /** The knowledge-carrying record behind the row (when the level comes from it): the Intelligence screen's
+     *  "found" date and the framework investigation (threats/investigate.ts) read / raise it. */
+    site?: ThreatSite;
 }
 
 type KnownSitesProvider = (galaxy: Galaxy, empire: Empire) => KnownThreatSite[];
@@ -176,6 +179,15 @@ function threatRegistry(): Map<string, ThreatRegistration> {
  */
 export function registerThreatExistence(key: string, flag: string): void {
     threatRegistry().set(key, { key, flag });
+}
+
+/** True when any registered threat add-on's flag is on (the Intelligence screen's threats section, the framework
+ *  investigation). Pure. */
+export function threatAddonOn(galaxy: Galaxy): boolean {
+    const s = galaxy.scenario;
+    if (s === null) return false;
+    for (const r of threatRegistry().values()) if (s.flags[r.flag] === true) return true;
+    return false;
 }
 
 function threatExistChancePctFor(galaxy: Galaxy, key: string): number {

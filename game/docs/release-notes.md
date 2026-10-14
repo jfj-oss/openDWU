@@ -4,6 +4,17 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **Threats & Leads (Characters / Intelligence screen):** with any Galactic Threat add-on or Internal Security on, a
+  **Threats & Leads** button under the Galactopedia link switches the screen to a list of every threat site and
+  security lead your empire knows: what it is, where, suspected or confirmed, when it was found and what is being done.
+  **Go to** (or a double-click) centres the map on it; **Investigate** puts one of your idle or counter-intelligence
+  agents on a suspected site for about three months — it now works without Internal Security too, and a successful
+  investigation confirms the site. With Internal Security on, confirmed leads also offer its arrest / exile / purge /
+  amnesty / quarantine / martial law / recall fleet / scrap ship actions here. The separate Internal Security window
+  and its link are gone (everything it did is in this section).
+- **Fewer add-on menus:** the Interstellar Diet is no longer in the top bar's ••• menu (open it from the Diplomacy
+  screen's Diet block). `docs/addon-ui-inventory.md` lists every add-on window, tab, link and HUD extra with the merges
+  proposed next.
 - **Local model fix (desktop app):** Ollama refused every request from the app (it rejects the app's `dwu://` page
   origin with 403), so Refresh, Test and all local-model features failed unless `OLLAMA_ORIGINS` was set. The app now
   allows its requests to model servers on this machine (localhost only); no Ollama setup is needed.

@@ -45,6 +45,7 @@ import {
     stabilityLedger,
     startInvestigation,
 } from '../src/sim/scenario/security/security';
+import { threatLeadRows, threatsSectionVisible } from '../src/ui/internalSecurityView';
 
 let base: GameData;
 beforeAll(async () => {
@@ -142,6 +143,10 @@ describe('1. stability ledger', () => {
         expect(scenarioQuery(g, 'colonyRevoltApproval', v, { habitat: colony, leaveThreshold: -1e9 })).toBe(v);
         const gov = registerHiddenThing(g, { kind: 'hiveNode', concealment: 1, empire: e, target: colony, package: 'test' })!;
         const lead = setLeadLevel(g, gov, e, 'confirmed', 'roll')!;
+        // The Intelligence screen's Threats & Leads section offers the lead's actions and Go to.
+        const row = threatLeadRows(g, e).find((r) => r.key === lead)!;
+        expect([row.certainty, row.goTo === colony, row.investigate, row.closed]).toEqual(['confirmed', true, null, false]);
+        expect(row.actions.map((x) => x.action)).toContain('martialLaw');
         expect(runPlayerCommand(g, e, 'securityAction', ['martialLaw', lead.id])).toEqual({ ok: true });
         const l = colonyLedger(g, colony);
         expect(l.entries.find((x) => x.cause === 'martialLaw')!.value).toBe(-8);
@@ -202,6 +207,9 @@ describe('3. investigations and actions', () => {
         const c = nonLeader(e);
         const thing = registerHiddenThing(g, { kind: 'plot', concealment: 1, empire: e, target: c, package: 'test' })!;
         let lead = setLeadLevel(g, thing, e, 'suspected', 'roll')!;
+        expect(threatsSectionVisible(g)).toBe(true);
+        const row = threatLeadRows(g, e).find((r) => r.key === lead)!;
+        expect([row.certainty, row.where, row.investigate]).toEqual(['suspected', c.name, { kind: 'lead', leadId: lead.id }]);
         for (let i = 0; i < 20 && lead.level !== 'confirmed'; i++) {
             if (lead.level === 'cleared') lead = setLeadLevel(g, thing, e, 'suspected', 'investigation') ?? lead;
             expect(runPlayerCommand(g, e, 'securityInvestigate', [lead.id, agent])).toEqual({ ok: true });

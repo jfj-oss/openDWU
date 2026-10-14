@@ -104,6 +104,7 @@ import { answerScenarioDecision, pendingScenarioDecisions } from '../scenario/de
 import { proposePeaceTerms } from '../scenario/lively/peaceTerms';
 import type { PeaceTerms } from '../scenario/lively/warGoals';
 import { runSecurityAction, startInvestigation, type SecurityActionName } from '../scenario/security/security';
+import { startThreatInvestigation } from '../scenario/threats/investigate';
 import { appointToSeat, type SeatName } from '../scenario/court/court';
 import { concedeSector, orderSector, type FrontierOrder } from '../scenario/frontier/frontier';
 import { proposeTie, startScheme, useHook, type ComplianceAct, type HookAction, type SchemeKind, type TieKind } from '../scenario/court/intrigue';
@@ -613,6 +614,10 @@ export const PLAYER_OPS = {
     /** An action a confirmed lead unlocks (arrest / exile / purge / amnesty / quarantine / martialLaw / recallFleet / scrapShip). */
     securityAction: (galaxy: Galaxy, empire: Empire, action: SecurityActionName, leadId: number) => runSecurityAction(galaxy, empire, action, leadId),
     // [security] end
+    // [threats] begin — framework site investigation (scenario/threats/investigate.ts; refuses unless a threat add-on is on)
+    /** "Investigate" a suspected threat site from the Intelligence screen's Threats & Leads section. */
+    threatInvestigate: (galaxy: Galaxy, empire: Empire, threat: string, target: Habitat | BuiltObject, agent: Character) => startThreatInvestigation(galaxy, empire, threat, target, agent),
+    // [threats] end
     // [court] begin — scenario 19n court & dynasties (scenario/court/court.ts; flag-gated inside)
     /** Appoint a character to a council seat (null vacates it). */
     courtAppoint: (galaxy: Galaxy, empire: Empire, seat: SeatName, character: Character | null) => appointToSeat(galaxy, empire, seat, character),

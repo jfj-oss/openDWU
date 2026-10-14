@@ -294,7 +294,7 @@ export function greyTideKnownSites(galaxy: Galaxy, empire: Empire): KnownThreatS
         if (n.state === 'dead') continue;
         const level = knowledgeLevel(n, empire);
         if (level <= 0) continue;
-        out.push({ threat: GREY_TIDE_KEY, kind: 'colony', target: n.habitat, level, label: scenarioText(`${TAG} Nest Row`) });
+        out.push({ threat: GREY_TIDE_KEY, kind: 'colony', target: n.habitat, level, site: n, label: scenarioText(`${TAG} Nest Row`) });
     }
     return out;
 }

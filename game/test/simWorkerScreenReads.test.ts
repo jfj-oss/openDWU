@@ -52,7 +52,7 @@ import {
 import { characterPublicEvents, resolveCharacterEventDescription } from '../src/ui/screens/characterEventText';
 import { politicsDetail, politicsRowCells } from '../src/ui/emergentPolitics';
 import { courtDetail, courtSummaryRows } from '../src/ui/courtView';
-import { investigatorOptions, leadRows } from '../src/ui/internalSecurityView';
+import { investigatorOptions, leadRows, threatInvestigatorOptions, threatLeadRows } from '../src/ui/internalSecurityView';
 import { leagueListRows } from '../src/ui/leagueRows';
 
 let base: GameData;
@@ -110,6 +110,8 @@ describe('sim worker chunk 7: the screens read the replica without writing it', 
         courtSummaryRows(g, player);
         leadRows(g, player);
         investigatorOptions(g, player);
+        threatLeadRows(g, player);
+        threatInvestigatorOptions(g, player);
         for (const t of missionTargetEmpires(g, player)) {
             let f = withTargetEmpire(g, player, initialMissionForm(g, player), t);
             for (const ty of MISSION_TYPE_ORDER) {

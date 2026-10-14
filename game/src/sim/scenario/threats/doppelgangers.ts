@@ -290,7 +290,7 @@ export function doppelgangersKnownSites(galaxy: Galaxy, empire: Empire): KnownTh
         if (s.bo.hasBeenDestroyed) continue;
         const level = st.faction !== null ? KNOWLEDGE_CONFIRMED : knowledgeLevel(s, empire);
         if (level <= 0) continue;
-        out.push({ threat: DOPPELGANGERS_KEY, kind: 'ship', target: s.bo, level, label: scenarioText(level >= KNOWLEDGE_CONFIRMED ? `${TAG} Suspect Row` : `${TAG} Rumour Row`) });
+        out.push({ threat: DOPPELGANGERS_KEY, kind: 'ship', target: s.bo, level, site: s, label: scenarioText(level >= KNOWLEDGE_CONFIRMED ? `${TAG} Suspect Row` : `${TAG} Rumour Row`) });
     }
     return out;
 }

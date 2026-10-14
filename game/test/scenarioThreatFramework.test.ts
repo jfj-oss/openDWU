@@ -40,6 +40,11 @@ import { registerScenarioEvent, scenarioEmit, scenarioQuery } from '../src/sim/s
 import { genShipsPeriodic, genShipsState, peekGenShipsState } from '../src/sim/scenario/threats/generationShips';
 import { archiveCoresPeriodic, grantArchiveCore, peekArchiveCoresState } from '../src/sim/scenario/threats/archiveCores';
 import { peekProbeSwarmState, probeSwarmIncome, probeSwarmPeriodic, probeSwarmState } from '../src/sim/scenario/threats/probeSwarm';
+import { reviewThreatInvestigations, THREAT_INVESTIGATIONS_KEY } from '../src/sim/scenario/threats/investigate';
+import { runPlayerCommand } from '../src/sim/player/playerCommands';
+import { threatLeadRows, threatsSectionVisible } from '../src/ui/internalSecurityView';
+import { CharacterRole, getEmpireCharacters } from '../src/sim/characters';
+import { galaxyStarDate } from '../src/sim/tick/simTime';
 
 let base: GameData;
 beforeAll(async () => {
@@ -162,6 +167,59 @@ describe('threat framework', () => {
         expect(runThreatAction(g, g.empires[1], 'zzTest.act', colony)).toBe(false);
         expect(ran).toBe(1);
         registerThreatAction('zzTest.act', { label: () => '', available: () => false, run: () => false });
+    }, 600000);
+});
+
+describe('threat framework: Intelligence screen Threats & Leads section + site investigation', () => {
+    it('lists known sites; Investigate (an agent, recorded command) confirms a suspected site without Internal Security; refused with no threat add-on', () => {
+        const g = cachedTickGame(base).galaxy;
+        const player = g.playerEmpire!;
+        expect(threatsSectionVisible(g)).toBe(false); // no scenario
+        expect(threatLeadRows(g, player)).toEqual([]);
+        scenarioOn(g);
+        const colony = player.colonies[0];
+        const site: ThreatSite = { knowledge: [] };
+        registerThreatExistence('zzInv', 'zzInvFlag');
+        registerThreatKnownSites('zzInv', (_g, e) => [{ threat: 'zzInv', kind: 'colony', target: colony, level: knowledgeLevel(site, e), site, label: 'Nest' }]);
+        revealTo(g, site, player, 2);
+        const agent = getEmpireCharacters(player).find((c) => c.role === CharacterRole.IntelligenceAgent && c.active)!;
+        expect(agent === undefined).toBe(false);
+        agent.mission = null;
+        // Flag off: no section, the command refuses.
+        expect(threatsSectionVisible(g)).toBe(false);
+        expect(runPlayerCommand(g, player, 'threatInvestigate', ['zzInv', colony, agent])).toEqual({ ok: false, reason: 'No galactic threats' });
+        g.scenario!.flags.zzInvFlag = true;
+        expect(threatsSectionVisible(g)).toBe(true);
+        let row = threatLeadRows(g, player).find((r) => r.key === colony)!;
+        // (Field by field: a failing diff of a Habitat would print the whole galaxy graph.)
+        expect([row.what, row.where, row.certainty, row.goTo === colony, row.investigate?.kind, row.investigate?.kind === 'site' && row.investigate.target === colony]).toEqual(['Nest', colony.name, 'suspected', true, 'site', true]);
+        expect(row.found).not.toBe('');
+        expect(g.scenario!.state[THREAT_INVESTIGATIONS_KEY]).toBeUndefined(); // no state until an investigation starts
+        expect(runPlayerCommand(g, player, 'threatInvestigate', ['zzInv', colony, agent])).toEqual({ ok: true });
+        expect(runPlayerCommand(g, player, 'threatInvestigate', ['zzInv', colony, agent])).toEqual({ ok: false, reason: 'Already under investigation' });
+        row = threatLeadRows(g, player).find((r) => r.key === colony)!;
+        expect(row.status).toBe(`Investigating (${agent.name})`);
+        expect(row.investigate).toBeNull();
+        // Not due yet: nothing drawn.
+        const draws = g.rnd.drawCount;
+        reviewThreatInvestigations(g);
+        expect(g.rnd.drawCount).toBe(draws);
+        const st = g.scenario!.state[THREAT_INVESTIGATIONS_KEY] as { list: { due: number }[] };
+        // Due: one roll each (chance 1.5 × skill / (skill + 60)); an inconclusive one may be retried.
+        for (let i = 0; i < 40 && knowledgeLevel(site, player) < 3; i++) {
+            if (st.list.length === 0) expect(runPlayerCommand(g, player, 'threatInvestigate', ['zzInv', colony, agent])).toEqual({ ok: true });
+            st.list[0].due = galaxyStarDate(g);
+            const before = g.rnd.drawCount;
+            reviewThreatInvestigations(g);
+            expect(g.rnd.drawCount).toBe(before + 1);
+        }
+        expect(st.list).toEqual([]);
+        expect(knowledgeLevel(site, player)).toBe(3);
+        expect(empireMessages(player).at(-1)!.title).toBe('Threat confirmed');
+        row = threatLeadRows(g, player).find((r) => r.key === colony)!;
+        expect([row.certainty, row.investigate]).toEqual(['confirmed', null]);
+        registerThreatKnownSites('zzInv', () => []);
+        g.scenario!.flags.zzInvFlag = false;
     }, 600000);
 });
 

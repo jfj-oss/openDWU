@@ -35,6 +35,7 @@ import {
     openOriginalWindow,
     place,
     scrollPanel,
+    setButtonLabel,
     setText,
     text,
     type GridColumn,
@@ -95,7 +96,7 @@ import { politicsDetail, politicsRowCells, politicsVisible } from '../emergentPo
 import { cvCharacterDetail, cvTaskText } from '../scenario/charactersVictoryUi'; // [charactersVictory]
 import { courtDetail } from '../courtView'; // [court]
 import type { SeatName } from '../../sim/scenario/court/court'; // [court]
-import { investigatorOptions, leadRows, securityVisible } from '../internalSecurityView'; // [security]
+import { threatInvestigatorOptions, threatLeadRows, threatsSectionVisible, type ThreatLeadRow } from '../internalSecurityView'; // [threats]
 import { landscapeImageUrl } from '../landscapeImages';
 
 const MT = IntelligenceMissionType;
@@ -942,7 +943,6 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
     const galaxy = player.galaxy as Galaxy;
     let timer = 0;
     let historyWin: OriginalWindow | null = null;
-    let securityWin: OriginalWindow | null = null;
     const win = openOriginalWindow({
         id: 'characters',
         title: T('Characters'),
@@ -952,7 +952,6 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
         onClose: () => {
             window.clearInterval(timer);
             historyWin?.close(); // method_426 → method_663
-            securityWin?.close();
             open = null;
         },
     });
@@ -996,12 +995,23 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
     body.appendChild(place(dismissBtn, 595, 8, 90, 30));
     const historyBtn = glassButton(T('Show Event History'), { onClick: () => openHistory(selected) });
     body.appendChild(place(historyBtn, 689, 8, 146, 30));
-    const showSecurity = securityVisible(galaxy); // [security]
+    const showThreats = threatsSectionVisible(galaxy); // [threats]
     const learn = linkLabel(T('Learn about Characters') + '...', () => openGalactopedia({ topic: T('Characters') }));
-    body.appendChild(place(learn, 840, showSecurity ? 2 : 12, 160, 21));
-    // [security] begin — 19m internal security: the leads table in its own window (flag on only)
-    if (showSecurity) body.appendChild(place(linkLabel('Internal Security...', () => openSecurity()), 840, 21, 160, 21));
-    // [security] end
+    learn.classList.add('ch-keep');
+    body.appendChild(place(learn, 840, showThreats ? 0 : 12, 160, 21));
+    // [threats] begin — the Threats & Leads section (threat add-ons / Internal Security on only): a toggle under the
+    // link switches this screen between the characters and the known threat sites / 19m leads (no extra window).
+    let threatsOn = false;
+    const threatsBtn = showThreats
+        ? glassButton('Threats & Leads', {
+              size: FONT.small,
+              title: 'Known threat sites and security leads: investigate them with an agent, go to them, act on them',
+              className: 'ch-keep',
+              onClick: () => setThreatsView(!threatsOn),
+          })
+        : null;
+    if (threatsBtn !== null) body.appendChild(place(threatsBtn, 840, 19, 155, 19));
+    // [threats] end
 
     // --- ctlIntelligenceAgents (10, 40) 570 × 655: Image 40, Name 100, Role 100, Location 100, Mission 230. ---
     const showPolitics = politicsVisible(galaxy); // [emergent] 19d1: Loyalty / Ambition columns
@@ -1438,11 +1448,14 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
     }
 
     function render(): void {
+        if (threatsOn) {
+            renderThreats(); // [threats]
+            return;
+        }
         renderChips();
         renderList();
         renderDetail();
         renderMission();
-        if (securityWin !== null) renderSecurity(); // [security]
     }
 
     function select(c: Character | null, scroll = true): void {
@@ -1579,78 +1592,113 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
         show(events[0] ?? null);
     }
 
-    // [security] begin — 19m internal security: leads and Investigate / actions (command queue), in its own window
-    let securitySig = '';
-    let securityBody: HTMLDivElement | null = null;
-    function openSecurity(): void {
-        if (securityWin !== null) {
-            securityWin.close();
-            return;
-        }
-        const w = openOriginalWindow({
-            id: 'internal-security',
-            title: 'Internal Security',
-            icon: 'characters.png',
-            width: 900,
-            height: 520,
-            onClose: () => {
-                securityWin = null;
-                securityBody = null;
+    // [threats] begin — the Threats & Leads section: every known threat site and 19m lead (threatLeadRows), with
+    // Investigate (an agent: the 19m lead's securityInvestigate, else the framework threatInvestigate), Go to, and the
+    // 19m actions of a confirmed lead (securityAction). Replaces the list / summary / mission area while toggled on.
+    let threatsSig = '';
+    let threatsPanel: HTMLDivElement | null = null;
+    let threatsHead: HTMLDivElement | null = null;
+    let threatsDetail: HTMLDivElement | null = null;
+    let threatsGrid: OwGrid<ThreatLeadRow> | null = null;
+    let threatSelected: unknown = null;
+    function setThreatsView(on: boolean): void {
+        threatsOn = on;
+        threatsBtn?.classList.toggle('ow-glass-on', on);
+        if (threatsBtn !== null) setButtonLabel(threatsBtn, on ? 'Characters' : 'Threats & Leads');
+        body.classList.toggle('ch-threats-on', on);
+        if (on && threatsPanel === null) buildThreats();
+        threatsSig = '';
+        if (on) renderThreats();
+        else render();
+    }
+    function buildThreats(): void {
+        const panel = el('div', 'ch-keep ch-threats');
+        place(panel, 0, 0, 1000, 700);
+        threatsHead = dropText(panel, '', 10, 10, { size: FONT.large, bold: true, color: COLORS.text });
+        const grid = new OwGrid<ThreatLeadRow>({
+            columns: [
+                { id: 'what', header: 'Threat / Lead', fill: 1, sort: (r) => r.what, render: (r, cell) => wrapCell(cell, r.what, '') },
+                { id: 'where', header: 'Where', width: 170, sort: (r) => r.where, render: (r, cell) => wrapCell(cell, r.where, r.goTo !== null ? 'Double-click to go to it' : '') },
+                { id: 'certainty', header: 'Certainty', width: 90, sort: (r) => r.certainty, render: (r, cell) => wrapCell(cell, r.certainty, '') },
+                { id: 'found', header: 'Found', width: 100, sort: (r) => r.foundDate, render: (r, cell) => wrapCell(cell, r.found, '') },
+                { id: 'status', header: 'Status', width: 260, sort: (r) => r.status, render: (r, cell) => wrapCell(cell, r.status, '') },
+            ],
+            key: (r) => r.key,
+            rowHeight: 26,
+            fontSize: FONT.normal,
+            empty: 'No known threats or leads. Agents on counter-intelligence look for plots, converts, sleepers and foreign agents; threat sites appear here once your empire suspects them.',
+            onSelect: (r) => {
+                threatSelected = r.key;
+                threatsSig = '';
+                renderThreats();
             },
+            onDoubleClick: (r) => {
+                if (r.goTo !== null) opts.onZoomTo?.(r.goTo);
+            },
+            rowClass: (r) => `ch-lead-${r.certainty}${r.closed ? ' ch-lead-closed' : ''}`,
         });
-        securityWin = w;
-        securityBody = scrollPanel('ch-security');
-        w.body.appendChild(place(securityBody, 10, 10, w.bodySize.w - 20, w.bodySize.h - 20));
-        securitySig = '';
-        renderSecurity();
+        threatsGrid = grid;
+        panel.appendChild(place(grid.el, 10, 40, 985, 490));
+        const detail = gradientPanel({ className: 'ch-threat-detail' });
+        panel.appendChild(place(detail, 10, 540, 985, 155));
+        threatsDetail = detail;
+        threatsPanel = panel;
+        body.appendChild(panel);
     }
-    function renderSecurity(): void {
-        const host = securityBody;
-        if (host === null) return;
-        const agents = investigatorOptions(galaxy, player);
-        const leads = leadRows(galaxy, player);
-        const sig = leads.map((r) => `${r.lead.id}:${r.level}:${r.status}:${r.actions.length}:${r.canInvestigate}`).join('|') + '#' + agents.map((a) => a.name).join(',');
-        if (sig === securitySig) return;
-        securitySig = sig;
-        host.replaceChildren();
-        if (leads.length === 0) {
-            host.appendChild(text('No leads. Agents on counter-intelligence look for plots, converts, sleepers and foreign agents once a year.', { size: FONT.normal, color: COLORS.label, wrapWidth: 840 }));
-            return;
+    function renderThreats(): void {
+        if (threatsGrid === null || threatsDetail === null || threatsHead === null) return;
+        const rows = threatLeadRows(galaxy, player);
+        const agents = threatInvestigatorOptions(galaxy, player);
+        const sig = rows.map((r) => `${r.what}:${r.where}:${r.certainty}:${r.status}:${r.actions.length}:${r.investigate !== null}`).join('|') + '#' + agents.map((a) => a.name).join(',') + '#' + String(rows.findIndex((r) => r.key === threatSelected));
+        if (sig === threatsSig) return;
+        threatsSig = sig;
+        const live = rows.filter((r) => !r.closed);
+        setText(threatsHead, `Threats & Leads: ${live.filter((r) => r.certainty === 'confirmed').length} confirmed, ${live.filter((r) => r.certainty === 'suspected').length} suspected`);
+        threatsGrid.setRows(rows);
+        let sel = rows.find((r) => r.key === threatSelected) ?? null;
+        if (sel === null && rows.length > 0) {
+            sel = rows[0];
+            threatSelected = sel.key;
         }
-        const table = el('div', 'ch-sec-table');
-        const head = el('div', 'ch-sec-row ch-sec-head');
-        for (const h of ['Lead', 'Target', 'Level', 'Since', 'Status', '']) head.appendChild(el('span', '', h));
-        table.appendChild(head);
-        for (const r of leads) {
-            const row = el('div', `ch-sec-row ch-lead-${r.level}${r.lead.closed ? ' ch-lead-closed' : ''}`);
-            row.append(el('span', '', r.kind), el('span', '', r.target), el('span', '', r.level), el('span', '', r.since), el('span', '', r.status));
-            const cell = el('span', 'ch-sec-actions');
-            if (r.canInvestigate && agents.length > 0) {
-                const sel = dropDown(agents.map((a, i) => ({ value: String(i), label: a.name })), '0', () => {});
-                sel.style.position = 'static';
-                cell.appendChild(sel);
-                cell.appendChild(
-                    glassButton('Investigate', {
-                        size: FONT.small,
-                        onClick: () => {
-                            const agent = agents[Number(sel.value)];
-                            if (agent !== undefined) issuePlayerCommand(galaxy, player, 'securityInvestigate', [r.lead.id, agent], () => {
-                                securitySig = '';
-                                renderSecurity();
-                            });
-                        },
-                    }),
-                );
-            }
-            for (const a of r.actions) {
-                cell.appendChild(glassButton(a.label, { size: FONT.small, onClick: () => issuePlayerCommand(galaxy, player, 'securityAction', [a.action, r.lead.id], () => renderSecurity()) }));
-            }
-            row.appendChild(cell);
-            table.appendChild(row);
+        if (sel !== null) threatsGrid.setSelection([sel.key]);
+        const d = threatsDetail;
+        d.replaceChildren();
+        if (sel === null) return;
+        const r = sel;
+        dropText(d, `${r.what} — ${r.where}`, 10, 8, { size: FONT.large, bold: true, color: COLORS.text });
+        dropText(d, `${r.certainty === 'confirmed' ? 'Confirmed' : r.certainty === 'suspected' ? 'Suspected' : 'Cleared'}${r.found !== '' ? `, found ${r.found}` : ''}. ${r.status}.`, 10, 34, { size: FONT.normal, color: COLORS.label });
+        const bar = el('div', 'ch-threat-actions');
+        place(bar, 10, 70, 965, 30);
+        d.appendChild(bar);
+        const refresh = (): void => {
+            threatsSig = '';
+            renderThreats();
+        };
+        if (r.goTo !== null) bar.appendChild(glassButton('Go to', { size: FONT.small, onClick: () => opts.onZoomTo?.(r.goTo!) }));
+        const inv = r.investigate;
+        if (inv !== null && agents.length > 0) {
+            const pick = dropDown(agents.map((a, i) => ({ value: String(i), label: a.name })), '0', () => {}, 'The agent to investigate (put on counter-intelligence while it runs)');
+            pick.style.position = 'static';
+            bar.appendChild(pick);
+            bar.appendChild(
+                glassButton('Investigate', {
+                    size: FONT.small,
+                    onClick: () => {
+                        const agent = agents[Number(pick.value)];
+                        if (agent === undefined) return;
+                        if (inv.kind === 'lead') issuePlayerCommand(galaxy, player, 'securityInvestigate', [inv.leadId, agent], refresh);
+                        else issuePlayerCommand(galaxy, player, 'threatInvestigate', [inv.threat, inv.target, agent], refresh);
+                    },
+                }),
+            );
+        } else if (inv !== null) bar.appendChild(text('No free agent to investigate (agents must be idle or on counter-intelligence).', { size: FONT.small, color: COLORS.label }));
+        const lead = r.key;
+        for (const a of r.actions) {
+            const id = (lead as { id: number }).id;
+            bar.appendChild(glassButton(a.label, { size: FONT.small, onClick: () => issuePlayerCommand(galaxy, player, 'securityAction', [a.action, id], refresh) }));
         }
-        host.appendChild(table);
     }
-    // [security] end
+    // [threats] end
 
     // method_425: select the requested character (if it is the empire's), else the first row.
     renderChips();

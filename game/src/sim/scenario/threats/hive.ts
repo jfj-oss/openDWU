@@ -306,7 +306,7 @@ export function hiveKnownSites(galaxy: Galaxy, empire: Empire): KnownThreatSite[
         if (n.habitat.hasBeenDestroyed) continue;
         const level = st.faction !== null ? KNOWLEDGE_CONFIRMED : knowledgeLevel(n, empire);
         if (level <= 0) continue;
-        out.push({ threat: HIVE_KEY, kind: 'colony', target: n.habitat, level, label: scenarioText(level >= KNOWLEDGE_CONFIRMED ? `${TAG} Node Confirmed Row` : `${TAG} Node Suspected Row`) });
+        out.push({ threat: HIVE_KEY, kind: 'colony', target: n.habitat, level, site: n, label: scenarioText(level >= KNOWLEDGE_CONFIRMED ? `${TAG} Node Confirmed Row` : `${TAG} Node Suspected Row`) });
     }
     return out;
 }
