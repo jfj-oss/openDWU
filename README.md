@@ -690,6 +690,67 @@ current session only.
 
 ---
 
+## Local language model (optional)
+
+openDWU can use a small language model running on your own computer to give
+the galaxy a voice. It is text only (no microphone, no speech), nothing goes
+to the internet, and **the game plays exactly as normal without it**: every
+model feature is off until you turn it on.
+
+**What it adds**
+
+- **Advisor chat** (press **K**): talk to your fleet admiral in plain words;
+  orders they agree to are carried out like any other order.
+- **Voices**: messages, advisor briefings, faction ultimatums, council
+  speeches and AI diplomats' replies are written in character instead of the
+  stock text.
+- **Chronicle**: a yearly history of your empire on the Galactic History
+  screen.
+- **Ask and Orders**: on Galactic History, ask questions about what your
+  empire knows, or type an order and confirm the command it becomes.
+- **Speak freely**: on the Diplomacy screen, write what you offer and want
+  ("5000 credits and Tarsis IV for a defence pact"). The model turns it into a
+  proper trade offer, you confirm it, and the game's own rules decide whether
+  the other empire accepts. Treaties can be traded for money, colonies or
+  tech, and after a refusal you get up to three counter-offers. With another
+  human player your words go along with the offer.
+- **Rulers' memory**: AI rulers remember wars, gifts, treaties and deals, and
+  it slowly shifts how they feel about you.
+- **Model-driven strategy**: the AI empires nearest you each make one
+  deliberate move a year (peace terms, war goals, council votes and so on).
+
+The model can only suggest things the game would allow anyway; the game checks
+and applies each one. If the model is slow, missing or gives a bad answer,
+you simply get the normal text and the game carries on.
+
+**Getting it running**
+
+1. Install [Ollama](https://ollama.com/download) (Windows, macOS or Linux).
+   It runs quietly in the background.
+2. Download a model: open a terminal (Windows: PowerShell) and run
+
+   ```sh
+   ollama pull qwen3:4b
+   ```
+
+   That is about 2.5 GB. It runs well on an ordinary graphics card, and on
+   the CPU too (slower, but the game never waits for it).
+3. In openDWU open **Game Options → Local model…**, leave the server on
+   **Ollama**, press **Refresh**, choose `qwen3:4b`, then **Test** and
+   **Apply**. LM Studio and llama.cpp's `llama-server` work too: pick them in
+   the same window.
+4. Press **K** in a game to try the advisor chat. For everything else start a
+   **New Game**, open **Work in progress** in the add-ons list, tick **Local
+   LLM Layer** and the features you want. **Voices** and **Real diplomatic
+   negotiation** are good ones to start with.
+
+These features are new and still marked work in progress, so expect rough
+edges; bug reports are welcome. Design notes:
+`game/tasks/18-local-llm-diplomacy.md` and
+`game/tasks/19-mod-layer-scenarios.md` §19s.
+
+---
+
 ## Troubleshooting
 
 Desktop app:
@@ -793,27 +854,6 @@ On Windows PowerShell, run the fast tier as
   storylines, systems and behaviour on top, each behind its own feature
   flags — see [Expansions](game/docs/EXPANSIONS.md).
 
-
-### Optional: local LLM layer
-
-Two features can use a small local language model over an OpenAI/Ollama-
-compatible HTTP endpoint, and everything else in the scenario layer above
-(council speeches, faction voices, a yearly chronicle) can build on the same
-foundation:
-
-- **Advisor chat**: talk to your fleet admiral, who can issue orders on your
-  behalf.
-- **AI diplomat voice**: AI empires' diplomatic replies are rewritten in
-  character by the model.
-
-The game looks for a model server at `http://127.0.0.1:11434` (Ollama's
-default port) with the default model `qwen3:4b`. **Everything here is off
-by default** and inert unless that endpoint answers — nothing requires it to
-play. The model never runs inside the simulation tick: it only proposes
-commands, which the ported game rules validate and execute like any other
-player command, so replay never needs the model and a missing/slow endpoint
-never blocks the sim. See `game/tasks/18-local-llm-diplomacy.md` and
-`game/tasks/19-mod-layer-scenarios.md` §19s for the design.
 
 ### Project layout
 
