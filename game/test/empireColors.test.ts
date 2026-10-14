@@ -6,7 +6,9 @@ import { describe, expect, it } from 'vitest';
 import { Random } from '../src/sim/random';
 import {
     determineSecondaryColor,
+    colorDistance,
     displayColorForEmpire,
+    EXTENDED_COLORS,
     selectColorFromKey,
     selectColorFromKeyDark,
     selectUnusedMainColor,
@@ -167,5 +169,31 @@ describe('displayColorForEmpire (task 19k-1b: extended palette, presentation onl
         const viaGalaxyOrder = displayColorForEmpire(e);
         (galaxy as unknown as { empires: unknown }).empires = shuffled;
         expect(displayColorForEmpire(e)).toBe(viaGalaxyOrder);
+    });
+
+    it('keeps a human player\'s wizard-chosen custom colour exactly, and fallback empires stay clear of it', () => {
+        const galaxy = fakePaletteGalaxy(45, false);
+        const player = galaxy.empires[3]; // its race-default key colour was overridden by a custom wizard colour
+        player.mainColor = 0x00054d;
+        (galaxy as unknown as { playerEmpire: Empire }).playerEmpire = player;
+        expect(displayColorForEmpire(player)).toBe(0x00054d);
+        for (const e of galaxy.empires) if (e !== player) expect(colorDistance(displayColorForEmpire(e), 0x00054d)).toBeGreaterThan(0.08);
+        // A chosen colour inside the extended table: no other empire is handed it (or anything near it).
+        player.mainColor = EXTENDED_COLORS[0];
+        expect(displayColorForEmpire(player)).toBe(EXTENDED_COLORS[0]);
+        for (const e of galaxy.empires) if (e !== player) expect(colorDistance(displayColorForEmpire(e), EXTENDED_COLORS[0])).toBeGreaterThan(0.08);
+        // A human who picked a key colour an AI already holds: the AI moves to an extended colour.
+        player.mainColor = selectColorFromKey(7);
+        expect(displayColorForEmpire(player)).toBe(selectColorFromKey(7));
+        expect(displayColorForEmpire(galaxy.empires[7])).not.toBe(selectColorFromKey(7));
+    });
+
+    it('gives all 101 empires (the wizard maximum) visually distinct colours', () => {
+        const galaxy = fakePaletteGalaxy(101, false);
+        const colors = galaxy.empires.map((e) => displayColorForEmpire(e));
+        expect(new Set(colors).size).toBe(101);
+        for (let i = 20; i < colors.length; i++) {
+            for (let j = 0; j < colors.length; j++) if (j !== i) expect(colorDistance(colors[i], colors[j])).toBeGreaterThan(0.05);
+        }
     });
 });
