@@ -105,14 +105,15 @@ export function lightsOn(secondsOfDay: number, builtObjectID: number): boolean {
 
 /**
  * Port of PrepareEngineExhaust's num4 (Main.Part12.cs:4745-4759): exhaust length multiplier by target speed —
- * 1 up to impulse speed, 1.7 up to cruise, 2.5 up to top speed, 0 otherwise (and when stopped).
+ * 1 up to impulse speed, 1.7 up to cruise, 2.5 above (incl. warp), 0 when stopped.
  */
-export function exhaustSpeedFactor(targetSpeed: number, cruiseSpeed: number, topSpeed: number): number {
+export function exhaustSpeedFactor(targetSpeed: number, cruiseSpeed: number, _topSpeed: number): number {
     if (targetSpeed <= 0) return 0;
     if (targetSpeed <= MOVEMENT_IMPULSE_SPEED) return 1;
     if (targetSpeed <= cruiseSpeed) return 1.7;
-    if (targetSpeed <= topSpeed) return 2.5;
-    return 0;
+    // The original draws nothing above top speed (hyperjump warp speed), so a warping ship's flame vanished or flickered
+    // as the target speed crossed it; a warping ship burns at full length instead (deliberate deviation).
+    return 2.5;
 }
 
 /** PrepareEngineExhaust num5: exhaust length in prepared-image px (num3 = 0.15 × width), rounded up to even. */
@@ -434,6 +435,8 @@ export class AmbientLayer {
     private exhaustPool: Sprite[] = [];
     private lightPool: Sprite[] = [];
     private shieldPool: Sprite[] = [];
+    /** The ship the follow camera is centred on this frame (set by MainView; see BuiltObjectLayer.followed): never culled. */
+    followed: object | null = null;
     /** Render interpolation between sim steps (renderInterp.ts; set by MainView): exhaust / lights follow the drawn
      * ship and shields the drawn planet. Null: the sim positions. */
     motion: MotionInterpolator | null = null;
@@ -546,12 +549,19 @@ export class AmbientLayer {
             // Perf: with the index, only the objects inside the 100 px cull below (same order).
             const list: readonly (BuiltObject | null)[] =
                 this.index !== null ? this.index.near(cam.x, cam.y, halfW / z, halfH / z, 101 / z, false, this.nearScratch) : this.galaxy.builtObjects;
+            const followed = this.followed as BuiltObject | null;
+            if (followed !== null && this.index !== null && !followed.hasBeenDestroyed && !this.nearScratch.includes(followed)) this.nearScratch.push(followed);
             for (const bo of list) {
                 if (bo === null || bo.hasBeenDestroyed) continue;
-                const sx = (bo.xpos - cam.x) * z + halfW;
-                const sy = (bo.ypos - cam.y) * z + halfH;
-                // Same 100 px cull as BuiltObjectLayer (the C# uses -50 around the drawn rect).
-                if (sx < -100 || sx > cam.width + 100 || sy < -100 || sy > cam.height + 100) continue;
+                // Where BuiltObjectLayer drew the ship this frame (render-interpolated), else its sim position.
+                const drawn = this.motion !== null ? this.motion.drawn(bo) : null;
+                const bx = drawn !== null ? drawn.x : bo.xpos;
+                const by = drawn !== null ? drawn.y : bo.ypos;
+                const sx = (bx - cam.x) * z + halfW;
+                const sy = (by - cam.y) * z + halfH;
+                // Same 100 px cull as BuiltObjectLayer, on the drawn position (the committed one can be far from it at
+                // warp, and the follow camera sits on the drawn one); the followed ship is never culled.
+                if (bo !== followed && (sx < -100 || sx > cam.width + 100 || sy < -100 || sy > cam.height + 100)) continue;
                 if (!fog.builtObject(bo)) continue; // fog.ts: exhaust, lights and shields belong to the ship's draw block
                 // [concordArt] begin
                 const cv = treasure !== null ? concordVariantFor(bo, concord, treasure) : null;
@@ -573,10 +583,6 @@ export class AmbientLayer {
                 const p1 = builtObjectSizePx(bo.size, art.metrics.areaRatio, 1, scalingType, scalingFactor);
                 if (p1 < 1) continue;
                 const k = pf / p1 / z; // world units per prepared-image px
-                // Where BuiltObjectLayer drew the ship this frame (render-interpolated), else its sim position.
-                const drawn = this.motion !== null ? this.motion.drawn(bo) : null;
-                const bx = drawn !== null ? drawn.x : bo.xpos;
-                const by = drawn !== null ? drawn.y : bo.ypos;
                 const heading = drawn !== null ? drawn.heading : bo.heading;
                 const cos = Math.cos(heading);
                 const sin = Math.sin(heading);

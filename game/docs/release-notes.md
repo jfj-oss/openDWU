@@ -4,6 +4,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **Rendering:** the engine flame of a ship in a hyperjump no longer disappears or flickers when you zoom in on it with the follow camera (the flame is drawn at full length at warp speed and no longer culled on the ship's pre-warp position).
 - **Galaxy Map:** double-clicking a planet in the system picture selects it and shows it in the info panel, as in the original.
 - **Crash reports:** the desktop app now sends crash reports (error, stack, app version, OS, graphics card; no IP address, saves or personal files, and your user name and home folder are replaced by "~") to Sentry to help fix bugs. It has no setting.
 - **More crash-report data:** in about 1 % of sessions the app sends a once-a-minute performance summary (average fps, slowest frames and sim tick, galaxy size, graphics card); a multiplayer desync sends the frame, the two checksums and the differing parts (no save). New **Report a Bug** button in the Esc menu: you write what happened and it sends that with a screenshot of the game, the recent log, your version and graphics card, but no saved games.
