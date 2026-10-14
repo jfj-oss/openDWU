@@ -444,10 +444,10 @@ function newRaceCopy(race: Race): Race {
  * The C# mutates the per-game Races["Shakturi"]; the rename and levels go to a separate per-galaxy instance
  * (Galaxy.shakturiActualRace, saved inline; galaxyRace() substitutes it for the galaxy.races entry).
  */
-export function generateShakturi(galaxy: Galaxy, startingColony: Habitat | null): void {
-    if (galaxy.nextEmpireId >= galaxy.maximumEmpireCount) return;
+export function generateShakturi(galaxy: Galaxy, startingColony: Habitat | null): boolean {
+    if (galaxy.nextEmpireId >= galaxy.maximumEmpireCount) return false;
     const baseRace = galaxyRaceByName(galaxy, 'Shakturi');
-    if (baseRace === null) return;
+    if (baseRace === null) return false;
     if (startingColony === null) throw new Error('NullReferenceException: Galaxy.8.cs 1386 GenerateEmpire(startingColony: null)');
     const age = 2;
     const race2 = newRaceCopy(baseRace);
@@ -496,6 +496,7 @@ export function generateShakturi(galaxy: Galaxy, startingColony: Habitat | null)
             if (empireEvaluation2 != null) empireEvaluation2.bias = Math.max(0.0, empireEvaluation2.bias);
         }
     }
+    return true;
 }
 
 /**
@@ -583,8 +584,9 @@ export function generateShakturiAggression(galaxy: Galaxy, shakturiEmpire: Empir
  * empire becomes the "Shaktur Supremacy" with 1-3 planet destroyers (by star count) and a fleet at its capital, targeting
  * the Mechanoid capital. Rnd: GenerateNewBuiltObject's per ship.
  */
-export function generateShakturiInvasion(galaxy: Galaxy, shakturiEmpire: Empire | null, mechanoidEmpire: Empire | null): void {
-    if (shakturiEmpire === null || mechanoidEmpire === null) return;
+export function generateShakturiInvasion(galaxy: Galaxy, shakturiEmpire: Empire | null, mechanoidEmpire: Empire | null, fallbackTarget: Habitat | null = null): void {
+    // DEVIATION (not in the C#): `fallbackTarget` (shakturiStallRescue, Guardians gone) stands in for the Mechanoid capital.
+    if (shakturiEmpire === null || (mechanoidEmpire === null && fallbackTarget === null)) return;
     let parentHabitat: Habitat | null = null;
     if (shakturiEmpire.capital !== null) parentHabitat = shakturiEmpire.capital;
     else if (shakturiEmpire.colonies.length > 0) parentHabitat = shakturiEmpire.colonies[0];
@@ -667,7 +669,7 @@ export function generateShakturiInvasion(galaxy: Galaxy, shakturiEmpire: Empire 
             builtObject2.isAutoControlled = true;
         }
     }
-    shakturiEmpire.targetHabitat = mechanoidEmpire.capital;
+    shakturiEmpire.targetHabitat = mechanoidEmpire !== null ? mechanoidEmpire.capital : fallbackTarget;
 }
 
 /**
@@ -889,6 +891,108 @@ export function shakturiSendConvoy(galaxy: Galaxy, self: Empire): void {
 }
 
 /**
+ * Empire.2.cs 3600-3627 (the Mechanoid branch of CheckOfferStoryHint): the star dates from which the Beacon of Shaktur is placed —
+ * `colonyDate` (with enough colonies in the galaxy) and `forcedDate` (regardless), plus the wizard "Arrival" clamp. No Rnd.
+ */
+function shakturiBeaconDates(galaxy: Galaxy): { colonyDate: number; forcedDate: number } {
+    // Empire.9.cs 5407 (double)_Galaxy.BaseTechCost / 120000.0.
+    let d = galaxy.baseTechCost / 120000.0;
+    d = Math.max(1.0, Math.sqrt(d));
+    let num6 = 25;
+    if (galaxy.age === 0) num6 += 15;
+    const yearMs = REAL_SECONDS_IN_GALACTIC_YEAR * 1000;
+    const val = actualStartDate(galaxy) + yearMs * num6;
+    let val2 = Math.trunc(num6 * d);
+    val2 = Math.min(val2, 120);
+    const num7 = Math.max(val2, 80);
+    const num8 = actualStartDate(galaxy) + yearMs * num7;
+    let val3 = actualStartDate(galaxy) + yearMs * val2;
+    val3 = Math.max(val3, val);
+    // Wizard "Arrival": Late = nothing before the drawn year; Early = nothing after it. Normal changes nothing.
+    let colonyDate = val3;
+    let forcedDate = num8;
+    if (galaxy.shakturiArrival !== undefined) {
+        const arrival = actualStartDate(galaxy) + yearMs * shakturiArrivalYear(galaxy);
+        if (galaxy.shakturiArrival === 'late') {
+            colonyDate = Math.max(colonyDate, arrival);
+            forcedDate = Math.max(forcedDate, arrival);
+        } else {
+            colonyDate = Math.min(colonyDate, arrival);
+            forcedDate = Math.min(forcedDate, arrival);
+        }
+    }
+    return { colonyDate, forcedDate };
+}
+
+// ---------------------------------------------------------------------------
+// DEVIATION (not in the C#): rescue of a stalled Return of the Shakturi story
+// ---------------------------------------------------------------------------
+
+/** Years after the forced Beacon date before the stall rescue starts (the C# path gets this long to run on its own). */
+const SHAKTURI_RESCUE_GRACE_YEARS = 10;
+/** Years the Beacon may stay unexplored (from the start of the watch) before the player gets its location. */
+const SHAKTURI_RESCUE_HINT_YEARS = 15;
+/** ... and before an AI empire's explorer investigates it. */
+const SHAKTURI_RESCUE_EXPLORE_YEARS = 30;
+/** Years after the Shakturi enrage with the Ancient Guardians gone before the invasion starts anyway. */
+const SHAKTURI_RESCUE_INVASION_YEARS = 12;
+
+/**
+ * DEVIATION (not in the C#): the story stalls in four places that the original never recovers from — (1) the Beacon is placed
+ * only by the Ancient Guardians (Mechanoid) once they have MET the player, (2) nobody may ever explore it, (3) a spent Beacon
+ * without a start world (investigateRuinsStoryEvent) and (4) the invasion needs the Guardians at war with the Shakturi.
+ * Called from the player's CheckOfferStoryHint only; every branch needs the story to be overdue (forced Beacon date plus a
+ * grace period, or the enraged Shakturi with the Guardians gone), so games where the story runs are unaffected. Its only state
+ * is Galaxy.shakturiBeaconWatch, written the first time an overdue unexplored Beacon is seen.
+ */
+function shakturiStallRescue(galaxy: Galaxy, player: Empire): void {
+    const yearMs = REAL_SECONDS_IN_GALACTIC_YEAR * 1000;
+    const now = galaxyStarDate(galaxy);
+    const overdue = now >= shakturiBeaconDates(galaxy).forcedDate + SHAKTURI_RESCUE_GRACE_YEARS * yearMs;
+    const shakturi = identifyShakturiEmpire(galaxy);
+    const beacon = galaxy.shakturiTriggerHabitat;
+    if (beacon === null) {
+        // (1) no Beacon yet, the Guardians never met us (or are gone): place it from the player's position (the C# fallback).
+        if (overdue && shakturi === null) generateShakturiReturnTriggerRuins(galaxy);
+        return;
+    }
+    const ruin = beacon.ruin;
+    if (shakturi === null && overdue && ruin !== null && ruin.type === RuinType.StoryEvent && ruin.storyEventData > 0) {
+        // (2) the Beacon sits unexplored: first the player is told where it is, later an AI explorer goes.
+        if (galaxy.shakturiBeaconWatch === undefined) galaxy.shakturiBeaconWatch = now;
+        const watched = now - galaxy.shakturiBeaconWatch;
+        if (watched >= SHAKTURI_RESCUE_HINT_YEARS * yearMs && !checkLocationHintExistsAtPoint(galaxy, player, beacon.xpos, beacon.ypos, 5000.0)) {
+            addLocationHint(player, { x: Math.trunc(beacon.xpos), y: Math.trunc(beacon.ypos) }, 'Strange signal source', 'Beacon of Shaktur');
+            const text = 'Our long-range scanners keep picking up a faint, repeating signal from ' + beacon.name + '. The source is marked on our charts: a survey team should investigate.';
+            sendEventMessageToEmpire(player, EventMessageType.StoryClue, 'Strange signal source located', text, ruin, beacon);
+        }
+        if (watched >= SHAKTURI_RESCUE_EXPLORE_YEARS * yearMs) {
+            let best: Empire | null = null;
+            let bestDistance = Number.MAX_VALUE;
+            for (const e of galaxy.empires) {
+                if (!e.active || e === galaxy.independentEmpire || e.pirateEmpireBaseHabitat !== null || e.capital === null || isHumanSeat(galaxy, e)) continue;
+                const distance = galaxy.calculateDistanceSquared(e.capital.xpos, e.capital.ypos, beacon.xpos, beacon.ypos);
+                if (distance < bestDistance) {
+                    best = e;
+                    bestDistance = distance;
+                }
+            }
+            investigateRuinsStoryEvent(galaxy, best ?? player, beacon, '');
+        }
+        return;
+    }
+    // (4) the Shakturi are enraged, the Guardians are gone: the invasion cannot wait for a war with them (aimed at the player's capital).
+    if (shakturi !== null && galaxy.storyShakturiEnraged && galaxy.storyReturnOfTheShakturiEventLevel === 2 && player.capital !== null && now >= galaxy.storyShakturiEnrageTimer + SHAKTURI_RESCUE_INVASION_YEARS * yearMs) {
+        const guardians = identifyMechanoidEmpire(galaxy);
+        if (guardians === null || !guardians.active || guardians.capital === null) {
+            generateShakturiInvasion(galaxy, shakturi, null, player.capital);
+            galaxy.storyReturnOfTheShakturiEventLevel = 3;
+            sendMessageToEmpire(shakturi, player, EmpireMessageType.StoryMessage, null, gameText('We have an important warning that you need to hear'));
+        }
+    }
+}
+
+/**
  * Empire.2.cs 3508 CheckOfferStoryHint(): the story advisers. Friendly Zenox / Quameno offer secret history (a secondary
  * story clue) or a secret location (Distant Worlds story); the Mechanoid (Ancient Guardians) place the Beacon of Shaktur once
  * enough colonies exist or enough years passed and warn the player as the Return of the Shakturi event level advances (0 → 4);
@@ -898,6 +1002,7 @@ export function checkOfferStoryHint(galaxy: Galaxy, self: Empire): void {
     const player = galaxy.playerEmpire;
     if ((!galaxy.storyReturnOfTheShakturiEnabled && !galaxy.storyDistantWorldsEnabled) || player === null || self.dominantRace === null) return;
     const dominantRace = self.dominantRace;
+    if (self === player && galaxy.storyReturnOfTheShakturiEnabled) shakturiStallRescue(galaxy, player); // DEVIATION (not in the C#)
     let num = -1;
     let flag = false;
     let flag2 = false;
@@ -974,33 +1079,8 @@ export function checkOfferStoryHint(galaxy: Galaxy, self: Empire): void {
                 if (galaxy.empires[j] != null && galaxy.empires[j].active && galaxy.empires[j].colonies != null) num4 += galaxy.empires[j].colonies.length;
             }
             const num5 = Math.trunc(0.5 * expectedMaximumColoniesInGalaxy(galaxy));
-            // Empire.9.cs 5407 (double)_Galaxy.BaseTechCost / 120000.0.
-            let d = galaxy.baseTechCost / 120000.0;
-            d = Math.max(1.0, Math.sqrt(d));
-            let num6 = 25;
-            if (galaxy.age === 0) num6 += 15;
-            const yearMs = REAL_SECONDS_IN_GALACTIC_YEAR * 1000;
-            const val = actualStartDate(galaxy) + yearMs * num6;
-            let val2 = Math.trunc(num6 * d);
-            val2 = Math.min(val2, 120);
-            const num7 = Math.max(val2, 80);
-            const num8 = actualStartDate(galaxy) + yearMs * num7;
-            let val3 = actualStartDate(galaxy) + yearMs * val2;
-            val3 = Math.max(val3, val);
+            const { colonyDate, forcedDate } = shakturiBeaconDates(galaxy);
             const currentStarDate = galaxyStarDate(galaxy);
-            // Wizard "Arrival": Late = nothing before the drawn year; Early = nothing after it. Normal changes nothing.
-            let colonyDate = val3;
-            let forcedDate = num8;
-            if (galaxy.shakturiArrival !== undefined) {
-                const arrival = actualStartDate(galaxy) + yearMs * shakturiArrivalYear(galaxy);
-                if (galaxy.shakturiArrival === 'late') {
-                    colonyDate = Math.max(colonyDate, arrival);
-                    forcedDate = Math.max(forcedDate, arrival);
-                } else {
-                    colonyDate = Math.min(colonyDate, arrival);
-                    forcedDate = Math.min(forcedDate, arrival);
-                }
-            }
             if (galaxy.shakturiTriggerHabitat === null && ((num4 >= num5 && currentStarDate >= colonyDate) || currentStarDate >= forcedDate)) {
                 generateShakturiReturnTriggerRuins(galaxy);
             } else if (galaxy.shakturiTriggerHabitat === null) {
@@ -1505,10 +1585,10 @@ export function investigateRuinsStoryClue(galaxy: Galaxy, investigatingEmpire: E
 export function investigateRuinsStoryEvent(galaxy: Galaxy, investigatingEmpire: Empire, ruinsHabitat: Habitat, text: string): void {
     const ruin = ruinsHabitat.ruin!;
     if (ruin.storyEventData > 0) {
-        ruin.storyEventData = 0;
-        const empty = gameText('Strange transmission from beyond our galaxy');
-        text += formatGameTextNow('Shakturi Beacon Trigger', [ruin.name]);
-        sendEventMessageToEmpire(investigatingEmpire, EventMessageType.GeneralRuinsDiscovery, empty, text, ruin, ruinsHabitat);
+        // DEVIATION (not in the C#): the C# zeroes StoryEventData and sends the message FIRST; when no start world is found (or the
+        // empire table is full) GenerateShakturi then throws / returns and the beacon is spent for good — the Shakturi never come.
+        // Here the start world is found first (the same Rnd draws in the same order for every game that finds one), and the beacon
+        // is consumed only when the Shakturi really spawn; otherwise it stays for the next investigation.
         let habitat3: Habitat | null = null;
         if (galaxy.shakturiTriggerHabitat !== null) {
             let num = galaxy.rnd.nextDouble() * 3000000.0 - 1500000.0;
@@ -1518,6 +1598,15 @@ export function investigateRuinsStoryEvent(galaxy: Galaxy, investigatingEmpire: 
             habitat3 = findLonelyHabitatAt(galaxy, galaxy.shakturiTriggerHabitat.xpos + num, galaxy.shakturiTriggerHabitat.ypos + num2, HabitatType.BarrenRock);
         }
         if (habitat3 === null) habitat3 = findLonelyHabitatGalacticEdge(galaxy, RuinType.Undefined, HabitatType.Ice);
+        // DEVIATION (not in the C#): fallbacks, only when the C#'s two searches found nothing — any lonely world, then the nearest
+        // unoccupied system to the beacon.
+        if (habitat3 === null) habitat3 = findLonelyHabitat(galaxy);
+        if (habitat3 === null) habitat3 = findUtopiaHabitat(galaxy, ruinsHabitat.xpos, ruinsHabitat.ypos);
+        if (habitat3 === null || galaxy.nextEmpireId >= galaxy.maximumEmpireCount || galaxyRaceByName(galaxy, 'Shakturi') === null) return; // keep the beacon
+        ruin.storyEventData = 0;
+        const empty = gameText('Strange transmission from beyond our galaxy');
+        text += formatGameTextNow('Shakturi Beacon Trigger', [ruin.name]);
+        sendEventMessageToEmpire(investigatingEmpire, EventMessageType.GeneralRuinsDiscovery, empty, text, ruin, ruinsHabitat);
         generateShakturi(galaxy, habitat3);
     } else {
         text = text + ' ' + formatGameTextNow('Our survey team found nothing of interest in the ruins.');

@@ -264,6 +264,61 @@ describe('Return of the Shakturi (Galaxy.8.cs 1348-2056, Empire.2.cs 3487-3777)'
             expect([...erutkah.builtObjects, ...erutkah.privateBuiltObjects].filter((b) => b.name === 'Revenge of Shaktur')).toHaveLength(1);
         });
     }, 300000);
+
+    it('DEVIATION: a stalled story is rescued (Beacon placed without the Guardians, unexplored Beacon found, spent Beacon refused, invasion without the Guardians)', () => {
+        withRaceRestored(gameData, () => {
+            const game = createGame(storyOptions(gameData, { storyDistantWorldsEnabled: false, storyShadowsEnabled: false }));
+            const g = game.galaxy;
+            const player = g.playerEmpire!;
+            const mech = identifyMechanoidEmpire(g)!;
+            const at = (y: number): void => {
+                g.nowMs = y * REAL_SECONDS_IN_GALACTIC_YEAR * 1000;
+                checkOfferStoryHint(g, player);
+            };
+            // The Guardians never met us: nothing before the forced date (80-120 years) plus the grace, a Beacon after it.
+            expect(obtainDiplomaticRelation(player, mech).type).toBe(DiplomaticRelationType.NotMet);
+            at(60);
+            expect(g.shakturiTriggerHabitat).toBeNull();
+            at(85);
+            expect(g.shakturiTriggerHabitat).toBeNull();
+            at(200);
+            const beacon = g.shakturiTriggerHabitat!;
+            expect(beacon).not.toBeNull();
+            expect(beacon.ruin!.storyEventData).toBe(1);
+            // Unexplored: the watch starts, the player is told where it is, later an explorer goes.
+            at(201);
+            expect(g.shakturiBeaconWatch).toBeDefined();
+            expect(player.locationHints.some((h) => Math.abs(h.x - Math.trunc(beacon.xpos)) < 1 && Math.abs(h.y - Math.trunc(beacon.ypos)) < 1)).toBe(false);
+            at(217);
+            expect(player.locationHints.some((h) => Math.abs(h.x - Math.trunc(beacon.xpos)) < 1 && Math.abs(h.y - Math.trunc(beacon.ypos)) < 1)).toBe(true);
+            expect(identifyShakturiEmpire(g)).toBeNull();
+            // A spent Beacon is never consumed without the Shakturi: with no room for another empire it stays.
+            const nextId = g.nextEmpireId;
+            g.nextEmpireId = 1_000_000;
+            investigateRuinsStoryEvent(g, player, beacon, '');
+            expect(beacon.ruin!.storyEventData).toBe(1);
+            g.nextEmpireId = nextId;
+            at(235);
+            expect(beacon.ruin!.storyEventData).toBe(0);
+            const erutkah = identifyShakturiEmpire(g)!;
+            expect(erutkah).not.toBeNull();
+            // Invasion: enraged, the Guardians gone, 12 years later it starts anyway (targeting the player's capital).
+            generateShakturiAggression(g, erutkah);
+            g.storyReturnOfTheShakturiEventLevel = 2;
+            mech.active = false;
+            const yearMs = REAL_SECONDS_IN_GALACTIC_YEAR * 1000;
+            const atDate = (starDate: number): void => {
+                g.nowMs += starDate - galaxyStarDateOf(g);
+                checkOfferStoryHint(g, player);
+            };
+            atDate(g.storyShakturiEnrageTimer + 11 * yearMs);
+            expect(g.storyReturnOfTheShakturiEventLevel).toBe(2);
+            atDate(g.storyShakturiEnrageTimer + 13 * yearMs);
+            expect(g.storyReturnOfTheShakturiEventLevel).toBe(3);
+            expect(erutkah.name).toBe('Shaktur Supremacy');
+            expect(erutkah.targetHabitat).toBe(player.capital);
+        });
+    }, 300000);
 });
 
 describe('Legends: CheckSendShipConvoysViaGateway (Empire.1.cs 3899)', () => {

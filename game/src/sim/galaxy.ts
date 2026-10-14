@@ -4828,6 +4828,8 @@ export class Galaxy {
     storyDistantWorldsEnabled = false;
     /** Wizard "Arrival" (not in the original): absent = Normal, the stock Beacon timing; see storyEvents.shakturiArrivalYear. */
     declare shakturiArrival?: 'early' | 'late'; // absent = Normal (keeps stock saves byte-identical)
+    /** DEVIATION (not in the C#): star date an overdue, unexplored Beacon of Shaktur was first seen by storyEvents.shakturiStallRescue (absent = never). */
+    declare shakturiBeaconWatch?: number;
     /**
      * Galaxy.cs 816 RaceFamilies (RaceFamilyList, loaded with the game data). createGame must copy
      * GameData.raceFamilies here; read by gameStartTail.ts SelectSpecialRuins(SleepersAwake).

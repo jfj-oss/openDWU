@@ -15,6 +15,12 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 - **Fewer add-on menus:** the Interstellar Diet is no longer in the top bar's ••• menu (open it from the Diplomacy
   screen's Diet block). `docs/addon-ui-inventory.md` lists every add-on window, tab, link and HUD extra with the merges
   proposed next.
+- **Return of the Shakturi can no longer stall (also true of the original):** the Beacon of Shaktur is now placed by the
+  forced date plus ten years even if the Ancient Guardians were never met (from your position, as the original's
+  fallback does); a Beacon nobody explores is marked on your charts and later investigated by the nearest AI empire; a
+  Beacon is no longer used up when no start world for the Shakturi can be found (it stays for the next try); and with the
+  Guardians gone, the invasion starts 12 years after the Shakturi enrage, aimed at your capital. Games where the story
+  already runs are unchanged.
 - **Local model fix (desktop app):** Ollama refused every request from the app (it rejects the app's `dwu://` page
   origin with 403), so Refresh, Test and all local-model features failed unless `OLLAMA_ORIGINS` was set. The app now
   allows its requests to model servers on this machine (localhost only); no Ollama setup is needed.
