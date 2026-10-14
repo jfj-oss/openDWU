@@ -8,6 +8,7 @@
 // Military Ships / firepower come from the pirate block (line 313) applied to non-pirates: the mobile military firepower.
 
 import type { Empire } from '../../sim/empire';
+import type { BuiltObject } from '../../sim/builtObject';
 import { getGovernmentsStatic } from '../../sim/empire';
 import { BuiltObjectRole } from '../../sim/data/designSpecifications';
 import { annualTaxRevenue, privateAnnualRevenue, totalColonyStrategicValue, totalMobileMilitaryFirepower } from '../../sim/forceStructure';
@@ -30,8 +31,11 @@ export interface EmpireIntel {
     strategicValueK: number;
     militaryStrength: number;
     militaryShips: number;
-    /** TotalMobileMilitaryFirepower. */
+    /** TotalMobileMilitaryFirepower (the sim's own sum, what the AI reads: a ship with a damaged engine, topSpeed 0, or an
+     *  unbuilt component, e.g. under refit, is not in it). */
     firepower: number;
+    /** DEVIATION (not in the C#): what the screen shows as "firepower" — operationalFirepower(). */
+    operationalFirepower: number;
     raceName: string;
     raceFamily: string;
     /** races images/units/races/race_<PictureIndex>.png. */
@@ -42,6 +46,22 @@ export interface EmpireIntel {
 export function raceFamilyName(empire: Empire): string {
     const family = empire.galaxy?.raceFamilies?.[empire.dominantRace?.raceFamily ?? -1];
     return family?.name ?? '';
+}
+
+/**
+ * DEVIATION (not in the C#; display only — the AI keeps reading totalMobileMilitaryFirepower): the firepower the empire can
+ * bring to bear right now. The sim's TotalMobileMilitaryFirepower drops a whole ship as soon as its engines are knocked out
+ * (topSpeed 0) or any component is unbuilt, so a battered fleet read as a fraction of itself. Here every finished military
+ * ship counts at its CURRENT firepowerRaw (only its working weapons: damaged / ion-disabled ones are already out of it);
+ * a ship under construction or refit (unbuilt components) and a ship that never had engines (a stationary design) stay out.
+ */
+export function operationalFirepower(ships: readonly (BuiltObject | null | undefined)[]): number {
+    let sum = 0;
+    for (const b of ships) {
+        if (b == null || b.hasBeenDestroyed || b.role !== BuiltObjectRole.Military || b.unbuiltComponentCount > 0) continue;
+        if (b.topSpeed > 0 || b.damagedComponentCount > 0) sum += b.firepowerRaw;
+    }
+    return sum;
 }
 
 export function empireIntel(player: Empire, other: Empire): EmpireIntel {
@@ -67,6 +87,7 @@ export function empireIntel(player: Empire, other: Empire): EmpireIntel {
         militaryStrength: militaryPotency(galaxy, other),
         militaryShips: ships.filter((b) => b != null && b.role === BuiltObjectRole.Military).length,
         firepower: totalMobileMilitaryFirepower(ships),
+        operationalFirepower: operationalFirepower(ships),
         raceName: other.dominantRace?.name ?? '',
         raceFamily: raceFamilyName(other),
         racePictureIndex: other.dominantRace?.pictureIndex ?? null,

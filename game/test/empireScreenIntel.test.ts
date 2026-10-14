@@ -57,11 +57,31 @@ describe('empire screen data model: known vs unknown', () => {
         expect(i.colonies).toBe(ai.colonies.length);
         expect(i.populationMillions).toBe(ai.totalPopulation / 1000000);
         expect(i.firepower).toBe(totalMobileMilitaryFirepower(ai.builtObjects));
+        // DEVIATION: the screen's operational firepower never reads below the sim's mobile sum.
+        expect(i.operationalFirepower).toBeGreaterThanOrEqual(i.firepower);
         expect(i.raceName).toBe(ai.dominantRace!.name);
         expect(i.raceFamily).not.toBe('');
         expect(i.racePictureIndex).toBe(ai.dominantRace!.pictureIndex);
         expect(i.government).not.toBe('');
         expect(formatMillions(1234.4)).toBe('1,234M');
+    });
+
+    it('operational firepower keeps a battered ship (engines out, damaged) at its working weapons; refits and unbuilt ships stay out', () => {
+        const ship = ai.builtObjects.find((b) => b != null && !b.hasBeenDestroyed && b.role === BuiltObjectRole.Military && b.firepowerRaw > 0 && b.topSpeed > 0 && b.unbuiltComponentCount <= 0);
+        expect(ship).toBeTruthy();
+        const b = ship!;
+        const base = empireIntel(player, ai);
+        const speed = b.topSpeed;
+        b.topSpeed = 0;
+        b.damagedComponentCount = 1;
+        const hurt = empireIntel(player, ai);
+        expect(hurt.firepower).toBe(base.firepower - b.firepowerRaw); // the sim's sum drops the whole ship
+        expect(hurt.operationalFirepower).toBe(base.operationalFirepower); // the screen keeps it at its working weapons
+        b.unbuiltComponentCount = 1; // under refit
+        expect(empireIntel(player, ai).operationalFirepower).toBe(base.operationalFirepower - b.firepowerRaw);
+        b.unbuiltComponentCount = 0;
+        b.damagedComponentCount = 0;
+        b.topSpeed = speed;
     });
 
     it("the capital is '(Unknown)' (null) until the player has explored its system (EmpireDetailView.cs:420)", () => {

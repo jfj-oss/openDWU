@@ -15,6 +15,11 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 - **Fewer add-on menus:** the Interstellar Diet is no longer in the top bar's ••• menu (open it from the Diplomacy
   screen's Diet block). `docs/addon-ui-inventory.md` lists every add-on window, tab, link and HUD extra with the merges
   proposed next.
+- **Diplomacy screen firepower (also wrong in the original):** the figure dropped a whole warship as soon as its engines
+  were knocked out or any component was unbuilt, so a battered fleet read as a fraction of itself. The empire panel now
+  has a live **Firepower** row (and pirates show "operational firepower") counting every finished warship at the weapons
+  it has working right now; ships in construction or refit stay out. It refreshes every second. Display only; the AI's
+  own figures are unchanged.
 - **Return of the Shakturi can no longer stall (also true of the original):** the Beacon of Shaktur is now placed by the
   forced date plus ten years even if the Ancient Guardians were never met (from your position, as the original's
   fallback does); a Beacon nobody explores is marked on your charts and later investigated by the nearest AI empire; a

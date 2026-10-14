@@ -1228,6 +1228,10 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         y += step;
         valueRow(detail, 'Population', formatMillions(intel.populationMillions), labelRight, y, { size: f.normal });
         const right = lay.column2X + measure('Military Strength: ', f.normal);
+        // DEVIATION (not in the C#): the free top slot of the right column shows the live operational firepower (empireIntel.ts
+        // operationalFirepower: finished warships at their current weapons, damaged ones included); the screen re-renders every second.
+        const fpRow = valueRow(detail, 'Firepower', String(intel.operationalFirepower), right, 121, { size: f.normal });
+        fpRow.title = 'Operational firepower: finished warships at the weapons they have working now (damaged ships count at what still fires; ships under construction or refit do not).';
         let y2 = 121 + step;
         valueRow(detail, 'Tax Revenue', `${intel.taxRevenueK}K`, right, y2, { size: f.normal });
         y2 += step;
@@ -1540,7 +1544,7 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         line(`Successful Raids: ${c.raidSuccessCount}`, { indent: true });
         line(`Successful Intelligence Missions: ${c.intelligenceMissionSuccessEspionageCount + c.intelligenceMissionSuccessSabotageCount}`, { indent: true, gapAfter: pl.gap });
         const intel = empireIntel(player, empire);
-        line(`Military Ships: ${intel.militaryShips}     (${intel.firepower} firepower)`, { indent: true });
+        line(`Military Ships: ${intel.militaryShips}     (${intel.operationalFirepower} operational firepower)`, { indent: true });
         const smugglers = (empire.privateBuiltObjects ?? []).filter((b) => b != null && b.role === BuiltObjectRole.Freight).length;
         line(`Smuggling Freighters: ${smugglers}`, { indent: true });
         line(`Completed Attack Missions: ${c.completedPirateMissionAttackCount}`, { indent: true });
