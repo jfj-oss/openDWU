@@ -2,7 +2,7 @@
 // Main.resx's striped BackgroundImage, 3 px alpha-96 border) laid out by Main.Part7.cs:3668 method_356 — 220 × 408,
 // centred on the main view; picGameMenuHeader (Main.resx picGameMenuHeader.BackgroundImage, 196 × 118) at (12, 10),
 // lblGameMenuTitle hidden; eight 200 × 30 GlassButtons in font_2 (18.67 px bold) at x 10, y 137 + 33 i:
-// Exit Distant Worlds, Exit to Main Menu, Load Game, Save Game, Save Game As, Options, Enter Game Editor, Resume
+// Exit Distant Worlds, Exit to Main Menu, Load Game, Save Game (Save Game As dropped), Options, Enter Game Editor, Resume
 // Playing (texts Main.Part3.cs:621, 879-885; method_356 renames Cancel to "Resume Playing").
 // Opening it pauses GalaxyTime and closing restores the previous paused state (the original pauses only with
 // AutoPauseWhenInPopupWindow on; ours always did and still does). No dim layer (the original draws none), but the
@@ -74,20 +74,21 @@ export function restorePauseState(clock: GalaxyTime, prevPaused: boolean): void 
 
 /** pnlGameMenu.Size (Main.Part7.cs method_356). */
 export const GAME_MENU_W = 220;
-export const GAME_MENU_H = 408;
+// One row shorter than the original's 408: "Save Game As" is dropped (user, 2026-10-14: Save Game's window already lets
+// you change the name).
+export const GAME_MENU_H = 375;
 
-export type GameMenuButtonId = 'quit' | 'startMenu' | 'load' | 'save' | 'saveAs' | 'options' | 'editor' | 'cancel';
+export type GameMenuButtonId = 'quit' | 'startMenu' | 'load' | 'save' | 'options' | 'editor' | 'cancel';
 
-/** The eight buttons of method_356, top to bottom: id, GameText key, y (x 10, 200 × 30). */
+/** The buttons of method_356 (seven: Save Game As dropped), top to bottom: id, GameText key, y (x 10, 200 × 30). */
 export const GAME_MENU_BUTTONS: readonly { id: GameMenuButtonId; text: string; y: number }[] = [
     { id: 'quit', text: 'Exit Distant Worlds', y: 137 },
     { id: 'startMenu', text: 'Exit to Main Menu', y: 170 },
     { id: 'load', text: 'Load Game', y: 203 },
     { id: 'save', text: 'Save Game', y: 236 },
-    { id: 'saveAs', text: 'Save Game As', y: 269 },
-    { id: 'options', text: 'Options', y: 302 },
-    { id: 'editor', text: 'Enter Game Editor', y: 335 },
-    { id: 'cancel', text: 'Resume Playing', y: 368 },
+    { id: 'options', text: 'Options', y: 269 },
+    { id: 'editor', text: 'Enter Game Editor', y: 302 },
+    { id: 'cancel', text: 'Resume Playing', y: 335 },
 ];
 
 /** Main font_2 (Main.Part12.cs:1523 GenerateFont(18.67, bold)). */
@@ -179,7 +180,6 @@ export function createGameMenu(clock: GalaxyTime, callbacks: GameMenuCallbacks =
         },
         load: () => openSaveLoad('load'),
         save: () => openSaveLoad('save'),
-        saveAs: () => openSaveLoad('save', true),
         options: () => {
             // The Game Options window pauses by itself (AutoPauseWhenInPopupWindow); the menu closes behind it.
             hide();
