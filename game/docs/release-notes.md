@@ -4,19 +4,20 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
-- **Intercept (new command):** select a ship, fleet, base or space creature that is not yours and the selection
-  panel's **More** menu offers **Intercept: <fleet> (ETA …)** — the best free fleet (or, failing one, a single warship)
-  strong enough to win (1.5× its strength), in fuel range, weighing travel time, spare strength (the smallest force that
-  will do), fuel and damage. The other eligible forces are listed below it to pick instead, with **Select <fleet>** to
-  jump to it. A moving target is met where it is going (its course and hyperjump are predicted, re-checked every few
-  seconds) instead of chased from behind; in range the force attacks as normal. The order ends when the target is
-  destroyed, or after the force reaches the last known point of a target it lost sight of. Empires only at war; pirates
-  unless you have an agreement.
-- **Defend (new command):** with a star system selected, **Defend: <fleet> (ETA …)** sends the best free force (strong
-  enough for the hostiles you can see there) to patrol the system; the other candidates can be picked the same way.
-- **Watch system (new fleet toggle):** a fleet with automation off can be set to watch its system (More menu): it stays
-  there defending it, flies off to the best refuel point when low on fuel and comes back by itself. The selection panel
-  shows "Watching <system>"; a new order to the fleet or turning its automation on ends the watch.
+- **Intercept (new command):** select a ship, fleet, base or space creature that is not yours and a new strip right
+  above the selection panel shows **Intercept: <fleet> · <ETA>** — the best free fleet (or, failing one, a single
+  warship) strong enough to win (1.5× its strength), in fuel range, weighing travel time, spare strength (the smallest
+  force that will do), fuel and damage. The **▾** next to it lists the other eligible forces to pick instead, and the
+  **⌖** button selects the chosen one. A moving target is met where it is going (its course and hyperjump are
+  predicted, re-checked every few seconds) instead of chased from behind; in range the force attacks as normal. The
+  order ends when the target is destroyed, or after the force reaches the last known point of a target it lost sight
+  of. Empires only at war; pirates unless you have an agreement. When no force can go, the button is greyed and its
+  hover message says why.
+- **Defend (new command):** with a star system selected, the strip shows **Defend: <fleet> · <ETA>**: it sends the
+  best free force (strong enough for the hostiles you can see there) to patrol the system; ▾ and ⌖ work the same way.
+- **Watch system (new fleet toggle):** for your own fleet the strip shows **Watch <system>**: with the fleet's automation
+  off it stays there defending it, flies off to the best refuel point when low on fuel and comes back by itself. The
+  selection panel shows "Watching <system>"; a new order to the fleet or turning its automation on ends the watch.
 - **Galaxy Backdrop picker:** new **Dimmed Original** (the original's colours, darkened halfway toward Deep, faint grey
   dust), **Deep Azure** (navy and steel-blue dust, teal accents), **Deep Ember** (crimson and ember dust, the odd dull
   gold) and **Deep Violet** (purple and magenta dust, blue accents), all built like Deep from the original image. Galactic

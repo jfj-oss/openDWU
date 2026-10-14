@@ -584,3 +584,71 @@ span.sel-corner.sel-text {
 .sel-more .sel-more-on .ow-ts-label {
     color: #ffd700;
 }
+
+/* openDWU command (not in the original): the Intercept / Defend / Watch strip right above the frame (hud.ts,
+   ui/interceptSlots.ts), in the frame's original pixels. The frame's action strip is its bottom row, 10 px above the
+   screen edge, so the row above the frame is the free space; the yellow hover message moves up above it. */
+.sel-frame .sel-intercept {
+    position: absolute;
+    left: 0;
+    top: -28px;
+    width: 318px;
+    height: 24px;
+    pointer-events: none;
+}
+.sel-frame .sel-intercept[hidden],
+.sel-frame .sel-ic-btn[hidden],
+.sel-frame .sel-ic-list[hidden] {
+    display: none;
+}
+.sel-frame .sel-ic-btn {
+    font-family: Verdana, sans-serif;
+    font-weight: bold;
+    font-size: 9px;
+    color: rgb(200, 200, 200);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.sel-frame .sel-ic-main {
+    justify-content: flex-start;
+    padding: 0 8px;
+}
+.sel-frame .sel-ic-btn:hover:not(:disabled),
+.sel-frame .sel-ic-btn.sel-glass-on {
+    color: rgb(255, 255, 255);
+}
+.sel-frame .sel-ic-btn:disabled {
+    color: rgb(110, 110, 110);
+    cursor: default;
+}
+.sel-frame .sel-ic-drop,
+.sel-frame .sel-ic-select {
+    font-size: 13px;
+}
+.sel-frame .sel-ic-list {
+    position: absolute;
+    left: 0;
+    bottom: 28px;
+    pointer-events: auto;
+    z-index: 3;
+}
+.sel-frame .sel-ic-list .sel-more-menu {
+    position: static;
+    min-width: 260px;
+}
+.sel-frame .sel-ic-list .ow-ts-item {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    font: inherit;
+    text-align: left;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+}
+.sel-frame .sel-ic-list .sel-more-on .ow-ts-label {
+    color: #ffd700;
+}
+.sel-frame.sel-ic-shown .sel-hover-msg {
+    top: -47px;
+}

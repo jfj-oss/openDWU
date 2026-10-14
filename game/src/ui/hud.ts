@@ -111,7 +111,7 @@ import { CREATURE_FRAME_SETS, creatureFrameSetIndexes, creatureFrameUrls } from 
 import type { Creature } from '../sim/creature';
 import { Fighter } from '../sim/combat/fighters';
 import { localViewerEmpire } from '../localViewer';
-import { interceptSlots, watchSlot } from './interceptSlots';
+import { interceptStrip } from './interceptSlots';
 import { toggleDietScreen } from './screens/dietScreen'; // [charactersVictory]
 import { dietOn } from '../sim/scenario/charactersVictory/diet/dietState'; // [charactersVictory]
 
@@ -1533,13 +1533,6 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         if (settingsFleet !== null && isImprovementEnabled('fleetSettings') && settingsFleet.empire === (localViewerEmpire(wiring.galaxy) ?? null)) {
             out.push({ label: 'Settings', title: 'Fleet Settings: posture, engagement, retreat, fuel, troops and resupply (Q)', onClick: () => openFleetSettingsFor(settingsFleet) });
         }
-        // openDWU command (not in the original): Intercept / Defend with the best free force, and a fleet's system watch.
-        const viewer = localViewerEmpire(wiring.galaxy) ?? null;
-        if (viewer !== null && wiring.galaxy) {
-            out.push(...interceptSlots(wiring.galaxy, viewer, currentSelection, (f) => (f instanceof ShipGroup ? shipGroupSelectHandler?.(f, true) : stellarObjectSelectHandler?.(f, true))));
-            const w = currentSelection?.shipGroup ?? null;
-            if (w !== null && w.empire === viewer) out.push(watchSlot(wiring.galaxy, viewer, w));
-        }
         if (!charterButton.element.hidden) {
             const el = charterButton.element as HTMLButtonElement;
             out.push({ label: 'Charter', title: el.title || 'Charter a company…', disabled: el.disabled, onClick: () => el.click() });
@@ -1570,9 +1563,88 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         actionHint = actionHintBtn !== null && actionHintBtn.isConnected ? actionHintBtn.dataset.hint ?? '' : '';
         syncHoverMessage();
     };
+    // openDWU command (not in the original): the Intercept / Defend / Watch strip (ui/interceptSlots.ts). The frame
+    // sits 10 px above the screen bottom with its action strip as its last row, so there is no room below it: the strip
+    // is the row right above the frame (in the frame's original pixels, so it scales with it), and the yellow hover
+    // message moves up above it while it is shown.
+    const icStrip = document.createElement('div');
+    icStrip.className = 'sel-intercept';
+    icStrip.hidden = true;
+    panel.appendChild(icStrip);
+    const icMain = glassButton('sel-ic-btn sel-ic-main', 0, 0, 262, 24, null, '', 'left', () => icModel?.click());
+    const icMore = glassButton('sel-ic-btn sel-ic-drop', 264, 0, 24, 24, null, '', 'none', () => {
+        icListOpen = !icListOpen && (icModel?.choices.length ?? 0) > 0;
+        drawInterceptStrip();
+    });
+    icMore.textContent = '▾';
+    const icSelect = glassButton('sel-ic-btn sel-ic-select', 290, 0, 28, 24, null, '', 'right', () => icModel?.select?.());
+    icSelect.textContent = '⌖';
+    const icList = document.createElement('div');
+    icList.className = 'sel-ic-list';
+    icList.hidden = true;
+    icStrip.append(icMain, icMore, icSelect, icList);
+    let icModel: ReturnType<typeof interceptStrip> = null;
+    let icListOpen = false;
+    let icSel: unknown = null;
+    const drawInterceptStrip = (): void => {
+        const viewer = localViewerEmpire(wiring.galaxy) ?? null;
+        if (currentSelection !== icSel) {
+            icSel = currentSelection;
+            icListOpen = false;
+        }
+        icModel =
+            viewer !== null && wiring.galaxy
+                ? interceptStrip(wiring.galaxy, viewer, currentSelection, (f) => (f instanceof ShipGroup ? shipGroupSelectHandler?.(f, true) : stellarObjectSelectHandler?.(f, true)), () => {
+                      icListOpen = false;
+                      drawInterceptStrip();
+                  })
+                : null;
+        const m = icModel;
+        icStrip.hidden = m === null;
+        panel.classList.toggle('sel-ic-shown', m !== null);
+        if (m === null) {
+            icListOpen = false;
+            icList.hidden = true;
+            return;
+        }
+        icMain.textContent = m.label;
+        icMain.dataset.hint = m.hint;
+        icMain.disabled = m.disabled;
+        icMain.classList.toggle('sel-glass-on', m.active);
+        icMore.hidden = m.choices.length === 0;
+        icMore.dataset.hint = 'Choose the fleet or warship to send';
+        icMore.classList.toggle('sel-glass-on', icListOpen);
+        icSelect.hidden = m.select === null;
+        icSelect.dataset.hint = m.selectHint;
+        icList.hidden = !icListOpen || m.choices.length === 0;
+        if (!icList.hidden) {
+            const menu = toolStripMenu('sel-more-menu');
+            for (const c of m.choices) {
+                const row = toolStripItem(c.label, { title: c.hint, tag: 'button' });
+                row.classList.add('sel-extra-btn');
+                if (c.chosen) row.classList.add('sel-more-on');
+                row.addEventListener('mouseenter', () => setToolStripActive(menu, row));
+                row.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    c.pick();
+                });
+                menu.appendChild(row);
+            }
+            icList.replaceChildren(menu);
+        }
+    };
+    // The order's ETA and the candidates change as the game runs: refresh once a game-UI second (not while the list is open).
+    const icTimer = window.setInterval(() => {
+        if (!panel.isConnected) {
+            window.clearInterval(icTimer);
+            return;
+        }
+        if (!icListOpen) drawInterceptStrip();
+    }, 1000);
     setSelectionExtraSlots(
         extraSlots,
         (list) => {
+            drawInterceptStrip();
             moreCount = list.length;
             moreBtn.hidden = list.length === 0;
             moreBtn.dataset.hint = list.length === 0 ? '' : `More: ${list.map((x) => x.label).join(', ')}`;
@@ -1634,9 +1706,9 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     greySvg.appendChild(greyFilter);
     document.getElementById('sel-action-disabled')?.closest('svg')?.remove();
     document.body.appendChild(greySvg);
-    for (const el of [actionBar, moreBtn]) {
+    for (const el of [actionBar, moreBtn, icStrip]) {
         el.addEventListener('mouseover', (e) => {
-            actionHintBtn = e.target instanceof Element ? e.target.closest<HTMLElement>('.order-action-btn, .sel-more-btn') : null;
+            actionHintBtn = e.target instanceof Element ? e.target.closest<HTMLElement>('.order-action-btn, .sel-more-btn, .sel-ic-btn') : null;
             syncActionHint();
         });
         el.addEventListener('mouseleave', () => {

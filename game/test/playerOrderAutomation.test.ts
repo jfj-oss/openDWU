@@ -27,6 +27,7 @@ import {
     interceptForbiddenReason, interceptForceStrength, interceptTargetStrength, issueDefendSystem, issueIntercept, predictTargetPath, processIntercepts, processSystemWatches,
     setFleetWatch, solveIntercept, systemStarOf, watchStatusText, watchUnavailableReason, type InterceptForce, type PathLeg,
 } from '../src/sim/player/intercept';
+import { interceptStrip, shortEta } from '../src/ui/interceptSlots';
 
 function missionOfForce(f: InterceptForce): BuiltObjectMission | null {
     return f instanceof ShipGroup ? f.mission : builtObjectMission(f.mission);
@@ -341,6 +342,45 @@ describe('Intercept, Defend and Watch system orders', () => {
         // in hyperspace: aimed at the jump's exit point, arriving no earlier than the target gets there
         expect(Math.hypot(sol.x - path.endX, sol.y - path.endY)).toBeLessThan(1);
         expect(sol.etaMs).toBeGreaterThanOrEqual(sol.targetMs - 1);
+    }, 300000);
+
+    it('the strip above the selection frame: Defend / Intercept with the ▾ choice, Watch toggle for an own fleet', () => {
+        const game = cachedTickGame(gameData);
+        const g = game.galaxy;
+        const p = game.playerEmpire;
+        const { small, big } = makeFleets(game);
+        const star = systemStarOf(g, p.capital!)!;
+        let redraws = 0;
+        const selected: unknown[] = [];
+        const m = interceptStrip(g, p, { habitat: star }, (f) => selected.push(f), () => redraws++)!;
+        const list = defendCandidates(g, p, star);
+        expect(m.label).toBe(`Defend: ${list[0].name} · ${shortEta(list[0].etaMs)}`);
+        expect(m.disabled).toBe(false);
+        expect(m.choices.length).toBe(list.length);
+        expect(m.choices[0].chosen).toBe(true);
+        // pick the second force in the ▾ list: it becomes the chosen one, the select button selects it
+        m.choices[1].pick();
+        expect(redraws).toBe(1);
+        const m2 = interceptStrip(g, p, { habitat: star }, (f) => selected.push(f), () => redraws++)!;
+        expect(m2.label).toContain(list[1].name);
+        expect(m2.choices[1].chosen).toBe(true);
+        m2.select!();
+        expect(selected).toEqual([list[1].force]);
+        // a planet (not a star): nothing; an empire not at war: Intercept disabled with the reason as the hint
+        const planet = g.systems[star.systemIndex].habitats.find((h) => h !== star)!;
+        expect(interceptStrip(g, p, { habitat: planet }, () => {}, () => {})).toBeNull();
+        const other = g.empires.find((e) => e !== p && e.active && e.pirateEmpireBaseHabitat === null && e.builtObjects.length > 0)!;
+        const mi = interceptStrip(g, p, { habitat: star, builtObject: other.builtObjects[0] }, () => {}, () => {})!;
+        expect(mi.disabled).toBe(true);
+        expect(mi.hint).toMatch(/Not at war/);
+        // own fleet: the Watch toggle (disabled while automated, with the reason)
+        const mw = interceptStrip(g, p, { habitat: star, shipGroup: small }, () => {}, () => {})!;
+        expect(mw.label).toMatch(/^Watch /);
+        expect(mw.disabled).toBe(true);
+        expect(mw.hint).toMatch(/automation/);
+        expect(mw.choices).toEqual([]);
+        expect(mw.select).toBeNull();
+        void big;
     }, 300000);
 
     it('Defend sends a force to patrol the system; a watch holds it there, refuels away and comes back; a new order ends it', () => {
