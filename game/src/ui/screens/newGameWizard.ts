@@ -107,7 +107,7 @@ import { selectColorFromKey } from '../../sim/empireColors';
 import { loadScenarioIndex } from '../../sim/scenario/fetchScenario';
 import type { ScenarioManifest } from '../../sim/scenario/manifest';
 import { IS_CLASSIC } from '../../appVersion';
-import { BASE_ADDONS, SMARTER_AI_ADDON_ID, addonCatalog, addonClosure, addonPickerModel, canonicalAddons, defaultSmarterAIChoice, expansionMemberIds, expansionRows, toggleExpansion, type ExpansionRow, planAddonStart, resolveAddonSwitches, toggleAddon, withFlagAddons, forcedFlags, withSmarterAI, withOrbitalSuperiority, withLongerGroundCombat, withJumpInterdiction, ORBITAL_SUPERIORITY_ADDON_ID, LONGER_GROUND_COMBAT_ADDON_ID, JUMP_INTERDICTION_ADDON_ID, type AddonCatalog, type AddonOverrides, type AddonRow, type SmarterAIChoice } from '../../sim/scenario/addons';
+import { BASE_ADDONS, SMARTER_AI_ADDON_ID, addonCatalog, addonClosure, addonPickerModel, canonicalAddons, defaultSmarterAIChoice, expansionMemberIds, expansionRows, toggleExpansion, type ExpansionRow, planAddonStart, resolveAddonSwitches, toggleAddon, withFlagAddons, forcedFlags, withSmarterAI, withOrbitalSuperiority, withLongerGroundCombat, withJumpInterdiction, withBlockadesBite, ORBITAL_SUPERIORITY_ADDON_ID, LONGER_GROUND_COMBAT_ADDON_ID, JUMP_INTERDICTION_ADDON_ID, BLOCKADES_BITE_ADDON_ID, type AddonCatalog, type AddonOverrides, type AddonRow, type SmarterAIChoice } from '../../sim/scenario/addons';
 import {
     COLORS,
     FONT,
@@ -2069,7 +2069,7 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
 
     // Not in the original: "Gameplay changes" (opt-in rule changes, folded into options.scenario by addonChoiceFor):
     // a one-row GradientPanel under the Smarter AI one with the Orbital superiority checkbox (scenarios/orbital-superiority).
-    const gameplayPanel = panel(wrap, 10, 506, 880, 34, 'wizard-panel-group wizard-gameplay-changes');
+    const gameplayPanel = panel(wrap, 10, 506, 880, 58, 'wizard-panel-group wizard-gameplay-changes');
     const gameplayHeading = label(gameplayPanel, 'Gameplay changes', 10, 9, { size: FONT.normal, bold: true });
     gameplayHeading.classList.add('wizard-gameplay-changes-heading');
     const orbital = check(gameplayPanel, 'Orbital superiority', options.orbitalSuperiority === true, 160, 6, (v) => {
@@ -2090,6 +2090,17 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
     longer.row.classList.add('wizard-longer-ground-combat');
     const LONGER_HELP = 'Battles on the ground last twice as long as in the original game: both sides lose troops at half the rate, so there is more time to land reinforcements or bring a fleet to break the siege. Who wins is decided the same way.';
     longer.row.title = LONGER_HELP;
+    // Blockades that bite (scenarios/blockades-bite): off by default; second row of the panel.
+    const bite = check(gameplayPanel, 'Blockades that bite', options.blockadesBite === true, 160, 30, (v) => {
+        if (v) options.blockadesBite = true;
+        else delete options.blockadesBite;
+        ctx.refreshScenario();
+    });
+    bite.row.classList.add('wizard-blockades-bite');
+    const BITE_HELP =
+        'A colony whose orbit is held by an enemy at war with it (armed ships and bases within 2000, more than 1.5 times the owner\'s) is blockaded: it loses the trade half of its taxes, its space ports earn no trade income, construction and population growth there stop, and its approval slowly falls. It ends when the orbit is free again. The AI blockades its enemies\' richest colonies before invading and sends fleets to break blockades of its own.';
+    bite.row.title = BITE_HELP;
+    bite.row.addEventListener('mouseenter', () => ctx.help('Blockades that bite', BITE_HELP));
     orbital.row.addEventListener('mouseenter', () => ctx.help('Orbital superiority', ORBITAL_HELP));
     longer.row.addEventListener('mouseenter', () => ctx.help('Longer ground battles', LONGER_HELP));
     // Defensive jump interdiction (scenarios/jump-interdiction).
@@ -2106,7 +2117,7 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
 
     // picStartNewGameOtherEmpiresImageBottom 880 × 130 at (10, 470), CenterImage (moved down under the Smarter AI and
     // Gameplay changes panels).
-    resxPicture(wrap, 'picStartNewGameOtherEmpiresImageBottom.Image', 10, 544, 880, 56, 'center');
+    resxPicture(wrap, 'picStartNewGameOtherEmpiresImageBottom.Image', 10, 568, 880, 32, 'center');
 
     let governments: Government[] = [];
     function playableRaces(): Race[] {
@@ -2883,11 +2894,12 @@ let wizardScenarios: ScenarioManifest[] = [];
  * The wizard's scenario choice for a set of ticks (null = the original game), with the Other Empires page's Smarter AI
  * choice and its Orbital superiority checkbox folded in (addons.ts withSmarterAI / withOrbitalSuperiority).
  */
-export function addonChoiceFor(cat: AddonCatalog, picked: readonly string[], overrides: AddonOverrides, smart: SmarterAIChoice | null = null, orbitalSuperiority = false, longerGroundCombat = false, jumpInterdiction = false): StartGameOptions['scenario'] {
+export function addonChoiceFor(cat: AddonCatalog, picked: readonly string[], overrides: AddonOverrides, smart: SmarterAIChoice | null = null, orbitalSuperiority = false, longerGroundCombat = false, jumpInterdiction = false, blockadesBite = false): StartGameOptions['scenario'] {
     const wS = withSmarterAI(picked, overrides, smart);
     const wO = withOrbitalSuperiority(wS.picked, wS.overrides, orbitalSuperiority);
     const wL = withLongerGroundCombat(wO.picked, wO.overrides, longerGroundCombat);
-    const w0 = withJumpInterdiction(wL.picked, wL.overrides, jumpInterdiction);
+    const wJ = withJumpInterdiction(wL.picked, wL.overrides, jumpInterdiction);
+    const w0 = withBlockadesBite(wJ.picked, wJ.overrides, blockadesBite);
     const w = { picked: withFlagAddons(cat, w0.picked, w0.overrides), overrides: w0.overrides };
     const plan = planAddonStart(cat, w.picked);
     if (plan === null) return null;
@@ -2932,7 +2944,7 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
     /** Base add-ons (event log, themed names) are always on in both editions. */
     const withBase = (ids: string[]): string[] => [...new Set([...BASE_ADDONS, ...ids])];
     // The Smarter AI add-on is the Other Empires page's (options.smarterAI), not a tick of this page.
-    let picked: string[] = IS_CLASSIC ? [...BASE_ADDONS] : withBase((options.scenario?.addons ?? (options.scenario ? [options.scenario.id] : [])).filter((id) => id !== SMARTER_AI_ADDON_ID && id !== ORBITAL_SUPERIORITY_ADDON_ID && id !== LONGER_GROUND_COMBAT_ADDON_ID && id !== JUMP_INTERDICTION_ADDON_ID));
+    let picked: string[] = IS_CLASSIC ? [...BASE_ADDONS] : withBase((options.scenario?.addons ?? (options.scenario ? [options.scenario.id] : [])).filter((id) => id !== SMARTER_AI_ADDON_ID && id !== ORBITAL_SUPERIORITY_ADDON_ID && id !== LONGER_GROUND_COMBAT_ADDON_ID && id !== JUMP_INTERDICTION_ADDON_ID && id !== BLOCKADES_BITE_ADDON_ID));
     const overrides: AddonOverrides = { flags: {}, params: {} };
     /** Settings panels the player opened (kept open across re-renders). */
     const openPanels = new Set<string>();
@@ -2947,7 +2959,7 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
     }
 
     function update(): void {
-        options.scenario = addonChoiceFor(cat, picked, overrides, options.smarterAI ?? null, options.orbitalSuperiority === true, options.longerGroundCombat === true, options.jumpInterdiction === true);
+        options.scenario = addonChoiceFor(cat, picked, overrides, options.smarterAI ?? null, options.orbitalSuperiority === true, options.longerGroundCombat === true, options.jumpInterdiction === true, options.blockadesBite === true);
         render();
     }
     ctx.refreshScenario = update;
@@ -3119,7 +3131,7 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
                         update();
                         return;
                     }
-                    options.scenario = addonChoiceFor(cat, picked, overrides, options.smarterAI ?? null, options.orbitalSuperiority === true, options.longerGroundCombat === true, options.jumpInterdiction === true);
+                    options.scenario = addonChoiceFor(cat, picked, overrides, options.smarterAI ?? null, options.orbitalSuperiority === true, options.longerGroundCombat === true, options.jumpInterdiction === true, options.blockadesBite === true);
                 }, FONT.normal);
                 c.classList.add('wizard-checkbox', 'wizard-flow');
                 if (by !== undefined) c.title = `Required by ${by.join(', ')}`;
@@ -3136,7 +3148,7 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
                     const v = parseInt(s.input.value, 10);
                     if (!Number.isNaN(v)) {
                         overrides.params[p.name] = Math.min(max, Math.max(min, v));
-                        options.scenario = addonChoiceFor(cat, picked, overrides, options.smarterAI ?? null, options.orbitalSuperiority === true, options.longerGroundCombat === true, options.jumpInterdiction === true);
+                        options.scenario = addonChoiceFor(cat, picked, overrides, options.smarterAI ?? null, options.orbitalSuperiority === true, options.longerGroundCombat === true, options.jumpInterdiction === true, options.blockadesBite === true);
                     }
                 });
                 s.el.classList.add('wizard-flow-spin');

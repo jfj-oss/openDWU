@@ -819,6 +819,17 @@ export interface ScenarioQueries {
      * docking at the target (the blockade record still stands). Characters & Victory's Diet enforcers (return fire only). Pure.
      */
     blockadeEngagesDocking: { value: boolean; args: { builtObject: BuiltObject } };
+    /**
+     * construction/constructionQueue.ts ConstructionQueue.doConstruction (ConstructionQueue.cs 1196), after its yard
+     * draw: true = no progress this step (the time passes). `habitat` = the colony whose queue it is, or the colony a
+     * base with yards (`builtObject`) orbits. Blockades that bite. Pure, no Rnd.
+     */
+    constructionQueuePaused: { value: boolean; args: { habitat: Habitat; builtObject: BuiltObject | null } };
+    /**
+     * logistics/contracts.ts initiateContract (Empire.4.cs 1135): a factor on the trade income (tax on the sale) a
+     * selling space port / base earns its empire (stock 1). Blockades that bite (it books the loss). No Rnd.
+     */
+    portTradeIncomeFactor: { value: number; args: { port: BuiltObject; amount: number } };
     // [colonyEconomy] begin — Colony Economy (docs/ECONOMY.md): multiplicative factors (stock 1), each applied only when
     // a handler changes it, so with no handler the stock arithmetic is untouched. Pure, no Rnd.
     /**

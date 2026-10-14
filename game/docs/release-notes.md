@@ -59,6 +59,13 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 - **Longer ground battles (new gameplay change, on by default for new games):** a second "Gameplay changes" checkbox,
   "Longer ground battles (2×)": ground battles take twice as long (both sides lose troops at half the rate); who wins is
   decided as before. Untick it for the original pace.
+- **Blockades that bite (new gameplay change, off by default):** a third "Gameplay changes" checkbox (also in openDWU
+  Classic). A colony whose orbit is held by an enemy at war with it (more than 1.5 times the owner's armed ships and bases
+  within 2,000, the Orbital superiority measure; or by an empire that declared a blockade of it) is blockaded: it loses
+  the trade half of its taxes, its space ports earn no trade income, construction and population growth there stop and
+  its approval falls slowly (0.1 a day, at most 15). It ends when the orbit is free; both sides get a message, and the
+  colony panel shows "Blockaded by X". AI empires blockade their enemies' richest colonies before invading and send
+  their nearest strong enough fleet to break a blockade of their own.
 - **Galaxy Backdrop picker:** new **Dimmed Original** (the original's colours, darkened halfway toward Deep, faint grey
   dust), **Deep Azure** (navy and steel-blue dust, teal accents), **Deep Ember** (crimson and ember dust, the odd dull
   gold) and **Deep Violet** (purple and magenta dust, blue accents), all built like Deep from the original image. Galactic

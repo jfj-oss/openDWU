@@ -19,7 +19,7 @@ import { pirateEconomyPerformExpense, pirateEconomyPerformIncome } from '../pira
 import { galaxyStarDate } from '../tick/simTime';
 import { countersProcessTradeBonus } from '../treasury';
 import { applyCorruptionToIncome, cargoGetCargo, cargoRemove, performPrivateTransaction, type ComponentRef, type Order } from './orders';
-import { scenarioEmit } from '../scenario/hooks';
+import { scenarioEmit, scenarioQuery } from '../scenario/hooks';
 import { contractListenersActive, emitContractInitiated } from './contractEvents';
 
 /** A StellarObject (C# base of Habitat and BuiltObject). */
@@ -299,6 +299,12 @@ export function initiateContract(
         const num3 = 1.0 + highestSkillLevelExcludeLeaders / 100.0;
         num *= num3;
     }
+    // Mod layer (blockades-bite): a blockaded colony's ports earn less / no trade income; stock factor 1 (no scenario).
+    let portFactor = 1;
+    if (galaxy.scenario !== null && sellingPoint instanceof BuiltObject) {
+        portFactor = scenarioQuery(galaxy, 'portTradeIncomeFactor', 1, { port: sellingPoint, amount: num });
+        if (portFactor !== 1) num *= portFactor;
+    }
     empire.stateMoney += applyCorruptionToIncome(empire, num);
     const num4 = applyCorruptionToIncome(empire, transactionAmount);
     performPrivateTransaction(galaxy, empire, num4);
@@ -311,7 +317,7 @@ export function initiateContract(
             performPrivateTransaction(galaxy, requestingEmpire, 0.0 - transactionAmount);
         }
     }
-    if (sellingPoint instanceof BuiltObject) performFinancialTransaction(sellingPoint, transactionAmount, starDate, true);
+    if (sellingPoint instanceof BuiltObject) performFinancialTransaction(sellingPoint, portFactor !== 1 ? transactionAmount * portFactor : transactionAmount, starDate, true);
     payForFreight(galaxy, sellingPoint, contract, destination!.xpos, destination!.ypos, isState, requestingEmpire);
     let cargo: Cargo | null = null;
     let cargo2: Cargo | null = null;

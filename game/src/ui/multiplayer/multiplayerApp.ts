@@ -1725,7 +1725,7 @@ function openClientLobby(deps: MultiplayerAppDeps, client: LobbyClient, gameData
             }
             missingBox.hidden = missing.length === 0;
             const names = (st.host?.addons?.packages ?? []).map((id, i) => (missing.includes(id) ? `${st.host!.addons!.names[i] ?? id} (${id})` : null)).filter((x): x is string => x !== null);
-            missingBox.textContent = missing.length === 0 ? '' : `This app does not have the add-on package${names.length === 1 ? '' : 's'} the host's game uses: ${names.join(', ')}. Every player needs the same openDWU release with the same add-ons (assets/scenarios/), or the host picks other add-ons.${IS_CLASSIC ? ' openDWU Classic ships only Themed Names, Smarter AI, Orbital Superiority, Longer Ground Battles, Jump Interdiction and the Event Log: install the full edition to play this game.' : ''}`;
+            missingBox.textContent = missing.length === 0 ? '' : `This app does not have the add-on package${names.length === 1 ? '' : 's'} the host's game uses: ${names.join(', ')}. Every player needs the same openDWU release with the same add-ons (assets/scenarios/), or the host picks other add-ons.${IS_CLASSIC ? ' openDWU Classic ships only Themed Names, Smarter AI, Orbital Superiority, Longer Ground Battles, Jump Interdiction, Blockades That Bite and the Event Log: install the full edition to play this game.' : ''}`;
             status.textContent = me?.ready === true ? 'Ready. Waiting for the host to start…' : 'Tick Ready when your empire is set.';
         },
         chat(from, name, text, to) {

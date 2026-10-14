@@ -29,6 +29,7 @@ import { resolveSubRoleDescription } from '../sim/designGeneration';
 import { strategicValue } from '../sim/territory';
 import { habitatDevelopmentLevel } from '../sim/developmentLevel';
 import { empireApprovalRating, taxComplianceRate } from '../sim/taxes';
+import { blockadeInfo } from '../sim/scenario/blockades/blockadesBite';
 import { habitatAnnualRevenue, habitatCorruption, privateAnnualRevenue, calculateAccurateAnnualIncome } from '../sim/forceStructure';
 import { canEmpireColonizeHabitatExplained } from '../sim/player/advisorSuggestions';
 import { checkColonizationLikeliness } from '../sim/tradeItems';
@@ -1300,6 +1301,9 @@ export function habitatInfo(ctx: InfoContext, h: Habitat): InfoModel {
                     }
                 } else tax = `${fmtPct(h.taxRate)} (${fmtK(taxRevenue)})`;
                 rows.push(label('Tax', [txt(tax, color)]));
+                // Mod layer (blockades-bite): "Blockaded by X" under the tax line while the orbit is held.
+                const bite = blockadeInfo(galaxy, h);
+                if (bite !== null) rows.push(label('', [{ ...txt(`${bite.line} (${Math.floor(bite.days)} days, approval ${bite.approval.toFixed(1)})`, 0xff6040), title: 'Blockaded: the trade share of its taxes, space port trade income, construction and population growth have stopped until the orbit is free.' }]));
                 rows.push({ kind: 'gap', h: 4 });
             }
             // Facilities.

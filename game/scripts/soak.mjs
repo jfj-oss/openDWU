@@ -157,6 +157,9 @@ const CONFIGS = [
     // `--set interdiction` (--hook scripts/interdiction-soak-hook.mjs): Defensive jump interdiction on / off on the os-war
     // galaxy (aggressive AI, older galaxy, 700 stars, 7 empires, 20 years): pirate raids, interdicted jumps, pirate losses.
     ...[['ji-war-on-s1', true], ['ji-war-off-s1', false]].map(([name, on]) => SCN('jump-interdiction', { name, set: 'interdiction', seed: 1, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, flags: { jumpInterdiction: on } })),
+    // `--set blockades` (--hook scripts/blockades-soak-hook.mjs): Blockades that bite on / off on the os-war-* galaxy
+    // (aggressive AI, older galaxy, 700 stars, 7 empires, 20 years): blockades started, income lost, broken by relief.
+    ...[['bb-war-on-s1', true], ['bb-war-off-s1', false]].map(([name, on]) => SCN('blockades-bite', { name, set: 'blockades', seed: 1, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, flags: { blockadesBite: on } })),
     // `--set long`: the many-decade runs (not in the default set).
     { name: 'long-s1-30y', set: 'long', seed: 1, years: 30, wizard: {} },
     { name: 'long-s7-small-50y', set: 'long', seed: 7, years: 50, wizard: { starCountIndex: 1, dimensionIndex: 1, otherEmpires: { empireCount: 5 } } },

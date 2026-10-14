@@ -140,6 +140,19 @@ export function empireFirepowerNear(galaxy: Galaxy, x: number, y: number, range:
     return total;
 }
 
+/** Armed firepower (firepowerRaw) per owner of the built objects within `range` of (x, y): the same Space Control measure, one lookup (Blockades that bite). */
+export function firepowerByEmpireNear(galaxy: Galaxy, x: number, y: number, range: number): Map<Empire, number> {
+    const out = new Map<Empire, number>();
+    const near = getNearbyBuiltObjects(galaxy, x, y, range);
+    for (let i = 0; i < near.length; i++) {
+        const b = near[i];
+        if (b == null || b.hasBeenDestroyed || !(b.firepowerRaw > 0) || b.owner === null) continue;
+        const e = b.owner as Empire;
+        out.set(e, (out.get(e) ?? 0) + b.firepowerRaw);
+    }
+    return out;
+}
+
 /** A normal (non-pirate) empire that is not the independents. */
 function normalEmpire(galaxy: Galaxy, e: Empire | null): e is Empire {
     return e !== null && e !== galaxy.independentEmpire && e.pirateEmpireBaseHabitat === null;

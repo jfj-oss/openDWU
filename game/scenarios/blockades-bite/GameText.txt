@@ -1,0 +1,8 @@
+'Blockades that bite: messages and the colony panel line. {n} items are filled by the scenario code.
+BlockadesBite Title;Blockade of {0}
+BlockadesBite Started Owner;{1} holds the orbit of {0} and has blockaded it: trade income, construction and population growth there have stopped, and its people grow restless.
+BlockadesBite Started Holder;Our fleet holds the orbit of {0} ({1}): the colony is blockaded.
+BlockadesBite Lifted Title;Blockade of {0} lifted
+BlockadesBite Lifted Owner;{1} no longer holds the orbit of {0}: the blockade is over.
+BlockadesBite Lifted Holder;We no longer hold the orbit of {0} ({1}): our blockade is over.
+BlockadesBite Line;Blockaded by {0}

@@ -1026,6 +1026,11 @@ export class ConstructionQueue {
         this.processWaitQueue();
         const yards = this._constructionYards!;
         const num = galaxy.rnd.next(0, yards.length);
+        // Mod layer (blockades-bite): a paused queue makes no progress (the time passes); stock: never.
+        if (galaxy.scenario !== null && this.scenarioPaused(galaxy)) {
+            this._lastProcessed = tempNow;
+            return builtObjectList;
+        }
         for (let i = num; i < yards.length; i++) {
             this.processSingleConstructionYard(yards[i], timePassedMs, galaxy, builtObjectList);
         }
@@ -1035,6 +1040,12 @@ export class ConstructionQueue {
         this.processWaitQueue();
         this._lastProcessed = tempNow;
         return builtObjectList;
+    }
+
+    /** Mod layer: the constructionQueuePaused query for this queue's colony (or the colony its base orbits). */
+    private scenarioPaused(galaxy: Galaxy): boolean {
+        const h = this._parentHabitat ?? (this._parentBuiltObject !== null ? this._parentBuiltObject.parentHabitat : null);
+        return h !== null && scenarioQuery(galaxy, 'constructionQueuePaused', false, { habitat: h, builtObject: this._parentBuiltObject });
     }
 
     /** Clear() (1225). */

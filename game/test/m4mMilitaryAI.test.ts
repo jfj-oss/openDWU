@@ -44,6 +44,20 @@ import { changeDiplomaticRelation, declareWar } from '../src/sim/diplomacyTick';
 import { maintainShipGroups } from '../src/sim/fleets/shipGroupTasks';
 import { empireShipGroups } from '../src/sim/fleets/shipGroup';
 import { identifyMilitaryObjectives } from '../src/sim/fleets/militaryAI';
+import { cachedScenarioGameRun } from './helpers/gameCache';
+import { ensureShips } from './helpers/ensureShips';
+import type { BuiltObject } from '../src/sim/builtObject';
+import type { Habitat } from '../src/sim/types';
+import { ShipGroup } from '../src/sim/fleets/shipGroup';
+import { FleetPosture } from '../src/sim/diplomacyTick';
+import { GAME_DAY_LENGTH, scenarioQuery } from '../src/sim/scenario/hooks';
+import { firepowerByEmpireNear } from '../src/sim/scenario/orbital/orbitalSuperiority';
+import { biteState, blockadeApprovalTerm, blockadeInfo, blockadesBiteAiReview, blockadesBiteDaily, blockadeTargetValue, orbitHolder } from '../src/sim/scenario/blockades/blockadesBite';
+import { empireApprovalRating } from '../src/sim/taxes';
+import { recalculateAnnualTaxRevenue } from '../src/sim/forceStructure';
+import { growPopulation } from '../src/sim/colonyTick';
+import { determineSpacePortAtColony } from '../src/sim/combat/attackAI';
+import { SystemVisibilityStatus } from '../src/sim/visibility';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -347,3 +361,195 @@ function identifyMechanoidEmpireReference(g: Galaxy): Empire | null {
     for (const e of g.empires) if (e.pirateEmpireBaseHabitat === null && e.dominantRace !== null && e.dominantRace.name.toLowerCase() === 'mechanoid') return e;
     return null;
 }
+
+// Blockades that bite (scenarios/blockades-bite, flag blockadesBite; scenario/blockades/blockadesBite.ts): a colony whose
+// orbit an enemy at war holds (the Orbital superiority measure) is blockaded: tax trade share, port trade, construction,
+// growth stop, approval drifts down; the AI relieves its blockaded colonies and blockades its enemies' richest ones.
+describe('Blockades that bite add-on', () => {
+    let bg: Galaxy;
+    let owner: Empire;
+    let holder: Empire;
+    let h: Habitat;
+    let ship: BuiltObject;
+    beforeAll(() => {
+        bg = cachedScenarioGameRun(gameData, { scenario: 'blockades-bite' }).game.galaxy;
+        const ai = bg.empires.filter((e) => e !== bg.playerEmpire && e.pirateEmpireBaseHabitat === null && e !== bg.independentEmpire && e.capital !== null && e.colonies.length > 0);
+        [owner, holder] = ai;
+        h = owner.capital!;
+        declareWar(bg, holder, owner, null, false, false);
+        ship = ensureShips(bg, holder, BuiltObjectSubRole.Destroyer, 1)[0];
+    }, 300000);
+
+    function moveTo(bo: BuiltObject, at: Habitat, dx = 300): void {
+        bo.xpos = at.xpos + dx;
+        bo.ypos = at.ypos;
+        const idx = bg.resolveIndex(bo.xpos, bo.ypos);
+        bg.builtObjectIndexGrid[idx.x][idx.y].push(bo);
+    }
+    function fleetOf(e: Empire, ships: BuiltObject[]): ShipGroup {
+        const g = new ShipGroup(bg);
+        g.empire = e;
+        for (const s of ships) {
+            g.ships.push(s);
+            s.shipGroup = g;
+        }
+        g.leadShip = ships[0];
+        (e.shipGroups as ShipGroup[]).push(g);
+        return g;
+    }
+    const ownerD = (): number => firepowerByEmpireNear(bg, h.xpos, h.ypos, 2000).get(owner) ?? 0;
+    function hold(): void {
+        ship.firepowerRaw = Math.ceil(ownerD() * 2) + 10;
+        moveTo(ship, h);
+    }
+    function leave(): void {
+        ship.xpos = h.xpos + 50000;
+        ship.ypos = h.ypos;
+    }
+
+    it('starts after 2 daily checks of an enemy-held orbit (> 1.5x the owner), ends after 2 free ones; contested = none', () => {
+        const st = biteState(bg);
+        // Contested (not > 1.5 x the owner's port): no holder.
+        ship.firepowerRaw = Math.max(1, Math.floor(ownerD()));
+        moveTo(ship, h);
+        expect(ownerD()).toBeGreaterThan(0);
+        expect(orbitHolder(bg, h)).toBeNull();
+        hold();
+        expect(orbitHolder(bg, h)?.empire).toBe(holder);
+        const started = st.stats.started;
+        blockadesBiteDaily(bg);
+        expect(blockadeInfo(bg, h)).toBeNull();
+        blockadesBiteDaily(bg);
+        expect(st.stats.started).toBe(started + 1);
+        const info = blockadeInfo(bg, h)!;
+        expect(info.by).toBe(holder);
+        expect(info.line).toBe(`Blockaded by ${holder.name}`);
+        // Free for one check: still on; two: over.
+        leave();
+        expect(orbitHolder(bg, h)).toBeNull();
+        const ended = st.stats.ended;
+        blockadesBiteDaily(bg);
+        expect(blockadeInfo(bg, h)).not.toBeNull();
+        blockadesBiteDaily(bg);
+        expect(blockadeInfo(bg, h)).toBeNull();
+        expect(st.stats.ended).toBe(ended + 1);
+    });
+
+    it('stops the trade share of tax, port trade, construction and growth; approval drifts down to the cap; flag off = stock', () => {
+        hold();
+        blockadesBiteDaily(bg);
+        blockadesBiteDaily(bg);
+        const rec = biteState(bg).active.find((r) => r.h === h.habitatIndex)!;
+        expect(rec).toBeDefined();
+        const port = determineSpacePortAtColony(bg, h)!;
+        expect(port).not.toBeNull();
+        expect(scenarioQuery(bg, 'colonyTaxRevenue', 1000, { habitat: h, empire: owner })).toBe(500);
+        expect(scenarioQuery(bg, 'portTradeIncomeFactor', 1, { port, amount: 100 })).toBe(0);
+        expect(scenarioQuery(bg, 'constructionQueuePaused', false, { habitat: h, builtObject: null })).toBe(true);
+        expect(scenarioQuery(bg, 'constructionQueuePaused', false, { habitat: h, builtObject: port })).toBe(true);
+        expect(scenarioQuery(bg, 'colonyFacilityConstructionPaused', false, { habitat: h })).toBe(true);
+        // The colony's revenue snapshot halves; its population does not grow.
+        recalculateAnnualTaxRevenue(bg, h);
+        const cut = h.annualTaxRevenue;
+        expect(rec.taxLostRate).toBeGreaterThan(0);
+        const pop = h.population.totalAmount;
+        growPopulation(bg, h, 120);
+        expect(h.population.totalAmount).toBe(pop);
+        // Approval: -0.1 a day, at most -15.
+        const now = galaxyStarDate(bg);
+        rec.since = now - 50 * GAME_DAY_LENGTH;
+        expect(blockadeApprovalTerm(bg, h)).toBeCloseTo(-5, 6);
+        const on = empireApprovalRating(bg, h);
+        rec.since = now - 500 * GAME_DAY_LENGTH;
+        expect(blockadeApprovalTerm(bg, h)).toBeCloseTo(-15, 6);
+        bg.scenario!.flags.blockadesBite = false;
+        try {
+            rec.since = now - 50 * GAME_DAY_LENGTH;
+            expect(empireApprovalRating(bg, h) - on).toBeCloseTo(5, 6);
+            expect(blockadeInfo(bg, h)).toBeNull();
+            expect(scenarioQuery(bg, 'colonyTaxRevenue', 1000, { habitat: h, empire: owner })).toBe(1000);
+            expect(scenarioQuery(bg, 'portTradeIncomeFactor', 1, { port, amount: 100 })).toBe(1);
+            expect(scenarioQuery(bg, 'constructionQueuePaused', false, { habitat: h, builtObject: port })).toBe(false);
+            expect(scenarioQuery(bg, 'colonyMaxPopulation', 123, { habitat: h })).toBe(123);
+            recalculateAnnualTaxRevenue(bg, h);
+            expect(h.annualTaxRevenue - cut).toBeCloseTo(rec.taxLostRate, 3); // half the gross (the state support cost stays)
+        } finally {
+            bg.scenario!.flags.blockadesBite = true;
+        }
+        recalculateAnnualTaxRevenue(bg, h);
+    });
+
+    it('the AI owner sends its nearest strong enough idle fleet to break the blockade (Normal Patrol); released when it ends', () => {
+        const st = biteState(bg);
+        const rec = st.active.find((r) => r.h === h.habitatIndex)!;
+        expect(rec).toBeDefined();
+        const ships = ensureShips(bg, owner, BuiltObjectSubRole.Destroyer, 2).slice(0, 2);
+        for (const s of ships) s.firepowerRaw = rec.a; // two of them: twice the blockaders' strength
+        const relief = fleetOf(owner, ships);
+        relief.mission = null;
+        const sent = st.stats.reliefsSent;
+        blockadesBiteAiReview(bg);
+        expect(st.stats.reliefsSent).toBe(sent + 1);
+        expect(rec.relief).not.toBeNull();
+        expect(rec.relief!.mission?.type).toBe(BuiltObjectMissionType.Patrol);
+        expect(rec.relief!.mission?.targetHabitat).toBe(h);
+        expect(rec.relief!.mission?.priority).toBe(BuiltObjectMissionPriority.Normal);
+        const r = rec.relief!;
+        // The orbit is freed: the blockade ends, counted as broken by relief, and the fleet is released.
+        leave();
+        const broken = st.stats.brokenByRelief;
+        blockadesBiteDaily(bg);
+        blockadesBiteDaily(bg);
+        expect(st.stats.brokenByRelief).toBe(broken + 1);
+        expect(r.mission === null || r.mission.type !== BuiltObjectMissionType.Patrol || r.mission.targetHabitat !== h).toBe(true);
+    });
+
+    it('an AI at war sends an attack fleet that can hold the orbit to blockade its enemy\'s richest known colony', () => {
+        const st = biteState(bg);
+        const ships = ensureShips(bg, holder, BuiltObjectSubRole.Destroyer, 3).slice(1, 3);
+        for (const s of ships) s.firepowerRaw = 1e7;
+        const fleet = fleetOf(holder, ships);
+        fleet.mission = null;
+        fleet.posture = FleetPosture.Attack;
+        fleet.attackPoint = null;
+        // The seed-1 start: the empires have not explored each other's systems yet.
+        for (const c of owner.colonies) holder.visibility.systemVisibility[c.systemIndex].status = SystemVisibilityStatus.Explored;
+        const ordered = st.stats.aiBlockadesOrdered;
+        blockadesBiteAiReview(bg, true);
+        expect(st.stats.aiBlockadesOrdered).toBeGreaterThan(ordered);
+        const duty = st.duties.find((d) => d.e === holder.empireId)!;
+        expect(duty).toBeDefined();
+        expect(duty.fleet.mission?.type).toBe(BuiltObjectMissionType.Blockade);
+        expect(duty.fleet.mission?.priority).toBe(BuiltObjectMissionPriority.Low); // the stock war AI may take it any time
+        const target = bg.habitats[duty.h];
+        expect(target.empire).toBe(owner);
+        // The richest of the enemy's colonies the empire knows of (tax revenue + space port income).
+        const known = owner.colonies.filter((c) => !c.isBlockaded && holder.visibility.checkSystemExplored(c.systemIndex));
+        const best = known.reduce((x, y) => (blockadeTargetValue(bg, y) > blockadeTargetValue(bg, x) ? y : x));
+        expect(target).toBe(best);
+        // After blockadeAiHoldDays the duty is released (free for an invasion) and the colony cools down.
+        duty.since = galaxyStarDate(bg) - 61 * GAME_DAY_LENGTH;
+        const released = st.stats.aiDutiesReleased;
+        blockadesBiteAiReview(bg, true);
+        expect(st.stats.aiDutiesReleased).toBeGreaterThan(released);
+        expect(st.cooldowns.some((c) => c.h === duty.h && c.e === holder.empireId)).toBe(true);
+    });
+
+    it('with the switch off nothing is tracked or ordered (no state change, no draws)', () => {
+        const st = biteState(bg);
+        bg.scenario!.flags.blockadesBite = false;
+        try {
+            hold();
+            const before = JSON.stringify(st.stats);
+            let draws = 0;
+            bg.rnd.setTrace(() => draws++);
+            runGameSeconds(bg, 5);
+            bg.rnd.setTrace(null);
+            expect(draws).toBeGreaterThan(0); // the stock game draws as usual
+            expect(JSON.stringify(st.stats)).toBe(before);
+        } finally {
+            bg.scenario!.flags.blockadesBite = true;
+            leave();
+        }
+    }, 300000);
+});

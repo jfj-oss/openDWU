@@ -155,13 +155,15 @@ function withdrawFrom(galaxy: Galaxy, st: OrbitalSuperiorityState, empire: Empir
     return n;
 }
 
-/** The nearest routine AI fleet of `empire` within the relief range with firepower ≥ `need`, not in `used`. */
-function nearestFleet(galaxy: Galaxy, empire: Empire, h: Habitat, need: number, used: Set<ShipGroup>): ShipGroup | null {
-    const range = scenarioParam(galaxy, 'orbitalAiReliefRange', 4000000);
+/**
+ * The nearest routine AI fleet of `empire` within the relief range (or `range`) with firepower ≥ `need`, not in
+ * `used`, passing `accept` (Blockades that bite reuses it for its relief and blockade fleets).
+ */
+export function nearestFleet(galaxy: Galaxy, empire: Empire, h: Habitat, need: number, used: Set<ShipGroup>, range = scenarioParam(galaxy, 'orbitalAiReliefRange', 4000000), accept: ((fleet: ShipGroup) => boolean) | null = null): ShipGroup | null {
     let best: ShipGroup | null = null;
     let bestD = range * range;
     for (const fleet of fleetsOf(empire)) {
-        if (used.has(fleet) || !aiFleet(fleet) || !routine(fleet)) continue;
+        if (used.has(fleet) || !aiFleet(fleet) || !routine(fleet) || (accept !== null && !accept(fleet))) continue;
         const fp = fleetFirepower(fleet);
         if (fp <= 0 || fp < need) continue;
         const d = distSq(galaxy, fleet, h);

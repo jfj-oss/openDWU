@@ -15,6 +15,7 @@ import { colonyShortageMarker, crisesApprovalBreakdown } from '../../sim/scenari
 import { rareGoodApprovalLines } from '../../sim/scenario/rimTrade/rareGoods'; // [rimTrader]
 import { voidbloomApprovalLines } from '../../sim/scenario/voidbloom/view'; // [voidbloom]
 import { colonyLedgerLines } from '../internalSecurityView'; // [security]
+import { blockadeApprovalLines } from '../../sim/scenario/blockades/blockadesBite'; // [blockades-bite]
 
 /** One displayed row of the panel. Pure so the row logic is testable without
  * a DOM (jsdom is not configured). */
@@ -49,7 +50,7 @@ export function colonyScenarioInfo(galaxy: Galaxy, h: Habitat): ColonyScenarioIn
     if (galaxy.scenario === null) return null;
     // 19m: with internal security on, the tooltip lists every stability-ledger cause.
     // [rimTrader] the rare goods' approval terms (Oranthi Porcelain) join the breakdown (the ledger lists them already).
-    return { shortage: colonyShortageMarker(galaxy, h), approvalBreakdown: colonyLedgerLines(galaxy, h) ?? [...crisesApprovalBreakdown(galaxy, h), ...rareGoodApprovalLines(galaxy, h), ...voidbloomApprovalLines(galaxy, h)] };
+    return { shortage: colonyShortageMarker(galaxy, h), approvalBreakdown: colonyLedgerLines(galaxy, h) ?? [...crisesApprovalBreakdown(galaxy, h), ...rareGoodApprovalLines(galaxy, h), ...voidbloomApprovalLines(galaxy, h), ...blockadeApprovalLines(galaxy, h)] };
 }
 
 /** The four approval icons drawn by ItemListPanel.cs 895-898
