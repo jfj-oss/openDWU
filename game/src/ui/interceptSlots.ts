@@ -1,9 +1,11 @@
-// openDWU command (not in the original): the model of the Intercept / Defend / Watch strip right above the selection
-// frame (hud.ts; sim/player/intercept.ts). For a foreign ship, fleet, base or creature: "Intercept: 3rd Fleet · 14 d";
-// for a star: "Defend: 2nd Fleet · 9 d"; for the player's own fleet: the "Watch Sol" toggle. The ▾ list holds the
-// eligible forces in score order (picking one makes it the chosen force), the select button selects the chosen force.
-// The lists are read-only queries, refreshed with the action strip (every 500 ms); the orders are the journaled player
-// commands 'intercept' / 'defendSystem' / 'fleetWatch' with the chosen force (the UI never writes the game).
+// openDWU command (not in the original): the Intercept / Defend / Watch action button of the selection panel
+// (sim/player/intercept.ts). It takes a free slot of the eight action buttons (orderMenu.ts setSelectionFreeSlots):
+// for a foreign ship, fleet, base or creature "Intercept", for a star "Defend", for the player's own fleet the "Watch"
+// toggle. Its hover message names the force ("Intercept: 1st Fleet (ETA 101 d)") or the reason it is disabled.
+// Left-click sends the chosen force (the best by default); right-click lists the eligible forces in score order (pick
+// one to make it the chosen force) and "Select <force>". The lists are read-only queries, redrawn with the buttons;
+// the orders are the journaled player commands 'intercept' / 'defendSystem' / 'fleetWatch' with the chosen force (the
+// UI never writes the game). The icons are drawn here (SVG), no art files.
 
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
@@ -40,9 +42,18 @@ export interface InterceptChoice {
     pick: () => void;
 }
 
-/** What the strip shows; null = hidden. */
+/** Procedural slot icons (SVG data URLs, drawn in the chrome icons' grey-blue). */
+function svgIcon(body: string): string {
+    return `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#b8c4e0" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`)}`;
+}
+export const INTERCEPT_ICON = svgIcon('<circle cx="16" cy="16" r="9"/><circle cx="16" cy="16" r="2.5" fill="#e04040" stroke="#e04040"/><path d="M16 3v6M16 23v6M3 16h6M23 16h6"/>');
+export const DEFEND_ICON = svgIcon('<path d="M16 4l10 4v7c0 7-4.5 11-10 13C10.5 26 6 22 6 15V8z"/><path d="M11.5 16l3.2 3.2 6-6.4" stroke="#60d060"/>');
+export const WATCH_ICON = svgIcon('<path d="M3 16c3.5-6 8-9 13-9s9.5 3 13 9c-3.5 6-8 9-13 9s-9.5-3-13-9z"/><circle cx="16" cy="16" r="4.5" fill="#b8c4e0"/>');
+
+/** What the action button shows; null = no button. */
 export interface InterceptStripModel {
     label: string;
+    icon: string;
     /** The yellow hover message (the reason when disabled). */
     hint: string;
     disabled: boolean;
@@ -77,8 +88,8 @@ function send(galaxy: Galaxy, empire: Empire, op: 'intercept' | 'defendSystem', 
     else issuePlayerCommand(galaxy, empire, 'defendSystem', [subject as Habitat, force], done);
 }
 
-function disabledModel(verb: string, hint: string): InterceptStripModel {
-    return { label: verb, hint, disabled: true, active: false, click: () => {}, choices: [], select: null, selectHint: '' };
+function disabledModel(verb: string, icon: string, hint: string): InterceptStripModel {
+    return { label: verb, icon, hint, disabled: true, active: false, click: () => {}, choices: [], select: null, selectHint: '' };
 }
 
 function orderModel(
@@ -103,7 +114,8 @@ function orderModel(
     }));
     return {
         label: `${verb}: ${c.name} · ${shortEta(c.etaMs)}`,
-        hint: `${title}: ${c.name}, ${strengthText(c)}, ETA ${formatEtaDays(c.etaMs)}`,
+        icon: op === 'intercept' ? INTERCEPT_ICON : DEFEND_ICON,
+        hint: `${verb}: ${c.name} (ETA ${shortEta(c.etaMs)}) — ${strengthText(c)}; right-click to choose another force`,
         disabled: false,
         active: false,
         click: () => send(galaxy, empire, op, subject, c.force),
@@ -121,7 +133,8 @@ function watchModel(galaxy: Galaxy, empire: Empire, fleet: ShipGroup): Intercept
     const status = on ? watchStatusText(fleet) : order !== null ? `Intercepting ${(order.target as { name?: string | null }).name ?? ''}` : '';
     return {
         label: on ? watchStatusText(fleet) : star !== null ? `Watch ${star.name}` : 'Watch system',
-        hint: WATCH_TITLE + (why !== null ? ` (${why})` : status !== '' ? ` (${status})` : ''),
+        icon: WATCH_ICON,
+        hint: (on ? `${watchStatusText(fleet)}: click to stop watching` : star !== null ? `Watch ${star.name}` : 'Watch system') + (why !== null ? `: ${why}` : status !== '' ? ` (${status})` : ' — stays there defending it, refuels away and comes back'),
         disabled: why !== null,
         active: on,
         click: () => issuePlayerCommand(galaxy, empire, 'fleetWatch', [fleet, !on]),
@@ -145,16 +158,16 @@ export function interceptStrip(galaxy: Galaxy, empire: Empire, sel: InterceptSel
     } else if (sel.builtObject !== undefined) target = sel.builtObject.empire !== empire ? sel.builtObject : null;
     if (target !== null) {
         const why = interceptForbiddenReason(galaxy, empire, target);
-        if (why !== null) return disabledModel('Intercept', `${INTERCEPT_TITLE} (${why})`);
+        if (why !== null) return disabledModel('Intercept', INTERCEPT_ICON, `Intercept: ${why}`);
         const list = interceptCandidates(galaxy, empire, target);
-        if (list.length === 0) return disabledModel('Intercept', `${INTERCEPT_TITLE} (no free fleet or warship strong enough and in fuel range)`);
+        if (list.length === 0) return disabledModel('Intercept', INTERCEPT_ICON, 'Intercept: no free fleet or warship strong enough and in fuel range');
         return orderModel(galaxy, empire, 'Intercept', INTERCEPT_TITLE, 'intercept', target, list, select, onChange);
     }
     if (sel.builtObject === undefined && sel.shipGroup === undefined && sel.creature === undefined) {
         const star = systemStarOf(galaxy, sel.habitat);
         if (star === null || star !== sel.habitat) return null;
         const list = defendCandidates(galaxy, empire, star);
-        if (list.length === 0) return disabledModel('Defend', `${DEFEND_TITLE} (no free fleet or warship available)`);
+        if (list.length === 0) return disabledModel('Defend', DEFEND_ICON, 'Defend: no free fleet or warship available');
         return orderModel(galaxy, empire, 'Defend', DEFEND_TITLE, 'defendSystem', star, list, select, onChange);
     }
     return null;

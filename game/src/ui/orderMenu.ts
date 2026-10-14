@@ -2,7 +2,9 @@
 // actionMenu_Opening + 3202 method_344) as a DOM popup: positioned at the cursor, submenus on hover, keyboard
 // navigable (Up/Down/Left/Right/Enter, Escape closes). The entries are the OrderMenuItem tree the sim-side builder
 // (src/sim/player/orderMenu.ts) returns; this file only draws it and reports the picked entry.
-// Also the small automation confirm dialog (GenerateAutomationMessageBox) used after an order.
+// Also the small automation confirm dialog (GenerateAutomationMessageBox) used after an order, and the selection
+// panel's eight action slots (createSelectionActionBar): the original's buttons, plus the openDWU orders (Intercept /
+// Defend / Watch system, ui/interceptSlots.ts) in the slots the selection leaves empty.
 import './orderMenu.css';
 import { addWaypointMenu, markerMenuAtScreen } from './waypoints'; // [waypoints]
 import type { Galaxy } from '../sim/galaxy';
@@ -797,7 +799,8 @@ function warningComposite(url: string, rotate: number): Promise<string | null> {
 }
 
 /** One of our own controls with no button in the original (small tweak): listed by the HUD's "More" button beside
- *  the action strip, never in one of the eight original slots. */
+ *  the action strip. They never take one of the eight slots; only the openDWU orders (Intercept / Defend / Watch,
+ *  SelectionFreeSlot below) use the slots the selection leaves empty, and fall back to "More" when none is free. */
 export interface SelectionExtraSlot {
     label: string;
     title: string;
@@ -805,6 +808,25 @@ export interface SelectionExtraSlot {
     active?: boolean;
     disabled?: boolean;
     onClick: () => void;
+}
+/**
+ * openDWU orders (not in the original: Intercept / Defend / Watch system, ui/interceptSlots.ts) shown as action buttons
+ * in the slots of the eight that the selection leaves EMPTY (never displacing an original action); with no empty slot
+ * they go to the "More" menu instead. `onMenu` is the right-click (choose another force).
+ */
+export interface SelectionFreeSlot {
+    label: string;
+    hint: string;
+    icon: string;
+    disabled?: boolean;
+    active?: boolean;
+    onClick: () => void;
+    onMenu?: (anchor: HTMLElement) => void;
+}
+let freeSlotProvider: () => SelectionFreeSlot[] = () => [];
+/** The HUD supplies the openDWU orders for the current selection (placed in free slots on every redraw). */
+export function setSelectionFreeSlots(provider: () => SelectionFreeSlot[]): void {
+    freeSlotProvider = provider;
 }
 let extraSlotProvider: () => SelectionExtraSlot[] = () => [];
 let extraSink: (extras: SelectionExtraSlot[]) => void = () => {};
@@ -916,6 +938,11 @@ export function createSelectionActionBar(): HTMLElement {
         btn.className = 'order-action-btn';
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
+            const inj = injected[i];
+            if (inj !== null) {
+                if (inj.disabled !== true) inj.onClick();
+                return;
+            }
             const b = buttons[i];
             if (b === undefined || b.action === null || !b.enabled) return;
             // The buttons are a picture of the game when they were drawn (a toggle's direction, the page): until the
@@ -925,13 +952,48 @@ export function createSelectionActionBar(): HTMLElement {
             if (end === null) return;
             void performAction(b.action, false, undefined, end); // method_594 → method_347(action, false)
         });
+        // openDWU orders in a free slot: right-click opens their list (choose another force).
+        btn.addEventListener('contextmenu', (e) => {
+            const inj = injected[i];
+            if (inj === null || inj.onMenu === undefined) return;
+            e.preventDefault();
+            e.stopPropagation();
+            inj.onMenu(btn);
+        });
         btns.push(btn);
     }
+    /** The openDWU order shown in each slot (null: the slot shows its own button). */
+    let injected: (SelectionFreeSlot | null)[] = new Array(8).fill(null);
     const draw = (): void => {
         // The original keeps all eight buttons visible (an empty one shows blank.png, Main.Part3.cs method_588).
         if (element.childElementCount !== 8) element.replaceChildren(...btns);
         const selected = deps?.getSelected() ?? null;
+        // openDWU orders go to the empty slots, left to right; any that do not fit go to the More menu.
+        const free = freeSlotProvider();
+        injected = new Array(8).fill(null);
+        const overflow: SelectionFreeSlot[] = [];
+        for (const f of free) {
+            const i = injected.findIndex((x, k) => x === null && (buttons[k] === undefined || buttons[k].action === null));
+            if (i >= 0) injected[i] = f;
+            else overflow.push(f);
+        }
         btns.forEach((btn, i) => {
+            const inj = injected[i];
+            if (inj !== null) {
+                btn.className = 'order-action-btn order-action-free';
+                if (inj.active === true) btn.classList.add('order-action-on');
+                const img = document.createElement('img');
+                img.className = 'order-action-icon';
+                img.src = inj.icon;
+                img.alt = '';
+                img.draggable = false;
+                btn.replaceChildren(img);
+                btn.setAttribute('aria-label', inj.label);
+                btn.dataset.hint = inj.hint;
+                btn.removeAttribute('title');
+                btn.disabled = inj.disabled === true;
+                return;
+            }
             const b: SelectionButton = buttons[i] ?? { action: null, enabled: false, hint: '', style: '', count: 0 };
             btn.className = 'order-action-btn';
             if (b.style !== '') btn.classList.add(`order-style-${b.style}`);
@@ -971,8 +1033,8 @@ export function createSelectionActionBar(): HTMLElement {
             btn.disabled = !b.enabled;
         });
         // Our controls with no button in the original (fleet settings, dispatch orders, charter) never take an action
-        // slot: they go to the HUD's "More" button beside the strip.
-        extraSink(extraSlotProvider());
+        // slot: they go to the HUD's "More" button beside the strip (with any openDWU order that found no free slot).
+        extraSink([...extraSlotProvider(), ...overflow.map((f): SelectionExtraSlot => ({ label: f.label, title: f.hint, icon: f.icon, disabled: f.disabled, active: f.active, onClick: f.onClick }))]);
         hintRefresh();
     };
     bar = self;
