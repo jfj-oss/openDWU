@@ -343,8 +343,8 @@ export interface BorderGeometry {
 }
 export const TILES = 6;
 
-/** Shared-edge mode: 'both' = each side draws its own darker band, 'darker' = only the darker empire's, 'off' = none. */
-export type SharedEdgeMode = 'both' | 'darker' | 'off';
+/** Shared-edge mode: 'darker' = one band, on the darker empire's side in its darkened colour; 'off' = none. */
+export type SharedEdgeMode = 'darker' | 'off';
 /** Cap on shared-edge polyline vertices per tile (keeps the stroke geometry bounded on huge galaxies). */
 export const MAX_EDGE_POINTS_PER_TILE = 8000;
 
@@ -492,18 +492,13 @@ export function buildGeometry(cs: CellSet, owner: Int16Array, sizeX: number, siz
         if (seg.length > 0) t.borders.push({ owner: e, seg });
     }
     if (edgeMode !== 'off') {
-        // Shared edges: chain each pair's boundary into continuous polylines; each chain gives one band per side
-        // ('both') or only the darker empire's band ('darker'). Bands are offset into their own side at draw time.
+        // Shared edges: chain each pair's boundary into continuous polylines; each chain gives one band, the darker
+        // empire's, offset into its own side at draw time.
         const tol = cs.spacing * 1e-4;
         const tilePts = new Int32Array(TILES * TILES);
         for (const key of [...pairSegs.keys()].sort((a, b) => a - b)) {
             const lo = Math.floor(key / 65536), hi = key % 65536;
-            const sides: Array<[number, 1 | -1]> = [];
-            if (edgeMode === 'both') sides.push([lo, 1], [hi, -1]);
-            else {
-                const ll = lum(lo), lh = lum(hi);
-                sides.push(ll <= lh ? [lo, 1] : [hi, -1]);
-            }
+            const sides: Array<[number, 1 | -1]> = [lum(lo) <= lum(hi) ? [lo, 1] : [hi, -1]];
             for (const ch of chainSegments(pairSegs.get(key)!, tol)) {
                 const t = tileAt(ch.pts[0], ch.pts[1]);
                 const ti = tiles.indexOf(t);
@@ -534,9 +529,8 @@ export const FILL_ALPHA = 0.2;
 /** Shared-edge band colour = the empire's colour scaled by this, at this alpha. */
 export const EDGE_DARKEN = 0.5;
 export const EDGE_ALPHA = 0.9;
-/** Shared-edge band width in screen px ('both': each side; 'darker': the single band). */
-export const EDGE_WIDTH_PX = 3;
-export const EDGE_WIDTH_DARKER_PX = 3.5;
+/** Shared-edge band width in screen px. */
+export const EDGE_WIDTH_PX = 3.5;
 /** The bands are rebuilt (stroke widths in world units) when the zoom moves by this ratio, at most every EDGE_REBUILD_MS. */
 export const EDGE_ZOOM_STEP = 1.12;
 export const EDGE_REBUILD_MS = 120;
@@ -689,7 +683,7 @@ export class InfluenceBorderLayer {
      * Runs only on border rebuilds and zoom-bucket changes, never per frame.
      */
     private buildEdges(factor: number): void {
-        const px = this.edgeMode === 'darker' ? EDGE_WIDTH_DARKER_PX : EDGE_WIDTH_PX;
+        const px = EDGE_WIDTH_PX;
         const w = px * factor;
         for (const t of this.tiles) {
             t.eg?.destroy();

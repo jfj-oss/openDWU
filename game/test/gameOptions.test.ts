@@ -372,6 +372,14 @@ describe('UI options persist (ui/settings.ts)', () => {
         expect(loadSettings().maximumFramerate).toBe(-1);
     });
 
+    it('shared border edges: one band on the darker side; the withdrawn "both" loads as darker', () => {
+        expect(loadSettings().influenceSharedEdges).toBe('darker');
+        storage.setItem('dwu-ui-settings', JSON.stringify({ influenceSharedEdges: 'both' }));
+        expect(loadSettings().influenceSharedEdges).toBe('darker');
+        storage.setItem('dwu-ui-settings', JSON.stringify({ influenceSharedEdges: 'off' }));
+        expect(loadSettings().influenceSharedEdges).toBe('off');
+    });
+
     it('maximum framerate and loaded games paused', () => {
         expect(clampMaximumFramerate(0)).toBe(-1);
         expect(clampMaximumFramerate(500)).toBe(100);

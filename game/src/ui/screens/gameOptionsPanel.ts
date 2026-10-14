@@ -869,8 +869,8 @@ function createAdvancedDisplaySettings(empire: Empire | null): OriginalWindow {
     mapBoxes.forEach(([caption, key], i) => check(map, caption, st[key], 10, 22 + 22 * i, (v) => updateSettings({ [key]: v } as Partial<UiSettings>)));
 
     label(map, 'Shared border edges', 10, 22 + 22 * mapBoxes.length + 2, F4 - 2);
-    const SHARED_EDGE_MODES = ['both', 'darker', 'off'] as const;
-    combo(map, ['Both darker', 'Darker only', 'Off'], Math.max(0, SHARED_EDGE_MODES.indexOf(st.influenceSharedEdges)), 190, 22 + 22 * mapBoxes.length, 200, 24, (i) => updateSettings({ influenceSharedEdges: SHARED_EDGE_MODES[i] ?? 'both' }), F4 - 4);
+    const SHARED_EDGE_MODES = ['darker', 'off'] as const;
+    combo(map, ['Darker side', 'Off'], Math.max(0, SHARED_EDGE_MODES.indexOf(st.influenceSharedEdges)), 190, 22 + 22 * mapBoxes.length, 200, 24, (i) => updateSettings({ influenceSharedEdges: SHARED_EDGE_MODES[i] ?? 'darker' }), F4 - 4);
 
     // Ours: the sim worker (docs/sim-worker.md), read by main.ts when the next game starts or loads; on by default only
     // with 16 GB+ of RAM (src/systemMemory.ts). Was in the old Escape menu's Options panel.
