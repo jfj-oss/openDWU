@@ -19,6 +19,7 @@ import { uiScaleFactor, onSettingsChange } from '../settings';
 import { el, glassButton, messageBox, originalWindowScale, place } from '../originalWindow';
 import { mainResxImageUrl } from '../resxImage';
 import { tryGetText } from '../../sim/textResolver';
+import { openBugReport } from './bugReport';
 import { showToast } from '../toast';
 import { getSaveLoadProvider } from './saveLoad';
 
@@ -74,21 +75,22 @@ export function restorePauseState(clock: GalaxyTime, prevPaused: boolean): void 
 
 /** pnlGameMenu.Size (Main.Part7.cs method_356). */
 export const GAME_MENU_W = 220;
-// One row shorter than the original's 408: "Save Game As" is dropped (user, 2026-10-14: Save Game's window already lets
-// you change the name).
-export const GAME_MENU_H = 375;
+// The original's 408: "Save Game As" is dropped (user, 2026-10-14: Save Game's window already lets you change the
+// name) and our "Report a Bug" row takes its place.
+export const GAME_MENU_H = 408;
 
-export type GameMenuButtonId = 'quit' | 'startMenu' | 'load' | 'save' | 'options' | 'editor' | 'cancel';
+export type GameMenuButtonId = 'quit' | 'startMenu' | 'load' | 'save' | 'report' | 'options' | 'editor' | 'cancel';
 
-/** The buttons of method_356 (seven: Save Game As dropped), top to bottom: id, GameText key, y (x 10, 200 × 30). */
+/** The buttons of method_356 (eight: Save Game As dropped, Report a Bug added), top to bottom: id, GameText key, y (x 10, 200 × 30). */
 export const GAME_MENU_BUTTONS: readonly { id: GameMenuButtonId; text: string; y: number }[] = [
     { id: 'quit', text: 'Exit Distant Worlds', y: 137 },
     { id: 'startMenu', text: 'Exit to Main Menu', y: 170 },
     { id: 'load', text: 'Load Game', y: 203 },
     { id: 'save', text: 'Save Game', y: 236 },
-    { id: 'options', text: 'Options', y: 269 },
-    { id: 'editor', text: 'Enter Game Editor', y: 302 },
-    { id: 'cancel', text: 'Resume Playing', y: 335 },
+    { id: 'report', text: 'Report a Bug', y: 269 },
+    { id: 'options', text: 'Options', y: 302 },
+    { id: 'editor', text: 'Enter Game Editor', y: 335 },
+    { id: 'cancel', text: 'Resume Playing', y: 368 },
 ];
 
 /** Main font_2 (Main.Part12.cs:1523 GenerateFont(18.67, bold)). */
@@ -180,6 +182,11 @@ export function createGameMenu(clock: GalaxyTime, callbacks: GameMenuCallbacks =
         },
         load: () => openSaveLoad('load'),
         save: () => openSaveLoad('save'),
+        // Ours (user, 2026-10-14): crash-report feedback (bugReport.ts); the menu closes behind its window.
+        report: () => {
+            hide();
+            openBugReport();
+        },
         options: () => {
             // The Game Options window pauses by itself (AutoPauseWhenInPopupWindow); the menu closes behind it.
             hide();

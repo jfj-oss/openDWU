@@ -937,7 +937,12 @@ events are batched in the background and dropped when you are offline.
 (2) Crash reports:
 the desktop app also sends crash reports (error, stack, app version, OS, graphics card; no IP
 address, saves or personal files; your user name and home folder are replaced
-by "~") to Sentry to help fix bugs. The network use is:
+by "~") to Sentry to help fix bugs. In about 1 % of sessions it also sends a
+once-a-minute performance summary (frame rate, sim speed, galaxy size,
+graphics card), and after a multiplayer desync the frame number and checksums
+(no save). The Esc menu's **Report a Bug** button, only when you press it,
+sends your text with a screenshot of the game view, the recent log, version,
+graphics card and changed game settings (never a saved game). The network use is:
 
 - the desktop app's update check, which asks GitHub for the latest release
   each time the app starts;

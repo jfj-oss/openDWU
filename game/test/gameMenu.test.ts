@@ -185,13 +185,14 @@ describe('Options settings wiring (task 06k)', () => {
 
 // Main.Part7.cs:3668 method_356: pnlGameMenu's size and its eight buttons, top to bottom.
 describe('game menu layout (pnlGameMenu, method_356)', () => {
-    it('is 220 x 375 (Save Game As dropped) with the buttons 33 px apart from y 137', () => {
-        expect([GAME_MENU_W, GAME_MENU_H]).toEqual([220, 375]);
+    it('is 220 x 408 (Save Game As dropped, Report a Bug added) with the buttons 33 px apart from y 137', () => {
+        expect([GAME_MENU_W, GAME_MENU_H]).toEqual([220, 408]);
         expect(GAME_MENU_BUTTONS.map((b) => b.text)).toEqual([
             'Exit Distant Worlds',
             'Exit to Main Menu',
             'Load Game',
             'Save Game',
+            'Report a Bug',
             'Options',
             'Enter Game Editor',
             'Resume Playing',

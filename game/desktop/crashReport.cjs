@@ -10,6 +10,9 @@ const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
 
+/** Share of sessions that send performance samples (and traces). */
+const TRACES_SAMPLE_RATE = 0.01;
+
 const DSN = 'https://4a591feb9cb1936747834e83b67f1215@o4512255043305472.ingest.de.sentry.io/4512255051169872';
 
 /** Sentry runs only in a packaged app (or with DWU_SENTRY=1 for testing). */
@@ -83,6 +86,9 @@ function isSdkCoveredCrashEntry(text) {
 let Sentry = null;
 let scrubOpts = { home: '', user: '' };
 let electronApp = null;
+/** This session sends performance samples (decided once). */
+let perfSampled = false;
+const consoleTail = [];
 const tags = {};
 
 /** Starts Sentry in the main process; returns false (and loads nothing) when disabled. Call before anything else. */
@@ -107,6 +113,10 @@ function init({ app, version, classic, env = process.env }) {
             release: 'opendwu@' + version,
             environment: classic ? 'classic' : 'full',
             sendDefaultPii: false,
+            // Sessions (release health) are the SDK default in the main process and the pages.
+            tracesSampleRate: TRACES_SAMPLE_RATE,
+            traceLifecycle: 'static', // whole transactions (what reportPerf sends), scrubbed by beforeSendTransaction
+            beforeSendTransaction: (tx) => scrubEvent(tx, scrubOpts),
             beforeSend(event, hint) {
                 const out = scrubEvent(event, scrubOpts);
                 try {
@@ -124,6 +134,7 @@ function init({ app, version, classic, env = process.env }) {
             beforeBreadcrumb: (crumb) => scrubBreadcrumb(crumb, scrubOpts),
             transport: env.DWU_SENTRY_TEST === '1' ? loggingTransport : undefined,
         });
+        perfSampled = env.DWU_SENTRY_TEST === '1' || Math.random() < TRACES_SAMPLE_RATE;
         setTags({ os: process.platform, arch: process.arch, edition: classic ? 'classic' : 'full', os_release: os.release() });
         return true;
     } catch (err) {
@@ -184,8 +195,90 @@ function reportRendererError(info) {
     }
 }
 
+const num = (v, max = 1e9) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(-max, v)) : 0);
+const str = (v, n = 200) => String(v ?? '').slice(0, n);
+
+/** Whether this session sends the once-a-game-minute performance sample (1 %). */
+function isPerfSampled() {
+    return !!Sentry && perfSampled;
+}
+
+/** One performance measurement event (a transaction with measurements; no per-frame spans). Sampled sessions only. */
+function reportPerf(info) {
+    if (!Sentry || !perfSampled || !info || typeof info !== 'object') return;
+    try {
+        const now = Date.now() / 1000;
+        const hex = (n) => Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+        const m = (value, unit = 'none') => ({ value: num(value), unit });
+        Sentry.captureEvent({
+            type: 'transaction',
+            transaction: 'game-minute',
+            start_timestamp: now - 60,
+            timestamp: now,
+            contexts: { trace: { trace_id: hex(32), span_id: hex(16), op: 'game.perf', status: 'ok' } },
+            tags: { renderer_mode: str(info.renderer, 20), gpu: str(info.gpu, 120) },
+            measurements: { avg_fps: m(info.avgFps), p95_frame_ms: m(info.p95FrameMs, 'millisecond'), slowest_sim_tick_ms: m(info.slowestSimMs, 'millisecond'), stars: m(info.stars), empires: m(info.empires) },
+        });
+    } catch {
+        /* ignore */
+    }
+}
+
+/** A multiplayer desync (one event each): both digests, the frame, the differing sections, players. No save. */
+function reportDesync(info) {
+    if (!Sentry || !info || typeof info !== 'object') return;
+    try {
+        const sections = Array.isArray(info.sections) ? info.sections.slice(0, 40).map((x) => str(x, 60)) : [];
+        Sentry.withScope((scope) => {
+            scope.setTag('source', 'desync');
+            scope.setTag('players', str(info.players, 4));
+            scope.setExtras({ frame: num(info.frame), lastGoodFrame: num(info.lastGood), hostDigest: str(info.host), clientDigest: str(info.client), sections, deep: !!info.deep, role: str(info.role, 10) });
+            scope.setFingerprint(['desync', ...sections.slice(0, 5)]);
+            Sentry.captureMessage('multiplayer desync', 'error');
+        });
+    } catch {
+        /* ignore */
+    }
+}
+
+/** The page's recent warnings / errors (desktop/main.cjs console-message), for bug reports. */
+function noteConsole(line) {
+    consoleTail.push(String(line).slice(0, 500));
+    if (consoleTail.length > 200) consoleTail.shift();
+}
+
+/**
+ * "Report a bug" (the player's own button): Sentry user feedback with the game view (JPEG buffer, <= 1280 px), the last
+ * ~200 lines of the crash log and console, and the info the page gathers. Resolves { ok, error? }. No save is attached.
+ */
+async function sendFeedback({ message, screenshot, info }) {
+    if (!Sentry) return { ok: false, error: 'Bug reports are sent only from the installed app.' };
+    try {
+        const text = String(message ?? '').trim().slice(0, 4000);
+        if (text === '') return { ok: false, error: 'Please describe what happened.' };
+        let log = '';
+        try {
+            log = fs.readFileSync(path.join(electronApp.getPath('userData'), 'crash-log.txt'), 'utf8').split('\n').slice(-200).join('\n');
+        } catch {
+            /* no crash log */
+        }
+        const attachments = [{ filename: 'log.txt', contentType: 'text/plain', data: scrubLogText(`${log}\n--- page warnings / errors ---\n${consoleTail.join('\n')}\n`, scrubOpts, 60000) }];
+        if (screenshot && screenshot.length > 0) attachments.push({ filename: 'screenshot.jpg', contentType: 'image/jpeg', data: screenshot });
+        const clean = scrubDeep(info && typeof info === 'object' ? info : {}, makeScrubber(scrubOpts.home, scrubOpts.user));
+        Sentry.withScope((scope) => {
+            scope.setTag('source', 'bug-report');
+            scope.setExtras({ gameInfo: JSON.stringify(clean).slice(0, 4000) });
+            Sentry.captureFeedback({ message: scrubLogText(text, scrubOpts, 4000) }, { attachments });
+        });
+        const flushed = await Sentry.flush(8000);
+        return flushed ? { ok: true } : { ok: false, error: 'The report could not be sent (no connection?). Try again later.' };
+    } catch (err) {
+        return { ok: false, error: String((err && err.message) || err).slice(0, 200) };
+    }
+}
+
 function captureMain(err) {
     if (Sentry) Sentry.captureException(err);
 }
 
-module.exports = { DSN, sentryEnabled, makeScrubber, scrubEvent, scrubBreadcrumb, scrubLogText, isSdkCoveredCrashEntry, init, setTags, reportCrashLogEntry, reportRendererError, captureMain };
+module.exports = { DSN, TRACES_SAMPLE_RATE, isPerfSampled, reportPerf, reportDesync, noteConsole, sendFeedback, sentryEnabled, makeScrubber, scrubEvent, scrubBreadcrumb, scrubLogText, isSdkCoveredCrashEntry, init, setTags, reportCrashLogEntry, reportRendererError, captureMain };

@@ -69,6 +69,12 @@ contextBridge.exposeInMainWorld('dwuDesktop', {
     // The page's renderer for the log (Pixi renderer name, WebGL renderer string).
     // Uncaught page errors / unhandled rejections for crash reports (desktop/crashReport.cjs); the shell scrubs them.
     reportError: (e) => ipcRenderer.send('dwu:report-error', { kind: String(e?.kind ?? ''), name: String(e?.name ?? ''), message: String(e?.message ?? '').slice(0, 500), stack: String(e?.stack ?? '').slice(0, 6000) }),
+    // Crash-report extras (desktop/crashReport.cjs): perfSampled() says whether this session sends the once-a-minute
+    // sample; reportPerf / reportDesync send one; sendFeedback is "Report a bug" (resolves { ok, error? }).
+    perfSampled: () => ipcRenderer.invoke('dwu:perf-sampled'),
+    reportPerf: (i) => ipcRenderer.send('dwu:report-perf', i),
+    reportDesync: (i) => ipcRenderer.send('dwu:report-desync', i),
+    sendFeedback: (req) => ipcRenderer.invoke('dwu:send-feedback', { message: String(req?.message ?? '').slice(0, 4000), info: req?.info ?? {} }),
     reportRenderer: (info) => ipcRenderer.send('dwu:report-renderer', { renderer: String(info?.renderer ?? ''), webgl: String(info?.webgl ?? ''), gpu: String(info?.gpu ?? '') }),
     // Options → Music & Mood: open the user-data Music folder (desktop/userMusic.cjs) in the file manager.
     openMusicFolder: () => ipcRenderer.invoke('dwu:open-music-folder'),

@@ -576,3 +576,13 @@ describe('crash report scrubbing (desktop/crashReport.cjs)', () => {
         expect(cr.isSdkCoveredCrashEntry('2026-10-14T10:00:00.000Z [error] sim worker: STOPPED')).toBe(false);
     });
 });
+
+describe('crash report performance sample', () => {
+    it('frameStats: average fps and p95 frame time', async () => {
+        const { frameStats } = await import('../src/errorReporting');
+        expect(frameStats([])).toEqual({ avgFps: 0, p95FrameMs: 0 });
+        const r = frameStats([...Array(19).fill(10), 50]);
+        expect(r.avgFps).toBeCloseTo(20000 / 240, 5);
+        expect(r.p95FrameMs).toBe(50);
+    });
+});

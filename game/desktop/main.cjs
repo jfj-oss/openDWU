@@ -509,6 +509,28 @@ ipcMain.on('dwu:report-error', (event, info) => {
     if (mainWin === null || event.sender !== mainWin.webContents) return;
     crashReport.reportRendererError(info);
 });
+// Page -> crash reports (desktop/crashReport.cjs): the once-a-minute performance sample (1 % of sessions), a multiplayer
+// desync, and "Report a bug" (the game view as a <= 1280 px JPEG is made here from the window).
+ipcMain.handle('dwu:perf-sampled', (event) => mainWin !== null && event.sender === mainWin.webContents && crashReport.isPerfSampled());
+ipcMain.on('dwu:report-perf', (event, info) => {
+    if (mainWin !== null && event.sender === mainWin.webContents) crashReport.reportPerf(info);
+});
+ipcMain.on('dwu:report-desync', (event, info) => {
+    if (mainWin !== null && event.sender === mainWin.webContents) crashReport.reportDesync(info);
+});
+ipcMain.handle('dwu:send-feedback', async (event, req) => {
+    if (mainWin === null || event.sender !== mainWin.webContents || !req || typeof req !== 'object') return { ok: false, error: 'not the game window' };
+    let screenshot = null;
+    try {
+        let img = await event.sender.capturePage();
+        if (img.getSize().width > 1280) img = img.resize({ width: 1280, quality: 'good' });
+        screenshot = img.toJPEG(80);
+    } catch {
+        /* no screenshot */
+    }
+    const info = { ...(req.info && typeof req.info === 'object' ? req.info : {}), version: APP_VERSION, edition: CLASSIC ? 'classic' : 'full', os: `${process.platform} ${process.arch}`, gpu: gpuInfoText };
+    return crashReport.sendFeedback({ message: req.message, screenshot, info });
+});
 ipcMain.on('dwu:report-renderer', (event, info) => {
     if (mainWin === null || event.sender !== mainWin.webContents || !info || typeof info !== 'object') return;
     trackAppStarted({ renderer: String(info.renderer).slice(0, 12), gpu: String(info.gpu ?? '') });
@@ -942,6 +964,7 @@ function createWindow() {
         const message = event.message ?? legacy[1];
         if (level !== 'warning' && level !== 'error') return;
         const entry = `${new Date().toISOString()} [${level}] ${String(message).slice(0, 500)}`;
+        crashReport.noteConsole(entry);
         recentConsole.push(entry);
         if (recentConsole.length > 40) recentConsole.shift();
         // The sim worker stopping (it crashed, ran out of memory — V8 kills only its isolate, the page lives on and

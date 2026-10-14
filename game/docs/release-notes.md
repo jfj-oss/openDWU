@@ -5,6 +5,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 ## Unreleased
 
 - **Crash reports:** the desktop app now sends crash reports (error, stack, app version, OS, graphics card; no IP address, saves or personal files, and your user name and home folder are replaced by "~") to Sentry to help fix bugs. It has no setting.
+- **More crash-report data:** in about 1 % of sessions the app sends a once-a-minute performance summary (average fps, slowest frames and sim tick, galaxy size, graphics card); a multiplayer desync sends the frame, the two checksums and the differing parts (no save). New **Report a Bug** button in the Esc menu: you write what happened and it sends that with a screenshot of the game, the recent log, your version and graphics card, but no saved games.
 
 - **Anonymous usage statistics** (Aptabase, EU): the desktop app now sends app version/OS/graphics vendor and the setup of games you start or load (no names, paths or saves), minutes played, and which screens were opened. See the README's Privacy section. It has no setting.
 - **Automatic updates** for the Windows setup (.exe) and the Linux AppImage: the new version downloads in the background (checked against the release's .sha256, paused while a multiplayer game runs) and installs when you quit; a one-line notice tells you it is ready, and Check for Updates offers Restart now. macOS, the Windows zip and the Linux tar.gz keep the Download offer. `"checkForUpdates": false` still turns it all off.
