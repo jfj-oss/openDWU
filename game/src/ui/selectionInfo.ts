@@ -123,6 +123,17 @@ export function dropShadowColor(rgb: number): number {
     return num < 0.7 ? 0x000000 : 0xffffff;
 }
 
+/** Readability (not in the original): a colour dark enough for the original's white drop shadow (dropShadowColor) is
+ *  drawn half-way to white over a black shadow instead — the white 1 px shadow smears dark text (an empire's dark red
+ *  or olive name) into what reads as a white box behind it (reported on Linux, then on Windows in the Diplomacy list).
+ *  Other colours keep the original colour and its shadow. Returns 0xRRGGBB colours. */
+export function readableTextColors(rgb: number): { color: number; shadow: number } {
+    const sh = dropShadowColor(rgb);
+    if (sh !== 0xffffff) return { color: rgb, shadow: sh };
+    const lift = (v: number): number => Math.round(v + (255 - v) * 0.5);
+    return { color: (lift((rgb >> 16) & 0xff) << 16) | (lift((rgb >> 8) & 0xff) << 8) | lift(rgb & 0xff), shadow: 0 };
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // Model
 // ---------------------------------------------------------------------------------------------------------------

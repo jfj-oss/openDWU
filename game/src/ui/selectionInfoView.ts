@@ -16,6 +16,7 @@ import {
     chromeUrl,
     css,
     dropShadowColor,
+    readableTextColors,
     type ColonySummaryItem,
     type InfoModel,
     type InfoRow,
@@ -82,14 +83,10 @@ function shadow(rgb: number): string {
     return `1px 1px 0 ${css(dropShadowColor(rgb))}`;
 }
 
-/** Readability (not in the original): a colour dark enough for the original's white drop shadow (dropShadowColor) is
- *  drawn half-way to white over a black shadow instead — the white 1 px shadow smears dark text (an empire's dark red
- *  name) into an unreadable white blur at this size. Other colours keep the original colour and shadow. */
+/** selectionInfo.ts readableTextColors as CSS. */
 function readableText(rgb: number): { color: string; shadow: string } {
-    if (dropShadowColor(rgb) !== 0xffffff) return { color: css(rgb), shadow: shadow(rgb) };
-    const lift = (v: number): number => Math.round(v + (255 - v) * 0.5);
-    const lifted = (lift((rgb >> 16) & 0xff) << 16) | (lift((rgb >> 8) & 0xff) << 8) | lift(rgb & 0xff);
-    return { color: css(lifted), shadow: '1px 1px 0 #000' };
+    const t = readableTextColors(rgb);
+    return { color: css(t.color), shadow: `1px 1px 0 ${css(t.shadow)}` };
 }
 
 /** The hotspot's hover message (Hotspot.HoverMessage): the main view draws it in yellow above the selection panel while

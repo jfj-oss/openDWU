@@ -48,7 +48,7 @@ import { totalColonyStrategicValue } from '../../sim/forceStructure';
 import { determineResourcesEmpireSupplies } from '../../sim/diplomacyTick';
 import { SystemVisibilityStatus } from '../../sim/visibility';
 import { empireFlagUrl } from '../selectionInfoView';
-import { dropShadowColor } from '../selectionInfo';
+import { readableTextColors } from '../selectionInfo';
 import { uiScaleFactor } from '../settings';
 import { openGalactopedia } from './galactopedia';
 import { drawSystemsMiniMap } from './galaxyMap';
@@ -797,9 +797,10 @@ function buildRelationList(
                     // DataGridViewTextBoxDropShadowCell: the TotalColonyStrategicValue bar under a 17 px bold name in
                     // the empire's main colour (yellow when selected) with the contrast drop shadow.
                     cell.classList.add('dip-name-cell');
-                    const color = displayColorForEmpire(e.empire);
-                    cell.style.setProperty('--dip-name', rgb(color));
-                    cell.style.setProperty('--dip-name-shadow', dropShadowColor(color) === 0 ? '#000' : '#fff');
+                    // A dark colour's white shadow read as a white box behind the name: the readable variant instead.
+                    const t = readableTextColors(displayColorForEmpire(e.empire));
+                    cell.style.setProperty('--dip-name', rgb(t.color));
+                    cell.style.setProperty('--dip-name-shadow', t.shadow === 0 ? '#000' : '#fff');
                     const value = totalColonyStrategicValue(e.empire);
                     if (value > 0 && maxValue > 0) {
                         const bar = el('div', 'dip-name-bar');

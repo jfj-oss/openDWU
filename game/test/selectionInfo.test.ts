@@ -14,6 +14,7 @@ import {
     builtObjectInfo,
     creatureInfo,
     dropShadowColor,
+    readableTextColors,
     engageSuffix,
     fmtK,
     fmtLarge,
@@ -81,6 +82,9 @@ describe('selectionInfo formatting (InfoPanel / .NET formats)', () => {
     it('drop shadow contrasts with the text colour', () => {
         expect(dropShadowColor(WHITE)).toBe(0x000000);
         expect(dropShadowColor(0x000020)).toBe(0xffffff);
+        // A dark colour never gets the white shadow (it read as a white box): lifted half-way to white, black shadow.
+        expect(readableTextColors(0x55550b)).toEqual({ color: 0xaaaa85, shadow: 0 });
+        expect(readableTextColors(WHITE)).toEqual({ color: WHITE, shadow: 0 });
         expect(dropShadowColor(0x606060)).toBe(0x000000); // _UnknownColor
     });
     it('planet type abbreviations (PlanetType Abbreviation …)', () => {

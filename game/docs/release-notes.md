@@ -4,6 +4,9 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **New games start again** when the sim runs in its own process / worker (the default): an import-order bug in the
+  Orbital superiority add-on stopped the sim from starting ("Cannot access 'ORBITAL_SUPERIORITY_FLAG' before
+  initialization").
 - **Hot seat hidden:** the new-game wizard no longer offers "Human Players..." (several humans sharing one PC); LAN and
   Internet multiplayer are unchanged. A hot-seat list remembered from older settings is dropped.
 - **Fullscreen** is now a checkbox in Game Options → Display Settings (remembered between launches); F11, Alt+Enter and
@@ -19,7 +22,8 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
   colour (capital icon), race, population / development bars and known resources.
 - **Double-click the selection panel** to open the selection's screen, as in the original: your colony → Colonies,
   another planet → Galaxy Map, a ship or base → Ships and Bases, your fleet → Fleets.
-- **No more white text backgrounds:** a double-click or drag no longer paints the browser's selection highlight behind
+- **No more white text backgrounds:** dark empire names in the Diplomacy list no longer get the white 1 px shadow that
+  read as a white box behind them (the selection panel had the same fix); a double-click or drag no longer paints the browser's selection highlight behind
   panel text (selection panel, Diplomacy, ...), and unstyled form controls are dark everywhere.
 - **Windows / stock installs: the right font and the missing pictures.** The game's font (Forgotten Futurist) and the
   pictures the original keeps inside DistantWorlds.exe (the new-game wizard's Playstyle buttons and page pictures, the
