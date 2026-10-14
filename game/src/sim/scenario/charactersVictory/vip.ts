@@ -55,8 +55,16 @@ import {
 import { ensureVipDesign } from './shuttleDesign';
 import { isReadOnlyGalaxy } from '../../readOnlyQuery';
 
-/** A shuttle has arrived when this close to its destination (world units). */
+/** A shuttle that has finished its move counts as arrived within this distance of its destination (world units). */
 export const VIP_ARRIVE_RANGE = 3000;
+/** Margin beyond the destination's own radius: a shuttle over its destination has arrived even while still moving. */
+const VIP_ARRIVE_OVERHEAD = 150;
+
+/** True when the shuttle is over its destination (the planet's or ship's own radius plus a small margin). */
+function overDestination(d: number, dest: BuiltObject | Habitat): boolean {
+    const radius = isBuiltObjectLocation(dest) ? dest.size / 2 : dest.diameter / 2;
+    return d <= radius + VIP_ARRIVE_OVERHEAD;
+}
 /** Escorts count as joined within this distance of the shuttle. */
 const ESCORT_JOIN_RANGE = 40000;
 /** Route samples every this many world units (the galaxy index cell). */
@@ -516,14 +524,16 @@ export function reviewTrips(galaxy: Galaxy, empire: Empire): void {
             vipAssign(galaxy, s, BuiltObjectMissionType.Move, t.destination);
         }
         const d = galaxy.calculateDistance(s.xpos, s.ypos, t.destination.xpos, t.destination.ypos);
-        if (d <= VIP_ARRIVE_RANGE || now >= t.deadline) {
+        const m = builtObjectMission(s.mission);
+        // Arrived = over the destination, or its move finished nearby (it parks beside it); the deadline is for stuck trips.
+        const moveDone = m === null || m.type === BuiltObjectMissionType.Undefined;
+        if (overDestination(d, t.destination) || (moveDone && d <= VIP_ARRIVE_RANGE) || now >= t.deadline) {
             if (t.decoyOf !== 0) {
                 removeTrip(st, t);
                 despawn(galaxy, s);
             } else arrive(galaxy, st, t);
             continue;
         }
-        const m = builtObjectMission(s.mission);
         if (m === null || m.type === BuiltObjectMissionType.Undefined || (m.type === BuiltObjectMissionType.Move && m.target !== t.destination)) {
             vipAssign(galaxy, s, BuiltObjectMissionType.Move, t.destination);
         }
