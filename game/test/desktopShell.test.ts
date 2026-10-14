@@ -508,6 +508,7 @@ describe('desktop/displayMode.cjs (fullscreen keys, GPU switches)', () => {
         isFullscreenToggle(input: Record<string, unknown>, platform: string): boolean;
         gpuSwitches(platform: string, env?: Record<string, string>): string[][];
         gpuLogLine(status: Record<string, string> | null, page: Record<string, string> | null): string;
+        gpuInfoLine(info: unknown): string;
     };
     const key = (k: string, mods: Record<string, boolean> = {}) => ({ type: 'keyDown', key: k, control: false, alt: false, meta: false, shift: false, ...mods });
     it('F11, Alt+Enter and Ctrl+F (Cmd+F on macOS) toggle; repeats, key-ups and other chords do not', () => {
@@ -522,12 +523,16 @@ describe('desktop/displayMode.cjs (fullscreen keys, GPU switches)', () => {
         expect(dm.isFullscreenToggle(key('Enter'), 'linux')).toBe(false);
     });
     it('Windows ignores the GPU blocklist and uses ANGLE D3D11 unless told otherwise; other platforms add nothing', () => {
-        expect(dm.gpuSwitches('win32', {})).toEqual([['ignore-gpu-blocklist'], ['use-angle', 'd3d11']]);
-        expect(dm.gpuSwitches('win32', { DWU_GPU_BLOCKLIST: '1', DWU_USE_ANGLE: 'gl' })).toEqual([['use-angle', 'gl']]);
-        expect(dm.gpuSwitches('win32', { DWU_USE_ANGLE: 'bogus;--x' })).toEqual([['ignore-gpu-blocklist']]);
+        const hp = ['force_high_performance_gpu'];
+        expect(dm.gpuSwitches('win32', {})).toEqual([hp, ['ignore-gpu-blocklist'], ['use-angle', 'd3d11']]);
+        expect(dm.gpuSwitches('win32', { DWU_GPU_BLOCKLIST: '1', DWU_USE_ANGLE: 'gl', DWU_LOW_POWER_GPU: '1' })).toEqual([['use-angle', 'gl']]);
+        expect(dm.gpuSwitches('win32', { DWU_USE_ANGLE: 'bogus;--x' })).toEqual([hp, ['ignore-gpu-blocklist']]);
+        expect(dm.gpuSwitches('darwin', {})).toEqual([hp]);
         expect(dm.gpuSwitches('linux', {})).toEqual([]);
         const line = dm.gpuLogLine({ webgl: 'enabled', webgl2: 'unavailable_off' }, { renderer: 'canvas', webgl: 'none' });
         expect(line).toContain('webgl2=unavailable_off');
         expect(line).toContain('page renderer=canvas webgl=none');
+        const info = dm.gpuInfoLine({ gpuDevice: [{ active: true, vendorId: 0x10de, deviceId: 0x2c02, driverVersion: '32.0' }, { vendorId: 0x8086, deviceId: 0x9b41 }], auxAttributes: { glRenderer: 'ANGLE (NVIDIA ...)', glImplementationParts: '(gl=egl-angle,angle=d3d11)' } } as never);
+        expect(info).toBe('[gpu] adapters *0x10de:0x2c02 driver 32.0, 0x8086:0x9b41; GL ANGLE (NVIDIA ...) ((gl=egl-angle,angle=d3d11))');
     });
 });

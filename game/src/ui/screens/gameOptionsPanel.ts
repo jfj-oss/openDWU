@@ -29,7 +29,7 @@
 // (Performance) under Advanced Display Settings, the DW2-inspired additions in the Improvements window.
 // The HotKeys button opens the key remapping screen (BaconDistantWorlds/HotKeys, hotkeysScreen.ts).
 
-import { currentRendererInfo, noWebglNotice } from '../../render/rendererInfo';
+import { currentRendererInfo, graphicsLine, noWebglNotice } from '../../render/rendererInfo';
 import './gameOptionsPanel.css';
 import { openHotkeysScreen } from './hotkeysScreen';
 import { openBaconSettingsWindow } from './baconSettingsWindow';
@@ -443,11 +443,17 @@ function createGameOptionsPanel(opts: GameOptionsPanelOptions): OpenState {
         });
     }
     // Ours: the renderer fallback, in one line (rendererInfo.ts): planets and ships look flat without WebGL.
-    const notice = noWebglNotice(currentRendererInfo());
-    if (notice !== null) {
-        const n = label(body, notice, 12, 628, F4 - 4);
-        n.classList.add('go-renderer-notice');
-        n.title = 'WebGL is not available (GPU driver blocklisted or missing). Updating the graphics driver usually fixes it. The desktop app writes what it got to gpu-log.txt in its settings folder.';
+    // and the GPU in use (one line, so players can tell us what they run on).
+    const info = currentRendererInfo();
+    const gfx = graphicsLine(info);
+    if (gfx !== null) {
+        const n = label(body, gfx, 12, 628, F4 - 4);
+        n.classList.add('go-renderer-line');
+        n.dataset.go = 'graphics';
+        if (noWebglNotice(info) !== null) {
+            n.classList.add('go-renderer-notice');
+            n.title = 'WebGL is not available (GPU driver blocklisted or missing). Updating the graphics driver usually fixes it. The desktop app writes what it got to gpu-log.txt in its settings folder.';
+        } else n.title = info?.gpu ?? '';
     }
 
     // --- grpOptionsVolume (12, 147) 659 × 74: Music (17, 22) / Effects (17, 47), sliders (81, 24 / 49). The sliders

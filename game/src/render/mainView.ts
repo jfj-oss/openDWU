@@ -13,6 +13,7 @@
 // generated gas clouds) are ported in stellarFx.ts. Gas clouds sit inside a NebulaCloud location (sim galaxy.ts
 // generateGasCloud, Galaxy.4.cs 2834-2844); the C# Main View draws no radiation field for them or for any star.
 
+import { COLONY_PLATE_MAX_F, ColonyPlateCache } from './colonyPlate';
 import { fogOf } from './fog';
 import { AttachedChildren } from './renderGroups';
 import { circleAtScreenRes } from './screenCircle';
@@ -467,6 +468,8 @@ class PlanetView {
     /** The volcanic glow over `sprite` (MainView.cs method_50, volcanicGlow.ts), once loaded. */
     glow: Sprite | null = null;
     label: Text;
+    /** The colony plate at zoom < 2 (colonyPlate.ts, method_89), made on first use. */
+    plate: Sprite | null = null;
     moons: MoonView[] = [];
     constructor(private system: SystemView, habitat: Habitat, dotTex: Texture) {
         this.habitat = habitat;
@@ -503,6 +506,8 @@ class MoonView {
     /** The volcanic glow over `dot` (MainView.cs method_50, volcanicGlow.ts), once loaded. */
     glow: Sprite | null = null;
     label: Text;
+    /** The colony plate at zoom < 2 (colonyPlate.ts), made on first use. */
+    plate: Sprite | null = null;
     constructor(private system: SystemView, habitat: Habitat, tex: Texture) {
         this.habitat = habitat;
         this.dot = new Sprite(tex);
@@ -557,6 +562,8 @@ export class SystemView {
      * extras (min sprite sizes, labels) — those are covered by SYSTEM_CULL_PX_MARGIN. */
     drawRadius = 0;
     private rocksShown: boolean | null = null;
+    /** Colony plates (colonyPlate.ts) of this system's populated planets and moons. */
+    private plates = new ColonyPlateCache();
     /** The planets in habitat order with their moons (data only: what the pickers and the fog read). */
     readonly planetHabitats: { habitat: Habitat; moons: Habitat[] }[] = [];
     rockHabitats: Habitat[] = [];
@@ -750,6 +757,7 @@ export class SystemView {
         this.bodiesNeededAt = -1;
         for (const c of this.bodies.removeChildren()) c.destroy({ children: true, texture: false, textureSource: false });
         for (const c of this.moonRingLayer.removeChildren()) c.destroy();
+        this.plates.destroy();
         this.planets.length = 0;
         this.asteroids.length = 0;
         this.moonRings.length = 0;
@@ -998,6 +1006,24 @@ export class SystemView {
         return this.moonDrawn[pi]?.[k] !== false;
     }
 
+    /** Show / hide a body's colony plate (method_86: centred on the drawn rect's right edge, vertically centred). */
+    private syncPlate(body: { plate: Sprite | null }, h: Habitat, x: number, y: number, z: number, show: boolean): void {
+        if (!show) {
+            if (body.plate !== null) body.plate.visible = false;
+            return;
+        }
+        const tex = this.plates.get(h, this.view.galaxy);
+        if (tex === null) return;
+        if (body.plate === null) {
+            body.plate = new Sprite(tex);
+            body.plate.anchor.set(0.5);
+            this.bodies.addChild(body.plate);
+        } else if (body.plate.texture !== tex) body.plate.texture = tex;
+        body.plate.visible = true;
+        body.plate.position.set(x, y);
+        body.plate.scale.set(1 / z);
+    }
+
     /** Planets, moons, their labels and the rocks (only called while f < 500). */
     private updateBodies(z: number, f: number): void {
         // Task 12p (MainView.1.cs:437-470): no dot crossfade — planet sprites are
@@ -1024,11 +1050,13 @@ export class SystemView {
                 // Fog of war: not drawn — nor its label, moons or moon rings.
                 planet.sprite.visible = false;
                 planet.label.visible = false;
+                if (planet.plate !== null) planet.plate.visible = false;
                 mg.visible = false;
                 syncVolcanicGlow(planet.sprite, planet.glow);
                 for (const moon of planet.moons) {
                     moon.dot.visible = false;
                     moon.label.visible = false;
+                    if (moon.plate !== null) moon.plate.visible = false;
                     syncVolcanicGlow(moon.dot, moon.glow);
                 }
                 continue;
@@ -1048,7 +1076,10 @@ export class SystemView {
             // Label centred on the drawn rect's right edge (method_84),
             // vertically centred on the body.
             const populated = p.owner !== null && p.population.items.length > 0;
-            planet.label.visible = labels && habitatLabelVisible(true, populated, f);
+            // MainView.1.cs 1826-1862: a populated colony at double_0 < 2 gets the plate (flag12) instead of the name.
+            const plate = labels && populated && f < COLONY_PLATE_MAX_F;
+            this.syncPlate(planet, p, px + (sprPx / 2) / z, py, z, plate);
+            planet.label.visible = !plate && labels && habitatLabelVisible(true, populated, f);
             planet.label.position.set(px + (sprPx / 2) / z, py);
             planet.label.scale.set(1 / z);
             if (planet.label.visible) {
@@ -1068,6 +1099,7 @@ export class SystemView {
                 if (!this.moonIsDrawn(pi, mk)) {
                     moon.dot.visible = false;
                     moon.label.visible = false;
+                    if (moon.plate !== null) moon.plate.visible = false;
                     syncVolcanicGlow(moon.dot, moon.glow);
                     continue;
                 }
@@ -1082,7 +1114,9 @@ export class SystemView {
                 moon.dot.scale.set(mPx / (moon.dot.texture.width * z));
                 syncVolcanicGlow(moon.dot, moon.glow);
                 const mPopulated = m.owner !== null && m.population.items.length > 0;
-                moon.label.visible = labels && habitatLabelVisible(false, mPopulated, f);
+                const mPlate = labels && mPopulated && f < COLONY_PLATE_MAX_F;
+                this.syncPlate(moon, m, mx + (mPx / 2) / z, my, z, mPlate);
+                moon.label.visible = !mPlate && labels && habitatLabelVisible(false, mPopulated, f);
                 moon.label.position.set(mx + (mPx / 2) / z, my);
                 moon.label.scale.set(1 / z);
                 if (moon.label.visible) {

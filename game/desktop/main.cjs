@@ -51,6 +51,9 @@ app.commandLine.appendSwitch('disable-features', 'WebRtcHideLocalIpsWithMdns');
 for (const [name, value] of displayMode.gpuSwitches(process.platform, process.env)) {
     if (!app.commandLine.hasSwitch(name)) app.commandLine.appendSwitch(name, value);
 }
+// After a few GPU process crashes (a driver reset) Chromium blocks WebGL for the page's origin until the app restarts,
+// so the map stayed blank; the game restores / rebuilds its view itself (src/render/contextLoss.ts).
+app.disableDomainBlockingFor3DAPIs();
 
 // dist/ lives next to desktop/ in the repo; when packaged it is copied into
 // resources/ by @electron/packager (extraResource in scripts/package-desktop.mjs).
@@ -477,7 +480,7 @@ ipcMain.on('dwu:report-renderer', (event, info) => {
     console.log(line);
     try {
         // userData/gpu-log.txt: this launch's GPU path, for bug reports ("planets look full-bright").
-        fs.writeFileSync(path.join(app.getPath('userData'), 'gpu-log.txt'), `${new Date().toISOString()} version=${APP_VERSION} ${process.platform} ${line}\n`);
+        fs.writeFileSync(path.join(app.getPath('userData'), 'gpu-log.txt'), `${new Date().toISOString()} version=${APP_VERSION} ${process.platform} ${line}\n${gpuInfoText ? `${gpuInfoText}\n` : ''}`);
     } catch {
         /* best effort */
     }
@@ -697,6 +700,8 @@ function popupShellMenu(win) {
 // ---------------------------------------------------------------------------
 
 let mainWin = null;
+/** app.getGPUInfo('complete') summarised (displayMode.gpuInfoLine), once known: for gpu-log.txt and the crash log. */
+let gpuInfoText = '';
 
 function toggleFullscreen(win) {
     setFullscreen(win, !win.isFullScreen());
@@ -742,6 +747,14 @@ function createWindow() {
         if (mainWin === win) mainWin = null;
     });
 
+    // The GPU process died (a driver reset, out of GPU memory): logged with the memory sample; the page's context-loss
+    // recovery (contextLoss.ts) brings the map back.
+    const onChildGone = (_event, details) => {
+        if (!details || details.type !== 'GPU') return;
+        appendCrashLog(`${new Date().toISOString()} gpu-process-gone reason=${details.reason} exitCode=${details.exitCode} version=${APP_VERSION}\n` + (gpuInfoText ? `  ${gpuInfoText}\n` : '') + (lastMemory !== '' ? `  last memory sample: ${lastMemory}\n` : ''));
+    };
+    app.on('child-process-gone', onChildGone);
+    win.on('closed', () => app.removeListener('child-process-gone', onChildGone));
     // The game page died (out of memory, a crash, killed): instead of leaving a black window, log why and offer a
     // reload. The last autosave or manual save is where to continue from.
     // The page's last warnings / errors and its memory, kept for the crash log (a crash leaves no other trace).
@@ -759,7 +772,10 @@ function createWindow() {
         // reports it after its silence watchdog — or stopped answering) goes to the crash log at once, with the memory:
         // the page may well die of the same cause minutes later, or the player quits from the restart prompt. A save
         // that does not load goes there too (its reason: the panel shows only the first line).
-        if (level === 'error' && /sim worker: STOPPED|Autosave failed|Failed to load save|Failed to read save file/.test(String(message))) {
+        // WebGL context loss / restore (contextLoss.ts) too: a blank map after a GPU reset shows in the player's log.
+        if (/WebGL context (lost|still lost|restored)|rebuilding the view|view rebuild after a GPU reset/.test(String(message))) {
+            appendCrashLog(`${entry} version=${APP_VERSION}\n` + (lastMemory !== '' ? `  last memory sample: ${lastMemory}\n` : ''));
+        } else if (level === 'error' && /sim worker: STOPPED|Autosave failed|Failed to load save|Failed to read save file/.test(String(message))) {
             appendCrashLog(`${entry} version=${APP_VERSION}\n` + (lastMemory !== '' ? `  last memory sample: ${lastMemory}\n` : ''));
         }
     });
@@ -811,6 +827,12 @@ function createWindow() {
         } catch {
             /* not available */
         }
+        app.getGPUInfo('complete')
+            .then((info) => {
+                gpuInfoText = displayMode.gpuInfoLine(info);
+                console.log(gpuInfoText);
+            })
+            .catch(() => {});
         // The update check on every launch, once the game is up (and off the startup path).
         setTimeout(() => checkForUpdates({ manual: false }), 8000);
     });

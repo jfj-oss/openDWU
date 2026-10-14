@@ -13,7 +13,16 @@ import type { Graphics } from 'pixi.js';
  * context transform (applied to the points before the stroke is built, so stroke widths stay in world units). The
  * drawn shape is the same circle; its polygon stays within ~0.01 px of the true circle (Pixi's own error bound).
  */
+let canvasRenderer = false;
+/** The Main View draws with Pixi's Canvas renderer (rendererInfo.ts recordRenderer). */
+export function setScreenCircleCanvasMode(on: boolean): void {
+    canvasRenderer = on;
+}
+
 export function circleAtScreenRes(g: Graphics, x: number, y: number, r: number, z: number): Graphics {
+    // Pixi's Canvas renderer (no WebGL) scales stroke widths by the inner transform too: a 1.2 px orbit ring came out
+    // 1.2 × zoom-factor px wide and washed the whole system view out. The plain circle is right there.
+    if (canvasRenderer) return g.circle(x, y, r);
     g.context.save();
     g.context.transform(1 / z, 0, 0, 1 / z, x, y);
     g.circle(0, 0, r * z);

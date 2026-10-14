@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { textureFromRgbaPixels } from '../src/render/textureCanvas';
 import { mippedTextureBytes, NEBULA_TEXTURE_BUDGET_BYTES, SystemNebulaLayer, type NebulaSystem } from '../src/render/systemNebula';
-import { installContextLossRecovery, LOSS_WINDOW_MS } from '../src/render/contextLoss';
+import { installContextLossRecovery, LOSS_WINDOW_MS, RESTORE_NUDGE_MS, STUCK_MS } from '../src/render/contextLoss';
 
 /** Minimal DOM canvas: enough 2D context for the fallback painters. */
 function fakeDocument(): { created: Array<{ width: number; height: number; attrs: unknown }> } {
@@ -147,5 +147,49 @@ describe('context loss recovery', () => {
         expect(r.state.losses).toBe(2);
         expect(calls).toEqual(['restored', 'restored']);
         warn.mockRestore();
+    });
+
+    it('a loss the browser never restores: a restoreContext() nudge, then onStuck; a restore in time cancels both', () => {
+        const canvas = new EventTarget() as unknown as HTMLCanvasElement;
+        const timers: { fn: () => void; ms: number; id: number }[] = [];
+        let lost = true;
+        let nudged = 0;
+        let stuck = 0;
+        const gl = { isContextLost: () => lost, getExtension: () => ({ restoreContext: () => nudged++ }) } as unknown as WebGLRenderingContext;
+        const quiet = [vi.spyOn(console, 'warn').mockImplementation(() => {}), vi.spyOn(console, 'error').mockImplementation(() => {})];
+        const r = installContextLossRecovery(canvas, { resolution: 1 }, { onGpuContextRestored: () => {}, useLowGpuMode: () => {} }, {
+            gl: () => gl,
+            onStuck: () => stuck++,
+            setTimeout: (fn, ms) => timers.push({ fn, ms, id: timers.length }) - 1,
+            clearTimeout: (id) => {
+                const t = timers[id as number];
+                if (t) t.fn = () => {};
+            },
+        });
+        canvas.dispatchEvent(new Event('webglcontextlost'));
+        expect(timers.map((t) => t.ms)).toEqual([RESTORE_NUDGE_MS, STUCK_MS]);
+        for (const t of timers) t.fn();
+        expect([nudged, stuck, r.state.stuck]).toEqual([1, 1, 1]);
+        // A loss that comes back in time.
+        canvas.dispatchEvent(new Event('webglcontextlost'));
+        lost = false;
+        canvas.dispatchEvent(new Event('webglcontextrestored'));
+        for (const t of timers.slice(2)) t.fn();
+        expect([nudged, stuck]).toEqual([1, 1]);
+        r.dispose();
+        for (const q of quiet) q.mockRestore();
+    });
+});
+
+describe('renderer info and colony plates', () => {
+    it('names the GPU from the ANGLE string and buckets the plate bars like method_155', async () => {
+        const { gpuDisplayName, graphicsLine } = await import('../src/render/rendererInfo');
+        expect(gpuDisplayName('ANGLE (NVIDIA, NVIDIA GeForce RTX 5080 (0x00002c02) Direct3D11 vs_5_0 ps_5_0, D3D11)')).toBe('NVIDIA GeForce RTX 5080 (D3D11)');
+        expect(graphicsLine({ renderer: 'canvas', webgl: 'none', gpu: '' })).toContain('without WebGL');
+        expect(graphicsLine({ renderer: 'webgl', webgl: 'webgl2', gpu: 'ANGLE (Intel, Intel(R) UHD Graphics (0x00009B41) Direct3D11 vs_5_0 ps_5_0, D3D11)' })).toBe('Graphics: Intel(R) UHD Graphics (D3D11)');
+        const { colonyPlateBars } = await import('../src/render/colonyPlate');
+        expect(colonyPlateBars(0, 0)).toEqual([0, 0]);
+        expect(colonyPlateBars(20_000_001, 21)).toEqual([2, 2]);
+        expect(colonyPlateBars(3e9, 81)).toEqual([5, 5]);
     });
 });

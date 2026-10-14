@@ -670,9 +670,13 @@ function createGalaxyMapFor(galaxy: Galaxy, camera: Camera): GalaxyMapScreen {
  * detail down when losses recur. Also drops Pixi's capability-probe context (getTestContext: a second WebGL context
  * kept for the page's lifetime once the renderer has read its limits; Pixi makes a new one if it ever asks again).
  */
-function installGpuRecovery(app: Application, view: MainView): ReturnType<typeof installContextLossRecovery> & { guards: FramebufferWatchdogState } {
+function installGpuRecovery(app: Application, view: MainView, onStuck?: () => void): ReturnType<typeof installContextLossRecovery> & { guards: FramebufferWatchdogState } {
     releasePixiTestContext(app.renderer);
-    const loss = installContextLossRecovery(app.canvas, app.renderer, view, { notify: showToast });
+    const loss = installContextLossRecovery(app.canvas, app.renderer, view, {
+        notify: showToast,
+        onStuck,
+        gl: () => (app.renderer.type === 1 /* WEBGL */ ? (app.renderer as unknown as { gl?: WebGLRenderingContext }).gl : null),
+    });
     // Deferred resizes while hidden / minimised and the incomplete-framebuffer watchdog (render/gpuGuards.ts).
     setOverlayErrorNotifier(showToast); // a failing Improvements overlay switches itself off (overlayLayer.ts)
     const guards = installGpuGuards(app as unknown as GuardedApp);
@@ -799,7 +803,30 @@ export async function startGameView(
     applyResourceFilterUrlParam(overlays, galaxy); // [dw2overlays]
     const view = new MainView(app, camera, galaxy, store, overlays);
     await view.init();
-    const contextLoss = installGpuRecovery(app, view);
+    // A context the browser never restores (a GPU driver reset): rebuild the view from the current game — the
+    // save / load path, a new canvas and renderer — instead of leaving the map blank (contextLoss.ts onStuck).
+    // A multiplayer game cannot reload on one side: there the player is told to save and load.
+    let rebuilding = false;
+    const contextLoss = installGpuRecovery(app, view, () => {
+        if (rebuilding) return;
+        if (multiplayerActive()) {
+            showToast('Graphics stopped after a GPU reset: save and load the game to bring the map back', document.body, 15000);
+            return;
+        }
+        rebuilding = true;
+        showToast('Graphics were reset: rebuilding the map…', document.body, 4000);
+        void (async () => {
+            try {
+                const text = await serializeCurrent();
+                if (text === null) throw new Error('nothing to serialize');
+                await bootLoadedGame(await loadSaveWithProgress(text));
+            } catch (err) {
+                rebuilding = false;
+                console.error(`view rebuild after a GPU reset failed: ${err instanceof Error ? err.message : String(err)}`);
+                showToast('Graphics stopped after a GPU reset: save and load the game to bring the map back', document.body, 15000);
+            }
+        })();
+    });
 
     // One clock: the HUD's GalaxyTime is bound to galaxy.nowMs by createSimLoop (the scheduler advances it).
     const time = new GalaxyTime();

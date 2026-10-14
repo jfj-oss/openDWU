@@ -1831,6 +1831,22 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             : 'Lock the view on the selection (L)';
     };
     panel.appendChild(lockBtn);
+    // Main.Part11.cs 2317 pnlDetailInfo_DoubleClick: double-clicking the selection panel opens the selection's screen —
+    // an own colony the Colonies screen on it (method_166), another habitat the Galaxy Map (method_131), a ship / base
+    // the Ships and Bases screen (method_177), an own fleet the Fleets screen (method_268). The title keeps ours below.
+    content.addEventListener('dblclick', (e) => {
+        if (!(e.target instanceof Element) || e.target.closest('.sel-title, button, input, select, textarea, a') !== null) return;
+        const sel = getSelection();
+        const viewer = getEmpireSummarySource()?.empire ?? null;
+        if (sel === null || viewer === null || sel.creature !== undefined || sel.fighter !== undefined) return;
+        if (sel.shipGroup !== undefined) {
+            if (sel.shipGroup.empire === viewer) toggleFleets(sel.shipGroup);
+        } else if (sel.builtObject !== undefined) {
+            toggleShipsAndBases();
+        } else if (viewer.colonies.includes(sel.habitat)) {
+            toggleColoniesFromHud(viewer, sel.habitat);
+        } else galaxyMapAt?.(sel.habitat);
+    });
     // Double-clicking the panel's title (the selection name) turns the follow camera on for a selected ship / fleet.
     content.addEventListener('dblclick', (e) => {
         if (!(e.target instanceof Element) || e.target.closest('.sel-title') === null) return;

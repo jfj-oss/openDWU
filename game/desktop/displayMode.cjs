@@ -7,7 +7,8 @@
 // GPU: Chromium's GPU blocklist turns off WebGL on many older Intel / AMD laptop drivers; Pixi then falls back to its
 // Canvas renderer, which has none of the game's shaders (full-bright, unfiltered planets and ships). On Windows the
 // blocklist is ignored (D3D11 through ANGLE works on those drivers in practice) unless DWU_GPU_BLOCKLIST=1;
-// DWU_USE_ANGLE=<d3d11|d3d9|gl|vulkan|warp> picks another ANGLE backend.
+// DWU_USE_ANGLE=<d3d11|d3d9|gl|vulkan|warp> picks another ANGLE backend. On Windows and macOS the high-performance GPU
+// is preferred (force_high_performance_gpu: a hybrid PC otherwise may draw on its Intel iGPU) unless DWU_LOW_POWER_GPU=1.
 'use strict';
 
 /** True when the before-input-event `input` is a fullscreen toggle (keyDown of F11, Alt+Enter, Ctrl/Cmd+F). */
@@ -23,6 +24,8 @@ function isFullscreenToggle(input, platform) {
 /** The Chromium switches for the GPU path: [name, value?][] for app.commandLine.appendSwitch. */
 function gpuSwitches(platform, env = {}) {
     const out = [];
+    // Hybrid laptops / desktops with an iGPU: run on the discrete (high-performance) GPU, not the Intel one.
+    if ((platform === 'win32' || platform === 'darwin') && env.DWU_LOW_POWER_GPU !== '1') out.push(['force_high_performance_gpu']);
     if (platform !== 'win32') return out;
     if (env.DWU_GPU_BLOCKLIST !== '1') out.push(['ignore-gpu-blocklist']);
     const angle = String(env.DWU_USE_ANGLE ?? 'd3d11').toLowerCase();
@@ -39,4 +42,14 @@ function gpuLogLine(featureStatus, page) {
     return `[gpu] ${status}; page renderer=${p.renderer ?? '?'} webgl=${p.webgl ?? '?'}${p.gpu ? ` (${p.gpu})` : ''}`;
 }
 
-module.exports = { isFullscreenToggle, gpuSwitches, gpuLogLine };
+/** The GPU line from app.getGPUInfo('complete'): the active adapter's vendor / device / driver and the GL renderer. */
+function gpuInfoLine(info) {
+    if (!info || typeof info !== 'object') return '[gpu] info unavailable';
+    const devs = Array.isArray(info.gpuDevice) ? info.gpuDevice : [];
+    const hex = (n) => (typeof n === 'number' ? `0x${n.toString(16).padStart(4, '0')}` : '?');
+    const list = devs.map((d) => `${d.active ? '*' : ''}${hex(d.vendorId)}:${hex(d.deviceId)}${d.driverVersion ? ` driver ${d.driverVersion}` : ''}`).join(', ');
+    const aux = info.auxAttributes ?? {};
+    return `[gpu] adapters ${list || '?'}; GL ${aux.glRenderer ?? info.glRenderer ?? '?'} (${aux.glImplementationParts ?? aux.glImplementation ?? '?'})`;
+}
+
+module.exports = { isFullscreenToggle, gpuSwitches, gpuLogLine, gpuInfoLine };

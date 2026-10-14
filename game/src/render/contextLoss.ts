@@ -9,7 +9,11 @@
 // - from the second loss within LOSS_WINDOW_MS, steps down one detail level per loss (GpuDetailTarget.useLowGpuMode):
 //   level 1 = CPU nebula path (8-bit, no render-to-texture), half its texture budget, and render resolution 1 instead
 //   of the device pixel ratio (a quarter of the back-buffer memory on a 2x screen); level 2 = no system nebulae;
-// - logs each loss and restore with the count, and says once in a toast that detail was reduced.
+// - logs each loss and restore with the count, and says once in a toast that detail was reduced;
+// - a loss the browser does not restore (seen on Windows after a GPU driver reset: the map went blank until the player
+//   saved and loaded): after RESTORE_NUDGE_MS it asks WEBGL_lose_context.restoreContext() (enough for a simulated
+//   loss), and after STUCK_MS still lost it calls onStuck — main.ts then rebuilds the view (a new canvas and renderer)
+//   from the current game, the same path as loading a save, without reloading the page.
 
 import { getTestContext } from 'pixi.js';
 
@@ -26,10 +30,16 @@ export interface ContextLossState {
     restores: number;
     /** Current reduced-detail level (0 = full detail). */
     level: number;
+    /** Losses the browser never restored (the view was rebuilt). */
+    stuck?: number;
 }
 
 /** Losses closer together than this count as recurring (ms). */
 export const LOSS_WINDOW_MS = 5 * 60 * 1000;
+/** A loss not restored after this long gets a restoreContext() nudge (ms). */
+export const RESTORE_NUDGE_MS = 3000;
+/** Still lost after this long: the view is rebuilt (onStuck, ms). */
+export const STUCK_MS = 8000;
 /** Highest reduced-detail level. */
 export const MAX_GPU_DETAIL_LEVEL = 2;
 
@@ -41,6 +51,12 @@ export interface ContextLossOptions {
     /** One-line user notice (the HUD toast). */
     notify?: (message: string) => void;
     now?: () => number;
+    /** The context is still lost STUCK_MS after a loss: rebuild the view. */
+    onStuck?: () => void;
+    /** The renderer's WebGL context (for the restoreContext nudge). */
+    gl?: () => WebGLRenderingContext | WebGL2RenderingContext | null | undefined;
+    setTimeout?: (fn: () => void, ms: number) => unknown;
+    clearTimeout?: (id: unknown) => void;
 }
 
 /**
@@ -58,6 +74,15 @@ export function installContextLossRecovery(
     let lastLoss = -Infinity;
     let pendingLevel = 0;
     let notified = false;
+    const setT = options.setTimeout ?? ((fn: () => void, ms: number) => setTimeout(fn, ms));
+    const clearT = options.clearTimeout ?? ((id: unknown) => clearTimeout(id as ReturnType<typeof setTimeout>));
+    let nudge: unknown = null;
+    let stuck: unknown = null;
+    const clearTimers = (): void => {
+        if (nudge !== null) clearT(nudge);
+        if (stuck !== null) clearT(stuck);
+        nudge = stuck = null;
+    };
     const onLost = (): void => {
         const t = now();
         state.losses++;
@@ -65,8 +90,29 @@ export function installContextLossRecovery(
         if (t - lastLoss <= LOSS_WINDOW_MS) pendingLevel = Math.min(MAX_GPU_DETAIL_LEVEL, Math.max(pendingLevel, state.level) + 1);
         lastLoss = t;
         console.warn(`WebGL context lost (loss #${state.losses}); the browser will restore it`);
+        clearTimers();
+        nudge = setT(() => {
+            nudge = null;
+            const gl = options.gl?.();
+            if (!gl || !gl.isContextLost()) return;
+            console.warn(`WebGL context still lost after ${RESTORE_NUDGE_MS} ms: asking for it back`);
+            try {
+                gl.getExtension('WEBGL_lose_context')?.restoreContext();
+            } catch {
+                /* only valid after loseContext(); a real loss is the browser's to restore */
+            }
+        }, RESTORE_NUDGE_MS);
+        stuck = setT(() => {
+            stuck = null;
+            const gl = options.gl?.();
+            if (gl && !gl.isContextLost()) return;
+            state.stuck = (state.stuck ?? 0) + 1;
+            console.error(`WebGL context lost for ${STUCK_MS / 1000} s and not restored: rebuilding the view`);
+            options.onStuck?.();
+        }, STUCK_MS);
     };
     const onRestored = (): void => {
+        clearTimers();
         state.restores++;
         if (pendingLevel > state.level) {
             state.level = pendingLevel;
@@ -85,6 +131,7 @@ export function installContextLossRecovery(
     return {
         state,
         dispose: () => {
+            clearTimers();
             canvas.removeEventListener('webglcontextlost', onLost);
             canvas.removeEventListener('webglcontextrestored', onRestored);
         },

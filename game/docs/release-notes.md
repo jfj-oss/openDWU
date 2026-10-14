@@ -6,6 +6,21 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 - **Hot seat hidden:** the new-game wizard no longer offers "Human Players..." (several humans sharing one PC); LAN and
   Internet multiplayer are unchanged. A hot-seat list remembered from older settings is dropped.
+- **Fullscreen** is now a checkbox in Game Options → Display Settings (remembered between launches); F11, Alt+Enter and
+  Ctrl+F toggle it too (laptop F11 keys often need Fn).
+- **Graphics:** Game Options shows which GPU the game runs on ("Graphics: NVIDIA GeForce RTX 5080 (D3D11)"), or says so
+  when it runs without WebGL; the desktop app prefers the high-performance GPU on hybrid PCs, ignores Chromium's GPU
+  blocklist on Windows and writes what it got to gpu-log.txt. Without WebGL the orbit rings no longer wash the whole
+  system view out.
+- **Blank map after a GPU reset fixed:** if the graphics driver resets and the map's WebGL context does not come back,
+  the game now rebuilds the map by itself (no more save and reload); Chromium no longer blocks WebGL for the game after
+  GPU crashes, and the losses are logged in crash-log.txt.
+- **Colony plates on the map:** zoomed right in, populated colonies show the original's plate: name in the empire's
+  colour (capital icon), race, population / development bars and known resources.
+- **Double-click the selection panel** to open the selection's screen, as in the original: your colony → Colonies,
+  another planet → Galaxy Map, a ship or base → Ships and Bases, your fleet → Fleets.
+- **No more white text backgrounds:** a double-click or drag no longer paints the browser's selection highlight behind
+  panel text (selection panel, Diplomacy, ...), and unstyled form controls are dark everywhere.
 - **Windows / stock installs: the right font and the missing pictures.** The game's font (Forgotten Futurist) and the
   pictures the original keeps inside DistantWorlds.exe (the new-game wizard's Playstyle buttons and page pictures, the
   map zoom buttons, the game-menu header, the expansion planner picture) were read from a folder only the developer's
