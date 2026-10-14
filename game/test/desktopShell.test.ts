@@ -536,3 +536,43 @@ describe('desktop/displayMode.cjs (fullscreen keys, GPU switches)', () => {
         expect(info).toBe('[gpu] adapters *0x10de:0x2c02 driver 32.0, 0x8086:0x9b41; GL ANGLE (NVIDIA ...) ((gl=egl-angle,angle=d3d11))');
     });
 });
+
+describe('crash report scrubbing (desktop/crashReport.cjs)', () => {
+    const cr = require('../desktop/crashReport.cjs') as {
+        sentryEnabled(packaged: boolean, env: Record<string, string>): boolean;
+        scrubEvent(e: Record<string, any>, o: { home: string; user: string }): Record<string, any>;
+        scrubLogText(t: string, o: { home: string; user: string }, max?: number): string;
+        isSdkCoveredCrashEntry(t: string): boolean;
+    };
+    const o = { home: '/home/alice', user: 'alice' };
+    it('is on only when packaged or DWU_SENTRY=1', () => {
+        expect(cr.sentryEnabled(false, {})).toBe(false);
+        expect(cr.sentryEnabled(true, {})).toBe(true);
+        expect(cr.sentryEnabled(false, { DWU_SENTRY: '1' })).toBe(true);
+    });
+    it('replaces home folder and user name everywhere, drops user, cookies and headers', () => {
+        const e = cr.scrubEvent(
+            {
+                user: { ip_address: '1.2.3.4', username: 'alice' },
+                server_name: 'alice-pc',
+                request: { cookies: { a: 'b' }, headers: { h: 'v' }, url: 'dwu://app/' },
+                exception: { values: [{ value: 'ENOENT /home/alice/.config/x', stacktrace: { frames: [{ filename: 'C:\\Users\\Bob\\app.js' }] } }] },
+                breadcrumbs: [{ message: 'user alice saved /home/alice/saves/a.sav' }],
+            },
+            o,
+        );
+        expect(e.user).toBeUndefined();
+        expect(e.server_name).toBeUndefined();
+        expect(e.request.cookies).toBeUndefined();
+        expect(e.request.headers).toBeUndefined();
+        expect(e.request.url).toBe('dwu://app/');
+        expect(JSON.stringify(e)).not.toMatch(/alice|Bob/);
+        expect(e.exception.values[0].value).toBe('ENOENT ~/.config/x');
+    });
+    it('scrubs and trims attached crash-log text; SDK-covered entries are recognised', () => {
+        expect(cr.scrubLogText('see /home/alice/x', o)).toBe('see ~/x');
+        expect(cr.scrubLogText('a'.repeat(50), o, 10)).toHaveLength(10);
+        expect(cr.isSdkCoveredCrashEntry('2026-10-14T10:00:00.000Z render-process-gone reason=oom')).toBe(true);
+        expect(cr.isSdkCoveredCrashEntry('2026-10-14T10:00:00.000Z [error] sim worker: STOPPED')).toBe(false);
+    });
+});

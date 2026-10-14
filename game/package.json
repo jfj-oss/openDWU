@@ -39,6 +39,7 @@
     "dist:classic:win": "node scripts/package-desktop.mjs --platform=win32 --arch=x64 --edition=classic --installers"
   },
   "dependencies": {
+    "@sentry/electron": "^8.2.0",
     "pixi.js": "^8.21.0"
   },
   "devDependencies": {

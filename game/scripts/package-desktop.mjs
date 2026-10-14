@@ -175,6 +175,18 @@ fs.mkdirSync(path.join(stageDir, 'desktop'), { recursive: true });
 for (const f of fs.readdirSync(path.join(root, 'desktop'))) {
     if (/\.(cjs|html)$/.test(f)) fs.copyFileSync(path.join(root, 'desktop', f), path.join(stageDir, 'desktop', f));
 }
+// The crash-report SDK (@sentry/electron/main) as one minified file, so the package needs no node_modules for it
+// (desktop/crashReport.cjs loads ./sentry.cjs).
+{
+    const { build } = await import('rolldown');
+    await build({
+        input: path.join(root, 'node_modules/@sentry/electron/main/index.js'),
+        platform: 'node',
+        external: ['electron', /^node:/],
+        output: { file: path.join(stageDir, 'desktop', 'sentry.cjs'), format: 'cjs', minify: true, codeSplitting: false },
+        logLevel: 'warn',
+    });
+}
 guardStage(path.join(stageDir, 'desktop'));
 fs.writeFileSync(
     path.join(stageDir, 'package.json'),

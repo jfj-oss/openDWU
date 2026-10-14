@@ -4,6 +4,7 @@
 // install folder by the desktop shell; under `npm run dev` a public symlink
 // plus the probe middleware in vite.config.ts does the same).
 
+import { installErrorReporting } from './errorReporting';
 import { recordRenderer } from './render/rendererInfo';
 import { fogOf } from './render/fog';
 import { goToMessage, messageGoToTarget } from './ui/messageGoto';
@@ -2451,6 +2452,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     });
 }
 
+installErrorReporting();
 main().catch((err) => {
     console.error('DW:U boot failed', err);
 });

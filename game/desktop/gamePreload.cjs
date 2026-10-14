@@ -52,6 +52,8 @@ contextBridge.exposeInMainWorld('dwuDesktop', {
         },
     },
     // The page's renderer for the log (Pixi renderer name, WebGL renderer string).
+    // Uncaught page errors / unhandled rejections for crash reports (desktop/crashReport.cjs); the shell scrubs them.
+    reportError: (e) => ipcRenderer.send('dwu:report-error', { kind: String(e?.kind ?? ''), name: String(e?.name ?? ''), message: String(e?.message ?? '').slice(0, 500), stack: String(e?.stack ?? '').slice(0, 6000) }),
     reportRenderer: (info) => ipcRenderer.send('dwu:report-renderer', { renderer: String(info?.renderer ?? ''), webgl: String(info?.webgl ?? ''), gpu: String(info?.gpu ?? '') }),
     // Options → Music & Mood: open the user-data Music folder (desktop/userMusic.cjs) in the file manager.
     openMusicFolder: () => ipcRenderer.invoke('dwu:open-music-folder'),

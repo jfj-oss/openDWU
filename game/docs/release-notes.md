@@ -4,6 +4,8 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **Crash reports:** the desktop app now sends crash reports (error, stack, app version, OS, graphics card; no IP address, saves or personal files, and your user name and home folder are replaced by "~") to Sentry to help fix bugs. It has no setting.
+
 ## 0.1.30
 
 - **Game menu:** "Save Game As" is gone — Save Game opens the same save window, where you can type a new name.

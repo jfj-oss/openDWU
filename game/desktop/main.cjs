@@ -74,6 +74,9 @@ const APP_VERSION = app.isPackaged ? app.getVersion() : String(PKG.version ?? ap
 const UPDATE_REPO = updates.repoSlug(PKG.repository) ?? 'jfj-oss/openDWU';
 // openDWU Classic (build:classic): its own app id, product name and userData folder, so both editions install side by side.
 const CLASSIC = PKG.dwuEdition === 'classic' || process.env.DWU_EDITION === 'classic';
+// Crash reporting (desktop/crashReport.cjs): started as early as the version / edition are known.
+const crashReport = require('./crashReport.cjs');
+crashReport.init({ app, version: APP_VERSION, classic: CLASSIC });
 const APP_ID = CLASSIC ? 'local.dwureup.dwuclassic' : 'local.dwureup.dwu';
 const PRODUCT = CLASSIC ? 'openDWU Classic' : 'openDWU';
 if (CLASSIC && !app.isPackaged && !process.env.DWU_USER_DATA_DIR) app.setPath('userData', path.join(app.getPath('appData'), 'openDWU Classic'));
@@ -417,6 +420,7 @@ function appendCrashLog(text) {
     } catch {
         /* best effort */
     }
+    crashReport.reportCrashLogEntry(text);
 }
 
 // The game's simulation in a process of its own (simProcess.cjs): started by the game page (gamePreload.cjs), connected
@@ -468,8 +472,13 @@ ipcMain.handle('dwu:fullscreen-set', (event, on) => {
     return true;
 });
 // The page's renderer (Pixi WebGL / WebGPU / Canvas and the WebGL renderer string), for the log.
+ipcMain.on('dwu:report-error', (event, info) => {
+    if (mainWin === null || event.sender !== mainWin.webContents) return;
+    crashReport.reportRendererError(info);
+});
 ipcMain.on('dwu:report-renderer', (event, info) => {
     if (mainWin === null || event.sender !== mainWin.webContents || !info || typeof info !== 'object') return;
+    crashReport.setTags({ renderer_mode: String(info.renderer).slice(0, 20), gpu: String(info.gpu ?? '').slice(0, 120) });
     let status = null;
     try {
         status = app.getGPUFeatureStatus();
@@ -818,6 +827,18 @@ function createWindow() {
         else app.quit();
     });
 
+    // DWU_SENTRY_TEST=1 (with DWU_SENTRY=1): one deliberate error in the main process and one in the page, to check
+    // that reports arrive. Inactive without the variable.
+    if (process.env.DWU_SENTRY_TEST === '1') {
+        win.webContents.once('did-finish-load', () => {
+            setTimeout(() => {
+                win.webContents.executeJavaScript("setTimeout(() => { throw new Error('DWU_SENTRY_TEST renderer error'); }, 0)").catch(() => {});
+                setTimeout(() => {
+                    throw new Error('DWU_SENTRY_TEST main error');
+                }, 1500);
+            }, 3000);
+        });
+    }
     win.once('ready-to-show', () => {
         win.show();
         if (readConfig().fullscreen === true) setFullscreen(win, true);
@@ -830,6 +851,7 @@ function createWindow() {
         app.getGPUInfo('complete')
             .then((info) => {
                 gpuInfoText = displayMode.gpuInfoLine(info);
+                crashReport.setTags({ gpu_info: gpuInfoText.slice(0, 200) });
                 console.log(gpuInfoText);
             })
             .catch(() => {});

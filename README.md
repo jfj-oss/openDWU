@@ -919,7 +919,10 @@ about this project, please
 [jfj@tutanota.de](mailto:jfj@tutanota.de), and I will respond promptly.
 
 **Privacy.** openDWU has no telemetry, analytics or accounts and sends no
-data about you or your games anywhere. The only network use is:
+data about you or your games anywhere, with one exception: the desktop app
+sends crash reports (error, stack, app version, OS, graphics card; no IP
+address, saves or personal files; your user name and home folder are replaced
+by "~") to Sentry to help fix bugs. The network use is:
 
 - the desktop app's update check, which asks GitHub for the latest release
   each time the app starts;
