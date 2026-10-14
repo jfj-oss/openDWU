@@ -38,7 +38,6 @@ import { GAME_DAY_LENGTH, registerScenarioPeriodic, registerScenarioQuery } from
 import { scenarioParam } from '../state';
 import {
     ORBIT_RANGE,
-    ORBITAL_SUPERIORITY_FLAG,
     classifyOrbit,
     empireFirepowerNear,
     landingOrbitStrengths,
@@ -47,6 +46,7 @@ import {
     type OrbitalInvasion,
     type OrbitalSuperiorityState,
 } from './orbitalSuperiority';
+import { ORBITAL_SUPERIORITY_FLAG } from './orbitalFlags';
 
 function aiEmpire(galaxy: Galaxy, e: Empire | null): e is Empire {
     return e !== null && e !== galaxy.independentEmpire && e.pirateEmpireBaseHabitat === null && !isHumanEmpire(galaxy, e);

@@ -37,7 +37,8 @@ import { galaxyStarDate } from '../../tick/simTime';
 import { GAME_DAY_LENGTH } from '../hooks';
 import { scenarioFlag, scenarioParam, scenarioState } from '../state';
 
-export const ORBITAL_SUPERIORITY_FLAG = 'orbitalSuperiority';
+import { ORBITAL_SUPERIORITY_FLAG } from './orbitalFlags';
+export { ORBITAL_SUPERIORITY_FLAG };
 export const ORBITAL_SUPERIORITY_ADDON_ID = 'orbital-superiority';
 const KEY = 'orbitalSuperiority';
 /** The original Space Control radius (calculateSpaceControlStrengths). */
