@@ -296,7 +296,7 @@ describe('picker sections, base add-ons, council follows the Diet', () => {
         const rows = model.sections.flatMap((x) => x.groups.flatMap((g) => g.rows.map((r) => [x.section, r] as const)));
         for (const [sec, r] of rows) expect(sec === 'Recommended' ? r.wip === null : typeof r.wip === 'string' && r.wip !== '').toBe(true);
         const ids = rows.map(([, r]) => r.id);
-        for (const h of ['galactic-council', 'event-log', 'themed-names']) expect(ids).not.toContain(h);
+        for (const h of ['galactic-council', 'event-log', 'themed-names', 'colony-defence']) expect(ids).not.toContain(h);
         expect(rows.find(([, r]) => r.id === 'cult')![0]).toBe('Recommended');
         expect(rows.find(([, r]) => r.id === 'characters-victory')![1].name).toBe('Characters, Diet & Victory');
         expect(cat.byId.get('event-log')!.deps).toEqual([]);

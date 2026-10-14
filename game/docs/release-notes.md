@@ -9,6 +9,11 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
   gold) and **Deep Violet** (purple and magenta dust, blue accents), all built like Deep from the original image. Galactic
   Core, Golden Spiral, Eerie and Nebula are gone (saves and settings with them load as Deep), and so is the Storm flashes
   option. The 2D galaxy maps and the picker thumbnails now show the Deep-style backdrops too.
+- **Influence borders:** where two empires meet, only the darker empire's side gets the dark band (the "Both darker"
+  option is gone; that setting loads as Darker side).
+- **Galactopedia:** clicking an open group's header closes it again.
+- **Colony Defence add-on withdrawn:** pirate control of colonies works as in the original again. The add-on is no longer
+  in the picker or the Living Galaxy preset; saves that use it still load.
 
 ## 0.1.29
 

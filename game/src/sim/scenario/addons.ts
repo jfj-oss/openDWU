@@ -59,7 +59,6 @@ export const ADDON_STATUS: Readonly<Record<string, string>> = {
     'lively-galaxy': 'still being tuned',
     'corporatecoup': 'does not trigger in real games yet',
     'greytide': 'drones are not real ships yet',
-    'colony-defence': 'untested, little UI',
     'privateers': 'recommended',
     'frontier-autonomy': 'no UI yet',
     'court-dynasties': 'on hold',
@@ -144,7 +143,8 @@ const GROUP_OF: Readonly<Record<string, AddonGroup>> = {
  */
 // big-galaxies: its extended palette is now automatic in the base game (empireColors.ts); old saves with the add-on still load.
 // resource-crises: withdrawn from the picker (its per-luxury approval loss stacked to absurd values); saves that use it still load.
-export const HIDDEN_ADDONS: ReadonlySet<string> = new Set(['threat-framework', 'example', 'ai-parity', 'soak-15y', 'resource-crises', 'big-galaxies', 'galactic-council', 'themed-names', 'event-log']);
+// colony-defence: withdrawn from the picker (the user wants the original's pirate control); saves that use it still load.
+export const HIDDEN_ADDONS: ReadonlySet<string> = new Set(['threat-framework', 'example', 'ai-parity', 'soak-15y', 'resource-crises', 'colony-defence', 'big-galaxies', 'galactic-council', 'themed-names', 'event-log']);
 
 /**
  * Add-ons set on another wizard page (not listed on the Scenario page, but named in the summaries like any other):
@@ -553,7 +553,7 @@ export const EXPANSIONS: readonly Expansion[] = [
     { id: 'politics-characters', name: 'Politics & Characters', description: 'Governors, VIPs and the Galactic Council, internal security, reputation, espionage fallout, frontier autonomy, refugees and war crimes remembered.', members: ['characters-victory', 'internal-security', 'reputation', 'espionage-consequences', 'frontier-autonomy', 'refugees-demographics', 'war-crimes'] },
     { id: 'economy', name: 'Economy', description: 'Colony economy, the exchange, chartered companies, corporate coups, privateers and wreckage salvage.', members: ['colony-economy', 'exchange', 'chartered-companies', 'corporatecoup', 'privateers', 'wreckage-salvage'] },
     { id: 'galactic-threats', name: 'Galactic Threats', description: 'The hidden end-game threats (cult, hive, silence, greytide, ghost armada, robot mutiny, time bomb, doppelgangers, dark farms) and the early ones: generation ships, a dead probe swarm and the archive cores they leave.', members: ['threat-framework', 'generation-ships', 'probe-swarm', 'archive-cores', 'cult', 'hive', 'silence', 'greytide', 'ghostarmada', 'robotmutiny', 'timebomb', 'doppelgangers', 'darkfarms'] },
-    { id: 'living-galaxy', name: 'Living Galaxy', description: 'A galaxy that moves on its own: lively events, emergent factions, active independents, colony defence and scorched earth.', members: ['lively-galaxy', 'emergent', 'independents-active', 'colony-defence', 'scorched-earth'] },
+    { id: 'living-galaxy', name: 'Living Galaxy', description: 'A galaxy that moves on its own: lively events, emergent factions, active independents and scorched earth.', members: ['lively-galaxy', 'emergent', 'independents-active', 'scorched-earth'] },
 ];
 
 /** The expansion's members this index has, visible ones only (hidden infrastructure comes in as a dependency). */
