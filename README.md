@@ -141,6 +141,21 @@ The apps aren't code-signed (a free hobby project), so Windows and macOS
 need one extra click the first time; each section below says which. The
 dropdowns have the full details and how to run from source.
 
+**openDWU or openDWU Classic?** Each release comes in two editions, built
+from the same code:
+
+- **openDWU** (files named `openDWU-<version>-…`): the full game with the
+  optional add-ons you can switch on when starting a new game.
+- **openDWU Classic** (files named `openDWU-Classic-<version>-…`): the base
+  game plus the Bacon mod and openDWU's fixes, with no gameplay add-ons;
+  only themed names, the smarter AI option and the event log.
+
+Pick one; you can also install both. Classic keeps its own settings and
+saves (an `openDWU Classic` folder next to the full edition's
+`Distant Worlds Universe` folder) and updates to new Classic releases.
+The steps below use the full edition's names; for Classic the app is
+called **dwu-classic** instead of **dwu**.
+
 ---
 
 ## Windows
@@ -184,7 +199,7 @@ To use another folder later, press **Ctrl+Shift+O** in the game and choose
 **Game Folder…** (the same menu has **Check for Updates…**).
 
 **4. Updates.** When a new release is out, the app offers it at startup
-(at most once a day): **Download** opens the new installer in your browser;
+(every launch): **Download** opens the new installer in your browser;
 run it and it replaces the old version (settings and saves are kept).
 
 **Uninstall:** Settings → Apps → **openDWU**. Your settings and saves stay in
@@ -340,8 +355,8 @@ You don't need Node.js or npm for the app.
 To use another folder later: **Distant Worlds Universe** menu → **Game
 Folder…** (next to **Check for Updates…**).
 
-**4. Updates.** When a new release is out, the app offers it at startup (at
-most once a day): **Download** opens the new disk image in your browser;
+**4. Updates.** When a new release is out, the app offers it at startup (every
+launch): **Download** opens the new disk image in your browser;
 drag **dwu** to Applications again, replacing the old one, and repeat the
 one-time step 2. Settings and saves are kept.
 
@@ -480,8 +495,10 @@ x86_64.
   `libfuse2`; Fedora: `fuse-libs`; Arch: `fuse2`), or run it with
   `--appimage-extract-and-run`.
 
-- or `openDWU-<version>-linux-x64.tar.gz`: extract it anywhere and run
-  `openDWU-<version>-linux-x64/dwu`.
+- or `openDWU-<version>-linux-x64.tar.gz`: the same app as a plain folder,
+  for when the AppImage won't run (no FUSE 2 and you can't install it) or
+  you'd rather keep the app in a folder of your choice. Extract it anywhere
+  and run `openDWU-<version>-linux-x64/dwu`.
 
 **2. First launch.** openDWU looks for the game in every Steam library it can
 find (`~/.local/share/Steam`, `~/.steam/steam`, Flatpak and Snap Steam, and
@@ -497,8 +514,8 @@ the setup window. You don't need Node.js or npm for the app.
 To use another folder later, press **Ctrl+Shift+O** in the game and choose
 **Game Folder…** (the same menu has **Check for Updates…**).
 
-**3. Updates.** When a new release is out, the app offers it at startup (at
-most once a day): **Download** opens the new AppImage (or tar.gz) in your
+**3. Updates.** When a new release is out, the app offers it at startup (every
+launch): **Download** opens the new AppImage (or tar.gz) in your
 browser; replace the old file with it. Settings and saves
 (`~/.config/Distant Worlds Universe`) are kept.
 
@@ -693,9 +710,9 @@ Desktop app:
   folder setting (macOS: app menu → **Game Folder…**; Windows/Linux:
   **Ctrl+Shift+O** → **Game Folder…**) and pick the folder with `images`
   and `races.txt`.
-- **No update prompts.** The check runs at most once a day and only offers
+- **No update prompts.** The check runs on every launch and only offers
   full releases (not pre-releases); use **Check for Updates…** in the same
-  menu to check now. To turn the daily check off, add
+  menu to check now. To turn the launch check off, add
   `"checkForUpdates": false` to `config.json` in the settings folder
   (Windows `%APPDATA%\Distant Worlds Universe`, macOS
   `~/Library/Application Support/Distant Worlds Universe`, Linux
@@ -857,7 +874,7 @@ about this project, please
 data about you or your games anywhere. The only network use is:
 
 - the desktop app's update check, which asks GitHub for the latest release
-  at most once a day;
+  each time the app starts;
 - multiplayer, which connects players directly to each other (so players see
   each other's IP address). To find each other through home routers, it asks
   a public STUN server (Google's or Cloudflare's) for your public address;
