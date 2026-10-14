@@ -1460,8 +1460,14 @@ function createGalactopedia(opts: GalactopediaOptions): OpenState {
             head.append(el('span', 'gp-caret', isOpen ? '▾' : '▸'), el('span', 'gp-cat-label', node.root.title));
             if (current === node.root) head.classList.add('gp-selected');
             head.addEventListener('click', () => {
-                if (expanded.has(node.root.category) && current === node.root) expanded.delete(node.root.category);
-                else expanded.add(node.root.category);
+                // An open group closes and stays on the current page (select → show would re-open it); a closed one
+                // opens at its root page.
+                if (isOpen && q === '') {
+                    expanded.delete(node.root.category);
+                    renderTree();
+                    return;
+                }
+                expanded.add(node.root.category);
                 select(node.root);
             });
             group.appendChild(head);
