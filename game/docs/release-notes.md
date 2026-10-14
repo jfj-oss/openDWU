@@ -46,6 +46,15 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
   install had, so on a normal install every window used Arial (much wider: text overflowed and overlapped everywhere)
   and those pictures were blank. Both now ship with the game. Verdana text falls back to DejaVu Sans where Verdana is
   not installed (Linux).
+- **Mothballing (new Gameplay change, off by default; Other Empires page):** put a fleet or warship into reserve at
+  one of your space ports — the selection panel's **Mothball** button (also on the Fleets screen and the Ships and Bases
+  screen) picks the safest interior port with room; right-click lists every port with distance, ETA and ships in
+  reserve against its capacity (6 / 12 / 24 for small / medium / large ports). The ships park in rings around the port
+  at 15% upkeep — immobile, weapons cold, ignored by automation, the AI and Intercept / Defend; a fleet stays the same
+  fleet. **Reactivate** takes 240 days for a mid-sized ship (120–480 by size) at full upkeep. A reserve is vulnerable: a
+  destroyed port forces an emergency reactivation, a captured port takes the reserve ships with it. AI empires mothball
+  up to 30% of their navy after 5 years of peace on a tight budget, reactivate at the first war warning, and see a
+  mothballed rival as weaker. Every number is a parameter.
 - **Threats & Leads (Characters / Intelligence screen):** with any Galactic Threat add-on or Internal Security on, a
   **Threats & Leads** button under the Galactopedia link switches the screen to a list of every threat site and
   security lead your empire knows: what it is, where, suspected or confirmed, when it was found and what is being done.

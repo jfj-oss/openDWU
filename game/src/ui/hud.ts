@@ -112,6 +112,7 @@ import type { Creature } from '../sim/creature';
 import { Fighter } from '../sim/combat/fighters';
 import { localViewerEmpire } from '../localViewer';
 import { interceptStrip } from './interceptSlots';
+import { mothballSlot } from './mothballSlots';
 
 // Port of Main.Part12.cs LoadUiChromeButtons (381–520): the control → chrome
 // button image mapping. The original loads each control's image from
@@ -1571,9 +1572,51 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         const viewer = localViewerEmpire(wiring.galaxy) ?? null;
         if (currentSelection !== icListFor && icListFor !== null) closeIcList();
         if (viewer === null || !wiring.galaxy) return [];
-        const m = interceptStrip(wiring.galaxy, viewer, currentSelection, selectForce, () => redrawSelectionActionBar());
-        if (m === null) return [];
         const sel = currentSelection;
+        const out: SelectionFreeSlot[] = [];
+        // Mothballing add-on (a Gameplay change): Mothball (right-click: choose the port) / Reactivate for an own fleet
+        // or lone warship (ui/mothballSlots.ts).
+        const mb = mothballSlot(wiring.galaxy, viewer, currentSelection);
+        if (mb !== null) {
+            out.push({
+                label: mb.label,
+                hint: mb.hint,
+                icon: mb.icon,
+                disabled: mb.disabled,
+                onClick: () => {
+                    closeIcList();
+                    mb.click();
+                },
+                onMenu:
+                    mb.choices.length === 0
+                        ? undefined
+                        : () => {
+                              const menu = toolStripMenu('sel-more-menu');
+                              for (const c of mb.choices) {
+                                  const row = toolStripItem(c.label, { title: c.hint, tag: 'button' });
+                                  row.classList.add('sel-extra-btn');
+                                  if (c.chosen) row.classList.add('sel-more-on');
+                                  if (c.disabled) {
+                                      row.classList.add('is-disabled');
+                                      (row as HTMLButtonElement).disabled = true;
+                                  }
+                                  row.addEventListener('mouseenter', () => setToolStripActive(menu, row));
+                                  row.addEventListener('click', (e) => {
+                                      e.stopPropagation();
+                                      if (c.disabled) return;
+                                      closeIcList();
+                                      c.pick();
+                                  });
+                                  menu.appendChild(row);
+                              }
+                              icList.replaceChildren(menu);
+                              icList.hidden = false;
+                              icListFor = sel;
+                          },
+            });
+        }
+        const m = interceptStrip(wiring.galaxy, viewer, currentSelection, selectForce, () => redrawSelectionActionBar());
+        if (m === null) return out;
         return [
             {
                 label: m.label,
@@ -1609,6 +1652,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
                               icListFor = sel;
                           },
             },
+            ...out,
         ];
     };
     setSelectionFreeSlots(freeSlots);

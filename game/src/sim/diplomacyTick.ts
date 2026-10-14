@@ -330,7 +330,8 @@ export function determineRelativeStrength(galaxy: Galaxy, ourStrength: number, o
         num /= otherEmpire.difficultyLevel;
         num2 /= otherEmpire.difficultyLevel;
     }
-    const num3 = ourStrength / militaryPotency(otherEmpire);
+    // Mod layer (mothballing): a scenario may weigh the rival's potency (its ships in reserve count less); no scenario = stock.
+    const num3 = ourStrength / (galaxy.scenario !== null ? scenarioQuery(galaxy, 'rivalMilitaryPotency', militaryPotency(otherEmpire), { other: otherEmpire }) : militaryPotency(otherEmpire));
     if (num3 < num2) result = -1;
     else if (num3 > num) result = 1;
     return result;

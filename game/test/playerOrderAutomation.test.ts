@@ -4,7 +4,19 @@
 // manually controlled (isAiControlled false), so the empire AI leaves it alone; once it completes, automation resumes.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { cachedTickGame } from './helpers/gameCache';
+import { cachedScenarioGameRun, cachedTickGame } from './helpers/gameCache';
+import {
+    MOTHBALL_REACTIVATING, MOTHBALL_RESERVE, MOTHBALL_TRAVEL, forceMothballPhase, forceReadyDays, issueMothball, issueReactivate, mothballStatusText,
+    mothballStrength, peekMothballState, reactivationDays, reviewEmpireReserve, rivalPotency, mothballPortChoices, parkingSlotPoint, detSinCos, portCapacity,
+} from '../src/sim/scenario/mothballing/mothballing';
+import { compactMothballLabel, forcesOfShips, mothballForcesModel, mothballSlot } from '../src/ui/mothballSlots';
+import { fleetMissionDescription, fleetMissionText } from '../src/ui/screens/fleetsList';
+import { FILTER_IN_RESERVE, shipsAndBasesRows } from '../src/ui/screens/shipsAndBasesList';
+import { annualStateMaintenance } from '../src/sim/forceStructure';
+import { militaryPotency } from '../src/sim/diplomacyTick';
+import { DiplomaticRelationType, obtainDiplomaticRelation } from '../src/sim/diplomacy';
+import { galaxyStarDate } from '../src/sim/tick/simTime';
+import { YEAR_LENGTH } from '../src/sim/galaxyTime';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Game } from '../src/sim/game';
 import type { BuiltObject } from '../src/sim/builtObject';
@@ -28,12 +40,9 @@ import {
     setFleetWatch, solveIntercept, systemStarOf, watchStatusText, watchUnavailableReason, type InterceptForce, type PathLeg,
 } from '../src/sim/player/intercept';
 import { DEFEND_ICON, interceptStrip, shortEta } from '../src/ui/interceptSlots';
-import { cachedScenarioGameRun } from './helpers/gameCache';
-import { galaxyStarDate } from '../src/sim/tick/simTime';
-import { scenarioEmit, scenarioQuery } from '../src/sim/scenario/hooks';
+import { GAME_DAY_LENGTH, scenarioEmit, scenarioQuery } from '../src/sim/scenario/hooks';
 import { PirateRelationType, obtainPirateRelation } from '../src/sim/pirateRelations';
 import { calculateOverallStrengthFactor } from '../src/sim/combat/threats';
-import { DiplomaticRelationType } from '../src/sim/diplomacy';
 import {
     borderChokepoints, hostileInterdictionStrength, interdictingBaseFor, interdictingBasesInSystem, interdictionInfoLine, interdictionRadius, interdictionRing, interdictionStateIfAny, isInterdictingBase,
 } from '../src/sim/scenario/interdiction/jumpInterdiction';
@@ -610,4 +619,259 @@ describe('Defensive jump interdiction add-on', () => {
         expect(stock.scenario).toBeNull();
         expect(scenarioQuery(stock, 'hyperjumpSpoolFactor', 1, { ship: pirate })).toBe(1);
     }, 300000);
+});
+
+describe('Mothballing add-on: reserve at a space port', () => {
+    function playerWarships(game: Game): BuiltObject[] {
+        return game.playerEmpire.builtObjects.filter((b) => b.role === BuiltObjectRole.Military && b.builtAt === null && b.topSpeed > 0 && b.shipGroup === null);
+    }
+    /** Runs the game in 5 s steps until `done` (at most `maxSeconds`). */
+    function runUntil(game: Game, done: () => boolean, maxSeconds: number): void {
+        for (let t = 0; t < maxSeconds && !done(); t += 5) runGameSeconds(game, 5);
+    }
+
+    it('the trip, the reserve (upkeep cut, no orders, not an Intercept / Defend force), save / load and the reactivation timer', () => {
+        const run = cachedScenarioGameRun(gameData, { scenario: 'mothballing' });
+        const game = run.game;
+        const g = game.galaxy;
+        const p = game.playerEmpire;
+        const mil = playerWarships(game);
+        expect(mil.length).toBeGreaterThanOrEqual(2);
+        const fleet = executeShipAction(g, p, [mil[0], mil[1]], createShipAction(ShipActionType.CreateNewFleet, null), true).select as ShipGroup;
+        const fleetShips = fleet.ships.slice();
+        // the port list: every own space port, best first (rooms first, then interior safety minus a share of the trip)
+        const choices = mothballPortChoices(g, p, fleet);
+        expect(choices.length).toBe(p.spacePorts.filter((x) => !x.hasBeenDestroyed).length);
+        for (let i = 1; i < choices.length; i++) if (choices[i].full === null) expect(choices[i - 1].score).toBeGreaterThanOrEqual(choices[i].score);
+        for (const c of choices) {
+            expect(c.capacity).toBe(c.port.subRole === BuiltObjectSubRole.LargeSpacePort ? 24 : c.port.subRole === BuiltObjectSubRole.MediumSpacePort ? 12 : 6);
+            expect(c.score).toBeCloseTo(c.safety - 0.25 * c.distance, 6);
+        }
+        const port = choices[0].port;
+        expect(port).toBeDefined();
+        const star = systemStarOf(g, p.capital!)!;
+        expect(defendCandidates(g, p, star).some((c) => c.force === fleet)).toBe(true);
+        const fullCost = fleet.ships.map((b) => b.annualSupportCost);
+        const fullState = annualStateMaintenance(p);
+        // send it off a little first, so it has a trip to make
+        const away = pointAway(game, fleet.leadShip!, 20000);
+        executeShipAction(g, p, fleet, createMissionShipActionAt(BuiltObjectMissionType.Move, null, away.x, away.y), true);
+        runUntil(game, () => Math.hypot(fleet.leadShip!.xpos - port.xpos, fleet.leadShip!.ypos - port.ypos) > 8000, 120);
+        const r = issueMothball(g, p, fleet, null);
+        expect(r.ok).toBe(true);
+        expect(forceMothballPhase(fleet)).toBe(MOTHBALL_TRAVEL);
+        expect(fleet.mission?.type).toBe(BuiltObjectMissionType.Move);
+        expect(mothballStatusText(g, fleet)).toBe(`To reserve at ${port.name}`);
+        // on its way: full upkeep (prices drift a little with the economy), already no Intercept / Defend force
+        fleet.ships.forEach((b, i) => expect(Math.abs(b.annualSupportCost - fullCost[i])).toBeLessThanOrEqual(fullCost[i] * 0.03 + 1));
+        expect(defendCandidates(g, p, star).some((c) => c.force === fleet)).toBe(false);
+        runUntil(game, () => forceMothballPhase(fleet) === MOTHBALL_RESERVE, 300);
+        expect(forceMothballPhase(fleet)).toBe(MOTHBALL_RESERVE);
+        expect(mothballStatusText(g, fleet)).toBe(`In reserve at ${port.name}`);
+        // a ship the AI sent to top the fleet up leaves it again at the next daily review
+        runGameSeconds(game, 4);
+        expect(fleet.ships.length).toBe(2);
+        for (const b of fleet.ships) expect(b.mothball?.phase).toBe(MOTHBALL_RESERVE);
+        for (const b of fleet.ships) expect(Math.hypot(b.xpos - port.xpos, b.ypos - port.ypos)).toBeLessThan(2500);
+        // upkeep: 15 % of the full cost (one factor on BuiltObject.AnnualSupportCost), and the treasury charge drops
+        fleet.ships.forEach((b, i) => expect(Math.abs(b.annualSupportCost - fullCost[i] * 0.15)).toBeLessThanOrEqual(fullCost[i] * 0.15 * 0.03 + 1));
+        expect(annualStateMaintenance(p)).toBeLessThan(fullState);
+        // no orders: a player move is refused, Intercept / Defend never pick it
+        const before = fleet.mission;
+        executeShipAction(g, p, fleet, createMissionShipActionAt(BuiltObjectMissionType.Move, null, away.x, away.y), true);
+        expect(fleet.mission).toBe(before);
+        expect(defendCandidates(g, p, star).some((c) => c.force === fleet)).toBe(false);
+        expect(watchUnavailableReason(g, p, fleet)).not.toBeNull();
+        runGameSeconds(game, 20);
+        for (const b of fleet.ships) expect(Math.hypot(b.xpos - port.xpos, b.ypos - port.ypos)).toBeLessThan(2500);
+        // save / load keeps the reserve
+        const start = { ...defaultStartGameOptions(), seed: 1, scenario: { id: 'mothballing', flags: {}, params: {} } };
+        const loaded = deserializeGame(serializeGame(game, new GalaxyTime(), start), run.gameData).game;
+        const lf = loaded.playerEmpire.shipGroups.find((x) => (x as ShipGroup | null)?.name === fleet.name) as ShipGroup;
+        expect(forceMothballPhase(lf)).toBe(MOTHBALL_RESERVE);
+        expect(lf.ships[0].mothball?.port.name).toBe(port.name);
+        expect(peekMothballState(loaded.galaxy)?.ships.length).toBe(2);
+        expect(lf.ships.map((b) => b.name)).toEqual(fleetShips.map((b) => b.name));
+        // parked on the ring around the port, facing it
+        const spacing = peekMothballState(g)!.spacing!.get(port)!;
+        for (const b of fleet.ships) {
+            const pt = parkingSlotPoint(b.mothball!.slot!, port.size, spacing);
+            // on its slot (re-placed daily as the port orbits)
+            expect(Math.hypot(b.xpos - (port.xpos + pt.dx), b.ypos - (port.ypos + pt.dy))).toBeLessThan(50);
+            const dx = port.xpos - b.xpos;
+            const dy = port.ypos - b.ypos;
+            const d = Math.hypot(dx, dy);
+            expect(Math.cos(b.heading) * (dx / d) + Math.sin(b.heading) * (dy / d)).toBeGreaterThan(0.9999);
+        }
+        expect(new Set(fleet.ships.map((b) => b.mothball!.slot)).size).toBe(2);
+        // the Fleets and Ships screens: the Mission cell shows the reserve, the filter lists it, the button reactivates
+        expect(fleetMissionDescription(fleet)).toBe(`Reserve (${port.name})`);
+        expect(fleetMissionText(fleet)).toBe(`Reserve (${port.name})`);
+        const shipRows = shipsAndBasesRows(p, null, FILTER_IN_RESERVE);
+        expect(shipRows.map((r) => r.builtObject)).toEqual(expect.arrayContaining(fleetShips));
+        for (const r of shipRows) if (fleetShips.includes(r.builtObject!)) expect(r.mission).toBe(`Reserve (${port.name})`);
+        const forces = forcesOfShips(p, fleetShips);
+        expect(forces).toEqual([fleet]);
+        const model = mothballForcesModel(g, p, forces)!;
+        expect(compactMothballLabel(model)).toEqual({ label: 'Reactivate', minor: `${Math.max(...fleet.ships.map((b) => reactivationDays(g, b)))} d` });
+        const other = playerWarships(game).find((b) => b.mothball === undefined)!;
+        const mixed = mothballForcesModel(g, p, [fleet, other])!;
+        expect(mixed.disabled).toBe(true);
+        expect(mixed.hint).toMatch(/mixes/);
+        const single = mothballSlot(g, p, { builtObject: other })!;
+        expect(single.label).toMatch(/^Mothball at /);
+        expect(single.choices.length).toBe(mothballPortChoices(g, p, other).length);
+        expect(single.choices.filter((c) => c.chosen).length).toBe(1);
+        // reactivation: size-scaled days at full upkeep, then back to normal
+        expect(issueReactivate(g, p, fleet).ok).toBe(true);
+        expect(forceMothballPhase(fleet)).toBe(MOTHBALL_REACTIVATING);
+        const days = Math.max(...fleet.ships.map((b) => reactivationDays(g, b)));
+        // 240 days for a ship of size 400, scaled by size between 50 % and 200 % (120 to 480 days)
+        expect(reactivationDays(g, { size: 400 } as BuiltObject)).toBe(240);
+        expect(reactivationDays(g, { size: 50 } as BuiltObject)).toBe(120);
+        expect(reactivationDays(g, { size: 5000 } as BuiltObject)).toBe(480);
+        expect(days).toBeGreaterThanOrEqual(120);
+        expect(days).toBeLessThanOrEqual(480);
+        expect(forceReadyDays(g, fleet)).toBe(days);
+        expect(mothballStatusText(g, fleet)).toBe(`Reactivating: ${days} days`);
+        fleet.ships.forEach((b, i) => expect(Math.abs(b.annualSupportCost - fullCost[i])).toBeLessThanOrEqual(fullCost[i] * 0.03 + 1));
+        const t0 = galaxyStarDate(g);
+        runUntil(game, () => forceMothballPhase(fleet) < 0, Math.ceil(((days + 5) * GAME_DAY_LENGTH) / 1000));
+        expect(forceMothballPhase(fleet)).toBe(-1);
+        // back as the same fleet: same object, name and ships
+        expect(fleet.ships.length).toBeGreaterThanOrEqual(1);
+        for (const b of fleetShips) expect(b.hasBeenDestroyed || b.shipGroup === fleet || b.shipGroup === null).toBe(true);
+        expect(p.shipGroups.includes(fleet)).toBe(true);
+        expect(galaxyStarDate(g) - t0).toBeGreaterThanOrEqual((days - 1) * GAME_DAY_LENGTH);
+        // back to normal: automation as before the reserve, missions accepted again
+        for (const b of [mil[0], mil[1]]) {
+            expect(b.mothball).toBeUndefined();
+            expect(b.isAutoControlled).toBe(true);
+        }
+        executeShipAction(g, p, [mil[0]], createMissionShipActionAt(BuiltObjectMissionType.Move, null, away.x, away.y), true);
+        expect(builtObjectMission(mil[0].mission)?.type).toBe(BuiltObjectMissionType.Move);
+        // a lone warship: in reserve at once when it is already at the port
+        const lone = mil[2] ?? null;
+        if (lone !== null) {
+            lone.xpos = port.xpos;
+            lone.ypos = port.ypos;
+            expect(issueMothball(g, p, lone, port).ok).toBe(true);
+            expect(forceMothballPhase(lone)).toBe(MOTHBALL_RESERVE);
+        }
+    }, 600000);
+
+    it('AI empires mothball weak idle fleets in a long peace on a tight budget, reactivate on a war warning; rivals weigh the reserve as weaker', () => {
+        const run = cachedScenarioGameRun(gameData, { scenario: 'mothballing' });
+        const game = run.game;
+        const g = game.galaxy;
+        const now = galaxyStarDate(g);
+        const ai = g.empires.find((e) => e !== game.playerEmpire && e.active && e.pirateEmpireBaseHabitat === null && e.spacePorts.length > 0
+            && e.builtObjects.filter((b) => b.role === BuiltObjectRole.Military && b.builtAt === null && b.topSpeed > 0).length >= 3);
+        expect(ai).toBeDefined();
+        const e = ai!;
+        // three one-ship fleets of its warships (the start has none formed yet)
+        for (const b of e.builtObjects.filter((x) => x.role === BuiltObjectRole.Military && x.builtAt === null && x.topSpeed > 0 && x.shipGroup === null).slice(0, 3)) {
+            executeShipAction(g, e, [b], createShipAction(ShipActionType.CreateNewFleet, null), true);
+        }
+        // no AI review yet: peace years not passed -> nothing
+        reviewEmpireReserve(g, e, now);
+        expect(mothballStrength(e).reserve).toBe(0);
+        expect(peekMothballState(g)!.ships.filter((b) => b.empire === e).length).toBe(0);
+        // long peace, broke: part of the fleet goes to reserve, the rest stays as home guard
+        const st = peekMothballState(g)!;
+        st.ai[String(e.empireId)].alarmAt = now - 10 * YEAR_LENGTH;
+        // no war warning from attitudes in this test
+        for (const r of e.diplomaticRelations.toArray()) if (r.type === DiplomaticRelationType.War) r.type = DiplomaticRelationType.None;
+        e.stateMoney = 0;
+        const hostile = g.empires.filter((o) => o !== e);
+        void hostile;
+        reviewEmpireReserve(g, e, now);
+        const sent = st.ships.filter((b) => b.empire === e);
+        if (sent.length === 0) {
+            // A war warning (hostile attitude / arming neighbour) can block it: the review must say so by keeping alarmAt fresh.
+            expect(st.ai[String(e.empireId)].alarmAt).toBe(now);
+            return;
+        }
+        expect(st.stats.aiMothballed).toBeGreaterThan(0);
+        const fleetsActive = e.shipGroups.filter((x) => x !== null && (x as ShipGroup).ships.length > 0 && !(x as ShipGroup).ships.some((b) => b.mothball !== undefined));
+        expect(fleetsActive.length).toBeGreaterThanOrEqual(1);
+        // put them in reserve where they are (as if arrived) and weigh them as a rival
+        for (const b of sent) b.mothball!.phase = MOTHBALL_RESERVE;
+        const mp = militaryPotency(e);
+        const weighed = rivalPotency(g, mp, e);
+        expect(weighed).toBeLessThan(mp);
+        const reserveStrength = mothballStrength(e).reserve;
+        expect(mp - weighed).toBeCloseTo(reserveStrength * 0.75, 0);
+        // AI ships in reserve take no AI missions
+        const b0 = sent[0];
+        const m0 = b0.mission;
+        assignMission(g, b0, BuiltObjectMissionType.Patrol, null, null, BuiltObjectMissionPriority.Normal, { x: b0.xpos + 5000, y: b0.ypos });
+        expect(b0.mission).toBe(m0);
+        // a war: everything starts reactivating
+        const rival = g.empires.find((o) => o !== e && o.active && o.pirateEmpireBaseHabitat === null)!;
+        obtainDiplomaticRelation(e, rival).type = DiplomaticRelationType.War;
+        reviewEmpireReserve(g, e, now + 10);
+        for (const b of sent) expect(b.mothball?.phase).toBe(MOTHBALL_REACTIVATING);
+        expect(st.ai[String(e.empireId)].alarmAt).toBe(now + 10);
+        expect(st.stats.aiReactivated).toBeGreaterThan(0);
+    }, 600000);
+
+    it('ports fill up: a full port is listed last with the reason and refused; parking rings overflow outward', () => {
+        const run = cachedScenarioGameRun(gameData, { scenario: 'mothballing' });
+        const g = run.game.galaxy;
+        const p = run.game.playerEmpire;
+        const ship = playerWarships(run.game)[0];
+        const port = p.spacePorts[0];
+        const cap = portCapacity(g, port);
+        // occupy the port with `cap` reserve entries
+        expect(issueMothball(g, p, ship, null).ok).toBe(true);
+        const st = peekMothballState(g)!;
+        issueReactivate(g, p, ship); // the registry exists now
+        const base = mothballPortChoices(g, p, ship).find((x) => x.port === port)!.used;
+        const fakes = Array.from({ length: cap }, () => ({ mothball: { phase: MOTHBALL_RESERVE, port }, hasBeenDestroyed: false }) as unknown as BuiltObject);
+        st.ships.push(...fakes);
+        const list = mothballPortChoices(g, p, ship);
+        const c = list.find((x) => x.port === port)!;
+        expect(c.used).toBe(base + cap);
+        expect(c.full).toMatch(/full/);
+        expect(list[list.length - 1].port === port || list.every((x) => x.full !== null)).toBe(true);
+        expect(issueMothball(g, p, ship, port).ok).toBe(false);
+        st.ships.splice(st.ships.length - cap, cap);
+        // rings: ring 0 holds floor(2π r0 / S) slots, the next slot opens ring 1 one spacing further out
+        const S = 300;
+        const size = 1000;
+        const r0 = size / 2 + S * 0.75;
+        const cap0 = Math.floor((2 * Math.PI * r0) / S);
+        for (let i = 0; i < cap0; i++) {
+            const pt = parkingSlotPoint(i, size, S);
+            expect(pt.ring).toBe(0);
+            expect(Math.hypot(pt.dx, pt.dy)).toBeCloseTo(r0, 6);
+            const q = parkingSlotPoint((i + 1) % cap0, size, S);
+            expect(Math.hypot(pt.dx - q.dx, pt.dy - q.dy)).toBeGreaterThan(0.9 * S);
+        }
+        const o = parkingSlotPoint(cap0, size, S);
+        expect(o.ring).toBe(1);
+        expect(Math.hypot(o.dx, o.dy)).toBeCloseTo(r0 + S, 6);
+        // the deterministic sin / cos (sim positions must be bit-identical) match Math's
+        for (const a of [0, 0.3, 1.7, 3.1, 4.6, 6.2]) {
+            const sc = detSinCos(a);
+            expect(Math.abs(sc.s - Math.sin(a))).toBeLessThan(1e-9);
+            expect(Math.abs(sc.c - Math.cos(a))).toBeLessThan(1e-9);
+        }
+    }, 600000);
+
+    it('off by default: no scenario state, the commands refuse, the base game is untouched', () => {
+        const game = cachedTickGame(gameData);
+        const g = game.galaxy;
+        const p = game.playerEmpire;
+        const ship = playerWarships(game)[0];
+        expect(issueMothball(g, p, ship, null).ok).toBe(false);
+        expect(issueReactivate(g, p, ship).ok).toBe(false);
+        expect(ship.mothball).toBeUndefined();
+        expect(peekMothballState(g)).toBeNull();
+        // the add-on with its master flag off: no state, no change
+        const off = cachedScenarioGameRun(gameData, { scenario: 'mothballing', flags: { mothballing: false }, seconds: 30 }).game;
+        expect(peekMothballState(off.galaxy)).toBeNull();
+        expect(issueMothball(off.galaxy, off.playerEmpire, playerWarships(off)[0], null).ok).toBe(false);
+    }, 600000);
 });

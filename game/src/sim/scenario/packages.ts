@@ -78,4 +78,5 @@ import './voidbloom/index'; // The Voidbloom War (flag voidbloom; Rim expansion,
 import './orbital/orbitalAI'; // Orbital superiority (flag orbitalSuperiority; invasion orbit states in orbital/orbitalSuperiority.ts, AI here)
 import './blockades/blockadesBite'; // Blockades that bite (flag blockadesBite; reuses the orbital measure and relief search)
 import './interdiction/jumpInterdiction'; // Defensive jump interdiction (flag jumpInterdiction; armed bases lengthen hostile ships' jump spool)
+import './mothballing/mothballing'; // Mothballing: fleets / warships in reserve at a space port (flags mothballing + mothballingAI; a Gameplay change)
 export {};

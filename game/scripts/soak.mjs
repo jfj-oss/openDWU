@@ -160,6 +160,13 @@ const CONFIGS = [
     // `--set blockades` (--hook scripts/blockades-soak-hook.mjs): Blockades that bite on / off on the os-war-* galaxy
     // (aggressive AI, older galaxy, 700 stars, 7 empires, 20 years): blockades started, income lost, broken by relief.
     ...[['bb-war-on-s1', true], ['bb-war-off-s1', false]].map(([name, on]) => SCN('blockades-bite', { name, set: 'blockades', seed: 1, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, flags: { blockadesBite: on } })),
+    // `--set mothballing` (--hook scripts/mothball-hook.mjs): the Mothballing gameplay change on vs off: the standard
+    // seed-1 galaxy for 30 years (mb-*), and the war galaxy of the other gameplay changes (aggressive AI, older galaxy,
+    // 700 stars, 7 empires, 20 years: mb-war-*) for the war engagement on vs off.
+    ...[1, 7].flatMap((seed) => [[`mb-on-s${seed}`, { mothballing: true, mothballingAI: true }], [`mb-off-s${seed}`, { mothballing: false, mothballingAI: false }]].map(([name, flags]) => ({
+        name, set: 'mothballing', seed, years: 30, wizard: {}, scenario: 'mothballing', flags,
+    }))),
+    ...[['mb-war-on-s1', true], ['mb-war-off-s1', false]].map(([name, on]) => SCN('mothballing', { name, set: 'mothballing', seed: 1, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, flags: { mothballing: on, mothballingAI: on } })),
     // `--set long`: the many-decade runs (not in the default set).
     { name: 'long-s1-30y', set: 'long', seed: 1, years: 30, wizard: {} },
     { name: 'long-s7-small-50y', set: 'long', seed: 7, years: 50, wizard: { starCountIndex: 1, dimensionIndex: 1, otherEmpires: { empireCount: 5 } } },

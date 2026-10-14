@@ -10,6 +10,7 @@
 
 import { interceptOrderOf, watchStatusText } from '../sim/player/intercept';
 import { interdictionInfoLine } from '../sim/scenario/interdiction/jumpInterdiction';
+import { mothballStatusText } from '../sim/scenario/mothballing/mothballing';
 import type { Ruin } from '../sim/ruins';
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
@@ -610,6 +611,9 @@ export function builtObjectInfo(ctx: InfoContext, bo: BuiltObject, extended = fa
                 for (const sm of bo.subsequentMissions) text += `\nNEXT: ${missionDescription(sm as BuiltObjectMission, actual ?? galaxy.independentEmpire)}`; // BaconInfoPanel.cs 336
             }
             rows.push({ kind: 'line', segs: [txt(text)], wrap: true });
+            // Mothballing add-on: the ship's reserve state.
+            const reserve = bo.mothball !== undefined ? mothballStatusText(galaxy, bo) : '';
+            if (reserve !== '') rows.push({ kind: 'line', segs: [txt(reserve, QUEUED_COLOR)] });
             if (!extended) {
                 const queued = queuedMissionsText(bo.subsequentMissions as BuiltObjectMission[], actual ?? galaxy.independentEmpire);
                 if (queued !== null) rows.push({ kind: 'line', segs: [txt(queued, QUEUED_COLOR)], wrap: true });
@@ -879,6 +883,11 @@ export function shipGroupInfo(ctx: InfoContext, sg: ShipGroup, extended = false)
         const order = watch === '' ? interceptOrderOf(player, sg) : null;
         const line = watch !== '' ? watch : order !== null ? `Intercepting ${(order.target as { name?: string | null }).name ?? ''}` : '';
         if (line !== '') rows.push({ kind: 'line', segs: [txt(line, QUEUED_COLOR)] });
+    }
+    // Mothballing add-on: "In reserve at Sol Port" / "Reactivating: 23 days" (known fleets).
+    if (known) {
+        const reserve = mothballStatusText(galaxy, sg);
+        if (reserve !== '') rows.push({ kind: 'line', segs: [txt(reserve, QUEUED_COLOR)] });
     }
     if (sg.localDefenseTacticsApply) rows.push({ kind: 'line', segs: [txt('Local Defense Tactics: +20% Targeting & Countermeasures', 0x00ff00)] });
     rows.push({ kind: 'gap', h: 4 });
