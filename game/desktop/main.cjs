@@ -343,6 +343,8 @@ app.whenReady().then(() => {
             }
             return net.fetch(pathToFileURL(resolved).href, request);
         } catch (err) {
+            // The page aborted the request on purpose (Galactopedia dropping pending Help pages when the topic changes): not an error.
+            if (request.signal?.aborted || (err && err.name === 'AbortError')) return new Response(null, { status: 499 });
             console.error('dwu:// handler error:', err);
             return new Response(String(err && err.message ? err.message : err), { status: 500 });
         }
