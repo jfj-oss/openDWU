@@ -20,6 +20,7 @@
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
+import { scenarioQuery } from '../scenario/hooks';
 import { Habitat, type SystemInfo } from '../types';
 import { Creature, CreatureType } from '../creature';
 import { ShipGroup, empireShipGroups, shipGroupAssignMission, shipGroupWarpSpeed } from '../fleets/shipGroup';
@@ -318,6 +319,8 @@ function shipPath(galaxy: Galaxy, bo: BuiltObject): TargetPath {
             pushMove(legs, cur, ex.x, ex.y, bo.currentSpeed, 0);
         } else if (hyper && warp > 0 && d > threshold) {
             let wait = Math.max(0, bo.hyperjumpInitiate) * 1000;
+            // Mod layer (jump interdiction): a jump out of a hostile field spools longer (an open spool's countdown has it).
+            if (first && galaxy.scenario !== null) wait *= scenarioQuery(galaxy, 'hyperjumpSpoolFactor', 1, { ship: bo });
             if (first && !bo.firstExecutionOfCommand) wait = Math.max(0, bo.hyperjumpCountdown - starDate);
             pushMove(legs, cur, p.x, p.y, warp, wait);
         } else {
@@ -363,14 +366,16 @@ export interface ForceMotion {
     initiateMs: number;
 }
 
-export function forceMotion(f: InterceptForce): ForceMotion {
+export function forceMotion(f: InterceptForce, galaxy: Galaxy | null = null): ForceMotion {
     const p = posOf(f);
+    // Mod layer (jump interdiction): our own ships held in a hostile field spool longer too.
+    const k = (b: BuiltObject): number => (galaxy !== null && galaxy.scenario !== null ? scenarioQuery(galaxy, 'hyperjumpSpoolFactor', 1, { ship: b }) : 1);
     if (isFleet(f)) {
         let initiate = 0;
-        for (const b of f.ships) initiate = Math.max(initiate, b.hyperjumpInitiate);
+        for (const b of f.ships) initiate = Math.max(initiate, b.hyperjumpInitiate * k(b));
         return { x: p.x, y: p.y, cruise: Math.max(1, shipGroupCruiseSpeed(f)), warp: shipGroupWarpSpeed(f), initiateMs: initiate * 1000 };
     }
-    return { x: p.x, y: p.y, cruise: Math.max(1, f.cruiseSpeed), warp: f.warpSpeed > 0 ? warpSpeedWithBonuses(f) : 0, initiateMs: Math.max(0, f.hyperjumpInitiate) * 1000 };
+    return { x: p.x, y: p.y, cruise: Math.max(1, f.cruiseSpeed), warp: f.warpSpeed > 0 ? warpSpeedWithBonuses(f) : 0, initiateMs: Math.max(0, f.hyperjumpInitiate) * 1000 * k(f) };
 }
 
 /** Our travel time (ms) to a point `d` away (the sim's model, as player/constructionBoard.ts estimateTravelMs). */
@@ -511,7 +516,7 @@ function rankForces(galaxy: Galaxy, empire: Empire, path: TargetPath, need: numb
         if (strength <= 0) continue;
         const ratio = ratioOf(strength);
         if (ratio < INTERCEPT_MIN_STRENGTH_RATIO) continue;
-        const sol = solveIntercept(path, forceMotion(g));
+        const sol = solveIntercept(path, forceMotion(g, galaxy));
         if (!shipGroupCheckFleetTargetWithinFuelRangeAndRefuel(galaxy, g, sol.x, sol.y, 0.0)) continue;
         fleets.push({ force: g, isFleet: true, name: g.name ?? '', strength, ratio, etaMs: sol.etaMs, aimX: sol.x, aimY: sol.y, score: interceptCost(ratio, sol.etaMs, g.ships) });
     }
@@ -522,7 +527,7 @@ function rankForces(galaxy: Galaxy, empire: Empire, path: TargetPath, need: numb
         const strength = calculateOverallStrengthFactor(b);
         const ratio = ratioOf(strength);
         if (ratio < INTERCEPT_MIN_STRENGTH_RATIO) continue;
-        const sol = solveIntercept(path, forceMotion(b));
+        const sol = solveIntercept(path, forceMotion(b, galaxy));
         if (!withinFuelRangeAndRefuel(galaxy, b, sol.x, sol.y, 0.0)) continue;
         ships.push({ force: b, isFleet: false, name: b.name, strength, ratio, etaMs: sol.etaMs, aimX: sol.x, aimY: sol.y, score: interceptCost(ratio, sol.etaMs, [b]) });
     }
@@ -722,7 +727,7 @@ function stepIntercept(galaxy: Galaxy, empire: Empire, o: InterceptOrder): void 
         o.mission = attackWith(galaxy, o.force, o.target);
         return;
     }
-    const sol = solveIntercept(path, forceMotion(o.force));
+    const sol = solveIntercept(path, forceMotion(o.force, galaxy));
     const moved = dist(sol.x, sol.y, o.aimX, o.aimY);
     const remaining = dist(fp.x, fp.y, sol.x, sol.y);
     o.phase = 0;

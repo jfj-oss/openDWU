@@ -71,6 +71,7 @@ import { drawnBuiltObjectPos, type MotionInterpolator } from './renderInterp';
 import { ColorMatrixFilter, Container, Graphics, Sprite, Texture } from 'pixi.js';
 import { LRS_DISC_URL, LRS_LAYER_ALPHA, POSTURE_ALPHA, POSTURE_LINE_WIDTH_PX, fleetPostureMarks, longRangeScannerDiscs, scannerLayerFade } from './postureOverlay';
 import { WEAPON_CIRCLES_MIN_FACTOR, drawRangeCircle, gravityWellRing, weaponRangeCircles } from './weaponRangeCircles';
+import { interdictionRing } from '../sim/scenario/interdiction/jumpInterdiction';
 import { isObjectVisibleToThisEmpire } from '../sim/independentTraders';
 import { BuiltObjectMission, BuiltObjectMissionType, CommandAction, type Command } from '../sim/missions/mission';
 import { baconMovementSettings, calculateGravityWellSize } from '../sim/movement';
@@ -1548,6 +1549,18 @@ export class OverlayLayer {
                 gg.stroke({ width: f, color: 0x0000ff, alpha: 1 });
             }
             ringShown = true;
+        } else if (overlays && sel !== null && sel.builtObject !== undefined && this.galaxy.scenario !== null) {
+            // Defensive jump interdiction add-on: a faint ring for the selected base's field (same Graphics).
+            const fr = interdictionRing(this.galaxy, sel.builtObject);
+            if (fr !== null) {
+                gg.position.set(fr.x, fr.y);
+                if (this.gravityRingKey.changed(-fr.radius, z)) {
+                    gg.clear();
+                    drawRangeCircle(gg, 0, 0, { radius: fr.radius, color: 0xff8000, dashed: true }, z);
+                    gg.stroke({ width: f, color: 0xff8000, alpha: 0.35 });
+                }
+                ringShown = true;
+            }
         }
         // Hidden ones are cleared once (and their keys forgotten), not every frame.
         if (!weaponsShown && wg.visible) {

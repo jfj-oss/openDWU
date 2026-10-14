@@ -256,6 +256,8 @@ export const cmdHyperTo: CommandHandler = (ctx) => {
     const x = ctx.indexX;
     const y = ctx.indexY;
     const result = 0.0;
+    let spoolMs = -1; // mod layer (jump interdiction): this step's stock spool roll and start, on the first execution only
+    let spoolStart = 0;
     if (bo.firstExecutionOfCommand) {
         bo.hyperjumpAboutToEnterSoundPlayed = false;
         bo.hyperEnterStartAnimation = true;
@@ -263,6 +265,8 @@ export const cmdHyperTo: CommandHandler = (ctx) => {
         // long num7 = Math.Max(0L, HyperjumpInitiate * 1000 + (Galaxy.Rnd.Next(0, 2000) - 1000));
         const num7 = Math.max(0, bo.hyperjumpInitiate * 1000 + (galaxy.rnd.next(0, 2000) - 1000));
         bo.hyperjumpCountdown = galaxyStarDate(galaxy) + num7;
+        spoolMs = num7;
+        spoolStart = bo.hyperjumpCountdown - num7;
         noteBuiltObjectEffect(galaxy, bo); // observation only (render/effectsLayer.ts)
         const baseHyperJumpAccuracy = baconMovementSettings.baseHyperJumpAccuracy;
         const exitPoint = galaxy.selectHyperJumpExitPoint(baseHyperJumpAccuracy);
@@ -297,6 +301,8 @@ export const cmdHyperTo: CommandHandler = (ctx) => {
         moveTogetherJumpCountdown(bo, starDate);
         noteBuiltObjectEffect(galaxy, bo); // observation only (render/effectsLayer.ts): the countdown may have moved
     }
+    // Mod layer (jump interdiction, not in the original): a hostile armed base's field lengthens the spool of a jump out.
+    if (galaxy.scenario !== null && bo.firstHyperjumpExecution) bo.hyperjumpCountdown = scenarioQuery(galaxy, 'hyperjumpCountdown', bo.hyperjumpCountdown, { ship: bo, starDate, spoolStart, spoolMs });
     if (bo.warpSpeed <= 0) {
         clearPreviousMissionRequirements(galaxy, bo);
         return result;

@@ -50,6 +50,12 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
   every day ("Supply lines disrupted"); a defender-held orbit costs them -50%, heavier losses and any further landings
   ("Supply lines cut"). AI empires invade where they can hold the orbit, keep troops aboard until they do, keep their
   fleet over the planet, send relief fleets to invaded colonies and withdraw from orbits they cannot win.
+- **Defensive jump interdiction (new gameplay change, off by default):** a third "Gameplay changes" checkbox on the new
+  game's Other Empires page (also in openDWU Classic). Armed defensive bases and space ports project an interdiction
+  field (4,000 to 6,000 units with their firepower): enemy ships starting a hyperjump inside it spool three times as long
+  before they can jump out, unless they cruise out of the field first. Jumping in is unchanged. The ship's panel shows
+  "Interdicted by <base>", a base's panel its field. Pirates raid defended systems only with fleets strong enough to
+  kill the bases first; AI empires at war favour a defensive base at the border colony facing the enemy; their strikes and invasions are unchanged.
 - **Longer ground battles (new gameplay change, on by default for new games):** a second "Gameplay changes" checkbox,
   "Longer ground battles (2×)": ground battles take twice as long (both sides lose troops at half the rate); who wins is
   decided as before. Untick it for the original pace.

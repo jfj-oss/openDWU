@@ -154,6 +154,9 @@ const CONFIGS = [
     ...[['os-on-s1', true], ['os-off-s1', false]].map(([name, on]) => SCN('orbital-superiority', { name, set: 'orbital', seed: 1, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 } }, flags: { orbitalSuperiority: on } })),
     // os-war-*: the same with aggressive AI empires on an older galaxy (more wars, so more invasions to count).
     ...[['os-war-on-s1', true], ['os-war-off-s1', false]].map(([name, on]) => SCN('orbital-superiority', { name, set: 'orbital-war', seed: 1, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, flags: { orbitalSuperiority: on } })),
+    // `--set interdiction` (--hook scripts/interdiction-soak-hook.mjs): Defensive jump interdiction on / off on the os-war
+    // galaxy (aggressive AI, older galaxy, 700 stars, 7 empires, 20 years): pirate raids, interdicted jumps, pirate losses.
+    ...[['ji-war-on-s1', true], ['ji-war-off-s1', false]].map(([name, on]) => SCN('jump-interdiction', { name, set: 'interdiction', seed: 1, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, flags: { jumpInterdiction: on } })),
     // `--set long`: the many-decade runs (not in the default set).
     { name: 'long-s1-30y', set: 'long', seed: 1, years: 30, wizard: {} },
     { name: 'long-s7-small-50y', set: 'long', seed: 7, years: 50, wizard: { starCountIndex: 1, dimensionIndex: 1, otherEmpires: { empireCount: 5 } } },

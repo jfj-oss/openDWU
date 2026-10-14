@@ -9,6 +9,7 @@
 // selected.
 
 import { interceptOrderOf, watchStatusText } from '../sim/player/intercept';
+import { interdictionInfoLine } from '../sim/scenario/interdiction/jumpInterdiction';
 import type { Ruin } from '../sim/ruins';
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
@@ -578,6 +579,9 @@ export function builtObjectInfo(ctx: InfoContext, bo: BuiltObject, extended = fa
         if (b?.initiator) rows.push({ kind: 'line', segs: [{ img: chromeUrl('exclamation.png') }, { flagOf: b.initiator, w: 20, h: 12, gap: 2 }, txt(` Blockaded by ${b.initiator.name}`)] });
     }
     if (bo.raidCountdown > 0) rows.push({ kind: 'line', segs: [txt('(This base was recently Raided)', 0xffff00)] });
+    // Defensive jump interdiction add-on (not in the original): a ship in a hostile field / a base's field.
+    const interdiction = galaxy.scenario !== null ? interdictionInfoLine(galaxy, bo) : null;
+    if (interdiction !== null && known) rows.push({ kind: 'line', segs: [txt(interdiction, bo.role === BuiltObjectRole.Base ? QUEUED_COLOR : 0xff8000)] });
     rows.push({ kind: 'gap', h: 3 });
 
     // Mission line (ships only, BaconInfoPanel.cs:304-357).

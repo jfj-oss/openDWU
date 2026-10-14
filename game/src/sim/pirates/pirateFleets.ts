@@ -42,6 +42,7 @@ import { EmpireActivityType, type EmpireActivity } from './empireActivity';
 import { calculateOverallStrengthFactor } from './missionsMarket';
 import { findNearestKnownBaseForPirateAttackOwn } from './pirateShipMissions';
 import { isHumanEmpire } from '../humanEmpires';
+import { scenarioQuery } from '../scenario/hooks';
 
 const f = Math.fround;
 
@@ -322,7 +323,9 @@ export function pirateTaskFleetsCore(galaxy: Galaxy, empire: Empire): void {
             if (habitatPrioritization == null || habitatPrioritization.habitat === null) continue;
             const builtObject2 = determineMiningStationAtHabitat(habitatPrioritization.habitat) as BuiltObject | null;
             if (builtObject2 == null) continue;
-            const overallStrength2 = calculateDefendingStrength(galaxy, empire, builtObject2).strength;
+            let overallStrength2 = calculateDefendingStrength(galaxy, empire, builtObject2).strength;
+            // Mod layer (jump interdiction): hostile interdiction fields in the system raise the strength a raid needs.
+            if (galaxy.scenario !== null) overallStrength2 = scenarioQuery(galaxy, 'raidRequiredStrength', overallStrength2, { empire, habitat: habitatPrioritization.habitat });
             const shipGroup5 = findNearestAvailableFleet(galaxy, empire, builtObject2.xpos, builtObject2.ypos, BuiltObjectMissionPriority.Normal, overallStrength2, FleetPosture.Attack, ...fleetArgs(0));
             if (shipGroup5 === null || !shipGroupCheckFleetTargetWithinFuelRangeAndRefuel(galaxy, shipGroup5, builtObject2.xpos, builtObject2.ypos, 0.1) || (!isAiControlled(shipGroup5.leadShip!) && empire.controlMilitaryAttacks !== AutomationLevel.PartiallyAutomated)) continue;
             const firstByTargetAndType = empire.pirateMissions.getFirstByTargetAndType(builtObject2, EmpireActivityType.Defend);
@@ -342,7 +345,8 @@ export function pirateTaskFleetsCore(galaxy: Galaxy, empire: Empire): void {
             if (habitatPrioritization2 == null || habitatPrioritization2.habitat === null) continue;
             const h2 = habitatPrioritization2.habitat;
             const ds = calculateDefendingStrength(galaxy, empire, h2);
-            const overallStrength3 = ds.strength;
+            let overallStrength3 = ds.strength;
+            if (galaxy.scenario !== null) overallStrength3 = scenarioQuery(galaxy, 'raidRequiredStrength', overallStrength3, { empire, habitat: h2 }); // mod layer (jump interdiction)
             const troopStrength = ds.troopStrength;
             const shipGroup6 = findNearestAvailableFleet(galaxy, empire, h2.xpos, h2.ypos, BuiltObjectMissionPriority.Normal, overallStrength3, FleetPosture.Attack, ...fleetArgs(0, Math.trunc(troopStrength * 0.5)));
             if (shipGroup6 === null || !shipGroupCheckFleetTargetWithinFuelRangeAndRefuel(galaxy, shipGroup6, h2.xpos, h2.ypos, 0.1) || (!isAiControlled(shipGroup6.leadShip!) && empire.controlMilitaryAttacks !== AutomationLevel.PartiallyAutomated)) continue;

@@ -72,6 +72,7 @@ export const ADDON_STATUS: Readonly<Record<string, string>> = {
     'scorched-earth': 'new',
     'orbital-superiority': 'new',
     'longer-ground-combat': 'new',
+    'jump-interdiction': 'new',
     'war-crimes': 'recommended',
     'timebomb': 'lightly tested; the AI rarely uses it',
     'ghostarmada': 'lightly tested; the AI rarely uses it',
@@ -129,6 +130,7 @@ const GROUP_OF: Readonly<Record<string, AddonGroup>> = {
     'war-crimes': 'Politics & court',
     'orbital-superiority': 'Other',
     'longer-ground-combat': 'Other',
+    'jump-interdiction': 'Other',
     slavery: 'Economy & factions',
     exchange: 'Economy & factions',
     privateers: 'Economy & factions',
@@ -154,7 +156,7 @@ export const HIDDEN_ADDONS: ReadonlySet<string> = new Set(['threat-framework', '
  * Add-ons set on another wizard page (not listed on the Scenario page, but named in the summaries like any other):
  * Smarter AI and Orbital superiority live on the Other Empires page (withSmarterAI / withOrbitalSuperiority below).
  */
-export const ELSEWHERE_ADDONS: ReadonlySet<string> = new Set(['smarter-ai', 'orbital-superiority', 'longer-ground-combat']);
+export const ELSEWHERE_ADDONS: ReadonlySet<string> = new Set(['smarter-ai', 'orbital-superiority', 'longer-ground-combat', 'jump-interdiction']);
 
 /** openDWU Classic: add-ons every game starts with (treated as base game: no picker). Smarter AI stays the Other Empires page's toggle. */
 export const CLASSIC_BASE_ADDONS: readonly string[] = ['themed-names', 'event-log'];
@@ -254,6 +256,14 @@ export const LONGER_GROUND_COMBAT_ADDON_ID = 'longer-ground-combat';
 /** The picks with the Other Empires page's Longer ground battles checkbox folded in (StartGameOptions.longerGroundCombat). Pure. */
 export function withLongerGroundCombat(picked: readonly string[], overrides: AddonOverrides, on: boolean | null | undefined): { picked: string[]; overrides: AddonOverrides } {
     return withToggleAddon(picked, overrides, LONGER_GROUND_COMBAT_ADDON_ID, 'longerGroundCombat', on);
+}
+
+/** The Defensive jump interdiction gameplay change (scenarios/jump-interdiction; also under "Gameplay changes"). */
+export const JUMP_INTERDICTION_ADDON_ID = 'jump-interdiction';
+
+/** The picks with the Other Empires page's Jump interdiction checkbox folded in (StartGameOptions.jumpInterdiction). Pure. */
+export function withJumpInterdiction(picked: readonly string[], overrides: AddonOverrides, on: boolean | null | undefined): { picked: string[]; overrides: AddonOverrides } {
+    return withToggleAddon(picked, overrides, JUMP_INTERDICTION_ADDON_ID, 'jumpInterdiction', on);
 }
 
 /** A one-checkbox add-on folded into the picks: ticked = picked with its master flag on, unticked = dropped. Pure. */

@@ -76,4 +76,5 @@ import './charactersVictory/diet/diet'; // Characters & Victory part 2: the Inte
 import './colonyEconomy/index'; // Colony Economy: designations, private facilities, bonds (flag colonyEconomy; docs/ECONOMY.md)
 import './voidbloom/index'; // The Voidbloom War (flag voidbloom; Rim expansion, requires rimTrade; docs/VOIDBLOOM_WAR.md)
 import './orbital/orbitalAI'; // Orbital superiority (flag orbitalSuperiority; invasion orbit states in orbital/orbitalSuperiority.ts, AI here)
+import './interdiction/jumpInterdiction'; // Defensive jump interdiction (flag jumpInterdiction; armed bases lengthen hostile ships' jump spool)
 export {};
