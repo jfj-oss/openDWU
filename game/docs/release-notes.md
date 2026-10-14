@@ -4,6 +4,12 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **Galaxy Backdrop picker:** new **Dimmed Original** (the original's colours, darkened halfway toward Deep, faint grey
+  dust), **Deep Azure** (navy and steel-blue dust, teal accents), **Deep Ember** (crimson and ember dust, the odd dull
+  gold) and **Deep Violet** (purple and magenta dust, blue accents), all built like Deep from the original image. Galactic
+  Core, Golden Spiral, Eerie and Nebula are gone (saves and settings with them load as Deep), and so is the Storm flashes
+  option. The 2D galaxy maps and the picker thumbnails now show the Deep-style backdrops too.
+
 ## 0.1.29
 
 - **Multiplayer host wizard fix:** Game Settings from the host lobby (LAN or Internet) opened the new-game wizard behind the

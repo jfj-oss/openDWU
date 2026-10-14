@@ -1512,12 +1512,12 @@ function buildGalaxyPage(ctx: WizardCtx): HTMLDivElement {
     }, { title: 'Re-roll seed', className: 'wizard-seed-reroll' });
 
     // Ours: the Galaxy Backdrop row (a view setting, not a galaxy option; Game Options can change it later), with a
-    // thumbnail of the pick for the chosen shape and seed.
+    // thumbnail of the pick for the chosen seed.
     label(seedPanel, 'Galaxy Backdrop', 10, 258, { size: FONT.header, bold: true });
     const thumb = createBackdropThumbnail(76, 'wizard-backdrop-thumb');
     seedPanel.appendChild(place(thumb.el, 136, 262, 76, 76));
     let backdropKind = parseGalaxyBackdrop(getSettings().newGameBackdrop);
-    const paintThumb = (): void => thumb.update({ kind: backdropKind, shape: options.shape, seed: options.seed });
+    const paintThumb = (): void => thumb.update({ kind: backdropKind, seed: options.seed });
     const backdropCombo = combo(
         seedPanel,
         GALAXY_BACKDROP_OPTIONS.map((o) => o.label),

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { backdropAlpha, fadeIn, orbitRingAlpha, regionLabelFont, starfieldAlpha } from '../src/render/mainView';
+import { galaxyBackdropSaveExtras, GALAXY_BACKDROP_OPTIONS, parseGalaxyBackdrop, setGalaxyBackdrop } from '../src/render/galaxyBackdropChoice';
+import { DEEP_RECIPES, deepTone, isDeepKind } from '../src/render/deepBackdrop';
 import { GalaxyLocationType } from '../src/sim/galaxyLocation';
 
 // Task 02b2: close the mid-zoom black gap. The backdrop fades out over
@@ -99,6 +101,37 @@ describe('region label fonts', () => {
             expect(regionLabelFont(type, 1001, maxFactor)).toEqual({ size: 15.33, bold: false });
             expect(regionLabelFont(type, 1000, maxFactor)).toEqual({ size: 16.67, bold: false });
             expect(regionLabelFont(type, 100, maxFactor)).toEqual({ size: 16.67, bold: false });
+        }
+    });
+});
+// The Galaxy Backdrop picker (galaxyBackdropChoice.ts) and the Deep recipes (deepBackdrop.ts): render-only view setting.
+describe('galaxy backdrop choice', () => {
+    it('offers Original, Dimmed Original and the Deep recipes, in picker order', () => {
+        expect(GALAXY_BACKDROP_OPTIONS.map((o) => o.kind)).toEqual(['original', 'dimmedOriginal', 'deep', 'deepAzure', 'deepEmber', 'deepViolet']);
+        for (const o of GALAXY_BACKDROP_OPTIONS) if (o.kind !== 'original') expect(isDeepKind(o.kind)).toBe(true);
+    });
+
+    it('loads removed kinds as Deep and unknown values as Original', () => {
+        for (const k of ['galacticCore', 'goldenSpiral', 'eerie', 'nebula']) expect(parseGalaxyBackdrop(k)).toBe('deep');
+        expect(parseGalaxyBackdrop('deepEmber')).toBe('deepEmber');
+        expect(parseGalaxyBackdrop('nope')).toBe('original');
+        expect(parseGalaxyBackdrop(undefined)).toBe('original');
+    });
+
+    it('writes nothing to a save for Original', () => {
+        setGalaxyBackdrop('original');
+        expect(galaxyBackdropSaveExtras()).toEqual({});
+        setGalaxyBackdrop('deepViolet');
+        expect(galaxyBackdropSaveExtras()).toEqual({ galaxyBackdrop: 'deepViolet' });
+        setGalaxyBackdrop('original');
+    });
+
+    it("keeps Deep's tone curve and the Dimmed Original between Original and Deep", () => {
+        expect(deepTone(0.5)).toBeCloseTo(0.72 * Math.pow(0.5, 1.5), 12);
+        for (const v of [0.2, 0.5, 0.8]) {
+            const dimmed = deepTone(v, DEEP_RECIPES.dimmedOriginal);
+            expect(dimmed).toBeLessThan(v);
+            expect(dimmed).toBeGreaterThan(deepTone(v));
         }
     });
 });

@@ -3,23 +3,27 @@
 // Picked in the new-game wizard ("Galaxy Backdrop" row) and changeable mid-game in Game Options → Advanced Display
 // Settings. A save carries it beside the game (GameSaveJSON.galaxyBackdrop, written only when it is not Original, so a
 // default save is byte-identical); a save without it — every older save — loads as Original. The Main View listens
-// for changes (galaxyBackdrop.ts rebuilds its layer).
+// for changes. Every kind but Original is a recipe over the install's own image (deepBackdrop.ts DEEP_RECIPES).
 
-export type GalaxyBackdropKind = 'original' | 'galacticCore' | 'goldenSpiral' | 'eerie' | 'nebula' | 'deep';
+export type GalaxyBackdropKind = 'original' | 'dimmedOriginal' | 'deep' | 'deepAzure' | 'deepEmber' | 'deepViolet';
 
 /** Picker order and labels. Original = the install's galaxy_backdrop.jpg (the default, unchanged). */
 export const GALAXY_BACKDROP_OPTIONS: readonly { kind: GalaxyBackdropKind; label: string; description: string }[] = [
     { kind: 'original', label: 'Original', description: 'The original galaxy backdrop image.' },
+    { kind: 'dimmedOriginal', label: 'Dimmed Original', description: 'The original image with its own colours, darkened halfway toward Deep, with faint grey dust.' },
     { kind: 'deep', label: 'Deep (DW2-style)', description: 'The original image darkened to near-black, with soft dark rust, brown and teal dust clouds over it.' },
-    { kind: 'galacticCore', label: 'Galactic Core', description: 'An infrared-style galaxy built from light around every star system: cyan young stars, green haze, red dust.' },
-    { kind: 'goldenSpiral', label: 'Golden Spiral', description: 'A golden galaxy built from light around every star system, with blue-white knots and brown dust.' },
-    { kind: 'eerie', label: 'Eerie', description: 'Near-black, cold and still, with drifting fog and the odd faint pulse.' },
-    { kind: 'nebula', label: 'Nebula', description: 'Churning dark green and purple gas, densest along the arms.' },
+    { kind: 'deepAzure', label: 'Deep Azure', description: 'The original image darkened to near-black, with cold navy and steel-blue dust clouds and teal accents.' },
+    { kind: 'deepEmber', label: 'Deep Ember', description: 'The original image darkened to near-black, with dark crimson and ember dust clouds and the odd dull gold.' },
+    { kind: 'deepViolet', label: 'Deep Violet', description: 'The original image darkened to near-black, with dark purple and magenta dust clouds and blue accents.' },
 ];
 
-/** `v` as a backdrop kind (anything unknown = Original). */
+/** Kinds that were in the picker once (generated from the star layout; removed). Saves / settings with them load as Deep. */
+const REMOVED_KINDS: readonly string[] = ['galacticCore', 'goldenSpiral', 'eerie', 'nebula'];
+
+/** `v` as a backdrop kind (a removed kind = Deep; anything else unknown = Original). */
 export function parseGalaxyBackdrop(v: unknown): GalaxyBackdropKind {
-    return GALAXY_BACKDROP_OPTIONS.some((o) => o.kind === v) ? (v as GalaxyBackdropKind) : 'original';
+    if (GALAXY_BACKDROP_OPTIONS.some((o) => o.kind === v)) return v as GalaxyBackdropKind;
+    return typeof v === 'string' && REMOVED_KINDS.includes(v) ? 'deep' : 'original';
 }
 
 let current: GalaxyBackdropKind = 'original';
@@ -55,7 +59,7 @@ export function urlGalaxyBackdrop(): GalaxyBackdropKind | null {
     return v === null ? null : parseGalaxyBackdrop(v);
 }
 
-/** Dev / screenshot hook: `?backdropTime=<s>` starts the backdrop animation clock there (e.g. at a storm flash). */
+/** Dev / screenshot hook: `?backdropTime=<s>` starts the backdrop animation clock there (e.g. at a glow). */
 export function urlGalaxyBackdropTime(): number | null {
     const search = (globalThis as { location?: { search?: string } }).location?.search;
     if (typeof search !== 'string') return null;
@@ -64,8 +68,8 @@ export function urlGalaxyBackdropTime(): number | null {
 }
 
 // The 2D galaxy maps (ui/screens/galaxyMapLayers.ts: the Galaxy Map screen, the mini maps) draw the chosen generated
-// backdrop as a still picture: a copy of the Main View's finished static texture (galaxyBackdrop.ts), which registers
-// itself here. No picture (Original, not drawn yet, no WebGL, a shader failure) = the maps draw the Original image.
+// backdrop as a still picture: the Main View's static canvas of it (mainView.ts, deepBackdrop.ts), which registers
+// itself here. No picture (Original, not built, the image could not be read) = the maps draw the Original image.
 
 /** The galaxy facts a picture is matched on. */
 export interface BackdropPictureGalaxy {
@@ -108,7 +112,7 @@ export function onGalaxyBackdropPictureReady(cb: () => void): () => void {
     return () => pictureListeners.delete(cb);
 }
 
-/** The picture source has a new picture (galaxyBackdrop.ts). */
+/** The picture source has a new picture (mainView.ts). */
 export function notifyGalaxyBackdropPictureReady(): void {
     for (const cb of [...pictureListeners]) cb();
 }

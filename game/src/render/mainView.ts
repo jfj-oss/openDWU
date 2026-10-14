@@ -124,10 +124,9 @@ import { isObjectVisibleToThisEmpire } from '../sim/independentTraders';
 import { showsMapIndicators } from './mainViewDisplay';
 import { createFollowState, followTargetAlive, isFollowing, stopFollow, type FollowState, type FollowTarget } from './followCamera';
 import { localViewerEmpire } from '../localViewer';
-import { GalaxyBackdropLayer } from './galaxyBackdrop';
-import { buildDeepBackdrop } from './deepBackdrop';
+import { buildDeepBackdrop, DEEP_RECIPES, isDeepKind, type DeepKind } from './deepBackdrop';
 import { DeepNebulaAnim, DEEP_ANIM_DUST_SHARE } from './deepBackdropAnim';
-import { getGalaxyBackdrop, onGalaxyBackdropChange, setGalaxyBackdrop, urlGalaxyBackdrop, urlGalaxyBackdropTime, type GalaxyBackdropKind } from './galaxyBackdropChoice';
+import { getGalaxyBackdrop, notifyGalaxyBackdropPictureReady, onGalaxyBackdropChange, setGalaxyBackdrop, setGalaxyBackdropPictureSource, urlGalaxyBackdrop, urlGalaxyBackdropTime, type BackdropPicture, type BackdropPictureGalaxy, type GalaxyBackdropKind } from './galaxyBackdropChoice';
 
 export function fadeIn(v: number, a: number, b: number): number {
     if (v <= a) {
@@ -1333,11 +1332,10 @@ export class MainView {
     /** Battle bars at zoom factor <= 3 (combatBars.ts, MainView.1.cs 1251-1295). */
     private battleBars!: BattleBarLayer;
     private backdrop: Sprite;
-    /** The galaxy backdrop (the original image, or a generated variant: galaxyBackdrop.ts); its alpha is backdropAlpha. */
+    /** The galaxy backdrop (the original image, or a Deep-recipe variant of it: deepBackdrop.ts); its alpha is backdropAlpha. */
     private readonly backdropGroup = new Container();
-    /** The generated galaxy backdrops (Galactic Core / Eerie / Nebula); null until init. */
-    galaxyBackdropLayer: GalaxyBackdropLayer | null = null;
     private offGalaxyBackdropChange: (() => void) | null = null;
+    private offBackdropPictureSource: (() => void) | null = null;
     private grid = new Graphics();
     /** The sector grid's A.. / 1.. edge labels (sectorGrid.ts, MainView.2.cs method_250 5183-5212). */
     private sectorLabels = new SectorLabelLayer(MAP_FONT_FAMILY);
@@ -1766,13 +1764,10 @@ export class MainView {
         // Backdrop: stretched over the galaxy bounds, world-space.
         this.backdrop.texture = textures.backdrop;
         this.backdrop.scale.set(this.galaxy.sizeX / textures.backdrop.width, this.galaxy.sizeY / textures.backdrop.height);
-        // The generated backdrops (picked in the wizard / Game Options; a view setting saved with the game), over it.
-        this.galaxyBackdropLayer = new GalaxyBackdropLayer(this.app.renderer, this.galaxy);
-        this.backdropGroup.addChild(this.galaxyBackdropLayer.root);
+        // The Deep-recipe variants of it (picked in the wizard / Game Options; a view setting saved with the game).
         const urlBackdrop = urlGalaxyBackdrop(); // dev / screenshot hook ?backdrop=<kind>
         if (urlBackdrop !== null) setGalaxyBackdrop(urlBackdrop);
-        const urlTime = urlGalaxyBackdropTime();
-        if (urlTime !== null) this.galaxyBackdropLayer.setAnimTime(urlTime);
+        this.offBackdropPictureSource = setGalaxyBackdropPictureSource((kind, g) => this.backdropPicture(kind, g));
         this.applyGalaxyBackdrop(getGalaxyBackdrop());
         this.offGalaxyBackdropChange = onGalaxyBackdropChange((k) => this.applyGalaxyBackdrop(k));
         this.minZoom = this.camera.minZoom;
@@ -2047,12 +2042,7 @@ export class MainView {
         const bdA = backdropAlpha(z, m);
         this.backdropGroup.alpha = bdA;
         this.backdropGroup.visible = bdA > 0.01;
-        if (this.galaxyBackdropLayer !== null) {
-            const res = this.app.renderer.resolution;
-            this.galaxyBackdropLayer.update(this.backdropGroup.visible, dtSeconds, !rt.paused, getSettings().animateBackdrop, Math.min(cam.width, cam.height) * res, Math.max(cam.width, cam.height) * res, getSettings().stormFlashes);
-            this.backdrop.visible = !this.galaxyBackdropLayer.active;
-        }
-        this.deepAnim?.update(this.deepKind && this.backdropGroup.visible && this.backdrop.visible, dtSeconds, !rt.paused, getSettings().animateBackdrop, this.backdropGroup.alpha);
+        this.deepAnim?.update(this.deepKind !== null && this.deepTex !== null && this.backdropGroup.visible, dtSeconds, !rt.paused, getSettings().animateBackdrop, this.backdropGroup.alpha);
 
         // Sector grid + edge labels (sectorGrid.ts): opaque color_5 lines and color_7 labels at every zoom factor
         // above 150, none below (MainView.2.cs method_250 5153); GameOptions.CleanGalaxyView hides both (5155:
@@ -2887,13 +2877,17 @@ export class MainView {
     /** The WebGL context was restored (contextLoss.ts): rebuild what lived only on the GPU. */
     onGpuContextRestored(): void {
         this.systemNebulae?.onContextRestored();
-        this.galaxyBackdropLayer?.onContextRestored();
     }
 
+    /** The static texture of the current Deep-recipe kind (deepTexKind), its canvas (also the 2D maps' picture). */
     private deepTex: Texture | null = null;
-    /** Animated dust, glows and godrays over the Deep backdrop (deepBackdropAnim.ts); null when it cannot run. */
+    private deepCanvas: HTMLCanvasElement | null = null;
+    private deepTexKind: DeepKind | null = null;
+    /** Animated dust, glows and godrays over the Deep-recipe backdrops (deepBackdropAnim.ts); null when it cannot run. */
     deepAnim: DeepNebulaAnim | null = null;
-    private deepKind = false;
+    private deepAnimFailed = false;
+    /** The Deep-recipe kind shown, or null (Original). */
+    private deepKind: DeepKind | null = null;
     /** The galaxy nebulae image (Main.bitmap_182, galaxyNebulae.ts), top of the backdrop group; null until built. */
     private galaxyNebulae: Sprite | null = null;
     /** Its two variants (galaxyNebulae.ts): bitmap_182 as built for the Original backdrop, the tint-only clouds for Deep.
@@ -2902,26 +2896,49 @@ export class MainView {
     private nebulaeTextures: { original: Texture | null; deep: Texture | null } = { original: null, deep: null };
     /** Set by dispose(): a nebulae build still running for this view is dropped. */
     private nebulaeDisposed = false;
-    /** The "Deep (DW2-style)" texture built from the loaded original (deepBackdrop.ts), or the original if it fails. */
-    private deepBackdropTexture(): Texture {
+    /** The texture of Deep-recipe `kind` built from the loaded original (deepBackdrop.ts), or null if it fails. */
+    private deepBackdropTexture(kind: DeepKind): Texture | null {
+        if (this.deepTexKind === kind && this.deepTex !== null) return this.deepTex;
         const orig = this.textures.backdrop;
-        if (this.deepTex === null) {
-            const res = orig.source.resource as CanvasImageSource | undefined;
-            const seed = this.galaxy.randomSeed | 0;
-            const built = res ? buildDeepBackdrop(res, orig.source.pixelWidth, orig.source.pixelHeight, seed, 1 - DEEP_ANIM_DUST_SHARE) : null;
-            if (built === null) return orig;
+        const res = orig.source.resource as CanvasImageSource | undefined;
+        if (!res) return null;
+        const seed = this.galaxy.randomSeed | 0;
+        const recipe = DEEP_RECIPES[kind];
+        const w = orig.source.pixelWidth;
+        const h = orig.source.pixelHeight;
+        if (this.deepAnim === null && !this.deepAnimFailed) {
+            const field = buildDeepBackdrop(res, w, h, seed, 1 - DEEP_ANIM_DUST_SHARE, recipe);
+            if (field === null) return null;
             try {
-                this.deepAnim = new DeepNebulaAnim(built.field, this.galaxy.sizeX, this.galaxy.sizeY, seed);
+                this.deepAnim = new DeepNebulaAnim(field.field, this.galaxy.sizeX, this.galaxy.sizeY, seed, recipe);
                 const urlTime = urlGalaxyBackdropTime();
                 if (urlTime !== null) this.deepAnim.setTime(urlTime);
                 this.backdropGroup.addChildAt(this.deepAnim.root, this.backdropGroup.getChildIndex(this.backdrop) + 1);
             } catch (err) {
                 console.warn('deep backdrop: animated layer failed, using the full static dust', err);
                 this.deepAnim = null;
+                this.deepAnimFailed = true;
             }
-            this.deepTex = Texture.from(this.deepAnim !== null ? built.canvas : (buildDeepBackdrop(res!, orig.source.pixelWidth, orig.source.pixelHeight, seed)?.canvas ?? built.canvas));
+            if (this.deepAnim !== null) return this.setDeepCanvas(kind, field.canvas);
         }
+        this.deepAnim?.setRecipe(recipe);
+        const built = buildDeepBackdrop(res, w, h, seed, this.deepAnim !== null ? 1 - DEEP_ANIM_DUST_SHARE : 1, recipe);
+        return built === null ? null : this.setDeepCanvas(kind, built.canvas);
+    }
+
+    private setDeepCanvas(kind: DeepKind, canvas: HTMLCanvasElement): Texture {
+        this.deepTex?.destroy(true);
+        this.deepTex = Texture.from(canvas);
+        this.deepCanvas = canvas;
+        this.deepTexKind = kind;
+        setTimeout(notifyGalaxyBackdropPictureReady, 0);
         return this.deepTex;
+    }
+
+    /** The 2D galaxy maps' still picture of `kind` (galaxyBackdropChoice.ts galaxyBackdropPicture): the static canvas. */
+    private backdropPicture(kind: GalaxyBackdropKind, g: BackdropPictureGalaxy): BackdropPicture {
+        if (g.randomSeed !== this.galaxy.randomSeed || g.sizeX !== this.galaxy.sizeX || g.sizeY !== this.galaxy.sizeY) return null;
+        return kind === this.deepTexKind ? this.deepCanvas : null;
     }
 
     /** Build the galaxy nebulae image (galaxyNebulae.ts) from the install's galaxy_backdrop.jpg and nebulae/*.png and put it
@@ -2961,24 +2978,25 @@ export class MainView {
         const sprite = this.galaxyNebulae;
         const images = this.nebulaeImages;
         if (sprite === null || images === null || sprite.destroyed) return;
-        const which = this.deepKind ? 'deep' : 'original';
+        const added = this.deepKind !== null && DEEP_RECIPES[this.deepKind].originalNebulae !== true;
+        const which = added ? 'deep' : 'original';
         const canvas = images[which];
         const tex = (this.nebulaeTextures[which] ??= textureFromCanvas(canvas, `galaxyNebulae-${which}`));
         sprite.texture = tex;
         sprite.scale.set(this.galaxy.sizeX / canvas.width, this.galaxy.sizeY / canvas.height);
-        sprite.blendMode = this.deepKind ? 'add' : 'normal';
+        sprite.blendMode = added ? 'add' : 'normal';
     }
 
-    /** Show the chosen galaxy backdrop: a generated variant, or the original image (also when a variant cannot run). */
+    /** Show the chosen galaxy backdrop: a Deep-recipe variant, or the original image (also when a variant cannot be built). */
     private applyGalaxyBackdrop(kind: GalaxyBackdropKind): void {
-        const generated = this.galaxyBackdropLayer?.setKind(kind) ?? false;
-        this.backdrop.visible = !generated;
-        this.deepKind = kind === 'deep' && !generated;
+        const deep = isDeepKind(kind) ? kind : null;
+        const tex = this.textures !== undefined && deep !== null ? this.deepBackdropTexture(deep) : null;
+        this.deepKind = tex !== null ? deep : null;
         this.applyNebulaeBlend();
         if (this.textures !== undefined) {
-            const tex = kind === 'deep' ? this.deepBackdropTexture() : this.textures.backdrop;
-            this.backdrop.texture = tex;
-            this.backdrop.scale.set(this.galaxy.sizeX / tex.width, this.galaxy.sizeY / tex.height);
+            const t = tex ?? this.textures.backdrop;
+            this.backdrop.texture = t;
+            this.backdrop.scale.set(this.galaxy.sizeX / t.width, this.galaxy.sizeY / t.height);
         }
     }
 
@@ -2986,7 +3004,6 @@ export class MainView {
     useLowGpuMode(level: number): void {
         if (level >= 1) this.systemNebulae?.useLowGpuMode();
         if (level >= 2) this.systemNebulae?.disable();
-        this.galaxyBackdropLayer?.useLowGpuMode(level);
     }
 
     /** method_135: bitmap_2 of a gas cloud — nebulaCloudGenerator_1.GenerateNebulaBackdrop(HabitatIndex, 255,
@@ -3012,7 +3029,8 @@ export class MainView {
         this.overlayLayer?.destroy(); // [freightOverlay] stop recording contracts for this galaxy
         this.offGalaxyBackdropChange?.();
         this.offGalaxyBackdropChange = null;
-        this.galaxyBackdropLayer?.destroy();
+        this.offBackdropPictureSource?.();
+        this.offBackdropPictureSource = null;
         this.deepAnim?.destroy();
         this.nebulaeDisposed = true;
         if (this.galaxyNebulae !== null && !this.galaxyNebulae.destroyed) this.galaxyNebulae.texture = Texture.EMPTY;
@@ -3021,7 +3039,10 @@ export class MainView {
         this.nebulaeTextures = { original: null, deep: null };
         this.nebulaeImages = null;
         this.deepAnim = null;
-        this.galaxyBackdropLayer = null;
+        this.deepTex?.destroy(true);
+        this.deepTex = null;
+        this.deepCanvas = null;
+        this.deepTexKind = null;
     }
 
     // [waypoints] begin

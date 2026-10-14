@@ -127,10 +127,8 @@ export interface UiSettings {
     /** GameOptions.CleanGalaxyView (Expanded's "Clean Galaxy view", Start.1.cs 2935 / 3001, default off): the galaxy
      *  view without the sector grid, system rings, names and link lines (render/cleanGalaxyView.ts). */
     cleanGalaxyView: boolean;
-    /** Ours: animate the generated galaxy backdrops (render/galaxyBackdrop.ts; Game Options → Advanced Display). */
+    /** Ours: animate the generated galaxy backdrops (render/deepBackdropAnim.ts; Game Options → Advanced Display). */
     animateBackdrop: boolean;
-    /** Ours: storm flashes in the animated galaxy backdrops (render/galaxyBackdropFlashes.ts). */
-    stormFlashes: boolean;
     /** Ours: the new-game wizard's last Galaxy Backdrop pick (render/galaxyBackdropChoice.ts kinds). */
     newGameBackdrop: string;
     // [musicmood] begin — Options → Music & Mood (ui/screens/musicMoodWindow.ts). UI settings, never sim state.
@@ -276,7 +274,6 @@ export const DEFAULT_SETTINGS: UiSettings = {
     // [galaxymarkers] end
     cleanGalaxyView: false,
     animateBackdrop: true,
-    stormFlashes: true,
     newGameBackdrop: 'deep',
     backgroundMood: 'off',
     moodLevel: 0.6,
@@ -383,7 +380,6 @@ export function loadSettings(): UiSettings {
         if (typeof parsed.pullStationsToCentre === 'boolean') out.pullStationsToCentre = parsed.pullStationsToCentre;
         if (typeof parsed.cleanGalaxyView === 'boolean') out.cleanGalaxyView = parsed.cleanGalaxyView;
         if (typeof parsed.animateBackdrop === 'boolean') out.animateBackdrop = parsed.animateBackdrop;
-        if (typeof parsed.stormFlashes === 'boolean') out.stormFlashes = parsed.stormFlashes;
         if (typeof parsed.newGameBackdrop === 'string') out.newGameBackdrop = parsed.newGameBackdrop;
         // [musicmood]
         if (parsed.backgroundMood === 'off' || parsed.backgroundMood === 'rim' || parsed.backgroundMood === 'deep') out.backgroundMood = parsed.backgroundMood;
