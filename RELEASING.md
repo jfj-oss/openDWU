@@ -40,7 +40,7 @@ latest release every time it opens and offer the new download.
    release (usually done within half an hour). Each platform's files appear on the
    release as its job finishes.
 
-That's all; installed apps see the new version within a day.
+That's all; installed apps offer the new version the next time they open.
 
 ## Details
 

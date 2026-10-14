@@ -4,6 +4,8 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+## 0.1.29
+
 - **Multiplayer host wizard fix:** Game Settings from the host lobby (LAN or Internet) opened the new-game wizard behind the
   multiplayer screen, so nothing in it could be clicked; the multiplayer screen now properly hides while the wizard is open.
 - **Multiplayer menus:** the Host / Join screen now uses the stock glass buttons, window colours and HUD scale, shows one section
