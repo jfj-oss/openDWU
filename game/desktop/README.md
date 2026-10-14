@@ -65,9 +65,13 @@ Nothing from the original game ships with the app.
   AppImage when running from one, else the `.tar.gz`, the setup `.exe` when
   installed by it, else the `.zip`), **Later** or **Skip This Version**.
   Pre-releases are never offered (GitHub's "latest" excludes them). **Check
-  for Updates…** in the same menu checks now. There is no silent
-  self-update: the apps are unsigned, and Squirrel.Mac (Electron's macOS
-  updater) refuses unsigned updates, so every platform gets the same prompt.
+  for Updates…** in the same menu checks now. Self-update
+  (`desktop/selfUpdate.cjs`): the AppImage and the NSIS setup install download
+  their edition's installer in the background (sha256 from the release's
+  `.sha256`; paused while a multiplayer game runs; `DWU_UPDATE_SELF=0` off),
+  notify with a toast and install at quit (AppImage replaced in place, setup
+  run with `/S`); other installs (macOS, zip, tar.gz, read-only AppImage)
+  get the Download prompt, as does a failed download.
   `config.json` keeps `lastUpdateCheck` and `skippedVersion`;
   `"checkForUpdates": false` turns the launch check off, as does
   `DWU_UPDATE_CHECK=0`; `DWU_UPDATE_URL` points the check at another API URL

@@ -771,6 +771,10 @@ Desktop app:
   folder setting (macOS: app menu → **Game Folder…**; Windows/Linux:
   **Ctrl+Shift+O** → **Game Folder…**) and pick the folder with `images`
   and `races.txt`.
+- **Automatic updates.** The Windows setup install and the Linux AppImage
+  download a new release in the background and install it when you quit
+  (**Check for Updates…** then offers **Restart now**); the macOS app, the
+  Windows zip and the Linux tar.gz offer the download instead.
 - **No update prompts.** The check runs on every launch and only offers
   full releases (not pre-releases); use **Check for Updates…** in the same
   menu to check now. To turn the launch check off, add

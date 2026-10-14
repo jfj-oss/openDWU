@@ -25,7 +25,7 @@ const { app, BrowserWindow, Menu, MessageChannelMain, dialog, protocol, net, nat
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawn } = require('node:child_process');
 const { pathToFileURL } = require('node:url');
 const { stripColorProfile, isProfiledImagePath } = require('./colorProfile.cjs');
 const themeIndex = require('./themeIndex.cjs');
@@ -33,6 +33,7 @@ const { buildAssetManifest } = require('./assetManifest.cjs');
 const { createResolver } = require('./resolvePath.cjs');
 const installLib = require('./installDir.cjs');
 const updates = require('./updateCheck.cjs');
+const selfUpdate = require('./selfUpdate.cjs');
 const { createSimProcesses } = require('./simProcess.cjs');
 const { createNetHost } = require('./netHost.cjs');
 const userMusic = require('./userMusic.cjs');
@@ -602,25 +603,25 @@ async function checkForUpdates({ manual }) {
             return;
         }
         const download = updates.pickDownload(release, { platform: process.platform, arch: process.arch, kind: installKind(), product: CLASSIC ? 'classic' : 'full' });
-        console.log(`[update] offering ${download ? download.name : release.pageUrl ?? '(no download)'}`);
         const notes = updates.notesExcerpt(release.notes);
-        const { response } = await showMessage({
-            type: 'info',
-            buttons: ['Download', 'Later', 'Skip This Version'],
-            defaultId: 0,
-            cancelId: 1,
-            message: `${PRODUCT} ${release.version} is available`,
-            detail:
-                `You have ${APP_VERSION}. ${download ? `Download opens ${download.name} in your browser` : 'Download opens the release page in your browser'}; ` +
-                `install it over this copy (your game folder setting and saves are kept).` +
-                (notes ? `\n\n${notes}` : ''),
-        });
-        if (response === 0) {
-            const target = download?.url ?? release.pageUrl;
-            if (target && updates.isSafeGithubUrl(target)) await shell.openExternal(target);
-        } else if (response === 2) {
-            updateConfig({ skippedVersion: release.version });
+        // Background self-update (selfUpdate.cjs): AppImage / NSIS installs download the verified installer and install it on quit.
+        const plan = selfUpdatePlan(release);
+        if (plan) {
+            if (pendingUpdate && pendingUpdate.version === release.version) {
+                if (manual) await offerRestart(notes);
+                else notifyUpdateReady();
+                return;
+            }
+            const job = startSelfUpdateDownload(plan);
+            if (manual) {
+                void job.then((ok) => (ok ? undefined : offerBrowserDownload(release, download, notes)));
+                await showMessage({ type: 'info', message: `${PRODUCT} ${release.version} is available`, detail: `It is downloading in the background and will be installed when you quit. You will be told when it is ready.` + (notes ? `\n\n${notes}` : '') });
+                return;
+            }
+            if (await job) return;
+            console.log('[update] self-update unavailable, offering the browser download');
         }
+        await offerBrowserDownload(release, download, notes);
     } catch (err) {
         console.warn(`[update] check failed: ${err && err.message ? err.message : err}`);
         if (manual) await showMessage({ type: 'warning', message: 'Could not check for updates', detail: String(err && err.message ? err.message : err) });
@@ -628,6 +629,119 @@ async function checkForUpdates({ manual }) {
         updateCheckRunning = false;
     }
 }
+
+/** The Download / Later / Skip offer (macOS, zip, tar.gz, a read-only AppImage, a failed self-update). */
+async function offerBrowserDownload(release, download, notes) {
+    console.log(`[update] offering ${download ? download.name : release.pageUrl ?? '(no download)'}`);
+    const { response } = await showMessage({
+        type: 'info',
+        buttons: ['Download', 'Later', 'Skip This Version'],
+        defaultId: 0,
+        cancelId: 1,
+        message: `${PRODUCT} ${release.version} is available`,
+        detail:
+            `You have ${APP_VERSION}. ${download ? `Download opens ${download.name} in your browser` : 'Download opens the release page in your browser'}; ` +
+            `install it over this copy (your game folder setting and saves are kept).` +
+            (notes ? `\n\n${notes}` : ''),
+    });
+    if (response === 0) {
+        const target = download?.url ?? release.pageUrl;
+        if (target && updates.isSafeGithubUrl(target)) await shell.openExternal(target);
+    } else if (response === 2) {
+        updateConfig({ skippedVersion: release.version });
+    }
+}
+
+// --- Background self-update (desktop/selfUpdate.cjs) ---
+const UPDATES_DIR = () => path.join(app.getPath('userData'), 'updates');
+let pendingUpdate = null; // { version, file, kind, name }: downloaded and verified, installed on quit
+let downloadJob = null; // in-flight download (a Promise<boolean>)
+let mpBusy = false; // the page reports a running multiplayer game: the download waits
+
+function selfUpdatePlan(release) {
+    if (process.env.DWU_UPDATE_SELF === '0') return null;
+    const plan = selfUpdate.planSelfUpdate(release, { platform: process.platform, arch: process.arch, kind: installKind(), product: CLASSIC ? 'classic' : 'full', extraOrigin: process.env.DWU_UPDATE_URL });
+    if (!plan) return null;
+    if (plan.kind === 'appimage' && !selfUpdate.canReplaceFile(process.env.APPIMAGE)) {
+        console.log(`[update] ${process.env.APPIMAGE} is not writable: no self-update`);
+        return null;
+    }
+    return plan;
+}
+
+/** Download + verify in the background; resolves true when the update is staged. One download at a time. */
+function startSelfUpdateDownload(plan) {
+    if (downloadJob) return downloadJob;
+    console.log(`[update] downloading ${plan.name} in the background`);
+    const headers = { 'User-Agent': `${PRODUCT}/${APP_VERSION} (${process.platform}-${process.arch})` };
+    downloadJob = selfUpdate
+        .downloadVerified({
+            fetchFn: (url) => net.fetch(url, { headers, cache: 'no-store' }),
+            plan,
+            dir: path.join(UPDATES_DIR(), plan.version),
+            isPaused: () => mpBusy,
+        })
+        .then((r) => {
+            console.log(`[update] ${plan.name} ${r.reused ? 'already downloaded' : 'downloaded'} and verified (sha256 ${r.sha256.slice(0, 12)}…)`);
+            pendingUpdate = { version: plan.version, file: r.file, kind: plan.kind, name: plan.name };
+            notifyUpdateReady();
+            return true;
+        })
+        .catch((err) => {
+            console.warn(`[update] background download failed: ${err && err.message ? err.message : err}`);
+            return false;
+        })
+        .finally(() => {
+            downloadJob = null;
+        });
+    return downloadJob;
+}
+
+function notifyUpdateReady() {
+    console.log(`[update] ${pendingUpdate.version} will be installed when you quit`);
+    if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('dwu:update-ready', { version: pendingUpdate.version });
+}
+
+/** Install the staged update now (called as the app quits, or by "Restart now" with relaunch = true). */
+function applyPendingUpdate(relaunch) {
+    const u = pendingUpdate;
+    if (!u) return;
+    pendingUpdate = null;
+    try {
+        if (u.kind === 'appimage') {
+            const target = process.env.APPIMAGE;
+            selfUpdate.replaceFile(u.file, target);
+            console.log(`[update] replaced ${target} with ${u.name}`);
+            if (relaunch) spawn(target, process.argv.slice(1).filter((a) => !a.startsWith('--dwu-')), { detached: true, stdio: 'ignore' }).unref();
+        } else {
+            spawn(u.file, selfUpdate.nsisArgs(relaunch), { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+            console.log(`[update] started the installer ${u.name}`);
+        }
+    } catch (err) {
+        console.warn(`[update] could not install ${u.name}: ${err && err.message ? err.message : err}`);
+    }
+}
+
+async function offerRestart(notes) {
+    const { response } = await showMessage({
+        type: 'info',
+        buttons: ['Restart now', 'Later'],
+        defaultId: 0,
+        cancelId: 1,
+        message: `${PRODUCT} ${pendingUpdate.version} is ready to install`,
+        detail: `It will be installed when you quit. Restart now to install it right away (save your game first; settings and saves are kept).` + (notes ? `\n\n${notes}` : ''),
+    });
+    if (response === 0) {
+        applyPendingUpdate(true);
+        app.exit(0);
+    }
+}
+
+app.on('quit', () => applyPendingUpdate(false));
+ipcMain.on('dwu:mp-busy', (event, busy) => {
+    if (mainWin !== null && event.sender === mainWin.webContents) mpBusy = busy === true;
+});
+ipcMain.handle('dwu:update-pending', (event) => (mainWin !== null && event.sender === mainWin.webContents && pendingUpdate ? { version: pendingUpdate.version } : null));
 
 function showMessage(opts) {
     const parent = mainWin && !mainWin.isDestroyed() ? mainWin : undefined;
@@ -643,6 +757,7 @@ function shellItems() {
     return [
         { label: 'Game Folder…', click: () => openSetupWindow('change') },
         { label: 'Check for Updates…', click: () => checkForUpdates({ manual: true }) },
+        ...(pendingUpdate ? [{ label: `Restart to install ${pendingUpdate.version}`, click: () => offerRestart('') }] : []),
     ];
 }
 
@@ -856,6 +971,7 @@ function createWindow() {
             })
             .catch(() => {});
         // The update check on every launch, once the game is up (and off the startup path).
+        selfUpdate.cleanupStaged(UPDATES_DIR(), APP_VERSION, updates.compareVersions);
         setTimeout(() => checkForUpdates({ manual: false }), 8000);
     });
 

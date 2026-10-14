@@ -43,6 +43,16 @@ contextBridge.exposeInMainWorld('dwuDesktop', {
         mapPort: () => ipcRenderer.invoke('dwu:net-map-port'),
     },
     checkForUpdates: () => ipcRenderer.invoke('dwu:check-updates'),
+    // Background self-update (desktop/selfUpdate.cjs): onReady(cb) gets the version of a downloaded update (also when it was
+    // ready before the page asked); setBusy(true) pauses the download while a multiplayer game runs.
+    updates: {
+        onReady: (cb) => {
+            if (typeof cb !== 'function') return;
+            ipcRenderer.on('dwu:update-ready', (_event, msg) => cb(String(msg?.version ?? '')));
+            void ipcRenderer.invoke('dwu:update-pending').then((p) => p && cb(String(p.version)));
+        },
+        setBusy: (busy) => ipcRenderer.send('dwu:mp-busy', busy === true),
+    },
     // Game Options → Fullscreen (desktop/displayMode.cjs; F11 / Alt+Enter toggle it too; remembered in config.json).
     fullscreen: {
         get: () => ipcRenderer.invoke('dwu:fullscreen-get'),

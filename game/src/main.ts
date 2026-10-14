@@ -155,6 +155,7 @@ import { createShipCommandKeys, type ShipCommandKeys } from './ui/shipCommandKey
 import { installWaypointUi } from './ui/waypoints'; // [waypoints]
 import { createControlGroupKeys } from './ui/controlGroups'; import { setControlGroupHandler } from './ui/keyboard'; import { resetPanelVisibility } from './ui/panelVisibility'; import { setMainViewDisplayType } from './render/mainViewDisplay'; import { closeGroundReport } from './ui/screens/groundReport'; import { playGridClick } from './audio/gameAudio'; // [parC1]
 import { showToast } from './ui/toast';
+import { installDesktopUpdateNotice } from './ui/desktopUpdate';
 // [fix6ui] end
 
 import './ui/hud.css';
@@ -1736,6 +1737,7 @@ async function main(): Promise<void> {
     await bootTheme(urlTheme ?? getSettings().customizationSet, () => {
         if (urlTheme === null) updateSettings({ customizationSet: '' });
     });
+    installDesktopUpdateNotice();
     // [audio] begin — GlassButton / HoverButton / HoverMenuItem / ListViewBase click sounds on every screen.
     installUiClickSounds();
     // [audio] end

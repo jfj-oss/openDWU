@@ -6,6 +6,8 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 - **Crash reports:** the desktop app now sends crash reports (error, stack, app version, OS, graphics card; no IP address, saves or personal files, and your user name and home folder are replaced by "~") to Sentry to help fix bugs. It has no setting.
 
+- **Automatic updates** for the Windows setup (.exe) and the Linux AppImage: the new version downloads in the background (checked against the release's .sha256, paused while a multiplayer game runs) and installs when you quit; a one-line notice tells you it is ready, and Check for Updates offers Restart now. macOS, the Windows zip and the Linux tar.gz keep the Download offer. `"checkForUpdates": false` still turns it all off.
+
 ## 0.1.30
 
 - **Game menu:** "Save Game As" is gone — Save Game opens the same save window, where you can type a new name.
