@@ -61,6 +61,7 @@ import {
 } from './fleetTemplates';
 import { assignFleetTemplate, replenishFleet, setFleetAutoRefill, setFleetRefillYard } from './fleetRefill';
 import { setFleetMoveTogether } from '../fleets/moveTogether';
+import { issueDefendSystem, issueIntercept, setFleetWatch, type InterceptForce, type InterceptTarget } from './intercept';
 import { applyAcceptedProposal, listProposals, submitProposal } from './diplomacyProposals';
 import { answerConversationReply, type ConversationRelated, type ConversationReplyPart } from './conversationReplies';
 import { applyAcceptedTrade, submitTradeOffer, type TradeNegotiation } from './tradeNegotiation';
@@ -283,6 +284,12 @@ export const PLAYER_OPS = {
     fleetTemplateReplenish: (galaxy: Galaxy, empire: Empire, fleet: ShipGroup) => replenishFleet(galaxy, empire, fleet),
     /** openDWU rule (not in the original): the fleet's "Move together" toggle (fleets/moveTogether.ts; off by default). */
     fleetMoveTogether: (galaxy: Galaxy, empire: Empire, fleet: ShipGroup, on: boolean) => setFleetMoveTogether(galaxy, empire, fleet, on),
+    /** openDWU command (not in the original): send `force` (null: the best free one) to intercept and destroy `target` (player/intercept.ts). */
+    intercept: (galaxy: Galaxy, empire: Empire, target: InterceptTarget, force: InterceptForce | null) => issueIntercept(galaxy, empire, target, force),
+    /** openDWU command (not in the original): send `force` (null: the best free one) to defend the system of `star` (player/intercept.ts). */
+    defendSystem: (galaxy: Galaxy, empire: Empire, star: Habitat, force: InterceptForce | null) => issueDefendSystem(galaxy, empire, star, force),
+    /** openDWU command (not in the original): a manual fleet's "Watch system" toggle (player/intercept.ts). */
+    fleetWatch: (galaxy: Galaxy, empire: Empire, fleet: ShipGroup, on: boolean) => setFleetWatch(galaxy, empire, fleet, on),
     /** Main.Part2.cs 1135 btnBuildOrderPurchase_Click. */
     buildNewShips: (galaxy: Galaxy, empire: Empire, designs: (Design | null)[], amounts: number[]) => buildNewShips(galaxy, empire, designs, amounts),
     /** Main.Part5.cs 2147-2213: the site's construction wait queue order. */

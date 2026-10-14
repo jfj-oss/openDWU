@@ -8,6 +8,7 @@
 // The builders only read the sim (no galaxy.rnd, no caches written): they run every 500 ms while something is
 // selected.
 
+import { interceptOrderOf, watchStatusText } from '../sim/player/intercept';
 import type { Ruin } from '../sim/ruins';
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
@@ -856,6 +857,13 @@ export function shipGroupInfo(ctx: InfoContext, sg: ShipGroup, extended = false)
             if (queued !== null) rows.push({ kind: 'line', segs: [txt(queued, QUEUED_COLOR)], wrap: true });
         }
     } else rows.push({ kind: 'line', segs: [txt('(Unknown mission)', UNKNOWN_COLOR)] });
+    // openDWU command (not in the original): the fleet's system watch / open intercept order (sim/player/intercept.ts).
+    if (empire === player) {
+        const watch = watchStatusText(sg);
+        const order = watch === '' ? interceptOrderOf(player, sg) : null;
+        const line = watch !== '' ? watch : order !== null ? `Intercepting ${(order.target as { name?: string | null }).name ?? ''}` : '';
+        if (line !== '') rows.push({ kind: 'line', segs: [txt(line, QUEUED_COLOR)] });
+    }
     if (sg.localDefenseTacticsApply) rows.push({ kind: 'line', segs: [txt('Local Defense Tactics: +20% Targeting & Countermeasures', 0x00ff00)] });
     rows.push({ kind: 'gap', h: 4 });
     rows.push({ kind: 'band' });

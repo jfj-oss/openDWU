@@ -111,6 +111,7 @@ import { CREATURE_FRAME_SETS, creatureFrameSetIndexes, creatureFrameUrls } from 
 import type { Creature } from '../sim/creature';
 import { Fighter } from '../sim/combat/fighters';
 import { localViewerEmpire } from '../localViewer';
+import { interceptSlots, watchSlot } from './interceptSlots';
 import { toggleDietScreen } from './screens/dietScreen'; // [charactersVictory]
 import { dietOn } from '../sim/scenario/charactersVictory/diet/dietState'; // [charactersVictory]
 
@@ -1531,6 +1532,13 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         const settingsFleet = currentSelection?.shipGroup ?? null;
         if (settingsFleet !== null && isImprovementEnabled('fleetSettings') && settingsFleet.empire === (localViewerEmpire(wiring.galaxy) ?? null)) {
             out.push({ label: 'Settings', title: 'Fleet Settings: posture, engagement, retreat, fuel, troops and resupply (Q)', onClick: () => openFleetSettingsFor(settingsFleet) });
+        }
+        // openDWU command (not in the original): Intercept / Defend with the best free force, and a fleet's system watch.
+        const viewer = localViewerEmpire(wiring.galaxy) ?? null;
+        if (viewer !== null && wiring.galaxy) {
+            out.push(...interceptSlots(wiring.galaxy, viewer, currentSelection, (f) => (f instanceof ShipGroup ? shipGroupSelectHandler?.(f, true) : stellarObjectSelectHandler?.(f, true))));
+            const w = currentSelection?.shipGroup ?? null;
+            if (w !== null && w.empire === viewer) out.push(watchSlot(wiring.galaxy, viewer, w));
         }
         if (!charterButton.element.hidden) {
             const el = charterButton.element as HTMLButtonElement;
