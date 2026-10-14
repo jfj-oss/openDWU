@@ -1157,9 +1157,9 @@ function buildJumpStartPage(ctx: WizardCtx): HTMLDivElement {
     const wrap = pageDiv('wizard-jumpstart-page');
 
     // pnlJumpStartGalaxyShapeSize 880 × 275 at (10, 10): radios (10, 10 + 20 i), preview 120 × 120 at (125, 10), title
-    // (255, 7), description (255, 32) max 615 × 168; Star Amount (10, 145) and Physical Size (10, 210), 860 × 55.
+    // (255, 7), description (255, 32) max 615 × 168 (ours stops above the Star Amount bar: 112); Star Amount (10, 145) and Physical Size (10, 210), 860 × 55.
     const shapePanel = panel(wrap, 10, 10, 880, 275, 'wizard-shape-row');
-    const shapes = buildShapeChooser(ctx, shapePanel, 'wizard-jumpstart-shape', { preview: [125, 10, 120], title: [255, 7], desc: [255, 32, 615, 92] });
+    const shapes = buildShapeChooser(ctx, shapePanel, 'wizard-jumpstart-shape', { preview: [125, 10, 120], title: [255, 7], desc: [255, 32, 615, 112] });
     const size = buildGalaxySizeControls(ctx, shapePanel, { x: 10, starY: 145, sizeY: 210, w: 860 });
 
     // Our addition: the resource sliders (sim/resourceGeneration.ts), in a panel over the race / government panels.

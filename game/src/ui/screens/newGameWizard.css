@@ -183,8 +183,10 @@
     height: 100%;
     object-fit: contain;
 }
+/* GDI's line spacing for Forgotten Futurist (ascent + descent = 1.037 em; DrawString uses no extra leading): the
+   1.2 browser default made the longer shape descriptions overflow their box. */
 .wizard-shape-desc {
-    line-height: 1.2 !important;
+    line-height: 1.04 !important;
 }
 
 /* The custom galaxy size boxes in the trackbar panels they replace. */
