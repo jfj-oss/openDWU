@@ -12,6 +12,8 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 - **Influence borders:** where two empires meet, only the darker empire's side gets the dark band (the "Both darker"
   option is gone; that setting loads as Darker side).
 - **Galactopedia:** clicking an open group's header closes it again.
+- **Empire colours in big galaxies:** with more than 20 empires your own colour (standard or custom) is kept exactly,
+  no other empire gets a colour close to it, and up to 101 empires now get distinct colours (100 extra colours, was 40).
 - **Colony Defence add-on withdrawn:** pirate control of colonies works as in the original again. The add-on is no longer
   in the picker or the Living Galaxy preset; saves that use it still load.
 
