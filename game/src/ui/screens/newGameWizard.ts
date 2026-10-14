@@ -1865,11 +1865,11 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
         else hotSeat.open();
     }, { className: 'wizard-btn wizard-btn-secondary wizard-hotseat-open-btn' });
     ctx.helpOn(hotSeatBtn, () => ['Human Players', 'Hot seat: add more human players who share this PC. Each one picks an empire name, race, government and colours.']);
-    // A LAN game's humans are the lobby's players.
-    if (ctx.multiplayer === true) {
-        hotSeatBtn.style.display = 'none';
-        hotSeatLine.style.display = 'none';
-    }
+    // Hot seat is hidden (user, 2026-10-14): no "Human Players..." entry; a LAN / Internet game's humans are the lobby's
+    // players. A remembered hot-seat list from older settings is dropped so a single-player start stays single-player.
+    hotSeatBtn.style.display = 'none';
+    hotSeatLine.style.display = 'none';
+    if (ctx.multiplayer !== true) delete ctx.options.humanPlayers;
     const grid = place(el('div', 'ow-grid wizard-empires-grid'), 10, 35, 860, 260);
     grid.style.fontSize = `${FONT.normal}px`;
     const COLS = [300, 240, 276, 30];

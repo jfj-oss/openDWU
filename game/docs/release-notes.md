@@ -4,6 +4,8 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **Hot seat hidden:** the new-game wizard no longer offers "Human Players..." (several humans sharing one PC); LAN and
+  Internet multiplayer are unchanged. A hot-seat list remembered from older settings is dropped.
 - **Threats & Leads (Characters / Intelligence screen):** with any Galactic Threat add-on or Internal Security on, a
   **Threats & Leads** button under the Galactopedia link switches the screen to a list of every threat site and
   security lead your empire knows: what it is, where, suspected or confirmed, when it was found and what is being done.
