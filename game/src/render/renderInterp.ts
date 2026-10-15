@@ -963,6 +963,13 @@ export class MotionInterpolator {
         const lo = Math.max(1, softSnapMs / 1000 / stepS);
         const hi = Math.max(lo, SOFT_SNAP_MAX_MS / 1000 / stepS);
         st.eLen = need > lo ? (need < hi ? need : hi) : lo;
+        // The offset never swings past zero: a cubic from e with velocity ev to rest at 0 stays on its side of 0 only while ev
+        // (toward 0) is under 3 |e| / T (Fritsch-Carlson, end slope 0). A drawn ship still catching up when its track stops (a
+        // warp leg's exit: the ease planned for a ship flying on) would fly through the exit point and come back — the
+        // ease (of a track that has slowed to under 60 % of its speed) is shortened to the longest that does not: the
+        // drawn ship stops within the distance left, from the speed it had.
+        const toward = e0 > 1e-9 ? -(st.ex * st.evx + st.ey * st.evy) / e0 : 0;
+        if (toward > 0 && toward * st.eLen > 3 * e0 && Math.hypot(v.x, v.y) < 0.6 * Math.hypot(st.tvx, st.tvy)) st.eLen = Math.max(1, (3 * e0) / toward);
     }
 
     /** Take the sim's (x, y, heading) into `st` (same frame): a new step adds a sample, snapping on a jump, a long gap

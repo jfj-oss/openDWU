@@ -135,6 +135,9 @@ interface Track {
     t: number[];
     x: number[];
     y: number[];
+    /** The committed position at each frame. */
+    cx: number[];
+    cy: number[];
 }
 
 /** Draws the ships through two interpolators (warp easing on / off) at the presented RenderTime. */
@@ -154,10 +157,12 @@ class View {
             for (const s of ships) {
                 const st = sampleBuiltObject(m, s);
                 let tr = this.tracks[j].get(s);
-                if (tr === undefined) this.tracks[j].set(s, (tr = { t: [], x: [], y: [] }));
+                if (tr === undefined) this.tracks[j].set(s, (tr = { t: [], x: [], y: [], cx: [], cy: [] }));
                 tr.t.push(t);
                 tr.x.push(st.x);
                 tr.y.push(st.y);
+                tr.cx.push(s.xpos);
+                tr.cy.push(s.ypos);
             }
         }
     }
@@ -255,7 +260,20 @@ function motion(tr: Track): Motion {
     return out;
 }
 
+/** How far the drawn track gets past the exit point along the leg's line (the ship goes on at cruise past it after the exit:
+ * the committed position, when that is further). 0 when the drawn ship stops at its exit. */
+function overshoot(tr: Track, s: Jumper): number {
+    const len = Math.hypot(s.exitX, s.exitY);
+    const ux = s.exitX / len;
+    const uy = s.exitY / len;
+    let past = 0;
+    for (let i = 0; i < tr.t.length; i++) past = Math.max(past, tr.x[i] * ux + tr.y[i] * uy - Math.max(len, tr.cx[i] * ux + tr.cy[i] * uy));
+    return past;
+}
+
 const SCENARIOS: [string, () => Jumper[]][] = [
+    // Shorter than the warp entry's ease (a second and a half): the exit comes with the drawn ship still catching up.
+    ['a short leg, three touches', () => [0, 1, 2, 3].map((i) => jumper({ startAt: 25 + i, exitX: 40000 + 3000 * i, exitY: 0 }))],
     // A long leg (about ten touches at warp), from several starting phases of the round-robin.
     ['a long jump', () => [0, 1, 2, 3].map((i) => jumper({ startAt: 25 + i, exitX: 150000 + 20000 * i, exitY: 30000 * i }))],
     // Shorter than one touch's warp move (13 750 units at 4×): enters and leaves warp in the same touch.
@@ -277,6 +295,10 @@ describe('hyperjump legs drawn without pops, surges or reversals (sampleBuiltObj
                 const sum = (a: Motion[], k: keyof Motion): number => a.reduce((x, m) => x + m[k], 0);
                 const max = (a: Motion[], k: keyof Motion): number => Math.max(...a.map((m) => m[k]));
                 log(`[hyperjump ${mode}: ${name}] on: reversals ${sum(on, 'reversals')} jumps ${sum(on, 'jumps')} max/warp ${max(on, 'maxOverWarp').toFixed(2)} | off: reversals ${sum(off, 'reversals')} jumps ${sum(off, 'jumps')} max/warp ${max(off, 'maxOverWarp').toFixed(2)}`);
+                const past = Math.max(...ships.map((s, i) => overshoot([...view.tracks[0].values()][i], s)));
+                log(`[hyperjump ${mode}: ${name}] drawn past the exit: ${past.toFixed(0)} units (eased warp off: ${Math.max(...ships.map((s, i) => overshoot([...view.tracks[1].values()][i], s))).toFixed(0)})`);
+                // (The drawn ship never flies through its exit point and comes back.)
+                expect(past).toBeLessThan(50);
                 expect(sum(on, 'reversals')).toBe(0);
                 expect(sum(on, 'jumps')).toBe(0);
                 // Catching up a leg that began a round-robin earlier takes a little more than the warp speed, briefly.

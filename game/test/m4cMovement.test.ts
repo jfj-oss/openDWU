@@ -318,10 +318,28 @@ describe('harness: ships with missions move and hyperjump', () => {
         const start = new Map((g.builtObjects as BuiltObject[]).map((b) => [b, { x: b.xpos, y: b.ypos }]));
         let exits = 0;
         const actions = new Set<CommandAction>();
+        // Overshoot check (the sim side of a ship flying past its stop point in warp): on a warp leg the distance to the exit point
+        // never grows, the last step snaps to the exit (BuiltObject.2.cs HyperTo, CheckWhetherArrived).
+        const legDist = new Map<BuiltObject, number>();
+        let legSteps = 0;
+        let overshoots = 0;
         const r = runGameSeconds(g, 600, {
             onFrame: (gal) => {
                 for (const b of gal.builtObjects) {
                     if (b == null) continue; // teardown null holes
+                    const mm = b.mission as { fastPeekCurrentCommand(): { action: CommandAction } | null; resolveTargetCoordinatesCurrentCommand?: () => { x: number; y: number } } | null;
+                    if (b.currentSpeed > b.topSpeed && !b.hyperjumpPrepare && mm?.fastPeekCurrentCommand()?.action === CommandAction.HyperTo && mm.resolveTargetCoordinatesCurrentCommand) {
+                        const t = mm.resolveTargetCoordinatesCurrentCommand();
+                        const d = Math.hypot(b.xpos - (t.x + b.hyperjumpX), b.ypos - (t.y + b.hyperjumpY));
+                        const prev = legDist.get(b);
+                        if (prev !== undefined) {
+                            legSteps++;
+                            if (d > prev + 5) {
+                                overshoots++;
+                            }
+                        }
+                        legDist.set(b, d);
+                    } else legDist.delete(b);
                     if (b.hyperjumpJustExited) exits++;
                     const m = b.mission as { fastPeekCurrentCommand(): { action: CommandAction } | null } | null;
                     const c = m?.fastPeekCurrentCommand();
@@ -332,6 +350,9 @@ describe('harness: ships with missions move and hyperjump', () => {
         for (const k of Object.keys(r.todoHits)) expect(k.startsWith('M4c ')).toBe(false);
         expect(actions.has(CommandAction.HyperTo)).toBe(true);
         expect(exits).toBeGreaterThan(0);
+        // (Targets that move while the leg runs account for a unit or so; a step past the exit would be thousands.)
+        expect(legSteps).toBeGreaterThan(1000);
+        expect(overshoots).toBe(0);
         let farMovers = 0;
         for (const b of g.builtObjects) {
             if (b == null) continue; // teardown null holes
