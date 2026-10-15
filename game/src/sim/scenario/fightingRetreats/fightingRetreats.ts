@@ -340,7 +340,8 @@ function stepFleet(galaxy: Galaxy, fleet: ShipGroup): void {
             // Badly damaged: the repair trip. Otherwise a fall-back to the fleet's home base / the nearest own system outside the battle,
             // and only when there is none the yard. Nowhere to go, or the battle is at the repair point itself: fight on, look again after the hold.
             const atYard = yard !== null && dist(lead, yard) <= AT_YARD_RANGE;
-            const back = badlyDamaged || atYard ? null : fleetFallbackPoint(galaxy, fleet);
+            // (Pirate factions keep the repair trip: a fall-back is for the empires.)
+            const back = badlyDamaged || atYard || fleet.empire!.pirateEmpireBaseHabitat !== null ? null : fleetFallbackPoint(galaxy, fleet);
             if (back !== null) fallBackFleet(galaxy, fleet, back, yard !== null && dist(lead, yard) > AT_YARD_RANGE ? yard : null);
             else if (yard !== null && dist(lead, yard) > AT_YARD_RANGE) withdrawFleet(galaxy, fleet, yard);
             else fleet.frLosingSinceMs = galaxy.nowMs;
