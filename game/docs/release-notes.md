@@ -6,6 +6,9 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 - **Void Whale: the Leviathan redrawn:** a true giant (2-3x a New Fauna void whale on screen), drawn side-on as a scarred Moby-Dick sperm whale: box head, underslung toothed jaw that gapes when it swallows a station, torn pectoral fin, broad flukes with a slow heavy beat, bruised blue-black hide with pale belly, harpoons and hull plates in its back, faint cyan markings; fresh wounds glow red and heal to pale scars; a white flash, light streaks and ripples when it hyper-lunges; a matching whale icon at galaxy zoom.
 
+- **Generation ships are really low-tech now:** apart from reactors, fuel storage and their (efficient tech-4) hyperdrive,
+  every part of their warships is outdated, including special weapons, targeting, ECM, countermeasures, repair systems,
+  tractor beams and sensors; they no longer mount the planetary Giant Ion Cannon.
 - **Mothballing: choose the port:** in the Fleets and Ships screens, Mothball now opens the list of your space ports
   (★ the best one: interior, with room; distance, arrival time and how full each is) to pick from.
 

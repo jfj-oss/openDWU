@@ -254,13 +254,14 @@ const SCREEN_SUBROLES: ReadonlySet<BuiltObjectSubRole> = new Set(SCREEN_CYCLE);
 const DESIGN_SUBROLES = [...new Set([...HEAVY_CYCLE, ...CARRIER_CYCLE, ...SCREEN_CYCLE]), BuiltObjectSubRole.TroopTransport, BuiltObjectSubRole.ExplorationShip, BuiltObjectSubRole.ColonyShip, BuiltObjectSubRole.Escort];
 const WARSHIP_SUBROLES: ReadonlySet<BuiltObjectSubRole> = new Set([...HEAVY_CYCLE, ...CARRIER_CYCLE, ...SCREEN_CYCLE]);
 /** Component families that stay outdated: weapons, fighter bays, armour, shields, engines / thrusters. */
-const OUTDATED_TYPES: ReadonlySet<ComponentType> = new Set([
-    ComponentType.WeaponBeam, ComponentType.WeaponTorpedo, ComponentType.WeaponBombard, ComponentType.WeaponMissile, ComponentType.WeaponPointDefense, ComponentType.WeaponIonCannon,
-    ComponentType.WeaponIonPulse, ComponentType.WeaponIonDefense, ComponentType.WeaponGravityBeam, ComponentType.WeaponAreaGravity, ComponentType.WeaponAreaDestruction,
-    ComponentType.WeaponPhaser, ComponentType.WeaponRailGun, ComponentType.WeaponSuperBeam, ComponentType.WeaponSuperArea, ComponentType.WeaponSuperTorpedo,
-    ComponentType.WeaponSuperMissile, ComponentType.WeaponSuperPhaser, ComponentType.WeaponSuperRailGun, ComponentType.FighterBay, ComponentType.Armor, ComponentType.Shields,
-    ComponentType.ShieldRecharge, ComponentType.EngineMainThrust, ComponentType.EngineVectoring,
-]);
+/** The only parts the world-ship builders have at the top tier (user 2026-10-15): reactors and fuel storage; the
+ *  hyperdrive is picked separately (the most efficient of tech <= genShipsHyperdriveTech). Everything else is outdated:
+ *  weapons incl. special / super weapons, armour, shields and recharge, engines, ECM, targeting, countermeasures,
+ *  repair, tractor beams, sensors, bays. */
+const TOP_TIER_TYPES: ReadonlySet<ComponentType> = new Set([ComponentType.Reactor, ComponentType.StorageFuel, ComponentType.HyperDrive]);
+const OUTDATED_TYPES = { has: (t: ComponentType): boolean => !TOP_TIER_TYPES.has(t) };
+/** Planetary-facility-only components (components.txt: "only intended for ... the planetary facility"): never on ships. */
+const PLANETARY_ONLY_COMPONENTS: ReadonlySet<string> = new Set(['Giant Ion Cannon']);
 const REGIMENTS_PER_TRANSPORT = 6;
 
 function ownRandom(galaxy: Galaxy, salt: number): Random {
@@ -375,13 +376,13 @@ export function genShipsLowLevel(ownerLvl: number, gap: number): number {
 }
 
 /**
- * The component definitions the world-ship builders have: weapons / bays / armour / shields / engines only up to `low`
+ * The component definitions the world-ship builders have: every part except reactors, fuel storage and the hyperdrive only up to `low`
  * (the lowest of the family if it has none that old), the hyperdrive the most efficient one of tech <= `hyperTech`,
  * the reactors, fuel storage and everything else up to `top`. Pure.
  */
 export function genShipsComponentDefinitions(defs: readonly ComponentDefinition[], low: number, hyperTech: number, top: number): ComponentDefinition[] {
     const lowest = new Map<ComponentType, ComponentDefinition>();
-    for (const d of defs) if (OUTDATED_TYPES.has(d.type) && d.techLevel <= top && (!lowest.has(d.type) || d.techLevel < lowest.get(d.type)!.techLevel)) lowest.set(d.type, d);
+    for (const d of defs) if (OUTDATED_TYPES.has(d.type) && !PLANETARY_ONLY_COMPONENTS.has(d.name) && d.techLevel <= top && (!lowest.has(d.type) || d.techLevel < lowest.get(d.type)!.techLevel)) lowest.set(d.type, d);
     let hyper: ComponentDefinition | null = null;
     let hyperRatio = -1;
     for (const d of defs) {
@@ -394,7 +395,7 @@ export function genShipsComponentDefinitions(defs: readonly ComponentDefinition[
     }
     const out: ComponentDefinition[] = [];
     for (const d of defs) {
-        if (d.techLevel > top) continue;
+        if (d.techLevel > top || PLANETARY_ONLY_COMPONENTS.has(d.name)) continue;
         if (d.type === ComponentType.HyperDrive) {
             if (hyper === null || d === hyper) out.push(d);
         } else if (OUTDATED_TYPES.has(d.type)) {
