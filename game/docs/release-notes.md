@@ -4,6 +4,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **Fix: no Mechanoid / Shakturi natives outside the story:** a player who picks one of these story races no longer finds independent colonies of that race next to their start (they were seeded in the player race's region, e.g. "Utopia 2"); those natives are now a normal race. Normal-race games are unchanged.
 - **Slower hyperdrive (new gameplay change, off by default):** a "Gameplay changes" checkbox, "Slower hyperdrive ×" with
   a number box (1–10, default 3): every ship's hyperdrive takes that many times as long to spool up before a jump, for
   all empires, pirates and the player. Interdicted ships spool 5× the original in total. Jumps themselves are unchanged.

@@ -268,6 +268,12 @@ export interface GenerateGalaxyOptions {
  *  (so a nested search cannot clobber it). Module-level so it is not a Galaxy field (the save codec walks those). */
 const RING_EDGES = new Float64Array(3);
 
+/** Mechanoid (the Ancient Guardians) and Shakturi: story races, never a normally occurring population (races.txt Playable N, CanBePirate N). */
+export const STORY_RACE_NAMES: readonly string[] = ['Mechanoid', 'Shakturi'];
+export function isStoryRace(race: Race): boolean {
+    return STORY_RACE_NAMES.includes(race.name);
+}
+
 export class Galaxy {
     rnd: Random;
     // Port of Galaxy.cs static CryptoRnd (CryptoRandom, unseeded). The C#
@@ -3751,6 +3757,18 @@ export class Galaxy {
         return num2;
     }
 
+    /** The normal (Playable) race whose natives fill a story race's region on this habitat: native to its type, below the independent-colony limit, preferring a race with no home system yet, then the fewest colonies, then race order. */
+    private storyRegionNativeRace(habitat: Habitat, raceUsed: boolean[]): Race | null {
+        let best: Race | null = null;
+        let bestKey = 0;
+        for (const r of this.races) {
+            if (!r.playable || isStoryRace(r) || r.nativeHabitatType !== habitat.type || this.checkIndependentColonyLimitForRace(r)) continue;
+            const key = (raceUsed[r.pictureIndex] ? 1e6 : 0) + (this.raceIndependentColonyCount?.[r.pictureIndex] ?? 0);
+            if (best === null || key < bestKey) { best = r; bestKey = key; }
+        }
+        return best;
+    }
+
     // Port of Galaxy.6.cs SelectPopulation(habitat, sun) (Galaxy.6.cs:1218).
     // Places an independent (native) population on the habitat when the
     // nearest race region's race natively inhabits this habitat type and the
@@ -3769,6 +3787,10 @@ export class Galaxy {
         if (galaxyLocation !== null) {
             race = galaxyLocation.relatedRace;
         }
+        // DEVIATION (not in the C#): the C# never lets the player be a story race, so its race region (the player's own race
+        // region) never seeds Mechanoid / Shakturi natives. A player who picked one (newGameWizard PLAYER_ONLY_RACE_NAMES) gets a
+        // region of that race: its natives are a normal race instead (best fit for the habitat, no Rnd).
+        if (race !== null && isStoryRace(race)) race = this.storyRegionNativeRace(habitat, raceUsed);
         if (race !== null && race.nativeHabitatType === habitat.type && !this.checkIndependentColonyLimitForRace(race)) {
             if (habitat.baseQuality < 0.6) {
                 // C#: habitat.BaseQuality = 0.5f + (float)(Rnd.NextDouble() * 0.4)
