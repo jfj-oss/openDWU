@@ -191,7 +191,7 @@ export class LeviathanRig {
         this.finR.position.set(fr.x, fr.y);
         this.finR.rotation = fr.ang + Math.PI - 0.8 - 0.12 * Math.sin(row + 1.4);
         // Bioluminescence breathes slowly; it flares in the flash.
-        this.lumin.alpha = Math.min(1, 0.5 + 0.2 * Math.sin(t * 0.9 + ph) + flash);
+        this.lumin.alpha = Math.min(1, 0.4 + 0.15 * Math.sin(t * 0.9 + ph) + flash);
         // The hyper-lunge: a white-hot body glow, light streaks dragged back along it, two ripples rolling out.
         const mid = this.carried((LEV_X0 + LEV_X1) / 2, CY - 20);
         this.glow.position.set(mid.x, mid.y);

@@ -1,10 +1,12 @@
 // The Leviathan's art (Void Whale threat, scenarios/void-whale): a giant scarred space whale seen FROM ABOVE like every
 // creature and ship (head along +x, turned with its heading) — a broad blunt box head with the blowhole and the mouth
 // line across the snout (the mouth stays shut), a thick trunk with a spine
-// ridge and dorsal knuckles tapering to broad flukes, two long pectoral fins (the left one torn). The hide is near-black
-// grimy slate, a little lighter where the body curves away at the flanks, with soot streaks, decay mottling, barnacle
+// ridge and dorsal knuckles tapering to broad flukes, two long pectoral fins (the left one torn). Lit from straight above:
+// the back is a dark violet-slate, the sides fall away into near-black (no rim light, so it sits in the dark of space).
+// Alien touches: chitinous plating seams across the back, a paired row of dim glowing dorsal vents, three pairs of small
+// violet eyes along the head, violet bioluminescent markings. Grime: soot streaks, decay mottling, barnacle
 // crusts, dried-blood scabs, scorch marks, pale squid-sucker and rake scars, harpoon puckers, rusted broken harpoons
-// with slack lines, blackened hull plates jammed in, sparse faint cyan markings and small pale eyes on the head's sides.
+// with slack lines, blackened hull plates jammed in, and the old harpoon and hull-plate wreckage.
 //
 // Everything is pure (typed arrays, no DOM, own hash noise — never galaxy.rnd) and baked ONCE at high resolution
 // (body 1600 x 640); the rig (leviathanRig.ts) only moves the parts. Local frame: head toward +x, left flank −y.
@@ -188,12 +190,12 @@ function knuckle(u: number): number {
 /** Pectoral fin roots (texture px), left (−y) and right (+y) flank. */
 export const LEV_FIN_U = 0.6;
 export const LEV_FIN_ROOT: [number, number] = [levX(LEV_FIN_U), CY - levHalf(LEV_FIN_U) * 0.7];
-/** Eyes, low on each side of the head. */
+/** Eyes: three pairs along each side of the head, the front pair largest. */
 export const LEV_EYE_U = 0.76;
-export const LEV_EYES: [number, number][] = [
-    [levX(LEV_EYE_U), CY - levHalf(LEV_EYE_U) * 0.9],
-    [levX(LEV_EYE_U), CY + levHalf(LEV_EYE_U) * 0.9],
-];
+export const LEV_EYES: [number, number][] = [0.76, 0.82, 0.88].flatMap((u, k) => [
+    [levX(u), CY - levHalf(u) * (0.86 - 0.05 * k)],
+    [levX(u), CY + levHalf(u) * (0.86 - 0.05 * k)],
+] as [number, number][]);
 
 /** A point on the back: u along, t across (0 left edge .. 1 right edge). */
 export function levFlank(u: number, t: number): [number, number] {
@@ -206,19 +208,21 @@ export function levFlank(u: number, t: number): [number, number] {
 
 const BACK: Rgb = [9, 11, 16];
 const FLANK: Rgb = [30, 35, 45];
+/** The lit top of the back and the sides falling away into shadow. */
+const TOP: Rgb = [34, 31, 46];
+const SIDE: Rgb = [6, 6, 10];
 const BRUISE: Rgb = [30, 22, 32];
 const HIDE_GREY: Rgb = [48, 52, 60];
 const SCAR: Rgb = [128, 132, 134];
 const SCAR_PINK: Rgb = [128, 104, 104];
-const RIM: Rgb = [60, 96, 120];
-const IVORY: Rgb = [232, 222, 196];
-const LUMIN_CORE: Rgb = [196, 250, 255];
-const LUMIN_HALO: Rgb = [40, 170, 226];
+const RIM: Rgb = [44, 46, 74];
+const LUMIN_CORE: Rgb = [214, 196, 255];
+const LUMIN_HALO: Rgb = [104, 56, 196];
 
-/** Light direction (toward the light): mostly from the viewer's side, a little ahead and from the left flank. */
-const LX = 0.22;
-const LY = -0.62;
-const LZ = 0.75;
+/** Light direction (toward the light): from straight above (the viewer's side), a touch ahead and from the left. */
+const LX = 0.06;
+const LY = -0.12;
+const LZ = 1;
 
 /** Lambert of a cylinder-ish surface: `ny` −1 (left flank) .. 1 (right flank), `nx` toward the head. */
 function lambert(nx: number, ny: number): number {
@@ -270,19 +274,19 @@ export function paintLeviathanBody(seed = 91): LeviathanBody {
             const ridge = Math.exp(-Math.pow(across / ridgeW, 2)) * spineH;
             const ridgeSlope = -2 * (across / (ridgeW * ridgeW)) * Math.exp(-Math.pow(across / ridgeW, 2)) * spineH * 0.02;
             const ny = Math.max(-0.97, Math.min(0.97, Math.sign(across) * Math.pow(Math.abs(across), 1.6) * (1 - 0.4 * snout) - ridgeSlope));
-            const nx = snout * 0.7 + (kn > 0.05 && Math.abs(across) < 0.12 ? (knuckle(u + 0.004) - knuckle(u - 0.004)) * -3 : 0);
+            const nx = snout * 0.7 + (kn > 0.05 && Math.abs(across) < 0.12 ? (knuckle(u + 0.004) - knuckle(u - 0.004)) * -1 : 0);
             const lam = lambert(Math.max(-0.9, Math.min(0.9, nx)), ny);
             const big = fbm(nBig, x / 110, y / 110, 4);
             const fine = fbm(nFine, x / 6, y / 6, 2);
-            // From above: the bruised blue-black back, slate flanks, the pale mottled underside showing at the edges.
+            // Lit from above: the violet-slate top of the back, the sides falling away into near-black.
             const edge = Math.abs(across);
-            let col = mix(BACK, FLANK, smoothstep(0.25, 0.85, edge));
+            let col = mix(TOP, SIDE, 0.7 * smoothstep(0.3, 1, edge));
             col = mix(col, BRUISE, 0.55 * smoothstep(0.52, 0.72, big) * (1 - edge));
             // Weathering: mottled decay patches, soot streaks dragged back along the hide.
             const decay = fbm(nBel, x / 60, y / 40, 4);
             col = mix(col, [34, 32, 24], 0.55 * smoothstep(0.6, 0.78, decay));
             col = mix(col, [52, 48, 44], 0.3 * smoothstep(0.7, 0.85, fbm(nBel, x / 18 + 50, y / 18, 2)));
-            let k = 0.4 + 0.9 * lam;
+            let k = 0.1 + 1.0 * Math.pow(lam, 2.2);
             const soot = smoothstep(0.52, 0.72, fbm(nBig, x / 260 + 20, y / 11, 3));
             k *= 1 - 0.4 * soot;
             // Body wrinkles (sperm-whale skin): long wavy creases across the trunk, fewer on the head.
@@ -290,18 +294,22 @@ export function paintLeviathanBody(seed = 91): LeviathanBody {
             const groove = 1 - smoothstep(0, 0.035, Math.abs(wr - 0.5));
             k *= 1 - 0.28 * groove * (1 - 0.7 * head) * smoothstep(0.05, 0.3, 1 - edge);
             k *= 0.9 + 0.2 * fine;
-            // The spine ridge: a lit crest with a shadow on its far side.
-            k *= 1 + 0.9 * ridge * (across < 0 ? 1 : -0.55);
+            // Chitinous plating: a network of dark seams between irregular plates over the back of the trunk.
+            const plate = fbm(nWr, x / 70 + 40, y / 46, 2) + 0.35 * fbm(nBig, x / 28, y / 28 + 9, 2);
+            const seam = 1 - smoothstep(0, 0.03, Math.abs(plate - 0.68));
+            k *= 1 - 0.45 * seam * smoothstep(0.12, 0.25, u) * (1 - head) * (1 - smoothstep(0.5, 0.8, edge));
+            // The spine ridge: a softly lit crest (the light is overhead, so both sides of it shade alike).
+            k *= 1 + 0.3 * ridge * (1 - smoothstep(0.02, 0.1, Math.abs(across))) - 0.12 * ridge * smoothstep(0.04, 0.12, Math.abs(across));
             // Muscle bands either side of the spine: soft dark troughs.
             k *= 1 - 0.25 * Math.exp(-Math.pow((Math.abs(across) - 0.2) / 0.08, 2)) * (1 - head);
             // An oily dark sheen: a tight cold highlight, broken up by the grime.
-            const sheen = Math.pow(lam, 22) * 0.55 * (1 - 0.7 * soot) * (0.6 + 0.8 * fine);
-            const crest = across < 0.02 ? ridge * Math.exp(-Math.pow((across + 0.03) / 0.05, 2)) * 0.35 : 0;
-            const rim = crest + (1 - smoothstep(0, 10, Math.min(py - top, bot - py))) * 0.75 + (1 - smoothstep(0, 10, front)) * 0.35;
+            const sheen = Math.pow(lam, 22) * 0.12 * (1 - 0.7 * soot) * (0.6 + 0.8 * fine);
+            const crest = ridge * Math.exp(-Math.pow(across / 0.05, 2)) * 0.15;
+            const rim = crest;
             const i = (y * LEV_W + x) * 4;
-            img.data[i] = col[0] * k + 70 * sheen + RIM[0] * rim;
-            img.data[i + 1] = col[1] * k + 92 * sheen + RIM[1] * rim;
-            img.data[i + 2] = col[2] * k + 104 * sheen + RIM[2] * rim;
+            img.data[i] = col[0] * k + 58 * sheen + RIM[0] * rim;
+            img.data[i + 1] = col[1] * k + 66 * sheen + RIM[1] * rim;
+            img.data[i + 2] = col[2] * k + 96 * sheen + RIM[2] * rim;
             img.data[i + 3] = cover * 255;
         }
     }
@@ -320,6 +328,7 @@ export function paintLeviathanBody(seed = 91): LeviathanBody {
     paintGrime(img, seed);
     for (const [ex, ey] of LEV_EYES) paintEye(img, lumin, ex, ey);
     paintMarkings(img, lumin, seed);
+    paintVents(img, lumin, seed);
     paintPlates(img, seed);
     paintHarpoons(img, seed);
     return { body: img, lumin };
@@ -474,11 +483,11 @@ function paintEye(img: RgbaImage, lumin: RgbaImage, x: number, y: number): void 
         segment(img, x - 18 + j * 3, y - side * (8 + j * 4), x + 16 - j * 2, y - side * (9 + j * 4), 1.3, (px, py, tt) => tint(img, px, py, 10, 12, 18, 0.6 * Math.sin(Math.PI * tt)));
     }
     disc(img, x, y, 5.5, (px, py, d) => {
-        const c = mix([240, 250, 236], [150, 200, 196], smoothstep(0.2, 1, d));
+        const c = mix([200, 170, 255], [90, 50, 150], smoothstep(0.2, 1, d));
         over(img, px, py, c[0], c[1], c[2], 1 - smoothstep(0.8, 1, d));
-        if (d < 0.32) over(img, px, py, 30, 10, 14, 1 - smoothstep(0.2, 0.32, d));
+        if (d < 0.4) over(img, px, py, 8, 4, 14, 1 - smoothstep(0.28, 0.4, d)); // a slit pupil-less black core
     });
-    glowDot(lumin, x, y, 3.5, 18, [226, 250, 240], [80, 170, 180], 0.8);
+    glowDot(lumin, x, y, 3, 14, LUMIN_CORE, LUMIN_HALO, 0.55);
 }
 
 /** An additive glow dot on `img`: core radius rc, halo radius rh. */
@@ -492,7 +501,7 @@ function glowDot(img: RgbaImage, x: number, y: number, rc: number, rh: number, c
     });
 }
 
-/** Faint cyan bioluminescent markings: a dotted line down each flank, spots beside the spine, stripes on the snout. */
+/** Faint violet bioluminescent markings: a dotted line down each flank, spots beside the spine, stripes on the snout. */
 function paintMarkings(img: RgbaImage, lumin: RgbaImage, seed: number): void {
     const dots: [number, number, number][] = [];
     for (let k = 0; k < 38; k++) {
@@ -515,25 +524,39 @@ function paintMarkings(img: RgbaImage, lumin: RgbaImage, seed: number): void {
         }
     }
     for (const [x, y, r] of dots) {
-        disc(img, x, y, r * 1.4, (px, py, d) => tint(img, px, py, 90, 160, 176, 0.18 * (1 - smoothstep(0.4, 1, d))));
+        disc(img, x, y, r * 1.4, (px, py, d) => tint(img, px, py, 120, 90, 180, 0.16 * (1 - smoothstep(0.4, 1, d))));
         glowDot(lumin, x, y, r * 0.7, r * 4, LUMIN_CORE, LUMIN_HALO, 0.26);
     }
 }
 
-/** A conical tooth from base (x, y): `dir` +1 points down (+y), −1 up; lean toward the throat; broken = a flat stump. */
-function tooth(img: RgbaImage, x: number, y: number, halfW: number, h: number, dir: number, lean: number, broken: boolean): void {
-    const hh = broken ? h * 0.5 : h;
-    const tipX = x + lean * h;
-    const pts: [number, number][] = broken
-        ? [[x - halfW, y], [x + halfW, y], [tipX + halfW * 0.4, y + dir * hh], [tipX - halfW * 0.5, y + dir * hh * 0.85]]
-        : [[x - halfW, y], [x + halfW, y], [x + halfW * 0.45 + lean * h * 0.6, y + dir * h * 0.6], [tipX, y + dir * h], [x - halfW * 0.5 + lean * h * 0.6, y + dir * h * 0.6]];
-    polygon(img, pts, (px, py, cover) => {
-        const along = Math.abs(py + 0.5 - y) / hh;
-        const across = (px + 0.5 - (x + lean * (py + 0.5 - y) * dir)) / halfW;
-        const lit = 0.55 + 0.45 * clamp01(0.5 - across * 0.6);
-        const c = mix([118, 98, 82], IVORY, smoothstep(0, 0.45, along));
-        over(img, px, py, c[0] * lit, c[1] * lit, c[2] * lit, cover);
-    });
+/** Dorsal vents: a paired row of short curved slits either side of the spine down the trunk, each breathing a dim
+ * violet glow from inside (alien, not whale). */
+function paintVents(img: RgbaImage, lumin: RgbaImage, seed: number): void {
+    for (let k = 0; k < 8; k++) {
+        const u = 0.3 + k * 0.045;
+        for (const t of [0.34, 0.66]) {
+            const side = t < 0.5 ? -1 : 1;
+            const [x, y] = levFlank(u, t + side * 0.01 * lh(seed, 1400 + k));
+            const L = 26 - k * 1.6;
+            const x0 = x - L / 2;
+            const x1 = x + L / 2;
+            const bow = side * 5;
+            let qx = x0;
+            let qy = y;
+            for (let j = 1; j <= 6; j++) {
+                const tt = j / 6;
+                const nx = x0 + (x1 - x0) * tt;
+                const ny = y + bow * Math.sin(Math.PI * tt);
+                segment(img, qx, qy, nx, ny, 4, (px, py, _t, d) => {
+                    shade(img, px, py, 1 - 0.55 * (1 - d / 4));
+                    if (d < 1.4) tint(img, px, py, 60, 20, 90, 0.7);
+                });
+                qx = nx;
+                qy = ny;
+            }
+            glowDot(lumin, x, y + bow * 0.6, 2, 12, LUMIN_CORE, LUMIN_HALO, 0.3);
+        }
+    }
 }
 
 /** Torn hull shards jammed into the hide, half sunk in crusted wounds: dark gunmetal, a lit torn edge, rust streaks. */
@@ -650,8 +673,9 @@ export function paintLeviathanFin(seed: number, torn: boolean, dark: number): Rg
             const m = fbm(n, x / 30, y / 20, 3);
             let c = mix(FLANK, HIDE_GREY, smoothstep(0.3, 0.8, m) * 0.6);
             c = mix(c, BACK, smoothstep(0.65, 1, s) * 0.3);
-            const k = (0.3 + 0.95 * lam) * dark;
-            const rim = (1 - smoothstep(0, 6, edge)) * 0.4 * dark;
+            // Lit from above too, but they sit at the body's shadowed sides: darker than the back, no bright rim.
+            const k = (0.18 + 0.6 * lam) * dark;
+            const rim = (1 - smoothstep(0, 6, edge)) * 0.12 * dark;
             const i = (y * FIN_LEN + x) * 4;
             img.data[i] = c[0] * k + RIM[0] * rim;
             img.data[i + 1] = c[1] * k + RIM[1] * rim;
@@ -703,8 +727,8 @@ export function paintLeviathanFluke(seed = 91): RgbaImage {
             const ridge = 1 - smoothstep(0, 0.35, a);
             let c = mix(FLANK, HIDE_GREY, smoothstep(0.35, 0.8, m) * 0.5);
             c = mix(c, BACK, ridge * 0.5);
-            const k = (lower ? 0.82 : 0.95) * (0.65 + 0.45 * smoothstep(0.2, 0.9, (px - xLe) / Math.max(1, xTe - xLe)));
-            const rim = (1 - smoothstep(0, 5, xTe - px)) * 0.35;
+            const k = (lower ? 0.6 : 0.7) * (0.65 + 0.45 * smoothstep(0.2, 0.9, (px - xLe) / Math.max(1, xTe - xLe)));
+            const rim = (1 - smoothstep(0, 5, xTe - px)) * 0.12;
             const i = (y * FLUKE_W + x) * 4;
             img.data[i] = c[0] * k + SCAR[0] * rim * 0.5;
             img.data[i + 1] = c[1] * k + SCAR[1] * rim * 0.5;
