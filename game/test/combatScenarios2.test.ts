@@ -61,7 +61,8 @@ import { applyCorruptionToIncome } from '../src/sim/logistics/orders';
 import { EmpireMessageType } from '../src/sim/messages';
 import { Troop, TroopType } from '../src/sim/cargo';
 import type { Empire } from '../src/sim/empire';
-import { obtainEmpireEvaluation } from '../src/sim/diplomacy';
+import { DiplomaticRelationType, obtainDiplomaticRelation, obtainEmpireEvaluation } from '../src/sim/diplomacy';
+import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { galaxyPlagues } from '../src/sim/eventTypes';
 import { canDeployXaraktorVirus } from '../src/sim/player/orderMenu';
 import { ShipActionType, createMissionShipActionAt, createShipAction } from '../src/sim/player/shipAction';
@@ -72,7 +73,7 @@ import { BALANCED, MERCENARY, PIRATE, SMUGGLER, aiCapital, pirateConstructionShi
 import { PiratePlayStyle, pirateFactionModifiers } from '../src/sim/pirates';
 import { createGalaxyScenario } from '../src/sim/scenario/state';
 import { loadScenarioOverlayFs } from './helpers/scenarioGame';
-import { FIGHTING_RETREATS_ADDON_ID, fightingRetreatsFrame, fightingRetreatsState, fleetBattle, fleetRepairPoint } from '../src/sim/scenario/fightingRetreats/fightingRetreats';
+import { FIGHTING_RETREATS_ADDON_ID, fightingRetreatsFrame, fightingRetreatsState, fleetBattle, fleetFallbackPoint, fleetRepairPoint, fleetRetreatStatusText } from '../src/sim/scenario/fightingRetreats/fightingRetreats';
 
 let gameData: GameData;
 let componentDefs: Map<number, ComponentDefinition>;
@@ -1208,9 +1209,13 @@ describe('(7) fighting retreats add-on', () => {
     }
 
     it('outgunned (frOutgunned, default the enemy at 1.5x) for frHoldSeconds the fleet withdraws to the nearest yard; the count-down survives the hysteresis band and resets above frHysteresis % of the line', () => {
-        const { g, fleet, jav, b } = stageFleet();
+        const { g, fleet, jav, jav2, b } = stageFleet();
         withRetreats(g);
         expect(g.scenario!.params.frOutgunned).toBe(1.5);
+        for (const s of [jav, jav2]) { // badly damaged (> frDamagedPct): the repair trip, not a fall-back
+            s.components.items[0].status = ComponentStatus.Damaged;
+            s.reDefine();
+        }
         const battle = fleetBattle(fleet);
         expect(battle.engaged).toBe(2);
         expect(battle.own).toBeGreaterThan(0);
@@ -1291,7 +1296,9 @@ describe('(7) fighting retreats add-on', () => {
     }, 180000);
 
     it('no loss threshold: an outgunned fleet withdraws at first contact once the hold is up', () => {
-        const { g, fleet } = stageFleet();
+        const { g, fleet, jav } = stageFleet();
+        jav.components.items[0].status = ComponentStatus.Damaged;
+        jav.reDefine();
         withRetreats(g, { frOutgunned: 0.2, frHoldSeconds: 0 });
         tick(g, 1000);
         tick(g, 1000);
@@ -1312,6 +1319,62 @@ describe('(7) fighting retreats add-on', () => {
         for (const s of fleet.ships) place(g, s, yard.xpos + 1000, yard.ypos);
         for (let k = 0; k < 4; k++) tick(g, 1000);
         expect(fleet.frWithdrawal).toBeUndefined();
+    });
+
+    it('an outgunned fleet with at most frDamagedPct damaged ships FALLS BACK (Move, to its home base, else the nearest own colony / base outside the battle system) instead of repairing; damaged ships still repair; it is free on arrival', () => {
+        const { g, fleet, jav, jav2, player } = stageFleet();
+        withRetreats(g, { frOutgunned: 0.2, frHoldSeconds: 0 });
+        expect(g.scenario!.params.frDamagedPct).toBe(30);
+        const sys = jav.nearestSystemStar;
+        const fb = fleetFallbackPoint(g, fleet)!;
+        expect(fb).not.toBeNull();
+        expect(fb.hasBeenDestroyed).toBe(false);
+        // The home base wins when set and outside the battle system.
+        const home = g.habitats.find((h) => g.systems[h.systemIndex].systemStar !== sys)!;
+        fleet.gatherPoint = home;
+        expect(fleetFallbackPoint(g, fleet)).toBe(home);
+        fleet.gatherPoint = null;
+        tick(g, 1000);
+        tick(g, 1000);
+        expect(fleet.frWithdrawal).toBeDefined();
+        expect(fleet.frWithdrawal!.fallback).toBe(true);
+        expect(fleet.frWithdrawal!.yard).toBe(fb);
+        expect(fleet.mission!.type).toBe(BuiltObjectMissionType.Move);
+        expect(fleet.mission!.priority).toBe(BuiltObjectMissionPriority.Unavailable);
+        const texts = [...(player.messages as { description?: string }[])].map((m) => m.description ?? '');
+        expect(texts.some((t) => t.includes('withdrew') && t.includes(`fall back to ${(fb as { name: string }).name}`))).toBe(true);
+        expect(fleetRetreatStatusText(g, fleet)).toContain('Falling back to');
+        void jav2;
+    });
+
+    it('more than frDamagedPct of the fleet damaged: the repair trip as before', () => {
+        const { g, fleet, jav } = stageFleet();
+        withRetreats(g, { frOutgunned: 0.2, frHoldSeconds: 0, frDamagedPct: 30 });
+        jav.components.items[0].status = ComponentStatus.Damaged; // 1 of 2 = 50 % > 30
+        jav.reDefine();
+        tick(g, 1000);
+        tick(g, 1000);
+        expect(fleet.frWithdrawal).toBeDefined();
+        expect(fleet.frWithdrawal!.fallback).toBeUndefined();
+        expect(fleet.mission!.type).toBe(BuiltObjectMissionType.Repair);
+    });
+
+    it('coalition: a ship of an empire not at war with the fleet\'s, attacking the same enemy in the system, counts on its side; one at war does not', () => {
+        const { g, fleet, jav, b, player } = stageFleet();
+        withRetreats(g);
+        const base = fleetBattle(fleet).own;
+        const other = g.empires.find((e) => e !== null && e !== player && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null && e.builtObjects.some((s) => s.role === BuiltObjectRole.Military && s.topSpeed > 0))!;
+        const ally = other.builtObjects.find((s) => s.role === BuiltObjectRole.Military && s.topSpeed > 0)!;
+        hold(ally);
+        place(g, ally, jav.xpos + 200, jav.ypos);
+        ally.nearestSystemStar = jav.nearestSystemStar;
+        b.attackers!.push(ally);
+        obtainDiplomaticRelation(player, other).type = DiplomaticRelationType.War;
+        obtainDiplomaticRelation(other, player).type = DiplomaticRelationType.War;
+        expect(fleetBattle(fleet).own).toBe(base);
+        obtainDiplomaticRelation(player, other).type = DiplomaticRelationType.None;
+        obtainDiplomaticRelation(other, player).type = DiplomaticRelationType.None;
+        expect(fleetBattle(fleet).own).toBeGreaterThan(base);
     });
 
     it('toggle off: the frame hook does nothing (no state bag, no fleet fields, no draws)', () => {

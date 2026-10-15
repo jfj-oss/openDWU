@@ -1,7 +1,7 @@
 {
   "id": "fighting-retreats",
   "name": "Fighting retreats",
-  "description": "Gameplay change: a fleet that notices the fight has turned against it (less firepower than the enemies it is fighting) withdraws together to the nearest friendly repair point instead of fighting to the end, then goes back to its duties (automated) or waits for orders. Ships keep the original's per-design Flee setting; a fleet whose ships are set to Flee: never does not withdraw. Set on the new-game wizard's Other Empires page.",
+  "description": "Gameplay change: a fleet that notices the fight has turned against it (less firepower than the enemies it is fighting) falls back together (to its home base or the nearest own system; to the nearest repair yard when more than a set share of it is damaged) instead of fighting to the end, then goes back to its duties (automated) or waits for orders. Ships keep the original's per-design Flee setting; a fleet whose ships are set to Flee: never does not withdraw. Set on the new-game wizard's Other Empires page.",
   "flags": [
     {
       "name": "fightingRetreats",
@@ -38,6 +38,13 @@
       "default": 125,
       "min": 100,
       "max": 400
+    },
+    {
+      "name": "frDamagedPct",
+      "label": "A withdrawing fleet goes to a repair yard only when more than this % of its ships in the battle are damaged (else it falls back)",
+      "default": 30,
+      "min": 0,
+      "max": 100
     }
   ]
 }
