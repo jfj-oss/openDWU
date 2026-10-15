@@ -455,6 +455,7 @@ export class ArtBundleLayer {
             this.sites = [];
             let k = 0;
             for (const site of list) {
+                if (site.threat === 'purifier') continue; // its own medium glyphs (overlayLayer updateScenarioMarkers), no ring
                 const style = threatMarkerStyle(site.threat, site.level, site.kind);
                 if (style !== null) this.sites.push({ site, style, seed: k++ * 7 + site.threat.length });
             }

@@ -1166,7 +1166,8 @@ export class OverlayLayer {
             this.threatSig.reset();
             return;
         }
-        if (this.threatFrame++ % 30 === 0) this.threatSites = threatKnownSites(this.galaxy, player);
+        // The Purifier draws its own medium glyphs (updateScenarioMarkers): no framework ring for its rows.
+        if (this.threatFrame++ % 30 === 0) this.threatSites = threatKnownSites(this.galaxy, player).filter((s) => s.threat !== 'purifier');
         if (this.threatSites.length === 0) {
             if (g.visible) g.clear();
             this.threatSig.reset();
