@@ -9,6 +9,7 @@ import { scenarioGameStart, type HomePlacementHelpers } from '../src/sim/scenari
 import {
     arcMessage,
     arcNews,
+    KNOWLEDGE_CONFIRMED,
     availableThreatActions,
     createThreatFaction,
     flipToFaction,
@@ -70,6 +71,12 @@ import { runPlayerCommand } from '../src/sim/player/playerCommands';
 import { threatLeadRows, threatsSectionVisible } from '../src/ui/internalSecurityView';
 import { CharacterRole, getEmpireCharacters } from '../src/sim/characters';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
+import { runGameSeconds } from '../src/sim/tick/harness';
+import { stateDigest } from '../src/sim/tick/digest';
+import { GalaxyTime } from '../src/sim/galaxyTime';
+import { deserializeGame, serializeGame } from '../src/sim/save/gameSave';
+import type { StartGameOptions } from '../src/sim/startGameOptions';
+
 
 let base: GameData;
 beforeAll(async () => {
@@ -878,7 +885,7 @@ describe('purifier', () => {
         const { g: w, st: ws } = woken();
         expect(ws.phase).toBe('awake');
         expect(ws.destroyer!.isPlanetDestroyer).toBe(true);
-        expect(ws.escorts.length).toBeGreaterThanOrEqual(5);
+        expect(ws.escorts.length).toBeGreaterThanOrEqual(3);
         expect(ws.guards.length).toBeGreaterThan(0);
         expect(ws.faction!.pirateEmpireBaseHabitat).toBe(ws.anchorage);
         expect(['preprogrammed', 'waker']).toContain(ws.program);
@@ -928,4 +935,53 @@ describe('purifier', () => {
         const viewer = g.playerEmpire!;
         expect(purifierMapFeatures(g, viewer)?.markers.length ?? 0).toBeLessThanOrEqual(2);
     }, 600000);
+
+    it('save / load mid-hunt: phase, faction, destroyer, escorts, dock, sightings, knowledge and the coalition survive; the run continues identically', () => {
+        const { game, gameData } = createScenarioGame(base, { scenario: comboOverlayFs(ids), flags: { threatPurifier: true }, params: PARAMS, options: age3 });
+        const g = game.galaxy;
+        purifierPeriodic(g);
+        const st = purifierState(g);
+        const waker = g.empires.find((e) => e !== null && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null && e !== g.playerEmpire)!;
+        expect(purifierWake(g, st, waker)).toBe(true);
+        runGameSeconds(g, 30);
+        // Give it a lived-in state: a sighting, knowledge of the station, a coalition at its staging system, a rudder hit.
+        const viewer = g.playerEmpire!;
+        st.sightings.push({ empireId: viewer.empireId, x: st.destroyer!.xpos, y: st.destroyer!.ypos, systemIndex: 3, date: galaxyStarDate(g), lastMessage: -1e18 });
+        revealTo(g, st, viewer, KNOWLEDGE_CONFIRMED);
+        revealTo(g, { knowledge: st.dockKnowledge }, viewer, KNOWLEDGE_CONFIRMED);
+        st.gatherSys = 3;
+        st.gatherGo = true;
+        st.launches = 2;
+        st.rudderHits = 1;
+        st.rudderTotal = 2;
+        const time = new GalaxyTime();
+        time.bindGalaxy(g);
+        const text = serializeGame(game, time, {} as StartGameOptions);
+        const lg = deserializeGame(text, gameData).game.galaxy;
+        const ls = peekPurifierState(lg)!;
+        expect(ls).not.toBeNull();
+        expect(ls.phase).toBe('awake');
+        expect(ls.mode).toBe(st.mode);
+        expect(ls.program).toBe(st.program);
+        expect(ls.faction!.name).toBe(st.faction!.name);
+        expect(ls.faction!.empireId).toBe(st.faction!.empireId);
+        expect(lg.pirateEmpires.includes(ls.faction!) || lg.empires.includes(ls.faction!)).toBe(true);
+        expect(ls.destroyer!.isPlanetDestroyer).toBe(true);
+        expect(ls.destroyer!.builtObjectID).toBe(st.destroyer!.builtObjectID);
+        expect(lg.builtObjects.includes(ls.destroyer!)).toBe(true);
+        expect(ls.escorts.map((b) => b.builtObjectID)).toEqual(st.escorts.map((b) => b.builtObjectID));
+        expect(ls.guards.length).toBe(st.guards.length);
+        expect(ls.anchorage!.habitatIndex).toBe(st.anchorage!.habitatIndex);
+        expect([ls.dockX, ls.dockY]).toEqual([st.dockX, st.dockY]);
+        expect(ls.waker!.empireId).toBe(waker.empireId);
+        expect(ls.sightings).toEqual(st.sightings);
+        expect(ls.knowledge).toEqual(st.knowledge);
+        expect(ls.dockKnowledge).toEqual(st.dockKnowledge);
+        expect([ls.gatherSys, ls.gatherGo, ls.launches, ls.rudderHits, ls.rudderTotal]).toEqual([3, true, 2, 1, 2]);
+        // Both continue the same: the loaded game's state digest after N more seconds equals the uninterrupted run's.
+        runGameSeconds(g, 60);
+        runGameSeconds(lg, 60);
+        expect(stateDigest(lg)).toBe(stateDigest(g));
+        expect(peekPurifierState(lg)!.worlds).toBe(peekPurifierState(g)!.worlds);
+    }, 900000);
 });

@@ -1616,7 +1616,7 @@ function invasionSucceeded(galaxy: Galaxy, self: Habitat, defender: Empire | nul
     if (self.invadingTroops !== null && self.invadingTroops.count > 0 && self.invadingTroops.items[0] != null) empire = troopEmpire(self.invadingTroops.items[0]);
     if (flag) {
         failPirateDefendMission(galaxy, self.empire, self);
-        const raidBonusFactor = empireRaidBonusFactor(empire!);
+        const raidBonusFactor = empire !== null ? empireRaidBonusFactor(empire) : 1; // the invaders may already be gone (a soak crash)
         doRaidBonuses(galaxy, empire, self, raidBonusFactor);
         const invChars = invadingCharacters(self);
         if (invChars !== null && invChars.length > 0) {

@@ -65,6 +65,7 @@ import { isObjectVisibleToThisEmpire } from '../../independentTraders';
 import { assignMission } from '../../missions/assign';
 import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission } from '../../missions/mission';
 import { empireShipGroups, shipGroupAssignMission } from '../../fleets/shipGroup';
+import { DiplomaticRelationType } from '../../diplomacy';
 import { identifyPirateBase } from '../../characters';
 import { isHumanEmpire } from '../../humanEmpires';
 import { GAME_DAY_LENGTH, gameYear, registerScenarioEvent, registerScenarioFramePeriodic, registerScenarioQuery } from '../hooks';
@@ -175,6 +176,12 @@ export interface PurifierState {
     bodies: number;
     victims: Empire[];
     rudderHits: number;
+    /** Every rudder hit ever (rudderHits resets at each repair). Absent in older saves. */
+    rudderTotal: number;
+    /** The coalition's staging system (index; -1 none), whether it has gone in, and how many times it has (absent in older saves). */
+    gatherSys: number;
+    gatherGo: boolean;
+    launches: number;
     lastDamaged: number;
     lastX: number;
     lastY: number;
@@ -205,7 +212,7 @@ function newState(): PurifierState {
     return {
         phase: 'waiting', anchorage: null, openDate: 0, faction: null, destroyer: null, escorts: [], guards: [], dockKnowledge: [], dockX: 0, dockY: 0, waker: null, wakeDate: 0, program: null, builderFamily: -1, huntOthers: false,
         hunted: [], mode: 'breakout', modeDate: 0, target: null, skip: [], progDist: 0, progDate: 0, hideSpot: null, hideDate: 0, nextStrikeDate: 0, noTargetSince: 0, retargets: 0, worlds: 0, bodies: 0, victims: [],
-        rudderHits: 0, lastDamaged: 0, lastX: 0, lastY: 0, sightings: [], visibleTo: [], engaged: false, exposed: false, exposeDate: 0, portTrips: 0, repairs: 0, startStrength: 0,
+        rudderHits: 0, rudderTotal: 0, gatherSys: -1, gatherGo: false, launches: 0, lastDamaged: 0, lastX: 0, lastY: 0, sightings: [], visibleTo: [], engaged: false, exposed: false, exposeDate: 0, portTrips: 0, repairs: 0, startStrength: 0,
         killsBy: {}, kills: 0, losses: 0, killer: null, bounty: 0, endDate: 0, lastScan: 0, lastDispatch: 0, decisionPending: false, history: [], sentStages: {}, knowledge: [],
     };
 }
@@ -225,18 +232,23 @@ const P = {
     year: (g: Galaxy) => p(g, 'purifierYear', 25),
     wakeYears: (g: Galaxy) => p(g, 'purifierWakeYears', 12),
     techBonus: (g: Galaxy) => Math.trunc(p(g, 'purifierTechBonus', 1)),
-    escortPct: (g: Galaxy) => p(g, 'purifierEscortPct', 90),
-    minEscorts: (g: Galaxy) => Math.trunc(p(g, 'purifierMinEscorts', 5)),
+    destroyerPct: (g: Galaxy) => Math.max(10, p(g, 'purifierDestroyerPct', 60)),
+    escortPct: (g: Galaxy) => p(g, 'purifierEscortPct', 50),
+    minEscorts: (g: Galaxy) => Math.trunc(p(g, 'purifierMinEscorts', 3)),
     maxEscorts: (g: Galaxy) => Math.trunc(p(g, 'purifierMaxEscorts', 40)),
     waker50: (g: Galaxy) => p(g, 'purifierWakerChoosesPct', 50),
-    strikeDays: (g: Galaxy) => p(g, 'purifierStrikeDays', 120),
-    outgunned: (g: Galaxy) => Math.max(0.1, p(g, 'purifierOutgunnedRatio', 1.5)),
-    hunterRatio: (g: Galaxy) => Math.max(0.1, p(g, 'purifierHunterRatio', 0.8)),
+    strikeDays: (g: Galaxy) => p(g, 'purifierStrikeDays', 180),
+    outgunned: (g: Galaxy) => Math.max(0.1, p(g, 'purifierOutgunnedRatio', 2)),
+    bold: (g: Galaxy) => Math.max(0.1, p(g, 'purifierBoldRatio', 1.5)),
+    hunterRatio: (g: Galaxy) => Math.max(0.1, p(g, 'purifierHunterRatio', 1.2)),
+    gatherPct: (g: Galaxy) => p(g, 'purifierGatherPct', 80),
+    urgencyStep: (g: Galaxy) => p(g, 'purifierUrgencyStep', 8),
+    urgencyFloor: (g: Galaxy) => p(g, 'purifierUrgencyFloor', 35),
     hideHopDays: (g: Galaxy) => p(g, 'purifierHideHopDays', 90),
     retargetYears: (g: Galaxy) => p(g, 'purifierRetargetYears', 1.5),
     rudderPct: (g: Galaxy) => p(g, 'purifierRudderPct', 8),
     rudderSpool: (g: Galaxy) => p(g, 'purifierRudderSpool', 0.5),
-    portDamagePct: (g: Galaxy) => p(g, 'purifierPortDamagePct', 35),
+    portDamagePct: (g: Galaxy) => p(g, 'purifierPortDamagePct', 10),
     repairDays: (g: Galaxy) => p(g, 'purifierRepairDays', 90),
     exposeYears: (g: Galaxy) => p(g, 'purifierExposeYears', 3),
     wakerRep: (g: Galaxy) => p(g, 'purifierWakerRep', 5),
@@ -401,7 +413,7 @@ function median3(values: number[]): number {
 function groupDesigns(galaxy: Galaxy, faction: Empire, lvl: number): { destroyer: Design | null; escorts: Design[] } {
     raiseFactionTech(galaxy, faction, lvl);
     const now = galaxyStarDate(galaxy);
-    const destroyer = generatePlanetDestroyerDesign(galaxy, 1.0, faction, now);
+    const destroyer = generatePlanetDestroyerDesign(galaxy, P.destroyerPct(galaxy) / 100, faction, now);
     faction.designs.push(destroyer);
     const escorts: Design[] = [];
     for (const sub of [BuiltObjectSubRole.Cruiser, BuiltObjectSubRole.Destroyer, BuiltObjectSubRole.Frigate, BuiltObjectSubRole.Cruiser, BuiltObjectSubRole.CapitalShip, BuiltObjectSubRole.Destroyer, BuiltObjectSubRole.Escort]) {
@@ -657,7 +669,7 @@ export function purifierPickTarget(galaxy: Galaxy, st: PurifierState): Habitat |
     for (const h of all.slice(0, MAX_CANDIDATES)) {
         let f = 0;
         for (const q of defs) if (galaxy.calculateDistance(q.x, q.y, h.xpos, h.ypos) <= DEFENCE_RANGE) f += q.f;
-        if (f * P.outgunned(galaxy) <= mine) return h;
+        if (f <= mine * P.bold(galaxy)) return h;
     }
     return null;
 }
@@ -896,7 +908,10 @@ function rudder(galaxy: Galaxy, st: PurifierState): void {
     const dc = d.damagedComponentCount;
     for (let i = st.lastDamaged; i < dc; i++) {
         // RND(purifier rudder): one roll per newly damaged component.
-        if (galaxy.rnd.nextDouble() * 100 < P.rudderPct(galaxy)) st.rudderHits++;
+        if (galaxy.rnd.nextDouble() * 100 < P.rudderPct(galaxy)) {
+            st.rudderHits++;
+            st.rudderTotal = (st.rudderTotal ?? 0) + 1;
+        }
     }
     st.lastDamaged = dc;
 }
@@ -920,7 +935,7 @@ export function purifierHunters(galaxy: Galaxy, st: PurifierState): Empire[] {
     return out;
 }
 
-function record(galaxy: Galaxy, st: PurifierState, e: Empire, x: number, y: number, now: number): void {
+function record(galaxy: Galaxy, st: PurifierState, e: Empire, x: number, y: number, now: number, shared = false): void {
     let s = sightingOf(st, e);
     const first = s === null;
     if (s === null) {
@@ -932,7 +947,7 @@ function record(galaxy: Galaxy, st: PurifierState, e: Empire, x: number, y: numb
     s.systemIndex = nearestSystemIndex(galaxy, x, y);
     s.date = now;
     revealTo(galaxy, st, e, KNOWLEDGE_CONFIRMED);
-    if (st.waker !== null && e !== st.waker) expose(galaxy, st);
+    if (!shared && st.waker !== null && e !== st.waker) expose(galaxy, st);
     if (!isHumanEmpire(galaxy, e) || now - s.lastMessage < 45 * GAME_DAY_LENGTH) return;
     s.lastMessage = now;
     const sys = galaxy.systems[s.systemIndex].systemStar;
@@ -969,9 +984,18 @@ function sightings(galaxy: Galaxy, st: PurifierState): void {
     }
     st.visibleTo = seeing.map((e) => e.empireId);
     for (const e of seeing) record(galaxy, st, e, d.xpos, d.ypos, now);
-    // Shadowing: while any hunter keeps it in sensor range, every hunter gets the sighting.
+    // Shared reports: whoever sights it tells every hunting empire (the families it hunts and its victims) and its own allies (mutual
+    // defence pacts), who then hold the same last-seen position. A crippled Purifier (hyperdrive gone, limping home) leaves a wake all
+    // hunters can follow.
     const hunters = purifierHunters(galaxy, st);
-    if (hunters.some((h) => seeing.includes(h))) for (const h of hunters) if (!seeing.includes(h)) record(galaxy, st, h, d.xpos, d.ypos, now);
+    const crippled = st.mode === 'port' && d.warpSpeed <= 0;
+    if (crippled || seeing.length > 0) {
+        const tell = new Set<Empire>(hunters);
+        for (const e of seeing) {
+            for (const o of normalEmpires(galaxy, st.faction)) if (o !== e && e.diplomaticRelations.byEmpire(o)?.type === DiplomaticRelationType.MutualDefensePact) tell.add(o);
+        }
+        for (const o of normalEmpires(galaxy, st.faction)) if (tell.has(o) && !seeing.includes(o)) record(galaxy, st, o, d.xpos, d.ypos, now, true);
+    }
     st.lastX = d.xpos;
     st.lastY = d.ypos;
 }
@@ -988,6 +1012,9 @@ function dockSightings(galaxy: Galaxy, st: PurifierState): void {
             if (isHumanEmpire(galaxy, e)) scenarioMessage(galaxy, e, scenarioText(`${TAG} Dock Title`), scenarioText(`${TAG} Dock Found`, st.anchorage!.name), { type: EmpireMessageType.GeneralWarning, subject: st.anchorage, popup: false });
         }
     }
+    // The AI hunters pool what they know of the station (a coalition shares its charts); a human is never told this way.
+    const hunters = purifierHunters(galaxy, st).filter((e) => !isHumanEmpire(galaxy, e));
+    if (hunters.some((e) => knowledgeLevel(site, e) >= KNOWLEDGE_CONFIRMED)) for (const e of hunters) revealTo(galaxy, site, e, KNOWLEDGE_CONFIRMED);
 }
 
 function victimDrop(galaxy: Galaxy, st: PurifierState, victim: Empire): void {
@@ -1000,6 +1027,8 @@ function expose(galaxy: Galaxy, st: PurifierState): void {
     if (st.exposed) return;
     st.exposed = true;
     st.exposeDate = galaxyStarDate(galaxy);
+    // The news names the anchorage: the AI hunters now know where the station is (a human reads it in the news and is not told here).
+    if (st.faction !== null && dockStands(st)) for (const e of purifierHunters(galaxy, st)) if (!isHumanEmpire(galaxy, e)) revealTo(galaxy, { knowledge: st.dockKnowledge }, e, KNOWLEDGE_CONFIRMED);
     const w = st.waker;
     if (w === null || !w.active) return;
     w.civilityRating -= P.wakerRep(galaxy);
@@ -1011,61 +1040,227 @@ function expose(galaxy: Galaxy, st: PurifierState): void {
 // AI hunters
 // ---------------------------------------------------------------------------------------------------------------
 
-/** A hunter that knows the station and the Purifier is docked there attacks it as if it were in view. */
-function dockKnown0(st: PurifierState, e: Empire): boolean {
-    return st.mode === 'repair' && knowledgeLevel({ knowledge: st.dockKnowledge }, e) >= KNOWLEDGE_CONFIRMED;
+/** Hunters keep their force this close to the staging system's star to count as gathered. */
+const STAGE_RANGE = 250000;
+/** The staging system is at least this far from the target (outside its guns). */
+const STAGE_MIN_DIST = 150000;
+/** Units farther than this from the rally point are not part of the coalition (a few months' transit at warp). */
+const COALITION_REACH = 3500000;
+/** The same for the station: the hunters stage there for as long as it takes. */
+const DOCK_REACH = 12000000;
+
+/** Missions of a warship that is free to be called away (it is not repairing, refitting, refuelling, invading or escorting). */
+function freeMission(type: BuiltObjectMissionType): boolean {
+    return (
+        type === BuiltObjectMissionType.Undefined ||
+        type === BuiltObjectMissionType.Hold ||
+        type === BuiltObjectMissionType.Patrol ||
+        type === BuiltObjectMissionType.Move ||
+        type === BuiltObjectMissionType.MoveAndWait ||
+        type === BuiltObjectMissionType.WaitAndAttack ||
+        type === BuiltObjectMissionType.Blockade ||
+        type === BuiltObjectMissionType.Waypoint
+    );
 }
 
-function dispatch(galaxy: Galaxy, st: PurifierState): void {
+interface HuntUnit {
+    sg: ReturnType<typeof empireShipGroups>[number] | null;
+    bo: BuiltObject | null;
+    f: number;
+    dist: number;
+    /** The unit's lead ship (its position is the unit's). */
+    lead: BuiltObject;
+    /** Already ordered by an earlier dispatch: patrolling the staging system, or attacking the Purifier. */
+    committed: boolean;
+}
+
+/**
+ * Every world it destroys makes the hunters commit more readily: the force they demand and the share that must have gathered shrink
+ * by purifierUrgencyStep % per world (to a floor of purifierUrgencyFloor %), and more empires' fleets join (reach grows with it). 1 at the start.
+ */
+function urgency(galaxy: Galaxy, st: PurifierState): number {
+    return Math.max(P.urgencyFloor(galaxy) / 100, 1 - (P.urgencyStep(galaxy) / 100) * st.worlds);
+}
+
+function guardStrength(st: PurifierState): number {
+    let s = 0;
+    for (const b of st.guards) if (!b.hasBeenDestroyed) s += calculateOverallStrengthFactorWithoutShields(b);
+    return s;
+}
+
+/** The AI hunters that know where the station is (the knowledge is pooled among them: coalition partners tell each other). */
+function dockHunters(st: PurifierState, hunters: Empire[]): Empire[] {
+    return dockStands(st) ? hunters.filter((e) => knowledgeLevel({ knowledge: st.dockKnowledge }, e) >= KNOWLEDGE_CONFIRMED) : [];
+}
+
+/** The staging system: a hunter's colony system nearest the target, outside its guns (else the nearest one at all). Pure. */
+function stagingSystem(galaxy: Galaxy, hunters: Empire[], tx: number, ty: number): number {
+    let best = -1;
+    let bd = Number.MAX_VALUE;
+    let any = -1;
+    let ad = Number.MAX_VALUE;
+    const seen = new Set<number>();
+    for (const e of hunters) {
+        for (const c of e.colonies) {
+            if (seen.has(c.systemIndex)) continue;
+            seen.add(c.systemIndex);
+            const sh = star(galaxy, c.systemIndex);
+            const d = galaxy.calculateDistance(sh.xpos, sh.ypos, tx, ty);
+            if (d < ad || (d === ad && c.systemIndex < any)) {
+                ad = d;
+                any = c.systemIndex;
+            }
+            if (d >= STAGE_MIN_DIST && (d < bd || (d === bd && c.systemIndex < best))) {
+                bd = d;
+                best = c.systemIndex;
+            }
+        }
+    }
+    return best >= 0 ? best : any;
+}
+
+function unitsOf(galaxy: Galaxy, st: PurifierState, hunters: Empire[], tx: number, ty: number, stage: Habitat | null, reach: number): HuntUnit[] {
     const d = st.destroyer!;
-    const now = galaxyStarDate(galaxy);
-    const need = groupStrength(st) * P.hunterRatio(galaxy);
-    for (const e of purifierHunters(galaxy, st)) {
-        if (isHumanEmpire(galaxy, e)) continue;
-        let s = sightingOf(st, e);
-        if (dockKnown0(st, e)) s = { empireId: e.empireId, x: st.dockX, y: st.dockY, systemIndex: nearestSystemIndex(galaxy, st.dockX, st.dockY), date: now, lastMessage: 0 };
-        if (s === null || now - s.date > P.memoryDays(galaxy) * GAME_DAY_LENGTH) continue;
-        const inView = st.visibleTo.includes(e.empireId) || dockKnown0(st, e);
-        const dockKnown = st.mode === 'repair' && dockStands(st) && knowledgeLevel({ knowledge: st.dockKnowledge }, e) >= KNOWLEDGE_CONFIRMED;
-        const where = dockKnown ? st.anchorage! : galaxy.systems[s.systemIndex].systemStar;
-        const units: { sg: ReturnType<typeof empireShipGroups>[number]; bo: BuiltObject | null; f: number; dist: number }[] = [];
+    const units: HuntUnit[] = [];
+    for (const e of hunters) {
         for (const sg of empireShipGroups(e)) {
             if (sg === null || sg.ships.length === 0 || sg.leadShip === null) continue;
             const m = sg.mission;
-            if (m !== null && (m.type === BuiltObjectMissionType.Repair || m.type === BuiltObjectMissionType.Retrofit || m.type === BuiltObjectMissionType.Refuel)) continue;
+            if (m !== null && !freeMission(m.type) && !(m.type === BuiltObjectMissionType.Attack && m.targetBuiltObject === d)) continue;
+            const dist = galaxy.calculateDistance(sg.leadShip.xpos, sg.leadShip.ypos, tx, ty);
+            if (dist > reach) continue;
             let f = 0;
             for (const b of sg.ships) f += calculateOverallStrengthFactorWithoutShields(b);
-            units.push({ sg, bo: null, f, dist: galaxy.calculateDistance(sg.leadShip.xpos, sg.leadShip.ypos, s.x, s.y) });
+            const gc = m !== null && ((m.type === BuiltObjectMissionType.Patrol && stage !== null && m.targetHabitat === stage) || (m.type === BuiltObjectMissionType.Attack && m.targetBuiltObject === d));
+            units.push({ sg, bo: null, f, dist, lead: sg.leadShip, committed: gc });
         }
         for (const b of e.builtObjects) {
             if (b.hasBeenDestroyed || b.role !== BuiltObjectRole.Military || b.topSpeed <= 0 || b.warpSpeed <= 0 || b.shipGroup !== null || b.subRole === BuiltObjectSubRole.TroopTransport) continue;
             const m = builtObjectMission(b.mission);
-            if (m !== null && m.type !== BuiltObjectMissionType.Patrol && m.type !== BuiltObjectMissionType.Move && m.type !== BuiltObjectMissionType.Hold && m.type !== BuiltObjectMissionType.Undefined) continue;
-            units.push({ sg: null, bo: b, f: calculateOverallStrengthFactorWithoutShields(b), dist: galaxy.calculateDistance(b.xpos, b.ypos, s.x, s.y) });
-        }
-        units.sort((a, b) => a.dist - b.dist);
-        const chosen: typeof units = [];
-        let sum = 0;
-        for (const u of units) {
-            chosen.push(u);
-            sum += u.f;
-            if (sum >= need) break;
-        }
-        if (sum < need) continue;
-        for (const u of chosen) {
-            if (u.sg !== null) {
-                const m = u.sg.mission;
-                if (inView) shipGroupAssignMission(galaxy, u.sg, BuiltObjectMissionType.Attack, d, null, BuiltObjectMissionPriority.High, true);
-                else if (m === null || m.type !== BuiltObjectMissionType.Patrol || m.targetHabitat !== where) shipGroupAssignMission(galaxy, u.sg, BuiltObjectMissionType.Patrol, where, null, BuiltObjectMissionPriority.High, true);
-            } else if (u.bo !== null) {
-                if (inView) assignMission(galaxy, u.bo, BuiltObjectMissionType.Attack, d, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
-                else {
-                    const m = builtObjectMission(u.bo.mission);
-                    if (m === null || m.type !== BuiltObjectMissionType.Patrol || m.targetHabitat !== where) assignMission(galaxy, u.bo, BuiltObjectMissionType.Patrol, where, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
-                }
-            }
+            const onIt = m !== null && m.type === BuiltObjectMissionType.Attack && m.targetBuiltObject === d;
+            if (m !== null && !onIt && !freeMission(m.type)) continue;
+            const dist = galaxy.calculateDistance(b.xpos, b.ypos, tx, ty);
+            if (dist > reach) continue;
+            const bc = onIt || (m !== null && m.type === BuiltObjectMissionType.Patrol && stage !== null && m.targetHabitat === stage);
+            units.push({ sg: null, bo: b, f: calculateOverallStrengthFactorWithoutShields(b), dist, lead: b, committed: bc });
         }
     }
+    // Units already committed to this hunt first (they are on their way or there), then the nearest.
+    units.sort((a, b) => Number(b.committed) - Number(a.committed) || a.dist - b.dist);
+    return units;
+}
+
+function orderUnit(galaxy: Galaxy, u: HuntUnit, d: BuiltObject, kind: 'attack' | 'patrol', where: Habitat): void {
+    if (u.sg !== null) {
+        const m = u.sg.mission;
+        if (kind === 'attack') {
+            if (m === null || m.type !== BuiltObjectMissionType.Attack || m.targetBuiltObject !== d) shipGroupAssignMission(galaxy, u.sg, BuiltObjectMissionType.Attack, d, null, BuiltObjectMissionPriority.High, true);
+        } else if (m === null || m.type !== BuiltObjectMissionType.Patrol || m.targetHabitat !== where) shipGroupAssignMission(galaxy, u.sg, BuiltObjectMissionType.Patrol, where, null, BuiltObjectMissionPriority.High, true);
+    } else if (u.bo !== null) {
+        const m = builtObjectMission(u.bo.mission);
+        if (kind === 'attack') {
+            if (m === null || m.type !== BuiltObjectMissionType.Attack || m.targetBuiltObject !== d) assignMission(galaxy, u.bo, BuiltObjectMissionType.Attack, d, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
+        } else if (m === null || m.type !== BuiltObjectMissionType.Patrol || m.targetHabitat !== where) assignMission(galaxy, u.bo, BuiltObjectMissionType.Patrol, where, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
+    }
+}
+
+/** The colony it will most likely strike next, as the hunters reckon it: the nearest hunted colony to where it was last known. Pure. */
+function predictedTarget(galaxy: Galaxy, st: PurifierState, x: number, y: number): Habitat | null {
+    let best: Habitat | null = null;
+    let bd = Number.MAX_VALUE;
+    for (const h of purifierTargets(galaxy, st)) {
+        const dist = galaxy.calculateDistance(x, y, h.xpos, h.ypos);
+        if (dist < bd || (dist === bd && best !== null && h.habitatIndex < best.habitatIndex)) {
+            bd = dist;
+            best = h;
+        }
+    }
+    return best;
+}
+
+/**
+ * The coalition hunt (every period). The hunters (families it hunts, its victims, the empires that know the station) act as one.
+ * Chasing a raider that jumps away is hopeless, so they rally where it must come: the colony it will most likely strike next (the
+ * nearest hunted one to its last known position), or the station once it is known (an ambush: the Purifier runs there when
+ * wounded, and docked it is helpless). The forces of ALL hunters within reach are summed against its strength (purifierHunterRatio
+ * x the group's, plus the station guard at the dock); short of that nobody commits. Otherwise the units (those already rallying
+ * first, then the nearest) Patrol the rally system, and only when purifierGatherPct % of that strength is there AND the Purifier
+ * is in view do they all Attack it together: never piecemeal. At the docked Purifier they go in at once.
+ */
+function dispatch(galaxy: Galaxy, st: PurifierState): void {
+    const d = st.destroyer!;
+    const now = galaxyStarDate(galaxy);
+    const hunters = purifierHunters(galaxy, st).filter((e) => !isHumanEmpire(galaxy, e));
+    const stand = (): void => {
+        st.gatherSys = -1;
+        st.gatherGo = false;
+    };
+    if (hunters.length === 0) return stand();
+    const dockers = dockHunters(st, hunters);
+    const strike = st.mode === 'repair' && dockers.length > 0;
+    let tx = st.dockX;
+    let ty = st.dockY;
+    let where: Habitat | null = st.anchorage;
+    let stage: Habitat | null = null;
+    let inView = false;
+    let ambush = false;
+    if (strike) inView = true;
+    else {
+        let best: PurifierSighting | null = null;
+        for (const e of hunters) {
+            const s = sightingOf(st, e);
+            if (s !== null && now - s.date <= P.memoryDays(galaxy) * GAME_DAY_LENGTH && (best === null || s.date > best.date)) best = s;
+        }
+        if (best !== null) {
+            inView = hunters.some((e) => st.visibleTo.includes(e.empireId));
+            const t = predictedTarget(galaxy, st, best.x, best.y);
+            if (t !== null) {
+                stage = star(galaxy, t.systemIndex);
+                tx = t.xpos;
+                ty = t.ypos;
+                where = stage;
+            } else {
+                tx = best.x;
+                ty = best.y;
+                where = galaxy.systems[best.systemIndex].systemStar;
+            }
+        } else if (dockers.length > 0) ambush = true;
+        else return stand();
+    }
+    if (where === null) return stand();
+    if (stage === null) {
+        const sys = stagingSystem(galaxy, hunters, tx, ty);
+        stage = sys >= 0 ? star(galaxy, sys) : where;
+    }
+    st.gatherSys = stage.systemIndex;
+    // A wounded Purifier running for port is the chance the hunters wait for: they commit against less.
+    const urg = urgency(galaxy, st);
+    const need = (groupStrength(st) + (strike || ambush ? guardStrength(st) : 0)) * P.hunterRatio(galaxy) * (st.mode === 'port' ? 0.6 : 1) * urg;
+    const units = unitsOf(galaxy, st, hunters, tx, ty, stage, strike || ambush ? DOCK_REACH : COALITION_REACH / urg);
+    let total = 0;
+    for (const u of units) total += u.f;
+    if (total < need) {
+        st.gatherGo = false;
+        return;
+    }
+    const chosen: HuntUnit[] = [];
+    let sum = 0;
+    for (const u of units) {
+        chosen.push(u);
+        sum += u.f;
+        if (sum >= need) break;
+    }
+    let there = 0;
+    for (const u of chosen) if (galaxy.calculateDistance(u.lead.xpos, u.lead.ypos, stage.xpos, stage.ypos) <= STAGE_RANGE) there += u.f;
+    // At the station: waiting staged until it runs for the dock (a known port); then be there before it. Elsewhere: in when gathered and it is in view.
+    const go = strike || (ambush ? st.mode === 'port' : inView && there >= need * ((P.gatherPct(galaxy) / 100) * urg));
+    if (go && !st.gatherGo) st.launches++;
+    st.gatherGo = go;
+    if (!go) {
+        for (const u of chosen) orderUnit(galaxy, u, d, 'patrol', stage);
+        return;
+    }
+    for (const u of chosen) orderUnit(galaxy, u, d, inView || strike ? 'attack' : 'patrol', where);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1118,7 +1313,19 @@ function onKilledBy(galaxy: Galaxy, bo: BuiltObject, destroyer: Empire | null): 
 function finish(galaxy: Galaxy, st: PurifierState, killer: Empire | null): void {
     st.phase = 'ended';
     st.endDate = galaxyStarDate(galaxy);
-    const real = killer !== null && killer !== st.faction && killer.active && killer !== galaxy.independentEmpire && killer.pirateEmpireBaseHabitat === null ? killer : null;
+    let real = killer !== null && killer !== st.faction && killer.active && killer !== galaxy.independentEmpire && killer.pirateEmpireBaseHabitat === null ? killer : null;
+    // The last shot can fall to a non-empire (a monster, a pirate, a collision, a base that went down): the hunt's credit then goes to the
+    // empire that sank the most of its ships.
+    if (real === null) {
+        let top = 0;
+        for (const e of normalEmpires(galaxy, st.faction)) {
+            const k = st.killsBy[String(e.empireId)] ?? 0;
+            if (k > top) {
+                top = k;
+                real = e;
+            }
+        }
+    }
     st.killer = real;
     if (real !== null) {
         const bounty = P.bounty(galaxy);
@@ -1174,6 +1381,12 @@ export function purifierPeriodic(galaxy: Galaxy): void {
         if (st.phase === 'awake') finish(galaxy, st, null);
         return;
     }
+    if (st.gatherSys === undefined) {
+        st.gatherSys = -1;
+        st.gatherGo = false;
+        st.launches = 0;
+        st.rudderTotal = 0;
+    }
     st.escorts = st.escorts.filter((b) => aliveShip(b, faction));
     st.guards = st.guards.filter((b) => aliveShip(b, faction));
     resupply(st);
@@ -1189,10 +1402,8 @@ export function purifierPeriodic(galaxy: Galaxy): void {
     dockSightings(galaxy, st);
     retarget(galaxy, st);
     if (st.waker !== null && !st.exposed && now - st.wakeDate >= P.exposeYears(galaxy) * YEAR_LENGTH) expose(galaxy, st);
-    if (now - st.lastDispatch >= 10 * GAME_DAY_LENGTH) {
-        st.lastDispatch = now;
-        dispatch(galaxy, st);
-    }
+    st.lastDispatch = now;
+    dispatch(galaxy, st);
     const y = yearsIn(galaxy);
     if (st.history.length === 0 || st.history[st.history.length - 1].year < y) st.history.push({ year: y, worlds: st.worlds, escorts: st.escorts.length, mode: st.mode, damagePct: Math.round(purifierDamage(st) * 100) });
     void day;

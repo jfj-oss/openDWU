@@ -193,7 +193,7 @@ faction driven by the module (pirateFactionPassive), infinite fuel and a fuel re
   one strike per purifierStrikeDays; retreats when enemy firepower near it is purifierOutgunnedRatio x its own.
 - **Lost contact:** per-empire last known position from the stock fog (isObjectVisibleToThisEmpire) and long-range scanners
   covering either end of a hyperjump; shadowing shares sightings among hunting empires; AI hunters Patrol / Attack with a
-  force purifierHunterRatio x its strength. One glyph on the galaxy map (live, or the last spotted place, and the station once
+  a coalition (below). One glyph on the galaxy map (live, or the last spotted place, and the station once
   known); no radius overlays.
 - **Wounds:** each newly damaged component may hit the hyperdrive (jump spool x1.5 each hit, hyperjumpSpoolFactor); no field
   repair (repairRateFactor). Past purifierPortDamagePct it sails to the station; docked it is helpless (shields 0, weapons without
@@ -203,3 +203,44 @@ faction driven by the module (pirateFactionPassive), infinite fuel and a fuel re
   (first sighted by another empire, or purifierExposeYears after the wake); victims' regard for it then drops purifierVictimRep.
 - **End:** destroyer killed -> news, killing blow: purifierBounty money and reputation (no research). Stock touch point:
   `pirateTerminationBlocked` query in checkForTerminatedPirateEmpires (the faction outlives its station).
+
+### Balance pass (2026-10-15)
+
+**Changes.** Group: destroyer at purifierDestroyerPct 60 % of the stock overpower (its shields were ~3900, effectively unhittable
+by AI fleets), escorts purifierEscortPct 50 % of the top-3 mean military (min 3), tech +1 kept. Strikes: purifierStrikeDays 180,
+purifierBoldRatio 1.5 (it strikes colonies whose defenders are up to 1.5x its firepower, so concentrated fleets get a real fight),
+purifierOutgunnedRatio 2 (break-off). Wounds: purifierPortDamagePct 10 (35 % of ~360 components was unreachable in real fights).
+**Coalition hunting** (`dispatch`, every 2 days): all AI hunters (hunted families, victims, empires that know the station) act as one.
+Chasing a raider that jumps is hopeless, so they rally where it must come: the colony it will most likely strike next (nearest hunted
+colony to the freshest sighting any hunter holds), or an ambush at the station once known (AI hunters pool station knowledge; the
+exposure news reveals it). Forces of ALL hunters within reach (3.5M of the rally point, 12M for the station) are summed against its
+strength x purifierHunterRatio (1.2; x0.6 while it limps for port); short of that nobody commits. Units (already-rallying first, then
+nearest) Patrol the rally system and all go in with Attack together once purifierGatherPct (80 %) of the needed strength is there and it
+is in view (never piecemeal); at the docked Purifier they go in at once. A crippled Purifier (hyperdrive gone, limping to port) is tracked
+by every hunter. Also: the station-dock wake reveal, rudderTotal / gatherSys / gatherGo / launches saved in state (older saves default),
+and a null guard in invasion.ts invasionSucceeded (a soak crash when the invaders were already gone).
+
+**Soak** (600-1000 stars, 8-12 AIs, empires started at Age 6 / tech 5 so they are roughly mid-game: military potency 5k-25k each, group
+~9-11k; wake ~year 1.4-2; 9 years after wake). Year-2 empires at default age (military 385-2810) are NOT representative: there the
+destroyer was killed in only 1-2 of 8 runs whatever the parameters, so tuning was done against the mid-game state.
+
+| seed (600 stars, 8 AIs) | mode | worlds | escorts lost | hunter ships lost | port trips | result |
+|---|---|---|---|---|---|---|
+| 1 (wake 2.0y) | pre | 7 | 35 | 88 | 1 (+repair) | killed +6.5y (S207 Supremacy) |
+| 1 (wake 2.0y) | waker | 6 | 26 | 63 | 1 (+repair) | killed +4.7y (S207 Supremacy) |
+| 2 (wake 1.4y) | pre | 4 | 22 | 89 | 0 | killed +4.4y (S325 Commonwealth) |
+| 2 (wake 1.4y) | waker | 2 | 16 | 21 | 1 | killed +2.2y (S486 Enclave) |
+| 3 (wake 0.6y) | pre | 10 | 26 | 184 | 0 | alive at +8.5y (escorts 7/33) |
+| 3 (wake 0.6y) | waker | 1 | 4 | 23 | 1 | killed +2.0y (Ugnari Syndicate) |
+| 4 (wake 1.0y) | pre | 6 | 24 | 49 | 1 | killed +5.6y (S532 Syndicate) |
+| 4 (wake 1.0y) | waker | 1 | 12 | 32 | 1 | killed +1.1y (S68 Enclave) |
+
+Empires started at Age 6 / tech 5 (military potency 5k-25k each, Purifier group ~9-11k). 7 of 8 killed (1.1-6.5 years after waking);
+preprogrammed games ~5.5 years, waker games sooner. Rudder hits and port trips (with a completed repair in two runs) happen in real fights.
+Before the urgency / shared-report changes (earlier setup: seeds 1-2 plus 1000-star / 12-AI seeds 3-4): 5 of 8 killed, 3 of 4 big-galaxy runs
+alive at year 9 with their escorts nearly gone.
+
+**Urgency and shared reports.** Each world it destroys lowers the force the hunters demand and the share that must have gathered by
+purifierUrgencyStep % (8, floor purifierUrgencyFloor 35 %) and widens the empires' reach (reach / urgency). A sighting by any empire is
+passed to every hunting empire and to the sighting empire's mutual-defence allies (no exposure for the receivers). A kill whose last shot
+falls to a non-empire (pirate, monster, collision) now credits the empire that sank the most of its ships (earlier runs ended with "killer none").
