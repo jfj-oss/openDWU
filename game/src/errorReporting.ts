@@ -12,6 +12,8 @@ interface Bridge {
 }
 
 function bridge(): Bridge | null {
+    // No window under node (tests, the sim worker importing main.ts's graph): nothing to report to.
+    if (typeof window === 'undefined') return null;
     return (window as unknown as { dwuDesktop?: Bridge }).dwuDesktop ?? null;
 }
 
