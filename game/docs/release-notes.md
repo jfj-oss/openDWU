@@ -4,6 +4,35 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+## 0.1.31
+
+- **Mothballing (new Gameplay change, off by default; Other Empires page):** put a fleet or warship into reserve at
+  one of your space ports — the selection panel's **Mothball** button (also on the Fleets screen and the Ships and Bases
+  screen) picks the safest interior port with room; right-click lists every port with distance, ETA and ships in
+  reserve against its capacity (6 / 12 / 24 for small / medium / large ports). The ships park in even rings around the port, facing it, drawn greyer while in reserve
+  at 15% upkeep — immobile, weapons cold, ignored by automation, the AI and Intercept / Defend; a fleet stays the same
+  fleet. **Reactivate** takes 240 days for a mid-sized ship (120–480 by size) at full upkeep. A reserve is vulnerable: a
+  destroyed port forces an emergency reactivation, a captured port takes the reserve ships with it. AI empires mothball
+  up to 30% of their navy after 5 years of peace on a tight budget, reactivate at the first war warning, and see a
+  mothballed rival as weaker. Every number is a parameter.
+- **Fighting retreats (new gameplay change, off by default; Other Empires page):** a fleet that is outgunned (the
+  enemies it is fighting have 1.5 times its firepower or more, for 5 seconds) withdraws together to the nearest
+  friendly repair point, then resumes its duties (automated) or waits for orders ("3rd Fleet withdrew from Sol to repair
+  at …"). AI fleets follow the same rule; ships keep the original's per-design Flee setting, and a fleet set to Flee:
+  never fights on. The numbers are add-on parameters.
+- **Veterans (new gameplay change, off by default):** a "Gameplay changes" checkbox on the Other Empires page (also in
+  openDWU Classic; included in the heading's master switch). Warships and troop units that survive battles gain experience
+  and rise from Green to Regular, Veteran and Elite: ships +5% weapon damage, targeting and evasion per rank (at most +15%),
+  troops +10% attack and defence per rank ("Veteran troops" on the Colony invasion screen). Experience dies with the ship or
+  unit (and leaves a captured ship); refits and troop transfers keep it. Shown on the ship's selection panel ("Crew: Veteran
+  (3 battles)") and in the troop lists. A ship reaching Veteran with only a generic name (a design name and a number) is
+  given a ship name and a short service record (battles, kills, years in service, notable battles) on its selection panel
+  and the Ships screen tooltip; when it is destroyed you get a message ("SSS Gallant Ranger was lost at Aldebaran after 14
+  battles"). Every fleet of two or more warships has a flagship (its best ship, or the one you pick with **Make flagship**
+  in the selection panel's action slots): ships near it get +3%, and if it is destroyed the whole fleet fights at -10% for
+  30 days while it reforms. The flagship is marked on the fleet's panel and the Fleets screen. Damaged AI veterans and
+  flagships break off hopeless fights a little sooner, enemy flagships weigh 15% more as targets, and AI invasion plans count
+  troop ranks (never more cautious than the original).
 - **Generation ships are always Human:** every world ship and its fleet (and a pirate faction left after a lost war) is Human,
   instead of a random race no empire uses.
 - **Generation ships: slow, efficient, fuel-heavy:** their warships use the most fuel-efficient hyperdrive up to tech 4
@@ -17,7 +46,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 - **Mothballing: choose the port:** in the Fleets and Ships screens, Mothball now opens the list of your space ports
   (★ the best one: interior, with room; distance, arrival time and how full each is) to pick from.
 
-- **New threat: Void Whale** (Galactic Threats, work in progress): from about year 5 one unique giant scarred beast, the Leviathan, hunts and swallows lightly defended stations (galaxy-wide news each time), hyper-lunges away to rest in a quiet system, and repeats. Its wounds persist, show on its hide and heal slowly; badly hurt it flees to deep space and returns for the empire that hurt it most. The killing blow earns a bounty, goodwill from every other empire and a carcass salvage field. AI empires fortify where it fed and send hunting fleets. Has its own procedural art (a giant scarred whale seen from above) and a Galactopedia article.
+- **New threat: Void Whale** (Galactic Threats, work in progress): from about year 5 one unique giant scarred beast, the Leviathan, hunts and swallows lightly defended stations (galaxy-wide news each time), hyper-lunges away to rest in a quiet system, and repeats. Its wounds persist, show on its hide and heal slowly; badly hurt it flees to deep space and returns for the empire that hurt it most. The killing blow earns a bounty, goodwill from every other empire and a carcass salvage field. AI empires fortify where it fed and send hunting fleets. Has its own art (see the Leviathan entry) and a Galactopedia article.
 - **Bounty hunters (new add-on, Politics & Characters, work in progress):** an empire whose civility rating sinks to Evil (-30) gets a bounty pooled by the empires that dislike it, announced galaxy-wide. A mercenary pirate faction then sets up at the edge of its territory and hunts its ships, stations and trade (never colonies), paid per kill out of the bounty. The target can pay the bounty off (a decision), destroy hunters for a little reputation, or recover to -15 civility, which withdraws the bounty. The Diplomacy screen shows "Bounty: N credits". AI empires are hunted too.
 - **New threat: The Hollow Fleet** (Galactic Threats add-on, Hidden threats, still in progress): from year 8 a fleet of ancient automated warships wakes at a remote anchorage and patrols a fixed route of 6 systems on a repeating schedule, attacking only what is in the system it is in. Empires that see it learn its route and dates (Threats & Leads on the Intelligence screen, a faint dashed route on the Freight Flows map); destroy every ship for a money bounty.
 - **Dead Probe Swarm scales with the galaxy:** it adds a mining station every 75 days in a 300-star galaxy and
@@ -78,15 +107,6 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
   install had, so on a normal install every window used Arial (much wider: text overflowed and overlapped everywhere)
   and those pictures were blank. Both now ship with the game. Verdana text falls back to DejaVu Sans where Verdana is
   not installed (Linux).
-- **Mothballing (new Gameplay change, off by default; Other Empires page):** put a fleet or warship into reserve at
-  one of your space ports — the selection panel's **Mothball** button (also on the Fleets screen and the Ships and Bases
-  screen) picks the safest interior port with room; right-click lists every port with distance, ETA and ships in
-  reserve against its capacity (6 / 12 / 24 for small / medium / large ports). The ships park in even rings around the port, facing it, drawn greyer while in reserve
-  at 15% upkeep — immobile, weapons cold, ignored by automation, the AI and Intercept / Defend; a fleet stays the same
-  fleet. **Reactivate** takes 240 days for a mid-sized ship (120–480 by size) at full upkeep. A reserve is vulnerable: a
-  destroyed port forces an emergency reactivation, a captured port takes the reserve ships with it. AI empires mothball
-  up to 30% of their navy after 5 years of peace on a tight budget, reactivate at the first war warning, and see a
-  mothballed rival as weaker. Every number is a parameter.
 - **Threats & Leads (Characters / Intelligence screen):** with any Galactic Threat add-on or Internal Security on, a
   **Threats & Leads** button under the Galactopedia link switches the screen to a list of every threat site and
   security lead your empire knows: what it is, where, suspected or confirmed, when it was found and what is being done.
@@ -112,11 +132,6 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 - **Local model fix (desktop app):** Ollama refused every request from the app (it rejects the app's `dwu://` page
   origin with 403), so Refresh, Test and all local-model features failed unless `OLLAMA_ORIGINS` was set. The app now
   allows its requests to model servers on this machine (localhost only); no Ollama setup is needed.
-- **Fighting retreats (new gameplay change, off by default; Other Empires page):** a fleet that is outgunned (the
-  enemies it is fighting have 1.5 times its firepower or more, for 5 seconds) withdraws together to the nearest
-  friendly repair point, then resumes its duties (automated) or waits for orders ("3rd Fleet withdrew from Sol to repair
-  at …"). AI fleets follow the same rule; ships keep the original's per-design Flee setting, and a fleet set to Flee:
-  never fights on. The numbers are add-on parameters.
 - **Intercept (new command):** select a ship, fleet, base or space creature that is not yours and an **Intercept**
   button (crosshair) appears in a free slot of the selection panel's action buttons; its hover message names the force
   it sends, e.g. "Intercept: 1st Fleet (ETA 101 d)" — the best free fleet (or, failing one, a single warship) strong
@@ -157,19 +172,6 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
   its approval falls slowly (0.1 a day, at most 15). It ends when the orbit is free; both sides get a message, and the
   colony panel shows "Blockaded by X". AI empires blockade their enemies' richest colonies before invading and send
   their nearest strong enough fleet to break a blockade of their own.
-- **Veterans (new gameplay change, off by default):** a "Gameplay changes" checkbox on the Other Empires page (also in
-  openDWU Classic; included in the heading's master switch). Warships and troop units that survive battles gain experience
-  and rise from Green to Regular, Veteran and Elite: ships +5% weapon damage, targeting and evasion per rank (at most +15%),
-  troops +10% attack and defence per rank ("Veteran troops" on the Colony invasion screen). Experience dies with the ship or
-  unit (and leaves a captured ship); refits and troop transfers keep it. Shown on the ship's selection panel ("Crew: Veteran
-  (3 battles)") and in the troop lists. A ship reaching Veteran with only a generic name (a design name and a number) is
-  given a ship name and a short service record (battles, kills, years in service, notable battles) on its selection panel
-  and the Ships screen tooltip; when it is destroyed you get a message ("SSS Gallant Ranger was lost at Aldebaran after 14
-  battles"). Every fleet of two or more warships has a flagship (its best ship, or the one you pick with **Make flagship**
-  in the selection panel's action slots): ships near it get +3%, and if it is destroyed the whole fleet fights at -10% for
-  30 days while it reforms. The flagship is marked on the fleet's panel and the Fleets screen. Damaged AI veterans and
-  flagships break off hopeless fights a little sooner, enemy flagships weigh 15% more as targets, and AI invasion plans count
-  troop ranks (never more cautious than the original).
 - **Galaxy Backdrop picker:** new **Dimmed Original** (the original's colours, darkened halfway toward Deep, faint grey
   dust), **Deep Azure** (navy and steel-blue dust, teal accents), **Deep Ember** (crimson and ember dust, the odd dull
   gold) and **Deep Violet** (purple and magenta dust, blue accents), all built like Deep from the original image. Galactic
