@@ -54,7 +54,8 @@ import { findShipOutsideSystemWithScanRange } from '../sim/independentTraders';
 import { FaunaVariant, creatureTamedByHerders, faunaVariantDef, faunaVariantName, faunaVariantOfCreature } from '../sim/scenario/newFauna/common';
 import { peekVoidWhaleState } from '../sim/scenario/threats/voidWhale';
 import { FaunaArt } from './faunaArt';
-import { FAUNA_BODIES, textureFromRgba } from './creatureRig';
+import { textureFromRgba } from './creatureRig';
+import { LeviathanRig } from './leviathanRig';
 import { paintWounds, woundKey } from './whaleWounds';
 import { buildDamageLayer, creatureDamageBudget, creatureDamageColour, damageOverlaySide, rotatedFrameMask, scaledMask } from './damageOverlay';
 import { textureFromPixels } from './shipOverlays';
@@ -409,13 +410,21 @@ export interface WhaleFx {
     cur: number;
     jaw?: number;
     flash?: number;
+    /** Hyper-lunge progress 0..1 (ripple / streaks). */
+    jumpT?: number;
 }
+
+/** The Leviathan is drawn this much bigger than its sim size alone would make it (render only): a giant 2-3x a New
+ * Fauna void whale on screen, its cap widened to match (lookCapMul). */
+export const LEVIATHAN_DRAW_MUL = 1.75;
 
 /** One drawn 19g-7b creature: its rig / swarm / straight carrier, and its harness. */
 interface FaunaView {
     look: string;
     node: Container;
     rig: CreatureRig | null;
+    /** The Leviathan's own profile rig (look 'leviathan'). */
+    whale: LeviathanRig | null;
     swarm: LanternSwarm | null;
     straight: StraightCarrier | null;
     harness: HarnessView | null;
@@ -439,8 +448,16 @@ export function jawOpening(ageMs: number): number {
 
 /** Jump flash 0..1 for `ageMs` after the jump: white-hot, then gone. */
 export function jumpFlash(ageMs: number): number {
-    if (ageMs < 0 || ageMs > 900) return 0;
-    return ageMs < 120 ? ageMs / 120 : 1 - (ageMs - 120) / 780;
+    if (ageMs < 0 || ageMs > JUMP_FX_MS * 0.7) return 0;
+    return ageMs < 150 ? ageMs / 150 : 1 - (ageMs - 150) / (JUMP_FX_MS * 0.7 - 150);
+}
+
+/** Length of the hyper-lunge effect (ms): flash, then the ripples rolling out. */
+export const JUMP_FX_MS = 1600;
+
+/** Hyper-lunge progress 0..1 for `ageMs` after the jump, −1 outside it. */
+export function jumpProgress(ageMs: number): number {
+    return ageMs < 0 || ageMs > JUMP_FX_MS ? -1 : ageMs / JUMP_FX_MS;
 }
 
 /**
@@ -564,7 +581,7 @@ export class CreatureLayer {
     }
 
     /** The Leviathan's wounds (rebuilt when the quantised peak / current damage changes), swallow jaws and jump flash. */
-    private whaleFx(c: Creature, v: FaunaView, rig: CreatureRig): void {
+    private whaleFx(c: Creature, v: FaunaView, rig: LeviathanRig): void {
         const g = this.galaxy;
         const real = peekVoidWhaleState(g);
         const fx: WhaleFx | null = this.gallery?.whaleFx?.(c) ?? null;
@@ -573,7 +590,7 @@ export class CreatureLayer {
         const key = woundKey(Math.max(peak, cur), cur);
         if ((v.wound === undefined || v.wound.key !== key) && this.damageBuilds < 4) {
             this.damageBuilds++;
-            const tex = textureFromRgba(paintWounds(FAUNA_BODIES.leviathan, rig.bodyImage, Math.max(peak, cur), cur));
+            const tex = textureFromRgba(paintWounds(rig.bodyImage, Math.max(peak, cur), cur));
             rig.setDamage(tex);
             v.wound?.tex.destroy(true);
             v.wound = { key, tex };
@@ -593,6 +610,7 @@ export class CreatureLayer {
         }
         rig.jawOpen = fx?.jaw ?? (v.lungeAt === undefined ? 0 : jawOpening(now - v.lungeAt));
         rig.flash = fx?.flash ?? (v.jumpAt === undefined ? 0 : jumpFlash(now - v.jumpAt));
+        rig.jumpT = fx?.jumpT ?? (v.jumpAt === undefined ? -1 : jumpProgress(now - v.jumpAt));
     }
 
     private faunaArt(): FaunaArt {
@@ -608,12 +626,16 @@ export class CreatureLayer {
         const art = this.faunaArt();
         if (!art.ready) return null;
         let rig: CreatureRig | null = null;
+        let whale: LeviathanRig | null = null;
         let swarm: LanternSwarm | null = null;
         let straight: StraightCarrier | null = null;
         let node: Container;
         if (look === 'lantern') {
             swarm = new LanternSwarm(art.mote!, c.creatureId);
             node = swarm.root;
+        } else if (look === 'leviathan') {
+            whale = new LeviathanRig(art.leviathan(), (c.creatureId % 17) * 0.37);
+            node = whale.root;
         } else if (look !== null) {
             const tex = art.body(look);
             if (tex === null) return null;
@@ -624,7 +646,7 @@ export class CreatureLayer {
             node = straight.root;
         }
         if (v !== undefined) this.dropView(c, v);
-        v = { look: key, node, rig, swarm, straight, harness: null, hstate: harnessInit(tamed), seenAt: this.frameNo };
+        v = { look: key, node, rig, whale, swarm, straight, harness: null, hstate: harnessInit(tamed), seenAt: this.frameNo };
         this.faunaRoot.addChild(node);
         this.views.set(c, v);
         return v;
@@ -632,6 +654,7 @@ export class CreatureLayer {
 
     private dropView(c: Creature, v: FaunaView): void {
         v.node.destroy({ children: true });
+        v.wound?.tex.destroy(true);
         this.views.delete(c);
     }
 
@@ -647,7 +670,11 @@ export class CreatureLayer {
         v.node.position.set(x, y);
         v.node.rotation = heading;
         const speed01 = c.movementSpeed > 0 ? Math.min(1, c.currentSpeed / c.movementSpeed) : 0;
-        if (v.rig !== null) {
+        if (v.whale !== null) {
+            v.whale.face(heading);
+            v.whale.pose(t, speed01);
+            v.node.scale.set((px * RIG_CONTENT_FRAC) / v.whale.length / z);
+        } else if (v.rig !== null) {
             v.rig.pose(t, speed01);
             v.node.scale.set((px * RIG_CONTENT_FRAC) / v.rig.length / z);
         } else if (v.swarm !== null) {
@@ -657,7 +684,7 @@ export class CreatureLayer {
             v.node.scale.set((px * RIG_CONTENT_FRAC) / v.straight.length / z);
         }
         v.node.alpha = creatureDamageAlpha(c);
-        if (v.rig !== null && look?.look === 'leviathan') this.whaleFx(c, v, v.rig);
+        if (v.whale !== null) this.whaleFx(c, v, v.whale);
         else if (v.rig !== null) this.rigDamage(c, v.rig, px);
         // Tamed look (harness), on any carrier but the swarm.
         v.hstate = harnessStep(v.hstate, tamed, t);
@@ -767,12 +794,12 @@ export class CreatureLayer {
             const tamed = !faunaOn ? false : inGallery ? this.gallery!.tamed(c) : creatureTamedByHerders(this.galaxy, c);
             const capMul = look !== null ? lookCapMul(look.look) : 1;
             // MainView.1.cs 1590-1600: first cull on the unprepared frame size.
-            const loadedPx = Math.min(Math.trunc(CREATURE_LOADED_SIDE / factor), Math.trunc(maxWidth * capMul));
+            const loadedPx = Math.min(Math.trunc(CREATURE_LOADED_SIDE / factor), Math.trunc(maxWidth * capMul)) * (look?.look === 'leviathan' ? LEVIATHAN_DRAW_MUL : 1);
             const sx = (c.xpos - cam.x) * z + halfW;
             const sy = (c.ypos - cam.y) * z + halfH;
             if (offScreen(sx, sy, loadedPx, cam)) continue;
             if (!inGallery && !this.visibleToPlayer(c)) continue;
-            const px = creatureDrawPx(sizeSet.content, c.size, f, capMul);
+            const px = Math.trunc(creatureDrawPx(sizeSet.content, c.size, f, capMul) * (look?.look === 'leviathan' ? LEVIATHAN_DRAW_MUL : 1));
             if (offScreen(sx, sy, px, cam) || px < 1) continue;
             // Drawn position / heading: lerp between the last two sim steps (renderInterp.ts), or the sim state.
             let x = c.xpos;

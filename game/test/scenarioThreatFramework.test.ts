@@ -47,7 +47,8 @@ import { archiveCoresPeriodic, grantArchiveCore, peekArchiveCoresState } from '.
 import { peekProbeSwarmState, probeSwarmIncome, probeSwarmPeriodic, probeSwarmState } from '../src/sim/scenario/threats/probeSwarm';
 import { peekVoidWhaleState, referenceHyperSpeed, voidWhalePeriodic, voidWhaleState } from '../src/sim/scenario/threats/voidWhale';
 import { paintWounds, woundCount, woundKey } from '../src/render/whaleWounds';
-import { FAUNA_BODIES, fallbackPaletteSource, rasterBody } from '../src/render/creatureRig';
+import { leviathanFacing } from '../src/render/leviathanRig';
+import { paintLeviathanBody, paintLeviathanJaw, LEV_W } from '../src/render/leviathanArt';
 import { peekWreckageState } from '../src/sim/scenario/wreckage/common';
 import { reviewThreatInvestigations, THREAT_INVESTIGATIONS_KEY } from '../src/sim/scenario/threats/investigate';
 import { runPlayerCommand } from '../src/sim/player/playerCommands';
@@ -615,14 +616,19 @@ describe('void whale', () => {
         expect(w.fields.some((f) => f.wrecks.some((r) => r.name.includes('carcass')))).toBe(true);
     }, 900000);
 
-    it('wound art: cuts appear with damage, stay at their peak and turn pale scars as it heals; the body rasterises with jaws and fx', () => {
+    it('wound art: cuts appear with damage, stay at their peak and turn pale scars as it heals; the profile body and jaw bake deterministically', () => {
         expect(woundCount(0)).toBe(0);
         expect(woundCount(0.5)).toBeGreaterThan(woundCount(0.2));
         expect(woundKey(0.5, 0.2)).not.toBe(woundKey(0.5, 0.5));
-        const def = FAUNA_BODIES.leviathan;
-        const parts = rasterBody(def, fallbackPaletteSource());
-        expect(parts.jaw).not.toBeNull();
-        expect(parts.body.w).toBe(1024);
+        const parts = paintLeviathanBody();
+        expect(parts.body.w).toBe(LEV_W);
+        expect(paintLeviathanJaw().data.some((v) => v > 0)).toBe(true);
+        // Belly-down roll: rightward +1, leftward −1, near vertical keeps the previous side.
+        expect(leviathanFacing(0.2, -1)).toBe(1);
+        expect(leviathanFacing(Math.PI, 1)).toBe(-1);
+        expect(leviathanFacing(Math.PI / 2, -1)).toBe(-1);
+        // Deterministic bake.
+        expect(paintLeviathanBody().body.data.every((v, i) => v === parts.body.data[i])).toBe(true);
         const redness = (img: { data: Uint8ClampedArray }): number => {
             let r = 0;
             let n = 0;
@@ -632,9 +638,9 @@ describe('void whale', () => {
             }
             return n === 0 ? 0 : r / n;
         };
-        const fresh = paintWounds(def, parts.body, 0.6, 0.6);
-        const healed = paintWounds(def, parts.body, 0.6, 0);
-        const none = paintWounds(def, parts.body, 0, 0);
+        const fresh = paintWounds(parts.body, 0.6, 0.6);
+        const healed = paintWounds(parts.body, 0.6, 0);
+        const none = paintWounds(parts.body, 0, 0);
         expect(none.data.every((v) => v === 0)).toBe(true);
         expect(fresh.data.some((v) => v > 0)).toBe(true);
         // Same cuts, different colour: open gashes are red, healed scars pale and grey.

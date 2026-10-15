@@ -4,6 +4,7 @@
 // an install a neutral palette stands in.
 
 import type { Texture } from 'pixi.js';
+import { leviathanTextures, type LeviathanTextures } from './leviathanRig';
 import {
     CONTAINER_PALETTE_FRAME,
     FAUNA_BODIES,
@@ -47,6 +48,7 @@ export class FaunaArt {
     private sources = new Map<PaletteFrame, PaletteSource>();
     private containerSource: PaletteSource | null = null;
     private bodies = new Map<string, BodyTextures>();
+    private whale: LeviathanTextures | null = null;
     containers: Texture[] = [];
     light: Texture | null = null;
     mote: Texture | null = null;
@@ -78,6 +80,12 @@ export class FaunaArt {
         ])
             .catch((e) => console.warn('[newFauna] palette frames', e))
             .finally(done);
+    }
+
+    /** The Leviathan's baked parts (Void Whale threat; built on first request, palette-free). */
+    leviathan(): LeviathanTextures {
+        if (this.whale === null) this.whale = leviathanTextures();
+        return this.whale;
     }
 
     /** A variant body's textures (built on first request once the palettes are in), or null. */

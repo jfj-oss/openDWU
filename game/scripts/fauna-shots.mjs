@@ -32,7 +32,7 @@ for (const [view, file] of views) {
             const g = window.__faunaGallery;
             return g !== undefined && g.gallery.ready && g.layer.faunaDebug().length >= Math.min(need, g.gallery.count());
         },
-        view.startsWith('leviathan') ? 4 : 99, // the close Leviathan view cuts off the outer whales
+        view === 'leviathan' ? 1 : view.startsWith('leviathan') ? 4 : 99, // the close Leviathan view shows only the first
         { timeout: 240000 },
     );
     await page.waitForTimeout(4000);

@@ -13,6 +13,11 @@ import type { CreatureGallerySource, FaunaLook, WhaleFx } from './creatureLayer'
 import { localViewerEmpire } from '../localViewer';
 import type { WhaleSighting } from '../sim/scenario/threats/voidWhale';
 
+/** Leviathan gallery grid spacing and label offset (world units). */
+const LEV_SX = 1300;
+const LEV_SY = 800;
+const LEV_LABEL_DY = 210;
+
 export type FaunaGalleryView = 'gallery' | 'tamed' | 'tamedMid' | 'shoal' | 'leviathan' | 'leviathanMid' | 'leviathanFar' | 'leviathanGalaxy';
 
 export function faunaGalleryEnabled(search: string): boolean {
@@ -86,11 +91,11 @@ export class FaunaGallery implements CreatureGallerySource {
         if (home === null) return false;
         const ox = home.xpos + home.diameter / 2 + 1200;
         const oy = home.ypos;
-        const add = (v: FaunaVariant, dx: number, dy: number, opts: { size?: number; tamed?: boolean; look?: string; label?: boolean; radius?: number } = {}): Actor => {
+        const add = (v: FaunaVariant, dx: number, dy: number, opts: { size?: number; tamed?: boolean; look?: string; label?: boolean; radius?: number; heading?: number } = {}): Actor => {
             const def = faunaVariantDef(v);
             const size = opts.size ?? Math.round((def.sizeMin + def.sizeMax) / 2);
             const c = standIn(def.baseType, size, `${def.name} (gallery)`, def.leaderSpeed);
-            const a: Actor = { c, look: { look: opts.look ?? def.look }, tamed: opts.tamed ?? false, ax: ox + dx, ay: oy + dy, radius: opts.radius ?? 25, omega: 0.06 * (this.actors.length % 2 === 0 ? 1 : -1), angle0: this.actors.length * 1.3 };
+            const a: Actor = { c, look: { look: opts.look ?? def.look }, tamed: opts.tamed ?? false, ax: ox + dx, ay: oy + dy, radius: opts.heading !== undefined ? 0 : (opts.radius ?? 25), omega: opts.heading !== undefined ? 0 : 0.06 * (this.actors.length % 2 === 0 ? 1 : -1), angle0: opts.heading !== undefined ? opts.heading - Math.PI / 2 : this.actors.length * 1.3 };
             this.actors.push(a);
             if (opts.label !== false) {
                 const t = new Text({ text: opts.tamed ? `${def.name} (tamed)` : def.name, style: { fill: 0xc8d2dc, fontSize: 14, fontFamily: 'sans-serif' } });
@@ -101,24 +106,26 @@ export class FaunaGallery implements CreatureGallerySource {
             }
             return a;
         };
-        const whale = (dx: number, dy: number, fx: WhaleFx, label: string): void => {
-            const a = add(FaunaVariant.VoidWhale, dx, dy, { size: 2800, look: 'leviathan', label: false, radius: 6 });
+        const whale = (dx: number, dy: number, fx: WhaleFx, label: string, heading = -0.08): void => {
+            const a = add(FaunaVariant.VoidWhale, dx, dy, { size: 2800, look: 'leviathan', label: false, heading });
             this.fx.set(a.c, fx);
-            const t = new Text({ text: label, style: { fill: 0xc8d2dc, fontSize: 14, fontFamily: 'sans-serif' } });
+            const t = new Text({ text: label, style: { fill: 0xc8d2dc, fontSize: 22, fontFamily: 'sans-serif' } });
             t.anchor.set(0.5, 0);
-            t.position.set(a.ax, a.ay + 210);
+            t.position.set(a.ax, a.ay + LEV_LABEL_DY);
             t.alpha = 0.8;
             this.labels.addChild(t);
         };
         if (this.view === 'leviathan' || this.view === 'leviathanMid' || this.view === 'leviathanFar' || this.view === 'leviathanGalaxy') {
             // Unhurt / badly wounded / healed to scars / mid-swallow (jaws wide) / jump flash.
-            const sx = 560;
-            whale(-2 * sx, -150, { peak: 0, cur: 0 }, 'unhurt');
-            whale(-sx, -150, { peak: 0.65, cur: 0.65 }, 'badly wounded');
-            whale(0, -150, { peak: 0.65, cur: 0.05 }, 'healed to scars');
-            whale(sx, -150, { peak: 0.3, cur: 0.3, jaw: 1 }, 'mid-swallow');
-            whale(2 * sx, -150, { peak: 0.5, cur: 0.5, jaw: 0, flash: 0.75 }, 'jumping away');
-            add(FaunaVariant.VoidWhale, -sx, 260, { size: 1300, label: true, radius: 6 }); // a New Fauna void whale for scale
+            // A 3 x 2 grid: the top row facing right, the healed one swimming left (rolled belly-down).
+            const sx = LEV_SX;
+            const sy = LEV_SY;
+            whale(0, 0, { peak: 0, cur: 0 }, 'unhurt');
+            whale(sx, 0, { peak: 0.65, cur: 0.65 }, 'badly wounded');
+            whale(2 * sx, 0, { peak: 0.65, cur: 0.05 }, 'healed to scars', Math.PI + 0.1);
+            whale(0, sy, { peak: 0.3, cur: 0.3, jaw: 1 }, 'mid-swallow');
+            whale(sx, sy, { peak: 0.5, cur: 0.5, jaw: 0, flash: 0.8, jumpT: 0.3 }, 'jumping away');
+            add(FaunaVariant.VoidWhale, 2 * sx, sy, { size: 1300, label: true, heading: -0.08 }); // a New Fauna void whale for scale
         } else if (this.view === 'gallery') {
             // All eight variants in one system, a 4 × 2 grid at 100 % zoom.
             const sx = 430;
@@ -152,20 +159,21 @@ export class FaunaGallery implements CreatureGallerySource {
         const cx = this.actors.reduce((a, x) => a + x.ax, 0) / this.actors.length;
         const cy = this.actors.reduce((a, x) => a + x.ay, 0) / this.actors.length;
         if (this.view === 'leviathan') {
-            // Close: each whale ~ 300 px wide.
+            // Close-up of the unhurt one.
             cam.maxZoom = 3;
-            cam.centerOn(cx - 560, cy - 150);
-            cam.zoom = cam.clampZoom(0.9);
+            cam.centerOn(this.actors[0].ax, this.actors[0].ay);
+            cam.zoom = cam.clampZoom(1.8);
         } else if (this.view === 'leviathanMid') {
-            cam.centerOn(cx, cy - 150);
-            cam.zoom = cam.clampZoom(0.42);
+            cam.centerOn(cx, cy);
+            cam.zoom = cam.clampZoom(0.5);
         } else if (this.view === 'leviathanGalaxy') {
             // Galaxy zoom (f > 70): the last-feeding icon.
-            cam.centerOn(cx, cy - 150);
+            cam.centerOn(cx, cy);
             cam.zoom = cam.clampZoom(1 / 120);
         } else if (this.view === 'leviathanFar') {
-            cam.centerOn(cx, cy - 150);
-            cam.zoom = cam.clampZoom(1 / 4);
+            // Normal system zoom, the home planet in frame for scale.
+            cam.centerOn(cx - 900, cy);
+            cam.zoom = cam.clampZoom(1 / 3);
         } else if (this.view === 'gallery') {
             cam.centerOn(cx, cy);
             cam.zoom = cam.clampZoom(1);

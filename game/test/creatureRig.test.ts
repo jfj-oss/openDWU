@@ -81,18 +81,16 @@ describe('19g-7b creature rig — body definitions', () => {
             const k = artStats(skin.data, skin.w, skin.h);
             rows.push(`${def.id.padEnd(15)} ${f3(s.meanL)}  ${f3(s.stdL)}  ${f3(s.p5L)}  ${f3(s.p95L)}  ${f3(s.meanSat)}  ${String(s.hueDeg).padStart(3)}  ${f3(s.softEdge)}    ${k.edgeWidthFrac.toFixed(4)}`);
             // Value range: mean inside the originals' means; the 5–95 % luma band inside theirs (± 0.015).
-            // The Leviathan (battered) is deliberately darker than the originals (Void Whale threat): only its floor differs.
-            const dark = def.battered !== undefined;
-            expect(s.meanL, def.id).toBeGreaterThanOrEqual(dark ? 0.1 : lo('meanL') - 0.005);
+            expect(s.meanL, def.id).toBeGreaterThanOrEqual(lo('meanL') - 0.005);
             expect(s.meanL, def.id).toBeLessThanOrEqual(hi('meanL') + 0.005);
-            expect(s.p5L, def.id).toBeGreaterThanOrEqual(dark ? 0 : lo('p5L') - 0.015);
+            expect(s.p5L, def.id).toBeGreaterThanOrEqual(lo('p5L') - 0.015);
             expect(s.p95L, def.id).toBeLessThanOrEqual(hi('p95L') + 0.015);
-            expect(s.p95L, def.id).toBeGreaterThanOrEqual(dark ? 0.2 : lo('p95L') - 0.015);
+            expect(s.p95L, def.id).toBeGreaterThanOrEqual(lo('p95L') - 0.015);
             // Contrast.
-            expect(s.stdL, def.id).toBeGreaterThanOrEqual(lo('stdL') * (dark ? 0.6 : 0.9));
+            expect(s.stdL, def.id).toBeGreaterThanOrEqual(lo('stdL') * 0.9);
             expect(s.stdL, def.id).toBeLessThanOrEqual(hi('stdL') * 1.1);
             // Edge softness: the skin's alpha-ramp width (fraction of its length), as the pilot matched it.
-            expect(k.edgeWidthFrac, def.id).toBeGreaterThanOrEqual(lo('edgeWidthFrac') * (dark ? 0.7 : 0.8));
+            expect(k.edgeWidthFrac, def.id).toBeGreaterThanOrEqual(lo('edgeWidthFrac') * 0.8);
             expect(k.edgeWidthFrac, def.id).toBeLessThanOrEqual(hi('edgeWidthFrac') * 1.25);
             // The hue shift took: the look's mean hue is near its definition's hue.
             const dh = Math.abs(((s.hueDeg - def.palette.hueDeg + 540) % 360) - 180);
