@@ -13,6 +13,9 @@
 //   each, its own seeded blink schedule) and blink lights with their
 //   additive halos (SwarmFxLayer, one sprite per light group per ship, pooled — no per-frame allocation), and the
 //   Mothercore drawn larger with a slow core glow. Built lazily (at most one composite per frame) and cached per frame URL.
+// - The Purifier: its escorts, guards and repair station draw our bundled aged-bronze Shakturi frames
+//   (public/art/purifier/, scripts/purifier-ships.py) instead of their race's art; the planet destroyer keeps the stock
+//   other/planetdestroyer.png. Picked by subRole (purifierArtUrl), render only: the sim's pictureRef is untouched.
 
 import { Container, type Texture } from 'pixi.js';
 import type { Galaxy } from '../sim/galaxy';
@@ -20,6 +23,10 @@ import type { BuiltObject } from '../sim/builtObject';
 import type { Empire } from '../sim/empire';
 import { genShipsStates } from '../sim/scenario/threats/generationShips';
 import { peekProbeSwarmState } from '../sim/scenario/threats/probeSwarm';
+import { peekPurifierState } from '../sim/scenario/threats/purifier';
+import { identifyPirateBase } from '../sim/characters';
+import { BuiltObjectRole } from '../sim/data/designSpecifications';
+import { BuiltObjectSubRole } from '../sim/builtObjectTypes';
 import type { ShipArt } from './shipArt';
 import { HULL_ALPHA, distanceTransform, luminance } from './liveries';
 import { textureFromRgbaPixels } from './textureCanvas';
@@ -35,15 +42,19 @@ export interface ThreatLooks {
     worldShips: BuiltObject[];
     swarmFaction: Empire | null;
     mothercore: BuiltObject | null;
+    /** The Purifier's faction (its escorts / guards / station wear the bronze art) and its repair station. */
+    purifierFaction: Empire | null;
+    purifierDock: BuiltObject | null;
 }
 
-const looks: ThreatLooks = { genFactions: [], worldShips: [], swarmFaction: null, mothercore: null };
+const looks: ThreatLooks = { genFactions: [], worldShips: [], swarmFaction: null, mothercore: null, purifierFaction: null, purifierDock: null };
 
 /** The threat factions / flagships this frame (a shared record, refreshed in place). */
 export function threatLooks(galaxy: Galaxy): ThreatLooks {
     looks.genFactions.length = 0;
     looks.worldShips.length = 0;
     looks.swarmFaction = looks.mothercore = null;
+    looks.purifierFaction = looks.purifierDock = null;
     if (galaxy.scenario === null) return looks;
     for (const g of genShipsStates(galaxy)) {
         if (g.faction !== null) looks.genFactions.push(g.faction);
@@ -55,7 +66,47 @@ export function threatLooks(galaxy: Galaxy): ThreatLooks {
         looks.swarmFaction = s.faction;
         looks.mothercore = s.mothercore;
     }
+    const pu = peekPurifierState(galaxy);
+    if (pu !== null && pu.faction !== null) {
+        looks.purifierFaction = pu.faction;
+        looks.purifierDock = identifyPirateBase(pu.faction);
+    }
     return looks;
+}
+
+/** The bundled Purifier frames (public/art/purifier/<file>.png, scripts/purifier-ships.py) by subRole. */
+const PURIFIER_ART_DIR = '/art/purifier/';
+function purifierFile(bo: BuiltObject, dock: BuiltObject | null): string | null {
+    if (bo === dock) return 'base_1';
+    if (bo.role === BuiltObjectRole.Base) return 'base_0';
+    switch (bo.subRole) {
+        case BuiltObjectSubRole.Escort:
+        case BuiltObjectSubRole.Frigate:
+            return 'frigate';
+        case BuiltObjectSubRole.Destroyer:
+            return 'destroyer';
+        case BuiltObjectSubRole.Cruiser:
+            return 'cruiser';
+        case BuiltObjectSubRole.CapitalShip:
+            return 'capitalship';
+        case BuiltObjectSubRole.Carrier:
+            return 'carrier';
+        case BuiltObjectSubRole.TroopTransport:
+            return 'trooptransport';
+        default:
+            return null;
+    }
+}
+
+/**
+ * The art URL of a Purifier escort / guard / station (null for everything else, and for the planet destroyer, which keeps
+ * the stock planetdestroyer.png). `l` defaults to the record of the last threatLooks call (the ship layer refreshes it
+ * every frame), so UI pictures without the galaxy at hand agree with the map.
+ */
+export function purifierArtUrl(bo: BuiltObject, l: ThreatLooks = looks): string | null {
+    if (l.purifierFaction === null || bo.isPlanetDestroyer || bo.actualEmpire !== l.purifierFaction) return null;
+    const f = purifierFile(bo, l.purifierDock);
+    return f === null ? null : `${PURIFIER_ART_DIR}${f}.png`;
 }
 
 export const WORLD_SHIP_VISUAL_SCALE = 2.5;

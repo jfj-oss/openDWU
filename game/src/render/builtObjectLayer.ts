@@ -29,7 +29,7 @@ import { CONCORD_LIMBS_MIN_PX, ConcordFxLayer, concordArtEmpire, concordShipArt,
 import { ConstructionOverlays, DamageOverlays, shipConstructionSubject, shipDamageSubject } from './shipOverlays';
 import { artBundleFlag } from './artBundleFlags';
 import { LiveryOverlays } from './liveryLayer';
-import { ANCIENT_TINT, ANCIENT_WEAR, SwarmFxLayer, isAncientHull, isSwarmHull, swarmArtFor, threatDrawScale, threatLooks } from './threatArt';
+import { ANCIENT_TINT, ANCIENT_WEAR, SwarmFxLayer, isAncientHull, isSwarmHull, purifierArtUrl, swarmArtFor, threatDrawScale, threatLooks } from './threatArt';
 import { fogOf } from './fog';
 import { Galaxy } from '../sim/galaxy';
 import type { BuiltObject } from '../sim/builtObject';
@@ -697,11 +697,16 @@ export class BuiltObjectLayer {
             // [concordArt] end
             let img: LoadedShipImage | ConcordShipArt | null | undefined = cArt;
             if (img === null) {
-                const pictureRef = resolveDrawPictureRef(bo);
-                let url = this.urlByPictureRef.get(pictureRef);
-                if (url === undefined) {
-                    url = builtObjectImageUrl(pictureRef);
-                    this.urlByPictureRef.set(pictureRef, url);
+                // threatArt.ts: the Purifier's escorts / station draw the bundled bronze frames.
+                let url = looks.purifierFaction !== null ? purifierArtUrl(bo, looks) : null;
+                if (url === null) {
+                    const pictureRef = resolveDrawPictureRef(bo);
+                    let stock = this.urlByPictureRef.get(pictureRef);
+                    if (stock === undefined) {
+                        stock = builtObjectImageUrl(pictureRef);
+                        this.urlByPictureRef.set(pictureRef, stock);
+                    }
+                    url = stock;
                 }
                 if (url === null) {
                     if (sprite !== undefined) sprite.visible = false;

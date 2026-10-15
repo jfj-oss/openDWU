@@ -69,6 +69,7 @@ import { circleAtScreenRes, segmentCircle } from './screenCircle';
 import { useMinifyingFilter } from './assets';
 import { drawnBuiltObjectPos, type MotionInterpolator } from './renderInterp';
 import { ColorMatrixFilter, Container, Graphics, Sprite, Texture } from 'pixi.js';
+import { GALAXY_OVERLAY_MIN_FACTOR } from './galaxyMarkers';
 import { LRS_DISC_URL, LRS_LAYER_ALPHA, POSTURE_ALPHA, POSTURE_LINE_WIDTH_PX, fleetPostureMarks, longRangeScannerDiscs, scannerLayerFade } from './postureOverlay';
 import { WEAPON_CIRCLES_MIN_FACTOR, drawRangeCircle, gravityWellRing, weaponRangeCircles } from './weaponRangeCircles';
 import { interdictionRing } from '../sim/scenario/interdiction/jumpInterdiction';
@@ -150,6 +151,47 @@ export const OVERLAY_MARKER_COLOR = 0xffff00;
 export const FUTURE_MARKER_COLOR = 0x6fa8ff;
 /** Scenario map beacon (treasure fleet ring and flag): a dark purple, fading outward. */
 const BEACON_PURPLE = 0x5b2a8c;
+
+/** The Purifier glyphs' dark contour and gold accent (the planet destroyer's bronze-and-gold). */
+const PURIFIER_CONTOUR = 0x160806;
+const PURIFIER_GOLD = 0xe8b45a;
+
+/** The spiked-sphere outline of the Purifier glyph (screen px about the centre): `n` spikes from radius `r0` to `r1`. */
+function spikedRing(x: number, y: number, z: number, n: number, r0: number, r1: number, rot: number): number[] {
+    const pts: number[] = [];
+    for (let i = 0; i < n; i++) {
+        const a = rot + (i / n) * Math.PI * 2;
+        const h = Math.PI / n;
+        pts.push(x + (Math.cos(a - h) * r0) / z, y + (Math.sin(a - h) * r0) / z);
+        pts.push(x + (Math.cos(a) * r1) / z, y + (Math.sin(a) * r1) / z);
+    }
+    return pts;
+}
+
+/** The Purifier: a spiked sphere about a fleet icon's size (18 px), gold core; stale = hollow and dim. */
+function drawPurifierGlyph(g: Graphics, x: number, y: number, z: number, color: number, stale: boolean): void {
+    const pts = spikedRing(x, y, z, 8, 5.2, 9, -Math.PI / 2);
+    if (stale) {
+        g.poly(pts).stroke({ width: 2.6 / z, color: PURIFIER_CONTOUR, alpha: 0.45, join: 'miter' });
+        g.poly(pts).stroke({ width: 1.2 / z, color, alpha: 0.6, join: 'miter' });
+        g.circle(x, y, 1.4 / z).fill({ color, alpha: 0.6 });
+        return;
+    }
+    g.poly(pts).fill({ color, alpha: 0.95 }).stroke({ width: 1.4 / z, color: PURIFIER_CONTOUR, alpha: 0.9, join: 'miter' });
+    g.circle(x, y, 3.4 / z).fill({ color: PURIFIER_CONTOUR, alpha: 0.85 });
+    g.circle(x, y, 2 / z).fill({ color: PURIFIER_GOLD, alpha: 1 });
+}
+
+/** The Purifier's repair station: a hexagonal dock plate (14 px) carrying a small four-spiked star. */
+function drawPurifierDockGlyph(g: Graphics, x: number, y: number, z: number, color: number): void {
+    const hex: number[] = [];
+    for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        hex.push(x + (Math.cos(a) * 7) / z, y + (Math.sin(a) * 7) / z);
+    }
+    g.poly(hex).fill({ color: PURIFIER_CONTOUR, alpha: 0.8 }).stroke({ width: 1.5 / z, color, alpha: 0.95, join: 'miter' });
+    g.poly(spikedRing(x, y, z, 4, 1.6, 4.6, -Math.PI / 2)).fill({ color: PURIFIER_GOLD, alpha: 0.95 });
+}
 
 /** Drawn on-screen size of a habitat at the current zoom, matching
  * MainView.ts's own per-category size functions (duplicated here rather
@@ -1043,9 +1085,18 @@ export class OverlayLayer {
             return;
         }
         g.clear();
-        // The treasure fleet beacon (the only scenario marker so far): a small dark-blue ring, thin, with three faint
+        // The Purifier glyphs (above), else the treasure fleet beacon: a small dark-blue ring, thin, with three faint
         // rings outside it that fall off softly. Circles are screen-res tessellated, so the edge stays smooth at any zoom.
         for (const m of this.scenarioMarkerList) {
+            if (m.glyph === 'purifier') {
+                // Live: only on the zoomed-out map (closer in, the ship itself is drawn); the stale one at every zoom.
+                if (m.stale === true || 1 / z >= FLEET_PASS_MIN_FACTOR) drawPurifierGlyph(g, m.x, m.y, z, m.color, m.stale === true);
+                continue;
+            }
+            if (m.glyph === 'purifierDock') {
+                if (1 / z >= GALAXY_OVERLAY_MIN_FACTOR) drawPurifierDockGlyph(g, m.x, m.y, z, m.color);
+                continue;
+            }
             const r = 8 / z;
             circleAtScreenRes(g, m.x, m.y, r, z).stroke({ width: 1.5 / z, color: BEACON_PURPLE, alpha: 0.85 });
             circleAtScreenRes(g, m.x, m.y, r + 2 / z, z).stroke({ width: 1 / z, color: BEACON_PURPLE, alpha: 0.4 });

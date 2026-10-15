@@ -48,6 +48,7 @@ import { fleetTemplateSummary } from './fleetRefillControls';
 import { yardProgress } from './screens/constructionYards';
 import type { ConstructionQueue } from '../sim/construction/constructionQueue';
 import { builtObjectImageUrl, resolveDrawPictureRef } from '../render/builtObjectLayer';
+import { purifierArtUrl } from '../render/threatArt';
 import { fighterImageUrl } from '../render/fighterLayer';
 import { FighterMissionType, Fighter, captainFightersBonus } from '../sim/combat/fighters';
 import { CharacterRole, CharacterSkillType } from '../sim/characters';
@@ -325,7 +326,7 @@ export function habitatImageUrl(h: Habitat): string | null {
 }
 
 export function shipImageUrl(bo: BuiltObject): string | null {
-    return builtObjectImageUrl(resolveDrawPictureRef(bo));
+    return purifierArtUrl(bo) ?? builtObjectImageUrl(resolveDrawPictureRef(bo));
 }
 
 function raceImageUrl(race: Race | null | undefined): string | null {
