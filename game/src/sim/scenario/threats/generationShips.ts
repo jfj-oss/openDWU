@@ -220,6 +220,7 @@ const P = {
     carrierPct: (g: Galaxy) => p(g, 'genShipsCarrierPct', 15),
     techGap: (g: Galaxy) => p(g, 'genShipsTechGap', 2),
     hyperdriveTech: (g: Galaxy) => p(g, 'genShipsHyperdriveTech', 4),
+    extraFuelPct: (g: Galaxy) => p(g, 'genShipsExtraFuelPct', 50),
     empiresPerShip: (g: Galaxy) => p(g, 'genShipsEmpiresPerShip', 6),
     staggerMinYears: (g: Galaxy) => p(g, 'genShipsStaggerMinYears', 2),
     staggerMaxYears: (g: Galaxy) => p(g, 'genShipsStaggerMaxYears', 4),
@@ -383,15 +384,12 @@ export function genShipsLowLevel(ownerLvl: number, gap: number): number {
 export function genShipsComponentDefinitions(defs: readonly ComponentDefinition[], low: number, hyperTech: number, top: number): ComponentDefinition[] {
     const lowest = new Map<ComponentType, ComponentDefinition>();
     for (const d of defs) if (OUTDATED_TYPES.has(d.type) && !PLANETARY_ONLY_COMPONENTS.has(d.name) && d.techLevel <= top && (!lowest.has(d.type) || d.techLevel < lowest.get(d.type)!.techLevel)) lowest.set(d.type, d);
+    // The hyperdrive: slower but efficient (user 2026-10-15) — the lowest energy use per second (components.txt Value2)
+    // of tech <= hyperTech, ties to the slower drive (Calista-Dal WarpDrive with the stock data: 15,000, energy 60).
     let hyper: ComponentDefinition | null = null;
-    let hyperRatio = -1;
     for (const d of defs) {
         if (d.type !== ComponentType.HyperDrive || d.techLevel > hyperTech) continue;
-        const ratio = d.value1 / Math.max(1, d.value2); // speed per energy (components.txt hyperdrive columns)
-        if (ratio > hyperRatio) {
-            hyperRatio = ratio;
-            hyper = d;
-        }
+        if (hyper === null || d.value2 < hyper.value2 || (d.value2 === hyper.value2 && d.value1 < hyper.value1)) hyper = d;
     }
     const out: ComponentDefinition[] = [];
     for (const d of defs) {
@@ -403,6 +401,17 @@ export function genShipsComponentDefinitions(defs: readonly ComponentDefinition[
         } else out.push(d);
     }
     return out;
+}
+
+/** Bigger hulls whose extra room is all fuel (user 2026-10-15): copies of the design's own fuel storage adding about
+ *  `pct` % of its size, then the stock ReDefine (the same thrust over more mass: slower). Pure apart from `d`. */
+function addExtraFuel(d: Design, pct: number): void {
+    if (pct <= 0) return;
+    const fuel = d.components.filter((c) => c.type === ComponentType.StorageFuel).sort((a, b) => b.value1 - a.value1 || a.componentId - b.componentId)[0];
+    if (fuel === undefined || !(fuel.size > 0)) return;
+    const n = Math.round((d.size * pct) / 100 / fuel.size);
+    for (let i = 0; i < n; i++) d.components.push(fuel);
+    if (n > 0) d.reDefine();
 }
 
 function factionDesigns(galaxy: Galaxy, faction: Empire, lvl: number): Map<BuiltObjectSubRole, Design> {
@@ -426,6 +435,7 @@ function factionDesigns(galaxy: Galaxy, faction: Empire, lvl: number): Map<Built
         }
         if (d === null) d = faction.designs.filter((x) => x.subRole === sub).at(-1) ?? null;
         if (d === null) continue;
+        if (WARSHIP_SUBROLES.has(sub)) addExtraFuel(d, P.extraFuelPct(galaxy));
         if (!faction.designs.includes(d)) faction.designs.push(d);
         out.set(sub, d);
     }

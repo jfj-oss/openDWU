@@ -4,6 +4,9 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **Generation ships: slow, efficient, fuel-heavy:** their warships use the most fuel-efficient hyperdrive up to tech 4
+  (Calista-Dal WarpDrive: 15,000 speed, the lowest energy use) and are about 50% bigger, all of the extra room fuel
+  storage (the battleship: size 1,061, fuel 6,500 instead of 600; slower in normal space).
 - **Void Whale: the Leviathan redrawn:** a true giant (2-3x a New Fauna void whale on screen), drawn side-on as a scarred Moby-Dick sperm whale: box head, underslung toothed jaw that gapes when it swallows a station, torn pectoral fin, broad flukes with a slow heavy beat, bruised blue-black hide with pale belly, harpoons and hull plates in its back, faint cyan markings; fresh wounds glow red and heal to pale scars; a white flash, light streaks and ripples when it hyper-lunges; a matching whale icon at galaxy zoom.
 
 - **Generation ships are really low-tech now:** apart from reactors, fuel storage and their (efficient tech-4) hyperdrive,
