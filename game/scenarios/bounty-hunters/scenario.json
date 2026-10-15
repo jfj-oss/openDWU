@@ -1,0 +1,22 @@
+{
+  "id": "bounty-hunters",
+  "name": "Bounty hunters",
+  "description": "A terrible reputation has a price. When an empire's civility rating falls far enough, the empires that dislike it pool money into a bounty on it, announced across the galaxy. While the bounty stands, a mercenary pirate faction sets up at the edge of the empire's territory, with ships from its own tech and a fleet sized by the bounty and the target's military. The hunters attack the target's ships, stations and trade (never its colonies) and are paid out of the bounty for each kill. The target can pay the bounty off (a decision), fight the hunters (each hunter ship destroyed gives a little reputation back) or mend its ways: when the rating recovers the bounty is withdrawn and the hunters leave. Repeat offences post larger bounties. AI empires are hunted too and choose to pay or fight by a simple rule.",
+  "addableToSave": true,
+  "flags": [
+    { "name": "bountyHunters", "label": "Bounty hunters", "description": "Master switch.", "default": true, "requiresAddons": ["reputation"] }
+  ],
+  "params": [
+    { "name": "bountyHuntersThreshold", "label": "Civility rating at which a bounty is posted (Notorious is -20 to -30, Evil -30 to -50)", "default": -30, "min": -100, "max": 0 },
+    { "name": "bountyHuntersRecover", "label": "Civility rating at which the bounty is withdrawn (higher than the threshold)", "default": -15, "min": -100, "max": 30 },
+    { "name": "bountyHuntersFundPct", "label": "Treasury share each hostile empire puts into a bounty, at most % (by how much it dislikes the target)", "default": 3, "min": 0.1, "max": 20 },
+    { "name": "bountyHuntersPayoffPct", "label": "Price to pay a bounty off, % of what is left of it", "default": 125, "min": 50, "max": 400 },
+    { "name": "bountyHuntersKillPct", "label": "Hunters' pay per kill, % of the destroyed ship's price", "default": 50, "min": 5, "max": 300 },
+    { "name": "bountyHuntersPerHunter", "label": "Bounty per hunter ship, credits", "default": 60000, "min": 10000, "max": 10000000 },
+    { "name": "bountyHuntersMax", "label": "Most hunter ships at once", "default": 10, "min": 1, "max": 30 },
+    { "name": "bountyHuntersDefianceRep", "label": "Civility the target gains for each hunter ship it destroys", "default": 0.4, "min": 0, "max": 5 },
+    { "name": "bountyHuntersCooldownYears", "label": "Years before a new bounty can be posted on the same empire", "default": 1, "min": 0, "max": 20 },
+    { "name": "bountyHuntersMin", "label": "Smallest bounty that is posted, credits", "default": 20000, "min": 1000, "max": 100000000 },
+    { "name": "bountyHuntersTech", "label": "Tech level of the hunters (0.5 is a normal start)", "default": 1.5, "min": 0.5, "max": 7 }
+  ]
+}

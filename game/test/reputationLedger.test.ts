@@ -4,7 +4,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { cachedTickGameRun } from './helpers/gameCache';
-import { createScenarioGame } from './helpers/scenarioGame';
+import { comboOverlayFs, createScenarioGame } from './helpers/scenarioGame';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
@@ -33,6 +33,10 @@ import {
     REPUTATION_DEFAULT_DECAY,
 } from '../src/sim/scenario/reputation/ledger';
 import { reputationRows } from '../src/sim/scenario/reputation/view';
+import { answerScenarioDecision, pendingScenarioDecisions } from '../src/sim/scenario/decisions';
+import { BOUNTY_PAYOFF_DECISION, bountyDispatch, bountyLine, bountyOn, bountyOnKilled, bountyReview, bountyState, hunterCount, hunterShips, payoffPrice } from '../src/sim/scenario/bountyHunters/bountyHunters';
+import { PiratePlayStyle } from '../src/sim/pirates';
+import { BuiltObjectMissionType, builtObjectMission } from '../src/sim/missions/mission';
 
 let base: GameData;
 beforeAll(async () => {
@@ -277,4 +281,115 @@ describe('save / flags off', () => {
         expect(game.galaxy.rnd.drawCount).toBe(ref.game.galaxy.rnd.drawCount);
         expect('reputation' in game.galaxy.scenario!.state).toBe(false);
     }, 2400000);
+});
+
+describe('bounty hunters (add-on bounty-hunters, on the Reputation ledger)', () => {
+    function bountyGame(): { game: Game; g: Galaxy } {
+        const { game } = createScenarioGame(base, { scenario: comboOverlayFs(['reputation', 'bounty-hunters']), flags: { espionageConsequences: false } });
+        const g = game.galaxy;
+        for (const a of aiEmpires(g)) for (const b of [...aiEmpires(g), g.playerEmpire!]) if (a !== b) meet(a, b);
+        for (const e of aiEmpires(g)) e.stateMoney = 3e6;
+        return { game, g };
+    }
+
+    it('posts at the threshold, scales and pays hunters, honours hysteresis and repeat offences', () => {
+        const { g } = bountyGame();
+        const [target, other] = aiEmpires(g);
+        target.stateMoney = 1000; // too poor to pay the AI's pay-off
+        target.civilityRating = -20; // above the threshold (-30): nothing
+        bountyReview(g);
+        expect(bountyOn(g, target)).toBeNull();
+        const pool0 = aiEmpires(g).reduce((s, e) => s + e.stateMoney, 0);
+
+        target.civilityRating = -35;
+        bountyReview(g);
+        const b = bountyOn(g, target)!;
+        expect(b).not.toBeNull();
+        expect(b.amount).toBeGreaterThan(0);
+        expect(b.funders.every((f) => f.empireId !== target.empireId)).toBe(true);
+        expect(aiEmpires(g).reduce((s, e) => s + e.stateMoney, 0)).toBeLessThan(pool0); // the pool came out of the funders
+        expect(reputationSum(g, other, target)).toBeLessThan(0); // the ledger line
+        expect(bountyLine(g, target)).toContain('Bounty:');
+        expect(bountyLine(g, other)).toBeNull();
+        // The hunters: a Mercenary pirate faction with at least one warship, at most what the bounty calls for.
+        const f = b.faction!;
+        expect(f).not.toBeNull();
+        expect(f.piratePlayStyle).toBe(PiratePlayStyle.Mercenary);
+        expect(g.pirateEmpires).toContain(f);
+        const n = hunterShips(f).length;
+        expect(n).toBeGreaterThanOrEqual(1);
+        expect(n).toBe(hunterCount(g, b));
+        const small = hunterCount(g, { ...b, amount: 1000 });
+        const big = hunterCount(g, { ...b, amount: 1e9 });
+        expect(small).toBeGreaterThanOrEqual(1);
+        expect(big).toBeGreaterThanOrEqual(small);
+        expect(big).toBeLessThanOrEqual(10);
+        // Idle hunters are sent against the target's own ships and stations.
+        bountyDispatch(g);
+        const m = builtObjectMission(hunterShips(f)[0].mission);
+        if (m !== null && m.type === BuiltObjectMissionType.Attack) expect((m.target as { empire: Empire }).empire).toBe(target);
+        // A kill pays out of the bounty.
+        const victim = target.builtObjects.find((o) => !o.hasBeenDestroyed && o.purchasePrice > 0)!;
+        const before = b.amount;
+        const money = f.stateMoney;
+        bountyOnKilled(g, victim, f);
+        expect(b.amount).toBeLessThan(before);
+        expect(f.stateMoney).toBeGreaterThan(money);
+        expect(b.kills).toBe(1);
+        // A hunter destroyed by the target gives a little civility back.
+        const rating = target.civilityRating;
+        bountyOnKilled(g, hunterShips(f)[0], target);
+        expect(target.civilityRating).toBeGreaterThan(rating);
+        // Hysteresis: between the thresholds the bounty stands; above the recovery level it is withdrawn.
+        target.civilityRating = -20;
+        bountyReview(g);
+        expect(bountyOn(g, target)).not.toBeNull();
+        const cash = other.stateMoney;
+        target.civilityRating = -10;
+        bountyReview(g);
+        expect(bountyOn(g, target)).toBeNull();
+        expect(other.stateMoney).toBeGreaterThan(cash); // the rest is returned
+        expect(g.pirateEmpires).not.toContain(f);
+        // Cooldown, then a repeat offence posts a larger bounty.
+        const st = bountyState(g);
+        target.civilityRating = -40;
+        bountyReview(g);
+        expect(bountyOn(g, target)).toBeNull();
+        st.cooldown[target.empireId] = 0;
+        bountyReview(g);
+        const again = bountyOn(g, target)!;
+        expect(again.offence).toBe(2);
+    }, 600000);
+
+    it('the human target is offered the pay-off; paying withdraws the bounty and the hunters leave', () => {
+        const { g } = bountyGame();
+        const me = g.playerEmpire!;
+        me.stateMoney = 5e6;
+        me.civilityRating = -45;
+        bountyReview(g);
+        const b = bountyOn(g, me)!;
+        expect(b).not.toBeNull();
+        const faction = b.faction;
+        const d = pendingScenarioDecisions(g, me).find((x) => x.kind === BOUNTY_PAYOFF_DECISION)!;
+        expect(d).toBeDefined();
+        expect(d.options.map((o) => o.id)).toEqual(['pay', 'fight']);
+        const price = payoffPrice(g, b);
+        expect(price).toBeGreaterThan(b.amount);
+        expect(answerScenarioDecision(g, d.id, 'pay')).toBe(true);
+        expect(me.stateMoney).toBe(5e6 - price);
+        expect(bountyOn(g, me)).toBeNull();
+        if (faction !== null) expect(g.pirateEmpires).not.toContain(faction);
+    }, 600000);
+
+    it('an AI pariah is hunted and answers the pay-off at once', () => {
+        const { g } = bountyGame();
+        const target = aiEmpires(g)[0];
+        target.civilityRating = -60;
+        bountyReview(g);
+        // Raised and answered in the same call (no pending question for an AI); either paid off or still hunted.
+        expect(pendingScenarioDecisions(g, target)).toHaveLength(0);
+        const b = bountyOn(g, target);
+        if (b !== null) expect(hunterShips(b.faction).length).toBeGreaterThan(0);
+        else expect(bountyState(g).paidOff).toBe(1);
+    }, 600000);
 });

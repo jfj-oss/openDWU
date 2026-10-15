@@ -1,0 +1,2 @@
+'Bounty hunters: ledger cause label (scenarioText tag "Reputation Cause <cause id>"), in the voice of the empire that posted the bounty.
+Reputation Cause bountyHunters.bounty;We have put a price on your head

@@ -69,6 +69,7 @@ import './smarterAI/shipDesign'; // Smarter AI ship design (flags smarterAIDesig
 import './privateers/privateers'; // Private-sector privateers (flag privateers; player + AI empires' private sectors; no Rnd)
 import './themedNames/themedNames'; // Themed names for AI empires (flag themedNames; AI empires only; no Rnd)
 import './colonyDefence/colonyDefence'; // Defended colonies resist pirates (flag colonyDefence; every empire's colonies; no Rnd)
+import './bountyHunters/bountyHunters'; // Bounty hunters (flag bountyHunters; a pooled bounty on a pariah, a mercenary pirate faction hunts it; no Rnd beyond the faction's creation)
 import './charactersVictory/diet/warCrimes'; // War crimes remembered (flag warCrimes; records, reputation, the Diet's tribunal; no Rnd)
 import './scorchedEarth/scorchedEarth'; // Scorched earth (flag scorchedEarth; the defender's Defend / Scorch choice; no Rnd)
 import './charactersVictory/vip'; // Characters & Victory VIP shuttles, escorts, decoys (flag charactersVictory + cvVipShuttles / cvEscorts / cvRulerDecoys)

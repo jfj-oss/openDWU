@@ -187,6 +187,7 @@ import { relationshipFactors, feelingDescription, type RelationshipFactor } from
 import { incidentRows } from '../../sim/scenario/emergent/espionageView';
 import { councilView } from '../../sim/scenario/emergent/councilView';
 import { reputationRows } from '../../sim/scenario/reputation/view';
+import { bountyLine } from '../../sim/scenario/bountyHunters/bountyHunters';
 import { activeVoiceJob } from '../../llm/voiceJob'; // [llm] 19s-2
 import { acceptProposal, declineProposal } from '../../sim/player/playerOrders';
 import type { Character } from '../../sim/characters';
@@ -1434,6 +1435,14 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         if (war !== null) box.appendChild(war);
         // [wargoals] end
 
+        // Bounty hunters (scenario `bountyHunters`): a bounty on this empire, or on us.
+        for (const [who, subject] of [[empire, ''], [player, 'On us: ']] as const) {
+            const bl = bountyLine(player.galaxy, who);
+            if (bl === null) continue;
+            const line = el('div', 'diplomacy-factor', subject + bl);
+            line.style.color = RED;
+            box.appendChild(line);
+        }
         // 19o (scenario `reputationLedger`): the ledger entries the other empire holds about us, with their fade.
         const causes = reputationRows(player.galaxy, player, empire);
         if (causes.length > 0) {
