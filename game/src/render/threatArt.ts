@@ -18,7 +18,7 @@ import { Container, type Texture } from 'pixi.js';
 import type { Galaxy } from '../sim/galaxy';
 import type { BuiltObject } from '../sim/builtObject';
 import type { Empire } from '../sim/empire';
-import { peekGenShipsState } from '../sim/scenario/threats/generationShips';
+import { genShipsStates } from '../sim/scenario/threats/generationShips';
 import { peekProbeSwarmState } from '../sim/scenario/threats/probeSwarm';
 import type { ShipArt } from './shipArt';
 import { HULL_ALPHA, distanceTransform, luminance } from './liveries';
@@ -31,22 +31,24 @@ import { SpritePool } from './fxCommon';
 // ---------------------------------------------------------------------------------------------------------------
 
 export interface ThreatLooks {
-    genFaction: Empire | null;
-    worldShip: BuiltObject | null;
+    genFactions: Empire[];
+    worldShips: BuiltObject[];
     swarmFaction: Empire | null;
     mothercore: BuiltObject | null;
 }
 
-const looks: ThreatLooks = { genFaction: null, worldShip: null, swarmFaction: null, mothercore: null };
+const looks: ThreatLooks = { genFactions: [], worldShips: [], swarmFaction: null, mothercore: null };
 
 /** The threat factions / flagships this frame (a shared record, refreshed in place). */
 export function threatLooks(galaxy: Galaxy): ThreatLooks {
-    looks.genFaction = looks.worldShip = looks.swarmFaction = looks.mothercore = null;
+    looks.genFactions.length = 0;
+    looks.worldShips.length = 0;
+    looks.swarmFaction = looks.mothercore = null;
     if (galaxy.scenario === null) return looks;
-    const g = peekGenShipsState(galaxy);
-    if (g !== null) {
-        looks.genFaction = g.faction;
-        looks.worldShip = g.worldShip !== null && !g.worldShip.hasBeenDestroyed ? g.worldShip : null;
+    for (const g of genShipsStates(galaxy)) {
+        if (g.faction !== null) looks.genFactions.push(g.faction);
+        if (g.pirate !== null) looks.genFactions.push(g.pirate);
+        if (g.worldShip !== null && !g.worldShip.hasBeenDestroyed) looks.worldShips.push(g.worldShip);
     }
     const s = peekProbeSwarmState(galaxy);
     if (s !== null) {
@@ -61,14 +63,14 @@ export const MOTHERCORE_VISUAL_SCALE = 1.6;
 
 /** Visual size multiplier of an object (1 for everything but the world ship / the Mothercore). */
 export function threatDrawScale(l: ThreatLooks, bo: BuiltObject): number {
-    if (bo === l.worldShip) return WORLD_SHIP_VISUAL_SCALE;
+    if (l.worldShips.includes(bo)) return WORLD_SHIP_VISUAL_SCALE;
     if (bo === l.mothercore) return MOTHERCORE_VISUAL_SCALE;
     return 1;
 }
 
 /** A generation-ship hull (the faction's, or the world ship under any owner). */
 export function isAncientHull(l: ThreatLooks, bo: BuiltObject): boolean {
-    return (l.genFaction !== null && bo.actualEmpire === l.genFaction) || (l.worldShip !== null && bo === l.worldShip);
+    return (bo.actualEmpire !== null && l.genFactions.includes(bo.actualEmpire)) || l.worldShips.includes(bo);
 }
 
 export function isSwarmHull(l: ThreatLooks, bo: BuiltObject): boolean {

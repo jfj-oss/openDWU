@@ -211,7 +211,25 @@ function rollThreatExistence(galaxy: Galaxy): void {
     if (keys.length === 0) return;
     const st = threatState(galaxy, THREATS_KEY, (): ThreatsFrameworkState => ({ exists: {} }));
     const rnd = new Random(((galaxy.randomSeed ^ 0x74484c31) >>> 1) & 0x7fffffff);
-    for (const key of keys) st.exists[key] = rnd.nextDouble() * 100 < threatExistChancePctFor(galaxy, key);
+    for (const key of keys) {
+        st.exists[key] = rnd.nextDouble() * 100 < threatExistChancePctFor(galaxy, key);
+        if (threatForced(galaxy, key)) st.exists[key] = true; // the start option "guarantee this threat against me" (after the roll: the draw stream is unchanged)
+    }
+}
+
+/**
+ * The start option "guarantee this threat against my empire" (the add-on picker's right-click, param `<key>Force` = 1;
+ * a start option, so every multiplayer peer agrees). Only for threats that aim at one empire. Pure.
+ */
+export function threatForced(galaxy: Galaxy, key: string): boolean {
+    return scenarioParam(galaxy, `${key}Force`, 0) >= 1;
+}
+
+/** The forced threat's chosen victim: the player's empire when the threat is forced, else null. Pure. */
+export function forcedThreatVictim(galaxy: Galaxy, key: string): Empire | null {
+    if (!threatForced(galaxy, key)) return null;
+    const p = galaxy.playerEmpire;
+    return p !== null && p !== undefined && p.active ? p : null;
 }
 
 registerScenarioGameStart({ id: 'threatFramework.existenceLottery', scenarioId: 'threat-framework', order: -1000, run: (g) => rollThreatExistence(g) });

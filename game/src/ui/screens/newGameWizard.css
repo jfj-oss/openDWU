@@ -450,6 +450,11 @@
 .wizard-addon-row:has(input:checked) .wizard-addon-name {
     color: rgb(255, 255, 0);
 }
+.wizard-addon-force {
+    color: rgb(80, 150, 255);
+    font-weight: bold;
+    font-size: 15.33px;
+}
 .wizard-addon-needs {
     font-size: 13.33px;
     color: rgb(120, 120, 130);

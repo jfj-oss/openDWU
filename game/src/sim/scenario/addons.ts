@@ -635,6 +635,12 @@ export const EXPANSIONS: readonly Expansion[] = [
     { id: 'living-galaxy', name: 'Living Galaxy', description: 'A galaxy that moves on its own: lively events, emergent factions, active independents and scorched earth.', members: ['lively-galaxy', 'emergent', 'independents-active', 'scorched-earth'] },
 ];
 
+/**
+ * Add-ons whose threat aims at one empire: right-clicking their row in the picker toggles "guarantee this threat
+ * against my empire" (the add-on's `<key>Force` param, 1 = on; threats/framework.ts threatForced). add-on id → param.
+ */
+export const FORCEABLE_THREATS: Readonly<Record<string, string>> = { 'generation-ships': 'generationShipsForce', cult: 'cultForce' };
+
 /** The expansion's members this index has, visible ones only (hidden infrastructure comes in as a dependency). */
 export function expansionMembers(cat: AddonCatalog, e: Expansion): string[] {
     return e.members.filter((id) => cat.byId.has(id) && !cat.byId.get(id)!.hidden);

@@ -107,7 +107,7 @@ import { selectColorFromKey } from '../../sim/empireColors';
 import { loadScenarioIndex } from '../../sim/scenario/fetchScenario';
 import type { ScenarioManifest } from '../../sim/scenario/manifest';
 import { IS_CLASSIC } from '../../appVersion';
-import { BASE_ADDONS, SMARTER_AI_ADDON_ID, addonCatalog, addonClosure, addonPickerModel, canonicalAddons, defaultSmarterAIChoice, expansionMemberIds, expansionRows, toggleExpansion, type ExpansionRow, planAddonStart, resolveAddonSwitches, toggleAddon, withFlagAddons, forcedFlags, withSmarterAI, withOrbitalSuperiority, withLongerGroundCombat, withJumpInterdiction, withBlockadesBite, withMothballing, MOTHBALLING_ADDON_ID, withSlowHyperdrive, withFightingRetreats, FIGHTING_RETREATS_ADDON_ID, SLOW_HYPERDRIVE_ADDON_ID, ORBITAL_SUPERIORITY_ADDON_ID, LONGER_GROUND_COMBAT_ADDON_ID, JUMP_INTERDICTION_ADDON_ID, BLOCKADES_BITE_ADDON_ID, type AddonCatalog, type AddonOverrides, type AddonRow, type SmarterAIChoice } from '../../sim/scenario/addons';
+import { BASE_ADDONS, FORCEABLE_THREATS, SMARTER_AI_ADDON_ID, addonCatalog, addonClosure, addonPickerModel, canonicalAddons, defaultSmarterAIChoice, expansionMemberIds, expansionRows, toggleExpansion, type ExpansionRow, planAddonStart, resolveAddonSwitches, toggleAddon, withFlagAddons, forcedFlags, withSmarterAI, withOrbitalSuperiority, withLongerGroundCombat, withJumpInterdiction, withBlockadesBite, withMothballing, MOTHBALLING_ADDON_ID, withSlowHyperdrive, withFightingRetreats, FIGHTING_RETREATS_ADDON_ID, SLOW_HYPERDRIVE_ADDON_ID, ORBITAL_SUPERIORITY_ADDON_ID, LONGER_GROUND_COMBAT_ADDON_ID, JUMP_INTERDICTION_ADDON_ID, BLOCKADES_BITE_ADDON_ID, type AddonCatalog, type AddonOverrides, type AddonRow, type SmarterAIChoice } from '../../sim/scenario/addons';
 import {
     COLORS,
     FONT,
@@ -3001,6 +3001,8 @@ export async function startWhenAddonsLoaded(ready: Promise<unknown>, refresh: ()
     start();
 }
 
+const FORCE_TOOLTIP = 'Right-click to guarantee this threat comes in this game and aims at your empire (a blue check marks it). Ignores its chance of existing.';
+
 function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
     const options = ctx.options;
     const wrap = pageDiv('wizard-scenario-page');
@@ -3060,6 +3062,22 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
         const txt = el('div', 'wizard-addon-text');
         const head = el('div', 'wizard-addon-head');
         head.appendChild(el('span', 'wizard-addon-name', r.name));
+        // Threats that aim at one empire: right-click toggles "guarantee this threat against my empire" (a blue check).
+        const forceParam = FORCEABLE_THREATS[r.id];
+        if (forceParam !== undefined) {
+            const on = r.checked && (overrides.params[forceParam] ?? 0) >= 1;
+            const mark = el('span', 'wizard-addon-force', '\u2713');
+            mark.hidden = !on;
+            mark.title = FORCE_TOOLTIP;
+            head.appendChild(mark);
+            row.title = (r.tooltip ? r.tooltip + '\n\n' : '') + FORCE_TOOLTIP;
+            row.addEventListener('contextmenu', (ev) => {
+                ev.preventDefault();
+                if (!r.checked) return;
+                overrides.params[forceParam] = (overrides.params[forceParam] ?? 0) >= 1 ? 0 : 1;
+                update();
+            });
+        }
         if (r.wip !== null) {
             const tag = el('span', 'wizard-addon-wip', 'WIP');
             tag.title = `Work in progress: ${r.wip}`;

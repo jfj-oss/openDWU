@@ -828,7 +828,7 @@ function empireGenerateDesignName(galaxy: Galaxy, empire: Empire, subRole: Built
 // `currentStarDate` = Galaxy.CurrentStarDate (not tracked on the TS Galaxy; callers pass it).
 // Rnd: SelectPreferredSuperWeapon inside PlaceComponentsOnDesign (capital ships of aggressive
 // and intelligent races), then GenerateDesignName.
-export function generateDesignFromSpec(galaxy: Galaxy, empire: Empire, designSpec: DesignSpecification | null, techAdvanceAmount: number, currentStarDate: number): Design | null {
+export function generateDesignFromSpec(galaxy: Galaxy, empire: Empire, designSpec: DesignSpecification | null, techAdvanceAmount: number, currentStarDate: number, definitions?: ComponentDefinition[]): Design | null {
     let design: Design | null = null;
     const fleeWhen = BuiltObjectFleeWhen.Shields20;
     const stance = BuiltObjectStance.AttackEnemies;
@@ -860,7 +860,7 @@ export function generateDesignFromSpec(galaxy: Galaxy, empire: Empire, designSpe
         design.subRole = designSpec.subRole;
         design.imageScalingType = designSpec.imageScalingMode;
         design.imageScalingFactor = designSpec.imageScalingFactor;
-        design = placeComponentsOnDesignWithTech(placementView(empire, galaxy), design, designSpec, null, techAdvanceAmount);
+        design = placeComponentsOnDesignWithTech(definitions === undefined ? placementView(empire, galaxy) : { ...placementView(empire, galaxy), componentDefinitions: definitions }, design, designSpec, null, techAdvanceAmount);
         // C# dereferences the result unconditionally (NullReferenceException when
         // PlaceComponentsOnDesign returns null: a military spec with no weapon or fighter bay).
         if (design === null) throw new Error('GenerateDesignFromSpec: PlaceComponentsOnDesign returned null (C# NullReferenceException)');

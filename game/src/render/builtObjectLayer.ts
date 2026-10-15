@@ -624,7 +624,7 @@ export class BuiltObjectLayer {
         const liveries = artBundleFlag(this.galaxy, 'liveries');
         // threatArt.ts: the generation ships wear the oldest wear look whether or not the livery flag is on.
         const looks = threatLooks(this.galaxy);
-        const liveryPass = liveries || looks.genFaction !== null || looks.worldShip !== null;
+        const liveryPass = liveries || looks.genFactions.length > 0 || looks.worldShips.length > 0;
         this.liveries.root.visible = liveryPass;
         if (liveryPass) this.liveries.begin();
         this.swarmFx.begin();

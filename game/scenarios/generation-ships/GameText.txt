@@ -60,3 +60,7 @@ GenShips Site Row Ark;World ship (Ark Faith)
 GenShips Site Row Quiet;World ship (silent)
 GenShips Reputation Gratitude;Gave the Pilgrims a home
 GenShips Reputation Grudge;Held the Heirs' throne world
+GenShips Strike News;The {0} fleet is hunting the {1}'s gas mining stations ({2} within reach) to starve its ships of fuel.
+GenShips Regroup News;The {0} have finished their raids on the {1}'s gas mining stations ({2} destroyed) and gathered every fleet to take {3}.
+GenShips Pirates News;Beaten, the {0} fleet has turned pirate: the {3} raid the {1} from a base at {2}.
+GenShips Pirate Name;{0} Raiders

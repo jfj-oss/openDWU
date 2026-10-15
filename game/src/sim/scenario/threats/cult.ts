@@ -46,6 +46,7 @@ import {
     type KnownThreatSite,
     type SentStages,
     type ThreatKnowledge,
+    forcedThreatVictim,
 } from './framework';
 
 export const CULT_KEY = 'cult';
@@ -112,9 +113,10 @@ function isConverted(st: CultState, c: Character): boolean {
 // ---------------------------------------------------------------------------------------------------------------
 
 /** Candidates: active, Spiritual-trait characters of a normal empire, not already converted, in empire/list order. */
-export function cultSeedCandidates(galaxy: Galaxy, st: CultState): Character[] {
+export function cultSeedCandidates(galaxy: Galaxy, st: CultState, only: Empire | null = null): Character[] {
     const out: Character[] = [];
     for (const e of normalEmpires(galaxy, st.faction)) {
+        if (only !== null && e !== only) continue;
         for (const c of getEmpireCharacters(e)) {
             if (!c.active || !c.traits.includes(CharacterTraitType.Spiritual) || isConverted(st, c)) continue;
             out.push(c);
@@ -130,7 +132,10 @@ export function cultYearly(galaxy: Galaxy, year: number): void {
     const startYear = gameYear(startStarDateForAge(galaxy.age));
     if (year < startYear + P.seedYear(galaxy) || !pastThreatMinYear(galaxy, CULT_KEY, year)) return; // §0 timing: also waits for the shared/overridden floor.
     if (st.converted.length > 0) return; // already seeded
-    const candidates = cultSeedCandidates(galaxy, st);
+    // The Force start option seeds the creed in the player's own empire (when it has a spiritual character).
+    const victim = forcedThreatVictim(galaxy, CULT_KEY);
+    const mine = victim !== null ? cultSeedCandidates(galaxy, st, victim) : [];
+    const candidates = mine.length > 0 ? mine : cultSeedCandidates(galaxy, st);
     if (candidates.length === 0) return;
     const c = candidates[galaxy.rnd.next(0, candidates.length)];
     convert(galaxy, st, c);

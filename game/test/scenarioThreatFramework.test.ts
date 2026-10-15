@@ -37,7 +37,12 @@ import { threatMarker, THREAT_CONFIRMED_COLOR, THREAT_SUSPECTED_COLOR } from '..
 import type { CreateGameOptions } from '../src/sim/game';
 import { comboOverlayFs, createScenarioGame } from './helpers/scenarioGame';
 import { registerScenarioEvent, scenarioEmit, scenarioQuery } from '../src/sim/scenario/hooks';
-import { genShipsPeriodic, genShipsState, peekGenShipsState } from '../src/sim/scenario/threats/generationShips';
+import { genShipsLowLevel, genShipsPeriodic, genShipsState, genShipsStates, genShipsWaveSize, peekGenShipsState } from '../src/sim/scenario/threats/generationShips';
+import { empireTechLevel, maxDesignTechLevel } from '../src/sim/scenario/threats/robotMutiny';
+import { calculateOverallStrengthFactorWithoutShields } from '../src/sim/diplomacyTick';
+import { ComponentType } from '../src/sim/data/components';
+import { HabitatType } from '../src/sim/types';
+import { YEAR_LENGTH } from '../src/sim/galaxyTime';
 import { archiveCoresPeriodic, grantArchiveCore, peekArchiveCoresState } from '../src/sim/scenario/threats/archiveCores';
 import { peekProbeSwarmState, probeSwarmIncome, probeSwarmPeriodic, probeSwarmState } from '../src/sim/scenario/threats/probeSwarm';
 import { peekVoidWhaleState, referenceHyperSpeed, voidWhalePeriodic, voidWhaleState } from '../src/sim/scenario/threats/voidWhale';
@@ -49,6 +54,7 @@ import { runPlayerCommand } from '../src/sim/player/playerCommands';
 import { threatLeadRows, threatsSectionVisible } from '../src/ui/internalSecurityView';
 import { CharacterRole, getEmpireCharacters } from '../src/sim/characters';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
+import { builtObjectMission } from '../src/sim/missions/mission';
 
 let base: GameData;
 beforeAll(async () => {
@@ -317,7 +323,7 @@ describe('new threats: generation ships, archive cores, probe swarm', () => {
         const faction = st.faction!;
         expect(st.target!.empire).toBe(st.owner);
         expect(st.escorts.length).toBeGreaterThan(0);
-        expect(st.fleetStrength).toBeGreaterThanOrEqual(Math.max(500, (st.ownerStrengthAtSpawn * 130) / 100) * 0.999);
+        expect(st.fleetStrength).toBeGreaterThanOrEqual(Math.max(500, (st.ownerStrengthAtSpawn * 170) / 100) * 0.999);
         expect(st.transports.reduce((n, b) => n + (b.troops?.count ?? 0), 0)).toBe(st.regiments);
         expect(st.worldShip).not.toBeNull();
         // The threatened AI plans a bigger navy only once contact is made.
@@ -345,6 +351,117 @@ describe('new threats: generation ships, archive cores, probe swarm', () => {
             expect(st.settleAt!.population.totalAmount).toBeGreaterThan(pop);
             expect(scenarioQuery(g, 'stateAIDormant', false, { empire: faction })).toBe(false);
         }
+    }, 600000);
+
+    const WAVE = { genShipsEarliestYear: 0, genShipsTechLevel: 1, genShipsEmpiresAtTech: 1, genShipsFlavour: 1, genShipsAiFightRatioPct: 100000, genShipsMinFirepower: 500 };
+
+    it('generation ships: one per six empires (1..4), staggered 2-4 years, each at a different empire', () => {
+        expect([5, 6, 11, 12, 18, 24, 40].map((n) => genShipsWaveSize(n, 6))).toEqual([1, 1, 1, 2, 3, 4, 4]);
+        const g = ntGame(ALL, { ...WAVE, genShipsEmpiresPerShip: 1 });
+        const first = genShipsState(g);
+        genShipsPeriodic(g);
+        expect(first.planned).toBe(Math.min(4, Math.max(1, g.empires.filter((e) => e.active && e !== g.independentEmpire && g.pirateEmpires.indexOf(e) < 0).length)));
+        expect(first.spawned).toBe(1);
+        expect(first.nextDate - first.arrivalDate).toBeGreaterThanOrEqual(2 * YEAR_LENGTH);
+        expect(first.nextDate - first.arrivalDate).toBeLessThanOrEqual(4 * YEAR_LENGTH);
+        genShipsPeriodic(g); // not yet: still waiting out the stagger
+        expect(genShipsStates(g).length).toBe(1);
+        for (let i = 1; i < first.planned; i++) {
+            first.nextDate = 0;
+            genShipsPeriodic(g);
+            expect(genShipsStates(g).length).toBe(i + 1);
+        }
+        const states = genShipsStates(g);
+        expect(states.map((x) => x.index)).toEqual(states.map((_, i) => i));
+        const owners = states.filter((x) => x.phase !== 'ended').map((x) => x.owner);
+        expect(new Set(owners).size).toBe(owners.length);
+        expect(owners.every((o) => o !== null)).toBe(true);
+    }, 600000);
+
+    it('generation ships: 1.7x escort of big hulls, screens and carriers built from outdated parts (top reactors and fuel, efficient tech-4 hyperdrive)', () => {
+        const g = ntGame(ALL, { ...WAVE });
+        const st = genShipsState(g);
+        genShipsPeriodic(g);
+        expect(st.fleetStrength).toBeGreaterThanOrEqual(Math.max(500, st.ownerStrengthAtSpawn * 1.7) * 0.999);
+        const subs = new Set(st.escorts.map((b) => b.subRole));
+        for (const sub of [BuiltObjectSubRole.CapitalShip, BuiltObjectSubRole.Cruiser, BuiltObjectSubRole.Carrier, BuiltObjectSubRole.Destroyer, BuiltObjectSubRole.Frigate]) expect(subs.has(sub)).toBe(true);
+        const share = (set: BuiltObjectSubRole[]): number => st.escorts.filter((b) => set.includes(b.subRole)).reduce((n, b) => n + calculateOverallStrengthFactorWithoutShields(b), 0) / st.fleetStrength;
+        expect(share([BuiltObjectSubRole.CapitalShip, BuiltObjectSubRole.Cruiser])).toBeGreaterThan(0.25);
+        expect(share([BuiltObjectSubRole.Carrier])).toBeGreaterThan(0.05);
+        expect(share([BuiltObjectSubRole.Destroyer, BuiltObjectSubRole.Frigate])).toBeGreaterThan(0.3);
+        expect(st.escorts.some((b) => b.subRole === BuiltObjectSubRole.Carrier && b.fighterCapacity > 0)).toBe(true);
+        const low = genShipsLowLevel(Math.max(1, Math.min(empireTechLevel(st.owner!), maxDesignTechLevel(g) || 7)), 2);
+        const top = maxDesignTechLevel(g);
+        const defs = g.researchStatic!.componentStatic!.definitions;
+        const OUT = [ComponentType.Armor, ComponentType.Shields, ComponentType.EngineMainThrust, ComponentType.EngineVectoring, ComponentType.WeaponBeam, ComponentType.WeaponPhaser, ComponentType.WeaponRailGun, ComponentType.WeaponTorpedo, ComponentType.WeaponMissile];
+        let reactorMax = 0;
+        let fuelMax = 0;
+        for (const b of st.escorts) {
+            for (const c of b.design.components) {
+                if (c === null) continue;
+                if (OUT.includes(c.type)) {
+                    const lowest = Math.min(...defs.filter((d) => d.type === c.type).map((d) => d.techLevel));
+                    expect(c.techLevel).toBeLessThanOrEqual(Math.max(low, lowest));
+                }
+                if (c.type === ComponentType.HyperDrive) expect(c.techLevel).toBeLessThanOrEqual(4);
+                if (c.type === ComponentType.Reactor) reactorMax = Math.max(reactorMax, c.techLevel);
+                if (c.type === ComponentType.StorageFuel) fuelMax = Math.max(fuelMax, c.techLevel);
+            }
+        }
+        const best = (t: ComponentType): number => Math.max(...defs.filter((d) => d.type === t && d.techLevel <= top).map((d) => d.techLevel));
+        expect(reactorMax).toBe(Math.max(...defs.filter((d) => d.type === ComponentType.Reactor && d.techLevel <= top).map((d) => d.techLevel)));
+        expect(fuelMax).toBe(best(ComponentType.StorageFuel));
+        expect(st.transports.reduce((n, b) => n + (b.troops?.count ?? 0), 0)).toBe(st.regiments);
+    }, 600000);
+
+    it('generation ships: the war opens with gas-mining strikes, then every fleet regroups on the colony; a lost war makes a pirate faction', () => {
+        const g = ntGame(ALL, { ...WAVE, genShipsStrikeDays: 100000 });
+        const st = genShipsState(g);
+        genShipsPeriodic(g);
+        const owner = st.owner!;
+        const faction = st.faction!;
+        // A gas mining station of the owner (an existing owner ship stands in for one).
+        const station = owner.builtObjects.find((b) => !b.hasBeenDestroyed && b.role !== BuiltObjectRole.Military)!;
+        station.subRole = BuiltObjectSubRole.GasMiningStation;
+        st.phase = 'war';
+        st.warDate = galaxyStarDate(g);
+        genShipsPeriodic(g);
+        expect(st.strikeTargets).toContain(station);
+        const striker = st.escorts.find((b) => builtObjectMission(b.mission)?.targetBuiltObject === station);
+        expect(striker).toBeDefined();
+        expect(st.strikeDone).toBe(false);
+        station.hasBeenDestroyed = true;
+        genShipsPeriodic(g);
+        expect(st.stationsHit).toBe(1);
+        expect(st.strikeDone).toBe(true);
+        genShipsPeriodic(g);
+        expect(st.escorts.every((b) => builtObjectMission(b.mission)?.targetHabitat === st.target)).toBe(true);
+        // Pilgrims never strike.
+        expect(st.flavour).toBe('heirs');
+        // Two years without winning: the survivors turn pirate.
+        const ships = [...st.escorts, ...st.transports, st.worldShip!];
+        st.warDate -= 3 * YEAR_LENGTH;
+        genShipsPeriodic(g);
+        const pirate = st.pirate!;
+        expect(pirate).not.toBeNull();
+        expect(st.phase).toBe('ended');
+        expect(g.pirateEmpires).toContain(pirate);
+        const base = st.pirateBase!;
+        expect(pirate.pirateEmpireBaseHabitat).toBe(base);
+        expect([HabitatType.GasGiant, HabitatType.FrozenGasGiant]).toContain(base.type);
+        expect(ships.filter((b) => !b.hasBeenDestroyed).every((b) => b.actualEmpire === pirate && b.supportCostFactor === 0)).toBe(true);
+        expect(pirate.builtObjects.length).toBeGreaterThan(ships.length); // the stock base, construction ship and freighters came too
+        expect(faction.builtObjects.filter((b) => !b.hasBeenDestroyed).length).toBe(0);
+    }, 600000);
+
+    it('generation ships: the Force start option guarantees the threat and aims the first ship at the player', () => {
+        const g = ntGame(ALL, { ...WAVE, generationShipsExistChancePct: 0, generationShipsForce: 1 });
+        expect(threatExists(g, 'generationShips')).toBe(true);
+        const st = genShipsState(g);
+        genShipsPeriodic(g);
+        expect(st.owner).toBe(g.playerEmpire);
+        const off = ntGame(ALL, { ...WAVE, generationShipsExistChancePct: 0 });
+        expect(threatExists(off, 'generationShips')).toBe(false);
     }, 600000);
 
     it('archive cores: an AI at peace seals its core and gets the larger payoff later', () => {

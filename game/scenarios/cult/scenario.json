@@ -7,6 +7,7 @@
     { "name": "cult", "label": "The Cult", "description": "A creed can spread between characters and seize colonies from inside.", "default": false }
   ],
   "params": [
+    { "name": "cultForce", "label": "Guarantee against my empire (right-click the add-on in the list)", "default": 0, "min": 0, "max": 1 },
     { "name": "cultSeedYear", "label": "Years before the creed appears", "default": 40, "min": 0, "max": 200 },
     { "name": "cultSpreadPct", "label": "Base conversion chance per period (%)", "default": 8, "min": 0, "max": 100 },
     { "name": "cultAmbassadorPct", "label": "Ambassador conversion chance per period (%)", "default": 15, "min": 0, "max": 100 },

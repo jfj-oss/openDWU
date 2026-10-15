@@ -3,7 +3,8 @@
 // is gated by the `threatGenerationShips` flag (and the threat framework's existence lottery), so with the flag off
 // nothing here runs and nothing draws.
 //
-// Arc (one per game): once genShipsEmpiresAtTech empires reach genShipsTechLevel (researched tech level, as the
+// Arc (one ship per six empires in the game, at most four; the first as below, each further one 2-4 years after the
+// previous and aimed at a different empire; the Force start option aims the first at the player): once genShipsEmpiresAtTech empires reach genShipsTechLevel (researched tech level, as the
 // beacon level of robotMutiny.ts empireTechLevel) — and between genShipsEarliestYear and genShipsLatestYear years in
 // (the latest year fires it whatever the tech) — a world ship, an escort of about genShipsFleetFactorPct % of the
 // target empire's military firepower (measured at that moment; never below genShipsMinFirepower) at the target's tech
@@ -33,6 +34,8 @@ import type { Design } from '../../design';
 import type { Race } from '../../data/races';
 import type { BuiltObject } from '../../builtObject';
 import { Habitat, HabitatCategoryType, HabitatType } from '../../types';
+import { ComponentType } from '../../data/components';
+import type { ComponentDefinition } from '../../componentStatic';
 import { BuiltObjectSubRole } from '../../builtObjectTypes';
 import { BuiltObjectRole } from '../../data/designSpecifications';
 import { EmpireMessageType } from '../../messages';
@@ -69,6 +72,7 @@ import {
     arcMessage,
     arcNews,
     createThreatFaction,
+    forcedThreatVictim,
     invadeFromInside,
     loadTroopsOnto,
     lockWar,
@@ -142,6 +146,24 @@ export interface GenShipsState {
     landings: number;
     sentStages: SentStages;
     knowledge: ThreatKnowledge[];
+    /** Which ship of the wave this is (0 = the first; instance k > 0 lives at GEN_SHIPS_KEY#k). */
+    index: number;
+    /** First ship only: ships planned for the game, ships launched so far, when the next one comes. */
+    planned: number;
+    spawned: number;
+    nextDate: number;
+    /** The gas-mining strike (Heirs / Ark Faith / Quiet Ship): started, finished, gas stations destroyed. */
+    strikeStart: number;
+    strikeDone: boolean;
+    stationsHit: number;
+    strikeTargets: BuiltObject[];
+    /** Where the world ship was last seen alive. */
+    lastX: number;
+    lastY: number;
+    /** The pirate faction the survivors became, its ships and its base. */
+    pirate: Empire | null;
+    pirateShips: BuiltObject[];
+    pirateBase: Habitat | null;
 }
 
 function newState(): GenShipsState {
@@ -150,6 +172,7 @@ function newState(): GenShipsState {
         spawnX: 0, spawnY: 0, arrivalDate: 0, contactDate: 0, ultimatumDate: 0, warDate: 0, settleDate: 0, endDate: 0,
         fleetStrength: 0, ownerStrengthAtSpawn: 0, ownerStrengthAtUltimatum: 0, regiments: 0, sleepers: 0,
         answer: null, answeredBy: null, outcome: null, worldShipFate: null, worldShipTaker: null, landings: 0, sentStages: {}, knowledge: [],
+        index: 0, planned: 1, spawned: 1, nextDate: 0, strikeStart: 0, strikeDone: false, stationsHit: 0, strikeTargets: [], lastX: 0, lastY: 0, pirate: null, pirateShips: [], pirateBase: null,
     };
 }
 
@@ -161,6 +184,28 @@ export function peekGenShipsState(galaxy: Galaxy): GenShipsState | null {
     return peekThreatState<GenShipsState>(galaxy, GEN_SHIPS_KEY);
 }
 
+/** The wave's cap (most ships in one game). */
+const MAX_WAVE = 4;
+
+function instanceKey(index: number): string {
+    return index === 0 ? GEN_SHIPS_KEY : `${GEN_SHIPS_KEY}#${index}`;
+}
+
+/** Every launched generation ship's state, first ship first (none: empty). Pure. */
+export function genShipsStates(galaxy: Galaxy): GenShipsState[] {
+    const out: GenShipsState[] = [];
+    for (let k = 0; k < MAX_WAVE; k++) {
+        const st = peekThreatState<GenShipsState>(galaxy, instanceKey(k));
+        if (st !== null) out.push(st);
+    }
+    return out;
+}
+
+/** Ships a game with `empires` empires gets: one per `perShip` empires, at least 1, at most 4. Pure. */
+export function genShipsWaveSize(empires: number, perShip: number): number {
+    return Math.max(1, Math.min(MAX_WAVE, Math.floor(empires / Math.max(1, perShip))));
+}
+
 function p(galaxy: Galaxy, name: string, fallback: number): number {
     return scenarioParam(galaxy, name, fallback);
 }
@@ -170,10 +215,20 @@ const P = {
     earliestYear: (g: Galaxy) => p(g, 'genShipsEarliestYear', 5),
     latestYear: (g: Galaxy) => p(g, 'genShipsLatestYear', 15),
     flavour: (g: Galaxy) => Math.trunc(p(g, 'genShipsFlavour', -1)),
-    fleetFactorPct: (g: Galaxy) => p(g, 'genShipsFleetFactorPct', 130),
+    fleetFactorPct: (g: Galaxy) => p(g, 'genShipsFleetFactorPct', 170),
+    heavyPct: (g: Galaxy) => p(g, 'genShipsHeavyPct', 40),
+    carrierPct: (g: Galaxy) => p(g, 'genShipsCarrierPct', 15),
+    techGap: (g: Galaxy) => p(g, 'genShipsTechGap', 2),
+    hyperdriveTech: (g: Galaxy) => p(g, 'genShipsHyperdriveTech', 4),
+    empiresPerShip: (g: Galaxy) => p(g, 'genShipsEmpiresPerShip', 6),
+    staggerMinYears: (g: Galaxy) => p(g, 'genShipsStaggerMinYears', 2),
+    staggerMaxYears: (g: Galaxy) => p(g, 'genShipsStaggerMaxYears', 4),
+    strikeDays: (g: Galaxy) => p(g, 'genShipsStrikeDays', 180),
+    strikeReachSectors: (g: Galaxy) => p(g, 'genShipsStrikeReachSectors', 40),
+    strikeGroups: (g: Galaxy) => Math.trunc(p(g, 'genShipsStrikeGroups', 3)),
     minFirepower: (g: Galaxy) => p(g, 'genShipsMinFirepower', 700),
     regimentFirepower: (g: Galaxy) => p(g, 'genShipsRegimentFirepower', 1000),
-    maxEscorts: (g: Galaxy) => Math.trunc(p(g, 'genShipsMaxEscorts', 60)),
+    maxEscorts: (g: Galaxy) => Math.trunc(p(g, 'genShipsMaxEscorts', 90)),
     regiments: (g: Galaxy) => p(g, 'genShipsRegiments', 30),
     minRegiments: (g: Galaxy) => p(g, 'genShipsMinRegiments', 12),
     maxRegiments: (g: Galaxy) => p(g, 'genShipsMaxRegiments', 90),
@@ -191,8 +246,21 @@ const P = {
     gratitude: (g: Galaxy) => p(g, 'genShipsGratitude', 50),
 };
 
-const ESCORT_CYCLE = [BuiltObjectSubRole.Cruiser, BuiltObjectSubRole.Destroyer, BuiltObjectSubRole.Frigate, BuiltObjectSubRole.Cruiser, BuiltObjectSubRole.CapitalShip, BuiltObjectSubRole.Destroyer, BuiltObjectSubRole.Escort];
-const DESIGN_SUBROLES = [...new Set(ESCORT_CYCLE), BuiltObjectSubRole.TroopTransport, BuiltObjectSubRole.ExplorationShip, BuiltObjectSubRole.ColonyShip];
+/** The escort's three groups, by share of the firepower: big hulls, carriers, and the screens (also the strike fleets). */
+const HEAVY_CYCLE = [BuiltObjectSubRole.CapitalShip, BuiltObjectSubRole.Cruiser, BuiltObjectSubRole.Cruiser, BuiltObjectSubRole.CapitalShip];
+const CARRIER_CYCLE = [BuiltObjectSubRole.Carrier];
+const SCREEN_CYCLE = [BuiltObjectSubRole.Destroyer, BuiltObjectSubRole.Frigate, BuiltObjectSubRole.Destroyer, BuiltObjectSubRole.Frigate];
+const SCREEN_SUBROLES: ReadonlySet<BuiltObjectSubRole> = new Set(SCREEN_CYCLE);
+const DESIGN_SUBROLES = [...new Set([...HEAVY_CYCLE, ...CARRIER_CYCLE, ...SCREEN_CYCLE]), BuiltObjectSubRole.TroopTransport, BuiltObjectSubRole.ExplorationShip, BuiltObjectSubRole.ColonyShip, BuiltObjectSubRole.Escort];
+const WARSHIP_SUBROLES: ReadonlySet<BuiltObjectSubRole> = new Set([...HEAVY_CYCLE, ...CARRIER_CYCLE, ...SCREEN_CYCLE]);
+/** Component families that stay outdated: weapons, fighter bays, armour, shields, engines / thrusters. */
+const OUTDATED_TYPES: ReadonlySet<ComponentType> = new Set([
+    ComponentType.WeaponBeam, ComponentType.WeaponTorpedo, ComponentType.WeaponBombard, ComponentType.WeaponMissile, ComponentType.WeaponPointDefense, ComponentType.WeaponIonCannon,
+    ComponentType.WeaponIonPulse, ComponentType.WeaponIonDefense, ComponentType.WeaponGravityBeam, ComponentType.WeaponAreaGravity, ComponentType.WeaponAreaDestruction,
+    ComponentType.WeaponPhaser, ComponentType.WeaponRailGun, ComponentType.WeaponSuperBeam, ComponentType.WeaponSuperArea, ComponentType.WeaponSuperTorpedo,
+    ComponentType.WeaponSuperMissile, ComponentType.WeaponSuperPhaser, ComponentType.WeaponSuperRailGun, ComponentType.FighterBay, ComponentType.Armor, ComponentType.Shields,
+    ComponentType.ShieldRecharge, ComponentType.EngineMainThrust, ComponentType.EngineVectoring,
+]);
 const REGIMENTS_PER_TRANSPORT = 6;
 
 function ownRandom(galaxy: Galaxy, salt: number): Random {
@@ -301,16 +369,56 @@ function pickRace(galaxy: Galaxy, rnd: Random): Race | null {
     return pool.length > 0 ? pool[rnd.next(0, pool.length)] : null;
 }
 
+/** The tech level of the outdated components for a target at `ownerLvl`: `gap` below, never below 1. Pure. */
+export function genShipsLowLevel(ownerLvl: number, gap: number): number {
+    return Math.max(1, Math.trunc(ownerLvl - gap));
+}
+
+/**
+ * The component definitions the world-ship builders have: weapons / bays / armour / shields / engines only up to `low`
+ * (the lowest of the family if it has none that old), the hyperdrive the most efficient one of tech <= `hyperTech`,
+ * the reactors, fuel storage and everything else up to `top`. Pure.
+ */
+export function genShipsComponentDefinitions(defs: readonly ComponentDefinition[], low: number, hyperTech: number, top: number): ComponentDefinition[] {
+    const lowest = new Map<ComponentType, ComponentDefinition>();
+    for (const d of defs) if (OUTDATED_TYPES.has(d.type) && d.techLevel <= top && (!lowest.has(d.type) || d.techLevel < lowest.get(d.type)!.techLevel)) lowest.set(d.type, d);
+    let hyper: ComponentDefinition | null = null;
+    let hyperRatio = -1;
+    for (const d of defs) {
+        if (d.type !== ComponentType.HyperDrive || d.techLevel > hyperTech) continue;
+        const ratio = d.value1 / Math.max(1, d.value2); // speed per energy (components.txt hyperdrive columns)
+        if (ratio > hyperRatio) {
+            hyperRatio = ratio;
+            hyper = d;
+        }
+    }
+    const out: ComponentDefinition[] = [];
+    for (const d of defs) {
+        if (d.techLevel > top) continue;
+        if (d.type === ComponentType.HyperDrive) {
+            if (hyper === null || d === hyper) out.push(d);
+        } else if (OUTDATED_TYPES.has(d.type)) {
+            if (d.techLevel <= low || lowest.get(d.type) === d) out.push(d);
+        } else out.push(d);
+    }
+    return out;
+}
+
 function factionDesigns(galaxy: Galaxy, faction: Empire, lvl: number): Map<BuiltObjectSubRole, Design> {
     raiseFactionTech(galaxy, faction, lvl);
     const now = galaxyStarDate(galaxy);
+    const top = maxDesignTechLevel(galaxy) || lvl;
+    const defs = galaxy.researchStatic?.componentStatic?.definitions ?? [];
+    const old = genShipsComponentDefinitions(defs, genShipsLowLevel(lvl, P.techGap(galaxy)), P.hyperdriveTech(galaxy), top);
     const out = new Map<BuiltObjectSubRole, Design>();
     for (const sub of DESIGN_SUBROLES) {
         const spec = faction.designSpecifications.find((s) => s !== null && s.subRole === sub) ?? galaxyDesignSpecificationBySubRole(sub);
         let d: Design | null = null;
         if (spec !== null && spec !== undefined) {
             try {
-                d = generateDesignFromSpec(galaxy, faction, spec, lvl, now);
+                // Warships: big hulls from outdated parts with top reactors / fuel (the techAdvance path of the stock
+                // placement over the filtered definitions); the others at the target's level.
+                d = WARSHIP_SUBROLES.has(sub) ? generateDesignFromSpec(galaxy, faction, spec, top, now, old) : generateDesignFromSpec(galaxy, faction, spec, lvl, now);
             } catch {
                 d = null;
             }
@@ -344,10 +452,18 @@ function isIdle(bo: BuiltObject): boolean {
 
 /** Arrival: the faction, its fleet and the world ship at the galaxy edge. Returns false when nothing could arrive. */
 export function genShipsArrive(galaxy: Galaxy, st: GenShipsState): boolean {
-    const rnd = ownRandom(galaxy, 0x47534831);
+    const rnd = ownRandom(galaxy, 0x47534831 + st.index * 0x1111);
     const fixed = P.flavour(galaxy);
     st.flavour = GEN_SHIPS_FLAVOURS[fixed >= 0 && fixed < 4 ? fixed : rnd.next(0, 4)];
-    const candidates = genShipsTargetCandidates(galaxy);
+    // Each ship of the wave aims at a different empire; the Force start option aims the first at the player.
+    const taken = new Set<Empire>();
+    for (const o of genShipsStates(galaxy)) if (o !== st && o.owner !== null) taken.add(o.owner);
+    let candidates = genShipsTargetCandidates(galaxy).filter((h) => h.empire === null || !taken.has(h.empire));
+    const victim = st.index === 0 ? forcedThreatVictim(galaxy, GEN_SHIPS_KEY) : null;
+    if (victim !== null) {
+        const mine = candidates.filter((h) => h.empire === victim);
+        if (mine.length > 0) candidates = mine;
+    }
     if (candidates.length === 0) return false;
     const nonCapital = candidates.filter((h) => h.empire === null || h !== h.empire.capital).length;
     const target = candidates[rnd.next(0, Math.max(1, Math.min(5, nonCapital)))];
@@ -367,20 +483,35 @@ export function genShipsArrive(galaxy: Galaxy, st: GenShipsState): boolean {
     st.target = target;
     st.owner = owner;
     st.settleAt = target;
-    st.spawnX = pt.x;
-    st.spawnY = pt.y;
+    st.spawnX = st.lastX = pt.x;
+    st.spawnY = st.lastY = pt.y;
     st.arrivalDate = galaxyStarDate(galaxy);
     st.contactDate = st.arrivalDate + P.contactDays(galaxy) * GAME_DAY_LENGTH;
     st.ownerStrengthAtSpawn = militaryPotency(owner);
     const want = Math.max(P.minFirepower(galaxy), (st.ownerStrengthAtSpawn * P.fleetFactorPct(galaxy)) / 100);
-    // Escort: the warship designs in a fixed cycle until the firepower is reached.
-    const cycle = ESCORT_CYCLE.filter((s) => designs.has(s));
+    // Escort: big hulls (battleships, cruisers), carriers and the screens (destroyers, frigates), each group's designs in
+    // a fixed cycle until its share of the firepower is reached; what a missing group leaves is made up by the others.
     let strength = 0;
-    for (let i = 0; cycle.length > 0 && strength < want && i < P.maxEscorts(galaxy); i++) {
-        const bo = spawnShip(galaxy, faction, designs.get(cycle[i % cycle.length])!, pt.x, pt.y);
+    const heavyShare = Math.max(0, P.heavyPct(galaxy)) / 100;
+    const carrierShare = Math.max(0, P.carrierPct(galaxy)) / 100;
+    const groups: { cycle: BuiltObjectSubRole[]; share: number }[] = [
+        { cycle: HEAVY_CYCLE.filter((x) => designs.has(x)), share: heavyShare },
+        { cycle: CARRIER_CYCLE.filter((x) => designs.has(x)), share: carrierShare },
+        { cycle: SCREEN_CYCLE.filter((x) => designs.has(x)), share: Math.max(0, 1 - heavyShare - carrierShare) },
+    ];
+    const addEscort = (cycle: BuiltObjectSubRole[], n: number): number => {
+        const bo = spawnShip(galaxy, faction, designs.get(cycle[n % cycle.length])!, pt.x, pt.y);
         st.escorts.push(bo);
-        strength += calculateOverallStrengthFactorWithoutShields(bo);
+        const f = calculateOverallStrengthFactorWithoutShields(bo);
+        strength += f;
+        return f;
+    };
+    for (const g of groups) {
+        let got = 0;
+        for (let i = 0; g.cycle.length > 0 && got < want * g.share && st.escorts.length < P.maxEscorts(galaxy); i++) got += addEscort(g.cycle, i);
     }
+    const fill = groups.flatMap((g) => g.cycle);
+    for (let i = 0; fill.length > 0 && strength < want && st.escorts.length < P.maxEscorts(galaxy); i++) addEscort(fill, i);
     st.fleetStrength = strength;
     // Troops: genShipsRegiments per genShipsRegimentFirepower of escort firepower (clamped).
     st.regiments = Math.round(Math.min(P.maxRegiments(galaxy), Math.max(P.minRegiments(galaxy), (P.regiments(galaxy) * strength) / Math.max(1, P.regimentFirepower(galaxy)))));
@@ -484,7 +615,7 @@ function ultimatum(galaxy: Galaxy, st: GenShipsState): void {
         options,
         defaultOption: 'refuse',
         expiresDays: P.answerDays(galaxy),
-        context: { substitute: sub !== null ? galaxy.habitats.indexOf(sub) : -1 },
+        context: { substitute: sub !== null ? galaxy.habitats.indexOf(sub) : -1, index: st.index },
     });
 }
 
@@ -502,8 +633,13 @@ export function aiUltimatumChoice(galaxy: Galaxy, st: GenShipsState, options: re
     return 'cede';
 }
 
+function decisionState(galaxy: Galaxy, d: ScenarioDecision): GenShipsState | null {
+    const index = typeof d.context.index === 'number' ? d.context.index : 0;
+    return genShipsStates(galaxy).find((x) => (x.index ?? 0) === index) ?? null;
+}
+
 function resolveUltimatum(galaxy: Galaxy, d: ScenarioDecision, optionId: string): void {
-    const st = peekGenShipsState(galaxy);
+    const st = decisionState(galaxy, d);
     if (st === null || st.phase !== 'ultimatum') return;
     st.answer = optionId;
     st.answeredBy = d.answeredBy;
@@ -551,6 +687,59 @@ function startWar(galaxy: Galaxy, st: GenShipsState): void {
     else ownerMessage(galaxy, st, 'Moves', [st.target?.name ?? ''], EmpireMessageType.GeneralWarning, false);
 }
 
+/** The owner's gas mining stations within the strike fleets' reach (the faction's spawn point), nearest first. Pure. */
+export function genShipsStrikeTargets(galaxy: Galaxy, st: GenShipsState): BuiltObject[] {
+    const owner = st.owner;
+    if (owner === null || !owner.active) return [];
+    const reach = P.strikeReachSectors(galaxy) * galaxy.sectorSize;
+    const out: { b: BuiltObject; d: number }[] = [];
+    for (const b of owner.builtObjects) {
+        if (b.hasBeenDestroyed || b.subRole !== BuiltObjectSubRole.GasMiningStation) continue;
+        const d = galaxy.calculateDistance(st.spawnX, st.spawnY, b.xpos, b.ypos);
+        if (d <= reach) out.push({ b, d });
+    }
+    out.sort((a, b) => a.d - b.d || owner.builtObjects.indexOf(a.b) - owner.builtObjects.indexOf(b.b));
+    return out.map((x) => x.b);
+}
+
+/**
+ * The opening of the war for Heirs / Ark Faith / Quiet Ship: the screens (destroyers and frigates; else the lightest
+ * half of the escort) go out in up to genShipsStrikeGroups strike fleets against the owner's gas mining stations, to
+ * cripple its fuel; the rest of the fleet and the transports wait at the edge. Returns true while the strike goes on;
+ * when no station is left within reach or genShipsStrikeDays have passed it ends and every fleet regroups (the assault
+ * on the colony). Missions only, no Rnd.
+ */
+function directStrike(galaxy: Galaxy, st: GenShipsState): boolean {
+    const now = galaxyStarDate(galaxy);
+    if (st.strikeStart === 0) st.strikeStart = now;
+    for (const t of st.strikeTargets) if (t.hasBeenDestroyed) st.stationsHit++;
+    st.strikeTargets = st.strikeTargets.filter((t) => !t.hasBeenDestroyed);
+    const stations = genShipsStrikeTargets(galaxy, st);
+    const late = now - st.strikeStart > P.strikeDays(galaxy) * GAME_DAY_LENGTH;
+    if (stations.length === 0 || late || st.escorts.length === 0) {
+        st.strikeDone = true;
+        st.strikeTargets = [];
+        arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Regroup', textTag: `${TAG} Regroup News`, args: [st.faction!.name, st.owner?.name ?? '', st.stationsHit, st.target?.name ?? ''] });
+        return false;
+    }
+    let strikers = st.escorts.filter((b) => SCREEN_SUBROLES.has(b.subRole));
+    if (strikers.length === 0) strikers = [...st.escorts].sort((a, b) => calculateOverallStrengthFactorWithoutShields(a) - calculateOverallStrengthFactorWithoutShields(b)).slice(0, Math.max(1, Math.floor(st.escorts.length / 2)));
+    const groups = Math.max(1, Math.min(P.strikeGroups(galaxy), stations.length, strikers.length));
+    st.strikeTargets = stations.slice(0, groups);
+    strikers.forEach((bo, i) => {
+        const goal = st.strikeTargets[i % groups];
+        const m = builtObjectMission(bo.mission);
+        if (m === null || m.type !== BuiltObjectMissionType.Attack || m.targetBuiltObject !== goal) {
+            assignMission(galaxy, bo, BuiltObjectMissionType.Attack, goal, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
+        }
+    });
+    for (const b of [...st.escorts.filter((x) => !strikers.includes(x)), ...st.transports]) if (isIdle(b)) hold(galaxy, b, st.spawnX, st.spawnY);
+    if (st.sentStages['Strike'] === undefined) {
+        arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Strike', textTag: `${TAG} Strike News`, args: [st.faction!.name, st.owner?.name ?? '', stations.length] });
+    }
+    return true;
+}
+
 function directWar(galaxy: Galaxy, st: GenShipsState): void {
     const faction = st.faction!;
     const target = st.target!;
@@ -568,6 +757,7 @@ function directWar(galaxy: Galaxy, st: GenShipsState): void {
         return;
     }
     if (target.empire !== null && target.empire !== st.owner && target.empire !== galaxy.independentEmpire && !obtainDiplomaticRelation(faction, target.empire).locked) lockWar(galaxy, faction, target.empire);
+    if (st.flavour !== 'pilgrims' && !st.strikeDone && directStrike(galaxy, st)) return;
     const escorts = st.escorts;
     const holder = target.empire;
     if (holder !== null && holder === st.owner) commitDefence(galaxy, st, holder, target);
@@ -689,11 +879,83 @@ function nearestColony(galaxy: Galaxy, empire: Empire, x: number, y: number): Ha
     return best;
 }
 
-/** The faction gives up: every remaining ship scatters (leaves the galaxy: torn down), the faction with it. */
+function isGasGiant(h: Habitat): boolean {
+    return h.type === HabitatType.GasGiant || h.type === HabitatType.FrozenGasGiant;
+}
+
+/**
+ * Where the survivors' pirate base goes: the free gas giant nearest to where the world ship was whose gas is the fuel
+ * their reactors burn (the fuel of the first survivor with a fuel type); failing that the nearest free gas giant with
+ * any fuel. Pure.
+ */
+export function genShipsPirateBase(galaxy: Galaxy, x: number, y: number, ships: readonly BuiltObject[]): Habitat | null {
+    const wanted = ships.find((b) => b.fuelType !== null)?.fuelType?.resourceId ?? -1;
+    const anyFuel = new Set(galaxy.resourceSystem.fuelResources.map((r) => r.resourceId));
+    let best: Habitat | null = null;
+    let bestD = Number.MAX_VALUE;
+    let fallback: Habitat | null = null;
+    let fallbackD = Number.MAX_VALUE;
+    for (const h of galaxy.habitats) {
+        if (h === null || h.hasBeenDestroyed || !isGasGiant(h) || h.empire !== null || h.population.totalAmount > 0) continue;
+        if (h.basesAtHabitat != null && h.basesAtHabitat.length > 0) continue;
+        const d = galaxy.calculateDistance(x, y, h.xpos, h.ypos);
+        if (d < bestD && h.resources.some((r) => r.resourceId === wanted)) {
+            bestD = d;
+            best = h;
+        }
+        if (d < fallbackD && h.resources.some((r) => anyFuel.has(r.resourceId))) {
+            fallbackD = d;
+            fallback = h;
+        }
+    }
+    return best ?? fallback;
+}
+
+/**
+ * The faction is beaten or has given up: the survivors become a pirate faction (the stock pirate-faction creation:
+ * base, construction ship, freighters, mining stations) on a gas giant near where the world ship was, and every
+ * surviving ship is handed over, upkeep-free. Returns false (nothing changed) when there is nothing to hand over or no
+ * base site / empire slot.
+ */
+function becomePirates(galaxy: Galaxy, st: GenShipsState): boolean {
+    const faction = st.faction!;
+    const ships = faction.builtObjects.filter((b) => !b.hasBeenDestroyed && b.topSpeed > 0);
+    if (ships.length === 0) return false;
+    const ws = st.worldShip;
+    const x = ws !== null && !ws.hasBeenDestroyed ? ws.xpos : st.lastX;
+    const y = ws !== null && !ws.hasBeenDestroyed ? ws.ypos : st.lastY;
+    const base = genShipsPirateBase(galaxy, x, y, st.escorts.length > 0 ? st.escorts : ships);
+    if (base === null || faction.dominantRace === null) return false;
+    const pirate = createThreatFaction(galaxy, { race: faction.dominantRace, name: scenarioText(`${TAG} Pirate Name`, faction.name), kind: 'pirate', home: base });
+    if (pirate === null) return false;
+    st.pirate = pirate;
+    st.pirateBase = base;
+    for (const b of ships) {
+        takeOwnershipOfBuiltObject(galaxy, pirate, b, pirate, false);
+        b.supportCostFactor = 0;
+        st.pirateShips.push(b);
+        hold(galaxy, b, base.xpos, base.ypos);
+    }
+    if (st.owner !== null && st.owner.active) lockWar(galaxy, pirate, st.owner);
+    return true;
+}
+
+/** The faction gives up: the survivors turn pirate (becomePirates); with none, or no base site, every remaining ship scatters (torn down). */
 function endScatter(galaxy: Galaxy, st: GenShipsState, outcome: GenShipsOutcome): void {
     const faction = st.faction!;
     if (st.outcome === null || outcome !== 'repelled') st.outcome = outcome;
     if (st.worldShipFate === null) st.worldShipFate = 'scattered';
+    if (becomePirates(galaxy, st)) {
+        st.phase = 'ended';
+        st.endDate = galaxyStarDate(galaxy);
+        if (st.worldShip !== null && st.worldShip.actualEmpire !== faction) st.worldShip = null;
+        st.escorts = [];
+        st.transports = [];
+        st.scouts = [];
+        teardownIfDead(galaxy, faction);
+        arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Pirates', textTag: `${TAG} Pirates News`, args: [faction.name, st.owner?.name ?? '', st.pirateBase?.name ?? '', st.pirate!.name] });
+        return;
+    }
     st.phase = 'ended';
     st.endDate = galaxyStarDate(galaxy);
     const ws = st.worldShip;
@@ -783,9 +1045,13 @@ function addPopulation(galaxy: Galaxy, h: Habitat, race: Race, amount: number): 
 // The world ship's fate (events)
 // ---------------------------------------------------------------------------------------------------------------
 
+function stateOfWorldShip(galaxy: Galaxy, bo: BuiltObject): GenShipsState | null {
+    return genShipsStates(galaxy).find((x) => x.worldShip === bo) ?? null;
+}
+
 function onOwnerChanged(galaxy: Galaxy, bo: BuiltObject, to: Empire | null): void {
-    const st = peekGenShipsState(galaxy);
-    if (st === null || st.worldShip !== bo || to === null || to === st.faction) return;
+    const st = stateOfWorldShip(galaxy, bo);
+    if (st === null || to === null || to === st.faction || to === st.pirate) return;
     st.worldShip = null;
     st.worldShipFate = 'captured';
     st.worldShipTaker = to;
@@ -798,8 +1064,8 @@ function onOwnerChanged(galaxy: Galaxy, bo: BuiltObject, to: Empire | null): voi
 }
 
 function onKilledBy(galaxy: Galaxy, bo: BuiltObject, destroyer: Empire | null): void {
-    const st = peekGenShipsState(galaxy);
-    if (st === null || st.worldShip !== bo) return;
+    const st = stateOfWorldShip(galaxy, bo);
+    if (st === null) return;
     st.worldShip = null;
     st.worldShipFate = 'destroyed';
     st.worldShipTaker = destroyer;
@@ -815,13 +1081,63 @@ function onKilledBy(galaxy: Galaxy, bo: BuiltObject, destroyer: Empire | null): 
 
 export function genShipsPeriodic(galaxy: Galaxy): void {
     if (!threatExists(galaxy, GEN_SHIPS_KEY)) return; // §0 rarity: not this game — no state, no draws.
-    const st = genShipsState(galaxy);
-    if (st.phase === 'waiting') {
+    const first = genShipsState(galaxy);
+    if (first.phase === 'waiting') {
         if (!genShipsTriggerReady(galaxy)) return;
-        if (!genShipsArrive(galaxy, st)) st.phase = 'ended';
+        if (!genShipsArrive(galaxy, first)) {
+            first.phase = 'ended';
+            return;
+        }
+        first.planned = genShipsWaveSize(normalEmpires(galaxy).length, P.empiresPerShip(galaxy));
+        first.spawned = 1;
+        first.nextDate = first.arrivalDate + staggerDays(galaxy, 1);
         return;
     }
-    if (st.phase === 'settled' || st.phase === 'ended') return;
+    // The rest of the wave: one more ship every 2-4 years, each aimed at another empire.
+    if ((first.spawned ?? 1) < (first.planned ?? 1) && galaxyStarDate(galaxy) >= (first.nextDate ?? 0)) {
+        const k = first.spawned;
+        const next = threatState(galaxy, instanceKey(k), newState);
+        next.index = k;
+        if (!genShipsArrive(galaxy, next)) next.phase = 'ended';
+        first.spawned = k + 1;
+        first.nextDate = galaxyStarDate(galaxy) + staggerDays(galaxy, k + 1);
+    }
+    for (const st of genShipsStates(galaxy)) driveInstance(galaxy, st);
+}
+
+/** Days until the wave's ship `k`: the stagger window, drawn from the scenario's own Random. */
+function staggerDays(galaxy: Galaxy, k: number): number {
+    const lo = Math.min(P.staggerMinYears(galaxy), P.staggerMaxYears(galaxy));
+    const hi = Math.max(P.staggerMinYears(galaxy), P.staggerMaxYears(galaxy));
+    return (lo + ownRandom(galaxy, 0x47534832 + k * 0x1111).nextDouble() * (hi - lo)) * YEAR_LENGTH;
+}
+
+/** The pirate remnants harass the empire the generation ship was aimed at: idle ones go for its nearest non-military assets. */
+function harass(galaxy: Galaxy, st: GenShipsState): void {
+    const pirate = st.pirate;
+    const owner = st.owner;
+    if (pirate === null || !pirate.active) return;
+    st.pirateShips = st.pirateShips.filter((b) => !b.hasBeenDestroyed && b.actualEmpire === pirate);
+    if (owner === null || !owner.active) return;
+    for (const b of st.pirateShips) {
+        if (b.role !== BuiltObjectRole.Military || b.shipGroup !== null || !isIdle(b)) continue;
+        let goal: BuiltObject | null = null;
+        let goalD = Number.MAX_VALUE;
+        for (const t of owner.builtObjects) {
+            if (t.hasBeenDestroyed || t.role === BuiltObjectRole.Military) continue;
+            const d = galaxy.calculateDistance(b.xpos, b.ypos, t.xpos, t.ypos);
+            if (d < goalD) {
+                goalD = d;
+                goal = t;
+            }
+        }
+        if (goal !== null) assignMission(galaxy, b, BuiltObjectMissionType.Attack, goal, null, BuiltObjectMissionPriority.Normal, { manuallyAssigned: true });
+    }
+}
+
+function driveInstance(galaxy: Galaxy, st: GenShipsState): void {
+    if (st.pirate !== null) harass(galaxy, st);
+    if (st.phase === 'waiting' || st.phase === 'settled' || st.phase === 'ended') return;
     const faction = st.faction;
     if (faction === null || !faction.active) {
         // Wiped out in battle (the stock teardown of an empire with nothing left) before any other ending.
@@ -835,6 +1151,10 @@ export function genShipsPeriodic(galaxy: Galaxy): void {
     st.transports = st.transports.filter((b) => alive(b, faction));
     st.scouts = st.scouts.filter((b) => alive(b, faction));
     if (st.worldShip !== null && !alive(st.worldShip, faction)) st.worldShip = null;
+    if (st.worldShip !== null) {
+        st.lastX = st.worldShip.xpos;
+        st.lastY = st.worldShip.ypos;
+    }
     const now = galaxyStarDate(galaxy);
     switch (st.phase) {
         case 'arrived': {
@@ -875,13 +1195,11 @@ export function genShipsPeriodic(galaxy: Galaxy): void {
 // ---------------------------------------------------------------------------------------------------------------
 
 function threatened(galaxy: Galaxy, empire: Empire): boolean {
-    const st = peekGenShipsState(galaxy);
-    return st !== null && st.owner === empire && (st.phase === 'contact' || st.phase === 'ultimatum' || st.phase === 'war');
+    return genShipsStates(galaxy).some((st) => st.owner === empire && (st.phase === 'contact' || st.phase === 'ultimatum' || st.phase === 'war'));
 }
 
 function factionDormant(galaxy: Galaxy, empire: Empire): boolean {
-    const st = peekGenShipsState(galaxy);
-    return st !== null && st.faction === empire && st.phase !== 'settled' && st.phase !== 'ended';
+    return genShipsStates(galaxy).some((st) => st.faction === empire && st.phase !== 'settled' && st.phase !== 'ended');
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -889,11 +1207,14 @@ function factionDormant(galaxy: Galaxy, empire: Empire): boolean {
 // ---------------------------------------------------------------------------------------------------------------
 
 export function genShipsKnownSites(galaxy: Galaxy, empire: Empire): KnownThreatSite[] {
-    const st = peekGenShipsState(galaxy);
-    if (st === null || st.worldShip === null || st.phase === 'settled' || st.phase === 'ended') return [];
-    const level = st.knowledge.find((k) => k.empireId === empire.empireId)?.level ?? 0;
-    if (level <= 0) return [];
-    return [{ threat: GEN_SHIPS_KEY, kind: 'ship', target: st.worldShip, level, site: st, label: scenarioText(`${TAG} Site Row ${flavourText(st)}`) }];
+    const out: KnownThreatSite[] = [];
+    for (const st of genShipsStates(galaxy)) {
+        if (st.worldShip === null || st.phase === 'settled' || st.phase === 'ended') continue;
+        const level = st.knowledge.find((k) => k.empireId === empire.empireId)?.level ?? 0;
+        if (level <= 0) continue;
+        out.push({ threat: GEN_SHIPS_KEY, kind: 'ship', target: st.worldShip, level, site: st, label: scenarioText(`${TAG} Site Row ${flavourText(st)}`) });
+    }
+    return out;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -913,7 +1234,7 @@ export function registerGenerationShips(): void {
         flag: GEN_SHIPS_FLAG,
         resolve: resolveUltimatum,
         aiChoose: (g, d) => {
-            const st = peekGenShipsState(g);
+            const st = decisionState(g, d);
             return st === null ? d.defaultOption : aiUltimatumChoice(g, st, d.options.map((o) => o.id));
         },
     });
