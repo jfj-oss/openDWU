@@ -4,6 +4,8 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **Ancient Guardians keep their name:** themed empire names no longer rename the story empires — the Ancient Guardians
+  (and the Shakturi / Erutkah Refugees) are always called what the original calls them.
 - **Fix: no Mechanoid / Shakturi natives outside the story:** a player who picks one of these story races no longer finds independent colonies of that race next to their start (they were seeded in the player race's region, e.g. "Utopia 2"); those natives are now a normal race. Normal-race games are unchanged.
 - **Backdrop animation now visible:** the animated dust, glow cells and godrays of the Deep galaxy backdrops moved too
   little to notice. The moving layer now carries more of the dust, runs 2.5x faster, and has brighter, more frequent

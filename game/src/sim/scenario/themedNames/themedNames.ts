@@ -56,7 +56,12 @@ export function isThemedNamesEmpire(galaxy: Galaxy, empire: Empire | null): empi
         !isHumanEmpire(galaxy, empire) &&
         empire !== galaxy.independentEmpire &&
         empire.pirateEmpireBaseHabitat === null &&
-        empire.dominantRace !== null
+        empire.dominantRace !== null &&
+        // The story empires keep the original's names: the Ancient Guardians (Mechanoid) and the Shakturi, also while
+        // disguised as the Erutkah Refugees (their race object is renamed, so match it as galaxy.shakturiActualRace too).
+        empire.dominantRace.name !== 'Mechanoid' &&
+        empire.dominantRace.name !== 'Shakturi' &&
+        empire.dominantRace !== galaxy.shakturiActualRace
     );
 }
 
