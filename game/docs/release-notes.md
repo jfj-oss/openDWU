@@ -4,6 +4,11 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **Slower hyperdrive (new gameplay change, off by default):** a "Gameplay changes" checkbox, "Slower hyperdrive ×" with
+  a number box (1–10, default 3): every ship's hyperdrive takes that many times as long to spool up before a jump, for
+  all empires, pirates and the player. Interdicted ships spool 5× the original in total. Jumps themselves are unchanged.
+- **Gameplay changes are all off by default** (Longer ground battles was ticked for new games in 0.1.30). The
+  "Gameplay changes" heading is now a switch that turns them all on (except Slower hyperdrive) or all off.
 - **Rendering:** the engine flame of a ship in a hyperjump no longer disappears or flickers when you zoom in on it with the follow camera (the flame is drawn at full length at warp speed and no longer culled on the ship's pre-warp position).
 - **Galaxy Map:** double-clicking a planet in the system picture selects it and shows it in the info panel, as in the original.
 - **Crash reports:** the desktop app now sends crash reports (error, stack, app version, OS, graphics card; no IP address, saves or personal files, and your user name and home folder are replaced by "~") to Sentry to help fix bugs. It has no setting.
@@ -101,10 +106,6 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
   every day ("Supply lines disrupted"); a defender-held orbit costs them -50%, heavier losses and any further landings
   ("Supply lines cut"). AI empires invade where they can hold the orbit, keep troops aboard until they do, keep their
   fleet over the planet, send relief fleets to invaded colonies and withdraw from orbits they cannot win.
-- **Slower hyperdrive spool (new gameplay change, on by default for new games):** another "Gameplay changes" checkbox,
-  "Slower hyperdrive spool (3×)": every ship's hyperdrive takes three times as long to spool up before a jump (about 15 to
-  45 seconds instead of 5 to 15), for all empires, pirates and the player. Jumps themselves are unchanged. Untick it for
-  the original timing.
 - **Defensive jump interdiction (new gameplay change, off by default):** a third "Gameplay changes" checkbox on the new
   game's Other Empires page (also in openDWU Classic). Armed defensive bases and space ports project an interdiction
   field (4,000 to 6,000 units with their firepower): enemy ships starting a hyperjump inside it spool five times as long

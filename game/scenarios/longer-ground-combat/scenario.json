@@ -1,7 +1,7 @@
 {
   "id": "longer-ground-combat",
   "name": "Longer ground battles",
-  "description": "A gameplay change (set on the new-game wizard's Other Empires page, on by default for new games): ground battles last longer. Every time-based part of a fight on a planet (both sides' troop losses, civilian losses, special forces raids on facilities and defences, pirate raid progress) runs at 1/groundCombatDurationFactor of the original rate, so a battle takes that many times as long. When an invasion starts and how it is won or lost are unchanged. Orbital superiority's daily supply attrition is per day and not slowed.",
+  "description": "A gameplay change (set on the new-game wizard's Other Empires page, off by default): ground battles last longer. Every time-based part of a fight on a planet (both sides' troop losses, civilian losses, special forces raids on facilities and defences, pirate raid progress) runs at 1/groundCombatDurationFactor of the original rate, so a battle takes that many times as long. When an invasion starts and how it is won or lost are unchanged. Orbital superiority's daily supply attrition is per day and not slowed.",
   "flags": [
     { "name": "longerGroundCombat", "label": "Longer ground battles", "description": "Master switch.", "default": true }
   ],

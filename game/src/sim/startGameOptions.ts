@@ -187,6 +187,8 @@ export interface StartGameOptions {
      * wizard ticks it for new games). Folded into `scenario` (addons.ts withSlowHyperdrive); absent / false = off.
      */
     slowHyperdrive?: boolean;
+    /** The wizard's Slower hyperdrive multiplier (scenario param hyperjumpSpoolFactor; absent = 3). */
+    hyperjumpSpoolFactor?: number;
     /**
      * Multiplayer Phase 2 (hot seat, docs/MULTIPLAYER.md §7): the EXTRA human players (players 2..N) from the Other
      * Empires page's "Human players (hot seat)" list; player 1 is this start's own race / empire. Absent = one human
