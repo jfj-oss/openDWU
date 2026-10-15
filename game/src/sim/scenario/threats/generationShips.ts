@@ -704,12 +704,14 @@ export function genShipsStrikeTargets(galaxy: Galaxy, st: GenShipsState): BuiltO
     if (owner === null || !owner.active) return [];
     const reach = P.strikeReachSectors(galaxy) * galaxy.sectorSize;
     const out: { b: BuiltObject; d: number }[] = [];
-    for (const b of owner.builtObjects) {
+    // Mining stations are mostly private-sector (Empire.PrivateBuiltObjects), so both lists.
+    const all = [...owner.builtObjects, ...owner.privateBuiltObjects];
+    for (const b of all) {
         if (b.hasBeenDestroyed || b.subRole !== BuiltObjectSubRole.GasMiningStation) continue;
         const d = galaxy.calculateDistance(st.spawnX, st.spawnY, b.xpos, b.ypos);
         if (d <= reach) out.push({ b, d });
     }
-    out.sort((a, b) => a.d - b.d || owner.builtObjects.indexOf(a.b) - owner.builtObjects.indexOf(b.b));
+    out.sort((a, b) => a.d - b.d || all.indexOf(a.b) - all.indexOf(b.b));
     return out.map((x) => x.b);
 }
 

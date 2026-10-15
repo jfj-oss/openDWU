@@ -431,9 +431,12 @@ describe('new threats: generation ships, archive cores, probe swarm', () => {
         genShipsPeriodic(g);
         const owner = st.owner!;
         const faction = st.faction!;
-        // A gas mining station of the owner (an existing owner ship stands in for one).
-        const station = owner.builtObjects.find((b) => !b.hasBeenDestroyed && b.role !== BuiltObjectRole.Military)!;
+        // A gas mining station of the owner: a private-sector one (Empire.PrivateBuiltObjects, where mining stations
+        // usually are) when it has one, else an existing owner ship stands in; the others are taken out of the way.
+        const privateGas = owner.privateBuiltObjects.filter((b) => !b.hasBeenDestroyed && b.subRole === BuiltObjectSubRole.GasMiningStation);
+        const station = privateGas[0] ?? owner.builtObjects.find((b) => !b.hasBeenDestroyed && b.role !== BuiltObjectRole.Military)!;
         station.subRole = BuiltObjectSubRole.GasMiningStation;
+        for (const b of [...owner.builtObjects, ...owner.privateBuiltObjects]) if (b !== station && b.subRole === BuiltObjectSubRole.GasMiningStation) b.hasBeenDestroyed = true;
         st.phase = 'war';
         st.warDate = galaxyStarDate(g);
         genShipsPeriodic(g);
