@@ -116,6 +116,9 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
   as in the original (in total, also with the slower spool) before they can jump out, unless they cruise out of the field first. Jumping in is unchanged. The ship's panel shows
   "Interdicted by <base>", a base's panel its field. Pirates raid defended systems only with fleets strong enough to
   kill the bases first; AI empires at war favour a defensive base at the border colony facing the enemy; their strikes and invasions are unchanged.
+  ("Supply lines cut"). AI empires fight for the orbit when they (with the fleets they can gather) at least match the
+  defenders there, keep their troops aboard while they are losing it, send more fleets while it is undecided, send relief
+  fleets to their invaded colonies and withdraw only from orbits they cannot match.
 - **Longer ground battles (new gameplay change, on by default for new games):** a second "Gameplay changes" checkbox,
   "Longer ground battles (2×)": ground battles take twice as long (both sides lose troops at half the rate); who wins is
   decided as before. Untick it for the original pace.
