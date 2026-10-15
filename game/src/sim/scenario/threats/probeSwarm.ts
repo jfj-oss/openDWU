@@ -130,7 +130,7 @@ const P = {
     techLevel: (g: Galaxy) => Math.trunc(p(g, 'probeSwarmTechLevel', 3)),
     budget: (g: Galaxy) => p(g, 'probeSwarmBudget', 60000),
     perStation: (g: Galaxy) => p(g, 'probeSwarmBudgetPerStation', 15000),
-    cap: (g: Galaxy) => p(g, 'probeSwarmBudgetCap', 250000),
+    cap: (g: Galaxy) => p(g, 'probeSwarmBudgetCap', 300000),
     startShips: (g: Galaxy) => Math.trunc(p(g, 'probeSwarmStartShips', 4)),
     shipsPerStation10: (g: Galaxy) => p(g, 'probeSwarmShipsPerStation', 5),
     maxStations: (g: Galaxy) => Math.trunc(p(g, 'probeSwarmMaxStations', 0)), // 0 = no limit (user request)

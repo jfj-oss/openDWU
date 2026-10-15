@@ -5,7 +5,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 ## Unreleased
 
 - **Dead Probe Swarm scales with the galaxy:** it adds a mining station every 75 days in a 300-star galaxy and
-  proportionally faster in bigger ones (600 stars: every 37 days, 1,400 stars: every 16 days; never under 10 days).
+  proportionally faster in bigger ones (600 stars: every 37 days, 1,400 stars: every 16 days; never under 10 days), and its income cap is 300,000 a year (was 250,000).
 - **Ancient Guardians keep their name:** themed empire names no longer rename the story empires — the Ancient Guardians
   (and the Shakturi / Erutkah Refugees) are always called what the original calls them.
 - **Fix: no Mechanoid / Shakturi natives outside the story:** a player who picks one of these story races no longer finds independent colonies of that race next to their start (they were seeded in the player race's region, e.g. "Utopia 2"); those natives are now a normal race. Normal-race games are unchanged.
