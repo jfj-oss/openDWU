@@ -476,6 +476,7 @@ describe('new threats: generation ships, archive cores, probe swarm', () => {
         const st = genShipsState(g);
         genShipsPeriodic(g);
         expect(st.owner).toBe(g.playerEmpire);
+        expect(st.faction?.dominantRace?.name).toBe('Human'); // world ships are always Human
         const off = ntGame(ALL, { ...WAVE, generationShipsExistChancePct: 0 });
         expect(threatExists(off, 'generationShips')).toBe(false);
     }, 600000);

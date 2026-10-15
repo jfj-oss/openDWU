@@ -364,7 +364,10 @@ export function genShipsSpawnPoint(galaxy: Galaxy, target: Habitat): { x: number
     return { x, y };
 }
 
+/** The world ships' race: always Human (user 2026-10-15); a race no active empire uses only if the data has no Human. */
 function pickRace(galaxy: Galaxy, rnd: Random): Race | null {
+    const human = galaxy.races.find((r) => r !== null && r.name === 'Human') ?? null;
+    if (human !== null) return human;
     const used = new Set(galaxy.empires.filter((e) => e !== null && e.active).map((e) => e.dominantRace));
     const free = galaxy.races.filter((r) => r !== null && r.playable && !used.has(r));
     const pool = free.length > 0 ? free : galaxy.races.filter((r) => r !== null && r.playable);

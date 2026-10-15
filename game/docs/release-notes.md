@@ -4,6 +4,8 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **Generation ships are always Human:** every world ship and its fleet (and a pirate faction left after a lost war) is Human,
+  instead of a random race no empire uses.
 - **Generation ships: slow, efficient, fuel-heavy:** their warships use the most fuel-efficient hyperdrive up to tech 4
   (Calista-Dal WarpDrive: 15,000 speed, the lowest energy use) and are about 50% bigger, all of the extra room fuel
   storage (the battleship: size 1,061, fuel 6,500 instead of 600; slower in normal space).
