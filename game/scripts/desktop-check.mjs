@@ -79,7 +79,7 @@ const args = Object.fromEntries(
     }),
 );
 const unpacked = args.unpacked === true;
-const appBin = unpacked ? resolve(root, 'node_modules/electron/dist/electron') : resolve(root, args.app ?? 'release/dwu-linux-x64/dwu');
+let appBin = unpacked ? resolve(root, 'node_modules/electron/dist/electron') : resolve(root, args.app ?? 'release/dwu-linux-x64/dwu');
 const appArgs = unpacked ? [resolve(root, 'desktop/main.cjs')] : [];
 const cdpPort = Number(args.port ?? 9333);
 const socketName = args.socket ?? 'dwu-pkg';
@@ -618,6 +618,7 @@ async function checkPackaged(results) {
         // 3. The update check: a fake GitHub API with a newer release; the offer names this platform's download; the
         //    next launch asks again (every launch checks).
         if (!args['skip-update']) await checkUpdateFlow(results, rec, common, tmpRoot);
+        if (!args['skip-update'] && appBin.endsWith('.AppImage')) await checkSelfUpdateFlow(results, rec, common, tmpRoot);
     } finally {
         await stop(kwin, 'kwin_wayland');
         rmSync(tmpRoot, { recursive: true, force: true });
@@ -782,3 +783,72 @@ main().catch((err) => {
     console.error('desktop check crashed:', err);
     process.exitCode = 1;
 });
+
+// The AppImage updates itself: a copy of the AppImage under test is "installed" in a temp folder and run with an older
+// version than a fake GitHub release (served locally with the release's .sha256, as the workflow publishes it); it
+// downloads and verifies the new file in the background, and replaces the file in place when the app quits.
+async function checkSelfUpdateFlow(results, rec, common, tmpRoot) {
+    const { createServer: createHttpServer } = await import('node:http');
+    const { createHash } = await import('node:crypto');
+    const { copyFileSync, appendFileSync, chmodSync } = await import('node:fs');
+    const v = '99.0.0';
+    const name = assetFileNames(v).linuxAppImage;
+    const installDir = join(tmpRoot, 'self-update-install');
+    mkdirSync(installDir, { recursive: true });
+    const installed = join(installDir, 'openDWU.AppImage');
+    copyFileSync(appBin, installed);
+    chmodSync(installed, 0o755);
+    // The "new build": the same AppImage plus a marker tail (still a runnable AppImage).
+    const payloadFile = join(tmpRoot, name);
+    copyFileSync(appBin, payloadFile);
+    appendFileSync(payloadFile, 'dwu-self-update-test-payload');
+    const payload = readFileSync(payloadFile);
+    const sha = createHash('sha256').update(payload).digest('hex');
+    let base = '';
+    const hits = [];
+    const srv = createHttpServer((req, res) => {
+        hits.push(req.url);
+        if (req.url.startsWith('/repos/')) {
+            res.setHeader('Content-Type', 'application/json');
+            res.end(
+                JSON.stringify({
+                    tag_name: `v${v}`,
+                    draft: false,
+                    prerelease: false,
+                    body: 'Self-update test.',
+                    assets: [name, `${name}.sha256`].map((n) => ({ name: n, size: 1, browser_download_url: `${base}/dl/${n}` })),
+                }),
+            );
+        } else if (req.url === `/dl/${name}`) res.end(payload);
+        else if (req.url === `/dl/${name}.sha256`) res.end(`${sha}  ${name}\n`);
+        else {
+            res.statusCode = 404;
+            res.end();
+        }
+    });
+    await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+    base = `http://127.0.0.1:${srv.address().port}`;
+    const userDataDir = join(tmpRoot, 'profile-selfupdate');
+    const env = { DWU_DIR: dwuDir, DWU_UPDATE_CHECK: '1', DWU_UPDATE_URL: `${base}/repos/x/y/releases/latest` };
+    const savedBin = appBin;
+    try {
+        appBin = installed;
+        const h = await launchApp({ ...common, userDataDir, env });
+        try {
+            await waitFor(() => /will be installed when you quit/.test(h.log()) || /background download failed/.test(h.log()), 90000, 'the background download');
+            rec('the new AppImage is downloaded in the background and verified against its .sha256', /downloaded and verified/.test(h.log()) && hits.includes(`/dl/${name}.sha256`), h.log().split('\n').filter((l) => l.includes('[update]')).join(' | '));
+            rec('the installed file is untouched until the app quits', readFileSync(installed).equals(readFileSync(savedBin)), '');
+            void h.browser().newBrowserCDPSession().then((c) => c.send('Browser.close')).catch(() => {}); // no reply: the app quits
+            await waitFor(() => h.app.exitCode !== null || h.app.signalCode, 30000, 'the app to quit');
+        } finally {
+            await h.stop();
+        }
+        rec('the AppImage was replaced in place when the app quit', readFileSync(installed).equals(payload), `size ${statSync(installed).size} vs ${payload.length}`);
+        rec('the replaced file is still executable', (statSync(installed).mode & 0o111) !== 0, '');
+    } catch (err) {
+        rec('AppImage self-update flow', false, err.message);
+    } finally {
+        appBin = savedBin;
+        srv.close();
+    }
+}

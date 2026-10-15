@@ -56,6 +56,7 @@ import { pirateBaseDiscovery, updateRaidCountdownBuiltObject } from '../pirates/
 import { reviewSystemVisibilityForPreWarpShip, scanArea, scanForLocations } from '../exploration';
 import { applyLocationEffects, doLocationEffects } from '../events';
 import { baconSettings } from '../data/baconSettings';
+import { MOTHBALL_RESERVE } from '../scenario/mothballing/types';
 
 /** Galaxy.ConditionCheckLimit (Galaxy.7.cs 569). */
 export function conditionCheckLimit(condition: boolean, maximumIterations: number, counter: { count: number }): boolean {
@@ -167,7 +168,8 @@ export function builtObjectDoTasks(galaxy: Galaxy, builtObject: BuiltObject, tim
         }
     }
     // 3706-3710
-    if (bo.empire !== null) {
+    // Mod layer (mothballing): a ship in reserve has its weapons cold (absent field = stock).
+    if (bo.empire !== null && (bo.mothball === undefined || bo.mothball.phase !== MOTHBALL_RESERVE)) {
         handleWeaponsFiringBuiltObject(galaxy, bo, num, time);
         handleAssaultPodMovement(galaxy, bo, num);
     }

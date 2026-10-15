@@ -107,7 +107,7 @@ import { selectColorFromKey } from '../../sim/empireColors';
 import { loadScenarioIndex } from '../../sim/scenario/fetchScenario';
 import type { ScenarioManifest } from '../../sim/scenario/manifest';
 import { IS_CLASSIC } from '../../appVersion';
-import { BASE_ADDONS, SMARTER_AI_ADDON_ID, addonCatalog, addonClosure, addonPickerModel, canonicalAddons, defaultSmarterAIChoice, expansionMemberIds, expansionRows, toggleExpansion, type ExpansionRow, planAddonStart, resolveAddonSwitches, toggleAddon, withFlagAddons, forcedFlags, withSmarterAI, withOrbitalSuperiority, withLongerGroundCombat, withJumpInterdiction, withBlockadesBite, ORBITAL_SUPERIORITY_ADDON_ID, LONGER_GROUND_COMBAT_ADDON_ID, JUMP_INTERDICTION_ADDON_ID, BLOCKADES_BITE_ADDON_ID, type AddonCatalog, type AddonOverrides, type AddonRow, type SmarterAIChoice } from '../../sim/scenario/addons';
+import { BASE_ADDONS, SMARTER_AI_ADDON_ID, addonCatalog, addonClosure, addonPickerModel, canonicalAddons, defaultSmarterAIChoice, expansionMemberIds, expansionRows, toggleExpansion, type ExpansionRow, planAddonStart, resolveAddonSwitches, toggleAddon, withFlagAddons, forcedFlags, withSmarterAI, withOrbitalSuperiority, withLongerGroundCombat, withJumpInterdiction, withBlockadesBite, withMothballing, MOTHBALLING_ADDON_ID, withSlowHyperdrive, SLOW_HYPERDRIVE_ADDON_ID, ORBITAL_SUPERIORITY_ADDON_ID, LONGER_GROUND_COMBAT_ADDON_ID, JUMP_INTERDICTION_ADDON_ID, BLOCKADES_BITE_ADDON_ID, type AddonCatalog, type AddonOverrides, type AddonRow, type SmarterAIChoice } from '../../sim/scenario/addons';
 import {
     COLORS,
     FONT,
@@ -119,6 +119,7 @@ import {
     gradientPanel,
     imageCombo,
     linkLabel,
+    numericUpDown,
     openOriginalWindow,
     place,
     scrollPanel,
@@ -2070,8 +2071,11 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
     // Not in the original: "Gameplay changes" (opt-in rule changes, folded into options.scenario by addonChoiceFor):
     // a one-row GradientPanel under the Smarter AI one with the Orbital superiority checkbox (scenarios/orbital-superiority).
     const gameplayPanel = panel(wrap, 10, 506, 880, 58, 'wizard-panel-group wizard-gameplay-changes');
-    const gameplayHeading = label(gameplayPanel, 'Gameplay changes', 10, 9, { size: FONT.normal, bold: true });
-    gameplayHeading.classList.add('wizard-gameplay-changes-heading');
+    // The heading is a master switch: ticking it turns every gameplay change on except the hyperdrive spool, unticking
+    // turns them all off (wired after the checkboxes below).
+    const gameplayMaster = check(gameplayPanel, 'Gameplay changes', false, 10, 6, (v) => setAllGameplay(v), FONT.normal);
+    gameplayMaster.row.classList.add('wizard-gameplay-changes-heading');
+    gameplayMaster.label.style.fontWeight = 'bold';
     const orbital = check(gameplayPanel, 'Orbital superiority', options.orbitalSuperiority === true, 160, 6, (v) => {
         if (v) options.orbitalSuperiority = true;
         else delete options.orbitalSuperiority;
@@ -2081,8 +2085,7 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
     const ORBITAL_HELP =
         'Who holds the orbit decides ground invasions. Attackers clearly stronger in orbit: their invasion bonus doubles (+50%). Orbit contested: invaders lose the bonus, fight at -35% (down to -50% the longer it lasts) and lose a little strength every day as supplies dry up. Defenders clearly stronger: invaders fight at -50%, lose strength faster and cannot land any more troops there. The AI plays by it: it invades where it can hold the orbit, keeps its troops aboard until it does, and sends fleets to relieve its invaded colonies.';
     orbital.row.title = ORBITAL_HELP;
-    // Longer ground battles (scenarios/longer-ground-combat): ticked for new games.
-    if (options.longerGroundCombat === undefined) options.longerGroundCombat = true;
+    // Longer ground battles (scenarios/longer-ground-combat): off by default (no gameplay change is on by default).
     const longer = check(gameplayPanel, 'Longer ground battles (2\u00D7)', options.longerGroundCombat === true, 400, 6, (v) => {
         options.longerGroundCombat = v;
         ctx.refreshScenario();
@@ -2101,6 +2104,17 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
         'A colony whose orbit is held by an enemy at war with it (armed ships and bases within 2000, more than 1.5 times the owner\'s) is blockaded: it loses the trade half of its taxes, its space ports earn no trade income, construction and population growth there stop, and its approval slowly falls. It ends when the orbit is free again. The AI blockades its enemies\' richest colonies before invading and sends fleets to break blockades of its own.';
     bite.row.title = BITE_HELP;
     bite.row.addEventListener('mouseenter', () => ctx.help('Blockades that bite', BITE_HELP));
+    // Mothballing (scenarios/mothballing): off by default; second row of the panel.
+    const mothball = check(gameplayPanel, 'Mothballing', options.mothballing === true, 400, 30, (v) => {
+        if (v) options.mothballing = true;
+        else delete options.mothballing;
+        ctx.refreshScenario();
+    });
+    mothball.row.classList.add('wizard-mothballing');
+    const MOTHBALL_HELP =
+        'Fleets and warships can be put into reserve at one of your space ports (each holds a limited number of ships): upkeep drops to 15%, they cannot move or fight back, and reactivating takes about 240 days (longer for big ships). AI empires mothball part of their navy in a long peace on a tight budget and reactivate it when war looks likely.';
+    mothball.row.title = MOTHBALL_HELP;
+    mothball.row.addEventListener('mouseenter', () => ctx.help('Mothballing', MOTHBALL_HELP));
     orbital.row.addEventListener('mouseenter', () => ctx.help('Orbital superiority', ORBITAL_HELP));
     longer.row.addEventListener('mouseenter', () => ctx.help('Longer ground battles', LONGER_HELP));
     // Defensive jump interdiction (scenarios/jump-interdiction).
@@ -2111,9 +2125,59 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
     });
     interdiction.row.classList.add('wizard-jump-interdiction');
     const INTERDICTION_HELP =
-        'Armed defensive bases and space ports project an interdiction field (about 4,000 units, more for heavily armed ones): enemy ships starting a hyperjump inside it spool three times as long before they can jump out, unless they cruise out of the field first. Jumping in, and friendly or neutral ships, are unaffected. Pirates raid defended systems only with fleets strong enough to kill the bases first; AI empires at war favour a defensive base at the border colony facing the enemy; their strikes and invasions are unchanged.';
+        'Armed defensive bases and space ports project an interdiction field (about 4,000 units, more for heavily armed ones): enemy ships starting a hyperjump inside it spool five times as long as in the original before they can jump out (in total, also with Slower hyperdrive spool), unless they cruise out of the field first. Jumping in, and friendly or neutral ships, are unaffected. Pirates raid defended systems only with fleets strong enough to kill the bases first; AI empires at war favour a defensive base at the border colony facing the enemy; their strikes and invasions are unchanged.';
     interdiction.row.title = INTERDICTION_HELP;
     interdiction.row.addEventListener('mouseenter', () => ctx.help('Jump interdiction', INTERDICTION_HELP));
+    // Slower hyperdrive spool (scenarios/slow-hyperdrive): off by default, and the "Gameplay changes" master leaves it off;
+    // the spinner sets its multiplier (param hyperjumpSpoolFactor, 1-10, default 3).
+    const slow = check(gameplayPanel, 'Slower hyperdrive \u00D7', options.slowHyperdrive === true, 640, 30, (v) => {
+        options.slowHyperdrive = v;
+        spool.setEnabled(v);
+        ctx.refreshScenario();
+    });
+    const spool = numericUpDown({
+        value: options.hyperjumpSpoolFactor ?? 3,
+        min: 1,
+        max: 10,
+        size: FONT.normal,
+        onChange: (v) => {
+            options.hyperjumpSpoolFactor = v;
+            ctx.refreshScenario();
+        },
+    });
+    gameplayPanel.appendChild(place(spool.el, 820, 28, 52, 22));
+    spool.setEnabled(options.slowHyperdrive === true);
+    slow.row.classList.add('wizard-slow-hyperdrive');
+    const SLOW_HELP = 'Every ship\'s hyperdrive takes three times as long to spool up before a jump (the original\'s jump initiation time, about 5 to 15 seconds, becomes about 15 to 45), for every empire, pirates and you alike. The jump itself is as fast as before. With Jump interdiction an interdicted ship spools five times the original in total, not fifteen.';
+    slow.row.title = SLOW_HELP;
+    slow.row.addEventListener('mouseenter', () => ctx.help('Slower hyperdrive spool', SLOW_HELP));
+    spool.el.title = 'Hyperdrive spool multiplier (1 = the original, 3 = default)';
+    type GameplayKey = 'orbitalSuperiority' | 'longerGroundCombat' | 'jumpInterdiction' | 'blockadesBite' | 'mothballing';
+    const masterSet: { key: GameplayKey; box: { input: HTMLInputElement } }[] = [
+        { key: 'orbitalSuperiority', box: orbital },
+        { key: 'longerGroundCombat', box: longer },
+        { key: 'jumpInterdiction', box: interdiction },
+        { key: 'blockadesBite', box: bite },
+        { key: 'mothballing', box: mothball },
+    ];
+    const syncMaster = (): void => {
+        gameplayMaster.input.checked = masterSet.every((m) => options[m.key] === true);
+    };
+    function setAllGameplay(on: boolean): void {
+        for (const m of masterSet) {
+            if (on) options[m.key] = true;
+            else delete options[m.key];
+            m.box.input.checked = on;
+        }
+        if (!on) {
+            options.slowHyperdrive = false;
+            slow.input.checked = false;
+            spool.setEnabled(false);
+        }
+        ctx.refreshScenario();
+    }
+    for (const m of masterSet) m.box.input.addEventListener('change', syncMaster);
+    syncMaster();
 
     // picStartNewGameOtherEmpiresImageBottom 880 × 130 at (10, 470), CenterImage (moved down under the Smarter AI and
     // Gameplay changes panels).
@@ -2894,12 +2958,16 @@ let wizardScenarios: ScenarioManifest[] = [];
  * The wizard's scenario choice for a set of ticks (null = the original game), with the Other Empires page's Smarter AI
  * choice and its Orbital superiority checkbox folded in (addons.ts withSmarterAI / withOrbitalSuperiority).
  */
-export function addonChoiceFor(cat: AddonCatalog, picked: readonly string[], overrides: AddonOverrides, smart: SmarterAIChoice | null = null, orbitalSuperiority = false, longerGroundCombat = false, jumpInterdiction = false, blockadesBite = false): StartGameOptions['scenario'] {
+export function addonChoiceFor(cat: AddonCatalog, picked: readonly string[], overrides: AddonOverrides, smart: SmarterAIChoice | null = null, orbitalSuperiority = false, longerGroundCombat = false, jumpInterdiction = false, blockadesBite = false, mothballing = false, slowHyperdrive = false, hyperjumpSpoolFactor?: number): StartGameOptions['scenario'] {
     const wS = withSmarterAI(picked, overrides, smart);
     const wO = withOrbitalSuperiority(wS.picked, wS.overrides, orbitalSuperiority);
     const wL = withLongerGroundCombat(wO.picked, wO.overrides, longerGroundCombat);
     const wJ = withJumpInterdiction(wL.picked, wL.overrides, jumpInterdiction);
-    const w0 = withBlockadesBite(wJ.picked, wJ.overrides, blockadesBite);
+    const wB = withBlockadesBite(wJ.picked, wJ.overrides, blockadesBite);
+    const wM = withMothballing(wB.picked, wB.overrides, mothballing);
+    const wH = withSlowHyperdrive(wM.picked, wM.overrides, slowHyperdrive);
+    // The wizard's spool multiplier (param hyperjumpSpoolFactor; only when the change is on and not the default 3).
+    const w0 = slowHyperdrive && hyperjumpSpoolFactor !== undefined && hyperjumpSpoolFactor !== 3 ? { picked: wH.picked, overrides: { flags: wH.overrides.flags, params: { ...wH.overrides.params, hyperjumpSpoolFactor } } } : wH;
     const w = { picked: withFlagAddons(cat, w0.picked, w0.overrides), overrides: w0.overrides };
     const plan = planAddonStart(cat, w.picked);
     if (plan === null) return null;
@@ -2944,7 +3012,7 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
     /** Base add-ons (event log, themed names) are always on in both editions. */
     const withBase = (ids: string[]): string[] => [...new Set([...BASE_ADDONS, ...ids])];
     // The Smarter AI add-on is the Other Empires page's (options.smarterAI), not a tick of this page.
-    let picked: string[] = IS_CLASSIC ? [...BASE_ADDONS] : withBase((options.scenario?.addons ?? (options.scenario ? [options.scenario.id] : [])).filter((id) => id !== SMARTER_AI_ADDON_ID && id !== ORBITAL_SUPERIORITY_ADDON_ID && id !== LONGER_GROUND_COMBAT_ADDON_ID && id !== JUMP_INTERDICTION_ADDON_ID && id !== BLOCKADES_BITE_ADDON_ID));
+    let picked: string[] = IS_CLASSIC ? [...BASE_ADDONS] : withBase((options.scenario?.addons ?? (options.scenario ? [options.scenario.id] : [])).filter((id) => id !== SMARTER_AI_ADDON_ID && id !== ORBITAL_SUPERIORITY_ADDON_ID && id !== LONGER_GROUND_COMBAT_ADDON_ID && id !== JUMP_INTERDICTION_ADDON_ID && id !== BLOCKADES_BITE_ADDON_ID && id !== MOTHBALLING_ADDON_ID && id !== SLOW_HYPERDRIVE_ADDON_ID));
     const overrides: AddonOverrides = { flags: {}, params: {} };
     /** Settings panels the player opened (kept open across re-renders). */
     const openPanels = new Set<string>();
@@ -2959,7 +3027,7 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
     }
 
     function update(): void {
-        options.scenario = addonChoiceFor(cat, picked, overrides, options.smarterAI ?? null, options.orbitalSuperiority === true, options.longerGroundCombat === true, options.jumpInterdiction === true, options.blockadesBite === true);
+        options.scenario = addonChoiceFor(cat, picked, overrides, options.smarterAI ?? null, options.orbitalSuperiority === true, options.longerGroundCombat === true, options.jumpInterdiction === true, options.blockadesBite === true, options.mothballing === true, options.slowHyperdrive === true, options.hyperjumpSpoolFactor);
         render();
     }
     ctx.refreshScenario = update;
@@ -3131,7 +3199,7 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
                         update();
                         return;
                     }
-                    options.scenario = addonChoiceFor(cat, picked, overrides, options.smarterAI ?? null, options.orbitalSuperiority === true, options.longerGroundCombat === true, options.jumpInterdiction === true, options.blockadesBite === true);
+                    options.scenario = addonChoiceFor(cat, picked, overrides, options.smarterAI ?? null, options.orbitalSuperiority === true, options.longerGroundCombat === true, options.jumpInterdiction === true, options.blockadesBite === true, options.mothballing === true, options.slowHyperdrive === true, options.hyperjumpSpoolFactor);
                 }, FONT.normal);
                 c.classList.add('wizard-checkbox', 'wizard-flow');
                 if (by !== undefined) c.title = `Required by ${by.join(', ')}`;
@@ -3148,7 +3216,7 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
                     const v = parseInt(s.input.value, 10);
                     if (!Number.isNaN(v)) {
                         overrides.params[p.name] = Math.min(max, Math.max(min, v));
-                        options.scenario = addonChoiceFor(cat, picked, overrides, options.smarterAI ?? null, options.orbitalSuperiority === true, options.longerGroundCombat === true, options.jumpInterdiction === true, options.blockadesBite === true);
+                        options.scenario = addonChoiceFor(cat, picked, overrides, options.smarterAI ?? null, options.orbitalSuperiority === true, options.longerGroundCombat === true, options.jumpInterdiction === true, options.blockadesBite === true, options.mothballing === true, options.slowHyperdrive === true, options.hyperjumpSpoolFactor);
                     }
                 });
                 s.el.classList.add('wizard-flow-spin');

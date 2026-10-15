@@ -74,6 +74,8 @@ export const ADDON_STATUS: Readonly<Record<string, string>> = {
     'longer-ground-combat': 'new',
     'jump-interdiction': 'new',
     'blockades-bite': 'new',
+    mothballing: 'new',
+    'slow-hyperdrive': 'new',
     'war-crimes': 'recommended',
     'timebomb': 'lightly tested; the AI rarely uses it',
     'ghostarmada': 'lightly tested; the AI rarely uses it',
@@ -133,6 +135,8 @@ const GROUP_OF: Readonly<Record<string, AddonGroup>> = {
     'longer-ground-combat': 'Other',
     'jump-interdiction': 'Other',
     'blockades-bite': 'Other',
+    mothballing: 'Other',
+    'slow-hyperdrive': 'Other',
     slavery: 'Economy & factions',
     exchange: 'Economy & factions',
     privateers: 'Economy & factions',
@@ -158,7 +162,7 @@ export const HIDDEN_ADDONS: ReadonlySet<string> = new Set(['threat-framework', '
  * Add-ons set on another wizard page (not listed on the Scenario page, but named in the summaries like any other):
  * Smarter AI and Orbital superiority live on the Other Empires page (withSmarterAI / withOrbitalSuperiority below).
  */
-export const ELSEWHERE_ADDONS: ReadonlySet<string> = new Set(['smarter-ai', 'orbital-superiority', 'longer-ground-combat', 'jump-interdiction', 'blockades-bite']);
+export const ELSEWHERE_ADDONS: ReadonlySet<string> = new Set(['smarter-ai', 'orbital-superiority', 'longer-ground-combat', 'jump-interdiction', 'blockades-bite', 'mothballing', 'slow-hyperdrive']);
 
 /** openDWU Classic: add-ons every game starts with (treated as base game: no picker). Smarter AI stays the Other Empires page's toggle. */
 export const CLASSIC_BASE_ADDONS: readonly string[] = ['themed-names', 'event-log'];
@@ -274,6 +278,22 @@ export const BLOCKADES_BITE_ADDON_ID = 'blockades-bite';
 /** The picks with the Other Empires page's Blockades that bite checkbox folded in (StartGameOptions.blockadesBite). Pure. */
 export function withBlockadesBite(picked: readonly string[], overrides: AddonOverrides, on: boolean | null | undefined): { picked: string[]; overrides: AddonOverrides } {
     return withToggleAddon(picked, overrides, BLOCKADES_BITE_ADDON_ID, 'blockadesBite', on);
+}
+
+/** The Mothballing gameplay change (scenarios/mothballing; also under "Gameplay changes"). */
+export const MOTHBALLING_ADDON_ID = 'mothballing';
+
+/** The picks with the Other Empires page's Mothballing checkbox folded in (StartGameOptions.mothballing). Pure. */
+export function withMothballing(picked: readonly string[], overrides: AddonOverrides, on: boolean | null | undefined): { picked: string[]; overrides: AddonOverrides } {
+    return withToggleAddon(picked, overrides, MOTHBALLING_ADDON_ID, 'mothballing', on);
+}
+
+/** The Slower hyperdrive spool gameplay change (scenarios/slow-hyperdrive; also under "Gameplay changes"). */
+export const SLOW_HYPERDRIVE_ADDON_ID = 'slow-hyperdrive';
+
+/** The picks with the Other Empires page's Slower hyperdrive checkbox folded in (StartGameOptions.slowHyperdrive). Pure. */
+export function withSlowHyperdrive(picked: readonly string[], overrides: AddonOverrides, on: boolean | null | undefined): { picked: string[]; overrides: AddonOverrides } {
+    return withToggleAddon(picked, overrides, SLOW_HYPERDRIVE_ADDON_ID, 'slowHyperdrive', on);
 }
 
 /** A one-checkbox add-on folded into the picks: ticked = picked with its master flag on, unticked = dropped. Pure. */

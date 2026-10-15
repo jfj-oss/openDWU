@@ -24,8 +24,9 @@ import { BuiltObjectMissionPriority, BuiltObjectMissionType } from '../src/sim/m
 import { getText } from '../src/sim/diplomacyTick';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
 import { GAME_DAY_LENGTH, scenarioQuery } from '../src/sim/scenario/hooks';
+import { scenarioParam } from '../src/sim/scenario/state';
 import { classifyOrbit, empireFirepowerNear, landingOrbitState, landingOrbitStrengths, orbitalAttrition, orbitalLandingBlocked, orbitalState, orbitalTrackInvasion, orbitalTrackNoInvasion } from '../src/sim/scenario/orbital/orbitalSuperiority';
-import { canContestOrbit, gatherableFirepower, orbitalAiReview } from '../src/sim/scenario/orbital/orbitalAI';
+import { canHoldOrbit, orbitalAiReview } from '../src/sim/scenario/orbital/orbitalAI';
 import { healTroops, independentColoniesRecruitAndTrainTroops } from '../src/sim/combat/troopsRuntime';
 import { processBoardingAssault, resetAssaultPods } from '../src/sim/combat/boarding';
 import { takeOwnershipOfBuiltObject } from '../src/sim/combat/ownership';
@@ -452,94 +453,62 @@ describe('Orbital superiority add-on', () => {
         expect(orbitalLandingBlocked(og, aiShip[0], h, true)).toBe(true);
         expect(orbitalLandingBlocked(og, humanShip, h, false)).toBe(true);
         expect(st.holds.filter((x) => x.h === h.habitatIndex && x.e === att.empireId)).toHaveLength(1);
-        // Contested and losing it (A < D): the AI keeps its troops aboard; a human may land.
+        // Contested: the AI keeps its troops aboard; a human may land.
         const fp0 = aiShip[0].firepowerRaw;
-        aiShip[0].firepowerRaw = Math.floor(d * 0.8);
+        aiShip[0].firepowerRaw = d;
         moveTo(aiShip[0], h);
         expect(landingOrbitState(og, h, att)).toBe('contested');
         expect(orbitalLandingBlocked(og, aiShip[0], h, false)).toBe(true);
         const hfp = humanShip.firepowerRaw;
-        humanShip.firepowerRaw = Math.floor(d * 0.8);
+        humanShip.firepowerRaw = d;
         moveTo(humanShip, h, -300);
         expect(landingOrbitState(og, h, player)).toBe('contested');
         expect(orbitalLandingBlocked(og, humanShip, h, false)).toBe(false);
-        // Contested but winning it (A >= orbitalAiLandRatio x D): the AI lands; the hold is closed as a delayed landing.
-        aiShip[0].firepowerRaw = d;
-        expect(landingOrbitState(og, h, att)).toBe('contested');
+        // Attacker-held: the AI lands; the hold is closed as a delayed landing.
+        aiShip[0].firepowerRaw = d * 2;
         const after = st.stats.landingsAfterHold;
         expect(orbitalLandingBlocked(og, aiShip[0], h, false)).toBe(false);
         expect(st.stats.landingsAfterHold).toBe(after + 1);
         expect(st.holds.some((x) => x.h === h.habitatIndex && x.e === att.empireId)).toBe(false);
-        // Attacker-held: lands too.
-        aiShip[0].firepowerRaw = d * 2;
-        expect(orbitalLandingBlocked(og, aiShip[0], h, false)).toBe(false);
-        // Back to a losing contested orbit: after orbitalAiLosingDays the AI brings another fleet to the orbit fight
-        // (Attack, High) instead of giving up ...
-        aiShip[0].firepowerRaw = Math.floor(d * 0.8);
+        // Back to a contested orbit for longer than orbitalAiHoldDays: the invasion fleet withdraws, troops aboard.
+        aiShip[0].firepowerRaw = d;
         expect(orbitalLandingBlocked(og, aiShip[0], h, false)).toBe(true);
         const hold = st.holds.find((x) => x.h === h.habitatIndex && x.e === att.empireId)!;
-        const now = galaxyStarDate(og);
-        hold.since = now - 11 * GAME_DAY_LENGTH;
-        hold.reviewed = hold.since;
-        const helper = fleetOf(att, [aiShip[1]]);
-        moveTo(aiShip[1], h, 5000);
-        const reinf = st.stats.reinforcements;
-        orbitalAiReview(og);
-        expect(st.stats.reinforcements).toBeGreaterThan(reinf);
-        expect(st.holds.some((x) => x.h === h.habitatIndex && x.e === att.empireId)).toBe(true);
-        // ... and past orbitalAiHoldDays without the orbit the invasion fleet withdraws, troops aboard.
-        (helper as { mission: unknown }).mission = null;
-        helper.attackPoint = h;
+        hold.since = galaxyStarDate(og) - 21 * GAME_DAY_LENGTH;
+        const fleet = fleetOf(att, [aiShip[1]]);
+        fleet.attackPoint = h;
         const t = troop(att, TroopType.Infantry, 100, 100, 100);
         aiShip[1].troops = new TroopList();
         aiShip[1].troops.add(t);
-        hold.since = now - 31 * GAME_DAY_LENGTH;
-        hold.reviewed = hold.since;
         const aborted = st.stats.landingsAborted;
         orbitalAiReview(og);
-        expect(helper.attackPoint).toBeNull();
-        expect(helper.mission?.type).toBe(BuiltObjectMissionType.Move);
-        expect(helper.mission?.priority).toBe(BuiltObjectMissionPriority.High);
-        expect(st.stats.landingsAborted).toBeGreaterThan(aborted);
+        expect(fleet.attackPoint).toBeNull();
+        expect(fleet.mission?.type).toBe(BuiltObjectMissionType.Move);
+        expect(fleet.mission?.priority).toBe(BuiltObjectMissionPriority.High);
+        expect(st.stats.landingsAborted).toBe(aborted + 1);
         expect(aiShip[1].troops!.count).toBe(1);
         expect(st.holds.some((x) => x.h === h.habitatIndex && x.e === att.empireId)).toBe(false);
-        // ... and the AI does not pick that colony again for a while (orbitalAiCooldownDays).
-        expect(scenarioQuery(og, 'invasionTargetOrbitOk', true, { empire: att, fleet: helper, target: h })).toBe(false);
+        // ... and the AI does not pick that colony again for a while.
+        expect(scenarioQuery(og, 'invasionTargetOrbitOk', true, { empire: att, fleet, target: h })).toBe(false);
         aiShip[0].firepowerRaw = fp0;
         humanShip.firepowerRaw = hfp;
     });
 
-    it('the AI goes for an orbit it (with the fleets it can gather) can contest at parity, and skips it only when it cannot', () => {
+    it('the AI only takes invasion targets whose orbit its fleet can hold', () => {
         const [, def, att] = aiEmpires();
         const h = def.capital!;
-        const ships = ensureShips(og, att, BuiltObjectSubRole.Escort, 2);
+        const ships = ensureShips(og, att, BuiltObjectSubRole.Escort, 1);
         const fleet = fleetOf(att, [ships[0]]);
-        const d = empireFirepowerNear(og, h.xpos, h.ypos, 2000, def);
-        expect(d).toBeGreaterThan(0);
-        const fp = ships.map((x) => x.firepowerRaw);
-        const range = og.scenario!.params.orbitalAiReliefRange;
-        try {
-            // Nothing to gather (relief range 1): the fleet alone decides.
-            og.scenario!.params.orbitalAiReliefRange = 1;
-            ships[0].firepowerRaw = Math.floor(d * 0.9);
-            expect(canContestOrbit(og, att, fleet, h)).toBe(false);
-            expect(scenarioQuery(og, 'invasionTargetOrbitOk', true, { empire: att, fleet, target: h })).toBe(false);
-            ships[0].firepowerRaw = Math.ceil(d);
-            expect(scenarioQuery(og, 'invasionTargetOrbitOk', true, { empire: att, fleet, target: h })).toBe(true);
-            // A fleet short alone but with a second routine fleet within reach goes (they gather).
-            og.scenario!.params.orbitalAiReliefRange = 4000000;
-            ships[0].firepowerRaw = Math.floor(d * 0.5);
-            const second = fleetOf(att, [ships[1]]);
-            second.mission = null;
-            moveTo(ships[1], h, 8000);
-            ships[1].firepowerRaw = Math.ceil(d);
-            expect(gatherableFirepower(og, att, h, fleet)).toBeGreaterThanOrEqual(Math.ceil(d));
-            expect(canContestOrbit(og, att, fleet, h)).toBe(true);
-            second.ships.length = 0;
-        } finally {
-            og.scenario!.params.orbitalAiReliefRange = range;
-            ships.forEach((x, i) => (x.firepowerRaw = fp[i]));
-        }
+        const range = scenarioParam(og, 'orbitalAiThreatRange', 23000);
+        const dNear = empireFirepowerNear(og, h.xpos, h.ypos, range, def);
+        expect(dNear).toBeGreaterThan(0);
+        const fp = ships[0].firepowerRaw;
+        ships[0].firepowerRaw = Math.floor(dNear); // not > 1.5 x
+        expect(canHoldOrbit(og, att, fleet, h)).toBe(false);
+        expect(scenarioQuery(og, 'invasionTargetOrbitOk', true, { empire: att, fleet, target: h })).toBe(false);
+        ships[0].firepowerRaw = Math.ceil(dNear * 2);
+        expect(scenarioQuery(og, 'invasionTargetOrbitOk', true, { empire: att, fleet, target: h })).toBe(true);
+        ships[0].firepowerRaw = fp;
     });
 
     it('an invaded AI colony gets a relief fleet (High Patrol); the invader keeps its escort over the planet', () => {

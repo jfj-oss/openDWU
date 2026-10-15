@@ -66,7 +66,7 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - name: Desktop shell tests (no game files needed)
-        run: npx vitest run test/desktopShell.test.ts test/colorProfile.test.ts
+        run: npx vitest run test/desktopShell.test.ts test/selfUpdate.test.ts test/colorProfile.test.ts
 
   package:
     name: ${{ matrix.name }}

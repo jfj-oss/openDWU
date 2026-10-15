@@ -1,7 +1,7 @@
 {
   "id": "jump-interdiction",
   "name": "Defensive jump interdiction",
-  "description": "A gameplay change (off by default; set on the new-game wizard's Other Empires page). Every armed defensive base or space port projects an interdiction field around itself in its system (4,000 units, up to 6,000 for the most heavily armed). Enemy ships (empires at war, pirates against the empires they prey on) that start a hyperjump inside a field spool three times as long before they can jump out, unless they cruise out of the field first; jumping in, and friendly or neutral ships, are unaffected. Monsters do not use hyperdrives and are unaffected. The selected ship's panel shows \"Interdicted by <base>: jump spool 3×\", a base's shows its field. AI weighs it: pirates raid into defended systems only with fleets strong enough to kill the bases first, and AI empires at war value a defensive base at the border colony facing an enemy more; empires at war still strike and invade as in the original game.",
+  "description": "A gameplay change (off by default; set on the new-game wizard's Other Empires page). Every armed defensive base or space port projects an interdiction field around itself in its system (4,000 units, up to 6,000 for the most heavily armed). Enemy ships (empires at war, pirates against the empires they prey on) that start a hyperjump inside a field spool five times as long as in the original game before they can jump out (in total: not stacked on Slower hyperdrive spool), unless they cruise out of the field first; jumping in, and friendly or neutral ships, are unaffected. Monsters do not use hyperdrives and are unaffected. The selected ship's panel shows \"Interdicted by <base>: jump spool 5×\", a base's shows its field. AI weighs it: pirates raid into defended systems only with fleets strong enough to kill the bases first, and AI empires at war value a defensive base at the border colony facing an enemy more; empires at war still strike and invade as in the original game.",
   "flags": [
     { "name": "jumpInterdiction", "label": "Defensive jump interdiction", "description": "Master switch.", "default": true }
   ],
@@ -9,7 +9,7 @@
     { "name": "interdictionRadius", "label": "Interdiction field radius around an armed base (units; a system is up to 23,000 across its radius)", "default": 4000, "min": 500, "max": 23000 },
     { "name": "interdictionFirepowerBonus", "label": "Extra field radius (fraction) for a base at full firepower", "default": 0.5, "min": 0, "max": 3 },
     { "name": "interdictionFirepowerFull", "label": "Base firepower that gives the full extra radius", "default": 400, "min": 1, "max": 100000 },
-    { "name": "interdictionSpoolFactor", "label": "Hyperjump spool time multiplier for enemy ships jumping out of a field", "default": 3, "min": 1, "max": 20 },
+    { "name": "interdictionSpoolFactor", "label": "Total hyperjump spool multiplier (over the original) for enemy ships jumping out of a field (not stacked on Slower hyperdrive)", "default": 5, "min": 1, "max": 20 },
     { "name": "interdictionAiRaidMargin", "label": "AI pirates: a raid into a system with hostile fields needs this many times the bases' strength", "default": 1.5, "min": 0, "max": 10 },
     { "name": "interdictionAiBorderBases", "label": "AI empires at war: border colonies (one per war enemy) added to the defensive base locations", "default": 1, "min": 0, "max": 10 }
   ]

@@ -2062,6 +2062,7 @@ export class MainView {
             }
         }
         this.builtObjectLayer.followed = followed;
+        this.ambientLayer.followed = followed;
         this.world.scale.set(z);
         this.world.x = cam.width / 2 - cam.x * z;
         this.world.y = cam.height / 2 - cam.y * z;

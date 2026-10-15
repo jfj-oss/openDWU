@@ -4,6 +4,7 @@
 // install folder by the desktop shell; under `npm run dev` a public symlink
 // plus the probe middleware in vite.config.ts does the same).
 
+import { installErrorReporting, startPerfSampling } from './errorReporting';
 import { recordRenderer } from './render/rendererInfo';
 import { fogOf } from './render/fog';
 import { goToMessage, messageGoToTarget } from './ui/messageGoto';
@@ -21,7 +22,7 @@ import { loadGameData, type FetchText, type GameData } from './sim/data/gameData
 import { GalaxyShape } from './sim/types';
 import { clearHudMessages, createHud, destroyHudListeners, refreshTopLeftControls, topSystemNameText, layoutHud, nearestSystem, pushHudMessage, setSelection as setHudSelection, type HudRefs } from './ui/hud';
 import { GalaxyTime } from './sim/clock';
-import { resolveStarDateDescription } from './sim/galaxyTime';
+import { resolveStarDateDescription, YEAR_LENGTH } from './sim/galaxyTime';
 import { createSimLoop, simViewEnabledFromUrl, simViewFromCamera } from './simLoop';
 // [simworker] begin — docs/sim-worker.md: the sim in a Web Worker (the default; ?simWorker=0 or Settings → off selects the in-thread fallback).
 import { SimWorkerClient, simWorkerEnabled, type MpSideChannel, type ReplicaGameData } from './simworker/workerClient';
@@ -154,6 +155,8 @@ import { createShipCommandKeys, type ShipCommandKeys } from './ui/shipCommandKey
 import { installWaypointUi } from './ui/waypoints'; // [waypoints]
 import { createControlGroupKeys } from './ui/controlGroups'; import { setControlGroupHandler } from './ui/keyboard'; import { resetPanelVisibility } from './ui/panelVisibility'; import { setMainViewDisplayType } from './render/mainViewDisplay'; import { closeGroundReport } from './ui/screens/groundReport'; import { playGridClick } from './audio/gameAudio'; // [parC1]
 import { showToast } from './ui/toast';
+import { installDesktopUpdateNotice } from './ui/desktopUpdate';
+import { gameEventProps, installScreenTracking, sessionProps, trackEvent, type EventProps } from './analytics';
 // [fix6ui] end
 
 import './ui/hud.css';
@@ -165,7 +168,7 @@ import { updateSettings } from './ui/settings';
 import { localViewerEmpire, onLocalViewerChange } from './localViewer';
 import { installHumanOffers } from './ui/screens/humanOffers';
 import { toggleDiplomacyScreen } from './ui/screens/diplomacyScreen';
-import { humanEmpires } from './sim/humanEmpires';
+import { humanEmpires, isHumanEmpire } from './sim/humanEmpires';
 import type { Empire } from './sim/empire';
 // LAN multiplayer (docs/MULTIPLAYER.md §10).
 import { devValue } from './ui/multiplayer/devHooks';
@@ -310,7 +313,7 @@ function gameDataWithScenario(base: GameData, scenarioId: string | null, include
     try {
         return applyScenarioOverlay(base, scenarioOverlayFor(scenarioId, include, scenarioOverlays));
     } catch (err) {
-        if (IS_CLASSIC) throw new Error(`This save needs add-ons from the full edition of openDWU (${scenarioId === COMPOSITE_SCENARIO_ID ? (include ?? []).join(', ') : scenarioId}). openDWU Classic only has Themed Names, Smarter AI, Orbital Superiority, Longer Ground Battles, Jump Interdiction, Blockades That Bite and the Event Log. Open it in openDWU (the full edition).`);
+        if (IS_CLASSIC) throw new Error(`This save needs add-ons from the full edition of openDWU (${scenarioId === COMPOSITE_SCENARIO_ID ? (include ?? []).join(', ') : scenarioId}). openDWU Classic only has Themed Names, Smarter AI, Orbital Superiority, Longer Ground Battles, Jump Interdiction, Blockades That Bite, Slower Hyperdrive Spool and the Event Log. Open it in openDWU (the full edition).`);
         throw new Error(`Scenario "${scenarioId}" is not available; cannot load this game. (${err instanceof Error ? err.message : String(err)})`);
     }
 }
@@ -755,6 +758,28 @@ export async function startGameView(
     /** A new game's start date (the founding lines' date); null for a loaded game. */
     let foundingStarDate: number | null = null;
 
+    // Anonymous usage statistics (src/analytics.ts; desktop app only): the setup of this game, and the session's progress.
+    {
+        const sc = (lastPlayedGameData ?? lastGameData)?.scenario?.manifest;
+        const mp = multiplayerActive();
+        trackEvent(savedClock !== undefined ? 'game_loaded' : 'game_started', gameEventProps({
+            stars: galaxy.systems.length,
+            empires: galaxy.empires.length,
+            shape: GalaxyShape[galaxy.galaxyShape] ?? 'unknown',
+            age: galaxy.age,
+            difficulty: galaxy.difficultyLevel,
+            edition: APP_EDITION,
+            addons: sc === undefined ? [] : (sc.include ?? [sc.id]),
+            multiplayer: mp,
+            players: humanEmpires(galaxy).length,
+            theme: getSettings().customizationSet,
+        }));
+        const openedAt = Date.now();
+        window.setInterval(() => {
+            const won = galaxy.gameVictor !== null && galaxy.gameVictor !== undefined && isHumanEmpire(galaxy, galaxy.gameVictor);
+            (window as unknown as { dwuDesktop?: { analytics?: { session?: (p: EventProps) => void } } }).dwuDesktop?.analytics?.session?.(sessionProps(openedAt, Date.now(), galaxy.nowMs / YEAR_LENGTH, galaxy.gameIsFinished === true, won));
+        }, 60000);
+    }
     const app = new Application();
     await app.init({
         resizeTo: window,
@@ -1735,6 +1760,8 @@ async function main(): Promise<void> {
     await bootTheme(urlTheme ?? getSettings().customizationSet, () => {
         if (urlTheme === null) updateSettings({ customizationSet: '' });
     });
+    installDesktopUpdateNotice();
+    installScreenTracking();
     // [audio] begin — GlassButton / HoverButton / HoverMenuItem / ListViewBase click sounds on every screen.
     installUiClickSounds();
     // [audio] end
@@ -2451,6 +2478,8 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     });
 }
 
+installErrorReporting();
+startPerfSampling();
 main().catch((err) => {
     console.error('DW:U boot failed', err);
 });

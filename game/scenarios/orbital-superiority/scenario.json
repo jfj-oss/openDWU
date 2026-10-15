@@ -15,13 +15,10 @@
     { "name": "orbitalCutPenalty", "label": "Defenders hold the orbit: invaders' attack penalty", "default": 0.5, "min": 0, "max": 1 },
     { "name": "orbitalCutAttritionPct", "label": "Defenders hold the orbit: invaders lose this % of their strength per day", "default": 3, "min": 0, "max": 50 },
     { "name": "orbitalAttritionMinReadiness", "label": "An invading unit worn below this readiness (of 100) is lost", "default": 5, "min": 0, "max": 100 },
-    { "name": "orbitalAiParityRatio", "label": "AI: invades when its fleet plus the fleets it can gather reach this many times the defenders' armed strength in orbit", "default": 1, "min": 0.1, "max": 10 },
-    { "name": "orbitalAiLandRatio", "label": "AI: in a contested orbit, its troops land once its strength there is this many times the defenders'", "default": 1, "min": 0.1, "max": 10 },
-    { "name": "orbitalAiCooldownDays", "label": "AI: days before it targets a colony again after withdrawing from it", "default": 15, "min": 0, "max": 360 },
-    { "name": "orbitalAiReliefFleets", "label": "AI: send relief fleets to invaded colonies (1 = yes, 0 = no)", "default": 1, "min": 0, "max": 1 },
+    { "name": "orbitalAiThreatRange", "label": "AI: defending ships within this distance of a target planet count against an invasion", "default": 23000, "min": 2000, "max": 2000000 },
     { "name": "orbitalAiReliefRange", "label": "AI: fleets within this distance are sent to relieve an invaded colony or reinforce an invasion", "default": 4000000, "min": 10000, "max": 40000000 },
     { "name": "orbitalAiReliefMinRatio", "label": "AI: a relief fleet needs at least this share of the attackers' space strength", "default": 1, "min": 0.1, "max": 10 },
-    { "name": "orbitalAiHoldDays", "label": "AI: days invasion troops wait aboard for the orbit before the fleet withdraws", "default": 30, "min": 1, "max": 360 },
-    { "name": "orbitalAiLosingDays", "label": "AI: days between the invader's reviews of a stalled orbit fight (it sends more fleets; withdraws only when parity is out of reach)", "default": 10, "min": 1, "max": 360 }
+    { "name": "orbitalAiHoldDays", "label": "AI: days invasion troops wait aboard for the orbit before the fleet withdraws", "default": 20, "min": 1, "max": 360 },
+    { "name": "orbitalAiLosingDays", "label": "AI: days in a defender-held orbit (waiting or on the ground) before the invader withdraws or reinforces", "default": 4, "min": 1, "max": 360 }
   ]
 }

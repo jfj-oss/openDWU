@@ -39,6 +39,7 @@ import { isObjectVisibleToThisEmpire } from '../independentTraders';
 import { EmpireMessageType, sendMessageToEmpire } from '../messages';
 import { galaxyStarDate } from '../tick/simTime';
 import { humanEmpires } from '../humanEmpires';
+import { fleetMothballed, isMothballed } from '../scenario/mothballing/types';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Tuning (named weights; costs are in game seconds — lower is better)
@@ -319,8 +320,9 @@ function shipPath(galaxy: Galaxy, bo: BuiltObject): TargetPath {
             pushMove(legs, cur, ex.x, ex.y, bo.currentSpeed, 0);
         } else if (hyper && warp > 0 && d > threshold) {
             let wait = Math.max(0, bo.hyperjumpInitiate) * 1000;
-            // Mod layer (jump interdiction): a jump out of a hostile field spools longer (an open spool's countdown has it).
-            if (first && galaxy.scenario !== null) wait *= scenarioQuery(galaxy, 'hyperjumpSpoolFactor', 1, { ship: bo });
+            // Mod layer (slow hyperdrive / jump interdiction): the spool's total factor (a field only where it is now; an open
+            // spool's countdown already has it).
+            if (galaxy.scenario !== null) wait *= scenarioQuery(galaxy, 'hyperjumpSpoolFactor', 1, { ship: bo, here: first });
             if (first && !bo.firstExecutionOfCommand) wait = Math.max(0, bo.hyperjumpCountdown - starDate);
             pushMove(legs, cur, p.x, p.y, warp, wait);
         } else {
@@ -368,8 +370,8 @@ export interface ForceMotion {
 
 export function forceMotion(f: InterceptForce, galaxy: Galaxy | null = null): ForceMotion {
     const p = posOf(f);
-    // Mod layer (jump interdiction): our own ships held in a hostile field spool longer too.
-    const k = (b: BuiltObject): number => (galaxy !== null && galaxy.scenario !== null ? scenarioQuery(galaxy, 'hyperjumpSpoolFactor', 1, { ship: b }) : 1);
+    // Mod layer (slow hyperdrive / jump interdiction): our own spool's total factor (a hostile field where it is now).
+    const k = (b: BuiltObject): number => (galaxy !== null && galaxy.scenario !== null ? scenarioQuery(galaxy, 'hyperjumpSpoolFactor', 1, { ship: b, here: true }) : 1);
     if (isFleet(f)) {
         let initiate = 0;
         for (const b of f.ships) initiate = Math.max(initiate, b.hyperjumpInitiate * k(b));
@@ -510,6 +512,7 @@ function rankForces(galaxy: Galaxy, empire: Empire, path: TargetPath, need: numb
     const ratioOf = (s: number): number => (need > 0 ? s / need : Number.POSITIVE_INFINITY);
     for (const g of empireShipGroups(empire)) {
         if (g === null || g.leadShip === null || g.ships.length === 0 || g.watch !== undefined) continue;
+        if (fleetMothballed(g)) continue; // mothballing add-on: on its way to, in or leaving reserve
         if (!freeMission(g.mission) || busyWithOrder(empire, g)) continue;
         if (g.leadShip.topSpeed <= 0) continue;
         const strength = interceptForceStrength(g);
@@ -523,6 +526,7 @@ function rankForces(galaxy: Galaxy, empire: Empire, path: TargetPath, need: numb
     for (const b of empire.builtObjects) {
         if (b === null || b.hasBeenDestroyed || b.role !== BuiltObjectRole.Military || b.shipGroup !== null) continue;
         if (b.builtAt !== null || b.retrofitDesign !== null || b.topSpeed <= 0 || b.firepowerRaw <= 0) continue;
+        if (isMothballed(b)) continue; // mothballing add-on
         if (!freeMission(builtObjectMission(b.mission)) || busyWithOrder(empire, b)) continue;
         const strength = calculateOverallStrengthFactor(b);
         const ratio = ratioOf(strength);
@@ -779,6 +783,7 @@ export function watchSystemFor(galaxy: Galaxy, fleet: ShipGroup): Habitat | null
 export function watchUnavailableReason(galaxy: Galaxy, empire: Empire, fleet: ShipGroup): string | null {
     if (fleet.empire !== empire || fleet.leadShip === null) return 'Not your fleet';
     if (fleet.leadShip.isAutoControlled) return 'Turn the fleet\'s automation off first';
+    if (fleetMothballed(fleet)) return 'The fleet is mothballed';
     if (watchSystemFor(galaxy, fleet) === null) return 'Not in or bound for a system';
     return null;
 }

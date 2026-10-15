@@ -52,6 +52,8 @@ import { troopCompositionDescription, troopCountsByType } from './troops';
 import { openGalactopedia } from './galactopedia';
 import { CROSSHAIR_COLOR, GRID_COLOR, drawMapTerritory, galaxyMapScale, sectorColumnLabel, sectorLabelStride, starBrushColor, starDotSizes } from './galaxyMap';
 import { drawGalaxyMapLayers } from './galaxyMapLayers';
+import { fleetMothballed, mothballListText, mothballingOn } from '../../sim/scenario/mothballing/mothballing';
+import { compactMothballLabel, mothballForcesModel, wireMothballButton } from '../mothballSlots';
 import { fmtK, missionDescription, shipGroupInfo, type InfoTarget } from '../selectionInfo';
 import { renderInfoModel } from '../selectionInfoView';
 import {
@@ -136,9 +138,11 @@ export function fleetSystemName(sg: ShipGroup): string {
 
 /** The mission type label (the selection rows' short form; the grid uses the full Galaxy.ResolveDescription). */
 export function fleetMissionText(sg: ShipGroup): string {
-    return sg.mission === null || sg.mission.type === BuiltObjectMissionType.Undefined
+    const r = reserveText(sg);
+    if (r !== '') return r;
+    return (sg.mission === null || sg.mission.type === BuiltObjectMissionType.Undefined
         ? '(No mission)'
-        : missionTypeLabel(sg.mission.type);
+        : missionTypeLabel(sg.mission.type));
 }
 
 /** Main.Part8.cs:1243 btnCycleShipGroups_Click cycles PlayerEmpire.ShipGroups
@@ -175,7 +179,15 @@ export function fleetRows(empire: Empire): FleetRow[] {
 
 /** The grid's Mission cell: Galaxy.ResolveDescription(empire, mission) (type and target). */
 export function fleetMissionDescription(sg: ShipGroup): string {
-    return missionDescription(sg.mission, sg.empire);
+    const r = reserveText(sg);
+    return r !== '' ? r : missionDescription(sg.mission, sg.empire);
+}
+
+/** Mothballing add-on: "Reserve (Sol Port)" / "Reactivating 87 d" / "To reserve (Sol Port)" in the Mission cell ('' otherwise). */
+function reserveText(sg: ShipGroup): string {
+    const g = sg.empire?.galaxy ?? null;
+    if (g === null || !fleetMothballed(sg)) return '';
+    return mothballListText(g, sg);
 }
 
 /** The grid's columns (ShipGroupListView constructor; widths from Main.Part9.cs method_268). */
@@ -680,12 +692,22 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
         const openSettings = opts.onOpenSettings;
         orderSpecs.push({ id: 'settings', label: 'Settings', icon: 'fleetposture.png', title: 'Fleet Settings: posture, engagement, retreat, fuel, troops and resupply in one window (Q)', run: (sg) => openSettings(sg) });
     }
+    // Mothballing add-on (a Gameplay change; only when it is on): Mothball (right-click: choose the port) / Reactivate
+    // for the selected fleet (ui/mothballSlots.ts).
+    const mothballModel = (): ReturnType<typeof mothballForcesModel> => {
+        const sg = selectedFleet();
+        return mothballForcesModel(galaxy, empire, sg !== null ? [sg] : []);
+    };
+    if (mothballingOn(galaxy)) {
+        orderSpecs.push({ id: 'mothball' as FleetActionId, label: 'Mothball', icon: 'stop.png', title: '', run: () => mothballModel()?.click() });
+    }
     const orderButtons = new Map<FleetActionId, HTMLButtonElement>();
     rowButtonLayout(orderSpecs.length).forEach(({ x, w }, i) => {
         const s = orderSpecs[i];
         const b = glassButton(s.label, { image: s.icon, minorText: '', title: s.title, className: 'fl-order', onClick: () => withFleet(s.run) });
         fleetsPage.appendChild(place(b, x, FLEETS_WINDOW.ordersY, w, FLEETS_WINDOW.ordersH));
         orderButtons.set(s.id, b);
+        if ((s.id as string) === 'mothball') wireMothballButton(b, mothballModel, () => refresh());
     });
 
     // ---------------------------------------------------------------------------------------------------------------
@@ -773,6 +795,18 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
         // Orders row.
         for (const s of orderSpecs) {
             const b = orderButtons.get(s.id)!;
+            if ((s.id as string) === 'mothball') {
+                const m = mothballModel();
+                b.classList.add('fl-mb');
+                b.disabled = m === null || m.disabled;
+                b.title = m?.hint ?? '';
+                const c = m !== null ? compactMothballLabel(m) : { label: 'Mothball', minor: '' };
+                setButtonLabel(b, c.label);
+                setButtonMinorText(b, sg !== null ? c.minor : '');
+                const img = b.querySelector('img');
+                if (img !== null && m !== null && img.getAttribute('src') !== m.icon) img.src = m.icon;
+                continue;
+            }
             b.disabled = !state.enabled[s.id];
         }
         const minor = (id: FleetActionId, t: string): void => setButtonMinorText(orderButtons.get(id)!, t);
@@ -796,7 +830,7 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
             minor('disband', `${sg.ships.length} ships`);
             if (orderButtons.has('settings')) minor('settings', 'All settings');
         } else {
-            for (const s of orderSpecs) minor(s.id, '');
+            for (const s of orderSpecs) if ((s.id as string) !== 'mothball') minor(s.id, '');
         }
         refillRow.update(sg);
         moveTogether.update(sg);

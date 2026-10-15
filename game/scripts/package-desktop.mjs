@@ -41,7 +41,7 @@ function parseArgs(argv) {
 
 const args = parseArgs(process.argv);
 const { platform, arch } = args;
-// openDWU Classic (--edition=classic or DWU_EDITION=classic): same code, only the themed-names, smarter-ai, event-log, orbital-superiority, longer-ground-combat, jump-interdiction and blockades-bite
+// openDWU Classic (--edition=classic or DWU_EDITION=classic): same code, only the themed-names, smarter-ai, event-log, orbital-superiority, longer-ground-combat, jump-interdiction, blockades-bite and slow-hyperdrive
 // add-ons, its own app id / product name / userData folder / file names, so both editions install side by side.
 const classic = (args.edition ?? process.env.DWU_EDITION) === 'classic';
 const exeName = classic ? 'dwu-classic' : 'dwu';
@@ -174,6 +174,18 @@ fs.rmSync(stageDir, { recursive: true, force: true });
 fs.mkdirSync(path.join(stageDir, 'desktop'), { recursive: true });
 for (const f of fs.readdirSync(path.join(root, 'desktop'))) {
     if (/\.(cjs|html)$/.test(f)) fs.copyFileSync(path.join(root, 'desktop', f), path.join(stageDir, 'desktop', f));
+}
+// The crash-report SDK (@sentry/electron/main) as one minified file, so the package needs no node_modules for it
+// (desktop/crashReport.cjs loads ./sentry.cjs).
+{
+    const { build } = await import('rolldown');
+    await build({
+        input: path.join(root, 'node_modules/@sentry/electron/main/index.js'),
+        platform: 'node',
+        external: ['electron', /^node:/],
+        output: { file: path.join(stageDir, 'desktop', 'sentry.cjs'), format: 'cjs', minify: true, codeSplitting: false },
+        logLevel: 'warn',
+    });
 }
 guardStage(path.join(stageDir, 'desktop'));
 fs.writeFileSync(

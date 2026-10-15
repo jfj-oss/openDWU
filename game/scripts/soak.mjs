@@ -152,14 +152,6 @@ const CONFIGS = [
     // `--set orbital` (--hook scripts/orbital-soak-hook.mjs): Orbital superiority on (os-on-s1) and off (os-off-s1: the same
     // galaxy, the stock invasion rules), 700 stars, 7 empires, 20 years: invasions started / succeeded / failed, relief fleets.
     ...[['os-on-s1', true], ['os-off-s1', false]].map(([name, on]) => SCN('orbital-superiority', { name, set: 'orbital', seed: 1, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 } }, flags: { orbitalSuperiority: on } })),
-    // `--set orbital-tune`: the AI tuning measurement (on / off): the aggressive setup on seeds 1-3 for 25 years (most
-    // invasions), the standard setup on seed 1 for 55 years (the first invasion comes late there); `orbital-tune-lgc`:
-    // the aggressive seed 1 with Longer ground battles too.
-    ...[1, 2, 3].flatMap((seed) => [true, false].map((on) => SCN('orbital-superiority', { name: `ost-war-${on ? 'on' : 'off'}-s${seed}`, set: 'orbital-tune', seed, years: 25, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, flags: { orbitalSuperiority: on } }))),
-    ...[2, 3].flatMap((seed) => [true, false].map((on) => SCN('orbital-superiority', { name: `ost-std-${on ? 'on' : 'off'}-s${seed}`, set: 'orbital-tune-std', seed, years: 40, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 } }, flags: { orbitalSuperiority: on } }))),
-    ...[true, false].map((on) => SCN('orbital-superiority', { name: `ost-std-${on ? 'on' : 'off'}-s1`, set: 'orbital-tune', seed: 1, years: 55, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 } }, flags: { orbitalSuperiority: on } })),
-    ...[1, 2, 3].map((seed) => SCN('orbital-superiority', { name: `ost-war-norelief-s${seed}`, set: 'orbital-tune-norelief', seed, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, flags: { orbitalSuperiority: true }, params: { orbitalAiReliefFleets: 0 } })),
-    { name: 'ost-war-on-lgc-s1', set: 'orbital-tune-lgc', seed: 1, years: 25, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, scenario: ['orbital-superiority', 'longer-ground-combat'], flags: 'all' },
     // os-war-*: the same with aggressive AI empires on an older galaxy (more wars, so more invasions to count).
     ...[['os-war-on-s1', true], ['os-war-off-s1', false]].map(([name, on]) => SCN('orbital-superiority', { name, set: 'orbital-war', seed: 1, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, flags: { orbitalSuperiority: on } })),
     // `--set interdiction` (--hook scripts/interdiction-soak-hook.mjs): Defensive jump interdiction on / off on the os-war
@@ -168,6 +160,15 @@ const CONFIGS = [
     // `--set blockades` (--hook scripts/blockades-soak-hook.mjs): Blockades that bite on / off on the os-war-* galaxy
     // (aggressive AI, older galaxy, 700 stars, 7 empires, 20 years): blockades started, income lost, broken by relief.
     ...[['bb-war-on-s1', true], ['bb-war-off-s1', false]].map(([name, on]) => SCN('blockades-bite', { name, set: 'blockades', seed: 1, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, flags: { blockadesBite: on } })),
+    // `--set mothballing` (--hook scripts/mothball-hook.mjs): the Mothballing gameplay change on vs off: the standard
+    // seed-1 galaxy for 30 years (mb-*), and the war galaxy of the other gameplay changes (aggressive AI, older galaxy,
+    // 700 stars, 7 empires, 20 years: mb-war-*) for the war engagement on vs off.
+    ...[1, 7].flatMap((seed) => [[`mb-on-s${seed}`, { mothballing: true, mothballingAI: true }], [`mb-off-s${seed}`, { mothballing: false, mothballingAI: false }]].map(([name, flags]) => ({
+        name, set: 'mothballing', seed, years: 30, wizard: {}, scenario: 'mothballing', flags,
+    }))),
+    ...[['mb-war-on-s1', true], ['mb-war-off-s1', false]].map(([name, on]) => SCN('mothballing', { name, set: 'mothballing', seed: 1, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, flags: { mothballing: on, mothballingAI: on } })),
+    // `--set slow-hyperdrive` (same hook): Slower hyperdrive spool on / off on the os-war galaxy: war AI pace.
+    ...[['sh-war-on-s1', true], ['sh-war-off-s1', false]].map(([name, on]) => SCN('slow-hyperdrive', { name, set: 'slow-hyperdrive', seed: 1, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, flags: { slowHyperdrive: on } })),
     // `--set long`: the many-decade runs (not in the default set).
     { name: 'long-s1-30y', set: 'long', seed: 1, years: 30, wizard: {} },
     { name: 'long-s7-small-50y', set: 'long', seed: 7, years: 50, wizard: { starCountIndex: 1, dimensionIndex: 1, otherEmpires: { empireCount: 5 } } },

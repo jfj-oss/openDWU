@@ -81,6 +81,8 @@
     line-height: 1.05;
     white-space: pre-line;
     pointer-events: none;
+    /* A few px clear of the first tick label (the box stays the same height). */
+    transform: translateY(-3px);
 }
 .owc-trackbar-tick {
     background: rgb(64, 64, 72);

@@ -16,6 +16,7 @@
 // - Paused ⇒ no frames (the C# loop keeps calling DoTasks with a frozen clock; with dt = 0 only the round-robin
 //   cursors would move).
 
+import { scenarioFramePeriodicTick } from '../scenario/hooks';
 import { battleReportsFrameEnd } from '../battleReports/battleReports';
 import { assignEntityRefIds } from '../entityRefs';
 import { processConstructionBoard } from '../player/constructionBoard';
@@ -481,6 +482,8 @@ function runSimFrameBody(galaxy: Galaxy, frameMs: number, opts: FrameOptions): v
     // an intercept; player/intercept.ts).
     processIntercepts(galaxy);
     processSystemWatches(galaxy);
+    // Mod layer: day-scale scenario timers (e.g. mothballing); no scenario = one null check.
+    if (galaxy.scenario !== null) scenarioFramePeriodicTick(galaxy);
     // Main's UI thread between two sim frames: what the sim sent the player this frame, in arrival order — the
     // BeginInvoke'd ReceiveMessageInternal / method_523 / PromptForAuthorizationInternal calls — then the advisor queue's
     // age expiry (playerMessages.ts; the C# runs them whenever its UI thread gets to them, the port at this fixed point

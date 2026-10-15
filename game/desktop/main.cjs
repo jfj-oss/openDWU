@@ -25,7 +25,7 @@ const { app, BrowserWindow, Menu, MessageChannelMain, dialog, protocol, net, nat
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawn } = require('node:child_process');
 const { pathToFileURL } = require('node:url');
 const { stripColorProfile, isProfiledImagePath } = require('./colorProfile.cjs');
 const themeIndex = require('./themeIndex.cjs');
@@ -33,6 +33,7 @@ const { buildAssetManifest } = require('./assetManifest.cjs');
 const { createResolver } = require('./resolvePath.cjs');
 const installLib = require('./installDir.cjs');
 const updates = require('./updateCheck.cjs');
+const selfUpdate = require('./selfUpdate.cjs');
 const { createSimProcesses } = require('./simProcess.cjs');
 const { createNetHost } = require('./netHost.cjs');
 const userMusic = require('./userMusic.cjs');
@@ -74,6 +75,41 @@ const APP_VERSION = app.isPackaged ? app.getVersion() : String(PKG.version ?? ap
 const UPDATE_REPO = updates.repoSlug(PKG.repository) ?? 'jfj-oss/openDWU';
 // openDWU Classic (build:classic): its own app id, product name and userData folder, so both editions install side by side.
 const CLASSIC = PKG.dwuEdition === 'classic' || process.env.DWU_EDITION === 'classic';
+// Crash reporting (desktop/crashReport.cjs): started as early as the version / edition are known.
+const crashReport = require('./crashReport.cjs');
+crashReport.init({ app, version: APP_VERSION, classic: CLASSIC });
+// Anonymous usage statistics (desktop/aptabase.cjs): packaged builds only (DWU_APTABASE=1 forces, =0 disables).
+const aptabase = require('./aptabase.cjs');
+const analytics = aptabase.createTracker({
+    fetchFn: (url, init) => net.fetch(url, init),
+    enabled: process.env.DWU_APTABASE === '1' || (app.isPackaged && process.env.DWU_APTABASE !== '0'),
+    system: {
+        get locale() {
+            return app.getLocale();
+        },
+        osName: aptabase.OS_NAMES[process.platform] ?? process.platform,
+        osVersion: os.release(),
+        engineVersion: process.versions.electron,
+        appVersion: APP_VERSION,
+    },
+    log: (m) => (process.env.DWU_APTABASE === '1' ? console.log(m) : undefined),
+});
+let analyticsSession = { minutes: 0, year: 0, result: 'none' }; // the page's latest report, sent as session_ended at quit
+let appStartedSent = false;
+setTimeout(() => trackAppStarted({ renderer: 'unknown', gpu: '' }), 45000).unref(); // the page never reported its renderer
+function trackAppStarted(info) {
+    if (appStartedSent) return;
+    appStartedSent = true;
+    analytics.track('app_started', {
+        version: APP_VERSION,
+        edition: CLASSIC ? 'classic' : 'full',
+        os: process.platform,
+        arch: process.arch,
+        gpu_vendor: aptabase.gpuVendor(info.gpu),
+        renderer: info.renderer,
+        locale: app.getLocale(),
+    });
+}
 const APP_ID = CLASSIC ? 'local.dwureup.dwuclassic' : 'local.dwureup.dwu';
 const PRODUCT = CLASSIC ? 'openDWU Classic' : 'openDWU';
 if (CLASSIC && !app.isPackaged && !process.env.DWU_USER_DATA_DIR) app.setPath('userData', path.join(app.getPath('appData'), 'openDWU Classic'));
@@ -307,6 +343,8 @@ app.whenReady().then(() => {
             }
             return net.fetch(pathToFileURL(resolved).href, request);
         } catch (err) {
+            // The page aborted the request on purpose (Galactopedia dropping pending Help pages when the topic changes): not an error.
+            if (request.signal?.aborted || (err && err.name === 'AbortError')) return new Response(null, { status: 499 });
             console.error('dwu:// handler error:', err);
             return new Response(String(err && err.message ? err.message : err), { status: 500 });
         }
@@ -417,6 +455,7 @@ function appendCrashLog(text) {
     } catch {
         /* best effort */
     }
+    crashReport.reportCrashLogEntry(text);
 }
 
 // The game's simulation in a process of its own (simProcess.cjs): started by the game page (gamePreload.cjs), connected
@@ -468,8 +507,36 @@ ipcMain.handle('dwu:fullscreen-set', (event, on) => {
     return true;
 });
 // The page's renderer (Pixi WebGL / WebGPU / Canvas and the WebGL renderer string), for the log.
+ipcMain.on('dwu:report-error', (event, info) => {
+    if (mainWin === null || event.sender !== mainWin.webContents) return;
+    crashReport.reportRendererError(info);
+});
+// Page -> crash reports (desktop/crashReport.cjs): the once-a-minute performance sample (1 % of sessions), a multiplayer
+// desync, and "Report a bug" (the game view as a <= 1280 px JPEG is made here from the window).
+ipcMain.handle('dwu:perf-sampled', (event) => mainWin !== null && event.sender === mainWin.webContents && crashReport.isPerfSampled());
+ipcMain.on('dwu:report-perf', (event, info) => {
+    if (mainWin !== null && event.sender === mainWin.webContents) crashReport.reportPerf(info);
+});
+ipcMain.on('dwu:report-desync', (event, info) => {
+    if (mainWin !== null && event.sender === mainWin.webContents) crashReport.reportDesync(info);
+});
+ipcMain.handle('dwu:send-feedback', async (event, req) => {
+    if (mainWin === null || event.sender !== mainWin.webContents || !req || typeof req !== 'object') return { ok: false, error: 'not the game window' };
+    let screenshot = null;
+    try {
+        let img = await event.sender.capturePage();
+        if (img.getSize().width > 1280) img = img.resize({ width: 1280, quality: 'good' });
+        screenshot = img.toJPEG(80);
+    } catch {
+        /* no screenshot */
+    }
+    const info = { ...(req.info && typeof req.info === 'object' ? req.info : {}), version: APP_VERSION, edition: CLASSIC ? 'classic' : 'full', os: `${process.platform} ${process.arch}`, gpu: gpuInfoText };
+    return crashReport.sendFeedback({ message: req.message, screenshot, info });
+});
 ipcMain.on('dwu:report-renderer', (event, info) => {
     if (mainWin === null || event.sender !== mainWin.webContents || !info || typeof info !== 'object') return;
+    trackAppStarted({ renderer: String(info.renderer).slice(0, 12), gpu: String(info.gpu ?? '') });
+    crashReport.setTags({ renderer_mode: String(info.renderer).slice(0, 20), gpu: String(info.gpu ?? '').slice(0, 120) });
     let status = null;
     try {
         status = app.getGPUFeatureStatus();
@@ -593,25 +660,25 @@ async function checkForUpdates({ manual }) {
             return;
         }
         const download = updates.pickDownload(release, { platform: process.platform, arch: process.arch, kind: installKind(), product: CLASSIC ? 'classic' : 'full' });
-        console.log(`[update] offering ${download ? download.name : release.pageUrl ?? '(no download)'}`);
         const notes = updates.notesExcerpt(release.notes);
-        const { response } = await showMessage({
-            type: 'info',
-            buttons: ['Download', 'Later', 'Skip This Version'],
-            defaultId: 0,
-            cancelId: 1,
-            message: `${PRODUCT} ${release.version} is available`,
-            detail:
-                `You have ${APP_VERSION}. ${download ? `Download opens ${download.name} in your browser` : 'Download opens the release page in your browser'}; ` +
-                `install it over this copy (your game folder setting and saves are kept).` +
-                (notes ? `\n\n${notes}` : ''),
-        });
-        if (response === 0) {
-            const target = download?.url ?? release.pageUrl;
-            if (target && updates.isSafeGithubUrl(target)) await shell.openExternal(target);
-        } else if (response === 2) {
-            updateConfig({ skippedVersion: release.version });
+        // Background self-update (selfUpdate.cjs): AppImage / NSIS installs download the verified installer and install it on quit.
+        const plan = selfUpdatePlan(release);
+        if (plan) {
+            if (pendingUpdate && pendingUpdate.version === release.version) {
+                if (manual) await offerRestart(notes);
+                else notifyUpdateReady();
+                return;
+            }
+            const job = startSelfUpdateDownload(plan);
+            if (manual) {
+                void job.then((ok) => (ok ? undefined : offerBrowserDownload(release, download, notes)));
+                await showMessage({ type: 'info', message: `${PRODUCT} ${release.version} is available`, detail: `It is downloading in the background and will be installed when you quit. You will be told when it is ready.` + (notes ? `\n\n${notes}` : '') });
+                return;
+            }
+            if (await job) return;
+            console.log('[update] self-update unavailable, offering the browser download');
         }
+        await offerBrowserDownload(release, download, notes);
     } catch (err) {
         console.warn(`[update] check failed: ${err && err.message ? err.message : err}`);
         if (manual) await showMessage({ type: 'warning', message: 'Could not check for updates', detail: String(err && err.message ? err.message : err) });
@@ -619,6 +686,138 @@ async function checkForUpdates({ manual }) {
         updateCheckRunning = false;
     }
 }
+
+/** The Download / Later / Skip offer (macOS, zip, tar.gz, a read-only AppImage, a failed self-update). */
+async function offerBrowserDownload(release, download, notes) {
+    console.log(`[update] offering ${download ? download.name : release.pageUrl ?? '(no download)'}`);
+    const { response } = await showMessage({
+        type: 'info',
+        buttons: ['Download', 'Later', 'Skip This Version'],
+        defaultId: 0,
+        cancelId: 1,
+        message: `${PRODUCT} ${release.version} is available`,
+        detail:
+            `You have ${APP_VERSION}. ${download ? `Download opens ${download.name} in your browser` : 'Download opens the release page in your browser'}; ` +
+            `install it over this copy (your game folder setting and saves are kept).` +
+            (notes ? `\n\n${notes}` : ''),
+    });
+    if (response === 0) {
+        const target = download?.url ?? release.pageUrl;
+        if (target && updates.isSafeGithubUrl(target)) await shell.openExternal(target);
+    } else if (response === 2) {
+        updateConfig({ skippedVersion: release.version });
+    }
+}
+
+// --- Background self-update (desktop/selfUpdate.cjs) ---
+const UPDATES_DIR = () => path.join(app.getPath('userData'), 'updates');
+let pendingUpdate = null; // { version, file, kind, name }: downloaded and verified, installed on quit
+let downloadJob = null; // in-flight download (a Promise<boolean>)
+let mpBusy = false; // the page reports a running multiplayer game: the download waits
+
+function selfUpdatePlan(release) {
+    if (process.env.DWU_UPDATE_SELF === '0') return null;
+    const plan = selfUpdate.planSelfUpdate(release, { platform: process.platform, arch: process.arch, kind: installKind(), product: CLASSIC ? 'classic' : 'full', extraOrigin: process.env.DWU_UPDATE_URL });
+    if (!plan) return null;
+    if (plan.kind === 'appimage' && !selfUpdate.canReplaceFile(process.env.APPIMAGE)) {
+        console.log(`[update] ${process.env.APPIMAGE} is not writable: no self-update`);
+        return null;
+    }
+    return plan;
+}
+
+/** Download + verify in the background; resolves true when the update is staged. One download at a time. */
+function startSelfUpdateDownload(plan) {
+    if (downloadJob) return downloadJob;
+    console.log(`[update] downloading ${plan.name} in the background`);
+    const headers = { 'User-Agent': `${PRODUCT}/${APP_VERSION} (${process.platform}-${process.arch})` };
+    downloadJob = selfUpdate
+        .downloadVerified({
+            fetchFn: (url) => net.fetch(url, { headers, cache: 'no-store' }),
+            plan,
+            dir: path.join(UPDATES_DIR(), plan.version),
+            isPaused: () => mpBusy,
+        })
+        .then((r) => {
+            console.log(`[update] ${plan.name} ${r.reused ? 'already downloaded' : 'downloaded'} and verified (sha256 ${r.sha256.slice(0, 12)}…)`);
+            pendingUpdate = { version: plan.version, file: r.file, kind: plan.kind, name: plan.name };
+            notifyUpdateReady();
+            return true;
+        })
+        .catch((err) => {
+            console.warn(`[update] background download failed: ${err && err.message ? err.message : err}`);
+            return false;
+        })
+        .finally(() => {
+            downloadJob = null;
+        });
+    return downloadJob;
+}
+
+function notifyUpdateReady() {
+    console.log(`[update] ${pendingUpdate.version} will be installed when you quit`);
+    if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('dwu:update-ready', { version: pendingUpdate.version });
+}
+
+/** Install the staged update now (called as the app quits, or by "Restart now" with relaunch = true). */
+function applyPendingUpdate(relaunch) {
+    const u = pendingUpdate;
+    if (!u) return;
+    pendingUpdate = null;
+    updateConfig({ installedUpdateFrom: APP_VERSION, installedUpdateTo: u.version });
+    try {
+        if (u.kind === 'appimage') {
+            const target = process.env.APPIMAGE;
+            selfUpdate.replaceFile(u.file, target);
+            console.log(`[update] replaced ${target} with ${u.name}`);
+            if (relaunch) spawn(target, process.argv.slice(1).filter((a) => !a.startsWith('--dwu-')), { detached: true, stdio: 'ignore' }).unref();
+        } else {
+            spawn(u.file, selfUpdate.nsisArgs(relaunch), { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+            console.log(`[update] started the installer ${u.name}`);
+        }
+    } catch (err) {
+        console.warn(`[update] could not install ${u.name}: ${err && err.message ? err.message : err}`);
+    }
+}
+
+async function offerRestart(notes) {
+    const { response } = await showMessage({
+        type: 'info',
+        buttons: ['Restart now', 'Later'],
+        defaultId: 0,
+        cancelId: 1,
+        message: `${PRODUCT} ${pendingUpdate.version} is ready to install`,
+        detail: `It will be installed when you quit. Restart now to install it right away (save your game first; settings and saves are kept).` + (notes ? `\n\n${notes}` : ''),
+    });
+    if (response === 0) {
+        applyPendingUpdate(true);
+        app.exit(0);
+    }
+}
+
+app.on('quit', () => applyPendingUpdate(false));
+ipcMain.on('dwu:analytics', (event, msg) => {
+    if (mainWin === null || event.sender !== mainWin.webContents || !msg || typeof msg !== 'object') return;
+    if (msg.name === 'session') {
+        const p = aptabase.sanitizeProps('session_ended', msg.props);
+        if (p) analyticsSession = { ...analyticsSession, ...p };
+        return;
+    }
+    if (typeof msg.name === 'string') analytics.track(msg.name, msg.props);
+});
+// session_ended goes out with the last batch when the player quits (at most 2.5 s, never blocks for longer).
+let analyticsFlushed = false;
+app.on('before-quit', (event) => {
+    if (analyticsFlushed || !analytics.enabled) return;
+    analyticsFlushed = true;
+    if (analyticsSession.minutes > 0) analytics.track('session_ended', analyticsSession);
+    event.preventDefault();
+    Promise.race([analytics.flush(), new Promise((resolve) => setTimeout(resolve, 2500))]).finally(() => app.quit());
+});
+ipcMain.on('dwu:mp-busy', (event, busy) => {
+    if (mainWin !== null && event.sender === mainWin.webContents) mpBusy = busy === true;
+});
+ipcMain.handle('dwu:update-pending', (event) => (mainWin !== null && event.sender === mainWin.webContents && pendingUpdate ? { version: pendingUpdate.version } : null));
 
 function showMessage(opts) {
     const parent = mainWin && !mainWin.isDestroyed() ? mainWin : undefined;
@@ -634,6 +833,7 @@ function shellItems() {
     return [
         { label: 'Game Folder…', click: () => openSetupWindow('change') },
         { label: 'Check for Updates…', click: () => checkForUpdates({ manual: true }) },
+        ...(pendingUpdate ? [{ label: `Restart to install ${pendingUpdate.version}`, click: () => offerRestart('') }] : []),
     ];
 }
 
@@ -766,6 +966,7 @@ function createWindow() {
         const message = event.message ?? legacy[1];
         if (level !== 'warning' && level !== 'error') return;
         const entry = `${new Date().toISOString()} [${level}] ${String(message).slice(0, 500)}`;
+        crashReport.noteConsole(entry);
         recentConsole.push(entry);
         if (recentConsole.length > 40) recentConsole.shift();
         // The sim worker stopping (it crashed, ran out of memory — V8 kills only its isolate, the page lives on and
@@ -818,6 +1019,18 @@ function createWindow() {
         else app.quit();
     });
 
+    // DWU_SENTRY_TEST=1 (with DWU_SENTRY=1): one deliberate error in the main process and one in the page, to check
+    // that reports arrive. Inactive without the variable.
+    if (process.env.DWU_SENTRY_TEST === '1') {
+        win.webContents.once('did-finish-load', () => {
+            setTimeout(() => {
+                win.webContents.executeJavaScript("setTimeout(() => { throw new Error('DWU_SENTRY_TEST renderer error'); }, 0)").catch(() => {});
+                setTimeout(() => {
+                    throw new Error('DWU_SENTRY_TEST main error');
+                }, 1500);
+            }, 3000);
+        });
+    }
     win.once('ready-to-show', () => {
         win.show();
         if (readConfig().fullscreen === true) setFullscreen(win, true);
@@ -830,10 +1043,19 @@ function createWindow() {
         app.getGPUInfo('complete')
             .then((info) => {
                 gpuInfoText = displayMode.gpuInfoLine(info);
+                crashReport.setTags({ gpu_info: gpuInfoText.slice(0, 200) });
                 console.log(gpuInfoText);
             })
             .catch(() => {});
         // The update check on every launch, once the game is up (and off the startup path).
+        {
+            const cfg = readConfig();
+            if (cfg.installedUpdateTo) {
+                if (cfg.installedUpdateTo === APP_VERSION) analytics.track('update_installed', { from: cfg.installedUpdateFrom, to: APP_VERSION });
+                updateConfig({ installedUpdateFrom: undefined, installedUpdateTo: undefined });
+            }
+        }
+        selfUpdate.cleanupStaged(UPDATES_DIR(), APP_VERSION, updates.compareVersions);
         setTimeout(() => checkForUpdates({ manual: false }), 8000);
     });
 

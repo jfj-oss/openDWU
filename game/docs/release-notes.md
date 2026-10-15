@@ -4,6 +4,24 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **Fix: no Mechanoid / Shakturi natives outside the story:** a player who picks one of these story races no longer finds independent colonies of that race next to their start (they were seeded in the player race's region, e.g. "Utopia 2"); those natives are now a normal race. Normal-race games are unchanged.
+- **Backdrop animation now visible:** the animated dust, glow cells and godrays of the Deep galaxy backdrops moved too
+  little to notice. The moving layer now carries more of the dust, runs 2.5x faster, and has brighter, more frequent
+  glows and stronger godrays; stars stay brighter than the dust. "Animate backdrop" was already on by default.
+- **Slower hyperdrive (new gameplay change, off by default):** a "Gameplay changes" checkbox, "Slower hyperdrive ×" with
+  a number box (1–10, default 3): every ship's hyperdrive takes that many times as long to spool up before a jump, for
+  all empires, pirates and the player. Interdicted ships spool 5× the original in total. Jumps themselves are unchanged.
+- **Gameplay changes are all off by default** (Longer ground battles was ticked for new games in 0.1.30). The
+  "Gameplay changes" heading is now a switch that turns them all on (except Slower hyperdrive) or all off.
+- **Rendering:** the engine flame of a ship in a hyperjump no longer disappears or flickers when you zoom in on it with the follow camera (the flame is drawn at full length at warp speed and no longer culled on the ship's pre-warp position).
+- **Galaxy Map:** double-clicking a planet in the system picture selects it and shows it in the info panel, as in the original.
+- **Crash reports:** the desktop app now sends crash reports (error, stack, app version, OS, graphics card; no IP address, saves or personal files, and your user name and home folder are replaced by "~") to Sentry to help fix bugs. It has no setting.
+- **More crash-report data:** in about 1 % of sessions the app sends a once-a-minute performance summary (average fps, slowest frames and sim tick, galaxy size, graphics card); a multiplayer desync sends the frame, the two checksums and the differing parts (no save). New **Report a Bug** button in the Esc menu: you write what happened and it sends that with a screenshot of the game, the recent log, your version and graphics card, but no saved games.
+- **UI polish:** column headers shrink to fit before they are cut off, hot-key and Bacon Mod Settings descriptions wrap in full, the new-game track bar caption clears its tick label, the credits roll is clipped to its window, and aborted help-page loads and the optional BaconSettings.txt no longer log errors on stock installs.
+
+- **Anonymous usage statistics** (Aptabase, EU): the desktop app now sends app version/OS/graphics vendor and the setup of games you start or load (no names, paths or saves), minutes played, and which screens were opened. See the README's Privacy section. It has no setting.
+- **Automatic updates** for the Windows setup (.exe) and the Linux AppImage: the new version downloads in the background (checked against the release's .sha256, paused while a multiplayer game runs) and installs when you quit; a one-line notice tells you it is ready, and Check for Updates offers Restart now. macOS, the Windows zip and the Linux tar.gz keep the Download offer. `"checkForUpdates": false` still turns it all off.
+
 ## 0.1.30
 
 - **Game menu:** "Save Game As" is gone — Save Game opens the same save window, where you can type a new name.
@@ -37,6 +55,15 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
   install had, so on a normal install every window used Arial (much wider: text overflowed and overlapped everywhere)
   and those pictures were blank. Both now ship with the game. Verdana text falls back to DejaVu Sans where Verdana is
   not installed (Linux).
+- **Mothballing (new Gameplay change, off by default; Other Empires page):** put a fleet or warship into reserve at
+  one of your space ports — the selection panel's **Mothball** button (also on the Fleets screen and the Ships and Bases
+  screen) picks the safest interior port with room; right-click lists every port with distance, ETA and ships in
+  reserve against its capacity (6 / 12 / 24 for small / medium / large ports). The ships park in even rings around the port, facing it, drawn greyer while in reserve
+  at 15% upkeep — immobile, weapons cold, ignored by automation, the AI and Intercept / Defend; a fleet stays the same
+  fleet. **Reactivate** takes 240 days for a mid-sized ship (120–480 by size) at full upkeep. A reserve is vulnerable: a
+  destroyed port forces an emergency reactivation, a captured port takes the reserve ships with it. AI empires mothball
+  up to 30% of their navy after 5 years of peace on a tight budget, reactivate at the first war warning, and see a
+  mothballed rival as weaker. Every number is a parameter.
 - **Threats & Leads (Characters / Intelligence screen):** with any Galactic Threat add-on or Internal Security on, a
   **Threats & Leads** button under the Galactopedia link switches the screen to a list of every threat site and
   security lead your empire knows: what it is, where, suspected or confirmed, when it was found and what is being done.
@@ -81,13 +108,12 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
   Empires page (also in openDWU Classic). During a ground invasion, who holds the orbit decides more than the original's
   flat +25%: attackers holding it get +50%; a contested orbit costs the invaders -35% to -50% and a little strength
   every day ("Supply lines disrupted"); a defender-held orbit costs them -50%, heavier losses and any further landings
-  ("Supply lines cut"). AI empires fight for the orbit when they (with the fleets they can gather) at least match the
-  defenders there, keep their troops aboard while they are losing it, send more fleets while it is undecided, send relief
-  fleets to their invaded colonies and withdraw only from orbits they cannot match.
+  ("Supply lines cut"). AI empires invade where they can hold the orbit, keep troops aboard until they do, keep their
+  fleet over the planet, send relief fleets to invaded colonies and withdraw from orbits they cannot win.
 - **Defensive jump interdiction (new gameplay change, off by default):** a third "Gameplay changes" checkbox on the new
   game's Other Empires page (also in openDWU Classic). Armed defensive bases and space ports project an interdiction
-  field (4,000 to 6,000 units with their firepower): enemy ships starting a hyperjump inside it spool three times as long
-  before they can jump out, unless they cruise out of the field first. Jumping in is unchanged. The ship's panel shows
+  field (4,000 to 6,000 units with their firepower): enemy ships starting a hyperjump inside it spool five times as long
+  as in the original (in total, also with the slower spool) before they can jump out, unless they cruise out of the field first. Jumping in is unchanged. The ship's panel shows
   "Interdicted by <base>", a base's panel its field. Pirates raid defended systems only with fleets strong enough to
   kill the bases first; AI empires at war favour a defensive base at the border colony facing the enemy; their strikes and invasions are unchanged.
 - **Longer ground battles (new gameplay change, on by default for new games):** a second "Gameplay changes" checkbox,

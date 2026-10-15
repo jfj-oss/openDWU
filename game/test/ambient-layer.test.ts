@@ -89,7 +89,7 @@ describe('engine exhaust (PrepareEngineExhaust)', () => {
         expect(exhaustSpeedFactor(3, 20, 30)).toBe(1);
         expect(exhaustSpeedFactor(15, 20, 30)).toBe(1.7);
         expect(exhaustSpeedFactor(25, 20, 30)).toBe(2.5);
-        expect(exhaustSpeedFactor(40, 20, 30)).toBe(0);
+        expect(exhaustSpeedFactor(40, 20, 30)).toBe(2.5); // warp speed: full-length flame, not 0
         // num5 = trunc(factor * 0.15 * P1), rounded up to even.
         expect(exhaustLengthPx(100, 1)).toBe(16); // 15 -> 16
         expect(exhaustLengthPx(100, 2.5)).toBe(38); // 37 -> 38
