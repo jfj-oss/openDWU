@@ -231,7 +231,7 @@ describe('Leviathan (Void Whale) render cues', () => {
         expect(leviathanInHyper(100, 20000, 120)).toBe(false);
         expect(leviathanInHyper(18000, 20000, 120)).toBe(true);
         expect(leviathanInHyper(500, 0, 120)).toBe(false);
-        expect(hyperFlareSize(1000)).toBe(Math.trunc(Math.sqrt(30000)));
+        expect(hyperFlareSize(1000)).toBe(1000);
         // The ripple's crest reaches a point nearer the tail later.
         const crestTime = (x: number): number => {
             let best = 0;

@@ -440,10 +440,10 @@ export function leviathanInHyper(currentSpeed: number, hyperSpeed: number, movem
     return hyperSpeed > 0 && currentSpeed >= hyperSpeed * 0.5 && currentSpeed > movementSpeed * 2;
 }
 
-/** effectsLayer.ts hyperAnimationPlacement: the stock hyper flare's side for a ship `size` world units (the Leviathan
- * passes its drawn length). Pure. */
-export function hyperFlareSize(size: number): number {
-    return Math.trunc(Math.sqrt(Math.max(0, size) * 30));
+/** The stock hyper flare's side (world units) for the Leviathan: its whole drawn length (the ship formula,
+ * effectsLayer.ts hyperAnimationPlacement √(size × 30), would make it only about as wide as the body). Pure. */
+export function hyperFlareSize(length: number): number {
+    return Math.trunc(Math.max(0, length));
 }
 
 /**
