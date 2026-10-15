@@ -26,6 +26,7 @@
 // queue, Main.Part11.cs method_169) — the Construction Yards screen (constructionYards.ts) has them.
 
 import { mothballListText, mothballingOn } from '../../sim/scenario/mothballing/mothballing';
+import { isFlagship, veteranServiceRecord } from '../../sim/scenario/veterans/veterans';
 import { MOTHBALL_TITLE, compactMothballLabel, forcesOfShips, mothballForcesModel, wireMothballButton } from '../mothballSlots';
 import './shipsAndBasesList.css';
 import type { BuiltObject } from '../../sim/builtObject';
@@ -231,6 +232,18 @@ export function builtObjectMaintenance(b: { annualSupportCost?: number; empire?:
 
 /** BindSingleBuiltObject's name colour and tooltip (red: damaged components, orange: unbuilt components). */
 export function builtObjectNameState(b: BuiltObject, player: unknown = null): { state: 'damaged' | 'unbuilt' | null; tip: string } {
+    const r = builtObjectNameStateCore(b, player);
+    // [veterans] a veteran ship's service record (and its flagship mark) joins the tooltip.
+    const g = (b as { _galaxy?: Galaxy })._galaxy;
+    if (g !== undefined && g.scenario !== null) {
+        const rec = veteranServiceRecord(g, b);
+        const extra = rec !== null ? (isFlagship(g, b) ? `${rec}. Flagship of its fleet.` : rec) : isFlagship(g, b) ? 'Flagship of its fleet' : null;
+        if (extra !== null) return { state: r.state, tip: r.tip === '' ? extra : `${r.tip}\n${extra}` };
+    }
+    return r;
+}
+
+function builtObjectNameStateCore(b: BuiltObject, player: unknown = null): { state: 'damaged' | 'unbuilt' | null; tip: string } {
     const damaged = b.damagedComponentCount ?? 0;
     const unbuilt = b.unbuiltComponentCount ?? 0;
     if (damaged > 0) {

@@ -53,6 +53,7 @@ import { openGalactopedia } from './galactopedia';
 import { CROSSHAIR_COLOR, GRID_COLOR, drawMapTerritory, galaxyMapScale, sectorColumnLabel, sectorLabelStride, starBrushColor, starDotSizes } from './galaxyMap';
 import { drawGalaxyMapLayers } from './galaxyMapLayers';
 import { fleetMothballed, mothballListText, mothballingOn } from '../../sim/scenario/mothballing/mothballing';
+import { fleetFlagshipLabel } from '../../sim/scenario/veterans/veterans';
 import { compactMothballLabel, mothballForcesModel, wireMothballButton } from '../mothballSlots';
 import { fmtK, missionDescription, shipGroupInfo, type InfoTarget } from '../selectionInfo';
 import { renderInfoModel } from '../selectionInfoView';
@@ -217,6 +218,8 @@ export function shipGroupSelectionRows(sg: ShipGroup, player: Empire | null): { 
     if (troops > 0) rows.push({ label: 'Troops', value: String(troops) });
     rows.push({ label: 'Home base', value: sg.gatherPoint?.name ?? '(None)' });
     rows.push({ label: 'Lead ship', value: sg.leadShip?.name ?? '—' });
+    const flagship = (sg.galaxy?.scenario ?? null) !== null ? fleetFlagshipLabel(sg.galaxy, sg) : null; // [veterans]
+    if (flagship !== null) rows.push({ label: 'Flagship', value: flagship });
     rows.push({ label: 'Location', value: fleetSystemName(sg) });
     return rows;
 }
@@ -494,7 +497,13 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
             cell.appendChild(pic);
             cell.title = list.map((c) => c.name).join(', ');
         },
-        name: (r, cell) => textCell(r.name, cell),
+        name: (r, cell) => {
+            // [veterans] the flagship: a star after the fleet's name, the ship in the tooltip.
+            const fl = (r.shipGroup.galaxy?.scenario ?? null) !== null ? fleetFlagshipLabel(r.shipGroup.galaxy, r.shipGroup) : null;
+            if (fl === null) return textCell(r.name, cell);
+            cell.textContent = `${r.name} \u2605`;
+            cell.title = `${r.name}\nFlagship: ${fl}`;
+        },
         ships: (r, cell) => textCell(String(r.ships), cell),
         power: (r, cell) => textCell(String(r.power), cell),
         troops: (r, cell) => textCell(fmtK(r.shipGroup.totalTroopAttackStrength), cell),

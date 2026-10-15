@@ -26,6 +26,7 @@ import { recordRaidLoss } from '../scenario/emergent/crisesCore';
 import { scenarioEmit, scenarioQuery } from '../scenario/hooks';
 import { orbitalAttrition, orbitalTroopModifiers } from '../scenario/orbital/orbitalSuperiority';
 import { groundCombatTimeSpan } from '../scenario/groundCombat/longerGroundCombat';
+import { veteranTroopModifiers, veteransGroundBattleEnded } from '../scenario/veterans/veterans';
 import { registerTodo, todo } from '../tick/todo';
 import { cancelBlockadeColony } from '../fleets/blockades';
 import { getNearbyBuiltObjects } from '../pirates/pirateAI';
@@ -530,6 +531,7 @@ export function determineTroopModifiers(
         attack.amounts.push(0.25);
         attack.reasons.push(getText('Space Control'));
     }
+    if (galaxy.scenario !== null) veteranTroopModifiers(galaxy, defendingTroops, attackingTroops, defend, attack); // mod layer (veterans)
     return { defend, attack };
 }
 
@@ -1258,6 +1260,7 @@ function defendersGainExperience(galaxy: Galaxy, habitat: Habitat, raid: boolean
             troop5.setDefendStrength(troop5.defendStrength + Math.trunc(num17));
         }
     }
+    if (galaxy.scenario !== null) veteransGroundBattleEnded(galaxy, habitat.troops.items); // mod layer (veterans): the defenders won
 }
 
 /**
@@ -1733,6 +1736,8 @@ function conquerColony(galaxy: Galaxy, self: Habitat, defender: Empire | null, i
             if (self.troops === null) self.troops = new TroopList();
             self.troops.add(invadingTroop);
         }
+        // Mod layer (veterans): the conquering empire's units won; other empires' invaders survived it.
+        if (galaxy.scenario !== null) veteransGroundBattleEnded(galaxy, self.invadingTroops.items.filter((t) => t != null && troopEmpire(t) === empire), troopList2);
         self.invadingTroops.clear();
         for (let num39 = 0; num39 < troopList2.length; num39++) {
             const troop4 = troopList2[num39];

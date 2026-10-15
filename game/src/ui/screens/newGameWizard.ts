@@ -107,7 +107,7 @@ import { selectColorFromKey } from '../../sim/empireColors';
 import { loadScenarioIndex } from '../../sim/scenario/fetchScenario';
 import type { ScenarioManifest } from '../../sim/scenario/manifest';
 import { IS_CLASSIC } from '../../appVersion';
-import { BASE_ADDONS, FORCEABLE_THREATS, SMARTER_AI_ADDON_ID, addonCatalog, addonClosure, addonPickerModel, canonicalAddons, defaultSmarterAIChoice, expansionMemberIds, expansionRows, toggleExpansion, type ExpansionRow, planAddonStart, resolveAddonSwitches, toggleAddon, withFlagAddons, forcedFlags, withSmarterAI, withOrbitalSuperiority, withLongerGroundCombat, withJumpInterdiction, withBlockadesBite, withMothballing, MOTHBALLING_ADDON_ID, withSlowHyperdrive, withFightingRetreats, FIGHTING_RETREATS_ADDON_ID, SLOW_HYPERDRIVE_ADDON_ID, ORBITAL_SUPERIORITY_ADDON_ID, LONGER_GROUND_COMBAT_ADDON_ID, JUMP_INTERDICTION_ADDON_ID, BLOCKADES_BITE_ADDON_ID, type AddonCatalog, type AddonOverrides, type AddonRow, type SmarterAIChoice } from '../../sim/scenario/addons';
+import { BASE_ADDONS, FORCEABLE_THREATS, SMARTER_AI_ADDON_ID, addonCatalog, addonClosure, addonPickerModel, canonicalAddons, defaultSmarterAIChoice, expansionMemberIds, expansionRows, toggleExpansion, type ExpansionRow, planAddonStart, resolveAddonSwitches, toggleAddon, withFlagAddons, forcedFlags, withSmarterAI, withOrbitalSuperiority, withLongerGroundCombat, withJumpInterdiction, withBlockadesBite, withMothballing, MOTHBALLING_ADDON_ID, withSlowHyperdrive, withFightingRetreats, FIGHTING_RETREATS_ADDON_ID, withVeterans, VETERANS_ADDON_ID, SLOW_HYPERDRIVE_ADDON_ID, ORBITAL_SUPERIORITY_ADDON_ID, LONGER_GROUND_COMBAT_ADDON_ID, JUMP_INTERDICTION_ADDON_ID, BLOCKADES_BITE_ADDON_ID, type AddonCatalog, type AddonOverrides, type AddonRow, type SmarterAIChoice } from '../../sim/scenario/addons';
 import {
     COLORS,
     FONT,
@@ -2162,7 +2162,18 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
     slow.row.title = SLOW_HELP;
     slow.row.addEventListener('mouseenter', () => ctx.help('Slower hyperdrive spool', SLOW_HELP));
     spool.el.title = 'Hyperdrive spool multiplier (1 = the original, 3 = default)';
-    type GameplayKey = 'orbitalSuperiority' | 'longerGroundCombat' | 'jumpInterdiction' | 'blockadesBite' | 'mothballing' | 'fightingRetreats';
+    // Veterans (scenarios/veterans): off by default; right of Jump interdiction.
+    const veterans = check(gameplayPanel, 'Veterans', options.veterans === true, 820, 6, (v) => {
+        if (v) options.veterans = true;
+        else delete options.veterans;
+        ctx.refreshScenario();
+    });
+    veterans.row.classList.add('wizard-veterans');
+    const VETERANS_HELP =
+        'Warships and troop units that survive battles gain experience: Green, Regular, Veteran, Elite. Each rank gives ships +5% weapon damage, targeting and evasion (up to +15%) and troops +10% attack and defence. Veteran ships get a name and a service record, and each fleet has a flagship that steadies the fleet while it lives; losing it shakes the whole fleet for a while. Experience is lost with the ship or unit.';
+    veterans.row.title = VETERANS_HELP;
+    veterans.row.addEventListener('mouseenter', () => ctx.help('Veterans', VETERANS_HELP));
+    type GameplayKey = 'orbitalSuperiority' | 'longerGroundCombat' | 'jumpInterdiction' | 'blockadesBite' | 'mothballing' | 'fightingRetreats' | 'veterans';
     const masterSet: { key: GameplayKey; box: { input: HTMLInputElement } }[] = [
         { key: 'orbitalSuperiority', box: orbital },
         { key: 'longerGroundCombat', box: longer },
@@ -2170,6 +2181,7 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
         { key: 'blockadesBite', box: bite },
         { key: 'mothballing', box: mothball },
         { key: 'fightingRetreats', box: retreats },
+        { key: 'veterans', box: veterans },
     ];
     const syncMaster = (): void => {
         gameplayMaster.input.checked = masterSet.every((m) => options[m.key] === true);
@@ -2969,7 +2981,7 @@ let wizardScenarios: ScenarioManifest[] = [];
  * The wizard's scenario choice for a set of ticks (null = the original game), with the Other Empires page's Smarter AI
  * choice and its Orbital superiority checkbox folded in (addons.ts withSmarterAI / withOrbitalSuperiority).
  */
-export function addonChoiceFor(cat: AddonCatalog, picked: readonly string[], overrides: AddonOverrides, smart: SmarterAIChoice | null = null, orbitalSuperiority = false, longerGroundCombat = false, jumpInterdiction = false, blockadesBite = false, mothballing = false, slowHyperdrive = false, hyperjumpSpoolFactor?: number, fightingRetreats = false): StartGameOptions['scenario'] {
+export function addonChoiceFor(cat: AddonCatalog, picked: readonly string[], overrides: AddonOverrides, smart: SmarterAIChoice | null = null, orbitalSuperiority = false, longerGroundCombat = false, jumpInterdiction = false, blockadesBite = false, mothballing = false, slowHyperdrive = false, hyperjumpSpoolFactor?: number, fightingRetreats = false, veterans = false): StartGameOptions['scenario'] {
     const wS = withSmarterAI(picked, overrides, smart);
     const wO = withOrbitalSuperiority(wS.picked, wS.overrides, orbitalSuperiority);
     const wL = withLongerGroundCombat(wO.picked, wO.overrides, longerGroundCombat);
@@ -2980,7 +2992,8 @@ export function addonChoiceFor(cat: AddonCatalog, picked: readonly string[], ove
     // The wizard's spool multiplier (param hyperjumpSpoolFactor; only when the change is on and not the default 3).
     const w0 = slowHyperdrive && hyperjumpSpoolFactor !== undefined && hyperjumpSpoolFactor !== 3 ? { picked: wH.picked, overrides: { flags: wH.overrides.flags, params: { ...wH.overrides.params, hyperjumpSpoolFactor } } } : wH;
     const w1 = withFightingRetreats(w0.picked, w0.overrides, fightingRetreats);
-    const w = { picked: withFlagAddons(cat, w1.picked, w1.overrides), overrides: w1.overrides };
+    const w2 = withVeterans(w1.picked, w1.overrides, veterans);
+    const w = { picked: withFlagAddons(cat, w2.picked, w2.overrides), overrides: w2.overrides };
     const plan = planAddonStart(cat, w.picked);
     if (plan === null) return null;
     const sw = resolveAddonSwitches(cat, w.picked, w.overrides);
@@ -3026,7 +3039,7 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
     /** Base add-ons (event log, themed names) are always on in both editions. */
     const withBase = (ids: string[]): string[] => [...new Set([...BASE_ADDONS, ...ids])];
     // The Smarter AI add-on is the Other Empires page's (options.smarterAI), not a tick of this page.
-    let picked: string[] = IS_CLASSIC ? [...BASE_ADDONS] : withBase((options.scenario?.addons ?? (options.scenario ? [options.scenario.id] : [])).filter((id) => id !== SMARTER_AI_ADDON_ID && id !== ORBITAL_SUPERIORITY_ADDON_ID && id !== LONGER_GROUND_COMBAT_ADDON_ID && id !== JUMP_INTERDICTION_ADDON_ID && id !== BLOCKADES_BITE_ADDON_ID && id !== MOTHBALLING_ADDON_ID && id !== SLOW_HYPERDRIVE_ADDON_ID && id !== FIGHTING_RETREATS_ADDON_ID));
+    let picked: string[] = IS_CLASSIC ? [...BASE_ADDONS] : withBase((options.scenario?.addons ?? (options.scenario ? [options.scenario.id] : [])).filter((id) => id !== SMARTER_AI_ADDON_ID && id !== ORBITAL_SUPERIORITY_ADDON_ID && id !== LONGER_GROUND_COMBAT_ADDON_ID && id !== JUMP_INTERDICTION_ADDON_ID && id !== BLOCKADES_BITE_ADDON_ID && id !== MOTHBALLING_ADDON_ID && id !== SLOW_HYPERDRIVE_ADDON_ID && id !== FIGHTING_RETREATS_ADDON_ID && id !== VETERANS_ADDON_ID));
     const overrides: AddonOverrides = { flags: {}, params: {} };
     /** Settings panels the player opened (kept open across re-renders). */
     const openPanels = new Set<string>();
@@ -3041,7 +3054,7 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
     }
 
     function update(): void {
-        options.scenario = addonChoiceFor(cat, picked, overrides, options.smarterAI ?? null, options.orbitalSuperiority === true, options.longerGroundCombat === true, options.jumpInterdiction === true, options.blockadesBite === true, options.mothballing === true, options.slowHyperdrive === true, options.hyperjumpSpoolFactor, options.fightingRetreats === true);
+        options.scenario = addonChoiceFor(cat, picked, overrides, options.smarterAI ?? null, options.orbitalSuperiority === true, options.longerGroundCombat === true, options.jumpInterdiction === true, options.blockadesBite === true, options.mothballing === true, options.slowHyperdrive === true, options.hyperjumpSpoolFactor, options.fightingRetreats === true, options.veterans === true);
         render();
     }
     ctx.refreshScenario = update;
@@ -3229,7 +3242,7 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
                         update();
                         return;
                     }
-                    options.scenario = addonChoiceFor(cat, picked, overrides, options.smarterAI ?? null, options.orbitalSuperiority === true, options.longerGroundCombat === true, options.jumpInterdiction === true, options.blockadesBite === true, options.mothballing === true, options.slowHyperdrive === true, options.hyperjumpSpoolFactor, options.fightingRetreats === true);
+                    options.scenario = addonChoiceFor(cat, picked, overrides, options.smarterAI ?? null, options.orbitalSuperiority === true, options.longerGroundCombat === true, options.jumpInterdiction === true, options.blockadesBite === true, options.mothballing === true, options.slowHyperdrive === true, options.hyperjumpSpoolFactor, options.fightingRetreats === true, options.veterans === true);
                 }, FONT.normal);
                 c.classList.add('wizard-checkbox', 'wizard-flow');
                 if (by !== undefined) c.title = `Required by ${by.join(', ')}`;
@@ -3246,7 +3259,7 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
                     const v = parseInt(s.input.value, 10);
                     if (!Number.isNaN(v)) {
                         overrides.params[p.name] = Math.min(max, Math.max(min, v));
-                        options.scenario = addonChoiceFor(cat, picked, overrides, options.smarterAI ?? null, options.orbitalSuperiority === true, options.longerGroundCombat === true, options.jumpInterdiction === true, options.blockadesBite === true, options.mothballing === true, options.slowHyperdrive === true, options.hyperjumpSpoolFactor, options.fightingRetreats === true);
+                        options.scenario = addonChoiceFor(cat, picked, overrides, options.smarterAI ?? null, options.orbitalSuperiority === true, options.longerGroundCombat === true, options.jumpInterdiction === true, options.blockadesBite === true, options.mothballing === true, options.slowHyperdrive === true, options.hyperjumpSpoolFactor, options.fightingRetreats === true, options.veterans === true);
                     }
                 });
                 s.el.classList.add('wizard-flow-spin');

@@ -65,6 +65,7 @@ import {
     textBox,
 } from '../originalWindow';
 import { requestSimRefresh } from '../../simworker/refresh';
+import { veteranTroopLabel } from '../../sim/scenario/veterans/veterans';
 export { disbandTroops, setTroopsGarrisoned, renameTroop };
 
 /** GameText lookup with the English text as fallback (tests run without GameText loaded). */
@@ -114,6 +115,12 @@ export function troopStrengthDescription(troop: Troop): string {
     if (num4 <= num2 * num5) return T('Troop Strength Level Experienced', 'Experienced');
     if (!(num4 <= num3 * num5)) return T('Troop Strength Level Elite', 'Elite');
     return T('Troop Strength Level Veteran', 'Veteran');
+}
+
+/** The Experience cell: the original's strength level, plus the Veterans add-on's rank when the unit has one. */
+export function troopExperienceText(troop: Troop): string {
+    const vet = veteranTroopLabel(troop);
+    return vet === null ? troopStrengthDescription(troop) : `${troopStrengthDescription(troop)}, ${vet}`;
 }
 
 /** Port of TroopList.cs:80 GetTroopCountsByType. */
@@ -195,7 +202,7 @@ export function troopRow(troop: Troop): TroopRow {
         empireName: empire !== null ? empire.name : `(${T('None', 'None')})`,
         name: troop.name,
         garrisoned: troop.garrisoned,
-        experience: troopStrengthDescription(troop),
+        experience: troopExperienceText(troop),
         type: troopTypeDescription(troop.type),
         readiness: troop.readiness,
         attack: troop.overallAttackStrength,

@@ -9,6 +9,8 @@ import {
     MOTHBALL_REACTIVATING, MOTHBALL_RESERVE, MOTHBALL_TRAVEL, forceMothballPhase, forceReadyDays, issueMothball, issueReactivate, mothballStatusText,
     mothballStrength, peekMothballState, reactivationDays, reviewEmpireReserve, rivalPotency, mothballPortChoices, parkingSlotPoint, detSinCos, drawnDiameter, portClearRadius, portCapacity,
 } from '../src/sim/scenario/mothballing/mothballing';
+import { flagshipSlot } from '../src/ui/flagshipSlots';
+import { fleetFlagship, fleetFlagshipLabel, issueMakeFlagship, isFlagship } from '../src/sim/scenario/veterans/veterans';
 import { compactMothballLabel, forcesOfShips, mothballForcesModel, mothballSlot } from '../src/ui/mothballSlots';
 import { fleetMissionDescription, fleetMissionText } from '../src/ui/screens/fleetsList';
 import { FILTER_IN_RESERVE, shipsAndBasesRows } from '../src/ui/screens/shipsAndBasesList';
@@ -928,4 +930,39 @@ describe('Mothballing add-on: reserve at a space port', () => {
         expect(peekMothballState(off.galaxy)).toBeNull();
         expect(issueMothball(off.galaxy, off.playerEmpire, playerWarships(off)[0], null).ok).toBe(false);
     }, 600000);
+});
+
+describe('Veterans add-on: the Make flagship order', () => {
+    it('a fleet of two warships gets a flagship within a day; the slot picks the other ship; off in a stock game', () => {
+        const run = cachedScenarioGameRun(gameData, { scenario: 'veterans' });
+        const game = run.game;
+        const g = game.galaxy;
+        const p = game.playerEmpire;
+        const mil = p.builtObjects.filter((b) => b.role === BuiltObjectRole.Military && b.builtAt === null && b.topSpeed > 0 && b.shipGroup === null);
+        expect(mil.length).toBeGreaterThanOrEqual(2);
+        const fleet = executeShipAction(g, p, [mil[0], mil[1]], createShipAction(ShipActionType.CreateNewFleet, null), true).select as ShipGroup;
+        runGameSeconds(game, 10); // the daily review picks the default flagship
+        const first = fleetFlagship(g, fleet)!;
+        expect(first).not.toBeNull();
+        const other = fleet.ships.find((b) => b !== first)!;
+        expect(fleetFlagshipLabel(g, fleet)).toBe(first.name);
+        // the selection panel: a fleet lists its ships (the flagship starred), a ship in it offers the order
+        const fm = flagshipSlot(g, p, { shipGroup: fleet })!;
+        expect(fm.listOnClick).toBe(true);
+        expect(fm.choices.map((c) => c.chosen)).toEqual(fleet.ships.map((b) => b === first));
+        const sm = flagshipSlot(g, p, { builtObject: other })!;
+        expect(sm.label).toBe('Make flagship');
+        expect(sm.disabled).toBe(false);
+        expect(flagshipSlot(g, p, { builtObject: first })!.disabled).toBe(true); // already the flagship
+        expect(issueMakeFlagship(g, p, other)).toMatchObject({ ok: true });
+        runGameSeconds(game, 10);
+        expect(isFlagship(g, other)).toBe(true);
+        expect(fleetFlagship(g, fleet)).toBe(other);
+        // a ship of another empire cannot be ordered
+        const foe = g.empires.find((e) => e !== p && e.builtObjects.some((b) => b.role === BuiltObjectRole.Military))!;
+        expect(issueMakeFlagship(g, p, foe.builtObjects.find((b) => b.role === BuiltObjectRole.Military)!).ok).toBe(false);
+        // no add-on, no slot
+        const stock = cachedTickGame(gameData, { seconds: 60 });
+        expect(flagshipSlot(stock.galaxy, stock.playerEmpire, { builtObject: other })).toBeNull();
+    }, 300000);
 });

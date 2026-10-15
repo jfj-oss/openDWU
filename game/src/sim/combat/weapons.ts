@@ -64,6 +64,7 @@ import {
 } from './damage';
 import { baconSettings } from '../data/baconSettings';
 import { noteBuiltObjectEffect } from './effectWatch';
+import { veteranShipBonusOf } from '../scenario/veterans/veterans';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants
@@ -107,20 +108,24 @@ function targetCurrentSpeed(o: StellarObject | FighterTargetLike): number {
 }
 
 // BuiltObject._Captain*Bonus properties (100 / 100 until ReviewCaptainBonuses runs; characters.ts).
-function captainWeaponsDamageBonus(bo: BuiltObject): number {
+// Mod layer (veterans): `galaxy` given = a ranked crew's bonus on top (veteranShipBonusOf: 0 without the add-on).
+export function captainWeaponsDamageBonus(bo: BuiltObject, galaxy: Galaxy | null = null): number {
     const b = captainBonuses(bo);
+    if (galaxy !== null && galaxy.scenario !== null) return ((b !== null ? b.weaponsDamage : 100) / 100.0) * (1 + veteranShipBonusOf(galaxy, bo));
     return (b !== null ? b.weaponsDamage : 100) / 100.0;
 }
 function captainWeaponsRangeBonus(bo: BuiltObject): number {
     const b = captainBonuses(bo);
     return (b !== null ? b.weaponsRange : 100) / 100.0;
 }
-function captainTargetingBonus(bo: BuiltObject): number {
+export function captainTargetingBonus(bo: BuiltObject, galaxy: Galaxy | null = null): number {
     const b = captainBonuses(bo);
+    if (galaxy !== null && galaxy.scenario !== null) return ((b !== null ? b.targeting : 100) / 100.0) * (1 + veteranShipBonusOf(galaxy, bo)); // mod layer (veterans)
     return (b !== null ? b.targeting : 100) / 100.0;
 }
-function captainCountermeasuresBonus(bo: BuiltObject): number {
+export function captainCountermeasuresBonus(bo: BuiltObject, galaxy: Galaxy | null = null): number {
     const b = captainBonuses(bo);
+    if (galaxy !== null && galaxy.scenario !== null) return ((b !== null ? b.countermeasures : 100) / 100.0) * (1 + veteranShipBonusOf(galaxy, bo)); // mod layer (veterans)
     return (b !== null ? b.countermeasures : 100) / 100.0;
 }
 function captainShieldRechargeRateBonus(bo: BuiltObject): number {
@@ -297,7 +302,7 @@ export function determineHitTargetWeapon(galaxy: Galaxy, self: BuiltObject, weap
     const num5 = (num4 - num3) / 100.0;
     let num6 = val * (hitRangeChance + galaxy.rnd.nextDouble() + num5);
     if (shipGroup !== null) num6 *= shipGroup.targetingBonus;
-    num6 *= captainTargetingBonus(self);
+    num6 *= captainTargetingBonus(self, galaxy);
     if (num6 > 0.5 && galaxy.rnd.next(0, 15) === 7) num6 = 0.0;
     else if (num6 <= 0.5 && num2 > 0.0 && galaxy.rnd.next(0, 15) === 7) num6 = 1.0;
     return { willHit: num6 > 0.5, hitRangeChance };
@@ -320,7 +325,7 @@ export function determineHitTarget(galaxy: Galaxy, self: BuiltObject, weapon: We
     if (isBuiltObject(target)) {
         const builtObject = target;
         num3 = builtObject.countermeasureModifier + builtObject.fleetCountermeasureBonus;
-        num4 = captainCountermeasuresBonus(builtObject);
+        num4 = captainCountermeasuresBonus(builtObject, galaxy);
         if (builtObject.empire !== null) {
             num3 += (builtObject.empire.countermeasuresFactor - 1.0) * 100.0;
             if (builtObject.empire.raceEventType === RACE_EVENT_TYPE_PREDICTIVE_HISTORY) num3 += 20.0;
@@ -359,7 +364,7 @@ export function determineHitTarget(galaxy: Galaxy, self: BuiltObject, weapon: We
     const num6 = (num5 - num3) / 100.0;
     let num7 = val * (hitRangeChance + galaxy.rnd.nextDouble() + num6);
     if (selfGroup !== null) num7 *= selfGroup.targetingBonus;
-    num7 *= captainTargetingBonus(self);
+    num7 *= captainTargetingBonus(self, galaxy);
     if (shipGroup !== null) num7 /= shipGroup.countermeasuresBonus;
     num7 /= num4;
     if (num7 > 0.5 && galaxy.rnd.next(0, 12) === 0) num7 = 0.0;
@@ -861,7 +866,7 @@ export function handlePlanetDestroyerFiring(galaxy: Galaxy, self: BuiltObject, w
             let num3 = Math.fround(weapon.rawDamage);
             const shipGroup = shipGroupOf(self);
             if (shipGroup !== null) num3 = Math.fround(num3 * Math.fround(shipGroup.weaponsDamageBonus));
-            num3 = Math.fround(num3 * Math.fround(captainWeaponsDamageBonus(self)));
+            num3 = Math.fround(num3 * Math.fround(captainWeaponsDamageBonus(self, galaxy)));
             weapon.power = Math.fround(num3 - Math.fround(Math.fround(weapon.distanceTravelled / 100) * Math.fround(weapon.damageLoss)));
             if (weapon.willHitTarget) {
                 let flag = false;
@@ -956,7 +961,7 @@ export function handleWeaponsFiringBuiltObject(galaxy: Galaxy, builtObject: Buil
             num6 = Math.fround(num6 * Math.fround(shipGroup.weaponsDamageBonus));
             num7 = Math.fround(num7 * Math.fround(shipGroup.weaponsRangeBonus));
         }
-        num6 = Math.fround(num6 * Math.fround(captainWeaponsDamageBonus(self)));
+        num6 = Math.fround(num6 * Math.fround(captainWeaponsDamageBonus(self, galaxy)));
         num7 = Math.fround(num7 * Math.fround(captainWeaponsRangeBonus(self)));
         if (self.sensorTraceScannerPower > 0) num6 = Math.fround(num6 * Math.fround(1 + Math.fround(Math.fround(self.sensorTraceScannerPower) / 100)));
         switch (weapon.component.type) {
@@ -1618,7 +1623,8 @@ export function habitatDetermineHitTarget(galaxy: Galaxy, habitat: Habitat, weap
         if (target.parentBuiltObject !== null && !target.parentBuiltObject.hasBeenDestroyed) num += target.parentBuiltObject.fleetCountermeasureBonus;
     }
     const num2 = num / 100.0;
-    const num3 = val * (hitRangeChance + galaxy.rnd.nextDouble() + num2);
+    let num3 = val * (hitRangeChance + galaxy.rnd.nextDouble() + num2);
+    if (galaxy.scenario !== null && isBuiltObject(target)) num3 /= 1 + veteranShipBonusOf(galaxy, target); // mod layer (veterans): evasion
     return { willHit: num3 > 0.5, hitRangeChance };
 }
 

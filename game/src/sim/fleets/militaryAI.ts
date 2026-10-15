@@ -89,6 +89,7 @@ import { EmpireActivityType } from '../pirates/empireActivity';
 import { EmpireMessageType, resolveDescription, sendMessageToEmpire, sendMessageToEmpireWithTitle } from '../messages';
 import { generateHabitatLocationDescription } from '../galaxyReports';
 import { isObjectVisibleToThisEmpire } from '../independentTraders';
+import { veteranRequiredTroopStrength } from '../scenario/veterans/veterans';
 import { arraySortKeysItems, currentRange, getNearestBuiltObjectWithinRange, sortStellarObjectsByDistance, ultraFastFindNearestRefuellingLocation, warpSpeedWithBonuses, withinFuelRangeAndRefuel } from '../movement';
 import {
     calculateOverallStrengthFactor,
@@ -361,6 +362,8 @@ export function determineRequiredTroopStrength(galaxy: Galaxy, empire: Empire | 
             if (habitat.defensiveFortressBonus > 0) num = csDoubleToInt(num * (1.0 + Math.trunc(habitat.defensiveFortressBonus) / 10.0));
         }
     }
+    // Mod layer (veterans): both sides' troop ranks (no-op unless the add-on is on).
+    if (galaxy.scenario !== null && target != null && isHabitat(target)) num = veteranRequiredTroopStrength(galaxy, empire, target, num);
     if (empire !== null) num = csDoubleToInt(num * empire.policy!.invasionOverkillFactor);
     return num;
 }

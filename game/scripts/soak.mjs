@@ -190,6 +190,10 @@ const CONFIGS = [
         { name: `fr-on-s${seed}`, set: 'retreats', seed, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 } }, scenario: ['fighting-retreats'], flags: 'all' },
         { name: `fr-off-s${seed}`, set: 'retreats', seed, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 } } },
     ]),
+    // `--set veterans` (--hook scripts/veterans-soak-hook.mjs): Veterans on / off on the os-war galaxy (aggressive AI, older
+    // galaxy, 20 years): share of ranked warships / troops over time, ships lost, invasions won / lost.
+    // vet-war-nocaution-s1: on, without the AI's veteran caution (veteranAiCautionPerRank 0); -s7: a second galaxy.
+    ...[['vet-war-on-s1', 1, true, {}], ['vet-war-off-s1', 1, false, {}], ['vet-war-nocaution-s1', 1, true, { veteranAiCautionPerRank: 0 }], ['vet-war-on-s7', 7, true, {}], ['vet-war-off-s7', 7, false, {}]].map(([name, seed, on, params]) => SCN('veterans', { name, set: 'veterans', seed, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, flags: { veterans: on }, params })),
     // `--set long`: the many-decade runs (not in the default set).
     { name: 'long-s1-30y', set: 'long', seed: 1, years: 30, wizard: {} },
     { name: 'long-s7-small-50y', set: 'long', seed: 7, years: 50, wizard: { starCountIndex: 1, dimensionIndex: 1, otherEmpires: { empireCount: 5 } } },

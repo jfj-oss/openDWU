@@ -76,6 +76,7 @@ export const ADDON_STATUS: Readonly<Record<string, string>> = {
     'blockades-bite': 'new',
     mothballing: 'new',
     'slow-hyperdrive': 'new',
+    veterans: 'new',
     'war-crimes': 'recommended',
     'timebomb': 'lightly tested; the AI rarely uses it',
     'ghostarmada': 'lightly tested; the AI rarely uses it',
@@ -140,6 +141,7 @@ const GROUP_OF: Readonly<Record<string, AddonGroup>> = {
     'blockades-bite': 'Other',
     mothballing: 'Other',
     'slow-hyperdrive': 'Other',
+    veterans: 'Other',
     slavery: 'Economy & factions',
     exchange: 'Economy & factions',
     privateers: 'Economy & factions',
@@ -165,7 +167,7 @@ export const HIDDEN_ADDONS: ReadonlySet<string> = new Set(['threat-framework', '
  * Add-ons set on another wizard page (not listed on the Scenario page, but named in the summaries like any other):
  * Smarter AI and Orbital superiority live on the Other Empires page (withSmarterAI / withOrbitalSuperiority below).
  */
-export const ELSEWHERE_ADDONS: ReadonlySet<string> = new Set(['smarter-ai', 'orbital-superiority', 'longer-ground-combat', 'jump-interdiction', 'blockades-bite', 'mothballing', 'slow-hyperdrive', 'fighting-retreats']);
+export const ELSEWHERE_ADDONS: ReadonlySet<string> = new Set(['smarter-ai', 'orbital-superiority', 'longer-ground-combat', 'jump-interdiction', 'blockades-bite', 'mothballing', 'slow-hyperdrive', 'fighting-retreats', 'veterans']);
 
 /** openDWU Classic: add-ons every game starts with (treated as base game: no picker). Smarter AI stays the Other Empires page's toggle. */
 export const CLASSIC_BASE_ADDONS: readonly string[] = ['themed-names', 'event-log'];
@@ -305,6 +307,14 @@ export const SLOW_HYPERDRIVE_ADDON_ID = 'slow-hyperdrive';
 /** The picks with the Other Empires page's Slower hyperdrive checkbox folded in (StartGameOptions.slowHyperdrive). Pure. */
 export function withSlowHyperdrive(picked: readonly string[], overrides: AddonOverrides, on: boolean | null | undefined): { picked: string[]; overrides: AddonOverrides } {
     return withToggleAddon(picked, overrides, SLOW_HYPERDRIVE_ADDON_ID, 'slowHyperdrive', on);
+}
+
+/** The Veterans gameplay change (scenarios/veterans; also under "Gameplay changes"). */
+export const VETERANS_ADDON_ID = 'veterans';
+
+/** The picks with the Other Empires page's Veterans checkbox folded in (StartGameOptions.veterans). Pure. */
+export function withVeterans(picked: readonly string[], overrides: AddonOverrides, on: boolean | null | undefined): { picked: string[]; overrides: AddonOverrides } {
+    return withToggleAddon(picked, overrides, VETERANS_ADDON_ID, 'veterans', on);
 }
 
 /** A one-checkbox add-on folded into the picks: ticked = picked with its master flag on, unticked = dropped. Pure. */

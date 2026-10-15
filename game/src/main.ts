@@ -313,7 +313,7 @@ function gameDataWithScenario(base: GameData, scenarioId: string | null, include
     try {
         return applyScenarioOverlay(base, scenarioOverlayFor(scenarioId, include, scenarioOverlays));
     } catch (err) {
-        if (IS_CLASSIC) throw new Error(`This save needs add-ons from the full edition of openDWU (${scenarioId === COMPOSITE_SCENARIO_ID ? (include ?? []).join(', ') : scenarioId}). openDWU Classic only has Themed Names, Smarter AI, Orbital Superiority, Longer Ground Battles, Jump Interdiction, Blockades That Bite, Slower Hyperdrive Spool and the Event Log. Open it in openDWU (the full edition).`);
+        if (IS_CLASSIC) throw new Error(`This save needs add-ons from the full edition of openDWU (${scenarioId === COMPOSITE_SCENARIO_ID ? (include ?? []).join(', ') : scenarioId}). openDWU Classic only has Themed Names, Smarter AI, Orbital Superiority, Longer Ground Battles, Jump Interdiction, Blockades That Bite, Slower Hyperdrive Spool, Veterans and the Event Log. Open it in openDWU (the full edition).`);
         throw new Error(`Scenario "${scenarioId}" is not available; cannot load this game. (${err instanceof Error ? err.message : String(err)})`);
     }
 }

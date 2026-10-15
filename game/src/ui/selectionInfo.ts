@@ -62,6 +62,7 @@ import { rimGoodMarker } from './scenario/rimTraderRows'; // [rimTrader]
 import { rareGoodEffectText } from '../sim/scenario/rimTrade/rareGoods'; // [rimTrader]
 import { facilityGalactopediaTopic, facilityPanelHoverText } from './facilityHover';
 import { econColonyInfo } from './scenario/colonyEconomyInfo';
+import { fleetFlagshipLabel, isFlagship, veteranServiceRecord, veteranShipLabel } from '../sim/scenario/veterans/veterans';
 import { voidbloomColonyLines } from '../sim/scenario/voidbloom/view'; // [voidbloom]
 import { supplyChainEnabled, supplySnapshot } from './supplyChainCache'; // [improvements] supplyChain
 import { colonyTooltipLines, itemNeedsText, resourceName, siteTooltipLines } from './supplyChainText'; // [improvements] supplyChain
@@ -785,6 +786,13 @@ export function builtObjectInfo(ctx: InfoContext, bo: BuiltObject, extended = fa
         }
     }
     for (const r of threatRows(bo, player)) rows.push(label(r.label, [txt(r.value)]));
+    // [veterans] the crew's rank and battles survived (only with the add-on: the record exists only then).
+    const vet = known ? veteranShipLabel(galaxy, bo) : null;
+    if (vet !== null) {
+        const record = veteranServiceRecord(galaxy, bo);
+        rows.push(label('Crew', [txt(isFlagship(galaxy, bo) ? `${vet}, flagship` : vet)], record !== null ? { title: record, wrap: true } : {}));
+        if (record !== null && extended) rows.push({ kind: 'line', segs: [txt(record)], wrap: true });
+    } else if (known && isFlagship(galaxy, bo)) rows.push(label('Crew', [txt('Flagship')]));
     for (const r of wreckSalvageRows(galaxy, bo, player)) rows.push(label(r.label, [txt(r.value)])); // [wreckage] 19e-7
 
     const angle = (bo.heading * 180) / Math.PI + 90;
@@ -899,6 +907,8 @@ export function shipGroupInfo(ctx: InfoContext, sg: ShipGroup, extended = false)
     rows.push(label('Empire', [txt(empire?.name ?? '')], empire !== null ? { target: { kind: 'empire', empire }, title: `${empire.name} (click for details)` } : {}));
     rows.push(label('Based At', [txt(sg.gatherPoint?.name ?? '(None)')]));
     rows.push(label('Posture', known ? [txt(fleetPostureDescription(sg))] : [txt('(Unknown)', UNKNOWN_COLOR)]));
+    const flagship = known && galaxy.scenario !== null ? fleetFlagshipLabel(galaxy, sg) : null; // [veterans]
+    if (flagship !== null) rows.push(label('Flagship', [txt(flagship)]));
     let fighters = 0;
     let troopStrength = 0;
     for (const s of sg.ships) {

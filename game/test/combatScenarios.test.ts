@@ -21,7 +21,7 @@ import { cachedTickGame } from './helpers/gameCache';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { BuiltObject } from '../src/sim/builtObject';
-import type { ShipGroup } from '../src/sim/fleets/shipGroup';
+import { ShipGroup, empireShipGroups } from '../src/sim/fleets/shipGroup';
 import type { Habitat } from '../src/sim/types';
 import type { Empire } from '../src/sim/empire';
 import { Troop, TroopList, TroopType } from '../src/sim/cargo';
@@ -51,6 +51,19 @@ import { inflictDamage } from '../src/sim/combat/damage';
 import { Fighter, FighterMissionType, buildNewFighters, calculateMaximumTargetRange, fighterDoTasks, fightersOf, launchAllFighters } from '../src/sim/combat/fighters';
 import { baconSettings } from '../src/sim/data/baconSettings';
 import { MERCENARY, describeCast, pirateEscort, pirateExplorer, pirateFaction, pirateMissileBase, pirateRaider, playerCarrierPort, playerShip } from './helpers/combatCast';
+import { cachedScenarioGameRun, cachedTickGameRun } from './helpers/gameCache';
+import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
+import type { Game } from '../src/sim/game';
+import { SpaceBattleStats } from '../src/sim/combat/damage';
+import { captainCountermeasuresBonus, captainTargetingBonus, captainWeaponsDamageBonus } from '../src/sim/combat/weapons';
+import { fleetFlagship, fleetFlagshipLabel, flagshipRecoveryDaysLeft, flagshipThreatFactor, grantShipXp, isFlagship, issueMakeFlagship, veteranServiceRecord, veteransFlagshipReview, shipKills, veteranShipRecord, shipBattleXp, veteranRank, veteranRankName, veteranShipBonus, veteranShipLabel, veteranWithdrawFactor, veteransShipReview } from '../src/sim/scenario/veterans/veterans';
+import { scenarioEmit, GAME_DAY_LENGTH } from '../src/sim/scenario/hooks';
+import { shipGroupAddShipToFleet } from '../src/sim/fleets/shipGroupTasks';
+import { empireMessages } from '../src/sim/messages';
+import { galaxyStarDate } from '../src/sim/tick/simTime';
+import { deserializeGame, serializeGame } from '../src/sim/save/gameSave';
+import { GalaxyTime } from '../src/sim/galaxyTime';
+import { defaultStartGameOptions } from '../src/sim/startGameOptions';
 
 
 let gameData: GameData;
@@ -1022,4 +1035,265 @@ describe('(5) troop transports invade an independent colony', () => {
         // The invaders became the garrison (3771 onwards: InvadingTroops → Troops).
         expect(troops.some((t) => colony.troops!.contains(t))).toBe(true);
     }, 300000);
+});
+
+// Veterans (scenarios/veterans, flag veterans; scenario/veterans/veterans.ts): warship battle experience, ranks and the
+// weapon damage / targeting / evasion bonus; loss with the ship, persistence through ReDefine (refit) and save / load.
+describe('Veterans add-on (warships)', () => {
+    let vg: Galaxy;
+    let vgd: GameData;
+    let vgame: Game;
+    beforeAll(() => {
+        const run = cachedScenarioGameRun(gameData, { scenario: 'veterans' });
+        vg = run.game.galaxy;
+        vgd = run.gameData;
+        vgame = run.game;
+    }, 300000);
+    const warships = (): BuiltObject[] => vg.builtObjects.filter((b): b is BuiltObject => b !== null && !b.hasBeenDestroyed && b.role === BuiltObjectRole.Military);
+    /** Pretends `bo` dealt `damage` more weapon damage in its running BattleStats. */
+    function dealt(bo: BuiltObject, damage: number): void {
+        if (bo.battleStats === null) bo.battleStats = new SpaceBattleStats();
+        (bo.battleStats as SpaceBattleStats).weaponsDamageToEnemy += damage;
+    }
+
+    it('battle experience: min damage 50, 1 + 1 per 1500, cap 3 a battle', () => {
+        expect(shipBattleXp(vg, 49)).toBe(0);
+        expect(shipBattleXp(vg, 50)).toBe(1);
+        expect(shipBattleXp(vg, 1499)).toBe(1);
+        expect(shipBattleXp(vg, 1500)).toBe(2);
+        expect(shipBattleXp(vg, 3000)).toBe(3);
+        expect(shipBattleXp(vg, 1e6)).toBe(3);
+    });
+
+    it('ranks Green / Regular / Veteran / Elite at 3 / 8 / 16 with +5% a rank, capped at 15%', () => {
+        expect([0, 2, 3, 7, 8, 15, 16, 99].map((x) => veteranRank(x, 3, 8, 16))).toEqual([0, 0, 1, 1, 2, 2, 3, 3]);
+        expect([0, 1, 2, 3].map((r) => veteranShipBonus(vg, r))).toEqual([0, 0.05, 0.1, 0.15]);
+        vg.scenario!.params.veteranShipBonusPerRankPct = 10;
+        try {
+            expect(veteranShipBonus(vg, 3)).toBe(0.15); // the cap
+        } finally {
+            vg.scenario!.params.veteranShipBonusPerRankPct = 5;
+        }
+        expect([0, 1, 2, 3].map(veteranRankName)).toEqual(['Green', 'Regular', 'Veteran', 'Elite']);
+    });
+
+    it('the daily review counts a battle when the ship stops dealing damage; experience caps at Elite', () => {
+        const bo = warships().find((b) => veteranShipRecord(vg, b) === undefined)!;
+        veteransShipReview(vg);
+        expect(veteranShipRecord(vg, bo)).toBeUndefined(); // never fired: no record
+        dealt(bo, 2000);
+        veteransShipReview(vg); // in battle
+        expect(veteranShipRecord(vg, bo)!.pending).toBe(2000);
+        expect(veteranShipRecord(vg, bo)!.battles).toBe(0);
+        dealt(bo, 1000);
+        veteransShipReview(vg); // still in battle
+        veteransShipReview(vg); // a quiet day: survived, 3000 damage → 3 xp
+        expect(veteranShipRecord(vg, bo)!).toMatchObject({ xp: 3, battles: 1, rank: 1, bonus: 0.05, pending: 0 });
+        expect(veteranShipLabel(vg, bo)).toBe('Regular (1 battle)');
+        for (let i = 0; i < 8; i++) {
+            dealt(bo, 5000);
+            veteransShipReview(vg);
+            veteransShipReview(vg);
+        }
+        expect(veteranShipRecord(vg, bo)!).toMatchObject({ xp: 16, battles: 9, rank: 3, bonus: 0.15 });
+        expect(veteranShipLabel(vg, bo)).toBe('Elite (9 battles)');
+        // A small skirmish (under 50 damage) is no battle.
+        dealt(bo, 20);
+        veteransShipReview(vg);
+        veteransShipReview(vg);
+        expect(veteranShipRecord(vg, bo)!.battles).toBe(9);
+    });
+
+    it('the bonus multiplies damage, targeting and evasion (the captain factors); stock ships unchanged', () => {
+        const [a, b] = warships().filter((s) => veteranShipRecord(vg, s) === undefined);
+        const base = [captainWeaponsDamageBonus(a, vg), captainTargetingBonus(a, vg), captainCountermeasuresBonus(a, vg)];
+        grantShipXp(vg, a, 8); // Veteran: +10%
+        expect(veteranShipRecord(vg, a)!.rank).toBe(2);
+        expect(captainWeaponsDamageBonus(a, vg)).toBeCloseTo(base[0] * 1.1, 12);
+        expect(captainTargetingBonus(a, vg)).toBeCloseTo(base[1] * 1.1, 12);
+        expect(captainCountermeasuresBonus(a, vg)).toBeCloseTo(base[2] * 1.1, 12);
+        expect(veteranShipRecord(vg, b)).toBeUndefined();
+        expect(captainWeaponsDamageBonus(b, vg)).toBe(captainWeaponsDamageBonus(b)); // no record: stock
+        // AI caution: a small weight for damaged veterans only (1 + 0.05 × rank, at most 1.15); healthy ones attack as stock.
+        expect(veteranWithdrawFactor(vg, a)).toBe(1);
+        const dmg = a.damagedComponentCount;
+        a.damagedComponentCount = 1;
+        try {
+            expect(veteranWithdrawFactor(vg, a)).toBeCloseTo(1.1, 12);
+            veteranShipRecord(vg, a)!.rank = 3;
+            vg.scenario!.params.veteranAiCautionPerRank = 0.15;
+            expect(veteranWithdrawFactor(vg, a)).toBeCloseTo(1.15, 12); // capped
+        } finally {
+            a.damagedComponentCount = dmg;
+            veteranShipRecord(vg, a)!.rank = 2;
+            vg.scenario!.params.veteranAiCautionPerRank = 0.05;
+        }
+        expect(veteranWithdrawFactor(vg, b)).toBe(1);
+    });
+
+    it('is lost with the ship (a destroyed ship earns nothing) and on capture; ReDefine (refit) keeps it', () => {
+        const [a, b, c] = warships().filter((s) => veteranShipRecord(vg, s) === undefined);
+        dealt(a, 3000);
+        veteransShipReview(vg);
+        a.hasBeenDestroyed = true;
+        try {
+            veteransShipReview(vg);
+            expect(veteranShipRecord(vg, a)).toBeUndefined(); // died in the battle: no credit, the record goes with it
+        } finally {
+            a.hasBeenDestroyed = false;
+        }
+        // Teardown (builtObjectRemoved) drops a record at once.
+        grantShipXp(vg, a, 5);
+        scenarioEmit(vg, 'builtObjectRemoved', { builtObject: a });
+        expect(veteranShipRecord(vg, a)).toBeUndefined();
+        grantShipXp(vg, b, 10);
+        const rec = { ...veteranShipRecord(vg, b)! };
+        b.reDefine(); // the retrofit completion (constructionQueue.ts 669-699) re-defines the same object
+        expect(veteranShipRecord(vg, b)).toEqual(rec);
+        grantShipXp(vg, c, 10);
+        const to = vg.empires.find((e) => e !== c.empire && e.pirateEmpireBaseHabitat === null)!;
+        scenarioEmit(vg, 'builtObjectOwnerChanged', { builtObject: c, from: c.empire, to });
+        expect(veteranShipRecord(vg, c)).toBeUndefined();
+    });
+
+    it('a ship reaching Veteran with a generic name is named and keeps a service record; its loss is reported', () => {
+        const player = vg.playerEmpire!;
+        const [a, b] = warships().filter((s) => s.empire === player && veteranShipRecord(vg, s) === undefined);
+        a.name = 'Hunter 012';
+        b.name = 'SSS Gallant Ranger';
+        const nameB = b.name;
+        grantShipXp(vg, a, 3);
+        expect(a.name).toBe('Hunter 012'); // only Regular
+        grantShipXp(vg, a, 5); // Veteran
+        const r = veteranShipRecord(vg, a)!;
+        expect(r.wasNamed).toBe('Hunter 012');
+        expect(a.name).not.toBe('Hunter 012');
+        expect(a.name).not.toMatch(/\s\d{1,4}$/);
+        const named = a.name;
+        grantShipXp(vg, a, 1);
+        expect(a.name).toBe(named); // named once
+        grantShipXp(vg, b, 8);
+        expect(b.name).toBe(nameB); // not generic: kept
+        expect(r.battles).toBe(3);
+        r.notable = ['Aldebaran, 2412'];
+        expect(veteranServiceRecord(vg, a)).toMatch(new RegExp(`^${named}: Veteran, 3 battles, \\d+ kills?.*\\(formerly Hunter 012\\)\\. Notable battles: Aldebaran, 2412$`));
+        // Destroyed: the owner is told (not for a green ship).
+        const msgs = (): string[] => empireMessages(player).map((m) => m.description);
+        const before = msgs().length;
+        scenarioEmit(vg, 'builtObjectDestroyed', { builtObject: a });
+        const lost = msgs().slice(before).filter((t) => t.startsWith(`${named} was lost at `));
+        expect(lost).toHaveLength(1);
+        expect(lost[0]).toContain(' after 3 battles.');
+    });
+
+    it('a battle with kills and heavy fire is noted; kills come from the battle statistics', () => {
+        const bo = warships().find((s) => veteranShipRecord(vg, s) === undefined)!;
+        dealt(bo, 100);
+        (bo.battleStats as SpaceBattleStats).destroyedEnemyShipsFrigate = 2;
+        expect(shipKills(bo)).toBe(2);
+        veteransShipReview(vg);
+        veteransShipReview(vg);
+        const r = veteranShipRecord(vg, bo)!;
+        expect(r.kills).toBe(2);
+        expect(r.notable).toHaveLength(1); // two kills in a light battle
+        expect(r.notable![0]).toMatch(/, \d{4}$/);
+    });
+
+    it('flagships: default the best ship, the player can choose, near-bonus, loss penalty for a recovery period, reform', () => {
+        const player = vg.playerEmpire!;
+        const mine = warships().filter((s) => s.empire === player && s.shipGroup === null);
+        expect(mine.length).toBeGreaterThanOrEqual(3);
+        const [a, b, c] = mine;
+        const sg = new ShipGroup(vg);
+        sg.empire = player;
+        sg.name = 'Test Fleet';
+        empireShipGroups(player).push(sg);
+        for (const s of [a, b, c]) shipGroupAddShipToFleet(vg, sg, s);
+        c.xpos = b.xpos = a.xpos;
+        c.ypos = b.ypos = a.ypos;
+        for (const s of [a, b, c]) s.hasBeenDestroyed = false;
+        for (const s of [a, b, c]) {
+            const rec = veteranShipRecord(vg, s);
+            if (rec !== undefined) {
+                rec.xp = 0;
+                rec.rank = 0;
+                rec.bonus = 0;
+            }
+        }
+        grantShipXp(vg, c, 3); // Regular: the default flagship
+        veteransFlagshipReview(vg);
+        expect(fleetFlagship(vg, sg)).toBe(c);
+        expect(isFlagship(vg, c)).toBe(true);
+        expect(fleetFlagshipLabel(vg, sg)).toBe(c.name);
+        // Ships near it get +3% (damage / targeting / evasion), the flagship itself nothing extra.
+        const base = captainWeaponsDamageBonus(b);
+        expect(captainWeaponsDamageBonus(b, vg)).toBeCloseTo(base * 1.03, 12);
+        expect(captainTargetingBonus(b, vg)).toBeCloseTo(captainTargetingBonus(b) * 1.03, 12);
+        expect(captainWeaponsDamageBonus(c, vg)).toBeCloseTo(captainWeaponsDamageBonus(c) * 1.05, 12); // its own rank only
+        b.xpos += 10000; // out of range
+        expect(captainWeaponsDamageBonus(b, vg)).toBe(base);
+        b.xpos -= 10000;
+        // The enemy aims a little more at it; the AI shields a damaged flagship a little more.
+        expect(flagshipThreatFactor(vg, c)).toBeCloseTo(1.15, 12);
+        expect(flagshipThreatFactor(vg, b)).toBe(1);
+        c.damagedComponentCount = 1;
+        expect(veteranWithdrawFactor(vg, c)).toBeCloseTo(1 + 0.05 + 0.05, 12);
+        c.damagedComponentCount = 0;
+        // The player's choice sticks while it lives.
+        expect(issueMakeFlagship(vg, player, b).ok).toBe(true);
+        expect(issueMakeFlagship(vg, player, b).ok).toBe(false); // already
+        veteransFlagshipReview(vg);
+        expect(fleetFlagship(vg, sg)).toBe(b);
+        // The flagship is destroyed: the whole fleet fights at -10% for 30 days.
+        scenarioEmit(vg, 'builtObjectDestroyed', { builtObject: b });
+        b.hasBeenDestroyed = true;
+        expect(fleetFlagship(vg, sg)).toBeNull();
+        expect(captainWeaponsDamageBonus(a, vg)).toBeCloseTo(captainWeaponsDamageBonus(a) * 0.9, 12);
+        expect(captainTargetingBonus(c, vg)).toBeCloseTo(captainTargetingBonus(c) * 0.95, 12);
+        expect(flagshipRecoveryDaysLeft(vg, sg)).toBe(30);
+        veteransFlagshipReview(vg); // a new flagship is chosen at once; the penalty runs on
+        expect(fleetFlagship(vg, sg)).toBe(c);
+        expect(fleetFlagshipLabel(vg, sg)).toContain('reforming: 30 days');
+        expect(captainWeaponsDamageBonus(a, vg)).toBeCloseTo(captainWeaponsDamageBonus(a) * 0.9, 12); // no near-bonus while reforming
+        const msgs = empireMessages(player).map((m) => m.description);
+        expect(msgs.some((t) => t.includes(`${b.name} was lost`) && t.includes('flagship of Test Fleet') && t.includes('-10% for 30 days'))).toBe(true);
+        // Recovery: after 30 days the fleet reforms.
+        const st = vg.scenario!.state.veterans as { flagships: Map<ShipGroup, { penaltyUntil: number }> };
+        st.flagships.get(sg)!.penaltyUntil = galaxyStarDate(vg) - GAME_DAY_LENGTH;
+        veteransFlagshipReview(vg);
+        expect(flagshipRecoveryDaysLeft(vg, sg)).toBe(0);
+        expect(captainWeaponsDamageBonus(a, vg)).toBeCloseTo(captainWeaponsDamageBonus(a) * 1.03, 12);
+        expect(empireMessages(player).some((m) => m.title === 'Fleet reformed')).toBe(true);
+        // A fleet down to one ship keeps no flagship.
+        sg.ships = [a];
+        veteransFlagshipReview(vg);
+        expect(fleetFlagship(vg, sg)).toBeNull();
+        b.hasBeenDestroyed = false;
+    });
+
+    it('saves only non-default records and restores them; flag off = no records, stock game none', () => {
+        const [a] = warships().filter((s) => veteranShipRecord(vg, s) === undefined);
+        grantShipXp(vg, a, 9);
+        const saveText = (gm: Game): string => {
+            const time = new GalaxyTime();
+            time.togglePause();
+            time.advance(gm.galaxy.nowMs);
+            return serializeGame(gm as never, time, { ...defaultStartGameOptions(), seed: 1, scenario: { id: 'veterans', flags: { veterans: true }, params: {} } });
+        };
+        const back = deserializeGame(saveText(vgame), vgd).game;
+        const a2 = back.galaxy.builtObjects[vg.builtObjects.indexOf(a)]!;
+        expect(veteranShipRecord(back.galaxy, a2)).toEqual(veteranShipRecord(vg, a));
+        expect(back.galaxy.builtObjects.filter((x) => x !== null && veteranShipRecord(back.galaxy, x) !== undefined).length).toBe(vg.builtObjects.filter((x) => x !== null && veteranShipRecord(vg, x) !== undefined).length);
+        // Flag off: the review creates nothing.
+        const off = deserializeGame(saveText(vgame), vgd).game.galaxy;
+        off.scenario!.flags.veterans = false;
+        const before = off.builtObjects.filter((x) => x !== null && veteranShipRecord(off, x) !== undefined).length;
+        for (const s of off.builtObjects) if (s !== null && s.role === BuiltObjectRole.Military && veteranShipRecord(off, s) === undefined) dealt(s, 5000);
+        veteransShipReview(off);
+        expect(off.builtObjects.filter((x) => x !== null && veteranShipRecord(off, x) !== undefined).length).toBe(before);
+        // The stock game after its run never has a record (no scenario).
+        const stock = cachedTickGameRun(gameData, { seconds: 120 }).game.galaxy;
+        expect(stock.scenario).toBeNull();
+        expect(Object.keys(vg.builtObjects.find((x) => x !== null)!)).not.toContain('veteran'); // no field on ships
+    }, 600000);
 });

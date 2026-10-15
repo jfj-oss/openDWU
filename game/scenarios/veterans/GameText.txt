@@ -1,0 +1,6 @@
+'Veterans: rank names and the invasion modifier reason (Colony invasion screen).
+Veterans Rank 0;Green
+Veterans Rank 1;Regular
+Veterans Rank 2;Veteran
+Veterans Rank 3;Elite
+Veterans Troops;Veteran troops

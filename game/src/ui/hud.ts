@@ -113,6 +113,7 @@ import { Fighter } from '../sim/combat/fighters';
 import { localViewerEmpire } from '../localViewer';
 import { interceptStrip } from './interceptSlots';
 import { mothballSlot } from './mothballSlots';
+import { flagshipSlot } from './flagshipSlots';
 
 // Port of Main.Part12.cs LoadUiChromeButtons (381–520): the control → chrome
 // button image mapping. The original loads each control's image from
@@ -1613,6 +1614,45 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
                               icList.hidden = false;
                               icListFor = sel;
                           },
+            });
+        }
+        // Veterans add-on: Make flagship for an own warship in a fleet (click) or an own fleet (click lists its ships).
+        const fs = flagshipSlot(wiring.galaxy, viewer, currentSelection);
+        if (fs !== null) {
+            const openFlagList = (): void => {
+                const menu = toolStripMenu('sel-more-menu');
+                for (const c of fs.choices) {
+                    const row = toolStripItem(c.label, { title: c.hint, tag: 'button' });
+                    row.classList.add('sel-extra-btn');
+                    if (c.chosen) row.classList.add('sel-more-on');
+                    if (c.disabled) {
+                        row.classList.add('is-disabled');
+                        (row as HTMLButtonElement).disabled = true;
+                    }
+                    row.addEventListener('mouseenter', () => setToolStripActive(menu, row));
+                    row.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        if (c.disabled) return;
+                        closeIcList();
+                        c.pick();
+                    });
+                    menu.appendChild(row);
+                }
+                icList.replaceChildren(menu);
+                icList.hidden = false;
+                icListFor = sel;
+            };
+            out.push({
+                label: fs.label,
+                hint: fs.hint,
+                icon: fs.icon,
+                disabled: fs.disabled,
+                onClick: () => {
+                    closeIcList();
+                    if (fs.listOnClick) openFlagList();
+                    else fs.click();
+                },
+                onMenu: fs.choices.length === 0 ? undefined : openFlagList,
             });
         }
         const m = interceptStrip(wiring.galaxy, viewer, currentSelection, selectForce, () => redrawSelectionActionBar());

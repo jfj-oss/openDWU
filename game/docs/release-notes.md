@@ -155,6 +155,19 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
   its approval falls slowly (0.1 a day, at most 15). It ends when the orbit is free; both sides get a message, and the
   colony panel shows "Blockaded by X". AI empires blockade their enemies' richest colonies before invading and send
   their nearest strong enough fleet to break a blockade of their own.
+- **Veterans (new gameplay change, off by default):** a "Gameplay changes" checkbox on the Other Empires page (also in
+  openDWU Classic; included in the heading's master switch). Warships and troop units that survive battles gain experience
+  and rise from Green to Regular, Veteran and Elite: ships +5% weapon damage, targeting and evasion per rank (at most +15%),
+  troops +10% attack and defence per rank ("Veteran troops" on the Colony invasion screen). Experience dies with the ship or
+  unit (and leaves a captured ship); refits and troop transfers keep it. Shown on the ship's selection panel ("Crew: Veteran
+  (3 battles)") and in the troop lists. A ship reaching Veteran with only a generic name (a design name and a number) is
+  given a ship name and a short service record (battles, kills, years in service, notable battles) on its selection panel
+  and the Ships screen tooltip; when it is destroyed you get a message ("SSS Gallant Ranger was lost at Aldebaran after 14
+  battles"). Every fleet of two or more warships has a flagship (its best ship, or the one you pick with **Make flagship**
+  in the selection panel's action slots): ships near it get +3%, and if it is destroyed the whole fleet fights at -10% for
+  30 days while it reforms. The flagship is marked on the fleet's panel and the Fleets screen. Damaged AI veterans and
+  flagships break off hopeless fights a little sooner, enemy flagships weigh 15% more as targets, and AI invasion plans count
+  troop ranks (never more cautious than the original).
 - **Galaxy Backdrop picker:** new **Dimmed Original** (the original's colours, darkened halfway toward Deep, faint grey
   dust), **Deep Azure** (navy and steel-blue dust, teal accents), **Deep Ember** (crimson and ember dust, the odd dull
   gold) and **Deep Violet** (purple and magenta dust, blue accents), all built like Deep from the original image. Galactic

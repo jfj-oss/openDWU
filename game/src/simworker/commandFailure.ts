@@ -75,6 +75,7 @@ export const COMMAND_FAILURE: FailureTable = {
     fleetWatch: no,
     mothball: (message) => ({ ok: false, message }),
     reactivate: (message) => ({ ok: false, message }),
+    makeFlagship: (message) => ({ ok: false, message }),
     buildNewShips: (message) => ({ ok: false, message, title: 'Cannot Build Ships', built: [] }),
     moveWaitQueueItem: no,
     yardPurchase: () => null,

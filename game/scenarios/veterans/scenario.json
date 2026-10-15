@@ -1,0 +1,32 @@
+{
+  "id": "veterans",
+  "name": "Veterans",
+  "description": "A gameplay change (off by default; set on the new-game wizard's Other Empires page). Warships and troop units that survive battles gain experience and rise through four ranks: Green, Regular, Veteran and Elite. A warship earns experience for every battle it survives in which it dealt damage (more for heavy fighting, up to a cap per battle); a troop unit for every ground battle its side wins (less when it only survives one). Each rank gives warships +5% weapon damage, targeting and evasion (at most +15%) and troops +10% attack and defence (the Colony invasion screen lists it as 'Veteran troops'). Experience is lost when the ship or unit is destroyed (or the ship is captured); refits and troop transfers keep it. AI empires weigh it: their damaged veteran ships break off hopeless fights a little sooner (a small weight that never calls off an attack), and their invasion plans count their own troops' ranks against the defenders' (never planning more troops than the original would). A warship reaching Veteran with only a generic name (a design name and a number) is given a ship name and keeps a short service record (battles, kills, years in service, notable battles); when such a ship is lost its owner gets a message. Each fleet of two or more warships has a flagship (the highest-ranked, strongest ship, or the one you choose with Make flagship on the selection panel): ships near it get a small bonus, and if it is destroyed the whole fleet fights at -10% for 30 days until it reforms. AI empires protect damaged flagships a little more and aim at enemy flagships with a small preference. This is separate from the original's captains, admirals and generals (character skills), the original's troop strength growth after won ground battles, and Bacon's crew level (career damage: faster self-repair, resale price), which all work as before.",
+  "flags": [
+    { "name": "veterans", "label": "Veterans", "description": "Master switch.", "default": true }
+  ],
+  "params": [
+    { "name": "veteranShipMinBattleDamage", "label": "A warship's battle counts when it dealt at least this much weapon damage", "default": 50, "min": 1, "max": 100000 },
+    { "name": "veteranShipDamagePerXp", "label": "A warship earns 1 experience per battle plus 1 per this much damage dealt in it", "default": 1500, "min": 1, "max": 1000000 },
+    { "name": "veteranShipXpPerBattleCap", "label": "Most experience a warship earns in one battle", "default": 3, "min": 1, "max": 100 },
+    { "name": "veteranShipRegularXp", "label": "Warship experience for Regular", "default": 3, "min": 1, "max": 1000 },
+    { "name": "veteranShipVeteranXp", "label": "Warship experience for Veteran", "default": 8, "min": 1, "max": 1000 },
+    { "name": "veteranShipEliteXp", "label": "Warship experience for Elite", "default": 16, "min": 1, "max": 1000 },
+    { "name": "veteranShipBonusPerRankPct", "label": "Warship weapon damage, targeting and evasion bonus per rank (%)", "default": 5, "min": 0, "max": 50 },
+    { "name": "veteranShipBonusCapPct", "label": "Warship bonus at most (%)", "default": 15, "min": 0, "max": 100 },
+    { "name": "veteranTroopXpWin", "label": "Troop experience for a ground battle won", "default": 2, "min": 0, "max": 100 },
+    { "name": "veteranTroopXpSurvive", "label": "Troop experience for a ground battle survived but not won", "default": 1, "min": 0, "max": 100 },
+    { "name": "veteranTroopRegularXp", "label": "Troop experience for Regular", "default": 2, "min": 1, "max": 1000 },
+    { "name": "veteranTroopVeteranXp", "label": "Troop experience for Veteran", "default": 6, "min": 1, "max": 1000 },
+    { "name": "veteranTroopEliteXp", "label": "Troop experience for Elite", "default": 12, "min": 1, "max": 1000 },
+    { "name": "veteranTroopBonusPerRankPct", "label": "Troop attack / defence bonus per rank (%)", "default": 10, "min": 0, "max": 100 },
+    { "name": "veteranAiCautionPerRank", "label": "AI: a damaged veteran warship weighs a losing fight this much more heavily per rank (0.05 = 5%; at most 15% in all)", "default": 0.05, "min": 0, "max": 0.15 },
+    { "name": "veteranNameRank", "label": "Rank at which a warship with a generic name is given a ship name and a service record (2 = Veteran)", "default": 2, "min": 1, "max": 3 },
+    { "name": "flagshipBonusPct", "label": "Warships near their fleet's flagship: weapon damage, targeting and evasion bonus (%)", "default": 3, "min": 0, "max": 20 },
+    { "name": "flagshipRange", "label": "Distance within which a warship counts as near its flagship", "default": 3000, "min": 100, "max": 100000 },
+    { "name": "flagshipLossPenaltyPct", "label": "A fleet that lost its flagship: weapon damage, targeting and evasion penalty (%)", "default": 10, "min": 0, "max": 50 },
+    { "name": "flagshipRecoveryDays", "label": "Days a fleet is disorganised after losing its flagship", "default": 30, "min": 1, "max": 720 },
+    { "name": "flagshipAiCautionPct", "label": "AI: a damaged flagship weighs a losing fight this much more heavily (%)", "default": 5, "min": 0, "max": 20 },
+    { "name": "flagshipTargetPct", "label": "An enemy flagship counts this much more as a threat (%)", "default": 15, "min": 0, "max": 100 }
+  ]
+}

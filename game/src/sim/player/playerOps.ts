@@ -98,6 +98,7 @@ import { investigateRuins } from '../exploration';
 import { cancelIntelligenceMission, characterMission } from '../espionage';
 import { scenarioFlag } from '../scenario/state';
 import { issueMothball, issueReactivate } from '../scenario/mothballing/mothballing';
+import { issueMakeFlagship } from '../scenario/veterans/veterans';
 import { ESPIONAGE_FLAG } from '../scenario/emergent/espionageHooks';
 import { setMissionFrame } from '../scenario/emergent/espionage';
 import { grantAutonomy, runPoliticsAction, type PoliticsActionName } from '../scenario/emergent/politicsActions';
@@ -296,6 +297,8 @@ export const PLAYER_OPS = {
     mothball: (galaxy: Galaxy, empire: Empire, force: ShipGroup | BuiltObject, port: BuiltObject | null) => issueMothball(galaxy, empire, force, port),
     /** Mothballing add-on (not in the original): start a mothballed fleet's / warship's reactivation. */
     reactivate: (galaxy: Galaxy, empire: Empire, force: ShipGroup | BuiltObject) => issueReactivate(galaxy, empire, force),
+    /** Veterans add-on (not in the original): make `ship` the flagship of its fleet. */
+    makeFlagship: (galaxy: Galaxy, empire: Empire, ship: BuiltObject) => issueMakeFlagship(galaxy, empire, ship),
     /** Main.Part2.cs 1135 btnBuildOrderPurchase_Click. */
     buildNewShips: (galaxy: Galaxy, empire: Empire, designs: (Design | null)[], amounts: number[]) => buildNewShips(galaxy, empire, designs, amounts),
     /** Main.Part5.cs 2147-2213: the site's construction wait queue order. */

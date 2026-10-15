@@ -29,6 +29,13 @@ import { canContestOrbit, gatherableFirepower, orbitalAiReview } from '../src/si
 import { healTroops, independentColoniesRecruitAndTrainTroops } from '../src/sim/combat/troopsRuntime';
 import { processBoardingAssault, resetAssaultPods } from '../src/sim/combat/boarding';
 import { takeOwnershipOfBuiltObject } from '../src/sim/combat/ownership';
+import { meanTroopRank, veteransState, veteransTroopPoolReview, veteranRequiredTroopStrength, veteranTroopLabel, veteransGroundBattleEnded } from '../src/sim/scenario/veterans/veterans';
+import { determineRequiredTroopStrength } from '../src/sim/fleets/militaryAI';
+import { isObjectVisibleToThisEmpire } from '../src/sim/independentTraders';
+import { deserializeGame, serializeGame } from '../src/sim/save/gameSave';
+import { GalaxyTime } from '../src/sim/galaxyTime';
+import { defaultStartGameOptions } from '../src/sim/startGameOptions';
+import type { Game } from '../src/sim/game';
 
 let gameData: GameData;
 let galaxy: Galaxy;
@@ -617,4 +624,153 @@ describe('Longer ground battles add-on', () => {
         on2.scenario!.flags.longerGroundCombat = false;
         expect(stepsToEnd(on2, idx)).toBe(nOff);
     });
+});
+
+// Veterans (scenarios/veterans, flag veterans; scenario/veterans/veterans.ts): troop experience from ground battles,
+// ranks, the "Veteran troops" invasion modifier, the AI's troop estimate, and save / load.
+describe('Veterans add-on (troops)', () => {
+    let vg: Galaxy;
+    let vgd: GameData;
+    let vgame: Game;
+    beforeAll(() => {
+        const run = cachedScenarioGameRun(gameData, { scenario: 'veterans' });
+        vg = run.game.galaxy;
+        vgd = run.gameData;
+        vgame = run.game;
+    }, 300000);
+    const aiEmpires = (): Empire[] => vg.empires.filter((e) => e !== vg.playerEmpire && e.pirateEmpireBaseHabitat === null && e.capital !== null && e.colonies.length > 0);
+    function indColony(skip: Habitat[] = []): Habitat {
+        const h = vg.independentColonies.find((c) => !skip.includes(c) && c.empire === vg.independentEmpire && c.population.totalAmount > 0 && (c.invadingTroops === null || c.invadingTroops.count === 0))!;
+        h.troops = new TroopList();
+        h.troopsToRecruit = new TroopList();
+        h.invadingTroops = new TroopList();
+        h.invasionStats = null;
+        return h;
+    }
+    function invade(h: Habitat, invader: Empire, attack: number, defend: number, count = 2): { d: Troop[]; a: Troop[] } {
+        const d: Troop[] = [];
+        const a: Troop[] = [];
+        for (let i = 0; i < count; i++) {
+            const t = troop(vg.independentEmpire, TroopType.Infantry, defend, defend, 100);
+            t.colony = h;
+            h.troops!.add(t);
+            d.push(t);
+            const u = troop(invader, TroopType.Infantry, attack, attack, 100);
+            u.colony = h;
+            h.invadingTroops!.add(u);
+            invader.troops.add(u);
+            a.push(u);
+        }
+        return { d, a };
+    }
+
+    it('troop ranks at 2 / 6 / 12; a win is worth 2, surviving 1, capped at Elite; flag off = nothing', () => {
+        const e = aiEmpires()[0];
+        const t = troop(e, TroopType.Infantry, 100, 100);
+        const u = troop(e, TroopType.Infantry, 100, 100);
+        veteransGroundBattleEnded(vg, [t], [u]);
+        expect(t.veteran).toEqual({ xp: 2, battles: 1, rank: 1 });
+        expect(u.veteran).toEqual({ xp: 1, battles: 1, rank: 0 });
+        expect(veteranTroopLabel(t)).toBe('Regular (1 battle)');
+        veteransGroundBattleEnded(vg, [t, u], null);
+        veteransGroundBattleEnded(vg, [t], null);
+        expect(t.veteran!.rank).toBe(2);
+        for (let i = 0; i < 10; i++) veteransGroundBattleEnded(vg, [t], null);
+        expect(t.veteran).toEqual({ xp: 12, battles: 13, rank: 3 });
+        const dead = troop(e, TroopType.Infantry, 100, 100, 0);
+        veteransGroundBattleEnded(vg, [dead], null);
+        expect(dead.veteran).toBeUndefined();
+        vg.scenario!.flags.veterans = false;
+        try {
+            const w = troop(e, TroopType.Infantry, 100, 100);
+            veteransGroundBattleEnded(vg, [w], null);
+            expect(w.veteran).toBeUndefined();
+        } finally {
+            vg.scenario!.flags.veterans = true;
+        }
+    });
+
+    it('"Veteran troops": +10% a rank, strength-weighted over a side; none without ranks or with the flag off', () => {
+        const h = indColony();
+        const inv = aiEmpires()[0];
+        const { d, a } = invade(h, inv, 100, 100);
+        let m = determineTroopModifiers(vg, h, h.troops!, h.invadingTroops!, null, null);
+        expect(m.defend.reasons).not.toContain('Veteran troops');
+        expect(m.attack.reasons).not.toContain('Veteran troops');
+        d[0].veteran = { xp: 6, battles: 3, rank: 2 };
+        d[1].veteran = { xp: 6, battles: 3, rank: 2 };
+        a[0].veteran = { xp: 12, battles: 6, rank: 3 }; // half the attackers' strength Elite: mean rank 1.5
+        expect(meanTroopRank(h.invadingTroops!.items, true)).toBe(1.5);
+        m = determineTroopModifiers(vg, h, h.troops!, h.invadingTroops!, null, null);
+        expect(m.defend.amounts[m.defend.reasons.indexOf('Veteran troops')]).toBe(0.2);
+        expect(m.attack.amounts[m.attack.reasons.indexOf('Veteran troops')]).toBe(0.15);
+        vg.scenario!.flags.veterans = false;
+        try {
+            m = determineTroopModifiers(vg, h, h.troops!, h.invadingTroops!, null, null);
+            expect(m.defend.reasons).not.toContain('Veteran troops');
+            expect(m.attack.reasons).not.toContain('Veteran troops');
+        } finally {
+            vg.scenario!.flags.veterans = true;
+        }
+    });
+
+    it('a repelled invasion ranks up the defenders, a conquest the invaders (resolveInvasionBattles)', () => {
+        const inv = aiEmpires()[0];
+        const h1 = indColony();
+        const r1 = invade(h1, inv, 5, 500);
+        for (let i = 0; i < 400 && h1.invadingTroops !== null && h1.invadingTroops.count > 0; i++) resolveInvasionBattles(vg, h1, 10);
+        expect(h1.invadingTroops === null || h1.invadingTroops.count === 0).toBe(true);
+        const alive = r1.d.filter((t) => h1.troops!.items.includes(t));
+        expect(alive.length).toBeGreaterThan(0);
+        for (const t of alive) expect(t.veteran).toMatchObject({ xp: 2, battles: 1, rank: 1 });
+        for (const t of r1.a) expect(t.veteran).toBeUndefined();
+        const h2 = indColony([h1]);
+        const r2 = invade(h2, inv, 2000, 5);
+        for (let i = 0; i < 400 && h2.empire !== inv; i++) resolveInvasionBattles(vg, h2, 10);
+        expect(h2.empire).toBe(inv);
+        const garrison = r2.a.filter((t) => h2.troops!.items.includes(t));
+        expect(garrison.length).toBeGreaterThan(0);
+        for (const t of garrison) expect(t.veteran).toMatchObject({ xp: 2, battles: 1, rank: 1 });
+    }, 120000);
+
+    it('AI troop estimates count both sides\' ranks, never above stock (determineRequiredTroopStrength)', () => {
+        const inv = aiEmpires()[1];
+        const h = indColony();
+        invade(h, aiEmpires()[0], 100, 100);
+        const base = veteranRequiredTroopStrength(vg, inv, h, 10000);
+        expect(base).toBe(10000);
+        for (const t of h.troops!.items) t.veteran = { xp: 12, battles: 6, rank: 3 };
+        const seen = isObjectVisibleToThisEmpire(vg, inv, h);
+        expect(veteranRequiredTroopStrength(vg, inv, h, 10000)).toBe(10000); // never above stock (no extra caution)
+        const saved = inv.troops.items.map((t) => t.veteran);
+        try {
+            for (const t of inv.troops.items) t.veteran = { xp: 12, battles: 6, rank: 3 };
+            expect(veteranRequiredTroopStrength(vg, inv, h, 10000)).toBe(10000); // the pool is read at the daily review
+            veteransTroopPoolReview(vg);
+            expect(veteransState(vg).ownRank[inv.empireId]).toBe(3);
+            expect(veteranRequiredTroopStrength(vg, inv, h, 10000)).toBe(seen ? 10000 : Math.trunc(10000 / 1.3));
+        } finally {
+            inv.troops.items.forEach((t, i) => {
+                if (saved[i] === undefined) delete t.veteran;
+                else t.veteran = saved[i];
+            });
+            veteransTroopPoolReview(vg);
+        }
+        expect(determineRequiredTroopStrength(vg, inv, h)).toBeGreaterThan(0);
+    });
+
+    it('troop records survive save / load and transfers (same unit object)', () => {
+        const e = aiEmpires()[0];
+        const t = e.troops.items.find((x) => x.veteran === undefined)!;
+        t.veteran = { xp: 7, battles: 4, rank: 2 };
+        const time = new GalaxyTime();
+        time.togglePause();
+        time.advance(vgame.galaxy.nowMs);
+        const text = serializeGame(vgame as never, time, { ...defaultStartGameOptions(), seed: 1, scenario: { id: 'veterans', flags: { veterans: true }, params: {} } });
+        const back = deserializeGame(text, vgd).game.galaxy;
+        const e2 = back.empires[vg.empires.indexOf(e)];
+        const t2 = e2.troops.items[e.troops.items.indexOf(t)];
+        expect(t2.veteran).toEqual({ xp: 7, battles: 4, rank: 2 });
+        expect(Object.keys(e2.troops.items.find((x) => x.veteran === undefined)!)).not.toContain('veteran');
+    }, 300000);
 });

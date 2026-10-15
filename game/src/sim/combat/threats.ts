@@ -53,6 +53,7 @@ import { checkColonyShipMissionCancelled, determineDestroyOrCaptureTarget, shoul
 import { determineThreatLevelFighter, isFighter, type Fighter } from './fighters';
 import { formatGameTextNow } from '../textResolver';
 import { isHumanEmpire } from '../humanEmpires';
+import { flagshipThreatFactor, veteranWithdrawFactor } from '../scenario/veterans/veterans';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Galaxy constants (Galaxy.3.cs static ctor 4971-5055)
@@ -407,6 +408,10 @@ export function determineThreatLevelBuiltObject(galaxy: Galaxy, builtObject: Bui
             let num7 = Math.trunc(num4 * num5 * num6);
             if (num6 > 0) {
                 num7 = Math.max(1, num7);
+            }
+            if (galaxy.scenario !== null && num7 > 0) {
+                const wf = flagshipThreatFactor(galaxy, builtObject); // mod layer (veterans): enemy flagships weigh a little more
+                if (wf !== 1) num7 = Math.trunc(num7 * wf);
             }
             return num7;
         }
@@ -1246,6 +1251,7 @@ export function checkBattleOverwhelming(galaxy: Galaxy, bo: BuiltObject, targetT
             if (bo.empire !== null && bo.empire.policy !== null) {
                 val /= bo.empire.policy.shipBattleCautionFactor;
             }
+            if (galaxy.scenario !== null) val /= veteranWithdrawFactor(galaxy, bo); // mod layer (veterans): keep veteran crews alive
             if (val < 1.0) {
                 const fleets = checkFleetsTravellingToLocation(galaxy, bo, bo.xpos, bo.ypos);
                 if (fleets.result) {

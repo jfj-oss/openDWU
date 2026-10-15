@@ -51,7 +51,7 @@ import { empireFlagUrl } from '../selectionInfoView';
 import { COLORS, FONT, OwGrid, dropDown, dropText, el, place, rgbCss, scrollPanel, text, type GridColumn } from '../originalWindow';
 import { componentImageUrl } from './designPanelsModel';
 import { gt } from './researchBenefits';
-import { troopStrengthDescription } from './troops';
+import { troopExperienceText } from './troops';
 import { resolveCharacterDescription, resolveMissionTypeDescription, resolveRoleDescription } from './intelligence';
 import { characterPortrait } from '../characterPortrait';
 import { troopImageUrl, wireTroopImageFallback } from '../../render/troopImages';
@@ -261,7 +261,7 @@ function generateTroopItems(troops: readonly Troop[], indexStart: number, faded:
         if (t == null) continue;
         let empty = '';
         if (t.garrisoned) empty += '* ';
-        const str1 = `${empty}${textPrefix}${t.name} (${troopStrengthDescription(t)}, ${formatNet0(t.overallAttackStrength)}, ${formatNet0(t.overallDefendStrength)})`;
+        const str1 = `${empty}${textPrefix}${t.name} (${troopExperienceText(t)}, ${formatNet0(t.overallAttackStrength)}, ${formatNet0(t.overallDefendStrength)})`;
         let str2 =
             `${gt('Readiness')}: ${formatNet0(t.readiness)}\n${gt('Attack Strength')}: ${formatNet0(t.attackStrength)}\n${gt('Overall Attack Strength')}: ${formatNet0(t.overallAttackStrength)}\n` +
             `${gt('Defend Strength')}: ${formatNet0(t.defendStrength)}\n${gt('Overall Defend Strength')}: ${formatNet0(t.overallDefendStrength)}`;

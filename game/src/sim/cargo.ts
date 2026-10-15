@@ -4,6 +4,7 @@
 // IndexOf(resource, empire), and a TroopList.
 
 import type { Resource } from './data/resources';
+import type { VeteranTroopRecord } from './scenario/veterans/veterans';
 
 // Port of Cargo.cs Resource wrapper (C# `new Resource(resourceId)`): a
 // commodity reference identified by its resource id. The C# class also
@@ -152,6 +153,8 @@ export enum TroopType {
 export class Troop {
     /** Not in the C#: the stable id player commands name this object by (entityRefs.ts; unset until the next sweep). */
     declare refId?: number;
+    /** Not in the C#: Veterans add-on (scenario/veterans) battle record; absent (no own field) unless it is on. */
+    declare veteran?: VeteranTroopRecord;
     name: string;
     private _type: TroopType;
     private _attackStrength: number; // short
