@@ -14,10 +14,9 @@
 //     and targets, plus the rest of their fleets in that system; a creature counts AttackStrength × 5 as in
 //     Empire.8.cs CalculateDefendingStrength); our empire's other ships and bases in the system that are attacking the
 //     same enemies count on our side (reinforcements: a fleet does not pull out of a fight it wins together);
-//   - the fight has turned against it when it is below frFleetRatio % (default 100: less than 1:1) AND the fleet has lost
-//     frMinLoss % (default 50) of the firepower it had when the battle began (so it never pulls out at first contact of a
-//     fight the stock AI chose to start at 0.85 strength); turned for frHoldSeconds = it withdraws; the count-down only
-//     resets once the ratio is back above frHysteresis % of the line, so a brief swing does not restart it;
+//   - it is outgunned when the enemies have frOutgunned times its side's firepower or more (default 1.5); outgunned for
+//     frHoldSeconds = it withdraws; the count-down only resets once its side is back above frHysteresis % of that line
+//     (default 125: the enemy at 1.2x or less), so a brief swing does not restart it;
 //   - the withdrawal is the stock fleet "Repair and refuel" order (fleetOps.ts fleetRepairAndRefuel) to the nearest yard
 //     that can repair (findNearestShipYard incl. very small yards): fleet mission Repair (Unavailable, the AI leaves it
 //     alone), damaged ships Repair, the others Refuel there (VeryHigh; ships on Repair never pick targets, attackAI.ts
@@ -51,7 +50,7 @@ const KEY = 'fightingRetreats';
 export const AT_YARD_RANGE = 3000;
 
 /** Defaults (scenario.json params; percentages there). */
-export const FR_DEFAULTS = { checkSeconds: 1, fleetRatio: 100, holdSeconds: 5, hysteresis: 125, minLoss: 50 } as const;
+export const FR_DEFAULTS = { checkSeconds: 1, outgunned: 1.5, holdSeconds: 5, hysteresis: 125 } as const;
 
 export interface FleetWithdrawal {
     /** The system the fleet withdrew from ('' = deep space). */
@@ -69,7 +68,7 @@ declare module '../../fleets/shipGroup' {
         frLosingSinceMs?: number;
         /** Fighting retreats: the withdrawal under way; absent = none. */
         frWithdrawal?: FleetWithdrawal;
-        /** Fighting retreats: the fleet's own firepower when its current battle began; absent = not in battle. */
+        /** Fighting retreats (older saves only, no longer used): the fleet's firepower when its battle began. */
         frStartFirepower?: number;
     }
 }
@@ -245,12 +244,11 @@ function stepFleet(galaxy: Galaxy, fleet: ShipGroup): void {
         if (fleet.frStartFirepower !== undefined) delete fleet.frStartFirepower;
         return;
     }
-    if (fleet.frStartFirepower === undefined || battle.fleet > fleet.frStartFirepower) fleet.frStartFirepower = battle.fleet;
-    const line = param(galaxy, 'fleetRatio') / 100;
+    if (fleet.frStartFirepower !== undefined) delete fleet.frStartFirepower;
+    // Outgunned: the enemy has frOutgunned times our side's firepower or more (line = our share at that point).
+    const line = 1 / Math.max(0.01, param(galaxy, 'outgunned'));
     const ratio = battle.own / battle.enemy;
-    // "The fight turned against it": outgunned AND the fleet has lost frMinLoss % of its firepower in this battle.
-    const turned = battle.fleet <= fleet.frStartFirepower * (1 - param(galaxy, 'minLoss') / 100);
-    if (ratio < line && turned) {
+    if (ratio <= line) {
         if (fleet.frLosingSinceMs === undefined) {
             fleet.frLosingSinceMs = galaxy.nowMs;
         } else if (galaxy.nowMs - fleet.frLosingSinceMs >= param(galaxy, 'holdSeconds') * 1000) {

@@ -1180,8 +1180,7 @@ describe('(6) repair and retreat', () => {
 
 describe('(7) fighting retreats add-on', () => {
     function withRetreats(g: Galaxy, params: Record<string, number> = {}, on = true): void {
-        // frMinLoss 0 unless a test sets it: the staged fleets start the fight already outgunned.
-        g.scenario = createGalaxyScenario(loadScenarioOverlayFs(FIGHTING_RETREATS_ADDON_ID).manifest, { flags: { fightingRetreats: on }, params: { frMinLoss: 0, ...params } });
+        g.scenario = createGalaxyScenario(loadScenarioOverlayFs(FIGHTING_RETREATS_ADDON_ID).manifest, { flags: { fightingRetreats: on }, params });
     }
     /** One check pass `ms` game ms later (the checks run every frCheckSeconds = 1 s). */
     function tick(g: Galaxy, ms: number): void {
@@ -1208,10 +1207,10 @@ describe('(7) fighting retreats add-on', () => {
         return { g, jav, jav2, b, fleet, player };
     }
 
-    it('below the firepower line (frFleetRatio, default 1:1) for frHoldSeconds the fleet withdraws to the nearest yard; the count-down survives the hysteresis band and resets above frHysteresis % of the line', () => {
+    it('outgunned (frOutgunned, default the enemy at 1.5x) for frHoldSeconds the fleet withdraws to the nearest yard; the count-down survives the hysteresis band and resets above frHysteresis % of the line', () => {
         const { g, fleet, jav, b } = stageFleet();
         withRetreats(g);
-        expect(g.scenario!.params.frFleetRatio).toBe(100);
+        expect(g.scenario!.params.frOutgunned).toBe(1.5);
         const battle = fleetBattle(fleet);
         expect(battle.engaged).toBe(2);
         expect(battle.own).toBeGreaterThan(0);
@@ -1227,7 +1226,7 @@ describe('(7) fighting retreats add-on', () => {
         expect(fleetBattle(fleet).own).toBeGreaterThan(battle.own);
         b.attackers!.splice(b.attackers!.indexOf(helper), 1);
         expect(fleetBattle(fleet).own).toBe(battle.own);
-        const setLine = (line: number) => (g.scenario!.params.frFleetRatio = line * 100);
+        const setLine = (line: number) => (g.scenario!.params.frOutgunned = 1 / line);
         setLine(r * 1.1); // losing
         tick(g, 1000);
         const t0 = fleet.frLosingSinceMs!;
@@ -1258,7 +1257,7 @@ describe('(7) fighting retreats add-on', () => {
 
     it('the repair trip: the withdrawn fleet flies to its yard, repairs and is free again; a manual player fleet is told it awaits orders', () => {
         const { g, fleet, jav, jav2, player } = stageFleet();
-        withRetreats(g, { frFleetRatio: 500, frHoldSeconds: 0 });
+        withRetreats(g, { frOutgunned: 0.2, frHoldSeconds: 0 });
         jav.components.items[0].status = ComponentStatus.Damaged;
         jav.reDefine();
         const yard = playerCarrierPort(g);
@@ -1291,25 +1290,18 @@ describe('(7) fighting retreats add-on', () => {
         expect(texts.some((t) => t.includes('finished repairs') && t.includes('awaits orders'))).toBe(true);
     }, 180000);
 
-    it('"the fight turned": an outgunned fleet withdraws only once it has lost frMinLoss % of its battle-start firepower', () => {
-        const { g, fleet, jav } = stageFleet();
-        withRetreats(g, { frFleetRatio: 500, frHoldSeconds: 0, frMinLoss: 25 });
-        for (let k = 0; k < 4; k++) tick(g, 1000);
-        expect(fleet.frWithdrawal).toBeUndefined(); // first contact, nothing lost yet
-        const start = fleet.frStartFirepower!;
-        expect(start).toBe(fleetBattle(fleet).fleet);
-        // Lose the weapons of one escort (half the fleet's firepower).
-        for (const c of jav.components.items) if (c.category === ComponentCategoryType.WeaponBeam || c.category === ComponentCategoryType.WeaponTorpedo || c.category === ComponentCategoryType.WeaponArea) c.status = ComponentStatus.Damaged;
-        jav.reDefine();
-        expect(fleetBattle(fleet).fleet).toBeLessThanOrEqual(start * 0.75);
+    it('no loss threshold: an outgunned fleet withdraws at first contact once the hold is up', () => {
+        const { g, fleet } = stageFleet();
+        withRetreats(g, { frOutgunned: 0.2, frHoldSeconds: 0 });
         tick(g, 1000);
         tick(g, 1000);
         expect(fleet.frWithdrawal).toBeDefined();
+        expect(fleet.frStartFirepower).toBeUndefined();
     });
 
     it('the original\'s "Flee: never": a fleet with half or more of its ships set to Never fights on; a fleet beside its yard fights on too', () => {
         const { g, fleet, jav } = stageFleet();
-        withRetreats(g, { frFleetRatio: 500, frHoldSeconds: 0 });
+        withRetreats(g, { frOutgunned: 0.2, frHoldSeconds: 0 });
         jav.design.fleeWhen = BuiltObjectFleeWhen.Never; // 1 of 2 ships
         for (let k = 0; k < 4; k++) tick(g, 1000);
         expect(fleet.frWithdrawal).toBeUndefined();
@@ -1324,7 +1316,7 @@ describe('(7) fighting retreats add-on', () => {
 
     it('toggle off: the frame hook does nothing (no state bag, no fleet fields, no draws)', () => {
         const { g, fleet } = stageFleet();
-        withRetreats(g, { frFleetRatio: 500, frHoldSeconds: 0 }, false);
+        withRetreats(g, { frOutgunned: 0.2, frHoldSeconds: 0 }, false);
         const rnd = g.rnd.getState();
         for (let k = 0; k < 5; k++) tick(g, 1000);
         expect('fightingRetreats' in g.scenario!.state).toBe(false);

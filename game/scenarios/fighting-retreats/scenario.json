@@ -19,18 +19,11 @@
       "max": 10
     },
     {
-      "name": "frFleetRatio",
-      "label": "A fleet is losing when its firepower is below this % of the enemy's firepower in the battle",
-      "default": 100,
-      "min": 0,
-      "max": 500
-    },
-    {
-      "name": "frMinLoss",
-      "label": "…and only after it has lost this % of the firepower it had when the battle began",
-      "default": 50,
-      "min": 0,
-      "max": 100
+      "name": "frOutgunned",
+      "label": "A fleet withdraws when the enemy in its battle has this many times its firepower",
+      "default": 1.5,
+      "min": 0.1,
+      "max": 10
     },
     {
       "name": "frHoldSeconds",
