@@ -797,6 +797,7 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
             const b = orderButtons.get(s.id)!;
             if ((s.id as string) === 'mothball') {
                 const m = mothballModel();
+                b.classList.add('fl-mb');
                 b.disabled = m === null || m.disabled;
                 b.title = m?.hint ?? '';
                 const c = m !== null ? compactMothballLabel(m) : { label: 'Mothball', minor: '' };

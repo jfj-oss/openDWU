@@ -72,6 +72,8 @@ import { isObjectVisibleToThisEmpire, isObjectVisibleToThisEmpireImprecise } fro
 import type { MapOverlayState } from '../ui/mapOverlays';
 import { getSettings, type UiSettings } from '../ui/settings';
 import { displayColorForEmpire } from '../sim/empireColors';
+import { mothballGrey, mothballGreyColor } from '../sim/scenario/mothballing/types';
+import { galaxyStarDate } from '../sim/tick/simTime';
 import { useMinifyingFilter } from './assets';
 import { DrawSig, boundsOnScreen } from './drawCache';
 import { showsMapIndicators } from './mainViewDisplay';
@@ -1531,7 +1533,8 @@ export class GalaxyMarkerLayer {
             const heightPx = galaxyPass
                 ? (isBase ? basePx : shipPx) * symbolSizeMultiplier(bo.role, bo.subRole, true)
                 : perShipSymbolPx(this.shipPxOf(bo), isBase) * symbolSizeMultiplier(bo.role, bo.subRole, band === 'filled');
-            const base = owned ? empireMarkerColor(bo.empire!) : UNOWNED_SYMBOL_COLOR;
+            let base = owned ? empireMarkerColor(bo.empire!) : UNOWNED_SYMBOL_COLOR;
+            if (bo.mothball !== undefined) base = mothballGreyColor(base, mothballGrey(bo, galaxyStarDate(this.galaxy))); // Mothballing add-on: a ship in reserve is greyer
             const tint = brighten(base, 48);
             // Restyle: the outline frame recedes (it must not out-shout the ship / base it frames); filled markers are a touch softer.
             const alpha = symbolAlpha(f, owned, isBase) * (band === 'outline' ? OUTLINE_MARKER_ALPHA : FILLED_MARKER_ALPHA);
@@ -1565,6 +1568,7 @@ export class GalaxyMarkerLayer {
                 const e = sg.empire;
                 let color = e !== null ? displayColorForEmpire(e) & 0xffffff : UNOWNED_SYMBOL_COLOR;
                 if (color === 0x010101) color = 0x080808;
+                if (lead.mothball !== undefined) color = mothballGreyColor(color, mothballGrey(lead, galaxyStarDate(this.galaxy)));
                 this.pushSymbol(n++, cell, pos.x - ox, pos.y - oy, iconH, z, color, 1);
                 this.pushDrawn(lead, sg, pos.x, pos.y, iconH / 2);
                 if (sg === selGroup) this.selBoxes.push(pos.x - this.ox, pos.y - this.oy, iconH); // 6395-6398 method_212 over the icon box

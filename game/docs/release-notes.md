@@ -49,7 +49,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 - **Mothballing (new Gameplay change, off by default; Other Empires page):** put a fleet or warship into reserve at
   one of your space ports — the selection panel's **Mothball** button (also on the Fleets screen and the Ships and Bases
   screen) picks the safest interior port with room; right-click lists every port with distance, ETA and ships in
-  reserve against its capacity (6 / 12 / 24 for small / medium / large ports). The ships park in rings around the port
+  reserve against its capacity (6 / 12 / 24 for small / medium / large ports). The ships park in even rings around the port, facing it, drawn greyer while in reserve
   at 15% upkeep — immobile, weapons cold, ignored by automation, the AI and Intercept / Defend; a fleet stays the same
   fleet. **Reactivate** takes 240 days for a mid-sized ship (120–480 by size) at full upkeep. A reserve is vulnerable: a
   destroyed port forces an emergency reactivation, a captured port takes the reserve ships with it. AI empires mothball

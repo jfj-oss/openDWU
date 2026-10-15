@@ -7,7 +7,7 @@ import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { cachedScenarioGameRun, cachedTickGame } from './helpers/gameCache';
 import {
     MOTHBALL_REACTIVATING, MOTHBALL_RESERVE, MOTHBALL_TRAVEL, forceMothballPhase, forceReadyDays, issueMothball, issueReactivate, mothballStatusText,
-    mothballStrength, peekMothballState, reactivationDays, reviewEmpireReserve, rivalPotency, mothballPortChoices, parkingSlotPoint, detSinCos, portCapacity,
+    mothballStrength, peekMothballState, reactivationDays, reviewEmpireReserve, rivalPotency, mothballPortChoices, parkingSlotPoint, detSinCos, drawnDiameter, portClearRadius, portCapacity,
 } from '../src/sim/scenario/mothballing/mothballing';
 import { compactMothballLabel, forcesOfShips, mothballForcesModel, mothballSlot } from '../src/ui/mothballSlots';
 import { fleetMissionDescription, fleetMissionText } from '../src/ui/screens/fleetsList';
@@ -695,7 +695,7 @@ describe('Mothballing add-on: reserve at a space port', () => {
         // parked on the ring around the port, facing it
         const spacing = peekMothballState(g)!.spacing!.get(port)!;
         for (const b of fleet.ships) {
-            const pt = parkingSlotPoint(b.mothball!.slot!, port.size, spacing);
+            const pt = parkingSlotPoint(b.mothball!.slot!, portClearRadius(port), spacing);
             // on its slot (re-placed daily as the port orbits)
             expect(Math.hypot(b.xpos - (port.xpos + pt.dx), b.ypos - (port.ypos + pt.dy))).toBeLessThan(50);
             const dx = port.xpos - b.xpos;
@@ -704,6 +704,10 @@ describe('Mothballing add-on: reserve at a space port', () => {
             expect(Math.cos(b.heading) * (dx / d) + Math.sin(b.heading) * (dy / d)).toBeGreaterThan(0.9999);
         }
         expect(new Set(fleet.ships.map((b) => b.mothball!.slot)).size).toBe(2);
+        // nothing overlaps: the centres are at least half the two drawn diameters (sqrt(size * 8)) apart; the fleet sits side by side
+        const [sa, sb] = fleet.ships;
+        expect(Math.hypot(sa.xpos - sb.xpos, sa.ypos - sb.ypos)).toBeGreaterThanOrEqual((drawnDiameter(sa.size) + drawnDiameter(sb.size)) / 2);
+        expect(Math.abs(sa.mothball!.slot! - sb.mothball!.slot!)).toBe(1);
         // the Fleets and Ships screens: the Mission cell shows the reserve, the filter lists it, the button reactivates
         expect(fleetMissionDescription(fleet)).toBe(`Reserve (${port.name})`);
         expect(fleetMissionText(fleet)).toBe(`Reserve (${port.name})`);
@@ -736,6 +740,15 @@ describe('Mothballing add-on: reserve at a space port', () => {
         expect(mothballStatusText(g, fleet)).toBe(`Reactivating: ${days} days`);
         fleet.ships.forEach((b, i) => expect(Math.abs(b.annualSupportCost - fullCost[i])).toBeLessThanOrEqual(fullCost[i] * 0.03 + 1));
         const t0 = galaxyStarDate(g);
+        // save / load in the middle of the reactivation: the same fleet (name, ships, slots), still reactivating, same ready dates
+        runGameSeconds(game, 30);
+        const mid = deserializeGame(serializeGame(game, new GalaxyTime(), start), run.gameData).game;
+        const mf = mid.playerEmpire.shipGroups.find((x) => (x as ShipGroup | null)?.name === fleet.name) as ShipGroup;
+        expect(forceMothballPhase(mf)).toBe(MOTHBALL_REACTIVATING);
+        expect(mf.ships.map((b) => b.name)).toEqual(fleetShips.map((b) => b.name));
+        expect(mf.ships.map((b) => b.mothball!.slot)).toEqual(fleet.ships.map((b) => b.mothball!.slot));
+        expect(mf.ships.map((b) => b.mothball!.readyAt)).toEqual(fleet.ships.map((b) => b.mothball!.readyAt));
+        expect(mid.playerEmpire.shipGroups.indexOf(mf)).toBe(p.shipGroups.indexOf(fleet));
         runUntil(game, () => forceMothballPhase(fleet) < 0, Math.ceil(((days + 5) * GAME_DAY_LENGTH) / 1000));
         expect(forceMothballPhase(fleet)).toBe(-1);
         // back as the same fleet: same object, name and ships
@@ -840,7 +853,7 @@ describe('Mothballing add-on: reserve at a space port', () => {
         // rings: ring 0 holds floor(2π r0 / S) slots, the next slot opens ring 1 one spacing further out
         const S = 300;
         const size = 1000;
-        const r0 = size / 2 + S * 0.75;
+        const r0 = size + S * 0.6;
         const cap0 = Math.floor((2 * Math.PI * r0) / S);
         for (let i = 0; i < cap0; i++) {
             const pt = parkingSlotPoint(i, size, S);

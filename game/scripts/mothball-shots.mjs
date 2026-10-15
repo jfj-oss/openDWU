@@ -13,7 +13,7 @@ const browser = await chromium.launch({
 });
 const page = await browser.newPage({ viewport: { width: +w, height: +h } });
 const logs = [];
-page.on('console', (m) => {
+page.on('console', (m) => { if (m.text().startsWith('DBG3')) console.log(m.text());
     if (m.type() === 'error' || m.type() === 'warning') logs.push(`[${m.type()}] ${m.text()}`);
 });
 page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`));
@@ -28,6 +28,7 @@ const info = await page.evaluate(async () => {
     const mb = await import('/src/sim/scenario/mothballing/mothballing.ts');
     const { executeShipAction } = await import('/src/sim/player/executeShipAction.ts');
     const { ShipActionType, createShipAction } = await import('/src/sim/player/shipAction.ts');
+    (await import('/src/sim/readOnlyQuery.ts')).markUiGalaxy(g, false); // the script writes the galaxy directly
     g.scenario.params.mothballPortCapacity = 40;
     const port = p.spacePorts.find((x) => x && !x.hasBeenDestroyed);
     if (!port) return { ok: false, why: 'no port' };
@@ -62,14 +63,58 @@ const info = await page.evaluate(async () => {
     const fleet = executeShipAction(g, p, fleetShips, createShipAction(ShipActionType.CreateNewFleet, null), true).select;
     const results = [];
     if (fleet) results.push(mb.issueMothball(g, p, fleet, port).message);
-    for (const b of picked) if (b.shipGroup === null) results.push(mb.issueMothball(g, p, b, port).message);
-    if (dwu.time) dwu.time.paused = true;
-    window.__port = port;
+    for (const b of picked) if (b.shipGroup === null) { results.push(mb.issueMothball(g, p, b, port).message); console.log('DBG3 issue ' + b.mothball?.phase + ' slot ' + b.mothball?.slot + ' reg ' + mb.peekMothballState(g)?.ships.length); }
+    if (dwu.time) { dwu.time.speed = 4; dwu.time.paused = false; }
+    window.__port = port; window.__picked = picked; window.__mb = mb;
     camera.zoom = camera.clampZoom(1);
     camera.centerOn(port.xpos, port.ypos);
     return { ok: true, port: port.name, portSize: port.size, ships: picked.length, sizes: picked.map((b) => b.size), fleet: fleet?.name, inReserve: picked.filter((b) => b.mothball?.phase === 1).length, results: results.slice(0, 3) };
 });
 console.log('setup', JSON.stringify(info));
+// Run until every ship has arrived and parked (or 4 minutes), then pause and measure the formation.
+for (let i = 0; i < 240; i++) {
+    const n = await page.evaluate(() => { const s = window.__dwu.game.galaxy; const mb = window.__mbState?.(); return mb ?? -1; }).catch(() => -1);
+    const done = await page.evaluate(async () => {
+        return window.__picked.every((b) => b.mothball && b.mothball.phase === 1 && b.mothball.slot !== undefined);
+    });
+    if (done) break;
+    await page.waitForTimeout(1000);
+}
+await page.evaluate(() => { window.__dwu.time.paused = true; });
+await page.waitForTimeout(500);
+const form = await page.evaluate(async () => {
+    const mb = window.__mb;
+    const g = window.__dwu.game.galaxy, port = window.__port;
+    const all = window.__picked; console.log('DBG2', window.__picked.map((b) => (b.mothball ? b.mothball.phase : 'x') + (b.hasBeenDestroyed ? 'D' : '')).join(',')); console.log('DBG', JSON.stringify(Object.keys(g.scenario.state||{})), all.length, all.filter((b) => b.mothball && b.mothball.port === port).length);
+    const ships = all.filter((b) => b.mothball && b.mothball.port === port);
+    const layer = window.__dwuShipLayer, zz = window.__dwu.camera.zoom;
+    const planet = port.parentHabitat;
+    const rings = new Map();
+    let minGap = Infinity, worstHead = 0, planetClear = Infinity, portClear = Infinity;
+    for (const b of ships) {
+        const dx = b.xpos - port.xpos, dy = b.ypos - port.ypos, r = Math.hypot(dx, dy);
+        const pt = { ring: Math.round(r / 50) };
+        (rings.get(pt.ring) ?? rings.set(pt.ring, []).get(pt.ring)).push({ a: Math.atan2(dy, dx), r });
+        const bearing = Math.atan2(-dy, -dx);
+        let e = Math.abs(b.heading - bearing); if (e > Math.PI) e = 2 * Math.PI - e;
+        worstHead = Math.max(worstHead, e);
+        if (planet) planetClear = Math.min(planetClear, Math.hypot(b.xpos - planet.xpos, b.ypos - planet.ypos) - planet.diameter / 2 - layer.drawnSizePx(b) / zz / 2);
+        portClear = Math.min(portClear, r - layer.drawnSizePx(port) / zz / 2 - layer.drawnSizePx(b) / zz / 2);
+        for (const c of ships) if (c !== b) minGap = Math.min(minGap, Math.hypot(b.xpos - c.xpos, b.ypos - c.ypos) - (layer.drawnSizePx(b) + layer.drawnSizePx(c)) / zz / 2);
+    }
+    console.log('DBG3 planet ' + JSON.stringify([planet && planet.diameter, planet && Math.round(Math.hypot(planet.xpos - port.xpos, planet.ypos - port.ypos)), port.size, layer.drawnSizePx(port) / zz, zz]));
+    console.log('DBG3 side ' + JSON.stringify(ships.map((b) => [b.size, Math.round(layer.drawnSizePx(b) / zz)])));
+    console.log('DBG3 ' + JSON.stringify(ships.map((b) => [b.mothball.slot, b.subRole, Math.round(Math.hypot(b.xpos - port.xpos, b.ypos - port.ypos)), Math.round(Math.atan2(b.ypos - port.ypos, b.xpos - port.xpos) * 573) / 10, Math.round(layer.drawnSizePx(b) / zz)])));
+    const out = [];
+    for (const [k, v] of rings) {
+        v.sort((x, y) => x.a - y.a);
+        const rs = v.map((q) => q.r), mean = rs.reduce((x, y) => x + y, 0) / rs.length;
+        const gaps = v.map((q, i) => (((v[(i + 1) % v.length].a - q.a) + 2 * Math.PI) % (2 * Math.PI)));
+        out.push({ ring: k, n: v.length, radius: Math.round(mean), radDev: +Math.max(...rs.map((r) => Math.abs(r - mean))).toFixed(3), angStepDeg: v.length > 1 ? +(Math.min(...gaps) * 57.2958).toFixed(2) : 0, angStepMaxDeg: v.length > 1 ? +(Math.max(...gaps) * 57.2958).toFixed(2) : 0 });
+    }
+    return { ships: ships.length, inReserve: ships.filter((b) => b.mothball.phase === 1).length, rings: out, minClearanceBetweenHulls: +minGap.toFixed(1), clearanceToPlanetDisc: +planetClear.toFixed(1), clearanceToPortSprite: +portClear.toFixed(1), worstHeadingErrDeg: +(worstHead * 57.2958).toFixed(3), sizes: [...new Set(ships.map((b) => b.subRole))] };
+});
+console.log('formation', JSON.stringify(form));
 const shot = async (zoom, name) => {
     await page.evaluate((z) => {
         const { camera } = window.__dwu;

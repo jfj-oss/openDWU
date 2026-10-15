@@ -54,3 +54,24 @@ export function fleetMothballed(g: ShipGroup): boolean {
     for (const b of g.ships) if (b.mothball !== undefined) return true;
     return false;
 }
+
+/**
+ * Render-only: how grey a ship is drawn (1 in reserve, 0 when it is not mothballed or on its way, fading back to 0 as a
+ * reactivation approaches `readyAt`). `now` is the galaxy star date.
+ */
+export function mothballGrey(bo: BuiltObject, now: number): number {
+    const m = bo.mothball;
+    if (m === undefined || m.phase === MOTHBALL_TRAVEL) return 0;
+    if (m.phase === MOTHBALL_RESERVE) return 1;
+    const span = m.readyAt - m.since;
+    if (!(span > 0)) return 0;
+    return Math.min(1, Math.max(0, 1 - (now - m.since) / span));
+}
+
+/** The colour `rgb` (0xRRGGBB) desaturated by 70 % and darkened 15 %, blended in by `grey` (0..1). Render-only. */
+export function mothballGreyColor(rgb: number, grey: number): number {
+    const r = (rgb >> 16) & 0xff, g = (rgb >> 8) & 0xff, b = rgb & 0xff;
+    const l = 0.3 * r + 0.59 * g + 0.11 * b;
+    const f = (c: number): number => Math.round((c + (l - c) * 0.7) * 0.85 * grey + c * (1 - grey));
+    return (f(r) << 16) | (f(g) << 8) | f(b);
+}

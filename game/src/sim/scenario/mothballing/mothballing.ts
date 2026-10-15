@@ -91,9 +91,26 @@ export const MOTHBALL_PARAMS = {
 };
 const P = MOTHBALL_PARAMS;
 
-/** Parking rings: slot spacing = largest ship size × this + PARK_GAP (so neighbours do not overlap). */
-const PARK_SPACING_K = 1.15;
-const PARK_GAP = 20;
+/**
+ * Parking rings, sized in DRAWN world units (render/builtObjectLayer.ts: a ship sprite is sqrt(size × areaRatio × 8) across,
+ * zoom-independent; areaRatio of the stock hulls is 1.9 to 3.6, so 4 is used here as an upper bound). The slot spacing is
+ * the largest parked ship's drawn side × PARK_SPACING_K + PARK_GAP, so no two sprites overlap, and ring 0 starts beyond
+ * both the port's drawn disc and its planet's disc (the port is drawn over its planet).
+ */
+const PARK_SPACING_K = 1.1;
+const PARK_GAP = 12;
+const PARK_DRAW_FACTOR = 8 * 4;
+/** Drawn side of a ship / port of `size` (world units, upper bound). */
+export function drawnDiameter(size: number): number {
+    return Math.sqrt(Math.max(0, size) * PARK_DRAW_FACTOR);
+}
+/** Radius around the port that its own sprite and its planet's disc cover (parked ships stay outside it). */
+export function portClearRadius(port: BuiltObject): number {
+    let r = drawnDiameter(port.size) / 2;
+    const h = port.parentHabitat ?? null;
+    if (h !== null) r = Math.max(r, dist(h, port.xpos, port.ypos) + h.diameter / 2);
+    return r;
+}
 const TAU = 2 * Math.PI;
 
 export interface MothballStats {
@@ -407,9 +424,9 @@ export function detSinCos(a: number): { s: number; c: number } {
     return { s: sn, c: cs };
 }
 
-/** The parking slot `slot` around a port: rings of radius r0, r0 + spacing, …, each holding ⌊2π r / spacing⌋ ships. */
-export function parkingSlotPoint(slot: number, portSize: number, spacing: number): { dx: number; dy: number; angle: number; ring: number } {
-    let r = portSize / 2 + spacing * 0.75;
+/** The parking slot `slot` around a port: rings of radius r0 = clearRadius + 0.6 spacing, r0 + spacing, …, each holding ⌊2π r / spacing⌋ ships. */
+export function parkingSlotPoint(slot: number, clearRadius: number, spacing: number): { dx: number; dy: number; angle: number; ring: number } {
+    let r = clearRadius + spacing * 0.6;
     let i = slot;
     for (let ring = 0; ; ring++) {
         const cap = Math.max(1, Math.floor((TAU * r) / spacing));
@@ -434,7 +451,7 @@ function parkedAt(galaxy: Galaxy, port: BuiltObject): BuiltObject[] {
 function placeParked(bo: BuiltObject, port: BuiltObject, spacing: number): void {
     const m = bo.mothball;
     if (m === undefined || m.slot === undefined) return;
-    const p = parkingSlotPoint(m.slot, port.size, spacing);
+    const p = parkingSlotPoint(m.slot, portClearRadius(port), spacing);
     const x = port.xpos + p.dx;
     const y = port.ypos + p.dy;
     if (bo.xpos !== x) bo.xpos = x;
@@ -460,19 +477,24 @@ function parkArrivals(galaxy: Galaxy, port: BuiltObject, arrivals: BuiltObject[]
     s.spacing ??= new Map();
     const parked = parkedAt(galaxy, port).filter((b) => !arrivals.includes(b));
     let need = 0;
-    for (const b of parked.concat(arrivals)) need = Math.max(need, b.size * PARK_SPACING_K + PARK_GAP);
+    for (const b of parked.concat(arrivals)) need = Math.max(need, drawnDiameter(b.size) * PARK_SPACING_K + PARK_GAP);
     const old = s.spacing.get(port) ?? 0;
     const spacing = Math.max(old, need);
     s.spacing.set(port, spacing);
     const used = new Set<number>();
     for (const b of parked) used.add(b.mothball!.slot!);
     const sorted = arrivals.slice().sort((a, b) => a.builtObjectID - b.builtObjectID);
+    // The first run of free consecutive slots that stays inside one ring (a fleet side by side); else the first free run.
+    const ringOf = (slot: number): number => parkingSlotPoint(slot, portClearRadius(port), spacing).ring;
+    const fits = (start: number, sameRing: boolean): boolean => {
+        for (let k = 0; k < sorted.length; k++) if (used.has(start + k) || (sameRing && ringOf(start + k) !== ringOf(start))) return false;
+        return true;
+    };
     let start = 0;
-    for (;;) {
-        let ok = true;
-        for (let k = 0; k < sorted.length; k++) if (used.has(start + k)) { ok = false; break; }
-        if (ok) break;
-        start++;
+    while (!fits(start, true) && start < 4096) start++;
+    if (start >= 4096) {
+        start = 0;
+        while (!fits(start, false)) start++;
     }
     sorted.forEach((b, k) => { b.mothball!.slot = start + k; });
     if (spacing !== old) for (const b of parked) placeParked(b, port, spacing);
@@ -949,4 +971,14 @@ registerScenarioQuery({
 registerScenarioQuery({ id: 'mothballing.missions', flag: MOTHBALL_FLAG, query: 'assignMissionAllowed', run: missionAllowed });
 registerScenarioQuery({ id: 'mothballing.rivalPotency', flag: MOTHBALL_FLAG, query: 'rivalMilitaryPotency', run: (g, v, a) => rivalPotency(g, v, a.other) });
 registerScenarioFramePeriodic({ id: 'mothballing.daily', flag: MOTHBALL_FLAG, periodDays: 1, run: processDaily });
+/** The port orbits with its planet: the parked ships follow it every few game hours, not once a day. */
+function followPorts(galaxy: Galaxy): void {
+    const st = peekMothballState(galaxy);
+    if (st === null) return;
+    for (const b of st.ships) {
+        const m = b.mothball;
+        if (m !== undefined && m.slot !== undefined && (m.phase === MOTHBALL_RESERVE || m.phase === MOTHBALL_REACTIVATING) && !b.hasBeenDestroyed && !m.port.hasBeenDestroyed) keepParked(galaxy, b);
+    }
+}
+registerScenarioFramePeriodic({ id: 'mothballing.follow', flag: MOTHBALL_FLAG, periodDays: 0.05, run: followPorts });
 registerScenarioEvent({ id: 'mothballing.war', flag: MOTHBALL_FLAG, event: 'warDeclared', run: (g, p) => onWarDeclared(g, p.empire, p.target) });
