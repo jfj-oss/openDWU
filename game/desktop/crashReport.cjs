@@ -139,6 +139,8 @@ function init({ app, version, classic, env = process.env }) {
             release: 'opendwu@' + version,
             environment: classic ? 'classic' : 'full',
             sendDefaultPii: false,
+            // userInfo false also sets the SDK's infer_ip 'never': without it Sentry stores the sender's IP address.
+            dataCollection: { userInfo: false, cookies: false, httpHeaders: false, httpBodies: [], urlQueryParams: false, stackFrameVariables: false },
             // Sessions (release health) are the SDK default in the main process and the pages.
             tracesSampleRate: TRACES_SAMPLE_RATE,
             traceLifecycle: 'static', // whole transactions (what reportPerf sends), scrubbed by beforeSendTransaction

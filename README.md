@@ -941,7 +941,8 @@ by "~") to Sentry to help fix bugs, plus a start/stop note for each play
 session so we can see how many people play each version. Both carry a random
 install id (made on first launch, stored as `install-id` in the app's data
 folder; delete the file for a new one) and nothing else about you or your
-computer. In about 1 % of sessions it also sends a
+computer; Sentry keeps only the country it works out from the connection,
+never the IP address. In about 1 % of sessions it also sends a
 once-a-minute performance summary (frame rate, sim speed, galaxy size,
 graphics card), and after a multiplayer desync the frame number and checksums
 (no save). The Esc menu's **Report a Bug** button, only when you press it,
