@@ -776,6 +776,8 @@ export interface ScenarioQueries {
      * extortion, trade, offers, random events, fleet tasks and construction (the scenario drives it). Probe Swarm. Pure.
      */
     pirateFactionPassive: { value: boolean; args: { empire: Empire } };
+    /** pirates/pirateGalaxyTick.ts checkForTerminatedPirateEmpires: true keeps a pirate-kind faction whose base is gone (the Purifier outlives its dock). Pure. */
+    pirateTerminationBlocked: { value: boolean; args: { empire: Empire } };
     /**
      * construction/empireConstruction.ts state construction (Empire.6.cs DirectConstruction), after the annual cashflow
      * budget (num7) is set: the support budget new state ships may use. `projectedSupport` = the support cost of the

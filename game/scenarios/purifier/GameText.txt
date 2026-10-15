@@ -1,0 +1,29 @@
+'The Purifier: message texts (scenarioText tags). {n} items are filled by the scenario code.
+Purifier Faction Name;The Purifier
+Purifier Dock Name;Ancient Repair Station
+Purifier Choice Title;The Purifier wakes
+Purifier Choice;Your ship at {0} has woken something ancient: a planet destroyer, free of any master. It will destroy the colonies of one race family. Which?
+Purifier Option;Hunt the {0}
+Purifier Sighted Title;The Purifier sighted
+Purifier Sighted;The Purifier, an ancient planet destroyer with its escort, has been sighted at {0}. Hunt it: it strikes a world, then vanishes into deep space.
+Purifier Resighted Title;The Purifier sighted again
+Purifier Resighted;The Purifier has been seen again at {0}.
+Purifier Strike Title;World destroyed
+Purifier Strike;The Purifier has destroyed our colony {0}.
+Purifier Strike News;The Purifier has destroyed {0} in the {1} system.
+Purifier Engaged News;{0} has engaged the Purifier, the ancient planet destroyer that is destroying whole worlds.
+Purifier Exposed News;It is now known that {0} woke the Purifier.
+Purifier Retarget News;With nothing left to destroy, the Purifier has turned on the {0}.
+Purifier Dock Title;The Purifier's station found
+Purifier Dock Found;We have found the ancient repair station at {0}. The Purifier is helpless while docked there.
+Purifier Dock Row;The Purifier's repair station at {0}
+Purifier Dock Status;Ancient station: the Purifier cannot jump, fire or raise shields while it is docked for repair.
+Purifier Site Row Live;The Purifier is at {0}
+Purifier Site Row Seen;The Purifier (last seen near {0}, {1})
+Purifier Status;It has destroyed {0} worlds so far.
+Purifier Bounty Title;The Purifier destroyed
+Purifier Bounty;Your forces destroyed the Purifier. {0} credits of salvage have been paid into the treasury, and the other empires think the better of us.
+Purifier Ended News;The Purifier has been destroyed by {0}. It destroyed {1} worlds.
+Purifier Unknown Slayer;unknown hands
+Reputation Cause purifier.waker;You woke the Purifier
+Reputation Cause purifier.slayer;Your forces destroyed the Purifier

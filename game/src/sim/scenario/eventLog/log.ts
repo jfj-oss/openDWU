@@ -321,6 +321,7 @@ export const PACKAGE_DEFAULTS: readonly { prefix: string; source: string; catego
     { prefix: 'ProbeSwarm ', source: 'probe-swarm', category: 'threat' },
     { prefix: 'VoidWhale ', source: 'void-whale', category: 'threat' },
     { prefix: 'HollowFleet ', source: 'hollow-fleet', category: 'threat' },
+    { prefix: 'Purifier ', source: 'purifier', category: 'threat' },
     { prefix: 'Council ', source: 'council', category: 'council' },
 ];
 

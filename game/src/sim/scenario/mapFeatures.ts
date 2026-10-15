@@ -13,6 +13,14 @@ export interface ScenarioMapMarker {
     label: string;
     /** 0xRRGGBB. */
     color: number;
+    /**
+     * Distinct glyph (default: the beacon ring). 'purifier' = the Purifier itself (live, or `stale` at its last spotted place),
+     * 'purifierDock' = its ancient repair station. TODO(art): render/overlayLayer.ts draws all of them as the beacon ring for
+     * now (stale dimmed); the real glyphs (medium, no rings / radius overlays) are still to be drawn by the art pass.
+     */
+    glyph?: 'purifier' | 'purifierDock';
+    /** A stale position (the last spotted place): the glyph is drawn dim and hollow. */
+    stale?: boolean;
 }
 
 export interface ScenarioMapRoute {

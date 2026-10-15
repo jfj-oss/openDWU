@@ -86,6 +86,7 @@ export function checkForTerminatedPirateEmpires(galaxy: Galaxy): void {
     for (let i = 0; i < galaxy.pirateEmpires.length; i++) {
         const empire = galaxy.pirateEmpires[i];
         if (!checkPirateEmpireTerminated(galaxy, empire)) continue;
+        if (galaxy.scenario !== null && scenarioQuery(galaxy, 'pirateTerminationBlocked', false, { empire })) continue; // mod layer (the Purifier outlives its dock)
         // `if (empire == PlayerEmpire) OnGameEnd(Defeat)` — UI game-over event (M9).
         const empire2 = findNearestPirateFaction(galaxy, empire.pirateEmpireBaseHabitat!.xpos, empire.pirateEmpireBaseHabitat!.ypos, empire, true);
         const builtObjectList: BuiltObject[] = [];

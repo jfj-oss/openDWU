@@ -1,0 +1,200 @@
+{
+  "id": "purifier",
+  "name": "The Purifier",
+  "description": "A mid-game Hunt for the Bismarck. An ancient planet destroyer and its escort sleep at a hidden station in a remote gas cloud. When an explorer wakes them, it destroys the colonies of the races it was told to hunt (preprogrammed, or the waker chooses), one world at a time, then jumps away into deep space. Nobody controls it. Hunt it from its last known position, wound its hyperdrive, find its repair station: it is helpless while docked.",
+  "include": [
+    "threat-framework"
+  ],
+  "flags": [
+    {
+      "name": "threatPurifier",
+      "label": "The Purifier",
+      "description": "An ancient planet destroyer wakes mid-game and hunts whole race families, then hides. Hunt it down.",
+      "default": false
+    }
+  ],
+  "params": [
+    {
+      "name": "purifierYear",
+      "label": "Year the ancient station opens to be found (years into the game)",
+      "default": 25,
+      "min": 0,
+      "max": 300
+    },
+    {
+      "name": "purifierWakeYears",
+      "label": "Years after that when, if nobody has found it, the nearest empire stumbles on it",
+      "default": 12,
+      "min": 1,
+      "max": 100
+    },
+    {
+      "name": "purifierTechBonus",
+      "label": "Tech levels above the galaxy's average (1-2 recommended)",
+      "default": 1,
+      "min": 0,
+      "max": 7
+    },
+    {
+      "name": "purifierEscortPct",
+      "label": "Group firepower (% of the mean of the three strongest empires' military)",
+      "default": 90,
+      "min": 10,
+      "max": 1000
+    },
+    {
+      "name": "purifierMinEscorts",
+      "label": "Fewest escorts",
+      "default": 5,
+      "min": 0,
+      "max": 60
+    },
+    {
+      "name": "purifierMaxEscorts",
+      "label": "Most escorts",
+      "default": 40,
+      "min": 1,
+      "max": 200
+    },
+    {
+      "name": "purifierGuardPct",
+      "label": "Station guard firepower (% of the escort's)",
+      "default": 35,
+      "min": 0,
+      "max": 300
+    },
+    {
+      "name": "purifierWakerChoosesPct",
+      "label": "Chance the waker chooses the hunted race family (%; else preprogrammed)",
+      "default": 50,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "name": "purifierStrikeDays",
+      "label": "Days between strikes (at most one world destroyed per this many days)",
+      "default": 120,
+      "min": 1,
+      "max": 3600
+    },
+    {
+      "name": "purifierOutgunnedRatio",
+      "label": "It breaks off when enemy firepower near it is this many times its group's",
+      "default": 1.5,
+      "min": 0.1,
+      "max": 20
+    },
+    {
+      "name": "purifierHunterRatio",
+      "label": "AI hunters send a force this many times its group's strength",
+      "default": 0.8,
+      "min": 0.1,
+      "max": 20
+    },
+    {
+      "name": "purifierHideHopDays",
+      "label": "Days between moves of its hiding place in deep space",
+      "default": 90,
+      "min": 10,
+      "max": 1000
+    },
+    {
+      "name": "purifierRetargetYears",
+      "label": "Years without a hunted colony before it retargets the nearest populous family",
+      "default": 1.5,
+      "min": 0.1,
+      "max": 50
+    },
+    {
+      "name": "purifierRudderPct",
+      "label": "Chance per newly damaged component that a hit damages its hyperdrive (%)",
+      "default": 8,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "name": "purifierRudderSpool",
+      "label": "Each hyperdrive hit lengthens the jump spool by this fraction",
+      "default": 0.5,
+      "min": 0,
+      "max": 10
+    },
+    {
+      "name": "purifierPortDamagePct",
+      "label": "It runs for port when this % of its components are damaged",
+      "default": 35,
+      "min": 1,
+      "max": 100
+    },
+    {
+      "name": "purifierRepairDays",
+      "label": "Days docked for repair (helpless: shields down, weapons off, cannot jump)",
+      "default": 90,
+      "min": 1,
+      "max": 1000
+    },
+    {
+      "name": "purifierExposeYears",
+      "label": "Years after the wake when the waker is exposed anyway",
+      "default": 3,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "name": "purifierWakerRep",
+      "label": "Waker's one-time reputation loss when exposed",
+      "default": 5,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "name": "purifierVictimRep",
+      "label": "Victims' regard for the exposed waker drops by",
+      "default": 8,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "name": "purifierKillerRep",
+      "label": "Killer's reputation gain (also others' regard for it)",
+      "default": 5,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "name": "purifierBounty",
+      "label": "Salvage money for the killing blow",
+      "default": 400000,
+      "min": 0,
+      "max": 100000000
+    },
+    {
+      "name": "purifierMemoryDays",
+      "label": "Days an empire acts on a last known position",
+      "default": 540,
+      "min": 10,
+      "max": 5000
+    },
+    {
+      "name": "purifierForce",
+      "label": "Guarantee it, and that my empire wakes it (right-click the add-on in the list)",
+      "default": 0,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "name": "purifierExistChancePct",
+      "label": "Chance it exists in this game (%; -1 = use the shared value)",
+      "default": 50,
+      "min": -1,
+      "max": 100
+    },
+    {
+      "name": "purifierMinYear",
+      "label": "Earliest year it may appear (-1 = use the shared value)",
+      "default": 0,
+      "min": -1,
+      "max": 200
+    }
+  ]
+}

@@ -177,3 +177,29 @@ default research); the build-up works (owner firepower ×1.9–3 by the ultimatu
 (`genShipsWarYears`): its navy was outnumbered at the world despite 1.6× more firepower overall. Levers, if more
 tuning is wanted: `genShipsWarYears`, `genShipsFleetFactorPct`, `genShipsAiGarrisonPct`, `genShipsAiFightRatioPct`.
 Two rounds were run, as asked; the final round's defence changes are mechanics fixes.
+
+## 4. The Purifier (mid-game hunt)
+
+`src/sim/scenario/threats/purifier.ts`, scenario `scenarios/purifier`, flag `threatPurifier` (off by default). A Hunt for the
+Bismarck from stock parts: the stock planet destroyer (generatePlanetDestroyerDesign, the Attack mission on a colony,
+firePlanetDestroyerAtHabitat, destroyHabitat) with a close escort (the stock Escort mission on the destroyer), a pirate-kind
+faction driven by the module (pirateFactionPassive), infinite fuel and a fuel refill for the escorts near it.
+
+- **Wake:** an ancient repair station (the faction's pirate base) in a remote stock gas cloud, built when an empire's ship comes
+  there (or purifierWakeYears later the nearest empire's / the player's with "guarantee this threat"). 50/50: preprogrammed
+  (a random builders' family, hunts all others) or the waker chooses a family (player pop-up; AI: its strongest rival's family,
+  an empire at war first). With no hunted colony for purifierRetargetYears it retargets the nearest populous family.
+- **Raider:** strike one colony (nearest hunted one it out-guns), jump to an empty system far from every colony and hide;
+  one strike per purifierStrikeDays; retreats when enemy firepower near it is purifierOutgunnedRatio x its own.
+- **Lost contact:** per-empire last known position from the stock fog (isObjectVisibleToThisEmpire) and long-range scanners
+  covering either end of a hyperjump; shadowing shares sightings among hunting empires; AI hunters Patrol / Attack with a
+  force purifierHunterRatio x its strength. One glyph on the galaxy map (live, or the last spotted place, and the station once
+  known); no radius overlays.
+- **Wounds:** each newly damaged component may hit the hyperdrive (jump spool x1.5 each hit, hyperjumpSpoolFactor); no field
+  repair (repairRateFactor). Past purifierPortDamagePct it sails to the station; docked it is helpless (shields 0, weapons without
+  power, spool x1000) for purifierRepairDays, then repaired. The station is a hidden site (knowledge framework), has guards,
+  AI hunters that know it attack it while the Purifier is docked, and destroying it removes the haven.
+- **Reputation:** the stock -20 per planet lands on the faction itself. The waker loses purifierWakerRep once, when exposed
+  (first sighted by another empire, or purifierExposeYears after the wake); victims' regard for it then drops purifierVictimRep.
+- **End:** destroyer killed -> news, killing blow: purifierBounty money and reputation (no research). Stock touch point:
+  `pirateTerminationBlocked` query in checkForTerminatedPirateEmpires (the faction outlives its station).

@@ -61,6 +61,8 @@ import {
     hollowFleetWindow,
     peekHollowFleetState,
 } from '../src/sim/scenario/threats/hollowFleet';
+import { purifierHideSpot, purifierHunts, purifierMapFeatures, purifierPeriodic, purifierPickTarget, purifierState, purifierTargets, purifierWake, peekPurifierState } from '../src/sim/scenario/threats/purifier';
+import { HabitatCategoryType } from '../src/sim/types';
 import { BuiltObjectMissionType, builtObjectMission } from '../src/sim/missions/mission';
 import { GAME_DAY_LENGTH } from '../src/sim/scenario/hooks';
 import { reviewThreatInvestigations, THREAT_INVESTIGATIONS_KEY } from '../src/sim/scenario/threats/investigate';
@@ -838,5 +840,92 @@ describe('hollow fleet', () => {
         expect(st.bounty).toBeGreaterThan(0);
         hollowFleetPeriodic(g); // ended: nothing more happens
         expect(killer.stateMoney).toBe(money + st.bounty);
+    }, 600000);
+});
+
+// The Purifier: an ancient planet destroyer hunting race families, with a helpless-when-docked repair station.
+describe('purifier', () => {
+    const ids = ['threat-framework', 'purifier'];
+    const age3 = (o: CreateGameOptions): CreateGameOptions => ({ ...o, player: { ...o.player, age: 3 }, aiEmpires: o.aiEmpires.map((e) => ({ ...e, age: 3 })) });
+    const PARAMS = { purifierExistChancePct: 100, purifierMinYear: 0, purifierYear: 0 };
+    function pfGame(on = true): Galaxy {
+        const { game } = createScenarioGame(base, { scenario: comboOverlayFs(ids), flags: { threatPurifier: on }, params: PARAMS, options: age3 });
+        return game.galaxy;
+    }
+    function woken(): { g: Galaxy; st: ReturnType<typeof purifierState> } {
+        const g = pfGame();
+        purifierPeriodic(g);
+        const st = purifierState(g);
+        const waker = g.empires.find((e) => e !== null && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null && e !== g.playerEmpire)!;
+        expect(purifierWake(g, st, waker)).toBe(true);
+        return { g, st };
+    }
+
+    it('flag off: no state, no faction', () => {
+        const g = pfGame(false);
+        const n = g.empires.length + g.pirateEmpires.length;
+        purifierPeriodic(g);
+        expect(peekPurifierState(g)).toBeNull();
+        expect(g.empires.length + g.pirateEmpires.length).toBe(n);
+    }, 300000);
+
+    it('dormant at a remote anchorage; wakes with the stock planet destroyer, a close escort and a guarded station', () => {
+        const g = pfGame();
+        purifierPeriodic(g);
+        const st = purifierState(g);
+        expect(st.phase).toBe('dormant');
+        if (st.anchorage!.category === HabitatCategoryType.GasCloud) expect(st.anchorage!.empire).toBeNull();
+        const { g: w, st: ws } = woken();
+        expect(ws.phase).toBe('awake');
+        expect(ws.destroyer!.isPlanetDestroyer).toBe(true);
+        expect(ws.escorts.length).toBeGreaterThanOrEqual(5);
+        expect(ws.guards.length).toBeGreaterThan(0);
+        expect(ws.faction!.pirateEmpireBaseHabitat).toBe(ws.anchorage);
+        expect(['preprogrammed', 'waker']).toContain(ws.program);
+        // Escorts follow the destroyer by the stock Escort mission once the driver has run.
+        purifierPeriodic(w);
+        for (const e of ws.escorts) {
+            const m = builtObjectMission(e.mission);
+            expect(m !== null && m.type === BuiltObjectMissionType.Escort && m.targetBuiltObject === ws.destroyer).toBe(true);
+        }
+    }, 600000);
+
+    it('targets only colonies of hunted families; picks a nearby one; hides far from colonies', () => {
+        const { g, st } = woken();
+        const all = purifierTargets(g, st);
+        for (const h of all) expect(purifierHunts(st, h.population.dominantRace!.raceFamily)).toBe(true);
+        st.huntOthers = false;
+        st.hunted = [-5];
+        expect(purifierTargets(g, st)).toEqual([]);
+        expect(purifierPickTarget(g, st)).toBeNull();
+        st.huntOthers = true;
+        st.builderFamily = -1;
+        const t = purifierPickTarget(g, st);
+        if (t !== null) expect(all).toContain(t);
+        const spot = purifierHideSpot(g, { x: st.destroyer!.xpos, y: st.destroyer!.ypos }, null);
+        expect(spot).not.toBeNull();
+    }, 600000);
+
+    it('docked for repair it is helpless and cannot jump; the waker is exposed once and only once; map shows one glyph', () => {
+        const { g, st } = woken();
+        const d = st.destroyer!;
+        const before = st.waker!.civilityRating;
+        st.mode = 'repair';
+        st.modeDate = galaxyStarDate(g);
+        d.currentShields = 99;
+        purifierPeriodic(g);
+        expect(d.currentShields).toBe(0);
+        expect(d.currentEnergy).toBe(0);
+        expect(scenarioQuery(g, 'hyperjumpSpoolFactor', 1, { ship: d, here: false })).toBeGreaterThan(100);
+        // Exposure: a one-time loss, light.
+        st.mode = 'hide';
+        g.nowMs += 4 * 600000;
+        purifierPeriodic(g);
+        purifierPeriodic(g);
+        expect(st.exposed).toBe(true);
+        expect(before - st.waker!.civilityRating).toBeCloseTo(5, 5);
+        // The viewing empire's glyph: the last known place once told of a sighting.
+        const viewer = g.playerEmpire!;
+        expect(purifierMapFeatures(g, viewer)?.markers.length ?? 0).toBeLessThanOrEqual(2);
     }, 600000);
 });

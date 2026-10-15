@@ -1037,7 +1037,7 @@ export class OverlayLayer {
         const k = this.scenarioSig;
         k.begin();
         k.push(z);
-        for (const m of this.scenarioMarkerList) k.push4(m.x, m.y, m.color, 0);
+        for (const m of this.scenarioMarkerList) k.push4(m.x, m.y, m.color, m.glyph === undefined ? 0 : (m.glyph === 'purifierDock' ? 3 : 1) + (m.stale === true ? 1 : 0));
         if (!k.changed()) {
             g.visible = true;
             return;

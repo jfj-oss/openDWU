@@ -36,6 +36,7 @@ import './threats/generationShips';
 import './threats/probeSwarm';
 import './threats/voidWhale';
 import './threats/hollowFleet';
+import './threats/purifier';
 import './threats/silence';
 import './lively/livelyGalaxy';
 import './rimDistressCalls'; // 19i item 10 ticker half (rimAtmosphere flag)
