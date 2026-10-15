@@ -286,6 +286,8 @@ describe('desktop/assetManifest.cjs (built at runtime by the shell)', () => {
             characters: ['Human.txt'],
             Help: ['topic.mht'],
             'Customization/Theme A/help': ['t.mht'],
+            // The install root's *.txt (058a3740: optional files such as BaconSettings.txt are only fetched when listed).
+            '.': ['races.txt'],
         });
     });
 

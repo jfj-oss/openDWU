@@ -234,7 +234,9 @@ function reportDesync(info) {
             scope.setTag('players', str(info.players, 4));
             scope.setExtras({ frame: num(info.frame), lastGoodFrame: num(info.lastGood), hostDigest: str(info.host), clientDigest: str(info.client), sections, deep: !!info.deep, role: str(info.role, 10) });
             scope.setFingerprint(['desync', ...sections.slice(0, 5)]);
-            Sentry.captureMessage('multiplayer desync', 'error');
+            // captureEvent, not captureMessage: a message event gets a stack trace attached and Sentry then titles the
+            // issue after its top frame ("AsyncLocalStorage.run"); this keeps the title readable.
+            Sentry.captureEvent({ message: `Multiplayer desync${sections.length > 0 ? `: ${sections.slice(0, 3).join(', ')}` : ''}`, level: 'error' });
         });
     } catch {
         /* ignore */
