@@ -138,7 +138,14 @@ const P = {
     minCapitalDistance: (g: Galaxy) => (p(g, 'probeSwarmMinCapitalDistancePct', 15) * g.sizeX) / 100,
     salvage: (g: Galaxy) => p(g, 'probeSwarmSalvageResearch', 60000),
     avoidColonies: (g: Galaxy) => p(g, 'probeSwarmAvoidColonies', 0) > 0,
-    stationDays: (g: Galaxy) => p(g, 'probeSwarmStationDays', 75),
+    // The interval is for a 300-star galaxy (probeSwarmStationRefStars); bigger galaxies get proportionally shorter
+    // intervals (twice the stars, half the days; at least probeSwarmStationMinDays), smaller ones keep the base interval.
+    stationDays: (g: Galaxy) => {
+        const base = p(g, 'probeSwarmStationDays', 75);
+        const ref = p(g, 'probeSwarmStationRefStars', 300);
+        const scale = g.starCount > ref && ref > 0 ? ref / g.starCount : 1;
+        return Math.max(p(g, 'probeSwarmStationMinDays', 10), base * scale);
+    },
 };
 
 const WARSHIP_SUBROLES = [BuiltObjectSubRole.Frigate, BuiltObjectSubRole.Destroyer, BuiltObjectSubRole.Escort, BuiltObjectSubRole.Frigate, BuiltObjectSubRole.Cruiser];
