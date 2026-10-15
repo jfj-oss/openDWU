@@ -2217,6 +2217,7 @@ export class MainView {
         // Combat effects (weapon fire, explosions, shield strikes, hyperjump flashes) above the ships.
         const effects = updateCombatEffects(this.galaxy, this.world, this.store, this.builtObjectLayer, z, cam);
         if (effects.onShake === null) effects.onShake = (amp) => this.shake.trigger(amp);
+        if (this.creatureLayer.onHyperFlare === null) this.creatureLayer.onHyperFlare = (k, x, y, size, h) => effects.playHyperFlare(k, x, y, size, h);
         // [combatfx] end
 
         // Region/nebula location name labels (task 08f1): visible while the

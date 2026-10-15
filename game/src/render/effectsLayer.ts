@@ -1416,6 +1416,15 @@ export class EffectsLayer {
         this.animations.add(frames, nowMs, 30, at.xpos + p.dx, at.ypos + p.dy, p.size, p.size, bo.targetHeading + ROT90);
     }
 
+    /** A stock hyperjump flare for something that is not a built object (the Void Whale's Leviathan): the hyper enter
+     * (jumping out) or exit (arriving) frames of the first hyperdrive set, 30 fps, centred at (x, y), `size` world units,
+     * the frames turned to `heading` as a ship's. */
+    playHyperFlare(kind: 'enter' | 'exit', x: number, y: number, size: number, heading: number): void {
+        const frames = (kind === 'enter' ? this.hyperEnter : this.hyperExit)[0];
+        if (frames === undefined || size <= 0) return;
+        this.animations.add(frames, this.galaxy.nowMs, 30, x, y, size, size, heading + ROT90);
+    }
+
     /** Drop running one-shot animations and cached bolts (e.g. on game teardown). */
     clear(): void {
         this.animations.clear();

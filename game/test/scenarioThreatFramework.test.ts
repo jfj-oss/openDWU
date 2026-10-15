@@ -47,7 +47,9 @@ import { archiveCoresPeriodic, grantArchiveCore, peekArchiveCoresState } from '.
 import { peekProbeSwarmState, probeSwarmIncome, probeSwarmPeriodic, probeSwarmState } from '../src/sim/scenario/threats/probeSwarm';
 import { peekVoidWhaleState, referenceHyperSpeed, voidWhalePeriodic, voidWhaleState } from '../src/sim/scenario/threats/voidWhale';
 import { paintWounds, woundCount, woundKey } from '../src/render/whaleWounds';
-import { paintLeviathanBody, LEV_W } from '../src/render/leviathanArt';
+import { LEV_H, LEV_W, leviathanSilhouette, levHalf, levU } from '../src/render/leviathanArt';
+import { LEV_BODY_URL, LEV_GLOW_SPOTS, LEV_PARTS } from '../src/render/leviathanParts';
+import { decodePng } from './helpers/pngDecode';
 import { peekWreckageState } from '../src/sim/scenario/wreckage/common';
 import {
     hollowFleetKnownSites,
@@ -629,28 +631,53 @@ describe('void whale', () => {
         expect(w.fields.some((f) => f.wrecks.some((r) => r.name.includes('carcass')))).toBe(true);
     }, 900000);
 
-    it('wound art: cuts appear with damage, stay at their peak and turn pale scars as it heals; the body bakes deterministically', () => {
+    it('wound art: cuts appear with damage, stay at their peak and turn pale scars as it heals; the cut parts match their metadata', () => {
         expect(woundCount(0)).toBe(0);
         expect(woundCount(0.5)).toBeGreaterThan(woundCount(0.2));
         expect(woundKey(0.5, 0.2)).not.toBe(woundKey(0.5, 0.5));
-        const parts = paintLeviathanBody();
-        expect(parts.body.w).toBe(LEV_W);
-        // Deterministic bake.
-        expect(paintLeviathanBody().body.data.every((v, i) => v === parts.body.data[i])).toBe(true);
+        // The bundled parts (cut from the Leviathan picture by scripts/leviathan-parts.py) have the listed sizes; the
+        // body is about a large space port's pixel count, dim (it sits in dark space) with its glows on the hide.
+        const pub = (url: string): string => `${__dirname}/../public${url}`;
+        const png = decodePng(pub(LEV_BODY_URL));
+        expect([png.width, png.height]).toEqual([LEV_W, LEV_H]);
+        for (const p of [LEV_PARTS.finL, LEV_PARTS.finR, LEV_PARTS.fluke]) {
+            const d = decodePng(pub(p.url));
+            expect([d.width, d.height]).toEqual([p.w, p.h]);
+        }
+        expect(LEV_W * LEV_H).toBeLessThan(300000);
+        const body = { w: png.width, h: png.height, data: png.data };
+        let lum = 0;
+        let n = 0;
+        for (let i = 0; i < body.data.length; i += 4) if (body.data[i + 3] > 200) {
+            lum += (body.data[i] + body.data[i + 1] + body.data[i + 2]) / 3;
+            n++;
+        }
+        expect(lum / n).toBeLessThan(90);
+        expect(LEV_GLOW_SPOTS.filter((g) => g.kind === 'spine').length).toBeGreaterThanOrEqual(6);
+        expect(LEV_GLOW_SPOTS.filter((g) => g.kind === 'head').length).toBeGreaterThanOrEqual(20);
+        for (const g of LEV_GLOW_SPOTS) {
+            expect(Math.abs(g.y - LEV_H / 2)).toBeLessThan(levHalf(levU(g.x)));
+            expect(body.data[(Math.round(g.y) * LEV_W + Math.round(g.x)) * 4 + 3]).toBeGreaterThan(200);
+        }
+        // The fallback silhouette follows the same outline.
+        const sil = leviathanSilhouette();
+        expect(sil.data[(LEV_H / 2 * LEV_W + LEV_W / 2) * 4 + 3]).toBe(255);
         const redness = (img: { data: Uint8ClampedArray }): number => {
             let r = 0;
-            let n = 0;
+            let k = 0;
             for (let i = 0; i < img.data.length; i += 4) if (img.data[i + 3] > 200) {
                 r += img.data[i] - img.data[i + 2];
-                n++;
+                k++;
             }
-            return n === 0 ? 0 : r / n;
+            return k === 0 ? 0 : r / k;
         };
-        const fresh = paintWounds(parts.body, 0.6, 0.6);
-        const healed = paintWounds(parts.body, 0.6, 0);
-        const none = paintWounds(parts.body, 0, 0);
+        const fresh = paintWounds(body, 0.6, 0.6);
+        const healed = paintWounds(body, 0.6, 0);
+        const none = paintWounds(body, 0, 0);
         expect(none.data.every((v) => v === 0)).toBe(true);
         expect(fresh.data.some((v) => v > 0)).toBe(true);
+        // Wounds only on the hide.
+        for (let i = 3; i < fresh.data.length; i += 4) if (fresh.data[i] > 0) expect(body.data[i]).toBeGreaterThan(70);
         // Same cuts, different colour: open gashes are red, healed scars pale and grey.
         expect(redness(fresh)).toBeGreaterThan(redness(healed));
     }, 300000);

@@ -1,85 +1,89 @@
-// The Leviathan's rig (Void Whale threat): the baked top-down parts of leviathanArt.ts on a rope body (head along +x,
-// turned with the heading like every creature). Per frame only transforms and rope points move — a slow heavy body
-// wave sweeping the broad flukes side to side, both pectoral fins rowing slowly, and a hyper-lunge flash with light
-// streaks and expanding ripples (the mouth never opens). Render only; reads nothing from the sim.
+// The Leviathan's rig (Void Whale threat): the cut parts of the Leviathan picture (leviathanArt.ts / leviathanParts.ts)
+// on a rope body (head along +x, turned with the heading like every creature). Everything is baked once; per frame
+// only rope points, transforms and alphas move — a slow swim: a travelling wave flexes the body from head to tail, the
+// flukes sweep side to side (foreshortening a little through the stroke), the long pectoral fins row slowly, and the
+// glowing head dots and spine beads pulse softly in a ripple running from the snout to the tail (the mouth never opens).
+// Its hyperjumps play the original game's hyper enter / exit flares (effectsLayer.ts playHyperFlare, cued by the
+// creature layer). Render only; reads nothing from the sim.
 
 import { Container, MeshRope, Point, Sprite, type Texture } from 'pixi.js';
-import { halveRgba, textureFromRgba, upscaleRgba, type BackPoint, type RgbaImage } from './creatureRig';
+import { textureFromRgba, type BackPoint, type RgbaImage } from './creatureRig';
 import {
-    LEV_FIN_ROOT,
     LEV_H,
+    LEV_PARTS,
     LEV_W,
     LEV_X0,
     LEV_X1,
     glowRgba,
-    paintLeviathanBody,
-    paintLeviathanFin,
-    paintLeviathanFluke,
-    rippleRgba,
-    streakRgba,
+    leviathanPartSilhouette,
+    leviathanSilhouette,
 } from './leviathanArt';
+import { LEV_GLOW_SPOTS } from './leviathanParts';
+
+/** The decoded part pictures (public/art/leviathan/), or null to show plain dark silhouettes. */
+export interface LeviathanImages {
+    body: RgbaImage;
+    finL: RgbaImage;
+    finR: RgbaImage;
+    fluke: RgbaImage;
+}
 
 export interface LeviathanTextures {
     body: Texture;
     bodyImg: RgbaImage;
-    lumin: Texture;
-    fin: Texture;
-    finTorn: Texture;
+    finL: Texture;
+    finR: Texture;
     fluke: Texture;
-    glow: Texture;
-    ripple: Texture;
-    streak: Texture;
+    /** A soft blue-white dot: the pulsing glow of each head dot and spine bead. */
+    dot: Texture;
 }
 
 /**
- * The hide, fins, fluke and wounds keep only half the painted resolution's detail (halved, then scaled back to the
- * painted size so every part keeps its drawn size): about the pixel count of a large space port's art (≈ 510 × 510), so
- * the beast is no sharper than the original ships and stations beside it.
+ * The texture of a body-sized raster (the hide, the wound overlay): the parts are already cut at about the pixel count
+ * of a large space port's art, so the beast is no sharper than the original ships and stations beside it.
  */
 export function leviathanPartTexture(img: RgbaImage): Texture {
-    return textureFromRgba(upscaleRgba(halveRgba(img), img.w, img.h));
+    return textureFromRgba(img);
 }
 
-/** Bakes every part once (~0.5 s of pure raster work). */
-export function leviathanTextures(): LeviathanTextures {
-    const b = paintLeviathanBody();
+/** Builds every texture once. */
+export function leviathanTextures(imgs: LeviathanImages | null): LeviathanTextures {
+    const body = imgs?.body ?? leviathanSilhouette();
     return {
-        body: leviathanPartTexture(b.body),
-        bodyImg: b.body,
-        lumin: leviathanPartTexture(b.lumin),
-        fin: leviathanPartTexture(paintLeviathanFin(6, false, 0.9)),
-        finTorn: leviathanPartTexture(paintLeviathanFin(5, true, 0.9)),
-        fluke: leviathanPartTexture(paintLeviathanFluke()),
-        glow: textureFromRgba(glowRgba(128, [255, 255, 255], [150, 220, 255])),
-        ripple: textureFromRgba(rippleRgba(512)),
-        streak: textureFromRgba(streakRgba(256, 16)),
+        body: leviathanPartTexture(body),
+        bodyImg: body,
+        finL: textureFromRgba(imgs?.finL ?? leviathanPartSilhouette(LEV_PARTS.finL)),
+        finR: textureFromRgba(imgs?.finR ?? leviathanPartSilhouette(LEV_PARTS.finR)),
+        fluke: textureFromRgba(imgs?.fluke ?? leviathanPartSilhouette(LEV_PARTS.fluke)),
+        dot: textureFromRgba(glowRgba(32, [214, 238, 255], [70, 140, 230])),
     };
 }
 
 /** Seconds of one tail beat. */
-export const LEV_BEAT_S = 8.5;
+export const LEV_BEAT_S = 8;
+/** Seconds for the glow ripple to run from snout to tail. */
+export const LEV_GLOW_S = 3.2;
 const SEGMENTS = 30;
 const CY = LEV_H / 2;
-const STREAKS = 7;
+
+/** Glow pulse 0..1 of a dot at texture x `x` at time t (s): a soft travelling ripple from the snout to the tail. Pure. */
+export function leviathanGlowPulse(x: number, t: number, phase = 0): number {
+    const along = (LEV_X1 - x) / (LEV_X1 - LEV_X0);
+    const w = 0.5 + 0.5 * Math.sin((2 * Math.PI * t) / LEV_GLOW_S + phase - along * 2 * Math.PI * 1.4);
+    return w * w;
+}
 
 export class LeviathanRig {
     readonly root = new Container();
     private readonly inner = new Container();
     private readonly points: Point[] = [];
     private readonly body: MeshRope;
-    private readonly lumin: MeshRope;
     private damageRope: MeshRope | null = null;
-    /** Left (torn) and right pectoral fins. */
     private readonly finL: Sprite;
     private readonly finR: Sprite;
     private readonly fluke: Sprite;
-    private readonly glow: Sprite;
-    private readonly ripples: Sprite[] = [];
-    private readonly streaks: Sprite[] = [];
-    /** 0..1 white-hot flash (a hyper-lunge); set by the creature layer. */
-    flash = 0;
-    /** Hyper-lunge progress 0..1 (ripple and streaks), or −1 when not jumping. */
-    jumpT = -1;
+    private readonly dots: Sprite[] = [];
+    private readonly glowLayer = new Container();
     /** Body length in local units (the drawn width the layer scales to). */
     readonly length = LEV_W;
     readonly width = LEV_H;
@@ -94,29 +98,19 @@ export class LeviathanRig {
             if (add) s.blendMode = 'add';
             return s;
         };
-        this.finL = sprite(tex.finTorn, 0, 0.5);
-        this.finR = sprite(tex.fin, 0, 0.5);
-        this.finL.scale.y = -1; // mirrored: its knobbly leading edge faces forward on the left flank too
-        this.fluke = sprite(tex.fluke, 0, 0.5);
+        this.finL = sprite(tex.finL, LEV_PARTS.finL.ax, LEV_PARTS.finL.ay);
+        this.finR = sprite(tex.finR, LEV_PARTS.finR.ax, LEV_PARTS.finR.ay);
+        this.fluke = sprite(tex.fluke, LEV_PARTS.fluke.ax, LEV_PARTS.fluke.ay);
         this.body = new MeshRope({ texture: tex.body, points: this.points });
-        this.lumin = new MeshRope({ texture: tex.lumin, points: this.points });
-        this.lumin.blendMode = 'add';
-        this.glow = sprite(tex.glow, 0.5, 0.5, true);
-        this.glow.alpha = 0;
-        // Under the body: fins and fluke.
-        this.inner.addChild(this.finL, this.finR, this.fluke, this.body, this.lumin, this.glow);
-        for (let i = 0; i < 2; i++) {
-            const r = sprite(tex.ripple, 0.5, 0.5, true);
-            r.alpha = 0;
-            this.ripples.push(r);
-            this.inner.addChild(r);
+        for (const g of LEV_GLOW_SPOTS) {
+            const s = sprite(tex.dot, 0.5, 0.5, true);
+            // The halo reaches ~3x the dot.
+            s.scale.set((g.rx * 6) / tex.dot.width, (g.ry * 6) / tex.dot.height);
+            this.dots.push(s);
+            this.glowLayer.addChild(s);
         }
-        for (let i = 0; i < STREAKS; i++) {
-            const s = sprite(tex.streak, 1, 0.5, true);
-            s.alpha = 0;
-            this.streaks.push(s);
-            this.inner.addChild(s);
-        }
+        // Under the body: fins and flukes; over it: the wounds (setDamage), then the glows.
+        this.inner.addChild(this.finL, this.finR, this.fluke, this.body, this.glowLayer);
     }
 
     /** The body raster (the wound overlay's mask). */
@@ -163,62 +157,44 @@ export class LeviathanRig {
     pose(t: number, speed01 = 1): void {
         const w = (2 * Math.PI) / LEV_BEAT_S;
         const ph = this.phase;
-        const amp = 0.45 + 0.55 * speed01;
-        const flash = Math.max(0, Math.min(1, this.flash));
-        // Hyper-lunge: the whole body stretches forward.
-        const stretch = 1 + 0.28 * flash;
+        const amp = 0.5 + 0.5 * speed01;
         const n = this.points.length;
+        // The swim: a wave travelling from the head to the tail, growing toward the tail, with a gentle head sway.
         for (let i = 0; i < n; i++) {
             const s = i / (n - 1);
-            const env = Math.pow(1 - s, 2.3) * 0.12 * LEV_H * amp + 0.006 * LEV_H;
-            const y = env * Math.sin(2 * Math.PI * 0.55 * s + w * t + ph) + 0.008 * LEV_H * Math.sin(w * t * 0.5 + ph);
-            this.points[i].set((s - 0.5) * LEV_W * stretch, y);
+            const env = Math.pow(1 - s, 2.2) * 0.05 * LEV_W * amp + 0.004 * LEV_W;
+            const y = env * Math.sin(2 * Math.PI * 0.7 * s + w * t + ph) + 0.004 * LEV_W * Math.sin(w * t * 0.5 + ph);
+            this.points[i].set((s - 0.5) * LEV_W, y);
         }
-        // Flukes: on the tail tip, following the stalk with a lag, sweeping side to side.
-        const tail = this.carried(LEV_X0 + 4, CY);
-        const p0 = this.backPoint(LEV_X0 / LEV_W);
-        const p1 = this.backPoint((LEV_X0 + 60) / LEV_W);
-        const back = Math.atan2(p0.y - p1.y, p0.x - p1.x);
-        const stroke = Math.sin(w * t + ph - 1.0);
+        // Flukes: on the tail tip, following the stalk with a lag, sweeping side to side; the blade foreshortens
+        // through the stroke as it pitches.
+        const fp = LEV_PARTS.fluke;
+        const tail = this.carried(fp.rootX, fp.rootY);
+        const stroke = Math.sin(w * t + ph - 0.9);
         this.fluke.position.set(tail.x, tail.y);
-        this.fluke.rotation = back + 0.22 * amp * stroke;
-        // Pectoral fins: swept back and out from each flank, rowing slowly out of step.
-        const fl = this.carried(LEV_FIN_ROOT[0], LEV_FIN_ROOT[1]);
-        const fr = this.carried(LEV_FIN_ROOT[0], LEV_H - LEV_FIN_ROOT[1]);
-        const row = w * 0.8 * t + ph;
+        this.fluke.rotation = tail.ang + 0.26 * amp * stroke;
+        this.fluke.scale.set(1 - 0.12 * amp * stroke * stroke, 1 - 0.03 * amp * Math.abs(stroke));
+        // Pectoral fins: rowing slowly, swept forward and back together (mirrored), a little out of step.
+        const row = w * 0.75 * t + ph;
+        const fl = this.carried(LEV_PARTS.finL.rootX, LEV_PARTS.finL.rootY);
+        const fr = this.carried(LEV_PARTS.finR.rootX, LEV_PARTS.finR.rootY);
+        const sweepL = 0.16 * Math.sin(row) * amp;
+        const sweepR = 0.16 * Math.sin(row + 0.35) * amp;
         this.finL.position.set(fl.x, fl.y);
-        this.finL.rotation = fl.ang + Math.PI + 0.8 + 0.12 * Math.sin(row);
+        this.finL.rotation = fl.ang + sweepL;
         this.finR.position.set(fr.x, fr.y);
-        this.finR.rotation = fr.ang + Math.PI - 0.8 - 0.12 * Math.sin(row + 1.4);
-        // Bioluminescence breathes slowly; it flares in the flash.
-        this.lumin.alpha = Math.min(1, 0.4 + 0.15 * Math.sin(t * 0.9 + ph) + flash);
-        // The hyper-lunge: a white-hot body glow, light streaks dragged back along it, two ripples rolling out.
-        const mid = this.carried((LEV_X0 + LEV_X1) / 2, CY - 20);
-        this.glow.position.set(mid.x, mid.y);
-        this.glow.rotation = mid.ang;
-        this.glow.scale.set((LEV_W * 1.5 * stretch) / this.glow.texture.width, (LEV_H * 1.2) / this.glow.texture.height);
-        this.glow.alpha = flash;
-        const jt = this.jumpT;
-        for (let i = 0; i < STREAKS; i++) {
-            const s = this.streaks[i];
-            const ty = CY + (i / (STREAKS - 1) - 0.5) * LEV_H * 0.6;
-            const at = this.carried(LEV_X1 * (0.55 + 0.4 * ((i * 37) % 7) / 7), ty);
-            s.position.set(at.x, at.y);
-            s.rotation = at.ang;
-            s.scale.set((LEV_W * (0.8 + 0.9 * flash) * (0.6 + 0.4 * (((i * 53) % 5) / 5))) / s.texture.width, 1.6);
-            s.alpha = flash * 0.9;
-        }
-        for (let i = 0; i < this.ripples.length; i++) {
-            const r = this.ripples[i];
-            const k = jt < 0 ? -1 : jt - i * 0.18;
-            if (k <= 0 || k >= 1) {
-                r.alpha = 0;
-                continue;
-            }
-            const ease = 1 - Math.pow(1 - k, 2.5);
-            r.position.set(mid.x, mid.y);
-            r.scale.set((LEV_W * (0.5 + 2.6 * ease)) / r.texture.width);
-            r.alpha = (1 - k) * (i === 0 ? 1 : 0.6);
+        this.finR.rotation = fr.ang - sweepR;
+        // Swept forward the fin lies flatter (longer seen from above); swept back it tips down a little.
+        this.finL.scale.set(1 + 0.04 * Math.sin(row));
+        this.finR.scale.set(1 + 0.04 * Math.sin(row + 0.35));
+        // The glowing dots and beads: a soft ripple from the snout to the tail.
+        for (let i = 0; i < this.dots.length; i++) {
+            const g = LEV_GLOW_SPOTS[i];
+            const d = this.dots[i];
+            const at = this.carried(g.x, g.y);
+            d.position.set(at.x, at.y);
+            d.rotation = at.ang;
+            d.alpha = Math.min(1, (g.kind === 'spine' ? 0.12 : 0.1) + 0.28 * leviathanGlowPulse(g.x, t, ph));
         }
     }
 }

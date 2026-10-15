@@ -1,5 +1,5 @@
-// Galaxy-zoom icon of the Void Whale threat (render only): at galaxy / sector zoom a small top-down Leviathan silhouette (its own outline) with a
-// pale eye marks the LAST place it fed, turned the way it jumped away, with a dashed arrow ahead of it; it fades over
+// Galaxy-zoom icon of the Void Whale threat (render only): at galaxy / sector zoom a small top-down Leviathan silhouette (its own outline) with
+// its glowing beads marks the LAST place it fed, turned the way it jumped away, with a dashed arrow ahead of it; it fades over
 // ~3 game years. Players know nothing else about it (scenarios/void-whale). Drawn in screen pixels (scale 1/z) so the
 // tessellation stays small at galaxy zoom. Reads the saved Void Whale state, never creates it.
 
@@ -10,7 +10,8 @@ import { galaxyStarDate } from '../sim/tick/simTime';
 import { YEAR_LENGTH } from '../sim/galaxyTime';
 import { GALAXY_OVERLAY_MIN_FACTOR } from './galaxyMarkers';
 import type { WhaleSighting } from '../sim/scenario/threats/voidWhale';
-import { LEV_EYES, LEV_FIN_ROOT, LEV_H, LEV_X0, LEV_X1, levBot, levHalf, levTop, levX } from './leviathanArt';
+import { LEV_H, LEV_X0, LEV_X1, levBot, levTop, levX } from './leviathanArt';
+import { LEV_GLOW_SPOTS, LEV_PART_OUTLINES } from './leviathanParts';
 
 export const WHALE_ICON_PX = 46;
 const FADE_YEARS = 3;
@@ -22,33 +23,29 @@ export function whaleIconAlpha(ageMs: number): number {
 }
 
 /**
- * The icon's shapes in a local frame (head toward +x, length L), seen from above like the beast itself
- * (leviathanArt.ts outline): the body, the broad flukes, both pectoral fins, the red mouth line across the blunt
- * snout and the two pale eyes. Pure.
+ * The icon's shapes in a local frame (head toward +x, length L), seen from above like the beast itself (the outline of
+ * the Leviathan picture, leviathanParts.ts): the body, the notched flukes, both long pectoral fins and the glowing
+ * spine beads / head dots. Pure.
  */
-export function whaleIconShape(L = WHALE_ICON_PX): { body: number[]; fluke: number[]; fins: number[][]; mouth: number[]; eyes: [number, number][]; eyeR: number } {
+export function whaleIconShape(L = WHALE_ICON_PX): { body: number[]; fluke: number[]; fins: number[][]; beads: [number, number][]; beadR: number } {
     const k = L / (LEV_X1 - LEV_X0);
     const px = (x: number): number => (x - (LEV_X0 + LEV_X1) / 2) * k;
     const py = (y: number): number => (y - LEV_H / 2) * k;
     const body: number[] = [];
-    for (let i = 0; i <= 24; i++) {
-        const u = i / 24;
+    for (let i = 0; i <= 32; i++) {
+        const u = i / 32;
         body.push(px(levX(u)), py(levTop(u)));
     }
-    for (let i = 24; i >= 0; i--) {
-        const u = i / 24;
+    for (let i = 32; i >= 0; i--) {
+        const u = i / 32;
         body.push(px(levX(u)), py(levBot(u)));
     }
-    const t0 = px(LEV_X0);
-    const fluke = [t0 + 1, 0, t0 - L * 0.12, -L * 0.2, t0 - L * 0.17, -L * 0.19, t0 - L * 0.1, -L * 0.02, t0 - L * 0.07, 0, t0 - L * 0.1, L * 0.02, t0 - L * 0.17, L * 0.19, t0 - L * 0.12, L * 0.2];
-    const [fx, fy] = LEV_FIN_ROOT;
-    const fins = [-1, 1].map((side) => {
-        const y = (v: number): number => side * py(v);
-        return [px(fx + 30), y(fy), px(fx - 300), y(fy - 230), px(fx - 230), y(fy - 200), px(fx - 40), y(fy + 30)];
-    });
-    const mx = px(LEV_X1) - L * 0.012;
-    const mouth = [mx, py(LEV_H / 2 - levHalf(1) * 0.9), mx - L * 0.03, 0, mx, py(LEV_H / 2 + levHalf(1) * 0.9)];
-    return { body, fluke, fins, mouth, eyes: LEV_EYES.map(([x, y]) => [px(x), py(y)] as [number, number]), eyeR: Math.max(0.9, L * 0.018) };
+    const map = (pts: readonly number[]): number[] => pts.map((v, i) => (i % 2 === 0 ? px(v) : py(v)));
+    const fins = [map(LEV_PART_OUTLINES.finL), map(LEV_PART_OUTLINES.finR)];
+    const fluke = map(LEV_PART_OUTLINES.fluke);
+    // A few of the glows: the spine beads, and the head dots thinned out.
+    const beads = LEV_GLOW_SPOTS.filter((g, i) => g.kind === 'spine' || i % 6 === 0).map((g) => [px(g.x), py(g.y)] as [number, number]);
+    return { body, fluke, fins, beads, beadR: Math.max(0.6, L * 0.009) };
 }
 
 export class WhaleMarkerLayer {
@@ -90,11 +87,9 @@ export class WhaleMarkerLayer {
         for (const fin of s.fins) g.poly(fin).fill({ color: HIDE, alpha: 0.95 }).stroke({ color: EDGE, width: 1.1, alpha: 0.8 });
         g.poly(s.fluke).fill({ color: HIDE, alpha: 0.95 }).stroke({ color: EDGE, width: 1.2, alpha: 0.9 });
         g.poly(s.body).fill({ color: HIDE, alpha: 0.95 }).stroke({ color: EDGE, width: 1.4, alpha: 0.95 });
-        // The spine, a red scar slash, the mouth across the snout and the pale eyes.
-        g.moveTo(-WHALE_ICON_PX * 0.38, 0).lineTo(WHALE_ICON_PX * 0.05, 0).stroke({ color: EDGE, width: 0.8, alpha: 0.5 });
-        g.moveTo(-6, -4).lineTo(-1, 4).stroke({ color: 0xd03040, width: 1.6, alpha: 0.95 });
-        g.poly(s.mouth, false).stroke({ color: 0xd03040, width: 1.4, alpha: 0.95 });
-        for (const [ex, ey] of s.eyes) g.circle(ex, ey, s.eyeR).fill({ color: 0xe8fff8 });
+        // A red scar slash and the pale glowing beads.
+        g.moveTo(-2, -4).lineTo(3, 4).stroke({ color: 0xd03040, width: 1.6, alpha: 0.95 });
+        for (const [bx, by] of s.beads) g.circle(bx, by, s.beadR).fill({ color: 0xd8f0ff, alpha: 0.9 });
         // Dashed arrow ahead: the jump direction.
         const x0 = WHALE_ICON_PX * 0.62;
         for (let i = 0; i < 4; i++) g.moveTo(x0 + i * 9, 0).lineTo(x0 + i * 9 + 5, 0).stroke({ color: 0xe0a0a8, width: 1.6, alpha: 0.9 });

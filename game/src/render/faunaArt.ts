@@ -4,7 +4,8 @@
 // an install a neutral palette stands in.
 
 import type { Texture } from 'pixi.js';
-import { leviathanTextures, type LeviathanTextures } from './leviathanRig';
+import { leviathanTextures, type LeviathanImages, type LeviathanTextures } from './leviathanRig';
+import { LEV_BODY_URL, LEV_PARTS } from './leviathanParts';
 import {
     CONTAINER_PALETTE_FRAME,
     FAUNA_BODIES,
@@ -33,6 +34,17 @@ function loadImage(url: string): Promise<HTMLImageElement> {
     });
 }
 
+/** The Leviathan's part pictures (our bundled art, public/art/leviathan/), decoded; null if any fails to load. */
+function loadLeviathanImages(): Promise<LeviathanImages | null> {
+    const urls = [LEV_BODY_URL, LEV_PARTS.finL.url, LEV_PARTS.finR.url, LEV_PARTS.fluke.url];
+    return Promise.all(urls.map((u) => loadImage(u).then(pixelsOf)))
+        .then(([body, finL, finR, fluke]) => ({ body, finL, finR, fluke }))
+        .catch((e) => {
+            console.warn('[newFauna] Leviathan art', e);
+            return null;
+        });
+}
+
 function pixelsOf(img: HTMLImageElement): { data: Uint8ClampedArray; w: number; h: number } {
     const c = document.createElement('canvas');
     c.width = img.naturalWidth;
@@ -49,6 +61,7 @@ export class FaunaArt {
     private containerSource: PaletteSource | null = null;
     private bodies = new Map<string, BodyTextures>();
     private whale: LeviathanTextures | null = null;
+    private whaleImages: LeviathanImages | null = null;
     containers: Texture[] = [];
     light: Texture | null = null;
     mote: Texture | null = null;
@@ -61,8 +74,11 @@ export class FaunaArt {
             this.mote = textureFromRgba(dotRgba(32, [255, 255, 240], [255, 190, 90]));
             this.ready = true;
         };
+        const whale = loadLeviathanImages().then((imgs) => {
+            this.whaleImages = imgs;
+        });
         if (!dwuPresent) {
-            done();
+            void whale.finally(done);
             return;
         }
         const frames = Object.entries(PALETTE_FRAMES) as [PaletteFrame, string][];
@@ -77,14 +93,15 @@ export class FaunaArt {
                 const p = pixelsOf(img);
                 this.containerSource = paletteSourceFromRgba(p.data, p.w, p.h);
             }),
+            whale,
         ])
             .catch((e) => console.warn('[newFauna] palette frames', e))
             .finally(done);
     }
 
-    /** The Leviathan's baked parts (Void Whale threat; built on first request, palette-free). */
+    /** The Leviathan's parts (Void Whale threat; the bundled pictures, built on first request once loaded). */
     leviathan(): LeviathanTextures {
-        if (this.whale === null) this.whale = leviathanTextures();
+        if (this.whale === null) this.whale = leviathanTextures(this.whaleImages);
         return this.whale;
     }
 

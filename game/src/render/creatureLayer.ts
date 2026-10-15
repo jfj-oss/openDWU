@@ -404,13 +404,12 @@ export interface CreatureGallerySource {
     whaleFx?(c: Creature): WhaleFx | null;
 }
 
-/** What the Leviathan shows: wounds (peak / current share of health lost) and the jump flash 0..1 (explicit values override the cues). */
+/** What the Leviathan shows: wounds (peak / current share of health lost); a gallery stand-in may cycle hyper enter /
+ * exit flares every `hyperCycleMs` (the real beast is cued by its speed). */
 export interface WhaleFx {
     peak: number;
     cur: number;
-    flash?: number;
-    /** Hyper-lunge progress 0..1 (ripple / streaks). */
-    jumpT?: number;
+    hyperCycleMs?: number;
 }
 
 /** The Leviathan is drawn this much bigger than its sim size alone would make it (render only): a giant 2-3x a New
@@ -431,22 +430,20 @@ interface FaunaView {
     seenAt: number;
     /** Leviathan: the wound texture shown, and the jump animation (wall-clock ms of the cue). */
     wound?: { key: string; tex: Texture };
-    jumpSeq?: number;
-    jumpAt?: number;
+    /** Leviathan: in hyper last frame (the flare cue), and the gallery's flare cycle. */
+    inHyper?: boolean;
+    hyperCycle?: number;
 }
 
-/** Jump flash 0..1 for `ageMs` after the jump: white-hot, then gone. */
-export function jumpFlash(ageMs: number): number {
-    if (ageMs < 0 || ageMs > JUMP_FX_MS * 0.7) return 0;
-    return ageMs < 150 ? ageMs / 150 : 1 - (ageMs - 150) / (JUMP_FX_MS * 0.7 - 150);
+/** The Leviathan is at hyper speed (moving at least half its hyper speed, well above its cruise). Pure. */
+export function leviathanInHyper(currentSpeed: number, hyperSpeed: number, movementSpeed: number): boolean {
+    return hyperSpeed > 0 && currentSpeed >= hyperSpeed * 0.5 && currentSpeed > movementSpeed * 2;
 }
 
-/** Length of the hyper-lunge effect (ms): flash, then the ripples rolling out. */
-export const JUMP_FX_MS = 1600;
-
-/** Hyper-lunge progress 0..1 for `ageMs` after the jump, −1 outside it. */
-export function jumpProgress(ageMs: number): number {
-    return ageMs < 0 || ageMs > JUMP_FX_MS ? -1 : ageMs / JUMP_FX_MS;
+/** effectsLayer.ts hyperAnimationPlacement: the stock hyper flare's side for a ship `size` world units (the Leviathan
+ * passes its drawn length). Pure. */
+export function hyperFlareSize(size: number): number {
+    return Math.trunc(Math.sqrt(Math.max(0, size) * 30));
 }
 
 /**
@@ -478,6 +475,9 @@ export class CreatureLayer {
     motion: MotionInterpolator | null = null;
     /** Render-only gallery (dev flag ?faunaGallery=1). */
     gallery: CreatureGallerySource | null = null;
+    /** Plays a stock hyperjump flare (enter: jumping out, exit: arriving) centred at (x, y), `size` world units wide,
+     * turned to `heading` (set by the Main View: EffectsLayer.playHyperFlare). */
+    onHyperFlare: ((kind: 'enter' | 'exit', x: number, y: number, size: number, heading: number) => void) | null = null;
     /** 19r: damage overlays over the original frames, and their textures per creature. */
     private damageRoot = new Container();
     private damagePool: SpritePool;
@@ -569,8 +569,8 @@ export class CreatureLayer {
         rig.setDamage(d.rig);
     }
 
-    /** The Leviathan's wounds (rebuilt when the quantised peak / current damage changes) and jump flash. */
-    private whaleFx(c: Creature, v: FaunaView, rig: LeviathanRig): void {
+    /** The Leviathan's wounds (rebuilt when the quantised peak / current damage changes) and hyperjump flares. */
+    private whaleFx(c: Creature, v: FaunaView, rig: LeviathanRig, x: number, y: number, heading: number, lengthWorld: number): void {
         const g = this.galaxy;
         const real = peekVoidWhaleState(g);
         const fx: WhaleFx | null = this.gallery?.whaleFx?.(c) ?? null;
@@ -584,16 +584,19 @@ export class CreatureLayer {
             v.wound?.tex.destroy(true);
             v.wound = { key, tex };
         }
-        const now = performance.now();
-        if (real !== null && fx === null && real.creature === c) {
-            if (v.jumpSeq === undefined) v.jumpSeq = real.jumpSeq;
-            if (real.jumpSeq !== v.jumpSeq) {
-                v.jumpSeq = real.jumpSeq;
-                v.jumpAt = now;
-            }
+        // Its hyperjumps: the original game's hyper enter flare where it jumps out, the exit flare where it arrives
+        // (render-side cue: its speed crossing into / out of hyper speed; the gallery stand-ins cycle them).
+        let kind: 'enter' | 'exit' | null = null;
+        if (fx?.hyperCycleMs !== undefined) {
+            const n = Math.floor(performance.now() / fx.hyperCycleMs);
+            if (v.hyperCycle !== undefined && n !== v.hyperCycle) kind = n % 2 === 0 ? 'enter' : 'exit';
+            v.hyperCycle = n;
+        } else {
+            const hyper = leviathanInHyper(c.currentSpeed, c.hyperSpeed, c.movementSpeed);
+            if (v.inHyper !== undefined && hyper !== v.inHyper) kind = hyper ? 'enter' : 'exit';
+            v.inHyper = hyper;
         }
-        rig.flash = fx?.flash ?? (v.jumpAt === undefined ? 0 : jumpFlash(now - v.jumpAt));
-        rig.jumpT = fx?.jumpT ?? (v.jumpAt === undefined ? -1 : jumpProgress(now - v.jumpAt));
+        if (kind !== null) this.onHyperFlare?.(kind, x, y, hyperFlareSize(lengthWorld), heading);
     }
 
     private faunaArt(): FaunaArt {
@@ -666,7 +669,7 @@ export class CreatureLayer {
             v.node.scale.set((px * RIG_CONTENT_FRAC) / v.straight.length / z);
         }
         v.node.alpha = creatureDamageAlpha(c);
-        if (v.whale !== null) this.whaleFx(c, v, v.whale);
+        if (v.whale !== null) this.whaleFx(c, v, v.whale, x, y, heading, (px * RIG_CONTENT_FRAC) / z);
         else if (v.rig !== null) this.rigDamage(c, v.rig, px);
         // Tamed look (harness), on any carrier but the swarm.
         v.hstate = harnessStep(v.hstate, tamed, t);

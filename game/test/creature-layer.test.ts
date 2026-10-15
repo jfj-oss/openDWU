@@ -22,6 +22,9 @@ import {
     pickCreature,
 } from '../src/render/creatureLayer';
 import { CreatureType, type Creature } from '../src/sim/creature';
+import { hyperFlareSize, leviathanInHyper } from '../src/render/creatureLayer';
+import { LEV_GLOW_S, leviathanGlowPulse } from '../src/render/leviathanRig';
+import { LEV_X0, LEV_X1 } from '../src/render/leviathanArt';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
 
@@ -220,5 +223,30 @@ describe('creatureVisibleToEmpire (Empire.9.cs 3037 IsObjectVisibleToThisEmpire(
         const c = fakeCreature({ nearestSystemStar: null, isVisible: true, xpos: 300, ypos: 400 });
         expect(creatureVisibleToEmpire(galaxy, empire([], [{ xpos: 0, ypos: 0, sensorLongRange: 500 }]), c)).toBe(true);
         expect(creatureVisibleToEmpire(galaxy, empire([], [{ xpos: 0, ypos: 0, sensorLongRange: 499 }]), c)).toBe(false);
+    });
+});
+
+describe('Leviathan (Void Whale) render cues', () => {
+    it('hyper flare cue: in hyper only near its hyper speed; the flare is sized like a ship of its drawn length; the glow ripple travels snout to tail', () => {
+        expect(leviathanInHyper(100, 20000, 120)).toBe(false);
+        expect(leviathanInHyper(18000, 20000, 120)).toBe(true);
+        expect(leviathanInHyper(500, 0, 120)).toBe(false);
+        expect(hyperFlareSize(1000)).toBe(Math.trunc(Math.sqrt(30000)));
+        // The ripple's crest reaches a point nearer the tail later.
+        const crestTime = (x: number): number => {
+            let best = 0;
+            let at = 0;
+            for (let t = 0; t < LEV_GLOW_S; t += 0.01) {
+                const p = leviathanGlowPulse(x, t);
+                if (p > best) {
+                    best = p;
+                    at = t;
+                }
+            }
+            return at;
+        };
+        const snout = crestTime(LEV_X1 - 10);
+        const mid = crestTime((LEV_X0 + LEV_X1) / 2);
+        expect(((mid - snout + LEV_GLOW_S) % LEV_GLOW_S)).toBeGreaterThan(0.2);
     });
 });

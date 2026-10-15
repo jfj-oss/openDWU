@@ -116,14 +116,14 @@ export class FaunaGallery implements CreatureGallerySource {
             this.labels.addChild(t);
         };
         if (this.view === 'leviathan' || this.view === 'leviathanMid' || this.view === 'leviathanFar' || this.view === 'leviathanGalaxy') {
-            // Unhurt / badly wounded / healed to scars / jump flash.
+            // Unhurt / badly wounded / healed to scars / hyperjump flares.
             // A 3 x 2 grid: the top row facing right, the healed one swimming left .
             const sx = LEV_SX;
             const sy = LEV_SY;
             whale(0, 0, { peak: 0, cur: 0 }, 'unhurt');
             whale(sx, 0, { peak: 0.65, cur: 0.65 }, 'badly wounded');
             whale(2 * sx, 0, { peak: 0.65, cur: 0.05 }, 'healed to scars', Math.PI + 0.1);
-            whale(0, sy, { peak: 0.5, cur: 0.5, flash: 0.8, jumpT: 0.3 }, 'jumping away');
+            whale(0, sy, { peak: 0.5, cur: 0.5, hyperCycleMs: 2500 }, 'hyperjumping (out / in)');
             add(FaunaVariant.VoidWhale, 2 * sx, sy, { size: 1300, label: true, heading: -0.08 }); // a New Fauna void whale for scale
         } else if (this.view === 'gallery') {
             // All eight variants in one system, a 4 × 2 grid at 100 % zoom.
