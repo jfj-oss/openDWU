@@ -4,6 +4,9 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- Crash reports were never sent: the crash reporter failed to start in every release since it was added. Fixed.
+- Crash reports and play sessions now carry a random install id, so we can count how many people play each version (README privacy section).
+
 ## 0.1.31
 
 - **Mothballing (new Gameplay change, off by default; Other Empires page):** put a fleet or warship into reserve at

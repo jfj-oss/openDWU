@@ -52,11 +52,12 @@ function scrubDeep(value, scrub, depth = 0) {
     return out;
 }
 
-/** beforeSend: no IP / user / host name / cookies / headers; every string scrubbed of the home folder and user name. */
+/** beforeSend: no IP / user (but the random install id) / host name / cookies / headers; every string scrubbed of the home folder and user name. */
 function scrubEvent(event, opts) {
     const scrub = makeScrubber(opts.home, opts.user);
     const e = scrubDeep(event, scrub);
-    e.user = undefined;
+    const id = event.user && typeof event.user.id === 'string' && /^[0-9a-f-]{36}$/.test(event.user.id) ? event.user.id : '';
+    e.user = id ? { id } : undefined;
     delete e.server_name;
     if (e.request) {
         delete e.request.cookies;
@@ -91,6 +92,28 @@ let perfSampled = false;
 const consoleTail = [];
 const tags = {};
 
+/**
+ * A random id for this install (userData/install-id, made on first use), so release health can count distinct players.
+ * Says nothing about the player or the machine; '' when the folder cannot be written.
+ */
+function installId(userDataDir) {
+    const file = path.join(userDataDir, 'install-id');
+    try {
+        const id = fs.readFileSync(file, 'utf8').trim();
+        if (/^[0-9a-f-]{36}$/.test(id)) return id;
+    } catch {
+        /* first launch */
+    }
+    try {
+        const id = require('node:crypto').randomUUID();
+        fs.mkdirSync(userDataDir, { recursive: true });
+        fs.writeFileSync(file, id + '\n');
+        return id;
+    } catch {
+        return '';
+    }
+}
+
 /** Starts Sentry in the main process; returns false (and loads nothing) when disabled. Call before anything else. */
 function init({ app, version, classic, env = process.env }) {
     if (!sentryEnabled(app.isPackaged, env)) return false;
@@ -108,8 +131,11 @@ function init({ app, version, classic, env = process.env }) {
         } catch {
             Sentry = require('@sentry/electron/main');
         }
+        const id = installId(app.getPath('userData'));
         Sentry.init({
             dsn: DSN,
+            // Optional keys only when set: an explicit `undefined` overrides the SDK's default (no transport -> init throws).
+            ...(id ? { initialScope: { user: { id } } } : {}),
             release: 'opendwu@' + version,
             environment: classic ? 'classic' : 'full',
             sendDefaultPii: false,
@@ -132,7 +158,7 @@ function init({ app, version, classic, env = process.env }) {
                 return out;
             },
             beforeBreadcrumb: (crumb) => scrubBreadcrumb(crumb, scrubOpts),
-            transport: env.DWU_SENTRY_TEST === '1' ? loggingTransport : undefined,
+            ...(env.DWU_SENTRY_TEST === '1' ? { transport: loggingTransport } : {}),
         });
         perfSampled = env.DWU_SENTRY_TEST === '1' || Math.random() < TRACES_SAMPLE_RATE;
         setTags({ os: process.platform, arch: process.arch, edition: classic ? 'classic' : 'full', os_release: os.release() });
@@ -283,4 +309,4 @@ function captureMain(err) {
     if (Sentry) Sentry.captureException(err);
 }
 
-module.exports = { DSN, TRACES_SAMPLE_RATE, isPerfSampled, reportPerf, reportDesync, noteConsole, sendFeedback, sentryEnabled, makeScrubber, scrubEvent, scrubBreadcrumb, scrubLogText, isSdkCoveredCrashEntry, init, setTags, reportCrashLogEntry, reportRendererError, captureMain };
+module.exports = { DSN, installId, TRACES_SAMPLE_RATE, isPerfSampled, reportPerf, reportDesync, noteConsole, sendFeedback, sentryEnabled, makeScrubber, scrubEvent, scrubBreadcrumb, scrubLogText, isSdkCoveredCrashEntry, init, setTags, reportCrashLogEntry, reportRendererError, captureMain };

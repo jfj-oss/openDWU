@@ -545,8 +545,21 @@ describe('crash report scrubbing (desktop/crashReport.cjs)', () => {
         scrubEvent(e: Record<string, any>, o: { home: string; user: string }): Record<string, any>;
         scrubLogText(t: string, o: { home: string; user: string }, max?: number): string;
         isSdkCoveredCrashEntry(t: string): boolean;
+        installId(dir: string): string;
     };
     const o = { home: '/home/alice', user: 'alice' };
+    it('keeps only a random install id as the user, made once per install', () => {
+        const dir = mkdtempSync(path.join(tmpdir(), 'dwu-id-'));
+        try {
+            const id = cr.installId(dir);
+            expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+            expect(cr.installId(dir)).toBe(id);
+            expect(cr.scrubEvent({ user: { id, ip_address: '1.2.3.4', username: 'alice' } }, o).user).toEqual({ id });
+            expect(cr.scrubEvent({ user: { id: 'alice' } }, o).user).toBeUndefined();
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
     it('is on only when packaged or DWU_SENTRY=1', () => {
         expect(cr.sentryEnabled(false, {})).toBe(false);
         expect(cr.sentryEnabled(true, {})).toBe(true);
