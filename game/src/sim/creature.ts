@@ -18,7 +18,7 @@ import type { Empire } from './empire';
 import { ComponentType } from './data/components';
 import { countersProcessCreatureDeath } from './victory';
 import { galaxyStarDate } from './tick/simTime';
-import { scenarioQuery } from './scenario/hooks';
+import { scenarioEmit, scenarioQuery } from './scenario/hooks';
 
 // Port of DistantWorlds.Types.CreatureType (member order exact; byte enum).
 export enum CreatureType {
@@ -716,6 +716,7 @@ export class Creature {
             damage = Math.max(1, Math.trunc(damage / 10.0));
         }
         this.damage += damage;
+        if (this.galaxy.scenario !== null && damager !== null) scenarioEmit(this.galaxy, 'creatureDamaged', { creature: this, empire: damager.empire, amount: damage }); // mod layer (Void Whale)
         if (this.damage > this.damageKillThreshold) {
             // 933: damager.Empire.Counters.ProcessCreatureDeath(this) (EmpireCounters.cs 481).
             if (damager !== null && damager.empire !== null && damager.empire.counters != null) countersProcessCreatureDeath(damager.empire.counters, this.type);

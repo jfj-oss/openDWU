@@ -1,0 +1,13 @@
+'Void Whale: message texts (scenarioText tags). {n} items are filled by the scenario code.
+VoidWhale Swallowed;A void whale has swallowed {0} at {1}, then leapt away toward the {2}.
+VoidWhale Lost Title;Station swallowed
+VoidWhale Lost;The {0} at {1} has been swallowed by the void whale and is lost with all hands.
+VoidWhale Wounded;The void whale, badly wounded, has fled into deep space. It will return.
+VoidWhale Returns;The wounded void whale has returned, hunting {0}.
+VoidWhale Bounty Title;Void whale slain
+VoidWhale Bounty;Your forces landed the killing blow on the void whale. The bounty of {0} credits has been paid into the treasury, and every other empire thinks the better of us for it.
+VoidWhale Slain;{0} has slain the void whale. Its carcass drifts in space.
+VoidWhale Unknown Slayer;Unknown hands
+VoidWhale Carcass Part;Void whale carcass {0}
+VoidWhale Carcass Design;Carcass
+Reputation Cause voidWhale.slayer;Slew the void whale

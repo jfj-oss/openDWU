@@ -6,6 +6,8 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 - **Mothballing: choose the port:** in the Fleets and Ships screens, Mothball now opens the list of your space ports
   (★ the best one: interior, with room; distance, arrival time and how full each is) to pick from.
+
+- **New threat: Void Whale** (Galactic Threats, work in progress): from about year 5 one unique giant scarred beast, the Leviathan, hunts and swallows lightly defended stations (galaxy-wide news each time), hyper-lunges away to rest in a quiet system, and repeats. Its wounds persist, show on its hide and heal slowly; badly hurt it flees to deep space and returns for the empire that hurt it most. The killing blow earns a bounty, goodwill from every other empire and a carcass salvage field. AI empires fortify where it fed and send hunting fleets. Has its own procedural art (a heavier, darker, scarred cousin of the New Fauna void whale) and a Galactopedia article.
 - **Dead Probe Swarm scales with the galaxy:** it adds a mining station every 75 days in a 300-star galaxy and
   proportionally faster in bigger ones (600 stars: every 37 days, 1,400 stars: every 16 days; never under 10 days), and its income cap is 300,000 a year (was 250,000).
 - **Ancient Guardians keep their name:** themed empire names no longer rename the story empires — the Ancient Guardians

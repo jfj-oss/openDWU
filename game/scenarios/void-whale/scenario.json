@@ -1,0 +1,193 @@
+{
+  "id": "void-whale",
+  "name": "Void Whale",
+  "description": "From about year 5 a single huge scarred beast, the Leviathan, roams in from the galaxy edge. It hunts down and swallows lightly defended stations (mining, research and small bases), then hyper-lunges away to a quiet system to digest. Its wounds persist and heal only slowly: hurt it repeatedly and it flees into deep space, then returns for the empire that hurt it most. Whoever lands the killing blow earns a big bounty, the goodwill of every other empire and a carcass salvage field.",
+  "include": [
+    "threat-framework"
+  ],
+  "flags": [
+    {
+      "name": "threatVoidWhale",
+      "label": "Void Whale",
+      "description": "A unique giant space creature swallows stations, flees to quiet systems to rest, and can be hunted down for a bounty.",
+      "default": false
+    }
+  ],
+  "params": [
+    {
+      "name": "voidWhaleYear",
+      "label": "Year the Leviathan appears (years into the game)",
+      "default": 5,
+      "min": 0,
+      "max": 200
+    },
+    {
+      "name": "voidWhaleSize",
+      "label": "Its size when it appears",
+      "default": 2800,
+      "min": 500,
+      "max": 20000
+    },
+    {
+      "name": "voidWhaleMaxSize",
+      "label": "Largest size it can grow to",
+      "default": 4500,
+      "min": 500,
+      "max": 40000
+    },
+    {
+      "name": "voidWhaleGrowPct",
+      "label": "Growth per station swallowed (%)",
+      "default": 4,
+      "min": 0,
+      "max": 50
+    },
+    {
+      "name": "voidWhaleStrengthDiv",
+      "label": "Attack strength = size / this",
+      "default": 14,
+      "min": 1,
+      "max": 1000
+    },
+    {
+      "name": "voidWhaleHealthMul",
+      "label": "Health = size x this",
+      "default": 10,
+      "min": 0.1,
+      "max": 200
+    },
+    {
+      "name": "voidWhaleSpeed",
+      "label": "Sublight speed",
+      "default": 60,
+      "min": 1,
+      "max": 1000
+    },
+    {
+      "name": "voidWhaleHuntHyperSpeed",
+      "label": "Hyperspeed while hunting",
+      "default": 9000,
+      "min": 100,
+      "max": 200000
+    },
+    {
+      "name": "voidWhaleFleeHyperMul",
+      "label": "Fleeing hyperspeed (x the fastest warship's hyperdrive)",
+      "default": 3,
+      "min": 1,
+      "max": 20
+    },
+    {
+      "name": "voidWhaleRestDays",
+      "label": "Days it rests after feeding",
+      "default": 90,
+      "min": 1,
+      "max": 3600
+    },
+    {
+      "name": "voidWhaleHealPerFeedPct",
+      "label": "Health healed on each feeding (%)",
+      "default": 6,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "name": "voidWhaleHealPctPerYear",
+      "label": "Health it heals a year (%)",
+      "default": 15,
+      "min": 0,
+      "max": 500
+    },
+    {
+      "name": "voidWhaleDeepPct",
+      "label": "Damage (% of its health) that sends it into deep space",
+      "default": 70,
+      "min": 10,
+      "max": 99
+    },
+    {
+      "name": "voidWhaleDeepRestMonths",
+      "label": "Months it rests in deep space",
+      "default": 18,
+      "min": 1,
+      "max": 240
+    },
+    {
+      "name": "voidWhaleRevengeYears",
+      "label": "Years it hunts the empire that hurt it most after a deep rest",
+      "default": 2,
+      "min": 0,
+      "max": 50
+    },
+    {
+      "name": "voidWhaleBounty",
+      "label": "Bounty for the killing blow",
+      "default": 500000,
+      "min": 0,
+      "max": 100000000
+    },
+    {
+      "name": "voidWhaleRepBoost",
+      "label": "Reputation gain with every other empire for the killer",
+      "default": 10,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "name": "voidWhaleCarcassResources",
+      "label": "Steel in the carcass salvage field (or one-time cargo grant)",
+      "default": 6000,
+      "min": 0,
+      "max": 10000000
+    },
+    {
+      "name": "voidWhaleCarcassValue",
+      "label": "Value of the carcass salvage field",
+      "default": 400000,
+      "min": 0,
+      "max": 100000000
+    },
+    {
+      "name": "voidWhaleMaxTargetFirepower",
+      "label": "Most firepower of bases in a system it will still raid while calm",
+      "default": 400,
+      "min": 0,
+      "max": 1000000
+    },
+    {
+      "name": "voidWhaleHuntRangePct",
+      "label": "Range of AI hunting fleets from their capital (% of the galaxy width)",
+      "default": 30,
+      "min": 1,
+      "max": 100
+    },
+    {
+      "name": "voidWhaleHuntMinShips",
+      "label": "Warships an AI needs before it hunts",
+      "default": 6,
+      "min": 0,
+      "max": 1000
+    },
+    {
+      "name": "voidWhaleHuntShips",
+      "label": "Warships an AI sends after a sighting",
+      "default": 8,
+      "min": 0,
+      "max": 1000
+    },
+    {
+      "name": "voidWhaleExistChancePct",
+      "label": "Chance the beast exists in this game (%; -1 = use the shared value)",
+      "default": 100,
+      "min": -1,
+      "max": 100
+    },
+    {
+      "name": "voidWhaleMinYear",
+      "label": "Earliest year it may appear (-1 = use the shared value)",
+      "default": 0,
+      "min": -1,
+      "max": 200
+    }
+  ]
+}

@@ -308,6 +308,8 @@ export interface ScenarioEvents {
      * inflictIonDamage (6133), habitatInflictIonDamage (Habitat.cs 2357), right before its CompleteTeardown. No Rnd in handlers.
      */
     creatureKilled: { creature: Creature; killer: BuiltObject | Habitat | null; empire: Empire | null };
+    /** creature.ts damageCreature: an empire's ship / base / fighter damaged a creature (before the kill test). No Rnd in handlers. Void Whale grudge ledger. */
+    creatureDamaged: { creature: Creature; empire: Empire | null; amount: number };
     /**
      * combat/attackAI.ts notifyOfAttackBuiltObject (Galaxy.7.cs 2987 NotifyOfAttack, top): a ship or base is under attack.
      * No Rnd in handlers. 19a passive posture (the Concord remembers who attacked it).

@@ -301,6 +301,17 @@ export interface FinDef {
     shape: 'leaf' | 'spike' | 'frond';
     flutterHz: number;
     flutterAmp: number;
+    /** Ragged notches bitten out of the trailing edge (the Leviathan's torn fins). */
+    torn?: number;
+}
+
+/** The Leviathan's battle damage baked into the hide: embedded hull plates, harpoon shafts, soot burns and old pale scars. */
+export interface BatteredDef {
+    seed: number;
+    plates: number;
+    harpoons: number;
+    burns: number;
+    scars: number;
 }
 
 export interface BodyDef {
@@ -322,6 +333,9 @@ export interface BodyDef {
     motion: { wavePeriodS: number; waveAmp: number; waveCycles: number; tailSweep: number };
     /** Drawn-width cap multiplier over the creature layer's 240 px / f cap (big bodies). */
     capMul: number;
+    /** A pair of mandibles at the snout that splay open when the beast feeds (CreatureRig.jawOpen). */
+    jaws?: { len: number; wid: number };
+    battered?: BatteredDef;
 }
 
 /** Catmull-Rom through the silhouette knots, clamped to 0..1. */
@@ -361,7 +375,7 @@ function pilotWhaleKnots(): [number, number][] {
 const NO_GROOVES = { grooves: 0, grooveFreq: 1, grooveFrom: 0, grooveTo: 0 };
 
 /** The variant bodies (the lantern shoal is a swarm: LANTERN_SWARM). Keys = sim FaunaVariantDef.look. */
-export const FAUNA_BODIES: Readonly<Record<string, BodyDef>> = {
+const FAUNA_BODIES_BASE: Record<string, BodyDef> = {
     voidWhale: {
         id: 'voidWhale',
         name: 'Void Whale',
@@ -494,6 +508,40 @@ export const FAUNA_BODIES: Readonly<Record<string, BodyDef>> = {
         capMul: 2.5,
     },
 };
+
+/**
+ * The Leviathan (Void Whale threat, scenarios/void-whale): the New Fauna void whale's rig and tail beat on a heavier,
+ * more brutal body — a deep blunt head with jowls, a thick short tail stalk, torn fins and a second mandible pair —
+ * in bruised dark crimson with pale eyes, and its hide baked with embedded hull plates, harpoon shafts, burns and
+ * old scars (the fresh wounds come from whaleWounds.ts). Built at 1024 px and minified on screen.
+ */
+function deriveLeviathan(base: BodyDef): BodyDef {
+    return {
+        ...base,
+        id: 'leviathan',
+        name: 'Leviathan',
+        silhouette: [[0, 0.14], [0.08, 0.2], [0.2, 0.34], [0.34, 0.62], [0.46, 0.88], [0.56, 1.0], [0.68, 1.0], [0.8, 0.98], [0.9, 0.9], [0.96, 0.74], [0.99, 0.5], [1, 0.3]],
+        segments: 32,
+        texW: 1024,
+        texH: 400,
+        fins: [
+            { u: 0.6, v: 0.9, len: 250, wid: 150, sweep: 0.7, shape: 'leaf', flutterHz: 0.22, flutterAmp: 0.1, torn: 3 },
+            { u: 0.3, v: 0.85, len: 130, wid: 64, sweep: 1.05, shape: 'spike', flutterHz: 0.3, flutterAmp: 0.1, torn: 1 },
+        ],
+        fluke: { len: 190, span: 440 },
+        skin: { seed: 91, noiseScale: 30, noiseAmp: 0.62, mottle: 0.2, grooves: 0.14, grooveFreq: 16, grooveFrom: 0.2, grooveTo: 0.8, plates: 0.1, plateFreq: 5, spine: 0.2 },
+        palette: { frame: 'kaltor', hueDeg: 350, satMul: 0.8, lumaMul: 0.56 },
+        glow: { rgb: [140, 24, 40], alpha: 0.28, blurPx: 18 },
+        spots: { rows: 0, count: 0, uFrom: 0, uTo: 0, v: 0, r: 8, core: [244, 246, 232], halo: [190, 214, 200], head: 2 },
+        motion: { wavePeriodS: 9.5, waveAmp: 0.13, waveCycles: 0.8, tailSweep: 0.2 },
+        capMul: 6,
+        jaws: { len: 200, wid: 84 },
+        battered: { seed: 17, plates: 9, harpoons: 6, burns: 7, scars: 5 },
+    };
+}
+
+/** The variant bodies (the lantern shoal is a swarm: LANTERN_SWARM). Keys = sim FaunaVariantDef.look, plus 'leviathan'. */
+export const FAUNA_BODIES: Readonly<Record<string, BodyDef>> = { ...FAUNA_BODIES_BASE, leviathan: deriveLeviathan(FAUNA_BODIES_BASE.voidWhale) };
 
 /** The lantern shoal: a particle swarm (not a body). */
 export const LANTERN_SWARM = { particles: 56, colors: [0xffd27a, 0xffe9b0, 0x9fe8ff, 0xffb35c] as const, periodS: 9, capMul: 2 } as const;
@@ -649,10 +697,25 @@ function finField(fin: FinDef, edgePx: number, seed: number): ShadeField {
             // Membrane: the trailing side is thinner (darker), not transparent (the originals' bodies are opaque).
             const membrane = fin.shape !== 'spike' && v > 0.5 ? 1 - 0.3 * smoothstep(0.5, 1, v) : 1;
             s[y * FW + x] = sh * membrane;
-            a[y * FW + x] = al;
+            a[y * FW + x] = al * (fin.torn ? tornKeep(fin.torn, seed, u, v, noise) : 1);
         }
     }
     return { s, a };
+}
+
+/** 1 = kept, 0 = bitten away: `n` ragged triangular notches in the trailing edge (v > 0) and tip of a fin. Pure. */
+function tornKeep(n: number, seed: number, u: number, v: number, noise: (x: number, y: number) => number): number {
+    let keep = 1;
+    for (let k = 0; k < n; k++) {
+        const uc = 0.38 + 0.5 * hash01(seed, 700 + k);
+        const w = 0.07 + 0.05 * (k % 2);
+        const depth = 0.55 + 0.25 * hash01(seed, 710 + k);
+        const d = Math.abs(u - uc) / w;
+        if (d >= 1) continue;
+        const edge = 1 - depth * (1 - d) * 1.6 + 0.12 * (noise(u * 40, v * 9 + k) - 0.5);
+        if (v > edge) keep = Math.min(keep, 0);
+    }
+    return keep;
 }
 
 function flukeField(fluke: { len: number; span: number }, edgePx: number, seed: number): ShadeField {
@@ -709,6 +772,171 @@ function blurAlpha(src: Float32Array, w: number, h: number, radius: number): Flo
     return cur;
 }
 
+/** One mandible (pointing along +x from its root at the left): a curved tusk with a serrated inner edge. Pure. */
+function mandibleField(jaw: { len: number; wid: number }, edgePx: number, seed: number): ShadeField {
+    const JW = jaw.len;
+    const JH = jaw.wid;
+    const noise = makeValueNoise(seed);
+    const s = new Float32Array(JW * JH);
+    const a = new Float32Array(JW * JH);
+    for (let y = 0; y < JH; y++) {
+        for (let x = 0; x < JW; x++) {
+            const u = (x + 0.5) / JW;
+            const curve = -Math.pow(u, 2.2) * JH * 0.28;
+            const half = (JH / 2) * 0.92 * Math.pow(1 - u, 0.75) * smoothstep(0, 0.1, u + 0.03);
+            const dy = y + 0.5 - JH / 2 - curve;
+            // Teeth along the inner (dy > 0) edge.
+            const tooth = dy > 0 ? 0.16 * half * Math.pow(0.5 + 0.5 * Math.cos(2 * Math.PI * u * 7), 3) * smoothstep(0.15, 0.4, u) : 0;
+            const d = half + tooth - Math.abs(dy);
+            const al = smoothstep(0, Math.min(edgePx, Math.max(1, half)), d);
+            if (al <= 0) continue;
+            const v = dy / Math.max(1, half);
+            let sh = 0.12 + 0.34 * Math.pow(Math.max(0, 1 - v * v), 0.8);
+            sh += 0.16 * Math.exp(-Math.pow((1 - Math.abs(v)) / 0.12, 2)) * u; // bone-pale ridge toward the tip
+            sh *= 0.8 + 0.4 * fbm(noise, x / 12 + 60, y / 12, 3);
+            s[y * JW + x] = sh;
+            a[y * JW + x] = al;
+        }
+    }
+    return { s, a };
+}
+
+// Battle damage baked into the hide (the Leviathan). All pure and deterministic from def.battered.seed.
+
+function hash01(seed: number, k: number): number {
+    let h = Math.imul(seed ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(k + 1, 0xc2b2ae35);
+    h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);
+    h ^= h >>> 13;
+    return (h >>> 0) / 4294967296;
+}
+
+function blendPx(img: RgbaImage, x: number, y: number, r: number, g: number, b: number, a: number): void {
+    if (x < 0 || y < 0 || x >= img.w || y >= img.h || a <= 0) return;
+    const i = (y * img.w + x) * 4;
+    const hullA = img.data[i + 3] / 255;
+    if (hullA < 0.35) return;
+    const k = Math.min(1, a) * Math.min(1, hullA * 1.2);
+    img.data[i] += (r - img.data[i]) * k;
+    img.data[i + 1] += (g - img.data[i + 1]) * k;
+    img.data[i + 2] += (b - img.data[i + 2]) * k;
+}
+
+/** A line segment with a soft edge: `colour(t)` per position along it. */
+function strokeSegment(img: RgbaImage, x0: number, y0: number, x1: number, y1: number, width: number, colour: (t: number, side: number) => [number, number, number, number]): void {
+    const minX = Math.max(0, Math.floor(Math.min(x0, x1) - width - 2));
+    const maxX = Math.min(img.w - 1, Math.ceil(Math.max(x0, x1) + width + 2));
+    const minY = Math.max(0, Math.floor(Math.min(y0, y1) - width - 2));
+    const maxY = Math.min(img.h - 1, Math.ceil(Math.max(y0, y1) + width + 2));
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const len2 = Math.max(1e-6, dx * dx + dy * dy);
+    for (let y = minY; y <= maxY; y++) {
+        for (let x = minX; x <= maxX; x++) {
+            const t = Math.max(0, Math.min(1, ((x - x0) * dx + (y - y0) * dy) / len2));
+            const px = x0 + dx * t;
+            const py = y0 + dy * t;
+            const d = Math.hypot(x - px, y - py);
+            if (d > width) continue;
+            const side = ((x - x0) * dy - (y - y0) * dx) / Math.sqrt(len2) / width;
+            const [r, g, b, a] = colour(t, side);
+            blendPx(img, x, y, r, g, b, a * (1 - smoothstep(width * 0.6, width, d)));
+        }
+    }
+}
+
+/** Where on the hide a feature of kind `kind` and index `k` sits: (x, y) in texture px, on the body (u 0.22..0.9, |v| < 0.75). */
+function hideSpot(def: BodyDef, seed: number, kind: number, k: number): { x: number; y: number; u: number; v: number } {
+    const u = 0.24 + 0.64 * hash01(seed, kind * 100 + k * 3);
+    const v = (hash01(seed, kind * 100 + k * 3 + 1) * 2 - 1) * 0.72;
+    return { u, v, x: u * def.texW, y: def.texH / 2 + v * silhouetteAt(def, u) * maxHalfOf(def) };
+}
+
+export function batterBody(img: RgbaImage, def: BodyDef): void {
+    const b = def.battered;
+    if (b === undefined) return;
+    const sc = def.texW / 1024;
+    const noise = makeValueNoise(b.seed + 5);
+    // Old pale scars: long thin healed slashes.
+    for (let k = 0; k < b.scars; k++) {
+        const p = hideSpot(def, b.seed, 1, k);
+        const ang = (hash01(b.seed, 150 + k) - 0.5) * 1.6 + (k % 2 === 0 ? 0.35 : -0.35);
+        const L = (90 + 130 * hash01(b.seed, 160 + k)) * sc;
+        strokeSegment(img, p.x - Math.cos(ang) * L / 2, p.y - Math.sin(ang) * L / 2, p.x + Math.cos(ang) * L / 2, p.y + Math.sin(ang) * L / 2, 3.2 * sc, (t, side) => [196 + 20 * side, 178, 170, 0.55 * Math.sin(Math.PI * t)]);
+    }
+    // Soot burns: dark crusted blotches with a scorched rim.
+    for (let k = 0; k < b.burns; k++) {
+        const p = hideSpot(def, b.seed, 2, k);
+        const R = (34 + 50 * hash01(b.seed, 250 + k)) * sc;
+        for (let y = Math.max(0, Math.floor(p.y - R * 1.4)); y < Math.min(img.h, Math.ceil(p.y + R * 1.4)); y++) {
+            for (let x = Math.max(0, Math.floor(p.x - R * 1.4)); x < Math.min(img.w, Math.ceil(p.x + R * 1.4)); x++) {
+                const d = Math.hypot((x - p.x) / 1.25, y - p.y) / R + 0.5 * (fbm(noise, x / (9 * sc), y / (9 * sc), 3) - 0.5);
+                if (d > 1.15) continue;
+                if (d > 0.92) blendPx(img, x, y, 70, 22, 16, 0.5 * (1.15 - d) / 0.23);
+                else blendPx(img, x, y, 10, 8, 9, 0.88 * (1 - smoothstep(0.55, 0.92, d)) + 0.12);
+            }
+        }
+    }
+    // Embedded hull plates: torn grey-blue metal slabs with a lit edge, rivets and a dark gash around them.
+    for (let k = 0; k < b.plates; k++) {
+        const p = hideSpot(def, b.seed, 3, k);
+        const w = (34 + 70 * hash01(b.seed, 350 + k)) * sc;
+        const h = (14 + 28 * hash01(b.seed, 360 + k)) * sc;
+        const rot = (hash01(b.seed, 370 + k) - 0.5) * 2.6;
+        const cr = Math.cos(rot);
+        const sr = Math.sin(rot);
+        const R = Math.hypot(w, h) / 2 + 6 * sc;
+        for (let y = Math.floor(p.y - R); y <= Math.ceil(p.y + R); y++) {
+            for (let x = Math.floor(p.x - R); x <= Math.ceil(p.x + R); x++) {
+                const lx = (x - p.x) * cr + (y - p.y) * sr;
+                const ly = -(x - p.x) * sr + (y - p.y) * cr;
+                // Jagged outline: the corners are cut by noise.
+                const jag = 0.18 * (fbm(noise, x / (6 * sc) + k * 7, y / (6 * sc), 2) - 0.5) * Math.min(w, h);
+                const ex = Math.abs(lx) - w / 2 + jag;
+                const ey = Math.abs(ly) - h / 2 + jag;
+                const inside = Math.max(ex, ey);
+                if (inside > 5 * sc) continue;
+                if (inside > 0) {
+                    blendPx(img, x, y, 24, 6, 10, 0.8 * (1 - inside / (5 * sc))); // the gash around it
+                    continue;
+                }
+                const lit = 0.5 + 0.5 * (-ly / (h / 2));
+                const wear = fbm(noise, x / (5 * sc) + 90, y / (5 * sc), 3);
+                const v = 62 + 70 * lit * (0.5 + wear);
+                blendPx(img, x, y, v * 0.82, v * 0.9, v * 1.02, 0.96);
+                if (inside > -2 * sc) blendPx(img, x, y, 168, 188, 198, 0.55 * lit);
+                if (wear < 0.32) blendPx(img, x, y, 96, 52, 30, 0.45); // rust
+            }
+        }
+        for (let r = 0; r < 3; r++) {
+            const rx = (-w / 2 + (w * (r + 0.5)) / 3) * 0.8;
+            const x = Math.round(p.x + rx * cr);
+            const y = Math.round(p.y + rx * sr);
+            blendPx(img, x, y, 180, 196, 204, 0.9);
+            blendPx(img, x + 1, y, 40, 46, 52, 0.7);
+        }
+    }
+    // Harpoon shafts: a dark shaft, a barbed head and a slack cable trailing back along the hide.
+    for (let k = 0; k < b.harpoons; k++) {
+        const p = hideSpot(def, b.seed, 4, k);
+        const ang = (hash01(b.seed, 450 + k) - 0.5) * 2.2 + Math.PI * (k % 2);
+        const L = (60 + 70 * hash01(b.seed, 460 + k)) * sc;
+        const tx = p.x + Math.cos(ang) * L;
+        const ty = p.y + Math.sin(ang) * L;
+        strokeSegment(img, p.x, p.y, tx, ty, 2.6 * sc, (t) => [60 + 90 * t, 48 + 70 * t, 40 + 50 * t, 1]);
+        strokeSegment(img, p.x, p.y, p.x - Math.cos(ang) * 8 * sc, p.y - Math.sin(ang) * 8 * sc, 6 * sc, () => [90, 14, 22, 0.8]); // wound at the entry
+        strokeSegment(img, tx - Math.cos(ang) * 10 * sc, ty - Math.sin(ang) * 10 * sc, tx + Math.cos(ang) * 5 * sc, ty + Math.sin(ang) * 5 * sc, 5.5 * sc, (t, side) => [176 + 40 * Math.abs(side), 184, 190, 1 - t * 0.1]);
+        let cx = tx;
+        let cy = ty;
+        for (let j = 1; j <= 6; j++) {
+            const nx = cx + Math.cos(ang + 0.6 * Math.sin(j + k)) * 18 * sc;
+            const ny = cy + Math.sin(ang + 0.6 * Math.sin(j + k)) * 18 * sc;
+            strokeSegment(img, cx, cy, nx, ny, 1.1 * sc, () => [150, 130, 100, 0.8]);
+            cx = nx;
+            cy = ny;
+        }
+    }
+}
+
 /** Radial light dot (core → halo → transparent), premultiplied-friendly straight alpha. */
 export function dotRgba(size: number, core: Rgb, halo: Rgb): RgbaImage {
     const img = image(size, size);
@@ -763,6 +991,9 @@ export interface BodyParts {
     glow: RgbaImage | null;
     spot: RgbaImage | null;
     spots: SpotDef[];
+    /** A mandible (the rig draws it twice) and the mouth / jump-flash dots. */
+    jaw: RgbaImage | null;
+    fx: { mouth: RgbaImage; flash: RgbaImage } | null;
 }
 
 /** Rasterises a body definition in the palette of `src` (an original frame's PaletteSource). Pure. */
@@ -773,6 +1004,7 @@ export function rasterBody(def: BodyDef, src: PaletteSource): BodyParts {
     for (let i = 0; i < bf.s.length; i++) if (bf.a[i] >= 0.5) sVals.push(bf.s[i]);
     const shader = makeShader(src, def, sVals);
     const body = paint(bf, def.texW, def.texH, shader);
+    batterBody(body, def);
     const fins = def.fins.map((fin, i) => ({ fin, img: paint(finField(fin, edgePx, def.skin.seed + 100 + i), fin.len, fin.wid, shader) }));
     const fluke = def.fluke === null ? null : paint(flukeField(def.fluke, edgePx, def.skin.seed + 200), def.fluke.len, def.fluke.span, shader);
     let glow: RgbaImage | null = null;
@@ -797,13 +1029,16 @@ export function rasterBody(def: BodyDef, src: PaletteSource): BodyParts {
     }
     const spots = spotsOf(def);
     const spot = def.spots === null ? null : dotRgba(32, def.spots.core, def.spots.halo);
-    return { def, body, fins, fluke, glow, spot, spots };
+    const jaw = def.jaws === undefined ? null : paint(mandibleField(def.jaws, edgePx, def.skin.seed + 300), def.jaws.len, def.jaws.wid, shader);
+    const fx = def.jaws === undefined ? null : { mouth: dotRgba(64, [255, 150, 120], [150, 8, 24]), flash: dotRgba(128, [255, 255, 255], [255, 230, 200]) };
+    return { def, body, fins, fluke, glow, spot, spots, jaw, fx };
 }
 
 // Geometry shared by the rest pose and the rig.
 
 export const FIN_ANCHOR: [number, number] = [0.04, 0.5];
 export const FLUKE_ANCHOR: [number, number] = [0.97, 0.5];
+export const JAW_ANCHOR: [number, number] = [0.04, 0.5];
 
 /** Offset of a fin root from the centreline (texture px) at rest. */
 export function finOffset(def: BodyDef, fin: FinDef): number {
@@ -902,6 +1137,9 @@ export function restPose(parts: BodyParts, skinOnly = false): RgbaImage {
         blit(out, img, fx, oy + off, Math.PI / 2 + fin.sweep, FIN_ANCHOR, true, false);
     }
     blit(out, parts.body, ox, oy - def.texH / 2, 0, [0, 0], false, false);
+    if (parts.jaw !== null) {
+        for (const side of [-1, 1]) blit(out, parts.jaw, ox + def.texW * 0.985, oy + side * maxHalfOf(def) * 0.24 * silhouetteAt(def, 0.985), side * 0.12, JAW_ANCHOR, side > 0, false);
+    }
     if (!skinOnly && parts.spot !== null) {
         const maxHalf = maxHalfOf(def);
         for (const s of parts.spots) {
@@ -1032,6 +1270,9 @@ export interface BodyTextures {
     glow: Texture | null;
     spot: Texture | null;
     spots: SpotDef[];
+    jaw: Texture | null;
+    mouth: Texture | null;
+    flash: Texture | null;
 }
 
 export function bodyTextures(parts: BodyParts): BodyTextures {
@@ -1044,6 +1285,9 @@ export function bodyTextures(parts: BodyParts): BodyTextures {
         glow: parts.glow === null ? null : textureFromRgba(parts.glow),
         spot: parts.spot === null ? null : textureFromRgba(parts.spot),
         spots: parts.spots,
+        jaw: parts.jaw === null ? null : textureFromRgba(parts.jaw),
+        mouth: parts.fx === null ? null : textureFromRgba(parts.fx.mouth),
+        flash: parts.fx === null ? null : textureFromRgba(parts.fx.flash),
     };
 }
 
@@ -1081,6 +1325,13 @@ export class CreatureRig implements HarnessCarrier {
     private fins: { fin: FinDef; l: Sprite; r: Sprite }[] = [];
     private fluke: Sprite | null = null;
     private spotSprites: Sprite[] = [];
+    private jaws: { l: Sprite; r: Sprite } | null = null;
+    private mouth: Sprite | null = null;
+    private flashSprite: Sprite | null = null;
+    /** 0 closed .. 1 wide open (mandibles splay, the mouth glows); set by the creature layer. */
+    jawOpen = 0;
+    /** 0..1 white-hot flash over the whole body (a hyper-lunge). */
+    flash = 0;
     readonly length: number;
     readonly width: number;
 
@@ -1120,6 +1371,25 @@ export class CreatureRig implements HarnessCarrier {
                 this.spotSprites.push(sp);
                 this.root.addChild(sp);
             }
+        }
+        if (tex.jaw !== null && tex.mouth !== null && tex.flash !== null) {
+            this.mouth = new Sprite(tex.mouth);
+            this.mouth.anchor.set(0.5);
+            this.mouth.blendMode = 'add';
+            this.mouth.alpha = 0;
+            const l = new Sprite(tex.jaw);
+            l.anchor.set(JAW_ANCHOR[0], JAW_ANCHOR[1]);
+            const r = new Sprite(tex.jaw);
+            r.anchor.set(JAW_ANCHOR[0], JAW_ANCHOR[1]);
+            r.scale.y = -1;
+            this.jaws = { l, r };
+            this.root.addChild(this.mouth, l, r);
+            this.flashSprite = new Sprite(tex.flash);
+            this.flashSprite.anchor.set(0.5);
+            this.flashSprite.blendMode = 'add';
+            this.flashSprite.alpha = 0;
+            this.flashSprite.scale.set((def.texW * 1.3) / tex.flash.width, (def.texH * 1.5) / tex.flash.height);
+            this.root.addChild(this.flashSprite);
         }
         this.root.addChild(this.top);
     }
@@ -1198,6 +1468,25 @@ export class CreatureRig implements HarnessCarrier {
             f.l.rotation = bp.ang - Math.PI / 2 - (f.fin.sweep + f.fin.flutterAmp * Math.sin(fl * t + ph));
             f.r.position.set(bp.x + nx * off, bp.y + ny * off);
             f.r.rotation = bp.ang + Math.PI / 2 + (f.fin.sweep + f.fin.flutterAmp * Math.sin(fl * t + ph + 2.2));
+        }
+        if (this.jaws !== null && this.mouth !== null && this.flashSprite !== null) {
+            const head = this.backPoint(0.985);
+            const off = maxHalf * 0.24 * silhouetteAt(def, 0.985);
+            const nx = -Math.sin(head.ang);
+            const ny = Math.cos(head.ang);
+            const open = Math.max(0, Math.min(1, this.jawOpen));
+            const spread = 0.12 + open * 0.95;
+            this.jaws.l.position.set(head.x - nx * off, head.y - ny * off);
+            this.jaws.l.rotation = head.ang - spread;
+            this.jaws.r.position.set(head.x + nx * off, head.y + ny * off);
+            this.jaws.r.rotation = head.ang + spread;
+            this.mouth.position.set(head.x + Math.cos(head.ang) * 40, head.y + Math.sin(head.ang) * 40);
+            this.mouth.scale.set((60 + open * 260) / this.mouth.texture.width);
+            this.mouth.alpha = open * 0.95;
+            const mid = this.backPoint(0.5);
+            this.flashSprite.position.set(mid.x, mid.y);
+            this.flashSprite.rotation = mid.ang;
+            this.flashSprite.alpha = Math.max(0, Math.min(1, this.flash));
         }
         for (let s = 0; s < this.spotSprites.length; s++) {
             const spot = this.tex.spots[s];

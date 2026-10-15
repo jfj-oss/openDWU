@@ -9,10 +9,11 @@ import type { Galaxy } from '../sim/galaxy';
 import type { Creature } from '../sim/creature';
 import { CreatureType } from '../sim/creature';
 import { FaunaVariant, faunaVariantDef } from '../sim/scenario/newFauna/common';
-import type { CreatureGallerySource, FaunaLook } from './creatureLayer';
+import type { CreatureGallerySource, FaunaLook, WhaleFx } from './creatureLayer';
 import { localViewerEmpire } from '../localViewer';
+import type { WhaleSighting } from '../sim/scenario/threats/voidWhale';
 
-export type FaunaGalleryView = 'gallery' | 'tamed' | 'tamedMid' | 'shoal';
+export type FaunaGalleryView = 'gallery' | 'tamed' | 'tamedMid' | 'shoal' | 'leviathan' | 'leviathanMid' | 'leviathanFar' | 'leviathanGalaxy';
 
 export function faunaGalleryEnabled(search: string): boolean {
     return new URLSearchParams(search).get('faunaGallery') === '1';
@@ -48,6 +49,12 @@ function standIn(type: CreatureType, size: number, name: string, speed: number):
         currentHeading: 0,
         currentSpeed: speed,
         movementSpeed: speed,
+        parentHabitat: null,
+        parentX: 0,
+        parentY: 0,
+        targetSpeed: speed,
+        lungeSpeed: 0,
+        hyperSpeed: 0,
         currentTarget: null,
         distanceToTarget: Number.MAX_VALUE,
         damage: 0,
@@ -60,6 +67,7 @@ function standIn(type: CreatureType, size: number, name: string, speed: number):
 
 export class FaunaGallery implements CreatureGallerySource {
     private actors: Actor[] = [];
+    private fx = new Map<Creature, WhaleFx>();
     private labels = new Container();
     private viewApplied = false;
     private t0 = -1;
@@ -68,7 +76,7 @@ export class FaunaGallery implements CreatureGallerySource {
 
     constructor(private galaxy: Galaxy, world: Container, private camera: Camera, search: string) {
         const v = new URLSearchParams(search).get('faunaView');
-        this.view = v === 'tamed' || v === 'tamedMid' || v === 'shoal' ? v : 'gallery';
+        this.view = v === 'tamed' || v === 'tamedMid' || v === 'shoal' || v === 'leviathan' || v === 'leviathanMid' || v === 'leviathanFar' || v === 'leviathanGalaxy' ? v : 'gallery';
         this.labels.eventMode = 'none';
         world.addChild(this.labels);
     }
@@ -93,7 +101,25 @@ export class FaunaGallery implements CreatureGallerySource {
             }
             return a;
         };
-        if (this.view === 'gallery') {
+        const whale = (dx: number, dy: number, fx: WhaleFx, label: string): void => {
+            const a = add(FaunaVariant.VoidWhale, dx, dy, { size: 2800, look: 'leviathan', label: false, radius: 6 });
+            this.fx.set(a.c, fx);
+            const t = new Text({ text: label, style: { fill: 0xc8d2dc, fontSize: 14, fontFamily: 'sans-serif' } });
+            t.anchor.set(0.5, 0);
+            t.position.set(a.ax, a.ay + 210);
+            t.alpha = 0.8;
+            this.labels.addChild(t);
+        };
+        if (this.view === 'leviathan' || this.view === 'leviathanMid' || this.view === 'leviathanFar' || this.view === 'leviathanGalaxy') {
+            // Unhurt / badly wounded / healed to scars / mid-swallow (jaws wide) / jump flash.
+            const sx = 560;
+            whale(-2 * sx, -150, { peak: 0, cur: 0 }, 'unhurt');
+            whale(-sx, -150, { peak: 0.65, cur: 0.65 }, 'badly wounded');
+            whale(0, -150, { peak: 0.65, cur: 0.05 }, 'healed to scars');
+            whale(sx, -150, { peak: 0.3, cur: 0.3, jaw: 1 }, 'mid-swallow');
+            whale(2 * sx, -150, { peak: 0.5, cur: 0.5, jaw: 0, flash: 0.75 }, 'jumping away');
+            add(FaunaVariant.VoidWhale, -sx, 260, { size: 1300, label: true, radius: 6 }); // a New Fauna void whale for scale
+        } else if (this.view === 'gallery') {
             // All eight variants in one system, a 4 × 2 grid at 100 % zoom.
             const sx = 430;
             const sy = 380;
@@ -125,7 +151,22 @@ export class FaunaGallery implements CreatureGallerySource {
         const cam = this.camera;
         const cx = this.actors.reduce((a, x) => a + x.ax, 0) / this.actors.length;
         const cy = this.actors.reduce((a, x) => a + x.ay, 0) / this.actors.length;
-        if (this.view === 'gallery') {
+        if (this.view === 'leviathan') {
+            // Close: each whale ~ 300 px wide.
+            cam.maxZoom = 3;
+            cam.centerOn(cx - 560, cy - 150);
+            cam.zoom = cam.clampZoom(0.9);
+        } else if (this.view === 'leviathanMid') {
+            cam.centerOn(cx, cy - 150);
+            cam.zoom = cam.clampZoom(0.42);
+        } else if (this.view === 'leviathanGalaxy') {
+            // Galaxy zoom (f > 70): the last-feeding icon.
+            cam.centerOn(cx, cy - 150);
+            cam.zoom = cam.clampZoom(1 / 120);
+        } else if (this.view === 'leviathanFar') {
+            cam.centerOn(cx, cy - 150);
+            cam.zoom = cam.clampZoom(1 / 4);
+        } else if (this.view === 'gallery') {
             cam.centerOn(cx, cy);
             cam.zoom = cam.clampZoom(1);
         } else if (this.view === 'tamedMid') {
@@ -166,6 +207,17 @@ export class FaunaGallery implements CreatureGallerySource {
 
     tamed(c: Creature): boolean {
         return this.actors.find((a) => a.c === c)?.tamed ?? false;
+    }
+
+    /** Dev capture: the galaxy-zoom icon's stand-in sighting (leviathanGalaxy view only). */
+    markerSighting(): WhaleSighting | null {
+        if (this.view !== 'leviathanGalaxy' || this.actors.length === 0) return null;
+        const a = this.actors[2];
+        return { x: a.ax, y: a.ay, systemIndex: -1, date: 0, dx: 0.8, dy: -0.6, seq: 1 };
+    }
+
+    whaleFx(c: Creature): WhaleFx | null {
+        return this.fx.get(c) ?? null;
     }
 
     /** The number of stand-ins (capture readiness). */

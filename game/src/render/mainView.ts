@@ -93,6 +93,7 @@ import { ScreenShake } from './screenShake';
 import type { Fighter } from '../sim/combat/fighters';
 import { WhalePilotLayer, whalePilotEnabled } from './whalePilotLayer'; // [whalepilot]
 import { CreatureLayer, creatureTooltipText, creatureVariantName } from './creatureLayer';
+import { WhaleMarkerLayer } from './whaleMarker';
 import { FaunaGallery, faunaGalleryEnabled } from './faunaGallery'; // [newfauna]
 // [fightersfx] end
 // [rimatmo] begin
@@ -1431,6 +1432,8 @@ export class MainView {
     // [rimatmo] end
     /** Space creatures (Kaltor, slugs, Ardilus, SilverMist) of the viewed system. */
     private creatureLayer!: CreatureLayer;
+    /** Void Whale threat: galaxy-zoom icon of its last feeding (render only). */
+    private whaleMarker!: WhaleMarkerLayer;
     /** Art pilot (dev flag ?whalePilot=1): render-only void-whale prototypes next to an original Kaltor. */
     whalePilot: WhalePilotLayer | null = null; // [whalepilot]
     private textures!: MainViewTextures;
@@ -1949,6 +1952,7 @@ export class MainView {
         this.fighterLayer = new FighterLayer(this.galaxy, this.world, this.store);
         // MainView.1.cs 1559: creatures are drawn after the ships and fighters.
         this.creatureLayer = new CreatureLayer(this.galaxy, this.world, this.store.dwuPresent);
+        this.whaleMarker = new WhaleMarkerLayer(this.galaxy, this.world);
         // MainView.1.cs 1251-1295 / 1542-1547: the battle bars belong to the ship / fighter draw blocks; one layer above both.
         this.battleBars = new BattleBarLayer(this.world, this.store);
         // Render interpolation between sim steps: the layers drawing moving objects share one interpolator.
@@ -1981,6 +1985,7 @@ export class MainView {
         if (typeof window !== 'undefined' && faunaGalleryEnabled(window.location.search)) {
             const gallery = new FaunaGallery(this.galaxy, this.world, this.camera, window.location.search);
             this.creatureLayer.gallery = gallery;
+            this.whaleMarker.gallery = gallery;
             (window as unknown as { __faunaGallery?: unknown }).__faunaGallery = { gallery, layer: this.creatureLayer };
         }
         // [newfauna] end
@@ -2204,6 +2209,7 @@ export class MainView {
         // [fightersfx] end
         this.battleBars.update(z, cam, this.builtObjectLayer.battleBarShips, this.fighterLayer.drawnFighters, this.galaxy.nowMs);
         this.creatureLayer.update(z, cam);
+        this.whaleMarker.update(z);
         this.artBundleLayer.update(z, cam); // [19r]
         this.artGallery?.update(); // [19r]
         this.whalePilot?.update(z, cam); // [whalepilot]

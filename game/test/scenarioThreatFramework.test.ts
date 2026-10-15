@@ -40,6 +40,10 @@ import { registerScenarioEvent, scenarioEmit, scenarioQuery } from '../src/sim/s
 import { genShipsPeriodic, genShipsState, peekGenShipsState } from '../src/sim/scenario/threats/generationShips';
 import { archiveCoresPeriodic, grantArchiveCore, peekArchiveCoresState } from '../src/sim/scenario/threats/archiveCores';
 import { peekProbeSwarmState, probeSwarmIncome, probeSwarmPeriodic, probeSwarmState } from '../src/sim/scenario/threats/probeSwarm';
+import { peekVoidWhaleState, referenceHyperSpeed, voidWhalePeriodic, voidWhaleState } from '../src/sim/scenario/threats/voidWhale';
+import { paintWounds, woundCount, woundKey } from '../src/render/whaleWounds';
+import { FAUNA_BODIES, fallbackPaletteSource, rasterBody } from '../src/render/creatureRig';
+import { peekWreckageState } from '../src/sim/scenario/wreckage/common';
 import { reviewThreatInvestigations, THREAT_INVESTIGATIONS_KEY } from '../src/sim/scenario/threats/investigate';
 import { runPlayerCommand } from '../src/sim/player/playerCommands';
 import { threatLeadRows, threatsSectionVisible } from '../src/ui/internalSecurityView';
@@ -407,4 +411,116 @@ describe('new threats: generation ships, archive cores, probe swarm', () => {
             expect(attacked).toEqual([]);
         }
     }, 900000);
+});
+
+// Void Whale (scenarios/void-whale): one unique creature that hunts and swallows stations, flees to rest, keeps its wounds,
+// and pays a bounty when killed. Direct calls on small composite games (the daily periodic is driven by hand).
+describe('void whale', () => {
+    const age3 = (o: CreateGameOptions): CreateGameOptions => ({ ...o, player: { ...o.player, age: 3 }, aiEmpires: o.aiEmpires.map((e) => ({ ...e, age: 3 })) });
+    function wGame(ids: string[], flags: Record<string, boolean>, params: Record<string, number> = {}): Galaxy {
+        return createScenarioGame(base, { scenario: comboOverlayFs(ids), flags, params, options: age3 }).game.galaxy;
+    }
+    const PARAMS = { voidWhaleYear: 0, voidWhaleMaxTargetFirepower: 1e9 };
+
+    it('flags off: no state, no creature', () => {
+        const g = wGame(['threat-framework', 'void-whale'], { threatVoidWhale: false }, PARAMS);
+        const n = g.creatures.length;
+        voidWhalePeriodic(g);
+        expect(peekVoidWhaleState(g)).toBeNull();
+        expect(g.creatures.length).toBe(n);
+    }, 300000);
+
+    it('hunt, swallow, flee and rest; damage persists and heals slowly; the kill pays a bounty and leaves a carcass field', () => {
+        const g = wGame(['threat-framework', 'void-whale', 'wreckage-salvage'], { threatVoidWhale: true, wreckage: true }, PARAMS);
+        const st = voidWhaleState(g);
+        voidWhalePeriodic(g);
+        expect(st.phase).toBe('active');
+        const c = st.creature!;
+        expect(g.creatures).toContain(c);
+        expect(c.size).toBeGreaterThan(2000);
+        expect(c.healRate).toBe(0);
+        // HUNT: it wakes resting; at the end of the rest it picks a station.
+        expect(st.mode).toBe('rest');
+        st.restUntil = 0;
+        voidWhalePeriodic(g);
+        expect(st.mode).toBe('hunt');
+        {
+            const prey = st.target!;
+            expect(prey.role).toBe(BuiltObjectRole.Base);
+            c.xpos = prey.xpos + 100;
+            c.ypos = prey.ypos;
+            c.currentSpeed = 0;
+            const size0 = c.size;
+            c.damage = 1000;
+            voidWhalePeriodic(g);
+            expect(prey.hasBeenDestroyed).toBe(true);
+            expect(st.swallowed).toBe(1);
+            expect(st.mode).toBe('flee');
+            expect(c.size).toBeGreaterThan(size0);
+            expect(c.damage).toBeLessThan(1000);
+            expect(st.lastSeen!.seq).toBe(1);
+            expect(st.lungeSeq).toBe(1);
+            expect(st.jumpSeq).toBe(1);
+            expect(c.hyperSpeed).toBeGreaterThanOrEqual(referenceHyperSpeed(g) * 3);
+            expect(c.hyperCountdown).toBe(1000);
+            expect(st.embedded.length).toBeLessThanOrEqual(1);
+            // FLEE ends at the quiet system, then it rests.
+            c.xpos = st.destX;
+            c.ypos = st.destY;
+            c.currentSpeed = 0;
+            voidWhalePeriodic(g);
+            expect(st.mode).toBe('rest');
+            expect(st.restUntil).toBeGreaterThan(galaxyStarDate(g));
+        }
+        // PERSISTENT DAMAGE: wounds keep their peak, and heal only slowly.
+        const victim = g.empires.find((e) => e !== null && e !== g.playerEmpire && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null && e.active)!;
+        c.damage = c.damageKillThreshold * 0.5;
+        scenarioEmit(g, 'creatureDamaged', { creature: c, empire: victim, amount: 500 });
+        expect(st.peakFrac).toBeGreaterThanOrEqual(0.499);
+        expect(st.grudge.find((x) => x.empireId === victim.empireId)!.damage).toBe(500);
+        st.lastDay = galaxyStarDate(g); // no time passed
+        const d0 = c.damage;
+        voidWhalePeriodic(g);
+        expect(c.damage).toBeLessThanOrEqual(d0);
+        expect(c.damage).toBeGreaterThan(d0 * 0.99);
+        c.damage = 0;
+        voidWhalePeriodic(g);
+        expect(st.peakFrac).toBeGreaterThanOrEqual(0.499);
+        // KILL: the last empire to hurt it gets the bounty, the others a reputation boost; the carcass leaves a field.
+        const money = victim.stateMoney;
+        c.damage = c.damageKillThreshold;
+        expect(c.damageCreature({ empire: victim }, 1, null)).toBe(true);
+        voidWhalePeriodic(g);
+        expect(st.phase).toBe('ended');
+        expect(st.killer).toBe(victim);
+        expect(victim.stateMoney).toBeGreaterThanOrEqual(money + 500000 - 1);
+        const w = peekWreckageState(g)!;
+        expect(w.fields.some((f) => f.wrecks.some((r) => r.name.includes('carcass')))).toBe(true);
+    }, 900000);
+
+    it('wound art: cuts appear with damage, stay at their peak and turn pale scars as it heals; the body rasterises with jaws and fx', () => {
+        expect(woundCount(0)).toBe(0);
+        expect(woundCount(0.5)).toBeGreaterThan(woundCount(0.2));
+        expect(woundKey(0.5, 0.2)).not.toBe(woundKey(0.5, 0.5));
+        const def = FAUNA_BODIES.leviathan;
+        const parts = rasterBody(def, fallbackPaletteSource());
+        expect(parts.jaw).not.toBeNull();
+        expect(parts.body.w).toBe(1024);
+        const redness = (img: { data: Uint8ClampedArray }): number => {
+            let r = 0;
+            let n = 0;
+            for (let i = 0; i < img.data.length; i += 4) if (img.data[i + 3] > 200) {
+                r += img.data[i] - img.data[i + 2];
+                n++;
+            }
+            return n === 0 ? 0 : r / n;
+        };
+        const fresh = paintWounds(def, parts.body, 0.6, 0.6);
+        const healed = paintWounds(def, parts.body, 0.6, 0);
+        const none = paintWounds(def, parts.body, 0, 0);
+        expect(none.data.every((v) => v === 0)).toBe(true);
+        expect(fresh.data.some((v) => v > 0)).toBe(true);
+        // Same cuts, different colour: open gashes are red, healed scars pale and grey.
+        expect(redness(fresh)).toBeGreaterThan(redness(healed));
+    }, 300000);
 });

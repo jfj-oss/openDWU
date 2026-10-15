@@ -83,11 +83,13 @@ Threats come from outside and below. Early on, a generation ship arrives to clai
 
 - Changes to the base game: ●●●○○ (3 of 5)
 - Difficulty: Much harder. Much harder: an early crisis tests your fleet, and the late game turns against everyone.
-- Members: generation-ships, probe-swarm, archive-cores, cult, hive, silence, greytide, ghostarmada, robotmutiny, timebomb, doppelgangers, darkfarms
+- Members: generation-ships, probe-swarm, archive-cores, void-whale, cult, hive, silence, greytide, ghostarmada, robotmutiny, timebomb, doppelgangers, darkfarms
 
 **Generation ships.** Early in the game a world ship and its escort arrive at the galaxy edge, scout a populated colony and demand it eighteen months later. Pilgrims, Heirs, the Ark Faith or the silent Quiet Ship: cede, offer another world, or fight.
 
 **The dead probe swarm and archive cores.** Self-replicating probes expand mining stations through the asteroid fields and attack any ship in their systems until their mothercore falls. Archive cores from world ships, the mothercore and ruins give research: study them slowly or seal them for one big payoff.
+
+**The Void Whale.** From about year 5 a unique giant scarred beast (the Leviathan) swallows lightly defended stations one by one and hyper-lunges away to rest in a quiet system. Its wounds persist and heal slowly; badly hurt it flees to deep space and returns for the empire that hurt it most. The killing blow earns a bounty, goodwill from every other empire and a salvage field.
 
 **The Cult and the Time-Bomb.** A creed spreads from governor to governor across borders; ruins hold research with a planet-killing failure mode the cult can trigger.
 
