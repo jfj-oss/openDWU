@@ -47,7 +47,7 @@ import { archiveCoresPeriodic, grantArchiveCore, peekArchiveCoresState } from '.
 import { peekProbeSwarmState, probeSwarmIncome, probeSwarmPeriodic, probeSwarmState } from '../src/sim/scenario/threats/probeSwarm';
 import { peekVoidWhaleState, referenceHyperSpeed, voidWhalePeriodic, voidWhaleState } from '../src/sim/scenario/threats/voidWhale';
 import { paintWounds, woundCount, woundKey } from '../src/render/whaleWounds';
-import { paintLeviathanBody, paintLeviathanJaw, LEV_W } from '../src/render/leviathanArt';
+import { paintLeviathanBody, LEV_W } from '../src/render/leviathanArt';
 import { peekWreckageState } from '../src/sim/scenario/wreckage/common';
 import {
     hollowFleetKnownSites,
@@ -629,13 +629,12 @@ describe('void whale', () => {
         expect(w.fields.some((f) => f.wrecks.some((r) => r.name.includes('carcass')))).toBe(true);
     }, 900000);
 
-    it('wound art: cuts appear with damage, stay at their peak and turn pale scars as it heals; the profile body and jaw bake deterministically', () => {
+    it('wound art: cuts appear with damage, stay at their peak and turn pale scars as it heals; the body bakes deterministically', () => {
         expect(woundCount(0)).toBe(0);
         expect(woundCount(0.5)).toBeGreaterThan(woundCount(0.2));
         expect(woundKey(0.5, 0.2)).not.toBe(woundKey(0.5, 0.5));
         const parts = paintLeviathanBody();
         expect(parts.body.w).toBe(LEV_W);
-        expect(paintLeviathanJaw().data.some((v) => v > 0)).toBe(true);
         // Deterministic bake.
         expect(paintLeviathanBody().body.data.every((v, i) => v === parts.body.data[i])).toBe(true);
         const redness = (img: { data: Uint8ClampedArray }): number => {

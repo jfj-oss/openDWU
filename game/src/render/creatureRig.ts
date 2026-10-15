@@ -1025,6 +1025,70 @@ export function textureFromRgba(img: RgbaImage): Texture {
     return t;
 }
 
+/** `img` at half resolution (2 × 2 box filter, alpha-weighted colour; odd edges dropped). */
+export function halveRgba(img: RgbaImage): RgbaImage {
+    const w = Math.max(1, img.w >> 1);
+    const h = Math.max(1, img.h >> 1);
+    const src = img.data;
+    const data = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+            let r = 0, g = 0, b = 0, a = 0;
+            for (let dy = 0; dy < 2; dy++) {
+                for (let dx = 0; dx < 2; dx++) {
+                    const i = (Math.min(img.h - 1, 2 * y + dy) * img.w + Math.min(img.w - 1, 2 * x + dx)) * 4;
+                    const al = src[i + 3];
+                    r += src[i] * al;
+                    g += src[i + 1] * al;
+                    b += src[i + 2] * al;
+                    a += al;
+                }
+            }
+            const o = (y * w + x) * 4;
+            if (a > 0) {
+                data[o] = r / a;
+                data[o + 1] = g / a;
+                data[o + 2] = b / a;
+            }
+            data[o + 3] = a / 4;
+        }
+    }
+    return { w, h, data };
+}
+
+/** `small` scaled back up to w × h (bilinear on alpha-weighted colour): the detail of the small image at full size. */
+export function upscaleRgba(small: RgbaImage, w: number, h: number): RgbaImage {
+    const s = small.data;
+    const data = new Uint8ClampedArray(w * h * 4);
+    const at = (x: number, y: number): number => (Math.min(small.h - 1, Math.max(0, y)) * small.w + Math.min(small.w - 1, Math.max(0, x))) * 4;
+    for (let y = 0; y < h; y++) {
+        const fy = ((y + 0.5) * small.h) / h - 0.5;
+        const y0 = Math.floor(fy);
+        const ky = fy - y0;
+        for (let x = 0; x < w; x++) {
+            const fx = ((x + 0.5) * small.w) / w - 0.5;
+            const x0 = Math.floor(fx);
+            const kx = fx - x0;
+            let r = 0, g = 0, b = 0, a = 0;
+            for (const [i, k] of [[at(x0, y0), (1 - kx) * (1 - ky)], [at(x0 + 1, y0), kx * (1 - ky)], [at(x0, y0 + 1), (1 - kx) * ky], [at(x0 + 1, y0 + 1), kx * ky]]) {
+                const al = s[i + 3] * k;
+                r += s[i] * al;
+                g += s[i + 1] * al;
+                b += s[i + 2] * al;
+                a += al;
+            }
+            const o = (y * w + x) * 4;
+            if (a > 0) {
+                data[o] = r / a;
+                data[o + 1] = g / a;
+                data[o + 2] = b / a;
+            }
+            data[o + 3] = a;
+        }
+    }
+    return { w, h, data };
+}
+
 /** Pixi textures of a BodyParts (built once per look). */
 export interface BodyTextures {
     def: BodyDef;

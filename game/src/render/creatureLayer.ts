@@ -55,7 +55,7 @@ import { FaunaVariant, creatureTamedByHerders, faunaVariantDef, faunaVariantName
 import { peekVoidWhaleState } from '../sim/scenario/threats/voidWhale';
 import { FaunaArt } from './faunaArt';
 import { textureFromRgba } from './creatureRig';
-import { LeviathanRig } from './leviathanRig';
+import { LeviathanRig, leviathanPartTexture } from './leviathanRig';
 import { paintWounds, woundKey } from './whaleWounds';
 import { buildDamageLayer, creatureDamageBudget, creatureDamageColour, damageOverlaySide, rotatedFrameMask, scaledMask } from './damageOverlay';
 import { textureFromPixels } from './shipOverlays';
@@ -400,15 +400,14 @@ export interface CreatureGallerySource {
     creatures(): readonly Creature[];
     lookOf(c: Creature): FaunaLook | null;
     tamed(c: Creature): boolean;
-    /** Leviathan stand-ins: the wound / jaw / flash state to show (the real beast reads the Void Whale state). */
+    /** Leviathan stand-ins: the wound / flash state to show (the real beast reads the Void Whale state). */
     whaleFx?(c: Creature): WhaleFx | null;
 }
 
-/** What the Leviathan shows: wounds (peak / current share of health lost), jaw 0..1 and the jump flash 0..1 (explicit values override the cues). */
+/** What the Leviathan shows: wounds (peak / current share of health lost) and the jump flash 0..1 (explicit values override the cues). */
 export interface WhaleFx {
     peak: number;
     cur: number;
-    jaw?: number;
     flash?: number;
     /** Hyper-lunge progress 0..1 (ripple / streaks). */
     jumpT?: number;
@@ -430,20 +429,10 @@ interface FaunaView {
     harness: HarnessView | null;
     hstate: HarnessState;
     seenAt: number;
-    /** Leviathan: the wound texture shown, and the swallow / jump animations (wall-clock ms of the cue). */
+    /** Leviathan: the wound texture shown, and the jump animation (wall-clock ms of the cue). */
     wound?: { key: string; tex: Texture };
-    lungeSeq?: number;
-    lungeAt?: number;
     jumpSeq?: number;
     jumpAt?: number;
-}
-
-/** Jaw opening 0..1 for `ageMs` after a swallow lunge: snaps open, holds, closes. */
-export function jawOpening(ageMs: number): number {
-    if (ageMs < 0 || ageMs > 2200) return 0;
-    if (ageMs < 350) return ageMs / 350;
-    if (ageMs < 1300) return 1;
-    return 1 - (ageMs - 1300) / 900;
 }
 
 /** Jump flash 0..1 for `ageMs` after the jump: white-hot, then gone. */
@@ -580,7 +569,7 @@ export class CreatureLayer {
         rig.setDamage(d.rig);
     }
 
-    /** The Leviathan's wounds (rebuilt when the quantised peak / current damage changes), swallow jaws and jump flash. */
+    /** The Leviathan's wounds (rebuilt when the quantised peak / current damage changes) and jump flash. */
     private whaleFx(c: Creature, v: FaunaView, rig: LeviathanRig): void {
         const g = this.galaxy;
         const real = peekVoidWhaleState(g);
@@ -590,25 +579,19 @@ export class CreatureLayer {
         const key = woundKey(Math.max(peak, cur), cur);
         if ((v.wound === undefined || v.wound.key !== key) && this.damageBuilds < 4) {
             this.damageBuilds++;
-            const tex = textureFromRgba(paintWounds(rig.bodyImage, Math.max(peak, cur), cur));
+            const tex = leviathanPartTexture(paintWounds(rig.bodyImage, Math.max(peak, cur), cur));
             rig.setDamage(tex);
             v.wound?.tex.destroy(true);
             v.wound = { key, tex };
         }
         const now = performance.now();
         if (real !== null && fx === null && real.creature === c) {
-            if (v.lungeSeq === undefined) v.lungeSeq = real.lungeSeq;
             if (v.jumpSeq === undefined) v.jumpSeq = real.jumpSeq;
-            if (real.lungeSeq !== v.lungeSeq) {
-                v.lungeSeq = real.lungeSeq;
-                v.lungeAt = now;
-            }
             if (real.jumpSeq !== v.jumpSeq) {
                 v.jumpSeq = real.jumpSeq;
                 v.jumpAt = now;
             }
         }
-        rig.jawOpen = fx?.jaw ?? (v.lungeAt === undefined ? 0 : jawOpening(now - v.lungeAt));
         rig.flash = fx?.flash ?? (v.jumpAt === undefined ? 0 : jumpFlash(now - v.jumpAt));
         rig.jumpT = fx?.jumpT ?? (v.jumpAt === undefined ? -1 : jumpProgress(now - v.jumpAt));
     }

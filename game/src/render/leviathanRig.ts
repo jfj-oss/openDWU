@@ -1,28 +1,20 @@
 // The Leviathan's rig (Void Whale threat): the baked top-down parts of leviathanArt.ts on a rope body (head along +x,
 // turned with the heading like every creature). Per frame only transforms and rope points move — a slow heavy body
-// wave sweeping the broad flukes side to side, both pectoral fins rowing slowly, the lower jaw sliding out past the
-// snout on a swallow (gullet, teeth and throat glow revealed), and a hyper-lunge flash with light streaks and expanding
-// ripples. Render only; reads nothing from the sim.
+// wave sweeping the broad flukes side to side, both pectoral fins rowing slowly, and a hyper-lunge flash with light
+// streaks and expanding ripples (the mouth never opens). Render only; reads nothing from the sim.
 
 import { Container, MeshRope, Point, Sprite, type Texture } from 'pixi.js';
-import { textureFromRgba, type BackPoint, type RgbaImage } from './creatureRig';
+import { halveRgba, textureFromRgba, upscaleRgba, type BackPoint, type RgbaImage } from './creatureRig';
 import {
-    JAW_H,
-    JAW_ROOT,
-    JAW_W,
     LEV_FIN_ROOT,
     LEV_H,
-    LEV_HINGE,
     LEV_W,
     LEV_X0,
     LEV_X1,
-    UPPER_H,
     glowRgba,
     paintLeviathanBody,
     paintLeviathanFin,
     paintLeviathanFluke,
-    paintLeviathanJaw,
-    paintLeviathanUpperTeeth,
     rippleRgba,
     streakRgba,
 } from './leviathanArt';
@@ -31,38 +23,39 @@ export interface LeviathanTextures {
     body: Texture;
     bodyImg: RgbaImage;
     lumin: Texture;
-    jaw: Texture;
-    upper: Texture;
     fin: Texture;
     finTorn: Texture;
     fluke: Texture;
     glow: Texture;
-    throat: Texture;
     ripple: Texture;
     streak: Texture;
+}
+
+/**
+ * The hide, fins, fluke and wounds keep only half the painted resolution's detail (halved, then scaled back to the
+ * painted size so every part keeps its drawn size): about the pixel count of a large space port's art (≈ 510 × 510), so
+ * the beast is no sharper than the original ships and stations beside it.
+ */
+export function leviathanPartTexture(img: RgbaImage): Texture {
+    return textureFromRgba(upscaleRgba(halveRgba(img), img.w, img.h));
 }
 
 /** Bakes every part once (~0.5 s of pure raster work). */
 export function leviathanTextures(): LeviathanTextures {
     const b = paintLeviathanBody();
     return {
-        body: textureFromRgba(b.body),
+        body: leviathanPartTexture(b.body),
         bodyImg: b.body,
-        lumin: textureFromRgba(b.lumin),
-        jaw: textureFromRgba(paintLeviathanJaw()),
-        upper: textureFromRgba(paintLeviathanUpperTeeth()),
-        fin: textureFromRgba(paintLeviathanFin(6, false, 0.9)),
-        finTorn: textureFromRgba(paintLeviathanFin(5, true, 0.9)),
-        fluke: textureFromRgba(paintLeviathanFluke()),
+        lumin: leviathanPartTexture(b.lumin),
+        fin: leviathanPartTexture(paintLeviathanFin(6, false, 0.9)),
+        finTorn: leviathanPartTexture(paintLeviathanFin(5, true, 0.9)),
+        fluke: leviathanPartTexture(paintLeviathanFluke()),
         glow: textureFromRgba(glowRgba(128, [255, 255, 255], [150, 220, 255])),
-        throat: textureFromRgba(glowRgba(96, [255, 170, 130], [200, 20, 30])),
         ripple: textureFromRgba(rippleRgba(512)),
         streak: textureFromRgba(streakRgba(256, 16)),
     };
 }
 
-/** How far the lower jaw slides out past the snout at jawOpen 1 (texture px). */
-export const LEV_JAW_REACH = 330;
 /** Seconds of one tail beat. */
 export const LEV_BEAT_S = 8.5;
 const SEGMENTS = 30;
@@ -76,9 +69,6 @@ export class LeviathanRig {
     private readonly body: MeshRope;
     private readonly lumin: MeshRope;
     private damageRope: MeshRope | null = null;
-    private readonly jaw: Sprite;
-    private readonly upper: Sprite;
-    private readonly throat: Sprite;
     /** Left (torn) and right pectoral fins. */
     private readonly finL: Sprite;
     private readonly finR: Sprite;
@@ -86,8 +76,6 @@ export class LeviathanRig {
     private readonly glow: Sprite;
     private readonly ripples: Sprite[] = [];
     private readonly streaks: Sprite[] = [];
-    /** 0 closed .. 1 wide open; set by the creature layer. */
-    jawOpen = 0;
     /** 0..1 white-hot flash (a hyper-lunge); set by the creature layer. */
     flash = 0;
     /** Hyper-lunge progress 0..1 (ripple and streaks), or −1 when not jumping. */
@@ -110,16 +98,13 @@ export class LeviathanRig {
         this.finR = sprite(tex.fin, 0, 0.5);
         this.finL.scale.y = -1; // mirrored: its knobbly leading edge faces forward on the left flank too
         this.fluke = sprite(tex.fluke, 0, 0.5);
-        this.jaw = sprite(tex.jaw, JAW_ROOT[0] / JAW_W, JAW_ROOT[1] / JAW_H);
-        this.upper = sprite(tex.upper, 0, 0.5);
-        this.throat = sprite(tex.throat, 0.5, 0.5, true);
         this.body = new MeshRope({ texture: tex.body, points: this.points });
         this.lumin = new MeshRope({ texture: tex.lumin, points: this.points });
         this.lumin.blendMode = 'add';
         this.glow = sprite(tex.glow, 0.5, 0.5, true);
         this.glow.alpha = 0;
-        // Under the body: fins, fluke, the jaw (hidden under the head when shut), upper teeth; the throat glow over the gape.
-        this.inner.addChild(this.finL, this.finR, this.fluke, this.jaw, this.upper, this.throat, this.body, this.lumin, this.glow);
+        // Under the body: fins and fluke.
+        this.inner.addChild(this.finL, this.finR, this.fluke, this.body, this.lumin, this.glow);
         for (let i = 0; i < 2; i++) {
             const r = sprite(tex.ripple, 0.5, 0.5, true);
             r.alpha = 0;
@@ -205,25 +190,8 @@ export class LeviathanRig {
         this.finL.rotation = fl.ang + Math.PI + 0.8 + 0.12 * Math.sin(row);
         this.finR.position.set(fr.x, fr.y);
         this.finR.rotation = fr.ang + Math.PI - 0.8 - 0.12 * Math.sin(row + 1.4);
-        // The lower jaw: slides forward from under the head (it drops open), baring the gullet and the upper teeth.
-        const open = Math.max(0, Math.min(1, this.jawOpen));
-        const ease = open * open * (3 - 2 * open);
-        const hinge = this.carried(LEV_HINGE[0] + ease * LEV_JAW_REACH, LEV_HINGE[1]);
-        this.jaw.visible = open > 0.01;
-        this.jaw.position.set(hinge.x, hinge.y);
-        this.jaw.rotation = hinge.ang + 0.02 * Math.sin(w * t * 1.3 + ph);
-        this.jaw.scale.set(1, 0.92 + 0.12 * ease);
-        const snout = this.carried(LEV_X1 - 60 + 40 * ease, LEV_H / 2);
-        this.upper.visible = open > 0.01;
-        this.upper.position.set(snout.x, snout.y);
-        this.upper.rotation = snout.ang;
-        this.upper.scale.set(1, (LEV_H * 0.5) / UPPER_H);
-        const thr = this.carried(LEV_X1 + 40 + ease * 140, LEV_H / 2);
-        this.throat.position.set(thr.x, thr.y);
-        this.throat.scale.set((100 + 360 * ease) / this.throat.texture.width);
-        this.throat.alpha = ease * 0.75;
-        // Bioluminescence breathes slowly; it flares as the jaw opens and in the flash.
-        this.lumin.alpha = Math.min(1, 0.5 + 0.2 * Math.sin(t * 0.9 + ph) + 0.3 * open + flash);
+        // Bioluminescence breathes slowly; it flares in the flash.
+        this.lumin.alpha = Math.min(1, 0.5 + 0.2 * Math.sin(t * 0.9 + ph) + flash);
         // The hyper-lunge: a white-hot body glow, light streaks dragged back along it, two ripples rolling out.
         const mid = this.carried((LEV_X0 + LEV_X1) / 2, CY - 20);
         this.glow.position.set(mid.x, mid.y);

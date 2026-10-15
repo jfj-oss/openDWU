@@ -10,7 +10,7 @@ const allViews = [
     ['tamed', 'fauna-tamed.png'],
     ['tamedMid', 'fauna-tamed-mid.png'],
     ['shoal', 'fauna-shoal.png'],
-    // Void Whale threat (the Leviathan): unhurt / wounded / healed / mid-swallow / jumping, close, mid and far.
+    // Void Whale threat (the Leviathan): unhurt / wounded / healed / jumping, close, mid and far.
     ['leviathan', 'leviathan-close-topdown.png'],
     ['leviathanMid', 'leviathan-mid-topdown.png'],
     ['leviathanFar', 'leviathan-far-topdown.png'],

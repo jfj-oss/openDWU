@@ -1,6 +1,6 @@
 // The Leviathan's art (Void Whale threat, scenarios/void-whale): a giant scarred space whale seen FROM ABOVE like every
 // creature and ship (head along +x, turned with its heading) — a broad blunt box head with the blowhole and the mouth
-// line across the snout, a lower jaw that slides out gaping on a swallow (gullet, teeth), a thick trunk with a spine
+// line across the snout (the mouth stays shut), a thick trunk with a spine
 // ridge and dorsal knuckles tapering to broad flukes, two long pectoral fins (the left one torn). The hide is near-black
 // grimy slate, a little lighter where the body curves away at the flanks, with soot streaks, decay mottling, barnacle
 // crusts, dried-blood scabs, scorch marks, pale squid-sucker and rake scars, harpoon puckers, rusted broken harpoons
@@ -185,9 +185,6 @@ function knuckle(u: number): number {
     return v;
 }
 
-/** Jaw hinge (texture px, on the centreline under the head): the lower jaw slides forward from here as it gapes. */
-export const LEV_HINGE_U = 0.7;
-export const LEV_HINGE: [number, number] = [levX(LEV_HINGE_U), CY];
 /** Pectoral fin roots (texture px), left (−y) and right (+y) flank. */
 export const LEV_FIN_U = 0.6;
 export const LEV_FIN_ROOT: [number, number] = [levX(LEV_FIN_U), CY - levHalf(LEV_FIN_U) * 0.7];
@@ -609,106 +606,7 @@ function paintHarpoons(img: RgbaImage, seed: number): void {
 }
 
 // ---------------------------------------------------------------------------
-// Jaw, maw, fins, fluke, fx.
-
-export const JAW_W = 560;
-export const JAW_H = 380;
-/** Back centre of the lower jaw inside its image (px): placed on the hinge, it slides forward as the jaw drops. */
-export const JAW_ROOT: [number, number] = [40, JAW_H / 2];
-
-/**
- * The lower jaw seen from above as it hangs open: a long U of pale bone-grey jaw rim lined with jagged teeth pointing
- * inward and up, the dark-red gullet and tongue inside, a throat glowing deep red at the back. Closed, it hides under
- * the head; on a swallow the rig slides it forward past the snout.
- */
-export function paintLeviathanJaw(seed = 91): RgbaImage {
-    const img = image(JAW_W, JAW_H);
-    const n = makeValueNoise(seed + 20);
-    const len = JAW_W - JAW_ROOT[0] - 8;
-    const cy = JAW_ROOT[1];
-    const outer = (s: number): number => (JAW_H / 2 - 8) * (0.92 - 0.25 * s) * Math.sqrt(Math.max(0, 1 - Math.pow(Math.max(0, s - 0.72) / 0.28, 2)));
-    const RIM = 30;
-    for (let x = 0; x < JAW_W; x++) {
-        const s = (x + 0.5 - JAW_ROOT[0]) / len;
-        if (s < -0.08 || s > 1) continue;
-        const ho = outer(Math.max(0, s));
-        const hi = Math.max(0, ho - RIM * (0.8 + 0.4 * s));
-        const inTip = smoothstep(0.86, 0.98, s);
-        for (let y = 0; y < JAW_H; y++) {
-            const py = y + 0.5;
-            const d = Math.abs(py - cy);
-            const sd = Math.min(ho - d, x + 0.5 - JAW_ROOT[0] + 0.08 * len);
-            const cover = clamp01((sd + 0.75) / 1.5);
-            if (cover <= 0) continue;
-            const m = fbm(n, x / 22, y / 22, 3);
-            let c: [number, number, number];
-            if (d > hi || inTip > 0.5) {
-                // The jaw rim: pale grimy bone-grey, lit on its outer curve.
-                const r = clamp01((d - hi) / Math.max(1, ho - hi));
-                c = mix([118, 118, 120], [70, 72, 80], r * 0.6 + 0.4 * (1 - m));
-                if (Math.abs(d - hi) < 3) c = mix(c, [60, 10, 16], 0.85); // the gum line
-            } else {
-                // Inside: tongue and gullet, glowing toward the throat.
-                const throat = Math.pow(1 - clamp01(s), 2);
-                c = mix([46, 4, 12], [210, 36, 36], throat);
-                const tongue = Math.exp(-Math.pow(d / (hi * 0.55 + 1), 2)) * smoothstep(0.02, 0.2, s) * (1 - smoothstep(0.65, 0.85, s));
-                c = mix(c, [150, 46, 58], tongue * 0.55);
-                const ridge = 0.5 + 0.5 * Math.cos(x / 6);
-                c = mix(c, [c[0] * 0.6, c[1] * 0.5, c[2] * 0.5], ridge * 0.4 * (1 - throat));
-                c = mix(c, [c[0] * 0.4, c[1] * 0.4, c[2] * 0.4], smoothstep(0.6, 1, d / Math.max(1, hi)) * 0.6);
-            }
-            const i = (y * JAW_W + x) * 4;
-            img.data[i] = c[0];
-            img.data[i + 1] = c[1];
-            img.data[i + 2] = c[2];
-            img.data[i + 3] = cover * 255;
-        }
-    }
-    // Teeth on both rims, standing up and leaning inward: from above, ivory cones pointing toward the centre.
-    for (let k = 0; k < 17; k++) {
-        const s = 0.12 + k * 0.047;
-        if (s > 0.9) break;
-        const x = JAW_ROOT[0] + s * len;
-        const ho = outer(s);
-        const hi = Math.max(0, ho - RIM * (0.8 + 0.4 * s));
-        for (const side of [-1, 1]) {
-            const h = 16 + 18 * lh(seed, 1710 + k * 2 + (side > 0 ? 1 : 0));
-            tooth(img, x + (lh(seed, 1700 + k) - 0.5) * 6, cy + side * (hi + 6), 6 + 3 * lh(seed, 1720 + k), h, -side, 0.15, lh(seed, 1730 + k * 2 + (side > 0 ? 1 : 0)) < 0.12);
-        }
-    }
-    return img;
-}
-
-export const UPPER_W = 90;
-export const UPPER_H = 420;
-
-/** The upper teeth along the underside of the snout, seen from above when the jaw drops: a curved row of ivory cones
- * pointing forward, set in a dark-red gum (drawn under the head; only the part past the snout shows). */
-export function paintLeviathanUpperTeeth(seed = 91): RgbaImage {
-    const img = image(UPPER_W, UPPER_H);
-    const cy = UPPER_H / 2;
-    for (let y = 0; y < UPPER_H; y++) {
-        const a = (y + 0.5 - cy) / (UPPER_H / 2 - 10);
-        if (Math.abs(a) > 1) continue;
-        const x0 = 26 * a * a;
-        for (let x = 0; x < 18; x++) over(img, Math.round(x0) + x, y, 70, 8, 16, 0.9 * (1 - x / 18));
-    }
-    for (let k = 0; k < 15; k++) {
-        const a = -0.9 + (k / 14) * 1.8;
-        const y = cy + a * (UPPER_H / 2 - 10);
-        const x0 = 26 * a * a + 10;
-        const h = 18 + 18 * lh(seed, 1800 + k);
-        // A forward-pointing cone: reuse the up/down tooth by drawing it rotated as a polygon.
-        const w = 6 + 3 * lh(seed, 1810 + k);
-        polygon(img, [[x0, y - w], [x0, y + w], [x0 + h * 0.6, y + w * 0.45], [x0 + h, y], [x0 + h * 0.6, y - w * 0.5]], (px, py, cover) => {
-            const along = (px + 0.5 - x0) / h;
-            const c = mix([118, 98, 82], IVORY, smoothstep(0, 0.45, along));
-            const lit = 0.6 + 0.4 * clamp01(0.5 - (py + 0.5 - y) / w);
-            over(img, px, py, c[0] * lit, c[1] * lit, c[2] * lit, cover);
-        });
-    }
-    return img;
-}
+// Fins, fluke, fx.
 
 export const FIN_LEN = 420;
 export const FIN_WID = 210;
