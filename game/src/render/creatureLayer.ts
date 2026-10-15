@@ -423,7 +423,7 @@ interface FaunaView {
     look: string;
     node: Container;
     rig: CreatureRig | null;
-    /** The Leviathan's own profile rig (look 'leviathan'). */
+    /** The Leviathan's own top-down rig (look 'leviathan'). */
     whale: LeviathanRig | null;
     swarm: LanternSwarm | null;
     straight: StraightCarrier | null;
@@ -671,7 +671,6 @@ export class CreatureLayer {
         v.node.rotation = heading;
         const speed01 = c.movementSpeed > 0 ? Math.min(1, c.currentSpeed / c.movementSpeed) : 0;
         if (v.whale !== null) {
-            v.whale.face(heading);
             v.whale.pose(t, speed01);
             v.node.scale.set((px * RIG_CONTENT_FRAC) / v.whale.length / z);
         } else if (v.rig !== null) {

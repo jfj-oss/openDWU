@@ -47,7 +47,6 @@ import { archiveCoresPeriodic, grantArchiveCore, peekArchiveCoresState } from '.
 import { peekProbeSwarmState, probeSwarmIncome, probeSwarmPeriodic, probeSwarmState } from '../src/sim/scenario/threats/probeSwarm';
 import { peekVoidWhaleState, referenceHyperSpeed, voidWhalePeriodic, voidWhaleState } from '../src/sim/scenario/threats/voidWhale';
 import { paintWounds, woundCount, woundKey } from '../src/render/whaleWounds';
-import { leviathanFacing } from '../src/render/leviathanRig';
 import { paintLeviathanBody, paintLeviathanJaw, LEV_W } from '../src/render/leviathanArt';
 import { peekWreckageState } from '../src/sim/scenario/wreckage/common';
 import {
@@ -634,10 +633,6 @@ describe('void whale', () => {
         const parts = paintLeviathanBody();
         expect(parts.body.w).toBe(LEV_W);
         expect(paintLeviathanJaw().data.some((v) => v > 0)).toBe(true);
-        // Belly-down roll: rightward +1, leftward −1, near vertical keeps the previous side.
-        expect(leviathanFacing(0.2, -1)).toBe(1);
-        expect(leviathanFacing(Math.PI, 1)).toBe(-1);
-        expect(leviathanFacing(Math.PI / 2, -1)).toBe(-1);
         // Deterministic bake.
         expect(paintLeviathanBody().body.data.every((v, i) => v === parts.body.data[i])).toBe(true);
         const redness = (img: { data: Uint8ClampedArray }): number => {

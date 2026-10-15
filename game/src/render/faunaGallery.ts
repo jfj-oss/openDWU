@@ -117,7 +117,7 @@ export class FaunaGallery implements CreatureGallerySource {
         };
         if (this.view === 'leviathan' || this.view === 'leviathanMid' || this.view === 'leviathanFar' || this.view === 'leviathanGalaxy') {
             // Unhurt / badly wounded / healed to scars / mid-swallow (jaws wide) / jump flash.
-            // A 3 x 2 grid: the top row facing right, the healed one swimming left (rolled belly-down).
+            // A 3 x 2 grid: the top row facing right, the healed one swimming left .
             const sx = LEV_SX;
             const sy = LEV_SY;
             whale(0, 0, { peak: 0, cur: 0 }, 'unhurt');

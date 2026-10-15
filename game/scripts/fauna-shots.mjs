@@ -11,10 +11,10 @@ const allViews = [
     ['tamedMid', 'fauna-tamed-mid.png'],
     ['shoal', 'fauna-shoal.png'],
     // Void Whale threat (the Leviathan): unhurt / wounded / healed / mid-swallow / jumping, close, mid and far.
-    ['leviathan', 'leviathan-close.png'],
-    ['leviathanMid', 'leviathan-mid.png'],
-    ['leviathanFar', 'leviathan-far.png'],
-    ['leviathanGalaxy', 'leviathan-galaxy.png'],
+    ['leviathan', 'leviathan-close-topdown.png'],
+    ['leviathanMid', 'leviathan-mid-topdown.png'],
+    ['leviathanFar', 'leviathan-far-topdown.png'],
+    ['leviathanGalaxy', 'leviathan-galaxy-topdown.png'],
 ];
 const views = only === '' ? allViews.filter(([v]) => !v.startsWith('leviathan')) : allViews.filter(([v]) => only.split(',').includes(v));
 const browser = await chromium.launch({

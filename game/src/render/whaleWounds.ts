@@ -80,7 +80,7 @@ function nearest(pts: readonly [number, number][], cum: readonly number[], x: nu
     return [best, at / cum[cum.length - 1]];
 }
 
-/** The wound overlay for `body` (the Leviathan's body raster, leviathanArt.ts profile): gashes raked across the flank. */
+/** The wound overlay for `body` (the Leviathan's body raster, leviathanArt.ts outline): gashes raked across the back. */
 export function paintWounds(body: RgbaImage, peak: number, cur: number): RgbaImage {
     const img: RgbaImage = { w: body.w, h: body.h, data: new Uint8ClampedArray(body.w * body.h * 4) };
     const sc = body.w / 1600;
