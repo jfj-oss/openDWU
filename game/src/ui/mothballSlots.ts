@@ -78,7 +78,7 @@ export function mothballSlot(galaxy: Galaxy, empire: Empire, sel: { shipGroup?: 
     const list = mothballPortChoices(galaxy, empire, force);
     const best = list.length > 0 && list[0].full === null ? list[0] : null;
     const choices: MothballChoice[] = list.map((c) => ({
-        label: `${c.port.name} — ${Math.round(c.distance).toLocaleString('en-US')} (ETA ${formatEtaDays(c.etaMs)}), ${c.used} / ${c.capacity} in reserve${c.full !== null ? ' — full' : ''}`,
+        label: `${c === best ? '★ ' : ''}${c.port.name} — ${Math.round(c.distance).toLocaleString('en-US')} (ETA ${formatEtaDays(c.etaMs)}), ${c.used} / ${c.capacity} in reserve${c.full !== null ? ' — full' : ''}`,
         hint: c.full !== null ? `${c.port.name} is ${c.full}` : `Mothball at ${c.port.name}${c === best ? ' (the best: interior, with room)' : ''}`,
         chosen: c === best,
         disabled: c.full !== null || why !== null,
@@ -173,8 +173,20 @@ export function openMothballPortMenu(anchor: HTMLElement, choices: readonly Moth
     document.addEventListener('pointerdown', close, true);
 }
 
-/** Wires a screen button to a model getter: click = model.click, right-click = the port list. */
+/** Wires a screen button to a model getter: a click on Mothball opens the port list to choose from (best port first;
+ *  user 2026-10-14: the screens must let you pick), Reactivate acts at once; right-click also opens the list. */
 export function wireMothballButton(btn: HTMLButtonElement, model: () => MothballSlotModel | null, after: () => void): void {
+    btn.addEventListener(
+        'click',
+        (e) => {
+            const m = model();
+            if (m === null || m.disabled || m.choices.length === 0 || !m.label.startsWith('Mothball')) return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            openMothballPortMenu(btn, m.choices, after);
+        },
+        true,
+    );
     btn.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         const m = model();

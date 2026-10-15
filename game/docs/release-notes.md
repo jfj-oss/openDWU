@@ -4,6 +4,8 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **Mothballing: choose the port:** in the Fleets and Ships screens, Mothball now opens the list of your space ports
+  (★ the best one: interior, with room; distance, arrival time and how full each is) to pick from.
 - **Dead Probe Swarm scales with the galaxy:** it adds a mining station every 75 days in a 300-star galaxy and
   proportionally faster in bigger ones (600 stars: every 37 days, 1,400 stars: every 16 days; never under 10 days), and its income cap is 300,000 a year (was 250,000).
 - **Ancient Guardians keep their name:** themed empire names no longer rename the story empires — the Ancient Guardians
