@@ -689,29 +689,6 @@ export class OwGrid<T> {
         }
         this.body = el('div', 'ow-grid-body ow-scroll');
         this.el.appendChild(this.body);
-        // A header that does not fit shrinks its font (to 80 %) before it is cut with an ellipsis; refit when the width changes.
-        if (this.head && typeof ResizeObserver !== 'undefined') {
-            new ResizeObserver(() => {
-                const w = this.el.clientWidth;
-                if (w !== this.lastFitWidth) this.fitHeaders();
-            }).observe(this.el);
-        }
-    }
-
-    private lastFitWidth = 0;
-
-    /** Shrinks each overflowing header's font to fit its fixed-width column, down to 80 % of its size. */
-    private fitHeaders(): void {
-        if (!this.head || !this.head.isConnected) return;
-        this.lastFitWidth = this.el.clientWidth;
-        const PAD = 8; // the header cell's left + right padding (2px 4px)
-        for (const h of Array.from(this.head.children) as HTMLElement[]) {
-            h.style.fontSize = '';
-            if (h.clientWidth === 0 || h.scrollWidth <= h.clientWidth) continue;
-            const base = parseFloat(getComputedStyle(h).fontSize);
-            const fit = base * ((h.clientWidth - PAD) / (h.scrollWidth - PAD)) * 0.98;
-            h.style.fontSize = `${Math.max(base * 0.8, fit)}px`;
-        }
     }
 
     /** The (first, in display order) selected row. */
@@ -787,7 +764,6 @@ export class OwGrid<T> {
                 h.classList.toggle('ow-sort-desc', this.sortCol === c.id && this.sortDir === 'desc');
             });
         }
-            this.fitHeaders();
         const rows = this.displayed;
         const keys = rows.map((row) => this.o.key(row));
         this.rowEls.clear();

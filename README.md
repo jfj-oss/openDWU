@@ -771,10 +771,6 @@ Desktop app:
   folder setting (macOS: app menu → **Game Folder…**; Windows/Linux:
   **Ctrl+Shift+O** → **Game Folder…**) and pick the folder with `images`
   and `races.txt`.
-- **Automatic updates.** The Windows setup install and the Linux AppImage
-  download a new release in the background and install it when you quit
-  (**Check for Updates…** then offers **Restart now**); the macOS app, the
-  Windows zip and the Linux tar.gz offer the download instead.
 - **No update prompts.** The check runs on every launch and only offers
   full releases (not pre-releases); use **Check for Updates…** in the same
   menu to check now. To turn the launch check off, add
@@ -922,27 +918,8 @@ about this project, please
 [open an issue](https://github.com/jfj-oss/openDWU/issues) or email
 [jfj@tutanota.de](mailto:jfj@tutanota.de), and I will respond promptly.
 
-**Privacy.** openDWU has no accounts and sends no personal data, saves or
-file names anywhere. The desktop app sends two things, both anonymous and
-with no setting to turn them off: (1) **usage statistics** to
-[Aptabase](https://aptabase.com) (EU servers, no IP address kept, no user
-id): app version, edition, OS, CPU architecture, graphics vendor and
-renderer mode, language; the setup of each game you start or load (galaxy
-size, number of empires, shape, age, difficulty, which add-ons and theme,
-multiplayer or not and player count); minutes played and game year reached
-when you quit, and whether the game was won or lost; which screens were
-opened (once per session each); and plain counts of multiplayer desyncs and
-installed updates. Nothing is sent from a development build, and the
-events are batched in the background and dropped when you are offline.
-(2) Crash reports:
-the desktop app also sends crash reports (error, stack, app version, OS, graphics card; no IP
-address, saves or personal files; your user name and home folder are replaced
-by "~") to Sentry to help fix bugs. In about 1 % of sessions it also sends a
-once-a-minute performance summary (frame rate, sim speed, galaxy size,
-graphics card), and after a multiplayer desync the frame number and checksums
-(no save). The Esc menu's **Report a Bug** button, only when you press it,
-sends your text with a screenshot of the game view, the recent log, version,
-graphics card and changed game settings (never a saved game). The network use is:
+**Privacy.** openDWU has no telemetry, analytics or accounts and sends no
+data about you or your games anywhere. The only network use is:
 
 - the desktop app's update check, which asks GitHub for the latest release
   each time the app starts;

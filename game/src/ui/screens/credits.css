@@ -15,8 +15,6 @@
     top: 0;
     bottom: 0;
     overflow: hidden;
-    /* Clip the moving column to the window on every compositor (the transformed layer is not always clipped by overflow alone). */
-    contain: paint;
     cursor: default;
     font-family: 'Forgotten Futurist', sans-serif;
 }

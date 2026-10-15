@@ -28,7 +28,6 @@ import { BuiltObjectSubRole } from '../builtObjectTypes';
 import { BuiltObjectMission, BuiltObjectMissionPriority, BuiltObjectMissionType, COORD_UNSET_DOUBLE } from '../missions/mission';
 import { assignMission, clearPreviousMissionRequirements } from '../missions/assign';
 import { markPlayerOrder } from '../missions/playerOrder';
-import { scenarioQuery } from '../scenario/hooks';
 import { checkAlreadyHaveMiningStationAtHabitat, checkForeignBaseAtHabitat } from '../missions/cmdConstruction';
 import { checkEmpireTerritoryCanBuildAtHabitat } from '../resourceTargets';
 import { checkResearchStationAtLocation } from '../stationPlacement';
@@ -138,9 +137,7 @@ export function estimateTravelMs(galaxy: Galaxy, ship: BuiltObject, fromX: numbe
     const d = galaxy.calculateDistance(fromX, fromY, toX, toY);
     if (d <= 0) return 0;
     if (ship.warpSpeed > 0 && d > baconMovementSettings.hyperJumpThreshhold) {
-        const spool = Math.max(0, ship.hyperjumpInitiate) * 1000;
-        // Mod layer (slow hyperdrive): the spool's factor (1 = stock).
-        return (d / Math.max(30, ship.warpSpeed)) * 1000 + (galaxy.scenario !== null ? spool * scenarioQuery(galaxy, 'hyperjumpSpoolFactor', 1, { ship, here: false }) : spool);
+        return (d / Math.max(30, ship.warpSpeed)) * 1000 + Math.max(0, ship.hyperjumpInitiate) * 1000;
     }
     return (d / Math.max(1, ship.cruiseSpeed > 0 ? ship.cruiseSpeed : ship.topSpeed)) * 1000;
 }

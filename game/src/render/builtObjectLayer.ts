@@ -37,8 +37,6 @@ import { BuiltObjectSubRole } from '../sim/builtObjectTypes';
 import { DesignImageScalingMode } from '../sim/data/designSpecifications';
 import { DiplomaticRelationType } from '../sim/diplomacy';
 import type { Empire } from '../sim/empire';
-import { galaxyStarDate } from '../sim/tick/simTime';
-import { mothballGrey, mothballGreyColor } from '../sim/scenario/mothballing/types';
 import type { SystemInfo } from '../sim/types';
 import type { MapOverlayState } from '../ui/mapOverlays';
 import { BATTLE_BARS_MAX_FACTOR, type DrawnBarShip } from './combatBars';
@@ -563,7 +561,6 @@ export class BuiltObjectLayer {
         this.liveries = new LiveryOverlays(this.root, galaxy);
         this.damage = new DamageOverlays<BuiltObject>(this.root);
         this.construction = new ConstructionOverlays<BuiltObject>();
-        (globalThis as { __dwuShipLayer?: unknown }).__dwuShipLayer = this; // debug/screenshot hook (drawnSizePx)
     }
 
     /**
@@ -779,9 +776,7 @@ export class BuiltObjectLayer {
             sprite.rotation = heading + Math.PI / 2;
             sprite.scale.set(px / metrics.cropSide / z);
             sprite.alpha = this.overlays.fadeCivilianShips && bo.owner === null ? 144 / 255 : 1;
-            let tint = ancient ? ANCIENT_TINT : 0xffffff;
-            // Mothballing add-on (render-only): a ship in reserve is drawn greyer and darker, fading back while it reactivates.
-            if (bo.mothball !== undefined) tint = mothballGreyColor(tint, mothballGrey(bo, galaxyStarDate(this.galaxy)));
+            const tint = ancient ? ANCIENT_TINT : 0xffffff;
             if (sprite.tint !== tint) sprite.tint = tint;
             sprite.visible = true;
             shown.add(sprite);

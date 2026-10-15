@@ -217,26 +217,3 @@ function spyRnd(g: Galaxy): { k: string; v: number }[] {
     };
     return log;
 }
-
-// DEVIATION (not in the C#): a player who picks a story race (Mechanoid / Shakturi) must not get natives of it.
-describe('story-race player start', () => {
-    for (const race of ['Mechanoid', 'Shakturi']) {
-        for (const pirate of [false, true]) {
-            it(`${race} ${pirate ? 'pirate' : 'normal'} start: no story-race populations except the player's own`, () => {
-                const o = opts(1, 1.0);
-                o.player = { ...o.player, race, playAsPirate: pirate };
-                const g = createGame(o).galaxy;
-                const player = g.playerEmpire!;
-                const bad: string[] = [];
-                for (const h of g.habitats) {
-                    if (h.population.items.length === 0) continue;
-                    const own = h.owner === player;
-                    for (const p of h.population.items) {
-                        if (['Mechanoid', 'Shakturi'].includes(p.race.name) && !own) bad.push(`${h.name}:${p.race.name}`);
-                    }
-                }
-                expect(bad).toEqual([]);
-            }, 120000);
-        }
-    }
-});

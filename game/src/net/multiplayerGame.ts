@@ -15,7 +15,6 @@
 //
 // Headless: no DOM / Pixi / Node APIs.
 
-import { reportDesync } from '../errorReporting';
 import type { Game } from '../sim/game';
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
@@ -325,10 +324,7 @@ export class MultiplayerGame {
                 else this.resyncing.add(nameOfId(peer));
                 this.refreshStatus();
             },
-            onDigest: (frame, peer, ok, host, client, detail) => {
-                if (!ok && this.role === 'host') {
-                    reportDesync({ frame, lastGood: detail?.lastGood ?? -1, host, client, sections: detail?.sections ?? [], deep: detail?.deep ?? false, players: this.opts.start.players.length, role: this.role });
-                }
+            onDigest: (_frame, peer, ok) => {
                 if (!ok || this.role !== 'host') return;
                 if (this.resyncing.delete(nameOfId(peer))) this.refreshStatus();
             },

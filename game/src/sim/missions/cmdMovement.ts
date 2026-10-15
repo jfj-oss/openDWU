@@ -265,13 +265,8 @@ export const cmdHyperTo: CommandHandler = (ctx) => {
         // long num7 = Math.Max(0L, HyperjumpInitiate * 1000 + (Galaxy.Rnd.Next(0, 2000) - 1000));
         const num7 = Math.max(0, bo.hyperjumpInitiate * 1000 + (galaxy.rnd.next(0, 2000) - 1000));
         bo.hyperjumpCountdown = galaxyStarDate(galaxy) + num7;
-        // Mod layer (slow hyperdrive / jump interdiction, not in the original): the spool's total factor.
-        if (galaxy.scenario !== null) {
-            const k = scenarioQuery(galaxy, 'hyperjumpSpoolFactor', 1, { ship: bo, here: true });
-            if (k !== 1) bo.hyperjumpCountdown = galaxyStarDate(galaxy) + Math.round(num7 * k);
-        }
         spoolMs = num7;
-        spoolStart = galaxyStarDate(galaxy);
+        spoolStart = bo.hyperjumpCountdown - num7;
         noteBuiltObjectEffect(galaxy, bo); // observation only (render/effectsLayer.ts)
         const baseHyperJumpAccuracy = baconMovementSettings.baseHyperJumpAccuracy;
         const exitPoint = galaxy.selectHyperJumpExitPoint(baseHyperJumpAccuracy);

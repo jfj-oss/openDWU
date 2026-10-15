@@ -11,7 +11,6 @@ import { parseGovernments, parseGovernmentBiases } from './governments';
 
 import type { Resource } from './resources';
 import { parseResources } from './resources';
-import { fetchOptionalText } from './fetchData';
 import type { Component } from './components';
 import { parseComponents } from './components';
 import type { Fighter } from './fighters';
@@ -231,8 +230,6 @@ export async function loadGameData(
     // always supplies all three, from touching /asset-manifest.json).
     const needManifest = raceFileNames === undefined || designTemplateFiles === undefined || policyFileNames === undefined;
     const manifest = needManifest ? await fetchManifest(fetchText) : null;
-    // The install root's listing (desktop/assetManifest.cjs key "."): undefined when the manifest has none.
-    const rootListing = manifest?.['.'];
     // File.Exists stand-in (see manifestFileLookup); undefined = unknown, request the file.
     // With a theme index: the theme's copy (its URL resolves through resolveDataUrl) else the base manifest's answer.
     const exists = (relPath: string): string | null | undefined =>
@@ -332,7 +329,7 @@ export async function loadGameData(
 
         // BaconMain.cs 1107: new StreamReader("BaconSettings.txt") — relative to the working directory (the install
         // root), never a customization set; FileNotFoundException → empty dictionary → every setting at its default.
-        fetchOptionalText(fetchText, resolveDataUrlRaw('BaconSettings.txt'), rootListing === undefined ? undefined : rootListing.some((f) => f.toLowerCase() === 'baconsettings.txt')),
+        fetchText(resolveDataUrlRaw('BaconSettings.txt')).catch(() => null),
     ]);
     if (gameTextText !== '') loadText(gameTextText);
 

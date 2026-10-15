@@ -88,7 +88,6 @@ export const GAME_DAY_LENGTH = YEAR_LENGTH / 360;
 
 const yearlyHandlers: ScenarioYearlyHandler[] = [];
 const periodicHandlers: ScenarioPeriodicHandler[] = [];
-const framePeriodicHandlers: ScenarioPeriodicHandler[] = [];
 
 /** Registers (or replaces, by id) a yearly handler. Returns an unregister function (tests). */
 export function registerScenarioYearly(handler: ScenarioYearlyHandler): () => void {
@@ -99,35 +98,6 @@ export function registerScenarioYearly(handler: ScenarioYearlyHandler): () => vo
 export function registerScenarioPeriodic(handler: ScenarioPeriodicHandler): () => void {
     if (!(handler.periodDays > 0)) throw new Error(`registerScenarioPeriodic(${handler.id}): periodDays must be > 0`);
     return register(periodicHandlers, handler);
-}
-
-/**
- * Registers (or replaces, by id) a periodic handler checked at every sim frame end (tick/scheduler.ts) instead of the
- * long block — for day-scale timers (the long block runs only every 36 game days). Same gate, anchoring and
- * GalaxyScenario.periodicLast bookkeeping as registerScenarioPeriodic; keep the gate check cheap.
- */
-export function registerScenarioFramePeriodic(handler: ScenarioPeriodicHandler): () => void {
-    if (!(handler.periodDays > 0)) throw new Error(`registerScenarioFramePeriodic(${handler.id}): periodDays must be > 0`);
-    return register(framePeriodicHandlers, handler);
-}
-
-/** Per sim frame (tick/scheduler.ts; no-op without a scenario): the frame periodic handlers. */
-export function scenarioFramePeriodicTick(galaxy: Galaxy): void {
-    const s = galaxy.scenario;
-    if (s === null || framePeriodicHandlers.length === 0) return;
-    let now = -1;
-    for (const h of framePeriodicHandlers) {
-        if (!scenarioGateOpen(galaxy, h)) continue;
-        if (now < 0) now = galaxyStarDate(galaxy);
-        const last = s.periodicLast[h.id];
-        if (last === undefined) {
-            s.periodicLast[h.id] = now;
-            continue;
-        }
-        if (now - last < h.periodDays * GAME_DAY_LENGTH) continue;
-        s.periodicLast[h.id] = now;
-        h.run(galaxy, now);
-    }
 }
 
 /** The game year of a star date. */
@@ -500,15 +470,11 @@ export interface ScenarioQueries {
     /**
      * cmdMovement.ts HyperTo while the jump spools (BuiltObject.2.cs 3020: `starDate >= HyperjumpCountdown` waits): the
      * countdown to use this step. `spoolMs` >= 0 on the command's first execution (the stock HyperjumpInitiate roll,
-     * started at `spoolStart`; the countdown already has the hyperjumpSpoolFactor total), -1 on later steps. Jump interdiction (scenario/interdiction). No Rnd.
+     * started at `spoolStart`), -1 on later steps. Jump interdiction (scenario/interdiction). No Rnd.
      */
     hyperjumpCountdown: { value: number; args: { ship: BuiltObject; starDate: number; spoolStart: number; spoolMs: number } };
-    /**
-     * The total factor on `ship`'s stock jump spool (1 = stock): cmdHyperTo's first execution (the countdown), the
-     * move-together jump start (fleets/moveTogether.ts), intercept ETAs and construction-board estimates. `here`: a
-     * jump started where the ship is now (position-based rules such as jump interdiction apply), else anywhere. Pure.
-     */
-    hyperjumpSpoolFactor: { value: number; args: { ship: BuiltObject; here: boolean } };
+    /** player/intercept.ts: the factor on `ship`'s jump spool if it started a jump where it is now (1 = stock). Pure. */
+    hyperjumpSpoolFactor: { value: number; args: { ship: BuiltObject } };
     /** pirates/pirateFleets.ts raid choices (Empire.9.cs 1045-1116): the fleet strength a raid at `habitat` (a colony, or a mining station's habitat) needs. */
     raidRequiredStrength: { value: number; args: { empire: Empire; habitat: Habitat } };
     /** industry.ts industrialProcessing (BuiltObject.2.cs 7859 extraction block): true = the extractor mines nothing this pass. */
@@ -894,8 +860,6 @@ export interface ScenarioQueries {
     troopMaintenanceFactor: { value: number; args: { empire: Empire } };
     /** builtObject.ts annualSupportCost (BuiltObject.cs 782): a factor on the ship's / base's upkeep. */
     shipMaintenanceFactor: { value: number; args: { builtObject: BuiltObject } };
-    /** diplomacyTick.ts determineRelativeStrength (Empire.7.cs 4975): the rival's MilitaryPotency as weighed (mothballing: its reserve counts less). */
-    rivalMilitaryPotency: { value: number; args: { other: Empire } };
     /** forceStructure.ts projectPrivateForceStructure (Empire.9.cs 4767): a factor on the freighter targets and caps. */
     privateFreighterFactor: { value: number; args: { empire: Empire } };
     /** forceStructure.ts habitatCorruption (Habitat.cs 763), before the 0.8 cap: a factor on the colony's corruption. */

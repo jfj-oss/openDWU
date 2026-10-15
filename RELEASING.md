@@ -13,9 +13,7 @@ ordinary pushes.
 | `openDWU-<v>-windows-x64.zip` | Windows x64, portable |
 
 Each comes with a `.sha256` file. The installed apps check this repository's
-latest release every time it opens. The Windows setup and the Linux AppImage
-download the new version in the background (verified against its `.sha256`)
-and install it when the player quits; the other files offer the download.
+latest release every time it opens and offer the new download.
 
 ## Making a release
 
@@ -65,18 +63,8 @@ That's all; installed apps offer the new version the next time they open.
   is signed ad hoc, so users do the one-time Control-click → Open (or System
   Settings → Privacy & Security → Open Anyway); Windows SmartScreen says
   "Windows protected your PC" until they click More info → Run anyway. The
-  README's install sections explain both. macOS updates are offered, not installed
+  README's install sections explain both. Updates are offered, not installed
   silently (Electron's macOS auto-updater refuses unsigned apps).
-- **Self-update needs nothing extra from CI.** `game/desktop/selfUpdate.cjs`
-  is a small updater, not electron-updater: it reads the normal release
-  assets, so no `latest.yml` / blockmap files are uploaded. For each edition
-  it takes `<product>-<v>-linux-x64.AppImage` / `<product>-<v>-windows-x64-setup.exe`
-  plus the `.sha256` beside it (Classic's `openDWU-Classic-` names keep the two
-  editions apart). **Keep those asset names and the `.sha256` files**: without
-  them the app falls back to the Download offer. Linux replaces the AppImage
-  file in place at quit (a read-only location falls back); Windows runs the
-  installer with `/S` at quit. Untested on a real Windows machine (the NSIS
-  installer builds on Linux, but was not run).
 - **No original game files** are ever in the repo, the workflow artifacts or
   the apps: the runners have no Distant Worlds: Universe install, the app
   builds the install's file listings from the player's folder at runtime, and

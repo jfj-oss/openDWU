@@ -74,6 +74,8 @@ export interface OrbitalHold {
     e: number;
     since: number;
     last: number;
+    /** Star date of the AI's last reinforcement review of this hold (orbitalAI.ts). */
+    reviewed: number;
 }
 
 export interface OrbitalStats {
@@ -345,16 +347,18 @@ export function orbitalLandingBlocked(galaxy: Galaxy, bo: BuiltObject, h: Habita
     if (!normalEmpire(galaxy, attacker)) return false;
     const defender = h.empire;
     if (defender === null || defender === attacker) return false;
-    const state = landingOrbitState(galaxy, h, attacker);
+    const s = landingOrbitStrengths(galaxy, h, defender, attacker);
+    const state = classifyOrbit(s.d, s.a, orbitalRatio(galaxy));
     const ai = !isHumanEmpire(galaxy, attacker);
-    const blocked = state === 'defender' || (!raid && ai && state === 'contested');
+    // AI troops wait aboard in a contested orbit until they are winning it (A ≥ orbitalAiLandRatio × D).
+    const blocked = state === 'defender' || (!raid && ai && state === 'contested' && s.a < scenarioParam(galaxy, 'orbitalAiLandRatio', 1) * s.d);
     if (!ai || raid) return blocked;
     const st = orbitalState(galaxy);
     const now = galaxyStarDate(galaxy);
     const hold = findHold(st, h.habitatIndex, attacker.empireId);
     if (blocked) {
         if (hold === null) {
-            st.holds.push({ h: h.habitatIndex, e: attacker.empireId, since: now, last: now });
+            st.holds.push({ h: h.habitatIndex, e: attacker.empireId, since: now, last: now, reviewed: now });
             st.stats.landingsHeld++;
         } else hold.last = now;
     } else if (hold !== null) {

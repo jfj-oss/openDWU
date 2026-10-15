@@ -46,19 +46,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.ow-glass.fl-order.fl-mb {
-    padding: 0 4px;
-    gap: 4px;
-}
-.ow-glass.fl-order.fl-mb img {
-    width: 20px;
-    height: 20px;
-}
-.ow-glass.fl-order.fl-mb .ow-glass-text {
-    white-space: nowrap;
-    font-size: 12px;
-    letter-spacing: -0.2px;
-}
 .ow-glass.fl-order:disabled img {
     opacity: 0.35;
 }

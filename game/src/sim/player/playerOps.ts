@@ -97,7 +97,6 @@ import { purchaseAtYard, removeFromYardQueue, scrapBuiltObjects, scrapShipUnderC
 import { investigateRuins } from '../exploration';
 import { cancelIntelligenceMission, characterMission } from '../espionage';
 import { scenarioFlag } from '../scenario/state';
-import { issueMothball, issueReactivate } from '../scenario/mothballing/mothballing';
 import { ESPIONAGE_FLAG } from '../scenario/emergent/espionageHooks';
 import { setMissionFrame } from '../scenario/emergent/espionage';
 import { grantAutonomy, runPoliticsAction, type PoliticsActionName } from '../scenario/emergent/politicsActions';
@@ -292,10 +291,6 @@ export const PLAYER_OPS = {
     defendSystem: (galaxy: Galaxy, empire: Empire, star: Habitat, force: InterceptForce | null) => issueDefendSystem(galaxy, empire, star, force),
     /** openDWU command (not in the original): a manual fleet's "Watch system" toggle (player/intercept.ts). */
     fleetWatch: (galaxy: Galaxy, empire: Empire, fleet: ShipGroup, on: boolean) => setFleetWatch(galaxy, empire, fleet, on),
-    /** Mothballing add-on (not in the original): send a fleet / warship into reserve at `port` (null: the nearest own space port). */
-    mothball: (galaxy: Galaxy, empire: Empire, force: ShipGroup | BuiltObject, port: BuiltObject | null) => issueMothball(galaxy, empire, force, port),
-    /** Mothballing add-on (not in the original): start a mothballed fleet's / warship's reactivation. */
-    reactivate: (galaxy: Galaxy, empire: Empire, force: ShipGroup | BuiltObject) => issueReactivate(galaxy, empire, force),
     /** Main.Part2.cs 1135 btnBuildOrderPurchase_Click. */
     buildNewShips: (galaxy: Galaxy, empire: Empire, designs: (Design | null)[], amounts: number[]) => buildNewShips(galaxy, empire, designs, amounts),
     /** Main.Part5.cs 2147-2213: the site's construction wait queue order. */

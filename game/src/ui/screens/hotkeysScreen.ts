@@ -77,10 +77,7 @@ export function openHotkeysScreen(): OriginalWindow {
                 row.appendChild(cf);
             }
             scroll.appendChild(row);
-            // A long description wraps; the row grows to hold it (26 px for one line).
-            const rowH = Math.max(26, desc.offsetHeight + 6);
-            row.style.height = `${rowH}px`;
-            y += rowH;
+            y += 26;
         });
         const spacer = el('div');
         spacer.style.cssText = `position:absolute;top:${y}px;height:1px;width:1px`;

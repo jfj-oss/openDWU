@@ -1039,11 +1039,9 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
         if (h === null || selectedSystem === null) return;
         showHabitat(selectedSystem, h, true);
     });
-    // Port of Main.Part11.cs picSystemMap_MouseDoubleClick: select the habitat in the info panel and redraw the system
-    // picture with it highlighted (method_147 / habitat_8); the window stays open and the Main View is not moved.
     sysCanvas.addEventListener('dblclick', (e) => {
         const h = systemMapHit(e);
-        if (h !== null && selectedSystem !== null) showHabitat(selectedSystem, h, false);
+        if (h !== null) jump(h);
     });
     // btnGalaxyMapBack_Click / btnGalaxyMapForward_Click → method_214(habitat): habitat_8 = it, habitat_7 = its star.
     backBtn.addEventListener('click', () => {

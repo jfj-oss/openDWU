@@ -28,10 +28,7 @@ void main() {
 }`;
 
 /** Share of the dust the animated layer draws (the static canvas keeps the rest). */
-export const DEEP_ANIM_DUST_SHARE = 0.7;
-
-/** Clock speed of the animated layer relative to real time (the warp, the glow cycles and the godrays all run on it). */
-export const DEEP_ANIM_SPEED = 2.5;
+export const DEEP_ANIM_DUST_SHARE = 0.45;
 
 const DEEP_ANIM_FRAG = `#version 300 es
 precision highp float;
@@ -61,12 +58,12 @@ void main() {
                   texture(uField, uv * 0.7 + vec2(0.41, -t * 0.0009)).a) - 0.5;
     float ang = t * 0.004 + q.x * 3.0;
     vec2 w = mat2(cos(ang), -sin(ang), sin(ang), cos(ang)) * q;
-    vec2 p = uv + w * 0.06 + vec2(t * 0.00018, t * 0.00007);
+    vec2 p = uv + w * 0.035 + vec2(t * 0.00018, t * 0.00007);
     // finer warp: gassy, curling edges
     vec2 q2 = vec2(texture(uField, p * 2.3 + vec2(-t * 0.0016, t * 0.0012)).a,
                    texture(uField, p * 2.3 + vec2(0.7 + t * 0.0013, 0.2)).g) - 0.5;
-    vec4 f = texture(uField, p + q2 * 0.025);
-    float cloud = smoothstep(0.42, 0.8, f.g) * (0.35 + 0.65 * area);
+    vec4 f = texture(uField, p + q2 * 0.014);
+    float cloud = smoothstep(0.38, 0.88, f.g) * (0.35 + 0.65 * area);
     float wisp = smoothstep(0.55, 0.85, 1.0 - abs(2.0 * f.a - 1.0)) * 0.5 * area;
     float a = (cloud + wisp * cloud) * uDustA.w * uT.z;
     float teal = smoothstep(0.52, 0.76, f.b);
@@ -85,7 +82,7 @@ void main() {
             float period = 16.0 + 36.0 * h3;
             float cyc = t / period + h4;
             float ph = fract(cyc);
-            float on = step(hash(c + floor(cyc) * 1.731), 0.6);
+            float on = step(hash(c + floor(cyc) * 1.731), 0.45);
             float pulse = smoothstep(0.0, 0.3, ph) * (1.0 - smoothstep(0.3, 1.0, ph));
             vec2 d = g - (c + 0.2 + 0.6 * vec2(h1, h2));
             float th = h1 * 6.2832;
@@ -95,7 +92,7 @@ void main() {
             glow += exp(-dot(d, d) / (rad * rad)) * pulse * pulse * on * (0.35 + 0.65 * h4);
         }
     }
-    col += uGlow.rgb * glow * (0.3 + cloud) * uT.w * 1.7;
+    col += uGlow.rgb * glow * (0.2 + cloud) * uT.w;
 
     // faint godrays from the core
     vec2 dc = uv - uCore.xy;
@@ -105,7 +102,7 @@ void main() {
     float n2 = texture(uField, vec2(an * 5.0 - t * 0.0008, 0.67)).a;
     float rays = smoothstep(0.45, 0.85, n1 * 0.6 + n2 * 0.4);
     float fall = exp(-r * 4.0) * smoothstep(0.0, 0.08, r);
-    col += uRays.rgb * rays * rays * fall * (0.35 + 0.65 * area) * 0.5 * (0.7 + 0.3 * sin(t * 0.05));
+    col += uRays.rgb * rays * rays * fall * (0.35 + 0.65 * area) * 0.3 * (0.8 + 0.2 * sin(t * 0.05));
 
     finalColor = vec4(col * uT.y, 0.0);
 }`
@@ -187,7 +184,7 @@ export class DeepNebulaAnim {
     update(on: boolean, dt: number, running: boolean, animate: boolean, alpha: number): void {
         this.root.visible = on;
         if (!on) return;
-        if (running && animate) this.time = (this.time + Math.min(dt, 0.25) * DEEP_ANIM_SPEED) % 100000;
+        if (running && animate) this.time = (this.time + Math.min(dt, 0.25)) % 100000;
         const u = this.uniforms.uniforms.uT as Float32Array;
         if (u[0] !== this.time || u[1] !== alpha) {
             u[0] = this.time;

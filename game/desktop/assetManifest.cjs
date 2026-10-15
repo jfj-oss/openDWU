@@ -14,7 +14,6 @@
 //     "designTemplates/<race>", and its pirate/ subfolder, key "designTemplates/<race>/pirate" (always written, []
 //     when absent).
 //   - characters/ (*.txt), key "characters" (always written).
-//   - the install root's top-level *.txt files, key "." (always written).
 //   - Help/ (*.mht, top level only; folder looked up case-insensitively), key "Help".
 //   - Customization/<set>/help/ (*.mht) for every subfolder <set> of Customization/ that has a help folder (any case),
 //     key "Customization/<set>/help".
@@ -161,10 +160,6 @@ function buildAssetManifest(dwuRoot) {
         const pirateEntry = findSubentry(path.join(designTemplatesDir, race), 'pirate');
         manifest[`designTemplates/${race}/pirate`] = pirateEntry?.isDirectory() ? listTxtFiles(path.join(designTemplatesDir, race, pirateEntry.name)) : [];
     }
-
-    // The install root's top-level *.txt files, key "." (always written): BaconMain.cs reads the optional
-    // BaconSettings.txt from there, and the loader skips the request when the listing says it is absent.
-    manifest['.'] = listFiles(dwuRoot, '.txt');
 
     // characters/*.txt (always written): Galaxy.4.cs LoadCharacters' File.Exists(characters\<race>.txt).
     const charactersEntry = findSubentry(dwuRoot, 'characters');

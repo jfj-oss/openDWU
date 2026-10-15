@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { backdropAlpha, fadeIn, orbitRingAlpha, regionLabelFont, starfieldAlpha } from '../src/render/mainView';
 import { galaxyBackdropSaveExtras, GALAXY_BACKDROP_OPTIONS, parseGalaxyBackdrop, setGalaxyBackdrop } from '../src/render/galaxyBackdropChoice';
 import { DEEP_RECIPES, deepTone, isDeepKind } from '../src/render/deepBackdrop';
-import { DEEP_ANIM_DUST_SHARE, DEEP_ANIM_SPEED } from '../src/render/deepBackdropAnim';
 import { GalaxyLocationType } from '../src/sim/galaxyLocation';
 
 // Task 02b2: close the mid-zoom black gap. The backdrop fades out over
@@ -134,14 +133,5 @@ describe('galaxy backdrop choice', () => {
             expect(dimmed).toBeLessThan(v);
             expect(dimmed).toBeGreaterThan(deepTone(v));
         }
-    });
-});
-
-describe('animated backdrop layer tuning', () => {
-    it('draws most of the dust and runs faster than real time so the motion is noticeable', () => {
-        expect(DEEP_ANIM_DUST_SHARE).toBeGreaterThanOrEqual(0.6);
-        expect(DEEP_ANIM_DUST_SHARE).toBeLessThan(1);
-        expect(DEEP_ANIM_SPEED).toBeGreaterThanOrEqual(2);
-        expect(DEEP_ANIM_SPEED).toBeLessThanOrEqual(4);
     });
 });

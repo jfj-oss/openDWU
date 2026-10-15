@@ -38,19 +38,6 @@ async function fetchOnce(url: string): Promise<Response> {
     }
 }
 
-/**
- * An optional file (it may not exist on a stock install). When the install's listing says it is absent (`listed` false)
- * no request is made, so the browser logs no 404; otherwise it is requested and a failure resolves to null.
- */
-export function fetchOptionalText(
-    fetch: (candidates: string[]) => Promise<string>,
-    candidates: string[],
-    listed: boolean | undefined
-): Promise<string | null> {
-    if (listed === false) return Promise.resolve(null);
-    return fetch(candidates).catch(() => null);
-}
-
 export async function fetchText(candidates: string[]): Promise<string> {
     let lastError: unknown = undefined;
     for (const url of candidates) {

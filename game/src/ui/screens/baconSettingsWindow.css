@@ -57,7 +57,10 @@
     color: rgb(130, 130, 140);
     font-size: 14.5px;
     line-height: 1.2;
-    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 .bs-body .bs-note {
     color: rgb(190, 150, 90);

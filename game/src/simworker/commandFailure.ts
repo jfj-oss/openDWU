@@ -73,8 +73,6 @@ export const COMMAND_FAILURE: FailureTable = {
     intercept: (message) => ({ ok: false, message, force: null }),
     defendSystem: (message) => ({ ok: false, message, force: null }),
     fleetWatch: no,
-    mothball: (message) => ({ ok: false, message }),
-    reactivate: (message) => ({ ok: false, message }),
     buildNewShips: (message) => ({ ok: false, message, title: 'Cannot Build Ships', built: [] }),
     moveWaitQueueItem: no,
     yardPurchase: () => null,

@@ -22,8 +22,6 @@ import { GalaxyLocationType } from '../sim/galaxyLocation';
 import { HabitatCategoryType, HabitatType, type Habitat, type SystemInfo } from '../sim/types';
 import { SystemVisibilityStatus } from '../sim/visibility';
 import { displayColorForEmpire } from '../sim/empireColors';
-import { galaxyStarDate } from '../sim/tick/simTime';
-import { mothballGrey, mothballGreyColor } from '../sim/scenario/mothballing/types';
 import { fogOf } from '../render/fog';
 import { localViewerEmpire } from '../localViewer';
 
@@ -377,7 +375,6 @@ export function resolveShipSymbolColor(galaxy: Galaxy, bo: BuiltObject, zoomFact
     let rgb = displayColorForEmpire(bo.empire);
     const val = Math.min(1.0, Math.max(0.6, zoomFactor / 3.0));
     if (bo.empire.pirateEmpireBaseHabitat !== null && (bo.empire.mainColor & 0xffffff) === 0x010101) rgb = 0x303030;
-    if (bo.mothball !== undefined) rgb = mothballGreyColor(rgb, mothballGrey(bo, galaxyStarDate(galaxy))); // Mothballing add-on: greyer in reserve
     return { r: (rgb >> 16) & 0xff, g: (rgb >> 8) & 0xff, b: rgb & 0xff, a: Math.trunc(val * 255.0) };
 }
 

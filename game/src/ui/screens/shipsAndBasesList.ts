@@ -25,8 +25,6 @@
 // TODO(port): the construction-yard buttons of the Construction Yards tab here (purchaser, move/remove in the wait
 // queue, Main.Part11.cs method_169) — the Construction Yards screen (constructionYards.ts) has them.
 
-import { mothballListText, mothballingOn } from '../../sim/scenario/mothballing/mothballing';
-import { MOTHBALL_TITLE, compactMothballLabel, forcesOfShips, mothballForcesModel, wireMothballButton } from '../mothballSlots';
 import './shipsAndBasesList.css';
 import type { BuiltObject } from '../../sim/builtObject';
 import type { Empire } from '../../sim/empire';
@@ -106,9 +104,7 @@ export const BUILT_OBJECT_FILTERS = [
     'Space Ports',
     'Troop Carriers',
 ] as const;
-/** Mothballing add-on: the extra filter entry (listed only when the add-on is on). */
-export const FILTER_IN_RESERVE = 'In Reserve (mothballed)';
-export type BuiltObjectFilter = (typeof BUILT_OBJECT_FILTERS)[number] | typeof FILTER_IN_RESERVE;
+export type BuiltObjectFilter = (typeof BUILT_OBJECT_FILTERS)[number];
 export const FILTER_ALL: BuiltObjectFilter = BUILT_OBJECT_FILTERS[0];
 export const FILTER_SELECTED: BuiltObjectFilter = BUILT_OBJECT_FILTERS[1];
 export const FILTER_CONSTRUCTION_YARDS: BuiltObjectFilter = BUILT_OBJECT_FILTERS[3];
@@ -199,7 +195,6 @@ export function filterBuiltObjects(
         case 'Resupply Ships': list = bySubRole(state, [S.ResupplyShip]); break;
         case 'Space Ports': list = bySubRole(state, [S.SmallSpacePort, S.MediumSpacePort, S.LargeSpacePort]); break;
         case 'Troop Carriers': list = [...state, ...priv].filter((b) => b !== null && b.troopCapacity > 0); break;
-        case FILTER_IN_RESERVE: list = state.filter((b) => b !== null && b.mothball !== undefined); break;
         case 'Selected Item': {
             const all = [...state, ...priv];
             list = selected !== null ? all.filter((b) => b === (selected as unknown)) : [];
@@ -255,8 +250,6 @@ export function shipsAndBasesRows(
     selected: { xpos: number; ypos: number } | null,
     filter: BuiltObjectFilter = FILTER_ALL,
 ): ShipsAndBasesRow[] {
-    // Mothballing add-on: a mothballed ship's Mission cell is its reserve state (needs the galaxy for the days left).
-    const rowGalaxy = (empire as { galaxy?: Galaxy }).galaxy ?? null;
     return filterBuiltObjects(empire, filter, selected).map((o) => {
         if (!isBuiltObject(o)) {
             // BindSingleHabitat.
@@ -288,7 +281,7 @@ export function shipsAndBasesRows(
             stellarObject: o,
             name: o.name,
             role: sub ? `${builtObjectRoleLabel(o.role)}, ${sub}` : builtObjectRoleLabel(o.role),
-            mission: o.mothball !== undefined && rowGalaxy !== null ? mothballListText(rowGalaxy, o.shipGroup instanceof ShipGroup ? o.shipGroup : o) : m !== null && m.type !== BuiltObjectMissionType.Undefined ? missionTypeLabel(m.type) : '(None)',
+            mission: m !== null && m.type !== BuiltObjectMissionType.Undefined ? missionTypeLabel(m.type) : '(None)',
             system: o.nearestSystemStar?.name || '(Deep Space)',
             location: o.parentHabitat?.name ?? '',
             fleet: fleet ?? '(None)',
@@ -532,7 +525,7 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
 
     // --- Header: the role filter combo (cmbBuiltObjectFilter, header-relative (380, 12) 210 × 21) ---
     const filterSelect = dropDown(
-        [...BUILT_OBJECT_FILTERS, ...(mothballingOn(galaxy) ? [FILTER_IN_RESERVE] : [])].map((f) => ({ value: f, label: f })),
+        BUILT_OBJECT_FILTERS.map((f) => ({ value: f, label: f })),
         filter,
         (v) => {
             filter = v as BuiltObjectFilter;
@@ -740,20 +733,6 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
     const btnRetrofit = btn('Retrofit', 280, 350, 133, 25, 'Retrofit the highlighted ships and bases (choose the design)', () => openRetrofit(selectedShips(current)));
     const btnRetire = btn('Retire', 415, 350, 133, 25, 'Send the highlighted ships to a ship yard to be retired', shipsCommand('retireShips'));
     const btnScrap = btn('Scrap', 550, 350, 140, 25, 'Scrap the highlighted ships and bases immediately', () => void scrapSelected());
-    // Mothballing add-on (a Gameplay change; only when it is on): Mothball (right-click: choose the port) / Reactivate
-    // for the highlighted warships (a ship in a fleet stands for its whole fleet), a sixth button in the row.
-    const mothballModel = (): ReturnType<typeof mothballForcesModel> => mothballForcesModel(galaxy, empire, forcesOfShips(empire, selectedShips(current)));
-    const btnMothball = mothballingOn(galaxy)
-        ? btn('Mothball', 0, 350, 0, 25, MOTHBALL_TITLE, () => {
-              mothballModel()?.click();
-              window.setTimeout(() => refresh(), 50);
-          })
-        : null;
-    if (btnMothball !== null) {
-        wireMothballButton(btnMothball, mothballModel, () => window.setTimeout(() => refresh(), 50));
-        // Six buttons in the row's 680 px.
-        [btnRefuel, btnRepair, btnRetrofit, btnRetire, btnScrap, btnMothball].forEach((b, i) => place(b, 10 + i * 114, 350, 110, 25));
-    }
 
     // --- Galaxy map (gmapBuiltObject) ---
     dropText(body, 'Location of selected item in Galaxy', MAP.x, 7, { size: FONT.tiny, color: COLORS.label });
@@ -1019,12 +998,6 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
         btnRetrofit.disabled = !st.retrofit;
         btnRetire.disabled = !st.retire;
         btnScrap.disabled = !st.scrap;
-        if (btnMothball !== null) {
-            const m = mothballModel();
-            btnMothball.disabled = m === null || m.disabled;
-            btnMothball.title = m?.hint ?? MOTHBALL_TITLE;
-            setButtonLabel(btnMothball, m !== null ? compactMothballLabel(m).label : 'Mothball');
-        }
         btnRefitSel.disabled = ships.length === 0;
         btnRefitAll.disabled = selectedShips(rows).length === 0;
         const own = ships.filter((b) => b.owner === empire && b.role !== BuiltObjectRole.Base);
