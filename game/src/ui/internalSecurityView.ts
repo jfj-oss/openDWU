@@ -176,7 +176,7 @@ export function threatLeadRows(galaxy: Galaxy, empire: Empire): ThreatLeadRow[] 
             certainty: confirmed ? 'confirmed' : 'suspected',
             found: k !== undefined ? resolveStarDateDescription(date) : '',
             foundDate: date,
-            status: inv !== null ? `Investigating (${inv.agent.name})` : confirmed ? 'Confirmed' : 'Suspected — investigate to confirm',
+            status: s.status ?? (inv !== null ? `Investigating (${inv.agent.name})` : confirmed ? 'Confirmed' : 'Suspected — investigate to confirm'),
             closed: false,
             goTo: locationOf(s.target),
             investigate: threatInvestigateBlocked(galaxy, empire, s.threat, s.target, anyAgent) === null ? { kind: 'site', threat: s.threat, target: s.target } : null,

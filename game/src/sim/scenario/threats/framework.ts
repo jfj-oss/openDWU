@@ -114,6 +114,8 @@ export interface KnownThreatSite {
     /** The knowledge-carrying record behind the row (when the level comes from it): the Intelligence screen's
      *  "found" date and the framework investigation (threats/investigate.ts) read / raise it. */
     site?: ThreatSite;
+    /** Optional status text for the Intelligence screen's Threats & Leads row (default: the certainty wording). */
+    status?: string;
 }
 
 type KnownSitesProvider = (galaxy: Galaxy, empire: Empire) => KnownThreatSite[];

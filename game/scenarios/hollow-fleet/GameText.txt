@@ -1,0 +1,18 @@
+'The Hollow Fleet: message texts (scenarioText tags). {n} items are filled by the scenario code.
+HollowFleet Faction Name;The Hollow Fleet
+HollowFleet Anchorage Name;Derelict Anchorage
+HollowFleet Sighted Title;The Hollow Fleet sighted
+HollowFleet Sighted;Ancient automated warships have been sighted in {0}. They attack only what is in the system they are in, and will leave around {1}. Watch where they go next: their route repeats on a fixed schedule.
+HollowFleet Route Title;Hollow Fleet route learned
+HollowFleet Route;The Hollow Fleet has also been seen in {0} (it leaves around {1}). We now know {2} systems of its route.
+HollowFleet Site Row;The Hollow Fleet
+HollowFleet Site Row Present;The Hollow Fleet is at {0}
+HollowFleet Site Row Expected;The Hollow Fleet is expected at {0} around {1}
+HollowFleet Site Row Seen;The Hollow Fleet (last seen at {0}, {1})
+HollowFleet Status Known;Route known: {0} systems ({1}).
+HollowFleet Status Expected;{0} systems of the route known. Next expected stay {1} to {2}.
+HollowFleet Map Label;Hollow Fleet expected {0}
+HollowFleet Bounty Title;Hollow Fleet bounty
+HollowFleet Bounty;Our ships destroyed the most of the Hollow Fleet. The galaxy's empires pay a bounty of {0}.
+HollowFleet Ended News;The last ship of the Hollow Fleet has been destroyed{0}. Its route is safe again.
+HollowFleet Wreck Field;Hollow Fleet Wreck Field

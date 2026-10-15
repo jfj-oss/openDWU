@@ -144,6 +144,8 @@ const CONFIGS = [
     { name: 'gt-smoke-off', set: 'new-threats', seed: 2, years: 3, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 } }, scenario: ['threat-framework', 'generation-ships', 'archive-cores', 'probe-swarm'], flags: {} },
     { name: 'vw-soak', set: 'new-threats', seed: 1, years: 15, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 } }, scenario: ['threat-framework', 'void-whale'], flags: 'all', params: { voidWhaleYear: 1 } },
     { name: 'gt-smoke', set: 'new-threats', seed: 1, years: 3, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 } }, scenario: ['threat-framework', 'generation-ships', 'archive-cores', 'probe-swarm'], flags: 'all', params: { genShipsEarliestYear: 0, genShipsLatestYear: 1, genShipsContactDays: 20, genShipsUltimatumDays: 90, genShipsAnswerDays: 20, probeSwarmYear: 0 } },
+    // `--set hollow-fleet` (--hook scripts/hollow-fleet-hook.mjs): The Hollow Fleet on a 700-star galaxy, 15 years.
+    { name: 'hf-s1', set: 'hollow-fleet', seed: 1, years: 15, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 } }, scenario: ['threat-framework', 'hollow-fleet'], flags: 'all', params: { hollowFleetExistChancePct: 100, hollowFleetMinYear: 0 } },
     // `--set dark-themes` (docs/DARK_THEMES.md §soaks; --hook scripts/dark-themes-hook.mjs): 700 stars, 7 empires, 20 years.
     // dt-slavery: the Slavery add-on; dt-base-noslave: the same galaxy, the stock game (the baseline).
     // dt-scorch: scorched earth; dt-warcrimes: Characters & Victory (the Diet) + war crimes + scorched earth.

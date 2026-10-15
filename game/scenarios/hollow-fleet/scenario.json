@@ -1,0 +1,25 @@
+{
+  "id": "hollow-fleet",
+  "name": "The Hollow Fleet",
+  "description": "A fleet of ancient automated warships wakes at a remote derelict anchorage and patrols a fixed route of systems on a repeating schedule. It attacks only the ships and bases in the system it is in, and ignores everything else. Watch it, learn its route and schedule, and keep out of its way, or ambush it.",
+  "include": ["threat-framework"],
+  "flags": [
+    { "name": "threatHollowFleet", "label": "The Hollow Fleet", "description": "Ancient warships patrol a fixed route on a fixed schedule, attacking whatever is in the system they are in.", "default": false }
+  ],
+  "params": [
+    { "name": "hollowFleetYear", "label": "Year the fleet wakes (years into the game)", "default": 8, "min": 0, "max": 200 },
+    { "name": "hollowFleetStrengthPct", "label": "Fleet strength (% of the median empire's military firepower)", "default": 150, "min": 10, "max": 2000 },
+    { "name": "hollowFleetTechBonus", "label": "Tech level above the galaxy's average", "default": 1, "min": 0, "max": 7 },
+    { "name": "hollowFleetRouteSystems", "label": "Systems on its route, besides the anchorage (5 to 8)", "default": 6, "min": 5, "max": 8 },
+    { "name": "hollowFleetLingerMinDays", "label": "Shortest stay in a system (days)", "default": 20, "min": 1, "max": 720 },
+    { "name": "hollowFleetLingerMaxDays", "label": "Longest stay in a system (days)", "default": 60, "min": 1, "max": 720 },
+    { "name": "hollowFleetTravelSpeed", "label": "Distance covered per day of travel on its route (world units; 0 = the fleet's slowest hyperdrive)", "default": 0, "min": 0, "max": 1000000 },
+    { "name": "hollowFleetMinShips", "label": "Fewest ships", "default": 4, "min": 1, "max": 100 },
+    { "name": "hollowFleetMaxShips", "label": "Most ships", "default": 30, "min": 1, "max": 200 },
+    { "name": "hollowFleetBounty", "label": "Money bounty for destroying it (to the empire with most kills)", "default": 150000, "min": 0, "max": 100000000 },
+    { "name": "hollowFleetAmbushPct", "label": "AI ambush: fleet strength an AI needs, as % of the Hollow Fleet's", "default": 150, "min": 10, "max": 10000 },
+    { "name": "hollowFleetAvoidDays", "label": "AI keeps civilian ships and fleets out of a known stop this many days before its arrival", "default": 15, "min": 0, "max": 360 },
+    { "name": "hollowFleetExistChancePct", "label": "Chance the fleet exists in this game (%; -1 = use the shared value)", "default": 50, "min": -1, "max": 100 },
+    { "name": "hollowFleetMinYear", "label": "Earliest year it may wake (-1 = use the shared value)", "default": 0, "min": -1, "max": 200 }
+  ]
+}

@@ -50,12 +50,23 @@ import { paintWounds, woundCount, woundKey } from '../src/render/whaleWounds';
 import { leviathanFacing } from '../src/render/leviathanRig';
 import { paintLeviathanBody, paintLeviathanJaw, LEV_W } from '../src/render/leviathanArt';
 import { peekWreckageState } from '../src/sim/scenario/wreckage/common';
+import {
+    hollowFleetKnownSites,
+    hollowFleetMapFeatures,
+    hollowFleetObserve,
+    hollowFleetPeriodic,
+    hollowFleetPhaseAt,
+    hollowFleetState,
+    hollowFleetWindow,
+    peekHollowFleetState,
+} from '../src/sim/scenario/threats/hollowFleet';
+import { BuiltObjectMissionType, builtObjectMission } from '../src/sim/missions/mission';
+import { GAME_DAY_LENGTH } from '../src/sim/scenario/hooks';
 import { reviewThreatInvestigations, THREAT_INVESTIGATIONS_KEY } from '../src/sim/scenario/threats/investigate';
 import { runPlayerCommand } from '../src/sim/player/playerCommands';
 import { threatLeadRows, threatsSectionVisible } from '../src/ui/internalSecurityView';
 import { CharacterRole, getEmpireCharacters } from '../src/sim/characters';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
-import { builtObjectMission } from '../src/sim/missions/mission';
 
 let base: GameData;
 beforeAll(async () => {
@@ -646,4 +657,161 @@ describe('void whale', () => {
         // Same cuts, different colour: open gashes are red, healed scars pale and grey.
         expect(redness(fresh)).toBeGreaterThan(redness(healed));
     }, 300000);
+});
+
+// The Hollow Fleet: a patrol on a fixed, learnable schedule. Direct calls on a composite game.
+describe('hollow fleet', () => {
+    const ids = ['threat-framework', 'hollow-fleet'];
+    const age3 = (o: CreateGameOptions): CreateGameOptions => ({ ...o, player: { ...o.player, age: 3 }, aiEmpires: o.aiEmpires.map((e) => ({ ...e, age: 3 })) });
+    const PARAMS = { hollowFleetExistChancePct: 100, hollowFleetMinYear: 0, hollowFleetYear: 0, hollowFleetRouteSystems: 6 };
+    function hfGame(on = true): Galaxy {
+        const { game } = createScenarioGame(base, { scenario: comboOverlayFs(ids), flags: { threatHollowFleet: on }, params: PARAMS, options: age3 });
+        return game.galaxy;
+    }
+
+    it('flag off: no state, no faction', () => {
+        const g = hfGame(false);
+        const n = g.empires.length + g.pirateEmpires.length;
+        hollowFleetPeriodic(g);
+        expect(peekHollowFleetState(g)).toBeNull();
+        expect(g.empires.length + g.pirateEmpires.length).toBe(n);
+    }, 300000);
+
+    it('wakes with a fixed route and schedule: the same seed gives the same stops, and the cycle repeats exactly', () => {
+        const a = hfGame();
+        const b = hfGame();
+        hollowFleetPeriodic(a);
+        hollowFleetPeriodic(b);
+        const sa = hollowFleetState(a);
+        const sb = hollowFleetState(b);
+        expect(sa.phase).toBe('active');
+        expect(sa.ships.length).toBeGreaterThanOrEqual(4);
+        expect(sa.stops.length).toBe(7); // the anchorage and 6 systems
+        expect(new Set(sa.stops.map((x) => x.systemIndex)).size).toBe(7);
+        expect(sa.stops.map((x) => [x.systemIndex, x.linger, x.travel])).toEqual(sb.stops.map((x) => [x.systemIndex, x.linger, x.travel]));
+        expect(sa.cycleDays).toBe(sb.cycleDays);
+        // The schedule is a pure function of the date: the phase one cycle later is the same stop, and a stay's window repeats.
+        const t0 = sa.cycleStart;
+        const cyc = sa.cycleDays * GAME_DAY_LENGTH;
+        for (let d = 0; d < sa.cycleDays; d += 7) {
+            const x = hollowFleetPhaseAt(sa, t0 + d * GAME_DAY_LENGTH)!;
+            const y = hollowFleetPhaseAt(sa, t0 + d * GAME_DAY_LENGTH + 3 * cyc)!;
+            expect(y.kind).toBe(x.kind);
+            expect(y.kind === 'stay' ? (y as { stop: number }).stop : (y as { to: number }).to).toBe(x.kind === 'stay' ? (x as { stop: number }).stop : (x as { to: number }).to);
+            expect(y.cycle).toBe(x.cycle + 3);
+        }
+        expect(hollowFleetPhaseAt(sa, t0)).toEqual({ kind: 'stay', stop: 0, cycle: 0 });
+        const w0 = hollowFleetWindow(sa, 2, 0);
+        const w1 = hollowFleetWindow(sa, 2, 1);
+        expect(w1.arrive - w0.arrive).toBeCloseTo(cyc, 3);
+        expect(w0.leave - w0.arrive).toBeCloseTo(sa.stops[2].linger * GAME_DAY_LENGTH, 3);
+    }, 600000);
+
+    it('attacks only what is in the system it is in', () => {
+        const g = hfGame();
+        hollowFleetPeriodic(g);
+        const st = hollowFleetState(g);
+        const faction = st.faction!;
+        // Go to the first route stop (stop 1) by moving the clock to its stay, and put a ship of each AI empire at stop 1 and at stop 3.
+        const w = hollowFleetWindow(st, 1, 0);
+        g.nowMs += w.arrive - galaxyStarDate(g) + GAME_DAY_LENGTH;
+        const phase = hollowFleetPhaseAt(st, galaxyStarDate(g))!;
+        expect(phase).toEqual({ kind: 'stay', stop: 1, cycle: 0 });
+        const others = g.empires.filter((e) => e !== null && e.active && e !== faction && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null && e !== g.playerEmpire);
+        const mil = (e: Galaxy['empires'][number]) => e!.builtObjects.find((b) => !b.hasBeenDestroyed && b.role === BuiltObjectRole.Military && b.topSpeed > 0)!;
+        const inside = mil(others[0]);
+        const away = mil(others[1]);
+        inside.xpos = st.stops[1].x + 4000;
+        inside.ypos = st.stops[1].y;
+        away.xpos = st.stops[3].x + 4000;
+        away.ypos = st.stops[3].y;
+        st.ships.forEach((b, i) => {
+            b.xpos = st.stops[1].x - 3000 - 500 * i;
+            b.ypos = st.stops[1].y;
+        });
+        const before = st.engagements;
+        hollowFleetPeriodic(g);
+        expect(st.engagements).toBeGreaterThan(before);
+        const attackers = st.ships.filter((s) => {
+            const m = builtObjectMission(s.mission);
+            return m !== null && m.type === BuiltObjectMissionType.Attack;
+        });
+        expect(attackers.length).toBeGreaterThan(0);
+        for (const s of attackers) {
+            const t = builtObjectMission(s.mission)!.targetBuiltObject;
+            expect(t).not.toBe(away);
+            expect(g.calculateDistance(t!.xpos, t!.ypos, st.stops[1].x, st.stops[1].y)).toBeLessThanOrEqual(23000);
+        }
+        expect(attackers.some((s) => builtObjectMission(s.mission)!.targetBuiltObject === inside)).toBe(true);
+    }, 600000);
+
+    it('route reveal: each sighting adds a stop, a repeat teaches the cycle, the Threats row says where it is expected next', () => {
+        const g = hfGame();
+        hollowFleetPeriodic(g);
+        const st = hollowFleetState(g);
+        const player = g.playerEmpire!;
+        expect(hollowFleetKnownSites(g, player)).toEqual([]);
+        expect(hollowFleetMapFeatures(g, player)).toBeNull();
+        g.nowMs += hollowFleetWindow(st, 2, 0).leave + GAME_DAY_LENGTH - galaxyStarDate(g); // both stays are past
+        hollowFleetObserve(g, st, player, 1, 0);
+        hollowFleetObserve(g, st, player, 2, 0);
+        const k = st.known.find((x) => x.empireId === player.empireId)!;
+        expect(k.sightings.map((x) => x.stop)).toEqual([1, 2]);
+        expect(k.sightings[0]).toMatchObject(hollowFleetWindow(st, 1, 0));
+        expect(k.cycleKnown).toBe(false); // two stops, seen once each
+        let rows = hollowFleetKnownSites(g, player);
+        expect(rows).toHaveLength(1);
+        expect(rows[0].level).toBe(3);
+        expect(rows[0].label).toContain('last seen');
+        // One joined leg between the two consecutive known stops.
+        expect(hollowFleetMapFeatures(g, player)!.routes).toHaveLength(1);
+        // A third stop makes the pattern plain, and so does the same stop in a later cycle: the next expected stay then follows.
+        hollowFleetObserve(g, st, player, 3, 0);
+        expect(k.cycleKnown).toBe(true);
+        k.cycleKnown = false;
+        hollowFleetObserve(g, st, player, 1, 1);
+        expect(k.cycleKnown).toBe(true);
+        g.nowMs = hollowFleetWindow(st, 1, 1).leave + GAME_DAY_LENGTH - galaxyStarDate(g) + g.nowMs;
+        rows = hollowFleetKnownSites(g, player);
+        expect(rows[0].label).toContain('expected');
+        expect(rows[0].status).toContain('Next expected');
+        expect(hollowFleetMapFeatures(g, player)!.markers).toHaveLength(1);
+        // An empire that has seen nothing knows nothing.
+        const other = g.empires.find((e) => e !== null && e.active && e !== player && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null && e !== st.faction)!;
+        expect(hollowFleetKnownSites(g, other)).toEqual([]);
+    }, 600000);
+
+    it('AI keeps civilian ships out of a known stop during its stay, and the end: all ships destroyed pays the bounty to the top killer', () => {
+        const g = hfGame();
+        hollowFleetPeriodic(g);
+        const st = hollowFleetState(g);
+        const ai = g.empires.find((e) => e !== null && e.active && e !== g.playerEmpire && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null && e !== st.faction)!;
+        const civ = ai.builtObjects.find((b) => !b.hasBeenDestroyed && b.role !== BuiltObjectRole.Military && b.role !== BuiltObjectRole.Base && b.topSpeed > 0)!;
+        const now = galaxyStarDate(g);
+        const stop = st.stops[2];
+        const w = hollowFleetWindow(st, 2, 0);
+        hollowFleetObserve(g, st, ai, 2, 0);
+        g.nowMs += w.arrive - now - 5 * GAME_DAY_LENGTH; // 5 days before the arrival: inside the warning margin
+        const star = g.systems[stop.systemIndex].systemStar;
+        expect(scenarioQuery(g, 'assignMissionAllowed', true, { builtObject: civ, missionType: BuiltObjectMissionType.Move, target: star, x: -2000000001, y: -2000000001 })).toBe(false);
+        // Another system is fine, and so is an attack mission.
+        const elsewhere = g.systems[st.stops[3].systemIndex].systemStar;
+        expect(scenarioQuery(g, 'assignMissionAllowed', true, { builtObject: civ, missionType: BuiltObjectMissionType.Move, target: elsewhere, x: -2000000001, y: -2000000001 })).toBe(true);
+        expect(scenarioQuery(g, 'assignMissionAllowed', true, { builtObject: civ, missionType: BuiltObjectMissionType.Attack, target: star, x: -2000000001, y: -2000000001 })).toBe(true);
+        // The end: the player destroys every ship.
+        const killer = g.playerEmpire!;
+        const money = killer.stateMoney;
+        for (const s of [...st.ships]) {
+            scenarioEmit(g, 'builtObjectKilledBy', { builtObject: s, destroyer: killer });
+            s.hasBeenDestroyed = true;
+        }
+        expect(st.losses).toBe(st.ships.length);
+        hollowFleetPeriodic(g);
+        expect(st.phase).toBe('ended');
+        expect(st.bountyTo).toBe(killer);
+        expect(killer.stateMoney).toBe(money + st.bounty);
+        expect(st.bounty).toBeGreaterThan(0);
+        hollowFleetPeriodic(g); // ended: nothing more happens
+        expect(killer.stateMoney).toBe(money + st.bounty);
+    }, 600000);
 });
