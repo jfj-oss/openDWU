@@ -22,6 +22,7 @@ import { assignEntityRefIds } from '../entityRefs';
 import { processConstructionBoard } from '../player/constructionBoard';
 import { processFleetRefill } from '../player/fleetRefill';
 import { processIntercepts, processSystemWatches } from '../player/intercept';
+import { fightingRetreatsFrame } from '../scenario/fightingRetreats/fightingRetreats';
 import { gameVictoryArgs } from '../victory';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
@@ -484,6 +485,8 @@ function runSimFrameBody(galaxy: Galaxy, frameMs: number, opts: FrameOptions): v
     processSystemWatches(galaxy);
     // Mod layer: day-scale scenario timers (e.g. mothballing); no scenario = one null check.
     if (galaxy.scenario !== null) scenarioFramePeriodicTick(galaxy);
+    // Mod layer (Fighting retreats add-on; not in the C#): losing fleets withdraw to repair. No scenario = one comparison.
+    if (galaxy.scenario !== null) fightingRetreatsFrame(galaxy);
     // Main's UI thread between two sim frames: what the sim sent the player this frame, in arrival order — the
     // BeginInvoke'd ReceiveMessageInternal / method_523 / PromptForAuthorizationInternal calls — then the advisor queue's
     // age expiry (playerMessages.ts; the C# runs them whenever its UI thread gets to them, the port at this fixed point

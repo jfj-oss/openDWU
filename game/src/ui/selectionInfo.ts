@@ -11,6 +11,7 @@
 import { interceptOrderOf, watchStatusText } from '../sim/player/intercept';
 import { interdictionInfoLine } from '../sim/scenario/interdiction/jumpInterdiction';
 import { mothballStatusText } from '../sim/scenario/mothballing/mothballing';
+import { fleetRetreatStatusText } from '../sim/scenario/fightingRetreats/fightingRetreats';
 import type { Ruin } from '../sim/ruins';
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
@@ -883,6 +884,9 @@ export function shipGroupInfo(ctx: InfoContext, sg: ShipGroup, extended = false)
         const order = watch === '' ? interceptOrderOf(player, sg) : null;
         const line = watch !== '' ? watch : order !== null ? `Intercepting ${(order.target as { name?: string | null }).name ?? ''}` : '';
         if (line !== '') rows.push({ kind: 'line', segs: [txt(line, QUEUED_COLOR)] });
+        // Fighting retreats add-on: "Withdrawing to … to repair" while the fleet withdraws.
+        const retreat = sg.frWithdrawal !== undefined ? fleetRetreatStatusText(ctx.galaxy, sg) : '';
+        if (retreat !== '') rows.push({ kind: 'line', segs: [txt(retreat, QUEUED_COLOR)] });
     }
     // Mothballing add-on: "In reserve at Sol Port" / "Reactivating: 23 days" (known fleets).
     if (known) {

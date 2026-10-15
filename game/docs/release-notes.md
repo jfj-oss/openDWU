@@ -89,6 +89,11 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 - **Local model fix (desktop app):** Ollama refused every request from the app (it rejects the app's `dwu://` page
   origin with 403), so Refresh, Test and all local-model features failed unless `OLLAMA_ORIGINS` was set. The app now
   allows its requests to model servers on this machine (localhost only); no Ollama setup is needed.
+- **Fighting retreats (new gameplay change, off by default; Other Empires page):** a fleet that notices the fight has
+  turned against it (less firepower than the enemies it is fighting, for 5 seconds) withdraws together to the nearest
+  friendly repair point, then resumes its duties (automated) or waits for orders ("3rd Fleet withdrew from Sol to repair
+  at …"). AI fleets follow the same rule; ships keep the original's per-design Flee setting, and a fleet set to Flee:
+  never fights on. The numbers are add-on parameters.
 - **Intercept (new command):** select a ship, fleet, base or space creature that is not yours and an **Intercept**
   button (crosshair) appears in a free slot of the selection panel's action buttons; its hover message names the force
   it sends, e.g. "Intercept: 1st Fleet (ETA 101 d)" — the best free fleet (or, failing one, a single warship) strong

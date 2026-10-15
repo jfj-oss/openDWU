@@ -74,6 +74,7 @@ import './charactersVictory/vip'; // Characters & Victory VIP shuttles, escorts,
 import './charactersVictory/governorsCv'; // Characters & Victory governors on every colony (flag charactersVictory + cvGovernors; vacancy term in the stability ledger)
 import './charactersVictory/diet/diet'; // Characters & Victory part 2: the Interstellar Diet (flag charactersVictory + cvCouncil; extends emergent/council through registerCouncilExtension)
 import './colonyEconomy/index'; // Colony Economy: designations, private facilities, bonds (flag colonyEconomy; docs/ECONOMY.md)
+import './fightingRetreats/fightingRetreats'; // Fighting retreats (flag fightingRetreats; losing fleets withdraw to repair; no Rnd)
 import './voidbloom/index'; // The Voidbloom War (flag voidbloom; Rim expansion, requires rimTrade; docs/VOIDBLOOM_WAR.md)
 import './orbital/orbitalAI'; // Orbital superiority (flag orbitalSuperiority; invasion orbit states in orbital/orbitalSuperiority.ts, AI here)
 import './blockades/blockadesBite'; // Blockades that bite (flag blockadesBite; reuses the orbital measure and relief search)

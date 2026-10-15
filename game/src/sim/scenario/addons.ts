@@ -156,18 +156,26 @@ const GROUP_OF: Readonly<Record<string, AddonGroup>> = {
 // big-galaxies: its extended palette is now automatic in the base game (empireColors.ts); old saves with the add-on still load.
 // resource-crises: withdrawn from the picker (its per-luxury approval loss stacked to absurd values); saves that use it still load.
 // colony-defence: withdrawn from the picker (the user wants the original's pirate control); saves that use it still load.
-export const HIDDEN_ADDONS: ReadonlySet<string> = new Set(['threat-framework', 'example', 'ai-parity', 'soak-15y', 'resource-crises', 'colony-defence', 'big-galaxies', 'galactic-council', 'themed-names', 'event-log']);
+export const HIDDEN_ADDONS: ReadonlySet<string> = new Set(['threat-framework', 'example', 'ai-parity', 'soak-15y', 'resource-crises', 'colony-defence', 'big-galaxies', 'galactic-council', 'themed-names', 'event-log', 'fighting-retreats']);
 
 /**
  * Add-ons set on another wizard page (not listed on the Scenario page, but named in the summaries like any other):
  * Smarter AI and Orbital superiority live on the Other Empires page (withSmarterAI / withOrbitalSuperiority below).
  */
-export const ELSEWHERE_ADDONS: ReadonlySet<string> = new Set(['smarter-ai', 'orbital-superiority', 'longer-ground-combat', 'jump-interdiction', 'blockades-bite', 'mothballing', 'slow-hyperdrive']);
+export const ELSEWHERE_ADDONS: ReadonlySet<string> = new Set(['smarter-ai', 'orbital-superiority', 'longer-ground-combat', 'jump-interdiction', 'blockades-bite', 'mothballing', 'slow-hyperdrive', 'fighting-retreats']);
 
 /** openDWU Classic: add-ons every game starts with (treated as base game: no picker). Smarter AI stays the Other Empires page's toggle. */
 export const CLASSIC_BASE_ADDONS: readonly string[] = ['themed-names', 'event-log'];
 /** Add-ons every new game starts with in BOTH editions (base game: hidden from the picker, always ticked). */
 export const BASE_ADDONS: readonly string[] = CLASSIC_BASE_ADDONS;
+
+/** The Fighting retreats gameplay change (scenarios/fighting-retreats): hidden from the picker, the Other Empires page's checkbox. */
+export const FIGHTING_RETREATS_ADDON_ID = 'fighting-retreats';
+
+/** Folds the Other Empires page's "Fighting retreats" checkbox (StartGameOptions.fightingRetreats) into the picks. */
+export function withFightingRetreats(picked: readonly string[], overrides: AddonOverrides, on: boolean | null | undefined): { picked: string[]; overrides: AddonOverrides } {
+    return withToggleAddon(picked, overrides, FIGHTING_RETREATS_ADDON_ID, 'fightingRetreats', on);
+}
 
 /** The Smarter AI add-on (scenarios/smarter-ai). */
 export const SMARTER_AI_ADDON_ID = 'smarter-ai';

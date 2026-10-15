@@ -70,6 +70,9 @@ import { CreatureType } from '../src/sim/creature';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import { BALANCED, MERCENARY, PIRATE, SMUGGLER, aiCapital, pirateConstructionShip, pirateEscort, pirateExplorer, pirateFaction, pirateRaider, playerCarrierPort, playerMissileShip, playerShip } from './helpers/combatCast';
 import { PiratePlayStyle, pirateFactionModifiers } from '../src/sim/pirates';
+import { createGalaxyScenario } from '../src/sim/scenario/state';
+import { loadScenarioOverlayFs } from './helpers/scenarioGame';
+import { FIGHTING_RETREATS_ADDON_ID, fightingRetreatsFrame, fightingRetreatsState, fleetBattle, fleetRepairPoint } from '../src/sim/scenario/fightingRetreats/fightingRetreats';
 
 let gameData: GameData;
 let componentDefs: Map<number, ComponentDefinition>;
@@ -1167,5 +1170,166 @@ describe('(6) repair and retreat', () => {
         }
         expect(repairedOrder).toEqual([...damagedIdx].sort((x, y) => x - y));
         expect(jav.damagedComponentCount).toBe(0);
+    });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// (7) The Fighting retreats add-on (scenarios/fighting-retreats; not in the original): a losing fleet withdraws to
+// repair. It builds on (6): the stock fleet "Repair and refuel" order and Design.FleeWhen = Never.
+// ---------------------------------------------------------------------------------------------------------------
+
+describe('(7) fighting retreats add-on', () => {
+    function withRetreats(g: Galaxy, params: Record<string, number> = {}, on = true): void {
+        // frMinLoss 0 unless a test sets it: the staged fleets start the fight already outgunned.
+        g.scenario = createGalaxyScenario(loadScenarioOverlayFs(FIGHTING_RETREATS_ADDON_ID).manifest, { flags: { fightingRetreats: on }, params: { frMinLoss: 0, ...params } });
+    }
+    /** One check pass `ms` game ms later (the checks run every frCheckSeconds = 1 s). */
+    function tick(g: Galaxy, ms: number): void {
+        g.nowMs += ms;
+        fightingRetreatsFrame(g);
+    }
+    /** A player fleet of two escorts at an empty spot, attacked by a Mercenary raider. */
+    function stageFleet() {
+        const g = cachedTickGame(gameData).galaxy;
+        const jav = playerShip(g, BuiltObjectSubRole.Escort, 0);
+        const jav2 = playerShip(g, BuiltObjectSubRole.Escort, 1);
+        const player = g.playerEmpire!;
+        executeShipAction(g, player, [jav, jav2], createShipAction(ShipActionType.CreateNewFleet, null), true);
+        const fleet = jav.shipGroup as ShipGroup;
+        const b = mercRaider(g);
+        for (const s of [jav, jav2, b]) hold(s);
+        for (const s of [jav, jav2]) s.design.fleeWhen = BuiltObjectFleeWhen.Shields20; // the policy default for warships
+        const s = emptySpot(g);
+        place(g, jav, s.x, s.y);
+        place(g, jav2, s.x + 100, s.y);
+        place(g, b, s.x + 300, s.y);
+        jav.attackers!.push(b);
+        jav2.attackers!.push(b);
+        return { g, jav, jav2, b, fleet, player };
+    }
+
+    it('below the firepower line (frFleetRatio, default 1:1) for frHoldSeconds the fleet withdraws to the nearest yard; the count-down survives the hysteresis band and resets above frHysteresis % of the line', () => {
+        const { g, fleet, jav, b } = stageFleet();
+        withRetreats(g);
+        expect(g.scenario!.params.frFleetRatio).toBe(100);
+        const battle = fleetBattle(fleet);
+        expect(battle.engaged).toBe(2);
+        expect(battle.own).toBeGreaterThan(0);
+        expect(battle.enemy).toBeGreaterThan(0);
+        const r = battle.own / battle.enemy;
+        // Reinforcements: another ship of ours in the system attacking the same raider counts on our side.
+        const helper = playerShip(g, BuiltObjectSubRole.Escort, 2);
+        hold(helper);
+        helper.design.fleeWhen = BuiltObjectFleeWhen.Shields20; // hold() set the shared escort design to Never
+        place(g, helper, jav.xpos + 200, jav.ypos);
+        helper.nearestSystemStar = jav.nearestSystemStar; // as the staged fleet (place() leaves it as it was)
+        b.attackers!.push(helper);
+        expect(fleetBattle(fleet).own).toBeGreaterThan(battle.own);
+        b.attackers!.splice(b.attackers!.indexOf(helper), 1);
+        expect(fleetBattle(fleet).own).toBe(battle.own);
+        const setLine = (line: number) => (g.scenario!.params.frFleetRatio = line * 100);
+        setLine(r * 1.1); // losing
+        tick(g, 1000);
+        const t0 = fleet.frLosingSinceMs!;
+        expect(t0).toBe(g.nowMs);
+        tick(g, 3000);
+        expect(fleet.frWithdrawal).toBeUndefined();
+        setLine(r / 1.1); // above the line but inside the band (ratio < 1.25 × line): keeps counting
+        tick(g, 1000);
+        expect(fleet.frLosingSinceMs).toBe(t0);
+        setLine(r / 1.3); // above 1.25 × line: the count-down resets
+        tick(g, 1000);
+        expect(fleet.frLosingSinceMs).toBeUndefined();
+        setLine(r * 1.1);
+        tick(g, 1000);
+        tick(g, 4000);
+        expect(fleet.frWithdrawal).toBeUndefined(); // 4 s < 5 s
+        const yard = fleetRepairPoint(g, fleet)!;
+        expect(yard).not.toBeNull();
+        tick(g, 1000);
+        expect(fleet.frWithdrawal).toBeDefined();
+        expect(fleet.frWithdrawal!.yard).toBe(yard);
+        expect(fleet.mission!.type).toBe(BuiltObjectMissionType.Repair);
+        expect(fleet.mission!.priority).toBe(BuiltObjectMissionPriority.Unavailable);
+        expect(fleet.mission!.playerOrdered).not.toBe(true); // not a player order: an Intercept / Watch waits it out
+        for (const s of fleet.ships) expect([BuiltObjectMissionType.Repair, BuiltObjectMissionType.Refuel]).toContain(builtObjectMission(s.mission)!.type);
+        expect(fightingRetreatsState(g).fleetWithdrawals).toBeGreaterThanOrEqual(1);
+    });
+
+    it('the repair trip: the withdrawn fleet flies to its yard, repairs and is free again; a manual player fleet is told it awaits orders', () => {
+        const { g, fleet, jav, jav2, player } = stageFleet();
+        withRetreats(g, { frFleetRatio: 500, frHoldSeconds: 0 });
+        jav.components.items[0].status = ComponentStatus.Damaged;
+        jav.reDefine();
+        const yard = playerCarrierPort(g);
+        place(g, jav, yard.xpos + 6000, yard.ypos);
+        place(g, jav2, yard.xpos + 6100, yard.ypos);
+        const b = mercRaider(g);
+        place(g, b, yard.xpos + 6300, yard.ypos);
+        jav.attackers!.length = 0;
+        jav2.attackers!.length = 0;
+        jav.attackers!.push(b);
+        tick(g, 1000);
+        tick(g, 1000);
+        expect(fleet.frWithdrawal).toBeDefined();
+        const target = fleet.frWithdrawal!.yard;
+        expect(target).toBe(yard);
+        jav.attackers!.length = 0;
+        // The raider leaves (out of the test), the sim runs.
+        place(g, b, b.xpos + 900000 < g.sizeX ? b.xpos + 900000 : b.xpos - 900000, b.ypos);
+        hold(b);
+        let resumed = false;
+        for (let k = 0; k < 120 && !resumed; k++) {
+            runGameSeconds(g, 2);
+            resumed = fleet.frWithdrawal === undefined;
+        }
+        expect(resumed).toBe(true);
+        expect(jav.damagedComponentCount).toBe(0);
+        expect(fightingRetreatsState(g).fleetsResumed).toBeGreaterThanOrEqual(1);
+        const texts = [...(player.messages as { description?: string }[]), ...((player as unknown as { messageHistory?: { description?: string }[] }).messageHistory ?? [])].map((m) => m.description ?? '');
+        expect(texts.some((t) => t.includes('withdrew') && t.includes(`repair at ${(target as { name: string }).name}`))).toBe(true);
+        expect(texts.some((t) => t.includes('finished repairs') && t.includes('awaits orders'))).toBe(true);
+    }, 180000);
+
+    it('"the fight turned": an outgunned fleet withdraws only once it has lost frMinLoss % of its battle-start firepower', () => {
+        const { g, fleet, jav } = stageFleet();
+        withRetreats(g, { frFleetRatio: 500, frHoldSeconds: 0, frMinLoss: 25 });
+        for (let k = 0; k < 4; k++) tick(g, 1000);
+        expect(fleet.frWithdrawal).toBeUndefined(); // first contact, nothing lost yet
+        const start = fleet.frStartFirepower!;
+        expect(start).toBe(fleetBattle(fleet).fleet);
+        // Lose the weapons of one escort (half the fleet's firepower).
+        for (const c of jav.components.items) if (c.category === ComponentCategoryType.WeaponBeam || c.category === ComponentCategoryType.WeaponTorpedo || c.category === ComponentCategoryType.WeaponArea) c.status = ComponentStatus.Damaged;
+        jav.reDefine();
+        expect(fleetBattle(fleet).fleet).toBeLessThanOrEqual(start * 0.75);
+        tick(g, 1000);
+        tick(g, 1000);
+        expect(fleet.frWithdrawal).toBeDefined();
+    });
+
+    it('the original\'s "Flee: never": a fleet with half or more of its ships set to Never fights on; a fleet beside its yard fights on too', () => {
+        const { g, fleet, jav } = stageFleet();
+        withRetreats(g, { frFleetRatio: 500, frHoldSeconds: 0 });
+        jav.design.fleeWhen = BuiltObjectFleeWhen.Never; // 1 of 2 ships
+        for (let k = 0; k < 4; k++) tick(g, 1000);
+        expect(fleet.frWithdrawal).toBeUndefined();
+        expect(fleet.frLosingSinceMs).toBeUndefined();
+        jav.design.fleeWhen = BuiltObjectFleeWhen.Shields20;
+        // Beside the yard (≤ 3000): no withdrawal.
+        const yard = fleetRepairPoint(g, fleet)!;
+        for (const s of fleet.ships) place(g, s, yard.xpos + 1000, yard.ypos);
+        for (let k = 0; k < 4; k++) tick(g, 1000);
+        expect(fleet.frWithdrawal).toBeUndefined();
+    });
+
+    it('toggle off: the frame hook does nothing (no state bag, no fleet fields, no draws)', () => {
+        const { g, fleet } = stageFleet();
+        withRetreats(g, { frFleetRatio: 500, frHoldSeconds: 0 }, false);
+        const rnd = g.rnd.getState();
+        for (let k = 0; k < 5; k++) tick(g, 1000);
+        expect('fightingRetreats' in g.scenario!.state).toBe(false);
+        expect(fleet.frLosingSinceMs).toBeUndefined();
+        expect(fleet.frWithdrawal).toBeUndefined();
+        expect(g.rnd.getState()).toEqual(rnd);
     });
 });

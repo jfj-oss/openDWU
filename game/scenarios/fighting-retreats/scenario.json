@@ -1,0 +1,50 @@
+{
+  "id": "fighting-retreats",
+  "name": "Fighting retreats",
+  "description": "Gameplay change: a fleet that notices the fight has turned against it (less firepower than the enemies it is fighting) withdraws together to the nearest friendly repair point instead of fighting to the end, then goes back to its duties (automated) or waits for orders. Ships keep the original's per-design Flee setting; a fleet whose ships are set to Flee: never does not withdraw. Set on the new-game wizard's Other Empires page.",
+  "flags": [
+    {
+      "name": "fightingRetreats",
+      "label": "Fighting retreats",
+      "description": "Master switch.",
+      "default": true
+    }
+  ],
+  "params": [
+    {
+      "name": "frCheckSeconds",
+      "label": "Check battles every this many game seconds",
+      "default": 1,
+      "min": 0.25,
+      "max": 10
+    },
+    {
+      "name": "frFleetRatio",
+      "label": "A fleet is losing when its firepower is below this % of the enemy's firepower in the battle",
+      "default": 100,
+      "min": 0,
+      "max": 500
+    },
+    {
+      "name": "frMinLoss",
+      "label": "…and only after it has lost this % of the firepower it had when the battle began",
+      "default": 50,
+      "min": 0,
+      "max": 100
+    },
+    {
+      "name": "frHoldSeconds",
+      "label": "A losing fleet withdraws after this many game seconds",
+      "default": 5,
+      "min": 0,
+      "max": 120
+    },
+    {
+      "name": "frHysteresis",
+      "label": "A losing fleet stops counting down once its firepower is back above this % of the losing line",
+      "default": 125,
+      "min": 100,
+      "max": 400
+    }
+  ]
+}
