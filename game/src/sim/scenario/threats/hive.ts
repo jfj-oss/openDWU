@@ -46,7 +46,7 @@ import {
     type SentStages,
     type ThreatKnowledge,
 } from './framework';
-import { applyIncomeFloor, ensureConstructionShips, averageMilitary, navyRise, newNavyState, spawnPendingNavy, syncFactionTech, takeMiningStationsNear, topUpPorts, type NavyState } from './factionNavy';
+import { applyIncomeFloor, directFleets, topUpGarrisons, ensureConstructionShips, averageMilitary, navyRise, newNavyState, spawnPendingNavy, syncFactionTech, takeMiningStationsNear, topUpPorts, type NavyState } from './factionNavy';
 
 export const HIVE_KEY = 'hive';
 export const HIVE_FLAG = 'hive';
@@ -300,6 +300,17 @@ export function hiveNavyMonthly(galaxy: Galaxy): void {
     topUpPorts(galaxy, 'hive', faction, st.navy);
     spawnPendingNavy(galaxy, faction, st.navy);
     ensureConstructionShips(galaxy, 'hive', faction);
+    topUpGarrisons(galaxy, 'hive', faction, st.navy, scenarioText(`${TAG} Militia Name`)); // every held world kept at hiveGarrison, free upkeep
+}
+
+/** Every 5 days: fleets defend a world under attack, and go on the offensive when none is. */
+export function hiveFleets(galaxy: Galaxy): void {
+    const st = peekHiveState(galaxy);
+    const faction = st?.faction ?? null;
+    if (st === null || faction === null || !faction.active || st.ended) return;
+    st.navy ??= newNavyState();
+    directFleets(galaxy, 'hive', faction, st.navy);
+    topUpGarrisons(galaxy, 'hive', faction, st.navy, scenarioText(`${TAG} Militia Name`)); // reinforcements under attack too, not only monthly
 }
 
 /** Yearly: research re-synced to the galaxy average (never above), designs refreshed. */
@@ -348,7 +359,7 @@ export function hiveKnownSites(galaxy: Galaxy, empire: Empire): KnownThreatSite[
 // Registration
 // ---------------------------------------------------------------------------------------------------------------
 
-export const HIVE_HANDLER_IDS = ['hive.init', 'hive.periodic', 'hive.colony', 'hive.factionColony', 'hive.navy', 'hive.navyYearly', 'hive.navyTroops'] as const;
+export const HIVE_HANDLER_IDS = ['hive.init', 'hive.periodic', 'hive.colony', 'hive.factionColony', 'hive.navy', 'hive.navyYearly', 'hive.navyTroops', 'hive.fleets'] as const;
 
 /** Game Editor: null when the Chorus can be raised now. Pure. */
 export function hiveSpawnNote(galaxy: Galaxy): string | null {
@@ -374,6 +385,7 @@ export function registerHive(): void {
     registerScenarioEvent({ id: 'hive.factionColony', flag: HIVE_FLAG, order: 10, event: 'colonyOwnerChanged', run: (g, e) => onFactionColonyOwnerChanged(g, e.colony, e.from, e.to) });
     registerScenarioYearly({ id: 'hive.navyYearly', flag: HIVE_FLAG, order: 11, run: (g) => hiveNavyYearly(g) });
     registerScenarioPeriodic({ id: 'hive.navy', flag: HIVE_FLAG, order: 11, periodDays: 30, run: (g) => hiveNavyMonthly(g) });
+    registerScenarioPeriodic({ id: 'hive.fleets', flag: HIVE_FLAG, order: 12, periodDays: 5, run: (g) => hiveFleets(g) });
     registerScenarioQuery({ id: 'hive.navyTroops', flag: HIVE_FLAG, query: 'troopMaintenanceFactor', run: (g, v, a) => (peekHiveState(g)?.faction === a.empire ? 0 : v) });
     registerThreatKnownSites(HIVE_KEY, hiveKnownSites);
 }

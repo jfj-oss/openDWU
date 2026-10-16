@@ -35,8 +35,10 @@ import { militaryPotency, FleetPosture } from '../src/sim/diplomacyTick';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { empireTechLevel } from '../src/sim/scenario/threats/robotMutiny';
 import { averageTechLevel, syncFactionTech } from '../src/sim/scenario/threats/factionNavy';
-import { cultNavyMonthly } from '../src/sim/scenario/threats/cult';
+import { cultNavyMonthly, cultFleets } from '../src/sim/scenario/threats/cult';
 import { makeFactionTroop } from '../src/sim/scenario/threats/framework';
+import { BuiltObjectMissionPriority } from '../src/sim/missions/mission';
+import { TroopList } from '../src/sim/cargo';
 import { empireShipGroups } from '../src/sim/fleets/shipGroup';
 
 let base: GameData;
@@ -129,6 +131,8 @@ describe('Cult: forced conversion on seed 1', () => {
         expect(colony.invadingTroops).not.toBeNull();
         expect(colony.invadingTroops!.count).toBeGreaterThan(0);
         for (const t of colony.invadingTroops!.items) expect(t.empire).toBe(st.faction);
+        // The rising force per colony is cultRisingStrength (800,000 by default, the Ground Report measure).
+        expect(colony.invadingTroops!.totalAttackStrength).toBe(800000);
     }, 600000);
 
     it('discovery: a counter-intelligence agent confirms a converted character in its own empire', () => {
@@ -214,5 +218,61 @@ describe('Cult: economy and navy', () => {
         expect(annualTroopMaintenance(host)).toBeGreaterThan(0);
         // The yearly sync never lowers it and does nothing when it is level with the galaxy.
         expect(syncFactionTech(g, faction)).toBe(false);
+    }, 1200000);
+});
+
+describe('Cult: garrisons and fleets', () => {
+    it('every held colony is kept at 2,000,000 defence strength; fleets defend a world under attack and attack otherwise', () => {
+        const { game } = ctGame();
+        const g = game.galaxy;
+        const st = cultState(g);
+        const host = normalEmpires(g).find((e) => e.colonies.some((c) => c !== e.capital && c.population.totalAmount > 0) && e.builtObjects.some((b) => b.role === BuiltObjectRole.Military))!;
+        const colony = host.colonies.find((c) => c !== host.capital && c.population.totalAmount > 0)!;
+        const governor = generateNewCharacter(g, host, CharacterRole.ColonyGovernor, colony).character;
+        convert(g, st, governor!);
+        cultCheckTrigger(g);
+        const faction = st.faction!;
+        takeOwnershipOfColonyFull(g, host, colony, faction, false, false);
+        // Monthly top-up: 2M total, free upkeep, and it is maintained (a depleted garrison is refilled).
+        cultNavyMonthly(g);
+        expect(colony.troops!.totalDefendStrength).toBeGreaterThanOrEqual(2000000);
+        expect(colony.troops!.totalDefendStrength).toBeLessThan(2000000 + 100 * 100);
+        expect(annualTroopMaintenance(faction)).toBe(0);
+        colony.troops!.items.splice(0, 3);
+        const left = colony.troops!.totalDefendStrength;
+        expect(left).toBeLessThan(2000000);
+        cultNavyMonthly(g);
+        expect(colony.troops!.totalDefendStrength).toBeGreaterThanOrEqual(2000000);
+        g.scenario!.params.cultGarrison = 500000;
+        colony.troops!.items.length = 0;
+        cultNavyMonthly(g);
+        expect(colony.troops!.totalDefendStrength).toBeGreaterThanOrEqual(500000);
+        expect(colony.troops!.totalDefendStrength).toBeLessThan(600000);
+        // Fleets: nothing in range, so they are on the offensive.
+        for (const sg of empireShipGroups(faction)) if (sg !== null) sg.posture = FleetPosture.Defend;
+        const fleets = empireShipGroups(faction).filter((sg) => sg !== null && sg.ships.length > 0 && sg.leadShip !== null);
+        expect(fleets.length).toBeGreaterThan(0);
+        for (const e of g.empires) if (e !== faction) for (const b of e.builtObjects) if (b.role === BuiltObjectRole.Military) { b.xpos = colony.xpos + 90000; b.ypos = colony.ypos + 90000; }
+        cultFleets(g);
+        expect(fleets.every((sg) => sg!.posture === FleetPosture.Attack)).toBe(true);
+        // An enemy warship arrives at the colony: every fleet defends it.
+        const enemy = host.builtObjects.find((b) => b.role === BuiltObjectRole.Military && !b.hasBeenDestroyed)!;
+        enemy.xpos = colony.xpos + 500;
+        enemy.ypos = colony.ypos;
+        cultFleets(g);
+        expect(fleets.every((sg) => sg!.posture === FleetPosture.Defend && sg!.gatherPoint === colony && sg!.mission !== null && sg!.mission.targetHabitat === colony)).toBe(true);
+        // It leaves: the fleets are released and go back on the offensive.
+        enemy.xpos = colony.xpos + 90000;
+        enemy.ypos = colony.ypos + 90000;
+        cultFleets(g);
+        expect(fleets.every((sg) => sg!.posture === FleetPosture.Attack)).toBe(true);
+        expect(fleets.every((sg) => sg!.mission === null || sg!.mission.priority !== BuiltObjectMissionPriority.High)).toBe(true);
+        // Landed enemy troops also count as an attack.
+        colony.invadingTroops = new TroopList();
+        const t = makeFactionTroop(g, host, 100, 'Raider', null);
+        t.colony = colony;
+        colony.invadingTroops.add(t);
+        cultFleets(g);
+        expect(fleets.every((sg) => sg!.posture === FleetPosture.Defend)).toBe(true);
     }, 1200000);
 });

@@ -34,7 +34,6 @@ import {
     createThreatFaction,
     invadeFromInside,
     knowledgeLevel,
-    makeFactionTroop,
     normalEmpires,
     pastThreatMinYear,
     peekThreatState,
@@ -51,7 +50,7 @@ import {
     type ThreatKnowledge,
     forcedThreatVictim,
 } from './framework';
-import { applyIncomeFloor, ensureConstructionShips, givePortAt, navyRise, newNavyState, spawnPendingNavy, syncFactionTech, takeMiningStationsNear, type NavyState } from './factionNavy';
+import { applyIncomeFloor, directFleets, ensureConstructionShips, givePortAt, makeTroopOfStrength, navyRise, topUpGarrisons, newNavyState, spawnPendingNavy, syncFactionTech, takeMiningStationsNear, type NavyState } from './factionNavy';
 
 export const CULT_KEY = 'cult';
 export const CULT_FLAG = 'cult';
@@ -107,6 +106,8 @@ const P = {
     secedeColonies: (g: Galaxy) => p(g, 'cultSecedeColonies', 4),
     secedeMinColonies: (g: Galaxy) => p(g, 'cultSecedeMinColonies', 2),
     agentDetectPct: (g: Galaxy) => p(g, 'cultAgentDetectPct', 15),
+    /** Total strength (the Ground Report measure) of the force that rises inside each cult-held colony. */
+    risingStrength: (g: Galaxy) => p(g, 'cultRisingStrength', 800000),
 };
 
 function recordOf(st: CultState, c: Character): ConvertRecord | undefined {
@@ -284,8 +285,7 @@ export function cultTrigger(galaxy: Galaxy, st: CultState, host: Empire, held: H
         const inv = h.invadingTroops;
         if (inv !== null && inv.count > 0) continue;
         const race = h.population?.dominantRace ?? host.dominantRace ?? null;
-        const strength = race?.troopStrength ?? 60;
-        const troop = makeFactionTroop(galaxy, faction, strength, scenarioText(`${TAG} Militia Name`), race);
+        const troop = makeTroopOfStrength(galaxy, faction, P.risingStrength(galaxy), scenarioText(`${TAG} Militia Name`), race);
         invadeFromInside(galaxy, h, faction, [troop]);
     }
     if (cultHooks.triggered !== null) cultHooks.triggered(galaxy, host, faction);
@@ -391,6 +391,17 @@ export function cultNavyMonthly(galaxy: Galaxy): void {
     applyIncomeFloor(galaxy, 'cult', faction, st.navy);
     spawnPendingNavy(galaxy, faction, st.navy);
     ensureConstructionShips(galaxy, 'cult', faction);
+    topUpGarrisons(galaxy, 'cult', faction, st.navy, scenarioText(`${TAG} Militia Name`)); // every held world kept at cultGarrison, free upkeep
+}
+
+/** Every 5 days: fleets defend a world under attack, and go on the offensive when none is. */
+export function cultFleets(galaxy: Galaxy): void {
+    const st = peekCultState(galaxy);
+    const faction = st?.faction ?? null;
+    if (st === null || faction === null || !faction.active || st.ended) return;
+    st.navy ??= newNavyState();
+    directFleets(galaxy, 'cult', faction, st.navy);
+    topUpGarrisons(galaxy, 'cult', faction, st.navy, scenarioText(`${TAG} Militia Name`)); // reinforcements under attack too, not only monthly
 }
 
 /** Yearly: research re-synced to the galaxy average (never above), designs refreshed. */
@@ -444,7 +455,7 @@ export function cultSpawnNow(galaxy: Galaxy, victim: Empire): boolean {
     return true;
 }
 
-export const CULT_HANDLER_IDS = ['cult.yearly', 'cult.periodic', 'cult.characterCreated', 'cult.navy', 'cult.navyYearly', 'cult.navyColony', 'cult.navyTroops'] as const;
+export const CULT_HANDLER_IDS = ['cult.yearly', 'cult.periodic', 'cult.characterCreated', 'cult.navy', 'cult.navyYearly', 'cult.navyColony', 'cult.navyTroops', 'cult.fleets'] as const;
 
 export function registerCult(): void {
     registerThreatExistence(CULT_KEY, CULT_FLAG);
@@ -454,6 +465,7 @@ export function registerCult(): void {
     registerScenarioEvent({ id: 'cult.characterCreated', flag: CULT_FLAG, event: 'characterCreated', run: (g, e) => onCharacterCreated(g, e.character, e.empire) });
     registerScenarioYearly({ id: 'cult.navyYearly', flag: CULT_FLAG, order: 11, run: (g) => cultNavyYearly(g) });
     registerScenarioPeriodic({ id: 'cult.navy', flag: CULT_FLAG, order: 11, periodDays: 30, run: (g) => cultNavyMonthly(g) });
+    registerScenarioPeriodic({ id: 'cult.fleets', flag: CULT_FLAG, order: 12, periodDays: 5, run: (g) => cultFleets(g) });
     registerScenarioEvent({ id: 'cult.navyColony', flag: CULT_FLAG, order: 20, event: 'colonyOwnerChanged', run: (g, e) => cultNavyColony(g, e.colony, e.from, e.to) });
     registerScenarioQuery({ id: 'cult.navyTroops', flag: CULT_FLAG, query: 'troopMaintenanceFactor', run: (g, v, a) => (peekCultState(g)?.faction === a.empire ? 0 : v) });
     registerThreatKnownSites(CULT_KEY, cultKnownSites);

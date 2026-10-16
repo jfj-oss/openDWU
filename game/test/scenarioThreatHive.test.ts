@@ -29,7 +29,7 @@ import { FleetPosture } from '../src/sim/diplomacyTick';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { empireTechLevel } from '../src/sim/scenario/threats/robotMutiny';
 import { averageTechLevel } from '../src/sim/scenario/threats/factionNavy';
-import { hiveNavyMonthly } from '../src/sim/scenario/threats/hive';
+import { hiveNavyMonthly, hiveFleets } from '../src/sim/scenario/threats/hive';
 import { makeFactionTroop } from '../src/sim/scenario/threats/framework';
 import { empireShipGroups } from '../src/sim/fleets/shipGroup';
 import { GameEndOutcome, setGameEndHandler, type GameEndEventArgs } from '../src/sim/victory';
@@ -210,4 +210,42 @@ describe('Hive: hiveMaxNodesSeized (§4 rarity and timing)', () => {
         expect(stillIndependent.length).toBe(70); // the rest stay independent nodes (still tracked in st.nodes)
         expect(seized.length + stillIndependent.length).toBe(independentHabitats.length);
     }, 600000);
+});
+
+describe('Hive: garrisons and fleets', () => {
+    it('every held node is kept at 2,000,000 defence strength; fleets defend a world under attack and attack otherwise', () => {
+        const { game } = hvGame({}, {}, false);
+        const g = game.galaxy;
+        const st = hiveState(g);
+        const owner = g.empires.find((e) => e !== null && e.active && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null && e.builtObjects.some((b) => b.role === BuiltObjectRole.Military))!;
+        for (const n of st.nodes.slice(0, 3)) takeOwnershipOfColonyFull(g, g.independentEmpire!, n.habitat, owner, false, false);
+        hiveTrigger(g, st);
+        const faction = st.faction!;
+        for (const n of st.nodes.slice(0, 3)) if (n.habitat.empire !== faction && !n.habitat.hasBeenDestroyed) takeOwnershipOfColonyFull(g, n.habitat.empire!, n.habitat, faction, false, false);
+        hiveNavyMonthly(g);
+        expect(faction.colonies.length).toBeGreaterThan(0);
+        for (const c of faction.colonies) {
+            expect(c.troops!.totalDefendStrength).toBeGreaterThanOrEqual(2000000);
+            expect(c.troops!.totalDefendStrength).toBeLessThan(2000000 + 100 * 100);
+        }
+        const colony = faction.colonies[0];
+        colony.troops!.items.length = 0;
+        hiveNavyMonthly(g);
+        expect(colony.troops!.totalDefendStrength).toBeGreaterThanOrEqual(2000000);
+        const fleets = empireShipGroups(faction).filter((sg) => sg !== null && sg.ships.length > 0 && sg.leadShip !== null);
+        expect(fleets.length).toBeGreaterThan(0);
+        for (const sg of fleets) sg!.posture = FleetPosture.Defend;
+        for (const e of g.empires) if (e !== faction) for (const b of e.builtObjects) if (b.role === BuiltObjectRole.Military) { b.xpos = colony.xpos + 90000; b.ypos = colony.ypos + 90000; }
+        hiveFleets(g);
+        expect(fleets.every((sg) => sg!.posture === FleetPosture.Attack)).toBe(true);
+        const enemy = owner.builtObjects.find((b) => b.role === BuiltObjectRole.Military && !b.hasBeenDestroyed)!;
+        enemy.xpos = colony.xpos + 500;
+        enemy.ypos = colony.ypos;
+        hiveFleets(g);
+        expect(fleets.every((sg) => sg!.posture === FleetPosture.Defend && sg!.mission !== null && sg!.mission.targetHabitat !== null && faction.colonies.includes(sg!.mission.targetHabitat))).toBe(true);
+        enemy.xpos = colony.xpos + 90000;
+        enemy.ypos = colony.ypos + 90000;
+        hiveFleets(g);
+        expect(fleets.every((sg) => sg!.posture === FleetPosture.Attack)).toBe(true);
+    }, 1200000);
 });

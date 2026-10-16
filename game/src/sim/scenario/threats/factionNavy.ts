@@ -19,6 +19,7 @@ import type { Empire } from '../../empire';
 import type { Design } from '../../design';
 import type { BuiltObject } from '../../builtObject';
 import type { Habitat } from '../../types';
+import type { Race } from '../../data/races';
 import { BuiltObjectSubRole } from '../../builtObjectTypes';
 import { BuiltObjectRole } from '../../data/designSpecifications';
 import { galaxyStarDate } from '../../tick/simTime';
@@ -28,10 +29,14 @@ import { galaxyDesignSpecificationBySubRole } from '../../gameStartTail';
 import { takeOwnershipOfBuiltObject } from '../../combat/ownership';
 import { FleetPosture, calculateOverallStrengthFactorWithoutShields, militaryPotency } from '../../diplomacyTick';
 import { designsFindNewestCanBuild, placeSpacePortAtColony } from '../../stationPlacement';
-import { builtObjectMission } from '../../missions/mission';
+import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission } from '../../missions/mission';
+import { Troop, TroopList } from '../../cargo';
+import { ShipGroup, empireShipGroups as shipGroupsOfEmpire } from '../../fleets/shipGroup';
+import { shipGroupAssignMission, shipGroupCompleteMissionWith } from '../../fleets/shipGroupTasks';
+import { troopEmpire } from '../../combat/invasion';
 import { scenarioParam } from '../state';
 import { empireTechLevel, formBeaconFleets, maxDesignTechLevel, raiseFactionTech } from './robotMutiny';
-import { normalEmpires } from './framework';
+import { makeFactionTroop, normalEmpires } from './framework';
 
 export type NavyPrefix = 'cult' | 'hive' | 'genShips';
 
@@ -47,6 +52,10 @@ export interface NavyState {
     techYear: number;
     shipsSpawned: number;
     stationsTaken: number;
+    /** Garrison troops added over the run (top-ups), fleet orders given (defend / back on the offensive). */
+    garrisonAdded?: number;
+    defendOrders?: number;
+    attackFlips?: number;
 }
 
 export function newNavyState(): NavyState {
@@ -60,6 +69,10 @@ const P = {
     navyPct: (g: Galaxy, k: NavyPrefix) => scenarioParam(g, `${k}NavyPct`, k === 'cult' ? 30 : 100),
     smallPorts: (g: Galaxy, k: NavyPrefix) => Math.max(0, Math.trunc(scenarioParam(g, `${k}SmallPorts`, 3))),
     constructionShips: (g: Galaxy, k: NavyPrefix) => Math.max(0, Math.trunc(scenarioParam(g, `${k}ConstructionShips`, 2))),
+    /** Ground defence strength (troops' total defend strength, the Ground Report measure: natural strength x 100 readiness) kept at every held colony. */
+    garrison: (g: Galaxy, k: NavyPrefix) => Math.max(0, scenarioParam(g, `${k}Garrison`, 2000000)),
+    /** Distance (game units) within which an enemy warship / loaded troop ship counts as attacking a held world. */
+    defendRadius: (g: Galaxy, k: NavyPrefix) => Math.max(0, scenarioParam(g, `${k}DefendRadius`, 4000)),
     stationCount: (g: Galaxy, k: NavyPrefix) => Math.max(0, Math.trunc(scenarioParam(g, `${k}StationCount`, 3))),
 };
 
@@ -280,4 +293,179 @@ export function takeMiningStationsNear(galaxy: Galaxy, k: NavyPrefix, faction: E
     }
     navy.stationsTaken += chosen.length;
     return chosen.length;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Garrisons (monthly top-up, free upkeep) and the strength of a troop force
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Troop readiness is a percentage and strengths are multiplied by it, so the game's "strength" of a force is natural x 100. */
+const READINESS = 100;
+/** A troop's strengths are shorts. */
+const MAX_NATURAL = 30000;
+
+/** A troop whose total strength (the stock measure) is `strength`, attack and defence alike; bonus factors are not applied. */
+export function makeTroopOfStrength(galaxy: Galaxy, faction: Empire, strength: number, name: string, race: Race | null): Troop {
+    const natural = Math.max(1, Math.min(MAX_NATURAL, Math.round(strength / READINESS)));
+    const troop = makeFactionTroop(galaxy, faction, natural, name, race);
+    troop.setAttackStrength(natural);
+    troop.setDefendStrength(natural);
+    return troop;
+}
+
+/** Troops of the given total strength, in as few troops as the short range allows. */
+export function makeTroopsOfStrength(galaxy: Galaxy, faction: Empire, strength: number, name: string, race: Race | null): Troop[] {
+    const out: Troop[] = [];
+    let left = strength;
+    for (let i = 0; i < 100 && left >= READINESS; i++) {
+        const part = Math.min(left, MAX_NATURAL * READINESS);
+        out.push(makeTroopOfStrength(galaxy, faction, part, name, race));
+        left -= part;
+    }
+    return out;
+}
+
+/** Tops every colony the faction holds up to <prefix>Garrison total defence strength. Returns the number of colonies topped up. */
+export function topUpGarrisons(galaxy: Galaxy, k: NavyPrefix, faction: Empire, navy: NavyState, name: string): number {
+    const target = P.garrison(galaxy, k);
+    if (!(target > 0)) return 0;
+    let n = 0;
+    for (const h of faction.colonies) {
+        if (h.hasBeenDestroyed) continue;
+        h.troops ??= new TroopList();
+        const deficit = target - h.troops.totalDefendStrength;
+        if (!(deficit >= READINESS)) continue;
+        const race = (h.population?.dominantRace ?? faction.dominantRace ?? null) as Race | null;
+        for (const t of makeTroopsOfStrength(galaxy, faction, deficit, name, race)) {
+            t.colony = h;
+            h.troops.add(t);
+            navy.garrisonAdded = (navy.garrisonAdded ?? 0) + 1;
+        }
+        n++;
+    }
+    return n;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Fleets: defend a world under attack, attack when none is
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * The faction's colonies under attack, with how many attackers each has: enemy troops landed (invadingTroops of another
+ * empire), enemy warships within <prefix>DefendRadius, or loaded enemy troop ships within twice that (or bound for it).
+ */
+export function coloniesUnderAttack(galaxy: Galaxy, k: NavyPrefix, faction: Empire): Map<Habitat, number> {
+    const out = new Map<Habitat, number>();
+    const colonies = faction.colonies.filter((c) => !c.hasBeenDestroyed);
+    if (colonies.length === 0) return out;
+    const r = P.defendRadius(galaxy, k);
+    for (const c of colonies) {
+        const inv = c.invadingTroops;
+        if (inv !== null && inv.items.some((t) => troopEmpire(t) !== faction)) out.set(c, (out.get(c) ?? 0) + 1000);
+    }
+    for (const e of galaxy.empires) {
+        if (e === faction || !e.active || e === galaxy.independentEmpire) continue;
+        for (const bo of e.builtObjects) {
+            if (bo.hasBeenDestroyed) continue;
+            const loaded = bo.troops !== null && bo.troops.count > 0;
+            const armed = bo.role === BuiltObjectRole.Military;
+            if (!loaded && !armed) continue;
+            const m = loaded ? builtObjectMission(bo.mission) : null;
+            for (const c of colonies) {
+                const d = galaxy.calculateDistance(bo.xpos, bo.ypos, c.xpos, c.ypos);
+                if ((armed && d <= r) || (loaded && (d <= 2 * r || (m !== null && m.targetHabitat === c && d <= 6 * r)))) out.set(c, (out.get(c) ?? 0) + 1);
+            }
+        }
+    }
+    return out;
+}
+
+/** The faction's fleets that have ships. */
+function factionFleets(faction: Empire): ShipGroup[] {
+    const out: ShipGroup[] = [];
+    for (const g of shipGroupsOfEmpire(faction)) if (g !== null && g.leadShip !== null && g.ships.length > 0) out.push(g);
+    return out;
+}
+
+/** A fleet's standing order from this module: a High-priority Move to one of the faction's own colonies. */
+function isDefendOrder(fleet: ShipGroup, faction: Empire): boolean {
+    const m = fleet.mission;
+    return m !== null && m.type === BuiltObjectMissionType.Move && m.priority === BuiltObjectMissionPriority.High && m.targetHabitat !== null && m.targetHabitat.empire === faction;
+}
+
+/** Warships left without a fleet (the stock AI does not regroup them) form new fleets at the faction's nearest world. */
+function regroupStragglers(galaxy: Galaxy, faction: Empire): void {
+    const colonies = faction.colonies.filter((c) => !c.hasBeenDestroyed);
+    if (colonies.length === 0) return;
+    const byHome = new Map<Habitat, BuiltObject[]>();
+    for (const b of faction.builtObjects) {
+        if (b.hasBeenDestroyed || b.role !== BuiltObjectRole.Military || b.shipGroup !== null || !b.isAutoControlled) continue;
+        let home = colonies[0];
+        let best = Infinity;
+        for (const c of colonies) {
+            const d = galaxy.calculateDistance(b.xpos, b.ypos, c.xpos, c.ypos);
+            if (d < best) {
+                best = d;
+                home = c;
+            }
+        }
+        const list = byHome.get(home) ?? [];
+        list.push(b);
+        byHome.set(home, list);
+    }
+    for (const [home, ships] of byHome) formBeaconFleets(galaxy, faction, home, ships, FleetPosture.Attack);
+}
+
+export interface FleetDirection {
+    threatened: number;
+    defending: number;
+    attacking: number;
+}
+
+/**
+ * Under attack: every fleet goes to the nearest threatened world (posture Defend, gather point = that world, High-priority
+ * Move). Nothing under attack: fleets still on a defend order are released and put on posture Attack, and the stock military
+ * AI (identifyMilitaryObjectives / taskShipGroups, every tick) sends them at the enemy's nearby targets.
+ */
+export function directFleets(galaxy: Galaxy, k: NavyPrefix, faction: Empire, navy: NavyState): FleetDirection {
+    regroupStragglers(galaxy, faction);
+    const threats = coloniesUnderAttack(galaxy, k, faction);
+    const fleets = factionFleets(faction);
+    const res: FleetDirection = { threatened: threats.size, defending: 0, attacking: 0 };
+    if (threats.size === 0) {
+        for (const f of fleets) {
+            if (isDefendOrder(f, faction)) shipGroupCompleteMissionWith(galaxy, f, true);
+            if (f.posture !== FleetPosture.Attack) {
+                f.posture = FleetPosture.Attack;
+                f.postureRangeSquared = Number.MAX_VALUE;
+                navy.attackFlips = (navy.attackFlips ?? 0) + 1;
+            }
+            res.attacking++;
+        }
+        return res;
+    }
+    const worlds = [...threats.keys()];
+    for (const f of fleets) {
+        const lead = f.leadShip!;
+        let best: Habitat | null = null;
+        let bestScore = Infinity;
+        for (const c of worlds) {
+            const d = galaxy.calculateDistance(lead.xpos, lead.ypos, c.xpos, c.ypos) / Math.sqrt(1 + (threats.get(c) ?? 0));
+            if (d < bestScore) {
+                bestScore = d;
+                best = c;
+            }
+        }
+        if (best === null) continue;
+        res.defending++;
+        const m = f.mission;
+        const already = m !== null && m.type === BuiltObjectMissionType.Move && m.targetHabitat === best;
+        if (f.posture === FleetPosture.Defend && f.gatherPoint === best && already) continue;
+        f.posture = FleetPosture.Defend;
+        f.gatherPoint = best;
+        f.postureRangeSquared = 250000000000.0;
+        if (!already) shipGroupAssignMission(galaxy, f, BuiltObjectMissionType.Move, best, null, BuiltObjectMissionPriority.High, false);
+        navy.defendOrders = (navy.defendOrders ?? 0) + 1;
+    }
+    return res;
 }
