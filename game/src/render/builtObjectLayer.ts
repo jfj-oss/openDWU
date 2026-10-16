@@ -29,7 +29,7 @@ import { CONCORD_LIMBS_MIN_PX, ConcordFxLayer, concordArtEmpire, concordShipArt,
 import { ConstructionOverlays, DamageOverlays, shipConstructionSubject, shipDamageSubject } from './shipOverlays';
 import { artBundleFlag } from './artBundleFlags';
 import { LiveryOverlays } from './liveryLayer';
-import { ANCIENT_TINT, ANCIENT_WEAR, SwarmFxLayer, isAncientHull, threatArtUrl, threatDrawScale, threatLooks } from './threatArt';
+import { ANCIENT_TINT, ANCIENT_WEAR, GenShipsFxLayer, SwarmFxLayer, genShipsArtFile, isAncientHull, threatArtUrl, threatDrawScale, threatLooks } from './threatArt';
 import { fogOf } from './fog';
 import { Galaxy } from '../sim/galaxy';
 import type { BuiltObject } from '../sim/builtObject';
@@ -538,6 +538,8 @@ export class BuiltObjectLayer {
     // [concordArt] end
     /** threatArt.ts: the probe swarm's light overlays (pooled; above the ships). */
     private swarmFx = new SwarmFxLayer();
+    /** threatArt.ts: the generation ships' blinking red positional lights (pooled; above the ships). */
+    private genFx = new GenShipsFxLayer();
     /** Render interpolation between sim steps (renderInterp.ts; set by MainView). Null: draw the sim positions. */
     motion: MotionInterpolator | null = null;
     /** The ship the follow camera is centred on this frame (set by MainView before update; null when not following). Its
@@ -559,6 +561,7 @@ export class BuiltObjectLayer {
         world.addChild(this.root);
         world.addChild(this.concordFx.root); // [concordArt]
         world.addChild(this.swarmFx.root);
+        world.addChild(this.genFx.root);
         this.root.addChild(this.ships);
         this.liveries = new LiveryOverlays(this.root, galaxy);
         this.damage = new DamageOverlays<BuiltObject>(this.root);
@@ -603,6 +606,7 @@ export class BuiltObjectLayer {
         this.root.visible = f < BUILT_OBJECT_MAX_FACTOR;
         this.concordFx.root.visible = this.root.visible; // [concordArt]
         this.swarmFx.root.visible = this.root.visible;
+        this.genFx.root.visible = this.root.visible;
         if (!this.root.visible) return;
         // [concordArt] begin — null with the scenario / flag off: every object keeps its stock art.
         const concord = concordArtEmpire(this.galaxy);
@@ -622,12 +626,13 @@ export class BuiltObjectLayer {
         this.construction.begin();
         const damageFx = artBundleFlag(this.galaxy, 'damageFx');
         const liveries = artBundleFlag(this.galaxy, 'liveries');
-        // threatArt.ts: the generation ships wear the oldest wear look whether or not the livery flag is on.
+        // threatArt.ts: the generation ships' stock-art bases wear the oldest wear look whether or not the livery flag is on.
         const looks = threatLooks(this.galaxy);
         const liveryPass = liveries || looks.genFactions.length > 0 || looks.worldShips.length > 0;
         this.liveries.root.visible = liveryPass;
         if (liveryPass) this.liveries.begin();
         this.swarmFx.begin();
+        this.genFx.begin();
         const sec = nowMs / 1000;
         // Camera.worldToScreen, inlined (no allocation per ship per frame).
         const camX = cam.x;
@@ -774,7 +779,10 @@ export class BuiltObjectLayer {
                     ? this.construction.texture(bo, constructionSubject, shipArtRecord, builtObjectSizePx(bo.size, metrics.areaRatio, 1, bo.design?.imageScalingType ?? DesignImageScalingMode.None, bo.design?.imageScalingFactor ?? 1))
                     : null;
             // [concordArt] at close zoom the Concord's limbs animate: the limbless body under the moving limbs.
-            const ancient = isAncientHull(looks, bo);
+            // threatArt.ts: a generation-ship hull on its bundled frame carries its age in the frame (no tint, no forced
+            // wear); the factions' stock-art objects (their bases) wear the forced old look.
+            const genFile = looks.genFactions.length > 0 || looks.worldShips.length > 0 ? genShipsArtFile(bo, looks) : null;
+            const ancient = genFile === null && isAncientHull(looks, bo);
             const shipTex = cArt !== null && cArt.body !== undefined && px >= CONCORD_LIMBS_MIN_PX ? cArt.body : texture;
             sprite.texture = revealTex ?? shipTex;
             sprite.position.set(x, y);
@@ -794,6 +802,7 @@ export class BuiltObjectLayer {
                 this.concordFx.draw(cArt, x, y, sprite.rotation, sprite.scale.x, sprite.anchor.x, sprite.anchor.y, bo.builtObjectID, px, nowMs, this.concordAnimMs);
             }
             // [concordArt] end
+            if (genFile !== null && revealTex === null) this.genFx.draw(genFile, bo.builtObjectID, x, y, sprite.rotation, sprite.scale.x, sprite.anchor.x, sprite.anchor.y, texture.width, texture.height, px, sec);
             if (bo === looks.mothercore && revealTex === null) this.swarmFx.draw(x, y, sprite.rotation, sprite.scale.x, sprite.anchor.x, sprite.anchor.y, texture.width, texture.height, px, sec);
             if (ancient && !this.liveries.forced.has(bo)) this.liveries.forced.set(bo, ANCIENT_WEAR);
             if ((liveries || ancient) && shipArtRecord !== null) this.liveries.draw(bo, shipArtRecord, px, z, sprite.alpha, x, y, heading);
@@ -805,6 +814,7 @@ export class BuiltObjectLayer {
         }
         this.concordFx.end(); // [concordArt]
         this.swarmFx.end();
+        this.genFx.end();
         this.damage.end();
         this.construction.end();
         if (liveryPass) this.liveries.end();

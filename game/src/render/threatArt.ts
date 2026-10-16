@@ -1,13 +1,18 @@
-// Threat looks (render only): the Generation Ships' centuries-old fleets and the Dead Probe Swarm's own art.
+// Threat looks (render only): the Generation Ships' centuries-old fleets, the Dead Probe Swarm's and the Purifier's art.
 //
-// The generation ships are runtime looks over the stock frames from the player's install; the swarm and the Purifier
-// draw bundled frames of our own (derived from stock pieces by offline scripts). Factions are found through the threats' scenario state (peekGenShipsState /
-// peekProbeSwarmState: read only, never created), never by name.
+// The three draw bundled frames of our own (derived from stock pieces by offline scripts). Factions are found through
+// the threats' scenario state (genShipsStates / peekProbeSwarmState / peekPurifierState: read only, never created),
+// never by name.
 //
-// - Generation ships: every object of the faction (and the world ship, whoever holds it) wears the 19r wear layer
-//   (liveryLayer.ts) forced to its oldest bucket with a few old scars, under a faded, yellowed sprite tint; the world
-//   ship is drawn WORLD_SHIP_VISUAL_SCALE × its stock size (the drawn size feeds picking, the selection ring and the
-//   ambient exhaust, so all stay consistent).
+// - Generation ships ("the old colony fleet"): the world ship (whoever holds it) and the factions' warships, troop
+//   transports, scouts, colony, construction and civilian ships — including the big slow ships a settled faction
+//   keeps building — draw our
+//   bundled gunmetal-and-rust frames (public/art/generation-ships/, scripts/generation-ships-ships.py: stock Human and
+//   industrial pieces kitbashed with strapped tanks, bunker-slit bows and round engine bells), picked by subRole
+//   (genShipsArtUrl). Small red positional lights blink at their hull extremities (GenShipsFxLayer; frame px in
+//   genShipsLights.ts, written by the same script), each ship on its own phase. The factions' bases keep their stock frames and wear the 19r wear layer (liveryLayer.ts) forced to its oldest bucket
+//   with a few old scars, under a faded, yellowed sprite tint. The world ship is drawn WORLD_SHIP_VISUAL_SCALE × its
+//   stock size (the drawn size feeds picking, the selection ring and the ambient exhaust, so all stay consistent).
 // - Probe swarm: every swarm hull draws our bundled dark-slate derelict frames (public/art/probe-swarm/,
 //   scripts/probe-swarm-ships.py: new silhouettes kitbashed from stock pieces, one per role) instead of its race's art;
 //   picked by role (swarmArtUrl), render only. The Mothercore (a spiked machine cube) is drawn larger, with the dim red
@@ -31,6 +36,7 @@ import { textureFromRgbaPixels } from './textureCanvas';
 import { useMinifyingFilter } from './assets';
 import { loadShipArt } from './shipArt';
 import { SpritePool } from './fxCommon';
+import { GEN_SHIPS_LIGHTS } from './genShipsLights';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Who is who (once per frame)
@@ -174,10 +180,86 @@ export function swarmArtUrl(bo: BuiltObject, l: ThreatLooks = looks): string | n
     return `${SWARM_ART_DIR}${swarmFile(bo, l.mothercore)}.png`;
 }
 
-/** The bundled threat art of an object (the Purifier's or the probe swarm's), or null for its stock frame. */
+// ---------------------------------------------------------------------------------------------------------------
+// Generation ships art
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The bundled generation-ship frames (public/art/generation-ships/<file>.png, scripts/generation-ships-ships.py). */
+export const GEN_SHIPS_ART_DIR = '/art/generation-ships/';
+
+/** The frame of a generation-ship subRole (the world ship's is 'worldship' whatever its subRole), or null: stock art. Pure. */
+export function genShipsFileForSubRole(subRole: BuiltObjectSubRole): string | null {
+    switch (subRole) {
+        case BuiltObjectSubRole.Escort:
+            return 'escort';
+        case BuiltObjectSubRole.Frigate:
+            return 'frigate';
+        case BuiltObjectSubRole.Destroyer:
+            return 'destroyer';
+        case BuiltObjectSubRole.Cruiser:
+            return 'cruiser';
+        case BuiltObjectSubRole.CapitalShip:
+            return 'capitalship';
+        case BuiltObjectSubRole.Carrier:
+            return 'carrier';
+        case BuiltObjectSubRole.TroopTransport:
+            return 'trooptransport';
+        case BuiltObjectSubRole.ExplorationShip:
+            return 'explorer';
+        case BuiltObjectSubRole.ColonyShip:
+            return 'worldship';
+        case BuiltObjectSubRole.ConstructionShip:
+            return 'construction';
+        case BuiltObjectSubRole.SmallFreighter:
+        case BuiltObjectSubRole.MediumFreighter:
+        case BuiltObjectSubRole.LargeFreighter:
+        case BuiltObjectSubRole.PassengerShip:
+        case BuiltObjectSubRole.ResupplyShip:
+        case BuiltObjectSubRole.MiningShip:
+        case BuiltObjectSubRole.GasMiningShip:
+            return 'hauler';
+        default:
+            return null;
+    }
+}
+
+/** The bundled frame name of a generation-ship hull (null for everything else and for the factions' bases / civilians). */
+export function genShipsArtFile(bo: BuiltObject, l: ThreatLooks = looks): string | null {
+    if (l.worldShips.includes(bo)) return 'worldship';
+    if (bo.actualEmpire === null || !l.genFactions.includes(bo.actualEmpire) || bo.role === BuiltObjectRole.Base) return null;
+    return genShipsFileForSubRole(bo.subRole);
+}
+
+/** The art URL of a generation-ship hull (null: stock frame). `l` defaults to the last threatLooks record, as purifierArtUrl. */
+export function genShipsArtUrl(bo: BuiltObject, l: ThreatLooks = looks): string | null {
+    const f = genShipsArtFile(bo, l);
+    return f === null ? null : `${GEN_SHIPS_ART_DIR}${f}.png`;
+}
+
+/** The bundled threat art of an object (the generation ships', the Purifier's or the probe swarm's), or null for its stock frame. */
 export function threatArtUrl(bo: BuiltObject, l: ThreatLooks = looks): string | null {
-    if (l.purifierFaction === null && l.swarmFaction === null) return null;
-    return purifierArtUrl(bo, l) ?? swarmArtUrl(bo, l);
+    if (l.purifierFaction === null && l.swarmFaction === null && l.genFactions.length === 0 && l.worldShips.length === 0) return null;
+    return genShipsArtUrl(bo, l) ?? purifierArtUrl(bo, l) ?? swarmArtUrl(bo, l);
+}
+
+/** Blink period (s) of the generation ships' red positional lights, and the flash length. */
+export const GEN_LIGHT_PERIOD = 2.0;
+export const GEN_LIGHT_FLASH = 0.42;
+
+/** A ship's own blink phase (s, 0..period) from its id, so a fleet does not flash in step. Pure. */
+export function genShipsLightPhase(builtObjectID: number): number {
+    return (((builtObjectID * 0.6180339887) % 1) + 1) % 1 * GEN_LIGHT_PERIOD;
+}
+
+/**
+ * Red positional light `k` of a generation ship: a 0.42 s flash every 2 s (quick rise, slower fade), each light of the
+ * ship 0.13 s after the previous one (a short ripple from bow to stern), the ship on its own phase. Pure.
+ */
+export function genShipsLightAlpha(sec: number, k: number, phase: number): number {
+    const P = GEN_LIGHT_PERIOD;
+    const ph = ((((sec + phase - k * 0.13) % P) + P) % P);
+    if (ph >= GEN_LIGHT_FLASH) return 0;
+    return ph < 0.06 ? ph / 0.06 : 1 - (ph - 0.06) / (GEN_LIGHT_FLASH - 0.06);
 }
 
 /** The Mothercore's seam glow: a slow 5.5 s swell of the dim red light in its seams, never off, never bright. Pure. */
@@ -200,13 +282,16 @@ export function swarmLightAlpha(sec: number, k: number): number {
     return ph < 0.05 ? ph / 0.05 : 1 - (ph - 0.05) / 0.27;
 }
 
-const LAMP: readonly [number, number, number] = [1.0, 0.55, 0.12];
+const LAMP_ORANGE: readonly [number, number, number] = [1.0, 0.55, 0.12];
+/** The generation ships' red navigation lamp. */
+const RED_LAMP: readonly [number, number, number] = [1.0, 0.12, 0.08];
 const LAMP_SIDE = 32;
 const LAMP_CORE_PX = 3;
-let lampTex: Texture | null = null;
-/** A small orange lamp: a hot core of LAMP_CORE_PX radius in a short halo, built once. */
-function lampTexture(): Texture {
-    if (lampTex !== null) return lampTex;
+const lampTexs = new Map<readonly [number, number, number], Texture>();
+/** A small lamp of colour `LAMP`: a hot core of LAMP_CORE_PX radius in a short halo, built once per colour. */
+function lampTexture(LAMP: readonly [number, number, number] = LAMP_ORANGE): Texture {
+    const got = lampTexs.get(LAMP);
+    if (got !== undefined) return got;
     const S = LAMP_SIDE;
     const d = new Uint8ClampedArray(S * S * 4);
     for (let y = 0; y < S; y++) {
@@ -215,7 +300,7 @@ function lampTexture(): Texture {
             const core = Math.max(0, Math.min(1, 1.2 - r));
             const a = Math.min(1, core + Math.exp(-r * r * 0.18) * 0.6 * Math.max(0, 1 - r / (S / 2 / LAMP_CORE_PX)));
             const i = (y * S + x) * 4;
-            d[i] = 255;
+            d[i] = LAMP[0] * 255;
             d[i + 1] = (LAMP[1] + (0.85 - LAMP[1]) * core * 0.6) * 255;
             d[i + 2] = (LAMP[2] + (0.5 - LAMP[2]) * core * 0.6) * 255;
             d[i + 3] = a * 255;
@@ -223,7 +308,7 @@ function lampTexture(): Texture {
     }
     const t = textureFromRgbaPixels(d, S, S);
     useMinifyingFilter(t);
-    lampTex = t;
+    lampTexs.set(LAMP, t);
     return t;
 }
 
@@ -284,6 +369,53 @@ export class SwarmFxLayer {
             if (a <= 0.01) continue;
             const lx = (MOTHERCORE_LIGHTS[i][0] - ax * tw) * scale;
             const ly = (MOTHERCORE_LIGHTS[i][1] - ay * th) * scale;
+            const s = this.pool.acquire(lamp);
+            s.blendMode = 'add';
+            s.position.set(x + lx * cos - ly * sin, y + lx * sin + ly * cos);
+            s.scale.set(lampScale);
+            s.alpha = a;
+        }
+    }
+
+    end(): void {
+        this.pool.end();
+    }
+}
+
+/** The generation ships' lights are skipped below this drawn size (px). */
+export const GEN_FX_MIN_PX = 14;
+
+/** The generation ships' blinking red positional lights (pooled additive sprites; nothing allocated per frame). */
+export class GenShipsFxLayer {
+    readonly root = new Container();
+    private pool = new SpritePool(this.root);
+
+    constructor() {
+        this.root.eventMode = 'none';
+    }
+
+    begin(): void {
+        this.pool.begin();
+    }
+
+    /** The lights of a generation-ship sprite drawing frame `file` (its transform; `tw` × `th` its texture size). */
+    draw(file: string, id: number, x: number, y: number, rotation: number, scale: number, ax: number, ay: number, tw: number, th: number, drawnPx: number, sec: number): void {
+        if (drawnPx < GEN_FX_MIN_PX) return;
+        if (!Object.hasOwn(GEN_SHIPS_LIGHTS, file)) return;
+        const pts = GEN_SHIPS_LIGHTS[file];
+        const cos = Math.cos(rotation);
+        const sin = Math.sin(rotation);
+        // Screen px per frame px; a small lamp (core 1.2-2.4 screen px radius).
+        const k = drawnPx / Math.max(tw, th);
+        const rScreen = Math.min(2.5, Math.max(1.4, 2.8 * k));
+        const lampScale = ((rScreen * scale) / k) / LAMP_CORE_PX;
+        const lamp = lampTexture(RED_LAMP);
+        const phase = genShipsLightPhase(id);
+        for (let i = 0; i < pts.length; i++) {
+            const a = genShipsLightAlpha(sec, i, phase);
+            if (a <= 0.01) continue;
+            const lx = (pts[i][0] + 0.5 - ax * tw) * scale;
+            const ly = (pts[i][1] + 0.5 - ay * th) * scale;
             const s = this.pool.acquire(lamp);
             s.blendMode = 'add';
             s.position.set(x + lx * cos - ly * sin, y + lx * sin + ly * cos);
