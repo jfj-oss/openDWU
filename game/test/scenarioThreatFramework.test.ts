@@ -49,7 +49,7 @@ import { peekProbeSwarmState, probeSwarmIncome, probeSwarmPeriodic, probeSwarmSt
 import { peekVoidWhaleState, referenceHyperSpeed, voidWhalePeriodic, voidWhaleState } from '../src/sim/scenario/threats/voidWhale';
 import { paintWounds, woundCount, woundKey } from '../src/render/whaleWounds';
 import { LEV_H, LEV_W, leviathanSilhouette, levHalf, levU } from '../src/render/leviathanArt';
-import { LEV_BODY_URL, LEV_GLOW_SPOTS, LEV_PARTS } from '../src/render/leviathanParts';
+import { LEV_BODY_URL, LEV_GLOW_SPOTS, LEV_HARPOONS, LEV_HARPOON_URL, LEV_PARTS } from '../src/render/leviathanParts';
 import { decodePng } from './helpers/pngDecode';
 import { peekWreckageState } from '../src/sim/scenario/wreckage/common';
 import {
@@ -691,6 +691,54 @@ describe('void whale', () => {
         // Same cuts, different colour: open gashes are red, healed scars pale and grey.
         expect(redness(fresh)).toBeGreaterThan(redness(healed));
     }, 300000);
+
+    it('harpoon art: 5-9 old harpoons pinned in the hide, fins and flukes, their sprites and lines in the atlas', () => {
+        const pub = (url: string): string => `${__dirname}/../public${url}`;
+        const atlas = decodePng(pub(LEV_HARPOON_URL));
+        const body = decodePng(pub(LEV_BODY_URL));
+        expect(LEV_HARPOONS.length).toBeGreaterThanOrEqual(5);
+        expect(LEV_HARPOONS.length).toBeLessThanOrEqual(9);
+        const opaque = (fx: number, fy: number, fw: number, fh: number): number => {
+            let n = 0;
+            for (let y = fy; y < fy + fh; y++) for (let x = fx; x < fx + fw; x++) if (atlas.data[(y * atlas.width + x) * 4 + 3] > 200) n++;
+            return n;
+        };
+        let outside = 0;
+        let lines = 0;
+        for (const h of LEV_HARPOONS) {
+            expect(h.fx + h.fw).toBeLessThanOrEqual(atlas.width);
+            expect(h.fy + h.fh).toBeLessThanOrEqual(atlas.height);
+            expect(opaque(h.fx, h.fy, h.fw, h.fh)).toBeGreaterThan(40);
+            // The sprite's anchor (the entry) is inside the frame and the shaft runs out along +x.
+            expect(h.ax).toBeGreaterThan(0);
+            expect(h.ax).toBeLessThan(0.5);
+            expect(h.attach).toBeGreaterThan(0);
+            // The entry sits on its part's hide.
+            if (h.part === 'body') {
+                expect(body.data[(Math.round(h.y) * LEV_W + Math.round(h.x)) * 4 + 3]).toBeGreaterThan(200);
+                const len = h.fw * (1 - h.ax);
+                const ex = h.x + Math.cos(h.ang) * len;
+                const ey = h.y + Math.sin(h.ang) * len;
+                if (Math.abs(ey - LEV_H / 2) > levHalf(levU(ex)) + 10) outside++;
+            } else {
+                const p = LEV_PARTS[h.part];
+                const img = decodePng(pub(p.url));
+                const px = Math.round(h.x - p.rootX + p.ax * p.w);
+                const py = Math.round(h.y - p.rootY + p.ay * p.h);
+                expect(img.data[(py * img.width + px) * 4 + 3]).toBeGreaterThan(60);
+            }
+            if (h.line !== null) {
+                lines++;
+                expect(h.line.fw).toBe(h.line.len);
+                expect(h.line.fy + h.line.fh).toBeLessThanOrEqual(atlas.height);
+                expect(opaque(h.line.fx, h.line.fy, h.line.fw, h.line.fh)).toBeGreaterThan(10);
+            }
+        }
+        // Several stick out past the silhouette (they read at play zoom); a few trail lines.
+        expect(outside).toBeGreaterThanOrEqual(3);
+        expect(lines).toBeGreaterThanOrEqual(3);
+        expect(new Set(LEV_HARPOONS.map((h) => h.part)).size).toBeGreaterThanOrEqual(3);
+    });
 });
 
 // The Hollow Fleet: a patrol on a fixed, learnable schedule. Direct calls on a composite game.

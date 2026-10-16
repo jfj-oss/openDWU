@@ -5,7 +5,7 @@
 
 import type { Texture } from 'pixi.js';
 import { leviathanTextures, type LeviathanImages, type LeviathanTextures } from './leviathanRig';
-import { LEV_BODY_URL, LEV_PARTS } from './leviathanParts';
+import { LEV_BODY_URL, LEV_HARPOON_URL, LEV_PARTS } from './leviathanParts';
 import {
     CONTAINER_PALETTE_FRAME,
     FAUNA_BODIES,
@@ -34,11 +34,12 @@ function loadImage(url: string): Promise<HTMLImageElement> {
     });
 }
 
-/** The Leviathan's part pictures (our bundled art, public/art/leviathan/), decoded; null if any fails to load. */
+/** The Leviathan's part pictures and harpoon atlas (our bundled art, public/art/leviathan/), decoded; null if any fails
+ * to load. */
 function loadLeviathanImages(): Promise<LeviathanImages | null> {
-    const urls = [LEV_BODY_URL, LEV_PARTS.finL.url, LEV_PARTS.finR.url, LEV_PARTS.fluke.url];
+    const urls = [LEV_BODY_URL, LEV_PARTS.finL.url, LEV_PARTS.finR.url, LEV_PARTS.fluke.url, LEV_HARPOON_URL];
     return Promise.all(urls.map((u) => loadImage(u).then(pixelsOf)))
-        .then(([body, finL, finR, fluke]) => ({ body, finL, finR, fluke }))
+        .then(([body, finL, finR, fluke, harpoons]) => ({ body, finL, finR, fluke, harpoons }))
         .catch((e) => {
             console.warn('[newFauna] Leviathan art', e);
             return null;

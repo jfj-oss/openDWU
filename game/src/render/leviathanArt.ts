@@ -1,7 +1,8 @@
 // The Leviathan's art (Void Whale threat, scenarios/void-whale): a giant alien humpback-like whale seen FROM ABOVE like
 // every creature and ship (head along +x, turned with its heading). The art is the user-supplied Leviathan picture, cut
 // into parts by scripts/leviathan-parts.py (public/art/leviathan/: body, two pectoral fins, flukes; their pivots, the
-// body outline and the glowing head dots / spine beads in leviathanParts.ts), toned down to sit in the dark of space.
+// body outline and the glowing head dots / spine beads in leviathanParts.ts), toned down to sit in the dark of space and
+// weathered (an old, hunted animal), with the old harpoons stuck in it drawn into their own atlas (harpoons.png).
 // This module holds the body geometry everything else measures against (the rope, the wounds, the galaxy icon), the
 // plain dark silhouette shown if the pictures cannot load, and the soft glow-dot texture.
 //
@@ -119,6 +120,20 @@ export function leviathanPartSilhouette(p: LevPart): RgbaImage {
 }
 
 export { LEV_PARTS };
+
+/** A copy of the rectangle (x, y, w, h) of `img` (a frame of the harpoon atlas). Pure. */
+export function cropRgba(img: RgbaImage, x: number, y: number, w: number, h: number): RgbaImage {
+    const out = image(w, h);
+    for (let r = 0; r < h; r++) {
+        const sy = y + r;
+        if (sy < 0 || sy >= img.h) continue;
+        const x0 = Math.max(0, x);
+        const x1 = Math.min(img.w, x + w);
+        if (x1 <= x0) continue;
+        out.data.set(img.data.subarray((sy * img.w + x0) * 4, (sy * img.w + x1) * 4), (r * w + (x0 - x)) * 4);
+    }
+    return out;
+}
 
 // ---------------------------------------------------------------------------
 // Fx.

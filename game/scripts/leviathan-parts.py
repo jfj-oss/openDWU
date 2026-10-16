@@ -6,22 +6,30 @@ head to the left, on a flat grey background) into the rig's parts:
   public/art/leviathan/fin-left.png   pectoral fin on the left flank (-y)
   public/art/leviathan/fin-right.png  pectoral fin on the right flank (+y)
   public/art/leviathan/fluke.png      the flukes and the end of the stalk
-  src/render/leviathanParts.ts        generated: sizes, pivots, the body outline and the glowing dots / beads
+  public/art/leviathan/harpoons.png   the old harpoons stuck in it and their trailing lines (leviathan_harpoons.py)
+  src/render/leviathanParts.ts        generated: sizes, pivots, the body outline, the glowing dots / beads and the
+                                      harpoons' placements
 
 It keys the grey out (clean alpha, the grey unmixed from the edge pixels, no fringe), flips it, splits off the fins
 (the body edge under their roots is interpolated) and the flukes, tones it down to sit in the dark of space (darker,
 a little desaturated, the bright white fin tips and fluke patches compressed to a pale grey, the sides shaded) and
-scales it to about a large space port's pixel count. Usage (needs Pillow + numpy):
+scales it to about a large space port's pixel count. Before the cut it weathers the hide (an old, hunted animal: scuffs,
+scrapes, scars, worn patches, chipped fin / fluke edges, the scarred entries of the harpoons; leviathan_harpoons.py).
+Usage (needs Pillow + numpy):
 
   python3 scripts/leviathan-parts.py [reference=~/data/agent-tmp/leviathan/reference.webp]
 """
 import json
+import math
 import os
 import sys
 from collections import deque
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
+
+sys.dont_write_bytecode = True
+import leviathan_harpoons as harp  # noqa: E402 (next to this script)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 GAME = os.path.dirname(HERE)
@@ -179,6 +187,28 @@ X = np.arange(W)[None, :]
 inBody = (yy >= top[None, :] - 0.5) & (yy <= bot[None, :] + 0.5)
 edgeSoft = np.clip(np.minimum(yy - top[None, :], bot[None, :] - yy) + 1.0, 0, 1)
 
+# --- The old wear and the harpoons' entry scars, painted on the toned picture before the cut (the chips bite into the
+# alpha of the fin and fluke edges).
+def to_ref(tx, ty):
+    """Body texture px -> reference px (the inverse of to_tex)."""
+    return SNOUT_X + (LEV_X1 - tx) / S, cy + (ty - LEV_H / 2) / S
+
+
+placed = harp.place(alpha, to_ref, to_tex, S)
+inFinCols = (X >= FIN_X[0] - 40) & (X < FIN_X[1] + 40)
+outside = ~inBody
+regions = {
+    'body': (inBody & (X >= SNOUT_X - 5) & (X <= ROOT_X + 10), 0.0),
+    'finL': (inFinCols & outside & (yy < cy), -0.86),
+    'finR': (inFinCols & outside & (yy > cy), 0.86),
+    'flukeU': ((X > ROOT_X) & outside & (yy < cy), -0.75),
+    'flukeD': ((X > ROOT_X) & outside & (yy > cy), 0.75),
+}
+chippable = (inFinCols & ((yy < top[None, :] - 24) | (yy > bot[None, :] + 24))) | ((X > ROOT_X + 45) & outside)
+avoid = np.asarray(Image.fromarray((glowMask * 255).astype(np.uint8)).filter(ImageFilter.MaxFilter(9))) > 0
+avoid |= spineZone & (np.abs(yy - cy) < 14)
+alpha = harp.weather(tone, alpha, regions, chippable, avoid, to_ref, S, placed)
+
 # Body: inside the (interpolated) edge, snout to the fluke root (soft end on the stalk).
 bodyA = alpha * inBody * np.clip((ROOT_X + 10 - X) / 10, 0, 1)
 inFins = (X >= FIN_X[0]) & (X < FIN_X[1])
@@ -230,6 +260,10 @@ y0, y1 = fy.min() - 2, fy.max() + 3
 w, h = save_part('fluke.png', P(fa), FL0 + pad, y0 + pad, x1 + pad, y1 + pad)
 parts['fluke.png'] = dict(w=w, h=h, ax=(x1 - ROOT_X) / (x1 - FL0), ay=(cy - y0) / (y1 - y0), root=to_tex(ROOT_X, cy))
 
+# The harpoons: one atlas of their sprites and lines (body texture scale).
+atlas, hrecs = harp.harpoons(placed)
+Image.fromarray(atlas, 'RGBA').save(os.path.join(OUT, 'harpoons.png'), optimize=True)
+
 # Outlines of the fins and flukes for the galaxy icon: polar hull round a point inside each (body texture px, unbent).
 def outline(key, cx_f, cy_f, n=32):
     p = parts[key]
@@ -279,6 +313,13 @@ for gx, gy, rx, ry, kind in glows:
     tx, ty = to_tex(gx, gy)
     gl.append(f"    {{ x: {tx:.1f}, y: {ty:.1f}, rx: {max(1.0, rx * S):.2f}, ry: {max(1.0, ry * S):.2f}, kind: '{kind}' }},")
 gl.sort()
+
+hl = []
+for r in hrecs:
+    p = r['spec']
+    fx, fy, fw, fh = r['frame']
+    line = 'null' if r['line'] is None else '{{ fx: {}, fy: {}, fw: {}, fh: {}, len: {} }}'.format(*r['line'], p['line'][1])
+    hl.append(f"    {{ part: '{p['part']}', x: {p['ex']:.1f}, y: {p['ey']:.1f}, ang: {math.radians(p['ang']):.4f}, fx: {fx}, fy: {fy}, fw: {fw}, fh: {fh}, ax: {r['ax']:.4f}, ay: {r['ay']:.4f}, attach: {r['attach']:.1f}, line: {line} }},")
 
 
 def part_ts(key, label):
@@ -336,6 +377,37 @@ export interface LevGlowSpot {{
 export const LEV_GLOW_SPOTS: readonly LevGlowSpot[] = [
 {chr(10).join(gl)}
 ];
+
+export const LEV_HARPOON_URL = '/art/leviathan/harpoons.png';
+
+/** A frame (px) in the harpoon atlas. */
+export interface LevFrame {{
+    fx: number;
+    fy: number;
+    fw: number;
+    fh: number;
+}}
+
+/**
+ * An old harpoon stuck in the Leviathan: the part it is pinned to, its entry point on that part (body texture px at
+ * rest, unbent / unrotated), the shaft's direction out of the hide (rad, texture frame), its sprite (the entry at the
+ * anchor, the shaft along +x), where its line is tied (px along the shaft from the entry) and the trailing line's
+ * sprite (drawn along a swaying rope, `len` px long), if it has one.
+ */
+export interface LevHarpoon extends LevFrame {{
+    part: 'body' | 'finL' | 'finR' | 'fluke';
+    x: number;
+    y: number;
+    ang: number;
+    ax: number;
+    ay: number;
+    attach: number;
+    line: (LevFrame & {{ len: number }}) | null;
+}}
+
+export const LEV_HARPOONS: readonly LevHarpoon[] = [
+{chr(10).join(hl)}
+];
 """
 open(TS, 'w').write(ts)
-print('parts', {k: (v['w'], v['h']) for k, v in parts.items()}, 'glows', len(gl), 'cy', round(cy, 1), 'S', round(S, 4))
+print('parts', {k: (v['w'], v['h']) for k, v in parts.items()}, 'glows', len(gl), 'harpoons', len(hl), 'atlas', atlas.shape[:2], 'cy', round(cy, 1), 'S', round(S, 4))
