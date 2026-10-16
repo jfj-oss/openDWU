@@ -11,9 +11,10 @@
 //   - the DESTROYER is the stock planet destroyer (designGeneration.ts generatePlanetDestroyerDesign, Galaxy.7.cs 4862:
 //     isPlanetDestroyer, the Attack mission on a colony -> firePlanetDestroyerAtHabitat -> destroyHabitat, canDestroyHabitat
 //     diameter <= 400). Infinite fuel, and it resupplies its escorts (their fuel is refilled each period while they are near);
-//   - the ESCORT follows it closely: the stock Escort mission on the destroyer (the escort hyperjumps after its target and
-//     keeps station), at tech purifierTechBonus levels above the galaxy's average, firepower purifierEscortPct % of the mean
-//     of the three strongest empires' military (militaryPotency, as Generation Ships scales);
+//   - the ESCORT (capital ships, cruisers and destroyers: few, individually strong) follows it closely: the stock Escort
+//     mission on the destroyer (the escort hyperjumps after its target and keeps station), at tech purifierTechBonus levels
+//     above the galaxy's average, firepower purifierEscortPct % of the mean of the three strongest empires' military
+//     (militaryPotency, as Generation Ships scales);
 //   - TARGET PROGRAMMING (50/50, one roll at the wake): PREPROGRAMMED (a builders' race family picked at random; it hunts
 //     every other family) or the WAKER CHOOSES one family (the player: a scenario decision pop-up; an AI: the family of its
 //     strongest rival, an empire it is at war with first). It destroys colonies (any owner) whose largest population is of
@@ -416,7 +417,8 @@ function groupDesigns(galaxy: Galaxy, faction: Empire, lvl: number): { destroyer
     const destroyer = generatePlanetDestroyerDesign(galaxy, P.destroyerPct(galaxy) / 100, faction, now);
     faction.designs.push(destroyer);
     const escorts: Design[] = [];
-    for (const sub of [BuiltObjectSubRole.Cruiser, BuiltObjectSubRole.Destroyer, BuiltObjectSubRole.Frigate, BuiltObjectSubRole.Cruiser, BuiltObjectSubRole.CapitalShip, BuiltObjectSubRole.Destroyer, BuiltObjectSubRole.Escort]) {
+    // Heavy hulls only (no frigates / escort-class): its total escort strength is fixed by purifierEscortPct, so fewer, individually stronger ships.
+    for (const sub of [BuiltObjectSubRole.CapitalShip, BuiltObjectSubRole.Cruiser, BuiltObjectSubRole.CapitalShip, BuiltObjectSubRole.Destroyer, BuiltObjectSubRole.Cruiser]) {
         const spec = faction.designSpecifications.find((s) => s !== null && s.subRole === sub) ?? galaxyDesignSpecificationBySubRole(sub);
         let d: Design | null = null;
         if (spec !== null && spec !== undefined) {
