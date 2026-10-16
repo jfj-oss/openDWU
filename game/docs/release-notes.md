@@ -4,6 +4,8 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+## 0.1.32
+
 - **Generation Ships: the world ship is the fleet's base.** It has infinite fuel and refuels the escorts and troop transports near it; while the fleet is not on a raid or a landing it patrols around the world ship (the transports stay close beside it) instead of sitting still at the galaxy edge.
 - **Emergent Galaxy (character loyalty and ambition, plots and coups) is switched off for now** while it is reworked: it moves to Work in progress and leaves the Living Galaxy pack, and Internal Security and Reputation no longer turn it on. Old saves that used it still load.
 - **The Interstellar Diet screen now looks like the rest of the game.** Flags and colours for every empire, a session header with the stage, dates and a countdown, one card per motion with a for/against bar and Yes / No / Abstain, the Regent's veto and powers in one bar, and grids for measures, history and members; the composer keeps its choice between refreshes and your queued motion stays visible during a session.
