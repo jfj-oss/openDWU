@@ -63,6 +63,7 @@ import { empireMessages } from '../src/sim/messages';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
 import { deserializeGame, serializeGame } from '../src/sim/save/gameSave';
 import { GalaxyTime } from '../src/sim/galaxyTime';
+import { coordinatedLandingHolds } from '../src/sim/scenario/coordinatedLandings/coordinatedLandings';
 import { defaultStartGameOptions } from '../src/sim/startGameOptions';
 
 
@@ -1296,4 +1297,136 @@ describe('Veterans add-on (warships)', () => {
         expect(stock.scenario).toBeNull();
         expect(Object.keys(vg.builtObjects.find((x) => x !== null)!)).not.toContain('veteran'); // no field on ships
     }, 600000);
+});
+
+// Coordinated landings (scenarios/coordinated-landings, flag coordinatedLandings; scenario/coordinatedLandings/
+// coordinatedLandings.ts): transports invading one planet hold in orbit until the whole group has arrived (or a timeout), then
+// all unload together. Pirate raids / pirate troops are never held.
+describe('Coordinated landings add-on', () => {
+    /** Three player transports (2 troops each) ordered to invade the same defended independent colony from `dists` away. */
+    function stageLanding(flagOn: boolean, dists: number[], params: Record<string, number> = {}): { g: Galaxy; colony: Habitat; ships: BuiltObject[]; land: () => number[] } {
+        const run = cachedScenarioGameRun(gameData, { scenario: 'coordinated-landings', flags: { coordinatedLandings: flagOn }, params });
+        const g = run.game.galaxy;
+        const p = g.playerEmpire!;
+        const colony = [...g.independentColonies].filter((h) => h.population.totalAmount > 0).sort((a, b) => b.population.totalAmount - a.population.totalAmount)[0];
+        colony.troops = new TroopList();
+        colony.troopsToRecruit = new TroopList();
+        colony.invadingTroops = new TroopList();
+        colony.invasionStats = null;
+        for (let i = 0; i < 4; i++) {
+            const d = new Troop('d', TroopType.Infantry, 50, 5000, 100, 100, g.independentEmpire!, g.independentEmpire!.dominantRace);
+            d.colony = colony;
+            colony.troops.add(d);
+        }
+        const design = p.designs.find((d) => d.subRole === BuiltObjectSubRole.TroopTransport)!;
+        const cap = p.capital!;
+        const ships = dists.map((dist, i) => {
+            const s = generateBuiltObjectFromDesign(g, p, design, `Trooper ${i + 1}`, true, colony.xpos + dist, colony.ypos);
+            s.troops = new TroopList();
+            for (const tr of cap.troops!.items.slice(0, 2)) {
+                cap.troops!.remove(tr);
+                tr.builtObject = s;
+                s.troops.add(tr);
+            }
+            return s;
+        });
+        for (const s of ships) expect(executeShipAction(g, p, s, createMissionShipActionAt(BuiltObjectMissionType.Attack, colony, Math.trunc(colony.xpos), Math.trunc(colony.ypos)), true).ok).toBe(true);
+        const first = ships.map((s) => s.troops!.items.slice());
+        const landedAt: number[] = ships.map(() => -1);
+        const land = (): number[] => {
+            runGameSeconds(g, 400, {
+                onFrame: () => {
+                    ships.forEach((_, i) => {
+                        if (landedAt[i] < 0 && colony.invadingTroops !== null && first[i].some((t) => colony.invadingTroops!.contains(t))) landedAt[i] = g.nowMs;
+                    });
+                    if (landedAt.every((t) => t >= 0)) throw new Error('done');
+                },
+            });
+            return landedAt;
+        };
+        return { g, colony, ships, land: () => { try { return land(); } catch (e) { if ((e as Error).message === 'done') return landedAt; throw e; } } };
+    }
+
+    it('flag off: transports land one by one as they arrive', () => {
+        const t = stageLanding(false, [800, 6000, 14000]).land();
+        expect(t.every((x) => x >= 0)).toBe(true);
+        expect(Math.max(...t) - Math.min(...t)).toBeGreaterThan(5000);
+    }, 600000);
+
+    it('flag on: they hold until the last arrives, then land together', () => {
+        const t = stageLanding(true, [800, 6000, 14000]).land();
+        expect(t.every((x) => x >= 0)).toBe(true);
+        expect(Math.max(...t) - Math.min(...t)).toBeLessThan(1500);
+    }, 600000);
+
+    it('timeout: the ones that arrived land after clTimeoutDays without waiting for a straggler', () => {
+        const t = stageLanding(true, [800, 900, 200000], { clTimeoutDays: 1 }).land();
+        expect(t[0]).toBeGreaterThanOrEqual(0);
+        expect(t[1]).toBeGreaterThanOrEqual(0);
+        expect(Math.abs(t[0] - t[1])).toBeLessThan(5000);
+        expect(t[2] < 0 || t[2] - Math.max(t[0], t[1]) > 3000).toBe(true);
+    }, 600000);
+
+    it('pirate empires and pirate troops are never held; the flag off holds nothing', () => {
+        const run = cachedScenarioGameRun(gameData, { scenario: 'coordinated-landings' });
+        const g = run.game.galaxy;
+        const p = g.playerEmpire!;
+        const colony = g.independentColonies.find((h) => h.population.totalAmount > 0)!;
+        const design = p.designs.find((d) => d.subRole === BuiltObjectSubRole.TroopTransport)!;
+        const made: BuiltObject[] = [];
+        const reset = (): void => {
+            for (const m of made) m.colonyToAttack = null;
+        };
+        const mk = (name: string): BuiltObject => {
+            const s = generateBuiltObjectFromDesign(g, p, design, name, true, colony.xpos + 500, colony.ypos);
+            s.troops = new TroopList();
+            s.troops.add(new Troop('t', TroopType.Infantry, 100, 100, 100, 100, p, p.dominantRace));
+            s.colonyToAttack = colony;
+            made.push(s);
+            return s;
+        };
+        const a = mk('A');
+        const b = mk('B');
+        b.clTarget = undefined;
+        expect(coordinatedLandingHolds(g, a, colony)).toBe(true); // B has not arrived
+        expect(a.clTarget).toBe(colony);
+        expect(coordinatedLandingHolds(g, b, colony)).toBe(false); // everyone is here: released
+        expect(coordinatedLandingHolds(g, a, colony)).toBe(false); // A lands on its next check
+        expect(a.clTarget).toBeUndefined();
+        // A destroyed / re-tasked ship drops out of the group.
+        reset();
+        const c = mk('C');
+        const d = mk('D');
+        expect(coordinatedLandingHolds(g, c, colony)).toBe(true);
+        d.hasBeenDestroyed = true;
+        expect(coordinatedLandingHolds(g, c, colony)).toBe(false);
+        // Pirate raider troops: never held.
+        reset();
+        const e = mk('E');
+        mk('F');
+        e.troops = new TroopList();
+        e.troops.add(new Troop('t', TroopType.PirateRaider, 100, 100, 100, 100, p, p.dominantRace));
+        expect(coordinatedLandingHolds(g, e, colony)).toBe(false);
+        // A pirate empire's transports: never held (its base habitat marks it).
+        reset();
+        const j = mk('J');
+        mk('K');
+        const base = p.pirateEmpireBaseHabitat;
+        p.pirateEmpireBaseHabitat = colony;
+        try {
+            expect(coordinatedLandingHolds(g, j, colony)).toBe(false);
+        } finally {
+            p.pirateEmpireBaseHabitat = base;
+        }
+        // Flag off: never held.
+        reset();
+        const h = mk('H');
+        mk('I');
+        g.scenario!.flags.coordinatedLandings = false;
+        try {
+            expect(coordinatedLandingHolds(g, h, colony)).toBe(false);
+        } finally {
+            g.scenario!.flags.coordinatedLandings = true;
+        }
+    });
 });

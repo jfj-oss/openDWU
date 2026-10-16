@@ -101,7 +101,7 @@ describe('wizard', () => {
         let started: ReturnType<typeof addonChoiceFor> | undefined;
         let release!: () => void;
         const ready = new Promise<void>((r) => (release = r));
-        const done = startWhenAddonsLoaded(ready, () => (choice = addonChoiceFor(cat, [], { flags: {}, params: {} }, smart)), () => (started = choice));
+        const done = startWhenAddonsLoaded(ready, () => (choice = addonChoiceFor(cat, [], { flags: {}, params: {} }, smart, false, false, false, false, false, false, undefined, false, false, false)), () => (started = choice));
         await Promise.resolve();
         expect(started).toBeUndefined();
         cat = addonCatalog(scenarioIndexFs());

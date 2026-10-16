@@ -200,6 +200,11 @@ export interface StartGameOptions {
      */
     veterans?: boolean;
     /**
+     * The Other Empires page's "Gameplay changes: Coordinated landings" checkbox (scenarios/coordinated-landings; addons.ts
+     * coordinatedLandingsChoice). Absent = follows Smarter AI (on when it is on); an explicit true / false wins.
+     */
+    coordinatedLandings?: boolean;
+    /**
      * Multiplayer Phase 2 (hot seat, docs/MULTIPLAYER.md §7): the EXTRA human players (players 2..N) from the Other
      * Empires page's "Human players (hot seat)" list; player 1 is this start's own race / empire. Absent = one human
      * (today's game; the wizard deletes the key when the list empties, so a single-player start saves the same text).

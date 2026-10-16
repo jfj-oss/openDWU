@@ -205,25 +205,33 @@ describe('wizard', () => {
     it("the Other Empires page's Smarter AI choice reaches StartGameOptions and createGame's options", () => {
         const cat = addonCatalog(scenarioIndexFs());
         const none = { flags: {}, params: {} };
-        // On by default, every sub-option with it (the ship design ones too); unticked = no add-on.
-        expect(addonChoiceFor(cat, [], none, defaultSmarterAIChoice())).toMatchObject({ id: SC, flags: { smarterAI: true, smarterAIResearch: true, smarterAIDesignTune: true, smarterAIWeaponFocus: true, smarterAIDesignScale: true, smarterAIDesignTrim: true, smarterAIOpening: true } });
+        const choiceNoCl = (c: typeof cat, picked: string[], o: typeof none, smart: Parameters<typeof addonChoiceFor>[3]) => addonChoiceFor(c, picked, o, smart, false, false, false, false, false, false, undefined, false, false, false);
+        // Coordinated landings follows Smarter AI unless set: on with it, off without it, an explicit choice wins.
+        const CL = 'coordinated-landings';
+        expect(addonChoiceFor(cat, [], none, defaultSmarterAIChoice())!.addons).toEqual(expect.arrayContaining([SC, CL]));
+        expect(addonChoiceFor(cat, [], none, defaultSmarterAIChoice())!.flags.coordinatedLandings).toBe(true);
         expect(addonChoiceFor(cat, [], none, { ...defaultSmarterAIChoice(), enabled: false })).toBeNull();
+        expect(addonChoiceFor(cat, [], none, defaultSmarterAIChoice(), false, false, false, false, false, false, undefined, false, false, false)!.addons).not.toContain(CL);
+        expect(addonChoiceFor(cat, [], none, { ...defaultSmarterAIChoice(), enabled: false }, false, false, false, false, false, false, undefined, false, false, true)!.addons).toEqual([CL]);
+        // On by default, every sub-option with it (the ship design ones too); unticked = no add-on.
+        expect(choiceNoCl(cat, [], none, defaultSmarterAIChoice())).toMatchObject({ id: SC, flags: { smarterAI: true, smarterAIResearch: true, smarterAIDesignTune: true, smarterAIWeaponFocus: true, smarterAIDesignScale: true, smarterAIDesignTrim: true, smarterAIOpening: true } });
+        expect(choiceNoCl(cat, [], none, { ...defaultSmarterAIChoice(), enabled: false })).toBeNull();
         const smart = { enabled: true, research: true, growthTaxes: false, growthTaxThreshold: 55 };
-        const choice = addonChoiceFor(cat, [], none, smart)!;
+        const choice = choiceNoCl(cat, [], none, smart)!;
         expect(choice).toMatchObject({ id: SC, flags: { smarterAI: true, smarterAIResearch: true, smarterAIGrowthTax: false, ...STATECRAFT_ON }, params: { smarterAIGrowthTaxThreshold: 55 }, addons: [SC] });
         const opts = toCreateGameOptions({ ...defaultStartGameOptions(), seed: 3, scenario: choice, smarterAI: smart }, base, ['A']);
         expect(opts.scenarioFlags).toEqual(choice.flags);
         expect(opts.scenarioParams).toEqual(choice.params);
         // With a Scenario-page add-on: a composite that includes it.
-        const both = addonChoiceFor(cat, ['reputation'], none, smart)!;
+        const both = choiceNoCl(cat, ['reputation'], none, smart)!;
         expect(both.id).toBe(COMPOSITE_SCENARIO_ID);
         expect(both.addons).toContain(SC);
         expect(both.flags.smarterAI).toBe(true);
         expect(both.flags.reputationLedger).toBe(true);
         // Unticked on the Other Empires page: dropped even if an old choice listed it.
-        expect(addonChoiceFor(cat, [SC], none, { ...smart, enabled: false })).toBeNull();
+        expect(choiceNoCl(cat, [SC], none, { ...smart, enabled: false })).toBeNull();
         // The statecraft sub-switches.
-        expect(addonChoiceFor(cat, [], none, { ...smart, wonders: false, espionage: false })!.flags).toMatchObject({ smarterAIWonders: false, smarterAIEspionage: false, smarterAIResearchStations: true, smarterAIDiplomacy: true });
+        expect(choiceNoCl(cat, [], none, { ...smart, wonders: false, espionage: false })!.flags).toMatchObject({ smarterAIWonders: false, smarterAIEspionage: false, smarterAIResearchStations: true, smarterAIDiplomacy: true });
     });
 });
 

@@ -1,0 +1,22 @@
+{
+  "id": "coordinated-landings",
+  "name": "Coordinated landings",
+  "description": "Gameplay change: troop ships invading the same planet land together. A transport that reaches the planet holds in orbit (troops still aboard) until every other transport of its empire that is attacking the same planet has arrived too, or until a set number of days after the first one arrived; then they all unload at once. Applies to every empire, you included. Pirate raids and pirate troops are never held. Set on the new-game wizard's Other Empires page (on by default whenever Smarter AI is on).",
+  "flags": [
+    {
+      "name": "coordinatedLandings",
+      "label": "Coordinated landings",
+      "description": "Master switch.",
+      "default": true
+    }
+  ],
+  "params": [
+    {
+      "name": "clTimeoutDays",
+      "label": "Transports that have arrived land anyway this many game days after the first one arrived",
+      "default": 25,
+      "min": 1,
+      "max": 360
+    }
+  ]
+}

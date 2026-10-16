@@ -27,6 +27,7 @@ import { baconMovementSettings, doMovement, withinFuelRange } from '../movement'
 import { declareWar } from '../diplomacyTick';
 import { bombardTarget, firePlanetDestroyerAtHabitat, fireWeaponsAtTarget, modifyDiplomacyFromAttackEmpire } from '../combat/weapons';
 import { checkLaunchAssaultPodsAtTarget, shipGroupTotalAvailableBoardingAssaultStrengthCapturingTarget } from '../combat/boarding';
+import { coordinatedLandingHolds } from '../scenario/coordinatedLandings/coordinatedLandings';
 import { addInvasionStatsTroopsDamageToInvaders, characterCompleteLocationTransferInvading, habitatStopRebelling, targetInvadingShips } from '../combat/invasion';
 import { builtObjectThreats, builtObjectThreatLevels, determineShipGroupTarget, shipGroupOf, shouldInvadeColony, stellarAttackers, stellarCurrentSpeed, stellarCurrentTarget, stellarEmpire, stellarFirepowerRaw, stellarTopSpeed, type Threat } from '../combat/threats';
 import {
@@ -533,7 +534,8 @@ export const cmdAttackBombardCaptureRaid: CommandHandler = (ctx) => {
             num77 *= 3.0;
         }
         if (num75 < num76) {
-            if (num75 < num77 || lastInvasionDistance < num75) {
+            // Mod layer (coordinated landings): a transport holds in orbit until its group has arrived (no flag = never).
+            if ((num75 < num77 || lastInvasionDistance < num75) && !(galaxy.scenario !== null && coordinatedLandingHolds(galaxy, bo, colony))) {
                 if (colony.owner !== null) {
                     galaxy.invasionAttempts++;
                     notifyOfAttackHabitat(galaxy, bo, bo.empire, colony, false, true, true);

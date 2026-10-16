@@ -78,6 +78,7 @@ export const ADDON_STATUS: Readonly<Record<string, string>> = {
     mothballing: 'new',
     'slow-hyperdrive': 'new',
     veterans: 'new',
+    'coordinated-landings': 'new',
     'war-crimes': 'recommended',
     'timebomb': 'lightly tested; the AI rarely uses it',
     'ghostarmada': 'lightly tested; the AI rarely uses it',
@@ -144,6 +145,7 @@ const GROUP_OF: Readonly<Record<string, AddonGroup>> = {
     mothballing: 'Other',
     'slow-hyperdrive': 'Other',
     veterans: 'Other',
+    'coordinated-landings': 'Other',
     slavery: 'Economy & factions',
     exchange: 'Economy & factions',
     privateers: 'Economy & factions',
@@ -163,13 +165,13 @@ const GROUP_OF: Readonly<Record<string, AddonGroup>> = {
 // big-galaxies: its extended palette is now automatic in the base game (empireColors.ts); old saves with the add-on still load.
 // resource-crises: withdrawn from the picker (its per-luxury approval loss stacked to absurd values); saves that use it still load.
 // colony-defence: withdrawn from the picker (the user wants the original's pirate control); saves that use it still load.
-export const HIDDEN_ADDONS: ReadonlySet<string> = new Set(['threat-framework', 'example', 'ai-parity', 'soak-15y', 'resource-crises', 'colony-defence', 'big-galaxies', 'galactic-council', 'themed-names', 'event-log', 'fighting-retreats']);
+export const HIDDEN_ADDONS: ReadonlySet<string> = new Set(['threat-framework', 'example', 'ai-parity', 'soak-15y', 'resource-crises', 'colony-defence', 'big-galaxies', 'galactic-council', 'themed-names', 'event-log', 'fighting-retreats', 'coordinated-landings']);
 
 /**
  * Add-ons set on another wizard page (not listed on the Scenario page, but named in the summaries like any other):
  * Smarter AI and Orbital superiority live on the Other Empires page (withSmarterAI / withOrbitalSuperiority below).
  */
-export const ELSEWHERE_ADDONS: ReadonlySet<string> = new Set(['smarter-ai', 'orbital-superiority', 'longer-ground-combat', 'jump-interdiction', 'blockades-bite', 'mothballing', 'slow-hyperdrive', 'fighting-retreats', 'veterans']);
+export const ELSEWHERE_ADDONS: ReadonlySet<string> = new Set(['smarter-ai', 'orbital-superiority', 'longer-ground-combat', 'jump-interdiction', 'blockades-bite', 'mothballing', 'slow-hyperdrive', 'fighting-retreats', 'veterans', 'coordinated-landings']);
 
 /** openDWU Classic: add-ons every game starts with (treated as base game: no picker). Smarter AI stays the Other Empires page's toggle. */
 export const CLASSIC_BASE_ADDONS: readonly string[] = ['themed-names', 'event-log'];
@@ -317,6 +319,22 @@ export const VETERANS_ADDON_ID = 'veterans';
 /** The picks with the Other Empires page's Veterans checkbox folded in (StartGameOptions.veterans). Pure. */
 export function withVeterans(picked: readonly string[], overrides: AddonOverrides, on: boolean | null | undefined): { picked: string[]; overrides: AddonOverrides } {
     return withToggleAddon(picked, overrides, VETERANS_ADDON_ID, 'veterans', on);
+}
+
+/** The Coordinated landings gameplay change (scenarios/coordinated-landings; also under "Gameplay changes"). */
+export const COORDINATED_LANDINGS_ADDON_ID = 'coordinated-landings';
+
+/**
+ * The Other Empires page's Coordinated landings state (StartGameOptions.coordinatedLandings): an explicit tick or untick
+ * wins; unset follows Smarter AI (on whenever Smarter AI is on, off otherwise).
+ */
+export function coordinatedLandingsChoice(explicit: boolean | undefined, smart: SmarterAIChoice | null | undefined): boolean {
+    return explicit ?? (smart != null && smart.enabled);
+}
+
+/** The picks with the Coordinated landings checkbox folded in (see coordinatedLandingsChoice). Pure. */
+export function withCoordinatedLandings(picked: readonly string[], overrides: AddonOverrides, on: boolean | null | undefined): { picked: string[]; overrides: AddonOverrides } {
+    return withToggleAddon(picked, overrides, COORDINATED_LANDINGS_ADDON_ID, 'coordinatedLandings', on);
 }
 
 /** A one-checkbox add-on folded into the picks: ticked = picked with its master flag on, unticked = dropped. Pure. */
