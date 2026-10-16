@@ -55,6 +55,8 @@ import {
     pastThreatMinYear,
     peekThreatState,
     registerThreatExistence,
+    registerThreatSpawn,
+    nearestToEmpire,
     registerThreatKnownSites,
     revealTo,
     threatExists,
@@ -193,7 +195,7 @@ function siteFree(h: Habitat): boolean {
  * width from every normal empire's capital, with the most mining sites within one expansion step (then habitat index).
  * Without such a site, the qualifying asteroid farthest from the capitals. Pure.
  */
-export function probeSwarmHomeSite(galaxy: Galaxy): Habitat | null {
+export function probeSwarmHomeSite(galaxy: Galaxy, near: Empire | null = null): Habitat | null {
     const capitals = normalEmpires(galaxy).map((e) => e.capital).filter((c): c is Habitat => c !== null);
     const colonised = colonisedSystems(galaxy);
     const minD = P.minCapitalDistance(galaxy);
@@ -214,6 +216,11 @@ export function probeSwarmHomeSite(galaxy: Galaxy): Habitat | null {
         if (s.asteroid === null && h.category === HabitatCategoryType.Asteroid) s.asteroid = h;
     }
     const list = [...systems.entries()].sort((a, b) => a[0] - b[0]).map((e) => e[1]);
+    if (near !== null) {
+        // Game Editor: the free asteroid nearest `near`'s capital.
+        const spots = list.filter((s) => s.asteroid !== null).map((s) => ({ xpos: s.star.xpos, ypos: s.star.ypos, asteroid: s.asteroid! }));
+        return nearestToEmpire(galaxy, near, spots)?.asteroid ?? null;
+    }
     let best: Habitat | null = null;
     let bestScore = -1;
     let far: Habitat | null = null;
@@ -573,8 +580,23 @@ function isSwarm(galaxy: Galaxy, e: Empire | null): boolean {
 
 export const PROBE_SWARM_HANDLER_IDS = ['probeSwarm.periodic', 'probeSwarm.killedBy', 'probeSwarm.sparesColony'] as const;
 
+/** Game Editor: null when the swarm can wake now. Pure. */
+export function probeSwarmSpawnNote(galaxy: Galaxy): string | null {
+    const st = peekProbeSwarmState(galaxy);
+    return st === null || st.phase === 'waiting' ? null : st.phase === 'active' ? 'Already awake' : 'Already over';
+}
+
+/** Game Editor: the swarm wakes now, its mothercore at the free asteroid nearest the player. */
+export function probeSwarmSpawnNow(galaxy: Galaxy, victim: Empire): boolean {
+    const st = probeSwarmState(galaxy);
+    if (st.phase !== 'waiting') return false;
+    const home = probeSwarmHomeSite(galaxy, victim);
+    return home !== null && probeSwarmWake(galaxy, st, home);
+}
+
 export function registerProbeSwarm(): void {
     registerThreatExistence(PROBE_SWARM_KEY, PROBE_SWARM_FLAG);
+    registerThreatSpawn({ key: PROBE_SWARM_KEY, label: 'The Dead Probe Swarm', group: 'galactic', addons: ['probe-swarm', 'archive-cores'], note: probeSwarmSpawnNote, spawn: probeSwarmSpawnNow });
     registerScenarioPeriodic({ id: 'probeSwarm.periodic', flag: PROBE_SWARM_FLAG, periodDays: PERIOD_DAYS, order: 14, run: (g) => probeSwarmPeriodic(g) });
     registerScenarioEvent({ id: 'probeSwarm.killedBy', flag: PROBE_SWARM_FLAG, event: 'builtObjectKilledBy', run: (g, e) => onKilledBy(g, e.builtObject, e.destroyer) });
     registerScenarioQuery({ id: 'probeSwarm.passive', flag: PROBE_SWARM_FLAG, query: 'pirateFactionPassive', run: (g, v, a) => v || isSwarm(g, a.empire) });

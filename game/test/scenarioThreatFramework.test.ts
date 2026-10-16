@@ -67,7 +67,23 @@ import { HabitatCategoryType } from '../src/sim/types';
 import { BuiltObjectMissionType, builtObjectMission } from '../src/sim/missions/mission';
 import { GAME_DAY_LENGTH } from '../src/sim/scenario/hooks';
 import { reviewThreatInvestigations, THREAT_INVESTIGATIONS_KEY } from '../src/sim/scenario/threats/investigate';
-import { runPlayerCommand } from '../src/sim/player/playerCommands';
+import { issuePlayerCommand, runPlayerCommand } from '../src/sim/player/playerCommands';
+import { spawnableThreats } from '../src/sim/scenario/threats/framework';
+import { createGame, type Game } from '../src/sim/game';
+import { tickGameOptions } from './helpers/tickGame';
+import { peekCultState } from '../src/sim/scenario/threats/cult';
+import { peekHiveState } from '../src/sim/scenario/threats/hive';
+import { peekGreyTideState } from '../src/sim/scenario/threats/greyTide';
+import { peekSilenceState } from '../src/sim/scenario/threats/silence';
+import { peekDoppelgangersState } from '../src/sim/scenario/threats/doppelgangers';
+import { peekGhostArmadaState } from '../src/sim/scenario/threats/ghostArmada';
+import { peekExchangeState } from '../src/sim/scenario/threats/exchange';
+import { THREAT_TEXTS } from '../src/sim/scenario/threats/threatTexts';
+import { tryGetText } from '../src/sim/textResolver';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { SCENARIOS_ROOT } from './helpers/scenarioGame';
+import type { Empire } from '../src/sim/empire';
 import { threatLeadRows, threatsSectionVisible } from '../src/ui/internalSecurityView';
 import { CharacterRole, getEmpireCharacters } from '../src/sim/characters';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
@@ -1050,4 +1066,57 @@ describe('purifier', () => {
         expect(stateDigest(lg)).toBe(stateDigest(g));
         expect(peekPurifierState(lg)!.worlds).toBe(peekPurifierState(g)!.worlds);
     }, 900000);
+});
+
+describe('Game Editor: spawn a threat (editorSpawnThreat)', () => {
+    const mk = (): Game => {
+        const o = tickGameOptions(base);
+        return createGame({ ...o, galaxyAge: 3, player: { ...o.player, age: 3 }, aiEmpires: o.aiEmpires.map((e) => ({ ...e, age: 3 })) });
+    };
+    const spawn = (g: Galaxy, p: Empire, key: string): unknown => {
+        let res: unknown = null;
+        issuePlayerCommand(g, p, 'editorSpawnThreat', [key], (r) => { res = r; });
+        runGameSeconds(g, 1);
+        return res;
+    };
+    it('the embedded threat texts are the add-ons\' GameText files (run node scripts/gen-threat-texts.mjs when this fails)', () => {
+        for (const [id, text] of Object.entries(THREAT_TEXTS)) expect(text, id).toBe(readFileSync(resolve(SCENARIOS_ROOT, id, 'GameText.txt'), 'utf8'));
+    });
+    it('a faithful game (no add-ons): each threat that needs no add-on data spawns, the rest say why not, and they progress', () => {
+        const game = mk();
+        const g = game.galaxy;
+        const p = game.playerEmpire;
+        expect(g.scenario).toBeNull();
+        const notes = Object.fromEntries(spawnableThreats(g).map((t) => [t.key, t.note]));
+        expect(Object.keys(notes).sort()).toEqual(['corporateCoup', 'cult', 'darkFarms', 'doppelgangers', 'exchange', 'generationShips', 'ghostArmada', 'greyTide', 'hive', 'hollowFleet', 'probeSwarm', 'purifier', 'robotMutiny', 'silence', 'timeBomb', 'voidWhale']);
+        expect(notes.darkFarms).toMatch(/add-on on at game start/);
+        expect(notes.robotMutiny).toMatch(/add-on on at game start/);
+        expect(notes.timeBomb).toMatch(/add-on on at game start/);
+        expect(notes.corporateCoup).toMatch(/chartered company/);
+        const keys = Object.keys(notes).filter((k) => notes[k] === null);
+        expect(keys).toHaveLength(12);
+        for (const key of keys) expect(spawn(g, p, key), key).toBe(true);
+        expect(peekPurifierState(g)!.waker).toBe(p);
+        expect(peekPurifierState(g)!.hunted).toEqual([p.dominantRace!.raceFamily]);
+        expect(genShipsStates(g)[0].owner).toBe(p);
+        expect(peekCultState(g)!.converted.some((r) => r.character.empire === p)).toBe(true);
+        expect(peekHiveState(g)!.faction).not.toBeNull();
+        expect(peekGreyTideState(g)!.nests).toHaveLength(1);
+        expect(peekSilenceState(g)!.source).not.toBeNull();
+        expect(peekDoppelgangersState(g)!.faction).not.toBeNull();
+        expect(peekGhostArmadaState(g)!.risen).toHaveLength(1);
+        expect(peekExchangeState(g)!.faction).not.toBeNull();
+        expect(peekHollowFleetState(g)!.phase).toBe('active');
+        expect(peekProbeSwarmState(g)!.phase).toBe('active');
+        expect(peekVoidWhaleState(g)!.phase).toBe('active');
+        // The add-ons' texts came with them.
+        expect(tryGetText('Purifier Wake News') ?? tryGetText('Purifier Choice Title')).not.toBeNull();
+        // Once started they show a note and refuse a second spawn.
+        expect(spawnableThreats(g).filter((t) => keys.includes(t.key)).every((t) => t.note !== null)).toBe(true);
+        expect(spawn(g, p, 'purifier')).toBe(false);
+        // They progress: the generation ship makes contact, and the cult rises into a theocracy within months.
+        runGameSeconds(g, 900);
+        expect(['contact', 'ultimatum', 'war', 'settling', 'settled', 'ended']).toContain(genShipsStates(g)[0].phase);
+        expect(peekCultState(g)!.faction).not.toBeNull();
+    }, 3600000);
 });

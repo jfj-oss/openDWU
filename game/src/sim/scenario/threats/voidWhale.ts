@@ -49,7 +49,7 @@ import { applyReputation } from '../reputation/ledger';
 import { createWreckField, wreckageState, type WreckRecord } from '../wreckage/common';
 import { wreckRecordOf } from '../wreckage/wreckage';
 import { interdictingBasesInSystem, interdictionRadius, jumpInterdictionOn, spoolFactor } from '../interdiction/jumpInterdiction';
-import { normalEmpires, pastThreatMinYear, peekThreatState, registerThreatExistence, threatExists, threatState } from './framework';
+import { empireAnchor, normalEmpires, pastThreatMinYear, peekThreatState, registerThreatExistence, registerThreatSpawn, threatExists, threatState } from './framework';
 
 export const VOID_WHALE_KEY = 'voidWhale';
 export const VOID_WHALE_FLAG = 'threatVoidWhale';
@@ -225,7 +225,8 @@ function applyStats(galaxy: Galaxy, c: Creature): void {
 }
 
 /** The galaxy-edge system farthest from the centre with no colony and no empire base (index order breaks ties). Pure. */
-export function voidWhaleSpawnSystem(galaxy: Galaxy): Habitat | null {
+export function voidWhaleSpawnSystem(galaxy: Galaxy, near: Empire | null = null): Habitat | null {
+    const anchor = near === null ? null : empireAnchor(near); // Game Editor: the nearest such system to `near` instead of the farthest edge one
     const cx = galaxy.sizeX / 2;
     const cy = galaxy.sizeY / 2;
     const busy = new Set<number>();
@@ -233,11 +234,11 @@ export function voidWhaleSpawnSystem(galaxy: Galaxy): Habitat | null {
         if (bo != null && !bo.hasBeenDestroyed && bo.role === BuiltObjectRole.Base && bo.nearestSystemStar !== null) busy.add(bo.nearestSystemStar.systemIndex);
     }
     let best: Habitat | null = null;
-    let bestD = -1;
+    let bestD = anchor === null ? -1 : -Infinity;
     for (let i = 0; i < galaxy.systems.length; i++) {
         const star = galaxy.systems[i].systemStar;
         if (busy.has(i) || systemHasColony(galaxy, i)) continue;
-        const d = dist(galaxy, star.xpos, star.ypos, cx, cy);
+        const d = anchor === null ? dist(galaxy, star.xpos, star.ypos, cx, cy) : -dist(galaxy, star.xpos, star.ypos, anchor.xpos, anchor.ypos);
         if (d > bestD) {
             bestD = d;
             best = star;
@@ -764,8 +765,23 @@ function defendLastSeen(galaxy: Galaxy, empire: Empire, locations: unknown[]): v
 
 export const VOID_WHALE_HANDLER_IDS = ['voidWhale.periodic', 'voidWhale.damaged', 'voidWhale.killed', 'voidWhale.ignore', 'voidWhale.defend'] as const;
 
+/** Game Editor: null when the Leviathan can appear now. Pure. */
+export function voidWhaleSpawnNote(galaxy: Galaxy): string | null {
+    const st = peekVoidWhaleState(galaxy);
+    return st === null || st.phase === 'waiting' ? null : st.phase === 'active' ? 'Already hunting' : 'Already over';
+}
+
+/** Game Editor: the Leviathan appears now in the empty system nearest the player. */
+export function voidWhaleSpawnNow(galaxy: Galaxy, victim: Empire): boolean {
+    const st = voidWhaleState(galaxy);
+    if (st.phase !== 'waiting') return false;
+    const star = voidWhaleSpawnSystem(galaxy, victim);
+    return star !== null && voidWhaleWake(galaxy, st, star);
+}
+
 export function registerVoidWhale(): void {
     registerThreatExistence(VOID_WHALE_KEY, VOID_WHALE_FLAG);
+    registerThreatSpawn({ key: VOID_WHALE_KEY, label: 'The Void Whale', group: 'galactic', addons: ['void-whale'], note: voidWhaleSpawnNote, spawn: voidWhaleSpawnNow });
     registerScenarioFramePeriodic({ id: 'voidWhale.periodic', flag: VOID_WHALE_FLAG, periodDays: 1, order: 15, run: (g) => voidWhalePeriodic(g) });
     registerScenarioEvent({ id: 'voidWhale.damaged', flag: VOID_WHALE_FLAG, event: 'creatureDamaged', run: (g, e) => onDamaged(g, e.creature, e.empire, e.amount) });
     registerScenarioEvent({ id: 'voidWhale.killed', flag: VOID_WHALE_FLAG, event: 'creatureKilled', run: (g, e) => onKilled(g, e.creature, e.empire) });

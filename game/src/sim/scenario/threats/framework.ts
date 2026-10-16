@@ -31,7 +31,10 @@ import { startStarDateForAge } from '../../galaxyTime';
 import { galaxyStarDate } from '../../tick/simTime';
 import { createEmpireMidGame } from '../empireMidGame';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
-import { scenarioParam, scenarioState } from '../state';
+import { GalaxyScenario, scenarioParam, scenarioState } from '../state';
+import { parseScenarioManifest } from '../manifest';
+import { addMissingText } from '../../textResolver';
+import { THREAT_TEXTS } from './threatTexts';
 import { gameYear, registerScenarioGameStart } from '../hooks';
 import type { Character, StellarObject } from '../../characters';
 import { getEmpireCharacters } from '../../characters';
@@ -232,6 +235,124 @@ export function forcedThreatVictim(galaxy: Galaxy, key: string): Empire | null {
     if (!threatForced(galaxy, key)) return null;
     const p = galaxy.playerEmpire;
     return p !== null && p !== undefined && p.active ? p : null;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Game Editor: spawn a threat now, aimed at one empire (the journaled player command editorSpawnThreat)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** A threat registers this beside registerThreatExistence (one entry per threat module) to be spawnable from the Game Editor. */
+export interface ThreatSpawnSpec {
+    key: string;
+    /** The Game Editor's button label. */
+    label: string;
+    /** 'empire': aims at one empire (the editor spawns it against the player); 'galactic': starts galaxy-wide (placed near the player where it has a choice). */
+    group: 'empire' | 'galactic';
+    /** Add-on ids whose GameText the threat's messages need (merged, missing tags only, when it is spawned or its save is loaded). */
+    addons: readonly string[];
+    /** null when the threat can be spawned now, else a short reason ("Already arrived", "Needs the add-on on at game start"). Pure. */
+    note: (galaxy: Galaxy) => string | null;
+    /** Starts the threat now (aimed at / near `victim`, the player): the module's own arrival / rising / seeding path minus the
+     *  date, tech and lottery gates. Returns false when nothing could start (the framework then undoes its switching). */
+    spawn: (galaxy: Galaxy, victim: Empire) => boolean;
+}
+// `var` + lazy creation, as threatRegistryStore above.
+// eslint-disable-next-line no-var
+var threatSpawnStore: Map<string, ThreatSpawnSpec> | undefined;
+function threatSpawns(): Map<string, ThreatSpawnSpec> {
+    return (threatSpawnStore ??= new Map());
+}
+
+export function registerThreatSpawn(spec: ThreatSpawnSpec): void {
+    threatSpawns().set(spec.key, spec);
+}
+
+/** The threats the Game Editor can spawn, with a disabled-note each (group, then key order). Pure. */
+export function spawnableThreats(galaxy: Galaxy): { key: string; label: string; group: 'empire' | 'galactic'; note: string | null }[] {
+    return [...threatSpawns().values()].sort((a, b) => (a.group === b.group ? (a.key < b.key ? -1 : 1) : a.group === 'empire' ? -1 : 1)).map((t) => ({ key: t.key, label: t.label, group: t.group, note: t.note(galaxy) }));
+}
+
+/** Merges the GameText of `key`'s add-ons into the text table (tags it lacks only). Idempotent, no sim state. */
+export function ensureThreatTexts(key: string): void {
+    for (const id of threatSpawns().get(key)?.addons ?? []) {
+        const t = THREAT_TEXTS[id];
+        if (t !== undefined) addMissingText(t);
+    }
+}
+
+/** After a save loads: the texts of every spawnable threat whose flag is on (a threat spawned from the editor into a game that started without its add-on). */
+export function ensureThreatTextsForGalaxy(galaxy: Galaxy): void {
+    const s = galaxy.scenario;
+    if (s === null) return;
+    for (const spec of threatSpawns().values()) {
+        const reg = threatRegistry().get(spec.key);
+        if (reg !== undefined && s.flags[reg.flag] === true) ensureThreatTexts(spec.key);
+    }
+}
+
+/** Switches threat `key` on in a running game (flag + exists; a game with no scenario gets a bare one, id threat-framework so a save of it reloads). Returns an undo. */
+export function enableThreat(galaxy: Galaxy, key: string): () => void {
+    const reg = threatRegistry().get(key);
+    if (reg === undefined) return () => undefined;
+    const hadScenario = galaxy.scenario !== null;
+    if (!hadScenario) {
+        const s = new GalaxyScenario();
+        s.id = 'threat-framework';
+        s.name = 'Game Editor';
+        s.manifest = parseScenarioManifest({ id: 'threat-framework', name: 'Game Editor' });
+        galaxy.scenario = s;
+    }
+    const s = galaxy.scenario!;
+    const hadFlag = s.flags[reg.flag];
+    const hadFramework = peekThreatState<ThreatsFrameworkState>(galaxy, THREATS_KEY) !== null;
+    const hadExists = peekThreatState<ThreatsFrameworkState>(galaxy, THREATS_KEY)?.exists[key];
+    s.flags[reg.flag] = true;
+    const fw = threatState(galaxy, THREATS_KEY, (): ThreatsFrameworkState => ({ exists: {} }));
+    fw.exists[key] = true;
+    ensureThreatTexts(key);
+    return () => {
+        if (hadFlag === undefined) delete s.flags[reg.flag];
+        else s.flags[reg.flag] = hadFlag;
+        if (!hadFramework) delete s.state[THREATS_KEY];
+        else if (hadExists === undefined) delete fw.exists[key];
+        else fw.exists[key] = hadExists;
+        if (!hadScenario) galaxy.scenario = null;
+    };
+}
+
+/**
+ * Spawns threat `key` now (aimed at, or placed near, `victim`), even when its add-on flag was off at game start: the flag
+ * is switched on and the threat marked as existing, so its handlers run from here on; its GameText is merged; then the
+ * module's spawn hook runs. A failed spawn leaves the game as it was. Only through the journaled command editorSpawnThreat.
+ */
+export function spawnThreatNow(galaxy: Galaxy, victim: Empire, key: string): boolean {
+    const spec = threatSpawns().get(key);
+    if (spec === undefined || !victim.active || spec.note(galaxy) !== null) return false;
+    const undo = enableThreat(galaxy, key);
+    if (spec.spawn(galaxy, victim)) return true;
+    undo();
+    return false;
+}
+
+/** The point a "near the player" placement measures from: the empire's capital, else its first colony. Pure. */
+export function empireAnchor(empire: Empire): { xpos: number; ypos: number } | null {
+    const c = empire.capital ?? empire.colonies[0] ?? null;
+    return c === null ? null : { xpos: c.xpos, ypos: c.ypos };
+}
+
+/** The member of `list` nearest `empire`'s anchor (first on ties); null for an empty list. Pure. */
+export function nearestToEmpire<T extends { xpos: number; ypos: number }>(galaxy: Galaxy, empire: Empire, list: readonly T[]): T | null {
+    const a = empireAnchor(empire);
+    let best: T | null = null;
+    let bd = Number.MAX_VALUE;
+    for (const h of list) {
+        const d = a === null ? 0 : galaxy.calculateDistance(a.xpos, a.ypos, h.xpos, h.ypos);
+        if (d < bd) {
+            bd = d;
+            best = h;
+        }
+    }
+    return best;
 }
 
 registerScenarioGameStart({ id: 'threatFramework.existenceLottery', scenarioId: 'threat-framework', order: -1000, run: (g) => rollThreatExistence(g) });

@@ -97,6 +97,7 @@ import { purchaseAtYard, removeFromYardQueue, scrapBuiltObjects, scrapShipUnderC
 import { investigateRuins } from '../exploration';
 import { cancelIntelligenceMission, characterMission } from '../espionage';
 import { scenarioFlag } from '../scenario/state';
+import { spawnThreatNow } from '../scenario/threats/framework';
 import { issueMothball, issueReactivate } from '../scenario/mothballing/mothballing';
 import { issueMakeFlagship } from '../scenario/veterans/veterans';
 import { ESPIONAGE_FLAG } from '../scenario/emergent/espionageHooks';
@@ -406,6 +407,8 @@ export const PLAYER_OPS = {
         colony.pirateColonyControl.items.length = 0;
         return doomed.length > 0;
     },
+    /** Game Editor (openDWU, not a port): starts threat `key` now, aimed at the player's own empire, even when its add-on was off at game start. */
+    editorSpawnThreat: (galaxy: Galaxy, empire: Empire, key: string): boolean => spawnThreatNow(galaxy, empire, key),
     /** Main.Part6.cs 3525 btnColonyTroopTransferTransport_Click. */
     colonyTransferToTransport: (galaxy: Galaxy, empire: Empire, colony: Habitat, item: Troop | Character, transport: BuiltObject) => transferToTransport(galaxy, empire, colony, item, transport),
 

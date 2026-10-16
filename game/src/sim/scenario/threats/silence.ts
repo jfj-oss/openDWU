@@ -31,6 +31,8 @@ import {
     pastThreatMinYear,
     peekThreatState,
     registerThreatExistence,
+    registerThreatSpawn,
+    nearestToEmpire,
     registerThreatKnownSites,
     resizeRestrictedZone,
     threatExists,
@@ -112,6 +114,21 @@ export function startSilence(galaxy: Galaxy, st: SilenceState, source: Habitat):
     // Loud from the start: every normal empire (and pirate faction) hears it at once.
     // Loud from the start (§3): level 3 to everyone — no per-empire knowledge bookkeeping; silenceKnownSites reports it directly.
     arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Start', args: [source.name], subject: source });
+}
+
+/** Game Editor: null when the Silence can start now. Pure. */
+export function silenceSpawnNote(galaxy: Galaxy): string | null {
+    const st = peekSilenceState(galaxy);
+    if (st !== null && (st.ended || st.source !== null)) return st.ended ? 'Already over' : 'Already running';
+    return silenceCandidates(galaxy).length > 0 ? null : 'No ruin to start from';
+}
+
+/** Game Editor: the Silence starts now at the ruin nearest the player. */
+export function silenceSpawnNow(galaxy: Galaxy, victim: Empire): boolean {
+    const source = nearestToEmpire(galaxy, victim, silenceCandidates(galaxy));
+    if (source === null) return false;
+    startSilence(galaxy, silenceState(galaxy), source);
+    return true;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -224,6 +241,7 @@ export const SILENCE_QUERY_IDS = ['silence.exempt'] as const;
 
 export function registerSilence(): void {
     registerThreatExistence(SILENCE_KEY, SILENCE_FLAG);
+    registerThreatSpawn({ key: SILENCE_KEY, label: 'The Silence', group: 'galactic', addons: ['silence'], note: silenceSpawnNote, spawn: silenceSpawnNow });
     registerScenarioYearly({ id: 'silence.yearly', flag: SILENCE_FLAG, order: 10, run: silenceYearly });
     registerScenarioPeriodic({ id: 'silence.periodic', flag: SILENCE_FLAG, order: 10, periodDays: PERIOD_DAYS, run: silencePeriodic });
     registerScenarioQuery({ id: 'silence.exempt', flag: SILENCE_FLAG, query: 'hyperDenyExempt', run: silenceHyperDenyExempt });

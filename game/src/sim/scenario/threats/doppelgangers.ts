@@ -17,6 +17,7 @@ import type { Galaxy } from '../../galaxy';
 import type { Empire } from '../../empire';
 import { BuiltObject } from '../../builtObject';
 import { BuiltObjectSubRole } from '../../builtObjectTypes';
+import { BuiltObjectRole } from '../../data/designSpecifications';
 import { findNewestCanBuild } from '../../designGeneration';
 import { generateUnownedShipAtLocation } from '../../story/storyStart';
 import { EmpireMessageType } from '../../messages';
@@ -39,6 +40,7 @@ import {
     peekThreatState,
     revealTo,
     registerThreatExistence,
+    registerThreatSpawn,
     registerThreatKnownSites,
     teardownIfDead,
     threatExists,
@@ -261,6 +263,31 @@ export function doppelgangersTrigger(galaxy: Galaxy, st: DoppelgangersState): bo
     return true;
 }
 
+/** Game Editor: null when The Mirror can rise now. Pure. */
+export function doppelgangersSpawnNote(galaxy: Galaxy): string | null {
+    const st = peekDoppelgangersState(galaxy);
+    return st !== null && (st.faction !== null || st.ended) ? (st.ended ? 'Already over' : 'Already risen') : null;
+}
+
+/** Game Editor: doppelTurnCount of the player's own ships (then others') turn out to be sleepers and The Mirror rises now. */
+export function doppelgangersSpawnNow(galaxy: Galaxy, victim: Empire): boolean {
+    const st = doppelgangersState(galaxy);
+    const owners = [victim, ...normalEmpires(galaxy).filter((e) => e !== victim)];
+    let n = st.sleepers.filter((s) => !s.bo.hasBeenDestroyed).length;
+    for (const e of owners) {
+        for (const bo of e.builtObjects) {
+            if (n >= P.turnCount(galaxy)) break;
+            if (bo.hasBeenDestroyed || bo.role === BuiltObjectRole.Base || st.sleepers.some((s) => s.bo === bo)) continue;
+            makeSleeper(galaxy, st, bo, e);
+            n++;
+        }
+    }
+    if (n === 0 || !doppelgangersTrigger(galaxy, st)) return false;
+    // The stock fleet AI reads Empire.Capital without a null check (as the Ghost Armada's and the Exchange's stand-ins): a habitat of the victim's stands in.
+    if (st.faction !== null && st.faction.capital === null) st.faction.capital = victim.capital ?? victim.colonies[0] ?? null;
+    return true;
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // End
 // ---------------------------------------------------------------------------------------------------------------
@@ -303,6 +330,7 @@ export const DOPPELGANGERS_HANDLER_IDS = ['doppel.yearly', 'doppel.periodic', 'd
 
 export function registerDoppelgangers(): void {
     registerThreatExistence(DOPPELGANGERS_KEY, DOPPELGANGERS_FLAG);
+    registerThreatSpawn({ key: DOPPELGANGERS_KEY, label: 'The Doppelgangers', group: 'galactic', addons: ['doppelgangers'], note: doppelgangersSpawnNote, spawn: doppelgangersSpawnNow });
     registerScenarioYearly({ id: 'doppel.yearly', flag: DOPPELGANGERS_FLAG, order: 10, run: doppelgangersYearly });
     registerScenarioPeriodic({ id: 'doppel.periodic', flag: DOPPELGANGERS_FLAG, order: 10, periodDays: PERIOD_DAYS, run: doppelgangersPeriodic });
     registerScenarioEvent({ id: 'doppel.owner', flag: DOPPELGANGERS_FLAG, event: 'builtObjectOwnerChanged', run: (g, e) => onBuiltObjectOwnerChanged(g, e.builtObject, e.from, e.to) });

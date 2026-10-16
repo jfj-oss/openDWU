@@ -81,6 +81,7 @@ import {
     pastThreatMinYear,
     peekThreatState,
     registerThreatExistence,
+    registerThreatSpawn,
     revealTo,
     teardownIfDead,
     threatExists,
@@ -1058,10 +1059,33 @@ export function mutinyPeriodic(galaxy: Galaxy): void {
 // Registration
 // ---------------------------------------------------------------------------------------------------------------
 
+/** Game Editor: null when the mutiny can start now. Pure. */
+export function robotMutinySpawnNote(galaxy: Galaxy): string | null {
+    const st = peekRobotMutinyState(galaxy);
+    if (st !== null && (st.triggered || st.ended)) return st.ended ? 'Already over' : 'Already risen';
+    if (!galaxy.races.some((r) => r !== null && r.name === 'Harvester')) return 'Needs the add-on on at game start';
+    return galaxy.ruinsHabitats.some((h) => h !== null && !h.hasBeenDestroyed) || (st?.source ?? null) !== null ? null : 'No ruin world for the transmitter';
+}
+
+/**
+ * Game Editor: the transmitter is chosen, hidden BattleBot sleepers are planted in the player's three biggest colonies
+ * (the rising there is decided by the stock ground war) and the mutiny rises now.
+ */
+export function robotMutinySpawnNow(galaxy: Galaxy, victim: Empire): boolean {
+    const st = robotMutinyState(galaxy);
+    ensureFields(st);
+    mutinySeed(galaxy, st);
+    if (st.source === null) return false;
+    const hosts = [...victim.colonies].filter((h) => !h.hasBeenDestroyed && h.troops !== null).sort((a, b) => b.population.totalAmount - a.population.totalAmount).slice(0, 3);
+    for (const h of hosts) setSleepers(st, h, mutinySleepersAt(st, h) + Math.max(20, P.sleepersPerYear(galaxy) * 2));
+    return mutinyTrigger(galaxy, st);
+}
+
 export const ROBOT_MUTINY_HANDLER_IDS = ['robotMutiny.yearly', 'robotMutiny.periodic'] as const;
 
 export function registerRobotMutiny(): void {
     registerThreatExistence(ROBOT_MUTINY_KEY, ROBOT_MUTINY_FLAG);
+    registerThreatSpawn({ key: ROBOT_MUTINY_KEY, label: 'The Robot Mutiny', group: 'galactic', addons: ['robotmutiny', 'darkfarms'], note: robotMutinySpawnNote, spawn: robotMutinySpawnNow });
     registerScenarioYearly({ id: 'robotMutiny.yearly', flag: ROBOT_MUTINY_FLAG, order: 10, run: mutinyYearly });
     registerScenarioQuery({ id: 'robotMutiny.turtle', flag: ROBOT_MUTINY_FLAG, query: 'assignMissionAllowed', run: turtleMissionAllowed });
     registerScenarioPeriodic({ id: 'robotMutiny.periodic', flag: ROBOT_MUTINY_FLAG, periodDays: PERIOD_DAYS, order: 10, run: mutinyPeriodic });

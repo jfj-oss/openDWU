@@ -16,6 +16,7 @@
 import type { Galaxy } from '../../galaxy';
 import type { Empire } from '../../empire';
 import type { Habitat } from '../../types';
+import { spawnGovernorFor } from '../governors';
 import { CharacterRole, CharacterTraitType, type Character, type IntelligenceMission, getEmpireCharacters } from '../../characters';
 import { EmpireMessageType } from '../../messages';
 import { GameEndOutcome } from '../../victory';
@@ -39,6 +40,7 @@ import {
     peekThreatState,
     revealTo,
     registerThreatExistence,
+    registerThreatSpawn,
     registerThreatKnownSites,
     teardownIfDead,
     threatExists,
@@ -78,6 +80,8 @@ export interface CultState {
     ended: boolean;
     /** The faction's economy / navy bookkeeping (factionNavy.ts); null until it rises. */
     navy?: NavyState | null;
+    /** Spawned from the Game Editor: the secession check skips the year floor. */
+    forced?: boolean;
 }
 
 function newState(): CultState {
@@ -332,7 +336,7 @@ export function cultPeriodic(galaxy: Galaxy, now: number): void {
     if (st.ended) return;
     st.converted = st.converted.filter((r) => r.character.active);
     cultSpread(galaxy, st);
-    if (pastThreatMinYear(galaxy, CULT_KEY)) cultCheckTrigger(galaxy); // §0 timing: the secession trigger waits for the floor.
+    if (st.forced === true || pastThreatMinYear(galaxy, CULT_KEY)) cultCheckTrigger(galaxy); // §0 timing: the secession trigger waits for the floor.
     cultDiscovery(galaxy, st);
     cultEndCheck(galaxy, st);
 }
@@ -412,10 +416,39 @@ export function cultNavyColony(galaxy: Galaxy, colony: Habitat, from: Empire | n
 // Registration
 // ---------------------------------------------------------------------------------------------------------------
 
+/** Game Editor: null when the cult can be seeded now. Pure. */
+export function cultSpawnNote(galaxy: Galaxy): string | null {
+    const st = peekCultState(galaxy);
+    return st === null || (st.converted.length === 0 && !st.hadConverts && !st.ended) ? null : 'Already spreading';
+}
+
+/**
+ * Game Editor: the creed takes hold of the governors of enough of `victim`'s colonies to reach the rising threshold
+ * (cultSecedeThreshold), so the theocracy rises on the next periodic check. A colony with no governor gets one first (a
+ * game without the Characters add-on has none); an empire with no colonies converts one character instead.
+ */
+export function cultSpawnNow(galaxy: Galaxy, victim: Empire): boolean {
+    const st = cultState(galaxy);
+    st.forced = true;
+    const governorOf = (colony: Habitat): Character | undefined => getEmpireCharacters(victim).find((c) => c.active && c.role === CharacterRole.ColonyGovernor && c.location === colony);
+    const colonies = victim.colonies.filter((c) => !c.hasBeenDestroyed).slice(0, Math.max(P.secedeColonies(galaxy), P.secedeMinColonies(galaxy)));
+    const governors: Character[] = [];
+    for (const colony of colonies) governors.push(governorOf(colony) ?? spawnGovernorFor(galaxy, victim, colony));
+    if (governors.length > 0) {
+        for (const g of governors.slice(0, cultSecedeThreshold(galaxy, victim))) convert(galaxy, st, g);
+        return true;
+    }
+    const all = getEmpireCharacters(victim).filter((c) => c.active && !isConverted(st, c));
+    if (all.length === 0) return false;
+    convert(galaxy, st, all[galaxy.rnd.next(0, all.length)]);
+    return true;
+}
+
 export const CULT_HANDLER_IDS = ['cult.yearly', 'cult.periodic', 'cult.characterCreated', 'cult.navy', 'cult.navyYearly', 'cult.navyColony', 'cult.navyTroops'] as const;
 
 export function registerCult(): void {
     registerThreatExistence(CULT_KEY, CULT_FLAG);
+    registerThreatSpawn({ key: CULT_KEY, label: 'The Cult', group: 'empire', addons: ['cult'], note: cultSpawnNote, spawn: cultSpawnNow });
     registerScenarioYearly({ id: 'cult.yearly', flag: CULT_FLAG, order: 10, run: cultYearly });
     registerScenarioPeriodic({ id: 'cult.periodic', flag: CULT_FLAG, order: 10, periodDays: PERIOD_DAYS, run: cultPeriodic });
     registerScenarioEvent({ id: 'cult.characterCreated', flag: CULT_FLAG, event: 'characterCreated', run: (g, e) => onCharacterCreated(g, e.character, e.empire) });

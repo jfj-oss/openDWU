@@ -81,6 +81,7 @@ import {
     pastThreatMinYear,
     peekThreatState,
     registerThreatExistence,
+    registerThreatSpawn,
     registerThreatKnownSites,
     revealTo,
     teardownIfDead,
@@ -510,7 +511,7 @@ function guardWorldShip(galaxy: Galaxy, st: GenShipsState, ships: readonly Built
 }
 
 /** Arrival: the faction, its fleet and the world ship at the galaxy edge. Returns false when nothing could arrive. */
-export function genShipsArrive(galaxy: Galaxy, st: GenShipsState): boolean {
+export function genShipsArrive(galaxy: Galaxy, st: GenShipsState, aimAt: Empire | null = null): boolean {
     const rnd = ownRandom(galaxy, 0x47534831 + st.index * 0x1111);
     const fixed = P.flavour(galaxy);
     st.flavour = GEN_SHIPS_FLAVOURS[fixed >= 0 && fixed < 4 ? fixed : rnd.next(0, 4)];
@@ -518,7 +519,7 @@ export function genShipsArrive(galaxy: Galaxy, st: GenShipsState): boolean {
     const taken = new Set<Empire>();
     for (const o of genShipsStates(galaxy)) if (o !== st && o.owner !== null) taken.add(o.owner);
     let candidates = genShipsTargetCandidates(galaxy).filter((h) => h.empire === null || !taken.has(h.empire));
-    const victim = st.index === 0 ? forcedThreatVictim(galaxy, GEN_SHIPS_KEY) : null;
+    const victim = aimAt ?? (st.index === 0 ? forcedThreatVictim(galaxy, GEN_SHIPS_KEY) : null);
     if (victim !== null) {
         const mine = candidates.filter((h) => h.empire === victim);
         if (mine.length > 0) candidates = mine;
@@ -1290,10 +1291,26 @@ export function genShipsKnownSites(galaxy: Galaxy, empire: Empire): KnownThreatS
 // Registration
 // ---------------------------------------------------------------------------------------------------------------
 
+/** Game Editor: null when the first generation ship can be sent now. Pure. */
+export function genShipsSpawnNote(galaxy: Galaxy): string | null {
+    const st = peekGenShipsState(galaxy);
+    return st === null || st.phase === 'waiting' ? null : st.phase === 'ended' || st.phase === 'settled' ? 'Already over' : 'Already arrived';
+}
+
+/** Game Editor: the first generation ship arrives now, aimed at `victim` (a single ship: no wave follows). */
+export function genShipsSpawnNow(galaxy: Galaxy, victim: Empire): boolean {
+    const first = genShipsState(galaxy);
+    if (first.phase !== 'waiting' || !genShipsArrive(galaxy, first, victim)) return false;
+    first.planned = 1;
+    first.spawned = 1;
+    return true;
+}
+
 export const GEN_SHIPS_HANDLER_IDS = ['genShips.periodic', 'genShips.ownerChanged', 'genShips.killedBy'] as const;
 
 export function registerGenerationShips(): void {
     registerThreatExistence(GEN_SHIPS_KEY, GEN_SHIPS_FLAG);
+    registerThreatSpawn({ key: GEN_SHIPS_KEY, label: 'Generation Ships', group: 'empire', addons: ['generation-ships', 'archive-cores'], note: genShipsSpawnNote, spawn: genShipsSpawnNow });
     registerScenarioPeriodic({ id: 'genShips.periodic', flag: GEN_SHIPS_FLAG, periodDays: PERIOD_DAYS, order: 12, run: (g) => genShipsPeriodic(g) });
     registerScenarioEvent({ id: 'genShips.ownerChanged', flag: GEN_SHIPS_FLAG, event: 'builtObjectOwnerChanged', run: (g, e) => onOwnerChanged(g, e.builtObject, e.to) });
     registerScenarioEvent({ id: 'genShips.killedBy', flag: GEN_SHIPS_FLAG, event: 'builtObjectKilledBy', run: (g, e) => onKilledBy(g, e.builtObject, e.destroyer) });

@@ -60,6 +60,7 @@ import {
     pastThreatMinYear,
     peekThreatState,
     registerThreatExistence,
+    registerThreatSpawn,
     registerThreatKnownSites,
     revealTo,
     threatExists,
@@ -281,11 +282,11 @@ function systemPos(galaxy: Galaxy, systemIndex: number): { x: number; y: number 
 }
 
 /** The anchorage: a free asteroid / planet / moon in an uncolonised system, the farthest from every capital. Pure. */
-export function hollowFleetAnchorage(galaxy: Galaxy): Habitat | null {
-    const capitals = normalEmpires(galaxy).map((e) => e.capital).filter((c): c is Habitat => c !== null);
+export function hollowFleetAnchorage(galaxy: Galaxy, near: Empire | null = null): Habitat | null {
+    const capitals = (near !== null && near.capital !== null ? [near.capital] : normalEmpires(galaxy).map((e) => e.capital)).filter((c): c is Habitat => c !== null);
     const colonised = colonisedSystems(galaxy);
     let best: Habitat | null = null;
-    let bestD = -1;
+    let bestD = near !== null ? -Infinity : -1;
     let bestPref = -1;
     const seen = new Set<number>();
     for (const h of galaxy.habitats) {
@@ -297,6 +298,7 @@ export function hollowFleetAnchorage(galaxy: Galaxy): Habitat | null {
         const star = galaxy.systems[h.systemIndex].systemStar;
         let d = Number.MAX_VALUE;
         for (const c of capitals) d = Math.min(d, galaxy.calculateDistance(star.xpos, star.ypos, c.xpos, c.ypos));
+        if (near !== null) d = -d; // Game Editor: the nearest to `near`'s capital instead of the farthest
         if (d > bestD || (d === bestD && pref > bestPref)) {
             bestD = d;
             bestPref = pref;
@@ -860,8 +862,23 @@ function isFleet(galaxy: Galaxy, e: Empire | null): boolean {
 
 export const HOLLOW_FLEET_HANDLER_IDS = ['hollowFleet.periodic', 'hollowFleet.killedBy', 'hollowFleet.passive', 'hollowFleet.noProtection', 'hollowFleet.noCapture', 'hollowFleet.noRepair', 'hollowFleet.avoid'] as const;
 
+/** Game Editor: null when the Hollow Fleet can wake now. Pure. */
+export function hollowFleetSpawnNote(galaxy: Galaxy): string | null {
+    const st = peekHollowFleetState(galaxy);
+    return st === null || st.phase === 'waiting' ? null : st.phase === 'active' ? 'Already awake' : 'Already over';
+}
+
+/** Game Editor: the fleet wakes now at the free anchorage nearest the player. */
+export function hollowFleetSpawnNow(galaxy: Galaxy, victim: Empire): boolean {
+    const st = hollowFleetState(galaxy);
+    if (st.phase !== 'waiting') return false;
+    const home = hollowFleetAnchorage(galaxy, victim);
+    return home !== null && hollowFleetWake(galaxy, st, home);
+}
+
 export function registerHollowFleet(): void {
     registerThreatExistence(HOLLOW_FLEET_KEY, HOLLOW_FLEET_FLAG);
+    registerThreatSpawn({ key: HOLLOW_FLEET_KEY, label: 'The Hollow Fleet', group: 'galactic', addons: ['hollow-fleet'], note: hollowFleetSpawnNote, spawn: hollowFleetSpawnNow });
     registerScenarioPeriodic({ id: 'hollowFleet.periodic', flag: HOLLOW_FLEET_FLAG, periodDays: PERIOD_DAYS, order: 15, run: (g) => hollowFleetPeriodic(g) });
     registerScenarioEvent({ id: 'hollowFleet.killedBy', flag: HOLLOW_FLEET_FLAG, event: 'builtObjectKilledBy', run: (g, e) => onKilledBy(g, e.builtObject, e.destroyer) });
     registerScenarioQuery({ id: 'hollowFleet.passive', flag: HOLLOW_FLEET_FLAG, query: 'pirateFactionPassive', run: (g, v, a) => v || isFleet(g, a.empire) });

@@ -48,6 +48,8 @@ import {
     pastThreatMinYear,
     peekThreatState,
     registerThreatExistence,
+    registerThreatSpawn,
+    empireAnchor,
     registerThreatKnownSites,
     revealTo,
     teardownIfDead,
@@ -244,6 +246,37 @@ function rise(galaxy: Galaxy, st: GhostArmadaState, entry: GhostPending): void {
     for (const e of normalEmpires(galaxy, faction)) revealTo(galaxy, risen, e, KNOWLEDGE_RUMOUR);
 }
 
+/** The empire a Game Editor ghost rises from: an eliminated one with a warship design, else the weakest living AI empire (the echo of a fallen one). */
+function ghostSource(galaxy: Galaxy, victim: Empire): Empire | null {
+    const ok = (e: Empire | null): e is Empire => e !== null && e !== victim && e !== galaxy.independentEmpire && e.pirateEmpireBaseHabitat === null && e.dominantRace !== null && e.designs.some((d) => d.role === BuiltObjectRole.Military);
+    const dead = galaxy.empires.find((e) => ok(e) && !e.active);
+    if (dead !== undefined) return dead;
+    const alive = galaxy.empires.filter((e): e is Empire => ok(e) && e.active).sort((a, b) => a.builtObjects.length - b.builtObjects.length || a.empireId - b.empireId);
+    return alive[0] ?? null;
+}
+
+/** Game Editor: null when a ghost fleet can rise now. Pure. */
+export function ghostArmadaSpawnNote(galaxy: Galaxy): string | null {
+    const st = peekGhostArmadaState(galaxy);
+    if (st !== null && st.risen.some((r) => r.faction.active)) return 'Already risen';
+    return galaxy.playerEmpire !== null && ghostSource(galaxy, galaxy.playerEmpire) === null ? 'No empire to rise from' : null;
+}
+
+/** Game Editor: a ghost fleet of a fallen empire rises now at a debris field near the player, at locked war with the player (its "conqueror"). */
+export function ghostArmadaSpawnNow(galaxy: Galaxy, victim: Empire): boolean {
+    const dead = ghostSource(galaxy, victim);
+    const at = empireAnchor(victim);
+    if (dead === null || at === null) return false;
+    const st = ghostArmadaState(galaxy);
+    const design = [...dead.designs].reverse().find((d) => d.role === BuiltObjectRole.Military)!;
+    const n = Math.min(P.maxShips(galaxy), 8);
+    for (let i = 0; i < n; i++) st.wrecks.push({ design, x: at.xpos + 12000 + i * 40, y: at.ypos, empireId: dead.empireId, date: galaxyStarDate(galaxy) });
+    const entry: GhostPending = { deadEmpireId: dead.empireId, deadEmpireName: dead.name, race: dead.dominantRace, conqueror: victim, date: galaxyStarDate(galaxy) };
+    const before = st.risen.length;
+    rise(galaxy, st, entry);
+    return st.risen.length > before;
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // Targeting (periodic) — raids only the conqueror; ships never receive orders against anyone else (the stock combat
 // AI still lets them defend themselves if attacked by a third party — "unless attacked", §7 "AI").
@@ -315,6 +348,7 @@ export const GHOST_ARMADA_HANDLER_IDS = ['ghostArmada.removed', 'ghostArmada.eli
 
 export function registerGhostArmada(): void {
     registerThreatExistence(GHOST_ARMADA_KEY, GHOST_ARMADA_FLAG);
+    registerThreatSpawn({ key: GHOST_ARMADA_KEY, label: 'The Ghost Armada', group: 'galactic', addons: ['ghostarmada'], note: ghostArmadaSpawnNote, spawn: ghostArmadaSpawnNow });
     registerScenarioEvent({ id: 'ghostArmada.removed', flag: GHOST_ARMADA_FLAG, event: 'builtObjectRemoved', run: (g, e) => onBuiltObjectRemoved(g, e.builtObject) });
     registerScenarioEvent({ id: 'ghostArmada.eliminated', flag: GHOST_ARMADA_FLAG, event: 'empireEliminated', run: (g, e) => onEmpireEliminated(g, e.empire, e.conqueror) });
     registerScenarioYearly({ id: 'ghostArmada.yearly', flag: GHOST_ARMADA_FLAG, order: 10, run: (g) => ghostArmadaYearly(g) });

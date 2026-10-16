@@ -49,6 +49,8 @@ import {
     pastThreatMinYear,
     peekThreatState,
     registerThreatExistence,
+    registerThreatSpawn,
+    enableThreat,
     revealTo,
     threatExists,
     threatGameEnd,
@@ -56,7 +58,7 @@ import {
     type SentStages,
     type ThreatKnowledge,
 } from './framework';
-import { CULT_FLAG, convertsAt, cultHooks, deconvert, peekCultState, type CultState } from './cult';
+import { CULT_FLAG, CULT_KEY, convertsAt, cultHooks, cultSpawnNow, deconvert, peekCultState, type CultState } from './cult';
 import { registerHiddenThing, retireHiddenTarget, securityOn, securitySlots } from '../security/registry';
 import { recordReputation } from '../reputation/ledger';
 import { appendEvent, empireActor, eventLogOn } from '../eventLog/log';
@@ -607,10 +609,33 @@ function threatsGameEndOn(galaxy: Galaxy): boolean {
 // Registration
 // ---------------------------------------------------------------------------------------------------------------
 
+/** True when the game's research files carry the precursor nodes (scenarios/timebomb/research.txt was loaded at game start). */
+function bombResearchLoaded(galaxy: Galaxy): boolean {
+    const e = galaxy.empires.find((x) => x !== null && x.pirateEmpireBaseHabitat === null && x.research.techTree.length > 0);
+    return e !== undefined && e !== null && e.research.techTree.some((n) => n.def.projectId === TIME_BOMB_PROJECT_IDS[0]);
+}
+
+/** Game Editor: null when the precursor nodes can be placed now. Pure. */
+export function timeBombSpawnNote(galaxy: Galaxy): string | null {
+    const st = peekTimeBombState(galaxy);
+    if (st !== null && (st.placed || st.ended)) return st.ended ? 'Already over' : 'Already running';
+    return bombResearchLoaded(galaxy) ? null : 'Needs the add-on on at game start';
+}
+
+/** Game Editor: the three precursor ruins are placed now and the Cult (its actor) is switched on and seeded in the player's empire. */
+export function timeBombSpawnNow(galaxy: Galaxy, victim: Empire): boolean {
+    if (!scenarioFlag(galaxy, CULT_FLAG)) enableThreat(galaxy, CULT_KEY);
+    if (peekCultState(galaxy)?.converted.length === 0 || peekCultState(galaxy) === null) cultSpawnNow(galaxy, victim);
+    const st = timeBombState(galaxy);
+    timeBombPlace(galaxy, st);
+    return st.nodes.length > 0;
+}
+
 export const TIME_BOMB_HANDLER_IDS = ['timeBomb.yearly', 'timeBomb.research'] as const;
 
 export function registerTimeBomb(): void {
     registerThreatExistence(TIME_BOMB_KEY, TIME_BOMB_FLAG);
+    registerThreatSpawn({ key: TIME_BOMB_KEY, label: 'The Time Bomb', group: 'galactic', addons: ['timebomb', 'cult'], note: timeBombSpawnNote, spawn: timeBombSpawnNow });
     registerScenarioYearly({ id: 'timeBomb.yearly', flag: TIME_BOMB_FLAG, order: 10, run: timeBombYearly });
     registerScenarioEvent({ id: 'timeBomb.research', flag: TIME_BOMB_FLAG, event: 'researchCompleted', run: (g, e) => onResearchCompleted(g, e.empire, e.project) });
     cultHooks.triggered = onCultTriggered;

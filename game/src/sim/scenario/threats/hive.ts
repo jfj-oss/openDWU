@@ -35,6 +35,8 @@ import {
     peekThreatState,
     revealTo,
     registerThreatExistence,
+    registerThreatSpawn,
+    nearestToEmpire,
     registerThreatKnownSites,
     teardownIfDead,
     threatExists,
@@ -215,11 +217,11 @@ function largestAbsorbedClusterCenter(galaxy: Galaxy, st: HiveState): { x: numbe
  * largest absorbed cluster first (ties, and no absorbed cluster to measure from: habitat index order). Under the
  * cap every still-independent node is seized, in the same set as before this param existed.
  */
-function seizedIndependentNodes(galaxy: Galaxy, st: HiveState): Set<Habitat> {
+function seizedIndependentNodes(galaxy: Galaxy, st: HiveState, near: Habitat | null = null): Set<Habitat> {
     const independent = st.nodes.filter((n) => !n.habitat.hasBeenDestroyed && n.habitat.empire === galaxy.independentEmpire);
     const cap = P.maxNodesSeized(galaxy);
     if (independent.length <= cap) return new Set(independent.map((n) => n.habitat));
-    const center = largestAbsorbedClusterCenter(galaxy, st);
+    const center = largestAbsorbedClusterCenter(galaxy, st) ?? (near === null ? null : { x: near.xpos, y: near.ypos });
     const byDistance = [...independent].sort((a, b) => {
         const ia = galaxy.habitats.indexOf(a.habitat);
         const ib = galaxy.habitats.indexOf(b.habitat);
@@ -232,7 +234,7 @@ function seizedIndependentNodes(galaxy: Galaxy, st: HiveState): Set<Habitat> {
 }
 
 /** §5 trigger: absorbed/nodes ≥ threshold → The Chorus rises. */
-export function hiveTrigger(galaxy: Galaxy, st: HiveState): boolean {
+export function hiveTrigger(galaxy: Galaxy, st: HiveState, near: Habitat | null = null): boolean {
     if (st.faction !== null) return true;
     const race = majorityNodeRace(st) ?? st.nodes[0]?.habitat.population?.dominantRace?.name ?? null;
     if (race === null) return false;
@@ -246,7 +248,7 @@ export function hiveTrigger(galaxy: Galaxy, st: HiveState): boolean {
     st.faction = faction;
     st.navy = newNavyState();
     navyRise(galaxy, 'hive', faction, st.navy, averageMilitary(galaxy, faction)); // tech, money, the starting navy (the empires' average military)
-    const seized = seizedIndependentNodes(galaxy, st);
+    const seized = seizedIndependentNodes(galaxy, st, near);
     for (const n of [...st.nodes].sort((a, b) => galaxy.habitats.indexOf(a.habitat) - galaxy.habitats.indexOf(b.habitat))) {
         const h = n.habitat;
         if (h.hasBeenDestroyed) continue;
@@ -348,8 +350,24 @@ export function hiveKnownSites(galaxy: Galaxy, empire: Empire): KnownThreatSite[
 
 export const HIVE_HANDLER_IDS = ['hive.init', 'hive.periodic', 'hive.colony', 'hive.factionColony', 'hive.navy', 'hive.navyYearly', 'hive.navyTroops'] as const;
 
+/** Game Editor: null when the Chorus can be raised now. Pure. */
+export function hiveSpawnNote(galaxy: Galaxy): string | null {
+    const st = peekHiveState(galaxy);
+    if (st !== null && (st.faction !== null || st.ended)) return st.ended ? 'Already over' : 'Already risen';
+    return (st !== null && st.nodes.length > 0) || galaxy.independentColonies.length > 0 ? null : 'No independent colonies';
+}
+
+/** Game Editor: the Chorus declares now: every still-independent colony is handed to it (the ones nearest the player first when capped). */
+export function hiveSpawnNow(galaxy: Galaxy, victim: Empire): boolean {
+    const st = hiveState(galaxy);
+    if (st.nodes.length === 0) st.nodes = [...galaxy.independentColonies].map((habitat) => ({ habitat, knowledge: [] }));
+    if (st.nodes.length === 0) return false;
+    return hiveTrigger(galaxy, st, nearestToEmpire(galaxy, victim, st.nodes.map((n) => n.habitat)));
+}
+
 export function registerHive(): void {
     registerThreatExistence(HIVE_KEY, HIVE_FLAG);
+    registerThreatSpawn({ key: HIVE_KEY, label: 'The Hive', group: 'galactic', addons: ['hive'], note: hiveSpawnNote, spawn: hiveSpawnNow });
     registerScenarioGameStart({ id: 'hive.init', flag: HIVE_FLAG, run: (g) => hiveInit(g) });
     registerScenarioPeriodic({ id: 'hive.periodic', flag: HIVE_FLAG, order: 10, periodDays: PERIOD_DAYS, run: hivePeriodic });
     registerScenarioEvent({ id: 'hive.colony', flag: HIVE_FLAG, order: 0, event: 'colonyOwnerChanged', run: (g, e) => onColonyOwnerChanged(g, e.colony, e.from, e.to) });

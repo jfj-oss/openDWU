@@ -63,6 +63,7 @@ import {
     refitInPlace,
     registerThreatAction,
     registerThreatExistence,
+    registerThreatSpawn,
     registerThreatKnownSites,
     revealTo,
     teardownIfDead,
@@ -1140,8 +1141,33 @@ export function darkFarmsKnownSites(galaxy: Galaxy, empire: Empire): KnownThreat
 export const DARK_FARMS_HANDLER_IDS = ['darkFarms.spawn', 'darkFarms.periodic', 'darkFarms.colony', 'darkFarms.removed', 'darkFarms.owner', 'darkFarms.blight'] as const;
 
 /** Registers every Dark Farms hook (module load; tests call it again after removing them). */
+/** True when the Harvester race (scenarios/darkfarms/races) is in the game's data: it was loaded at game start. */
+export function harvesterLoaded(galaxy: Galaxy): boolean {
+    return galaxy.races.some((r) => r !== null && r.name === 'Harvester');
+}
+
+/** Game Editor: null when a farm can be planted now. Pure. */
+export function darkFarmsSpawnNote(galaxy: Galaxy): string | null {
+    const st = peekDarkFarmsState(galaxy);
+    if (st !== null && st.ended) return 'Already over';
+    if (st !== null && liveFarms(st).length > 0) return 'Already running';
+    return harvesterLoaded(galaxy) ? null : 'Needs the add-on on at game start';
+}
+
+/** Game Editor: a hidden farm on the player's most populous colony (not the capital); with no such colony, on the biggest colony of any empire. */
+export function darkFarmsSpawnNow(galaxy: Galaxy, victim: Empire): boolean {
+    const st = darkFarmsState(galaxy);
+    const pick = (e: Empire): Habitat | null => [...e.colonies].filter((h) => h !== e.capital && !h.hasBeenDestroyed && farmAt(st, h) === null).sort((a, b) => b.population.totalAmount - a.population.totalAmount)[0] ?? null;
+    let host = pick(victim);
+    for (const e of normalEmpires(galaxy, st.faction)) if (host === null) host = pick(e);
+    if (host === null) return false;
+    spawnFarm(galaxy, st, host);
+    return true;
+}
+
 export function registerDarkFarms(): void {
     registerThreatExistence(DARK_FARMS_KEY, DARK_FARMS_FLAG);
+    registerThreatSpawn({ key: DARK_FARMS_KEY, label: 'The Dark Farms', group: 'galactic', addons: ['darkfarms'], note: darkFarmsSpawnNote, spawn: darkFarmsSpawnNow });
     registerScenarioYearly({ id: 'darkFarms.spawn', flag: DARK_FARMS_FLAG, order: 10, run: darkFarmsYearly });
     registerScenarioPeriodic({ id: 'darkFarms.periodic', flag: DARK_FARMS_FLAG, order: 10, periodDays: DARK_FARMS_PERIOD_DAYS, run: darkFarmsPeriodic });
     registerScenarioEvent({ id: 'darkFarms.colony', flag: DARK_FARMS_FLAG, event: 'colonyOwnerChanged', run: (g, e) => onColonyOwnerChanged(g, e.colony, e.from, e.to) });

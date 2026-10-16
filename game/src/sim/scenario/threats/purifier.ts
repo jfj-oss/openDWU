@@ -87,6 +87,7 @@ import {
     pastThreatMinYear,
     peekThreatState,
     registerThreatExistence,
+    registerThreatSpawn,
     registerThreatKnownSites,
     revealTo,
     threatExists,
@@ -461,15 +462,16 @@ function raceOfFamily(galaxy: Galaxy, family: number): Race | null {
  * Wakes the Purifier at the anchorage for `waker` (tests force it). Returns false when no faction / ship could be made.
  * Draws Rnd: the 50/50 program roll, the builders' family (preprogrammed) and the stock faction / design / ship generation.
  */
-export function purifierWake(galaxy: Galaxy, st: PurifierState, waker: Empire | null): boolean {
+export function purifierWake(galaxy: Galaxy, st: PurifierState, waker: Empire | null, huntFamily: number | null = null): boolean {
     const anchorage = st.anchorage;
     const normals = normalEmpires(galaxy);
     if (anchorage === null || normals.length === 0) return false;
     const fams = familiesPresent(galaxy);
     // RND(purifier wake): the program (preprogrammed / the waker chooses), then the builders' family.
-    const wakerChooses = galaxy.rnd.nextDouble() * 100 < P.waker50(galaxy);
+    // Game Editor (huntFamily given): the waker's program is set, not rolled (no draw): it hunts that one family.
+    const wakerChooses = huntFamily !== null ? false : galaxy.rnd.nextDouble() * 100 < P.waker50(galaxy);
     let builder = -1;
-    if (!wakerChooses && fams.length >= 2) builder = fams[galaxy.rnd.next(0, fams.length)];
+    if (huntFamily === null && !wakerChooses && fams.length >= 2) builder = fams[galaxy.rnd.next(0, fams.length)];
     const race = (builder >= 0 ? raceOfFamily(galaxy, builder) : null) ?? galaxy.races.find((r) => r !== null && r.name === 'Mechanoid') ?? galaxy.races.find((r) => r !== null) ?? null;
     if (race === null) return false;
     const avg = normals.reduce((s, e) => s + empireTechLevel(e), 0) / normals.length;
@@ -515,10 +517,10 @@ export function purifierWake(galaxy: Galaxy, st: PurifierState, waker: Empire | 
     st.startStrength = strength;
     st.waker = waker;
     st.wakeDate = galaxyStarDate(galaxy);
-    st.program = wakerChooses ? 'waker' : 'preprogrammed';
+    st.program = wakerChooses || huntFamily !== null ? 'waker' : 'preprogrammed';
     st.builderFamily = builder;
-    st.huntOthers = !wakerChooses;
-    st.hunted = [];
+    st.huntOthers = huntFamily === null && !wakerChooses;
+    st.hunted = huntFamily === null ? [] : [huntFamily];
     st.lastX = destroyer.xpos;
     st.lastY = destroyer.ypos;
     st.phase = 'awake';
@@ -1462,6 +1464,32 @@ function isFaction(galaxy: Galaxy, e: Empire | null): boolean {
     return st !== null && e !== null && st.faction === e;
 }
 
+/** The Game Editor's note: null when the Purifier can be woken now. Pure. */
+export function purifierSpawnNote(galaxy: Galaxy): string | null {
+    const st = peekPurifierState(galaxy);
+    if (st === null || st.phase === 'waiting' || st.phase === 'dormant') return null;
+    return st.phase === 'awake' ? 'Already awake' : 'Already over';
+}
+
+/**
+ * The Game Editor's spawn: opens the anchorage now (skipping the year and the finder / stumble waits) and wakes the
+ * Purifier with `victim` as the waker, hunting the victim's own race family.
+ */
+export function purifierSpawnNow(galaxy: Galaxy, victim: Empire): boolean {
+    const st = purifierState(galaxy);
+    if (st.phase === 'waiting') {
+        const a = purifierAnchorage(galaxy);
+        if (a === null) return false;
+        st.anchorage = a;
+        st.openDate = galaxyStarDate(galaxy);
+        st.phase = 'dormant';
+    }
+    if (st.phase !== 'dormant' || st.anchorage === null || st.anchorage.hasBeenDestroyed) return false;
+    const family = victim.dominantRace?.raceFamily ?? -1;
+    if (!purifierWake(galaxy, st, victim, family)) return false;
+    return true;
+}
+
 export const PURIFIER_HANDLER_IDS = [
     'purifier.periodic',
     'purifier.killedBy',
@@ -1477,6 +1505,7 @@ export const PURIFIER_HANDLER_IDS = [
 
 export function registerPurifier(): void {
     registerThreatExistence(PURIFIER_KEY, PURIFIER_FLAG);
+    registerThreatSpawn({ key: PURIFIER_KEY, label: 'The Purifier', group: 'empire', addons: ['purifier'], note: purifierSpawnNote, spawn: purifierSpawnNow });
     registerScenarioFramePeriodic({ id: 'purifier.periodic', flag: PURIFIER_FLAG, periodDays: PERIOD_DAYS, order: 16, run: (g) => purifierPeriodic(g) });
     registerScenarioEvent({ id: 'purifier.killedBy', flag: PURIFIER_FLAG, event: 'builtObjectKilledBy', run: (g, e) => onKilledBy(g, e.builtObject, e.destroyer) });
     registerScenarioEvent({ id: 'purifier.destroyed', flag: PURIFIER_FLAG, event: 'habitatDestroyed', run: (g, e) => onHabitatDestroyed(g, e.habitat, e.destroyer) });

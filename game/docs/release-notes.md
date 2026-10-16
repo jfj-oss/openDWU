@@ -4,6 +4,8 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **Game Editor: spawn threats.** The Game Editor window now has a "Spawn a threat against your empire" list (The Purifier: it wakes now and hunts your race; Generation Ships: the first world ship arrives now aimed at one of your colonies; The Cult: it converts the governors of enough of your colonies, creating governors where you have none, so the theocracy rises within a couple of months) and a "Spawn a galactic threat" list (Hive, Grey Tide, Silence, Doppelgangers, Ghost Armada, Exchange, Hollow Fleet, Dead Probe Swarm, Void Whale, Corporate Coup, and, when the add-on's data was loaded at game start, Dark Farms, Robot Mutiny and Time Bomb). Galactic ones start now and are placed near your empire where they have a choice. It works even if the add-on was off when the game started (it is switched on from then on, and its message texts are loaded, also when you load the save). A threat that is already running or over shows a short note instead of a button; Dark Farms, Robot Mutiny and Time Bomb need their add-on on at game start (they need its race / research data), and Corporate Coup needs a chartered company. It is a journaled command, so it works in multiplayer and replays.
+
 ## 0.1.32
 
 - **Generation Ships: the world ship is the fleet's base.** It has infinite fuel and refuels the escorts and troop transports near it; while the fleet is not on a raid or a landing it patrols around the world ship (the transports stay close beside it) instead of sitting still at the galaxy edge.

@@ -71,6 +71,16 @@ export function addText(content: string): void {
     addonByText = null;
 }
 
+/** Not a port: as addText, but only for tags the table lacks (a spawned threat's texts must not override anything). */
+export function addMissingText(content: string): void {
+    for (const [k, v] of parseGameText(content).text) {
+        if (text.has(k)) continue;
+        text.set(k, v);
+        addedTags.add(k);
+    }
+    addonByText = null;
+}
+
 /**
  * Not a port (a UI aid): the tag of an add-on-only GameText entry whose text is exactly `resolved` (one without `{n}`
  * items), else null. Lets the UI tell an add-on message by its title.

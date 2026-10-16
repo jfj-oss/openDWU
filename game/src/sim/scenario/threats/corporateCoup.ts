@@ -32,6 +32,7 @@ import { registerScenarioPeriodic, registerScenarioYearly } from '../hooks';
 import { scenarioParam } from '../state';
 import { scenarioText } from '../messages';
 import { registerHiddenThing, retireHiddenTarget } from '../security/registry';
+import { allCharters, empireById } from '../charteredCompanies/charters';
 import { GameEndOutcome } from '../../victory';
 import {
     KNOWLEDGE_CONFIRMED,
@@ -43,6 +44,7 @@ import {
     pastThreatMinYear,
     peekThreatState,
     registerThreatExistence,
+    registerThreatSpawn,
     revealTo,
     teardownIfDead,
     threatExists,
@@ -283,10 +285,48 @@ export function corporateCoupPeriodic(galaxy: Galaxy): void {
 // Registration
 // ---------------------------------------------------------------------------------------------------------------
 
+/** The active charters whose company and founder (the holder) are both live: the companies a coup can come from. Pure. */
+function coupCandidates(galaxy: Galaxy): { company: Empire; holder: Empire }[] {
+    const out: { company: Empire; holder: Empire }[] = [];
+    for (const c of allCharters(galaxy)) {
+        if (c.status !== 'active') continue;
+        const company = empireById(galaxy, c.companyId);
+        const holder = empireById(galaxy, c.founderId);
+        if (company !== null && holder !== null && company.active && holder.active && holder.colonies.length >= P.governors(galaxy)) out.push({ company, holder });
+    }
+    return out;
+}
+
+/** Game Editor: null when a chartered company can stage its coup now. Pure. */
+export function corporateCoupSpawnNote(galaxy: Galaxy): string | null {
+    const st = peekCorporateCoupState(galaxy);
+    if (st !== null && st.companies.some((c) => c.triggered)) return 'Already staged';
+    return coupCandidates(galaxy).length > 0 ? null : 'Needs a chartered company';
+}
+
+/** Game Editor: the player's chartered company (else any) has bought the holder's governors and breaks away now. */
+export function corporateCoupSpawnNow(galaxy: Galaxy, victim: Empire): boolean {
+    const cands = coupCandidates(galaxy);
+    const pick = cands.find((c) => c.holder === victim) ?? cands[0];
+    if (pick === undefined) return false;
+    registerSubjectCompany(galaxy, pick.company, pick.holder, galaxyStarDate(galaxy) - (P.minYears(galaxy) + 1) * YEAR_LENGTH);
+    const company = corporateCoupState(galaxy).companies.find((c) => c.empire === pick.company)!;
+    // A game without the Characters add-on has no colony governors: the holder's colonies get one each so there is someone to buy.
+    for (const colony of pick.holder.colonies) if (holderGovernors(pick.holder).length < P.governors(galaxy) && !holderGovernors(pick.holder).some((g) => g.location === colony)) spawnGovernorFor(galaxy, pick.holder, colony);
+    for (const gov of holderGovernors(pick.holder)) {
+        if (company.bought.length >= P.governors(galaxy)) break;
+        if (company.bought.includes(gov)) continue;
+        company.bought.push(gov);
+        registerHiddenThing(galaxy, { kind: 'boughtGovernor', concealment: 55, empire: pick.holder, target: gov, package: '19f.corporateCoup', site: company });
+    }
+    return coupTrigger(galaxy, company);
+}
+
 export const CORPORATE_COUP_HANDLER_IDS = ['corporateCoup.yearly', 'corporateCoup.periodic'] as const;
 
 export function registerCorporateCoup(): void {
     registerThreatExistence(CORPORATE_COUP_KEY, CORPORATE_COUP_FLAG);
+    registerThreatSpawn({ key: CORPORATE_COUP_KEY, label: 'The Corporate Coup', group: 'galactic', addons: ['corporatecoup'], note: corporateCoupSpawnNote, spawn: corporateCoupSpawnNow });
     registerScenarioYearly({ id: 'corporateCoup.yearly', flag: CORPORATE_COUP_FLAG, order: 10, run: corporateCoupYearly });
     registerScenarioPeriodic({ id: 'corporateCoup.periodic', flag: CORPORATE_COUP_FLAG, periodDays: PERIOD_DAYS, order: 10, run: corporateCoupPeriodic });
 }

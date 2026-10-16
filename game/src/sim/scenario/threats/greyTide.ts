@@ -41,6 +41,8 @@ import {
     peekThreatState,
     registerThreatAction,
     registerThreatExistence,
+    registerThreatSpawn,
+    nearestToEmpire,
     registerThreatKnownSites,
     revealTo,
     teardownIfDead,
@@ -160,6 +162,23 @@ function ensureFaction(galaxy: Galaxy, st: GreyTideState, home: Habitat): Empire
     const faction = createThreatFaction(galaxy, { kind: 'pirate', race: 'Mechanoid', name: scenarioText(`${TAG} Faction Name`), home });
     st.faction = faction;
     return faction;
+}
+
+/** Game Editor: null when the Tide can be seeded now. Pure. */
+export function greyTideSpawnNote(galaxy: Galaxy): string | null {
+    const st = peekGreyTideState(galaxy);
+    if (st !== null && (st.ended || st.nests.length > 0)) return st.ended ? 'Already over' : 'Already running';
+    return null;
+}
+
+/** Game Editor: a first nest at the free gas giant nearest the player (explored or not: the nest shows at once if its system is known). */
+export function greyTideSpawnNow(galaxy: Galaxy, victim: Empire): boolean {
+    const st = greyTideState(galaxy);
+    const taken = new Set(st.nests.map((n) => n.habitat));
+    const habitat = nearestToEmpire(galaxy, victim, galaxy.habitats.filter((h) => h !== null && isGasGiant(h) && h.empire === null && !taken.has(h)));
+    if (habitat === null) return false;
+    foundNest(galaxy, st, habitat);
+    return true;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -307,6 +326,7 @@ export const GREY_TIDE_HANDLER_IDS = ['greyTide.yearly', 'greyTide.periodic'] as
 
 export function registerGreyTide(): void {
     registerThreatExistence(GREY_TIDE_KEY, GREY_TIDE_FLAG);
+    registerThreatSpawn({ key: GREY_TIDE_KEY, label: 'The Grey Tide', group: 'galactic', addons: ['greytide'], note: greyTideSpawnNote, spawn: greyTideSpawnNow });
     registerScenarioYearly({ id: 'greyTide.yearly', flag: GREY_TIDE_FLAG, order: 10, run: greyTideYearly });
     registerScenarioPeriodic({ id: 'greyTide.periodic', flag: GREY_TIDE_FLAG, order: 10, periodDays: PERIOD_DAYS, run: greyTidePeriodic });
     registerThreatKnownSites(GREY_TIDE_KEY, greyTideKnownSites);

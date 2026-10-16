@@ -114,6 +114,7 @@ import {
     pastThreatMinYear,
     peekThreatState,
     registerThreatExistence,
+    registerThreatSpawn,
     registerThreatKnownSites,
     revealTo,
     threatExists,
@@ -1486,6 +1487,19 @@ export function exchangeKnownSites(galaxy: Galaxy, empire: Empire): KnownThreatS
 // Registration
 // ---------------------------------------------------------------------------------------------------------------
 
+/** Game Editor: null when the Exchange can open now. Pure. */
+export function exchangeSpawnNote(galaxy: Galaxy): string | null {
+    const st = peekExchangeState(galaxy);
+    return st !== null && (st.placed || st.ended) ? (st.ended ? 'Already over' : 'Already open') : null;
+}
+
+/** Game Editor: the Exchange opens its station now (it keeps its own near-the-centre placement). */
+export function exchangeSpawnNow(galaxy: Galaxy, _victim: Empire): boolean {
+    const st = exchangeState(galaxy);
+    exchangePlace(galaxy, st);
+    return st.faction !== null;
+}
+
 export const EXCHANGE_HANDLER_IDS = ['exchange.start', 'exchange.yearly', 'exchange.periodic', 'exchange.intel', 'exchange.removed', 'exchange.tariff', 'exchange.killed'] as const;
 export const EXCHANGE_QUERY_IDS = ['exchange.research', 'exchange.noWar', 'exchange.missions', 'exchange.defendClient', 'exchange.defendBid'] as const;
 
@@ -1498,6 +1512,7 @@ export function registerExchange(): void {
         },
     });
     registerThreatExistence(EXCHANGE_KEY, EXCHANGE_FLAG);
+    registerThreatSpawn({ key: EXCHANGE_KEY, label: 'The Exchange', group: 'galactic', addons: ['exchange'], note: exchangeSpawnNote, spawn: exchangeSpawnNow });
     registerScenarioYearly({ id: 'exchange.yearly', flag: EXCHANGE_FLAG, order: 10, run: exchangeYearly });
     registerScenarioPeriodic({ id: 'exchange.periodic', flag: EXCHANGE_FLAG, periodDays: PERIOD_DAYS, order: 10, run: (g) => exchangePeriodic(g) });
     registerScenarioEvent({ id: 'exchange.intel', flag: EXCHANGE_FLAG, event: 'intelMissionCompleted', run: (g, e) => onIntelMissionCompleted(g, e.empire, e.mission) });
