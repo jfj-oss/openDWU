@@ -137,5 +137,11 @@ await shot('mothercore-close.png', async () => {
     camera.zoomAt(1, camera.width / 2, camera.height / 2);
     camera.centerOn(cx, cy);
 }, null);
+// The Mothercore's blink: frames of the closest view about 0.15 s apart (orange positional lights, red seam glow).
+for (let i = 0; i < 16; i++) {
+    await page.screenshot({ path: `${outDir}/${prefix}blink-${i}.png`, clip: { x: 540, y: 240, width: 520, height: 520 } });
+    await page.waitForTimeout(110);
+}
+console.log(`saved ${outDir}/${prefix}blink-0..15.png`);
 await browser.close();
 for (const l of logs.filter((l) => /error|pageerror/i.test(l)).slice(0, 30)) console.log(l);

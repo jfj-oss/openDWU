@@ -10,8 +10,9 @@
 //   ambient exhaust, so all stay consistent).
 // - Probe swarm: every swarm hull draws our bundled dark-slate derelict frames (public/art/probe-swarm/,
 //   scripts/probe-swarm-ships.py: new silhouettes kitbashed from stock pieces, one per role) instead of its race's art;
-//   picked by role (swarmArtUrl), render only. The Mothercore is drawn larger, with a slow, subdued core glow
-//   (SwarmFxLayer, one pooled additive sprite).
+//   picked by role (swarmArtUrl), render only. The Mothercore (a spiked machine cube) is drawn larger, with the dim red
+//   light of its seams slowly swelling and orange positional lights blinking at its corners (SwarmFxLayer, pooled
+//   additive sprites).
 // - The Purifier: its escorts, guards and repair station draw our bundled aged-bronze Shakturi frames
 //   (public/art/purifier/, scripts/purifier-ships.py) instead of their race's art; the planet destroyer keeps the stock
 //   other/planetdestroyer.png. Picked by subRole (purifierArtUrl), render only: the sim's pictureRef is untouched.
@@ -28,6 +29,7 @@ import { BuiltObjectRole } from '../sim/data/designSpecifications';
 import { BuiltObjectSubRole } from '../sim/builtObjectTypes';
 import { textureFromRgbaPixels } from './textureCanvas';
 import { useMinifyingFilter } from './assets';
+import { loadShipArt } from './shipArt';
 import { SpritePool } from './fxCommon';
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -107,7 +109,7 @@ export function purifierArtUrl(bo: BuiltObject, l: ThreatLooks = looks): string 
 }
 
 export const WORLD_SHIP_VISUAL_SCALE = 2.5;
-export const MOTHERCORE_VISUAL_SCALE = 1.6;
+export const MOTHERCORE_VISUAL_SCALE = 1.9;
 
 /** Visual size multiplier of an object (1 for everything but the world ship / the Mothercore). */
 export function threatDrawScale(l: ThreatLooks, bo: BuiltObject): number {
@@ -178,42 +180,73 @@ export function threatArtUrl(bo: BuiltObject, l: ThreatLooks = looks): string | 
     return purifierArtUrl(bo, l) ?? swarmArtUrl(bo, l);
 }
 
-/** The Mothercore's core: a slow 7 s swell, never off, never bright. Pure. */
-export function swarmCoreAlpha(sec: number): number {
-    return 0.22 + 0.16 * (0.5 + 0.5 * Math.sin((2 * Math.PI * sec) / 7));
+/** The Mothercore's seam glow: a slow 5.5 s swell of the dim red light in its seams, never off, never bright. Pure. */
+export function swarmSeamAlpha(sec: number): number {
+    return 0.45 + 0.3 * (0.5 + 0.5 * Math.sin((2 * Math.PI * sec) / 5.5));
 }
 
-/** Core glow radius as a fraction of the Mothercore frame's side (the wheel's hub, frame centre). */
-export const MOTHERCORE_CORE_FRAC = 0.16;
-const CORE: readonly [number, number, number] = [1.0, 0.46, 0.2];
-const CORE_GLOW_SIDE = 64;
-let coreGlow: Texture | null = null;
-/** A broad, soft ember wash (no disc: the light itself is baked into the hub's recesses), built once. */
-function coreGlowTexture(): Texture {
-    if (coreGlow !== null) return coreGlow;
-    const S = CORE_GLOW_SIDE;
+/**
+ * The Mothercore's positional lights (frame px of mothercore.png; scripts/probe-swarm-ships.py MC_LIGHTS must match):
+ * the six corners of the block's silhouette, where the frame bakes their unlit lamp housings.
+ */
+export const MOTHERCORE_LIGHTS: readonly (readonly [number, number])[] = [[110, 106], [352, 106], [380, 152], [380, 393], [136, 393], [110, 350]];
+
+/** Positional light `k`: two alternating groups (even / odd corners), a 0.32 s flash every 2.2 s, quick rise and
+ * fade. Pure. */
+export function swarmLightAlpha(sec: number, k: number): number {
+    const P = 2.2;
+    const ph = ((((sec + (k % 2) * (P / 2)) % P) + P) % P);
+    if (ph >= 0.32) return 0;
+    return ph < 0.05 ? ph / 0.05 : 1 - (ph - 0.05) / 0.27;
+}
+
+const LAMP: readonly [number, number, number] = [1.0, 0.55, 0.12];
+const LAMP_SIDE = 32;
+const LAMP_CORE_PX = 3;
+let lampTex: Texture | null = null;
+/** A small orange lamp: a hot core of LAMP_CORE_PX radius in a short halo, built once. */
+function lampTexture(): Texture {
+    if (lampTex !== null) return lampTex;
+    const S = LAMP_SIDE;
     const d = new Uint8ClampedArray(S * S * 4);
     for (let y = 0; y < S; y++) {
         for (let x = 0; x < S; x++) {
-            const r = Math.hypot(x + 0.5 - S / 2, y + 0.5 - S / 2) / (S / 2);
-            const a = r >= 1 ? 0 : Math.exp(-r * r * 2.5) * (1 - r) * (1 - r);
+            const r = Math.hypot(x + 0.5 - S / 2, y + 0.5 - S / 2) / LAMP_CORE_PX;
+            const core = Math.max(0, Math.min(1, 1.2 - r));
+            const a = Math.min(1, core + Math.exp(-r * r * 0.18) * 0.6 * Math.max(0, 1 - r / (S / 2 / LAMP_CORE_PX)));
             const i = (y * S + x) * 4;
-            d[i] = CORE[0] * 255;
-            d[i + 1] = CORE[1] * 255;
-            d[i + 2] = CORE[2] * 255;
+            d[i] = 255;
+            d[i + 1] = (LAMP[1] + (0.85 - LAMP[1]) * core * 0.6) * 255;
+            d[i + 2] = (LAMP[2] + (0.5 - LAMP[2]) * core * 0.6) * 255;
             d[i + 3] = a * 255;
         }
     }
     const t = textureFromRgbaPixels(d, S, S);
     useMinifyingFilter(t);
-    coreGlow = t;
+    lampTex = t;
     return t;
 }
 
-/** The core glow is skipped below this drawn size (px). */
+/** The bundled seam-glow layer of the Mothercore (loaded once, on first use; null until then or if it failed). */
+const SEAM_GLOW_URL = `${SWARM_ART_DIR}mothercore-glow.png`;
+let seamGlow: Texture | null = null;
+let seamGlowLoading = false;
+function seamGlowTexture(): Texture | null {
+    if (seamGlow === null && !seamGlowLoading) {
+        seamGlowLoading = true;
+        void loadShipArt(SEAM_GLOW_URL, false).then(
+            (a) => (seamGlow = a?.texture ?? null),
+            () => undefined,
+        );
+    }
+    return seamGlow;
+}
+
+/** The overlays are skipped below this drawn size (px). */
 export const SWARM_FX_MIN_PX = 24;
 
-/** The Mothercore's subdued core glow (one pooled additive sprite; nothing allocated per frame). */
+/** The Mothercore's overlays: its pulsing red seam glow and its blinking orange positional lights (pooled additive
+ * sprites; nothing allocated per frame). */
 export class SwarmFxLayer {
     readonly root = new Container();
     private pool = new SpritePool(this.root);
@@ -226,20 +259,37 @@ export class SwarmFxLayer {
         this.pool.begin();
     }
 
-    /** The glow over a Mothercore sprite (its transform; `tw` × `th` its texture size). `sec`: the shared wall clock. */
+    /** The overlays of a Mothercore sprite (its transform; `tw` × `th` its texture size). `sec`: the shared wall clock. */
     draw(x: number, y: number, rotation: number, scale: number, ax: number, ay: number, tw: number, th: number, drawnPx: number, sec: number): void {
         if (drawnPx < SWARM_FX_MIN_PX) return;
-        const lx = (tw / 2 - ax * tw) * scale;
-        const ly = (th / 2 - ay * th) * scale;
+        const glow = seamGlowTexture();
+        if (glow !== null) {
+            const g = this.pool.acquire(glow);
+            g.blendMode = 'add';
+            g.anchor.set(ax, ay);
+            g.position.set(x, y);
+            g.rotation = rotation;
+            g.scale.set(scale);
+            g.alpha = swarmSeamAlpha(sec);
+        }
         const cos = Math.cos(rotation);
         const sin = Math.sin(rotation);
-        const s = this.pool.acquire(coreGlowTexture());
-        s.blendMode = 'add';
-        s.anchor.set(0.5);
-        s.position.set(x + lx * cos - ly * sin, y + lx * sin + ly * cos);
-        s.rotation = 0;
-        s.scale.set((Math.max(tw, th) * MOTHERCORE_CORE_FRAC * 2 * scale) / CORE_GLOW_SIDE);
-        s.alpha = swarmCoreAlpha(sec);
+        // Screen px per frame px (the frame is about its crop square), for a lamp core of at least 1.6 screen px radius.
+        const k = drawnPx / Math.max(tw, th);
+        const rScreen = Math.max(1.6, 4.5 * k);
+        const lampScale = ((rScreen * scale) / k) / LAMP_CORE_PX;
+        const lamp = lampTexture();
+        for (let i = 0; i < MOTHERCORE_LIGHTS.length; i++) {
+            const a = swarmLightAlpha(sec, i);
+            if (a <= 0.01) continue;
+            const lx = (MOTHERCORE_LIGHTS[i][0] - ax * tw) * scale;
+            const ly = (MOTHERCORE_LIGHTS[i][1] - ay * th) * scale;
+            const s = this.pool.acquire(lamp);
+            s.blendMode = 'add';
+            s.position.set(x + lx * cos - ly * sin, y + lx * sin + ly * cos);
+            s.scale.set(lampScale);
+            s.alpha = a;
+        }
     }
 
     end(): void {

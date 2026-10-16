@@ -20,8 +20,10 @@ Per output frame (bow up, as the stock frames):
 4. Wear (never mirrored): scuffs and long scratches (bare metal, a little lighter), micro-impacts (dark pit, lit
    rim), chipped edge highlights, grime streaks running aft, faint dust in the recesses.
 5. Lights: a few tiny, dim sensor pinpoints in old sockets or dark recesses (never paired, nothing at the bow centre
-   or the middle); the Mothercore's hub recesses lit by a deep ember leak (the core; threatArt.ts adds a faint
-   pulsing wash). Thruster marks (pure blue runs) placed explicitly at the aft of the ships, no nav-light marks, and
+   or the middle). The Mothercore (a spiked machine cube: dense stock chunks tiled on its three visible faces, two
+   raised tiers, the shipset's needles and horns out of every edge) has its seams lit a dim red, baked and also
+   written as mothercore-glow.png (threatArt.ts pulses it additively), and unlit orange lamp housings at the six
+   corners of its silhouette (MC_LIGHTS; threatArt.ts blinks the lights). Thruster marks (pure blue runs) placed explicitly at the aft of the ships, no nav-light marks, and
    no other pixel left in either marker colour (ambientLayer.ts scanShipMarkers).
 Detail sizes are tied to how large each frame is drawn in game (2-3 source px per screen px at the closest zoom), so
 the surface reads as intricate up close and as a dark, textured silhouette at play zoom without shimmering.
@@ -172,7 +174,7 @@ class Piece:
         cls.cache[key] = p
         return p
 
-    def transformed(self, scale, rot, flipx, flipy):
+    def transformed(self, scale, rot, flipx, flipy, sx=1.0):
         """(L·A, A, S·A) premultiplied images, scaled / rotated (deg, CCW) about the piece centre."""
         out = []
         for ch in (self.L * self.A, self.A, self.S * self.A):
@@ -182,7 +184,7 @@ class Piece:
             if flipy:
                 im = im.transpose(Image.FLIP_TOP_BOTTOM)
             w, h = im.size
-            nw, nh = max(1, round(w * scale)), max(1, round(h * scale))
+            nw, nh = max(1, round(w * scale * sx)), max(1, round(h * scale))
             im = im.resize((nw, nh), Image.BICUBIC if scale > 1 else Image.LANCZOS)
             if rot % 360:
                 im = im.rotate(rot, resample=Image.BICUBIC, expand=True)
@@ -201,11 +203,11 @@ class Canvas:
         self.S = np.zeros((h, w))
         self.T = np.zeros((h, w))  # per-piece tone offset (panel variation between pieces)
 
-    def put(self, piece, cx, cy, scale=1.0, rot=0, flipx=False, flipy=False, shadow=0.55, gain=1.0, tone=0.0, mirror=False):
+    def put(self, piece, cx, cy, scale=1.0, rot=0, flipx=False, flipy=False, shadow=0.55, gain=1.0, tone=0.0, mirror=False, sx=1.0):
         for m in ([False, True] if mirror else [False]):
             x = self.w - cx if m else cx
             r = -rot if m else rot
-            pl, pa, ps = piece.transformed(scale, r, flipx != m, flipy)
+            pl, pa, ps = piece.transformed(scale, r, flipx != m, flipy, sx)
             pl = pl * gain
             ph, pw = pa.shape
             x0, y0 = int(round(x - pw / 2)), int(round(cy - ph / 2))
@@ -253,6 +255,8 @@ DUST = np.array([0.30, 0.31, 0.315])
 GRIME = np.array([0.025, 0.027, 0.03])
 SENSOR = np.array([0.62, 0.86, 0.80])  # cold teal pinpoints
 EMBER = np.array([0.95, 0.42, 0.14])
+SEAM_RED = np.array([0.62, 0.075, 0.05])   # the Mothercore's seam glow: dim red, not neon
+LAMP_LENS = np.array([0.42, 0.20, 0.06])  # an unlit orange lamp
 
 
 def ramp(v):
@@ -285,7 +289,7 @@ def line_px(x0, y0, x1, y1):
     return xs, ys
 
 
-def paint(name, L, A, S, T, spec, seed):
+def paint(name, L, A, S, T, spec, seed, G=None):
     """Slate paint + surface detail + wear on an assembled frame. Returns RGBA uint8."""
     h, w = L.shape
     rng = np.random.default_rng(seed)
@@ -534,12 +538,24 @@ def paint(name, L, A, S, T, spec, seed):
             if 0 <= y + oy < h and 0 <= x + ox < w:
                 rgb[y + oy, x + ox] = rgb[y + oy, x + ox] * 0.75 + col * 0.12
 
-    if spec.get('core'):
-        cr = spec['core'] * min(w, h)
-        yy, xx = np.mgrid[0:h, 0:w]
-        fall = np.clip(1 - np.sqrt((xx - w / 2) ** 2 + (yy - h / 2) ** 2) / cr, 0, 1) ** 1.6
-        leak = fall * np.clip(0.42 - v, 0, 0.42) / 0.42 * solid  # the recesses glow, the plating over them does not
-        rgb = rgb + EMBER * (leak * 0.55)[..., None] * (0.55 + 0.45 * fbm(rng, h, w, max(2, int(2 * u))))[..., None]
+    glow = None
+    if spec.get('redseams') and G is not None:
+        # seams / panel gaps lit a dim red from inside (baked; threatArt.ts pulses a faint additive copy over them)
+        gm = np.clip(G * (0.55 + 0.45 * fbm(rng, h, w, max(3, int(4 * u)))), 0, 1) * (A > 0.5)
+        gm = np.maximum(gm, 0.35 * seam_m)  # the plating seams too, fainter
+        core = blur(gm, 0.6)
+        rgb = rgb * (1 - 0.5 * core[..., None]) + SEAM_RED * (core * 0.85)[..., None]
+        halo = np.clip(blur(gm, 2.2) * 1.6, 0, 1) * (A > 0.3)
+        glow = np.zeros((h, w, 4))
+        glow[..., :3] = SEAM_RED
+        glow[..., 3] = np.clip(halo * 0.32 + core * 0.45, 0, 1)
+    for (lx, ly) in spec.get('lamps', []):
+        # an unlit lamp housing: a dark ring with a dim orange lens (threatArt.ts blinks the light over it)
+        for oy in range(-2, 3):
+            for ox in range(-2, 3):
+                r_ = math.hypot(ox, oy)
+                if r_ <= 2.4 and 0 <= ly + oy < h and 0 <= lx + ox < w:
+                    rgb[ly + oy, lx + ox] = LAMP_LENS if r_ <= 1.1 else rgb[ly + oy, lx + ox] * 0.35
 
     out = np.zeros((h, w, 4))
     out[..., :3] = np.clip(rgb, 0, 1)
@@ -567,7 +583,177 @@ def paint(name, L, A, S, T, spec, seed):
     for (x, y) in spec.get('navlights', []):
         if r8[y, x, 3] > 0:
             r8[y, x] = (255, 255, 0, 255)
-    return r8, lights
+    g8 = None if glow is None else np.round(np.clip(glow, 0, 1) * 255).astype(np.uint8)
+    return r8, lights, g8
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# The Mothercore: a spiked machine cube
+# ---------------------------------------------------------------------------------------------------------------
+
+# Cube layout in the 480 px frame: the top face, and the oblique offset of the south / east faces (seen from above,
+# a little from the south-east, so it reads as a block and not a flat square).
+MC_SIZE = 480
+MC_TOP = (104, 100, 254)    # top face x0, y0, side
+MC_OBL = (26, 44)           # oblique offset of the lower faces (dx, dy)
+# Positional lights (orange blink, threatArt.ts MOTHERCORE_LIGHTS must match): the six silhouette corners, inset.
+MC_LIGHTS = [(110, 106), (352, 106), (380, 152), (380, 393), (136, 393), (110, 350)]
+DENSE = [(22, 'frigate'), (22, 'cruiser'), (22, 'destroyer'), (22, 'genericbase'), (24, 'destroyer'), (24, 'genericbase'),
+         (25, 'smallspaceport'), (17, 'genericbase'), (17, 'smallspaceport'), (13, 'gasminingstation'), (0, 'genericbase')]
+_dense_cache = {}
+
+
+def dense_windows(root, fam, name, cs):
+    """Top-left corners of every fully opaque cs × cs window of a stock frame (machinery to tile a cube face with)."""
+    key = (fam, name, cs)
+    if key not in _dense_cache:
+        a = np.asarray(Image.open(os.path.join(root, f'family{fam}', name + '.png')).convert('RGBA'))[..., 3] > 240
+        ii = np.pad(a.astype(np.int32).cumsum(0).cumsum(1), ((1, 0), (1, 0)))
+        s = ii[cs:, cs:] - ii[:-cs, cs:] - ii[cs:, :-cs] + ii[:-cs, :-cs]
+        _dense_cache[key] = np.argwhere(s == cs * cs)
+    return _dense_cache[key]
+
+
+def machine_face(root, rng, S, cell):
+    """A square of dense machinery: stock chunks tiled on a grid (some 2 × 2), each turned / flipped / toned, with
+    the gaps between them as seams. Returns (L, A, S, G) of S × S (G: the seam lines, 0..1)."""
+    c = Canvas(S, S)
+    n = S // cell
+    used = np.zeros((n, n), bool)
+    G = np.zeros((S, S))
+    tiles = []
+    for j in range(n):
+        for i in range(n):
+            if used[j, i]:
+                continue
+            k = 2 if (i + 1 < n and j + 1 < n and not used[j:j + 2, i:i + 2].any() and rng.random() < 0.28) else 1
+            used[j:j + k, i:i + k] = True
+            tiles.append((i * cell, j * cell, k * cell))
+    for (x, y, t) in tiles:
+        for _ in range(30):
+            fam, name = DENSE[int(rng.integers(len(DENSE)))]
+            sc = rng.uniform(0.75, 1.15)
+            cs = int(round((t + 4) / sc))
+            win = dense_windows(root, fam, name, cs)
+            if len(win):
+                break
+        else:
+            continue
+        wy, wx = win[int(rng.integers(len(win)))]
+        piece = Piece.load(root, fam, name, (int(wx), int(wy), int(wx) + cs, int(wy) + cs))
+        gain = rng.uniform(0.78, 1.05) if rng.random() > 0.2 else rng.uniform(0.5, 0.65)  # some recessed
+        c.put(piece, x + t / 2, y + t / 2, sc, 90 * int(rng.integers(4)), flipx=rng.random() < 0.5, shadow=0, gain=gain)
+        # seams on this tile's top / left edges (the grid gaps); a few glow brighter, a few not at all
+        for (ys, xs) in ((slice(y, y + 2), slice(x, x + t)), (slice(y, y + t), slice(x, x + 2))):
+            G[ys, xs] = np.maximum(G[ys, xs], rng.choice([0.0, 0.5, 0.8, 1.0], p=[0.3, 0.25, 0.25, 0.2]))
+    # the glow comes and goes along each seam (dead stretches, brighter leaks)
+    G *= np.clip((fbm(rng, S, S, max(4, cell // 3)) - 0.3) * 3.0, 0, 1)
+    L, A, Sk, _ = c.result()
+    gap = G > 0
+    L = np.where(gap, L * 0.25, L)
+    return L, np.ones((S, S)), Sk, G
+
+
+def sample(img, X, Y):
+    """Bilinear sample of a 2-D array at float coords (outside → 0)."""
+    h, w = img.shape
+    x0 = np.floor(X).astype(int)
+    y0 = np.floor(Y).astype(int)
+    fx, fy = X - x0, Y - y0
+    out = np.zeros(X.shape)
+    for dy_, wy in ((0, 1 - fy), (1, fy)):
+        for dx_, wx in ((0, 1 - fx), (1, fx)):
+            xx, yy = x0 + dx_, y0 + dy_
+            ok = (xx >= 0) & (xx < w) & (yy >= 0) & (yy < h)
+            out += np.where(ok, img[np.clip(yy, 0, h - 1), np.clip(xx, 0, w - 1)], 0) * wx * wy
+    return out
+
+
+def warp_face(arrs, S, W, H, origin, ex, ey):
+    """Map S × S face arrays onto the parallelogram origin + u·ex + v·ey (u, v ∈ [0, 1]) of a W × H canvas."""
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float64) + 0.5
+    px, py = xx - origin[0], yy - origin[1]
+    det = ex[0] * ey[1] - ex[1] * ey[0]
+    u = (px * ey[1] - py * ey[0]) / det
+    v = (py * ex[0] - px * ex[1]) / det
+    inside = (u >= 0) & (u <= 1) & (v >= 0) & (v <= 1)
+    out = [np.where(inside, sample(a, u * S - 0.5, v * S - 0.5), 0) for a in arrs]
+    # anti-aliased coverage from the distance to the parallelogram edges (px)
+    el, eh = math.hypot(*ex), math.hypot(*ey)
+    du = np.minimum(u, 1 - u) * abs(det) / eh
+    dv = np.minimum(v, 1 - v) * abs(det) / el
+    cov = np.clip(np.minimum(du, dv) + 0.5, 0, 1) * ((u > -0.05) & (u < 1.05) & (v > -0.05) & (v < 1.05))
+    return out, cov
+
+
+def build_mothercore(root):
+    rng = np.random.default_rng(zlib.crc32(b'probe-swarm:mothercore-cube'))
+    W = H = MC_SIZE
+    c = Canvas(W, H)
+    c.G = np.zeros((H, W))
+    x0, y0, T = MC_TOP
+    dx, dy = MC_OBL
+    needle = Piece.load(root, 25, 'escort')
+    horns = Piece.load(root, 15, 'miningstation')
+    hornpair = Piece.load(root, 15, 'miningstation', (40, 0, 170, 96))  # the two upper horns, curving out
+    # spikes first (behind the block): out of every outer edge a horn pair in the middle and slim needles beside it,
+    # and at the four outer corners a claw cluster with a long needle through it
+    outline = [((x0, y0), (x0 + T, y0), (0, -1)), ((x0, y0), (x0, y0 + T), (-1, 0)),
+               ((x0 + T + dx, y0 + dy), (x0 + T + dx, y0 + T + dy), (1, 0)), ((x0 + dx, y0 + T + dy), (x0 + T + dx, y0 + T + dy), (0, 1))]
+
+    def spike(piece, ex_, ey_, ang, sc, sx, sink, gain):
+        ln = piece.A.shape[0] * sc
+        c.put(piece, ex_ + math.cos(math.radians(ang)) * (ln / 2 - sink), ey_ - math.sin(math.radians(ang)) * (ln / 2 - sink),
+              sc, ang - 90, shadow=0, gain=gain, sx=sx)
+
+    for (a, b, (nx, ny)) in outline:
+        base = math.degrees(math.atan2(-ny, nx))
+        for t in (0.2, 0.38, 0.62, 0.8):
+            t += rng.uniform(-0.04, 0.04)
+            spike(needle, a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, base + rng.uniform(-12, 12), rng.uniform(0.55, 0.8), 0.42, 14, rng.uniform(0.8, 1.0))
+        spike(hornpair, a[0] + (b[0] - a[0]) * 0.5, a[1] + (b[1] - a[1]) * 0.5, base, rng.uniform(0.7, 0.85), 1.0, 22, 0.9)
+    for (px_, py_, ang) in ((x0, y0, 135), (x0 + T + dx, y0 + dy, 45), (x0 + T + dx, y0 + T + dy, -45), (x0 + dx, y0 + T + dy, -135)):
+        spike(horns, px_, py_, ang, 0.6, 1.0, 40, 0.85)
+        spike(needle, px_, py_, ang, 0.95, 0.45, 10, 0.95)
+
+    def put_face(S, cell, origin, ex, ey, gain, shadow):
+        L, A, Sk, G = machine_face(root, rng, S, cell)
+        (L, Sk, G), cov = warp_face([L, Sk, G], S, W, H, origin, ex, ey)
+        if shadow > 0:
+            sh = fblur(shift(cov, 6, 4), 5) * shadow
+            c.L *= 1 - sh * (1 - cov)
+        inv = 1 - cov
+        c.L = L * gain * cov + c.L * inv
+        c.S = Sk * cov + c.S * inv
+        c.T = c.T * inv
+        c.A = cov + c.A * inv
+        c.G = G * cov + c.G * inv
+        return cov
+
+    # the block: south and east faces (in shade), then the lit top face with a crease along its lower edges
+    put_face(256, 32, (x0, y0 + T), (T, 0), (dx, dy), 0.62, 0)
+    put_face(256, 32, (x0 + T, y0), (dx, dy), (0, T), 0.44, 0)
+    put_face(256, 32, (x0, y0), (T, 0), (0, T), 0.95, 0)
+    # the block's edges: a worn lit lip on the top face's north / west edges, a dark crease where it meets the sides
+    E = np.zeros((H, W))
+    E[y0:y0 + 3, x0:x0 + T] = 1
+    E[y0:y0 + T, x0:x0 + 3] = 1
+    D = np.zeros((H, W))
+    D[y0 + T - 2:y0 + T + 2, x0:x0 + T + 2] = 1
+    D[y0:y0 + T + 2, x0 + T - 2:x0 + T + 2] = 1
+    Lc = c.L / np.maximum(c.A, 1e-6)
+    Lc = np.clip(Lc + E * 0.22, 0, 1) * (1 - 0.6 * D)
+    c.L = Lc * c.A
+    c.G = np.maximum(c.G, D * 0.6 * (rng.random((H, W)) > 0.5))
+    # two raised tiers on the top face (smaller blocks of their own, casting shadows): Borg-like layering
+    for (side, ox, oy, k) in ((128, x0 + 30, y0 + 40, 0.18), (64, x0 + 140, y0 + 150, 0.12)):
+        odx, ody = int(dx * k * 2), int(dy * k * 2)
+        put_face(128, 32, (ox, oy + side), (side, 0), (odx, ody), 0.55, 0.0)
+        put_face(128, 32, (ox + side, oy), (odx, ody), (0, side), 0.42, 0.0)
+        put_face(128, 32, (ox, oy), (side, 0), (0, side), 1.0, 0.6)
+    spec = dict(unit=2.2, conduits=4, stubs=0, pinpoints=0, scratches=0.6, impacts=1.3, sym=False, thrusters=[],
+                redseams=1.0, lamps=MC_LIGHTS)
+    return c, spec
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -581,26 +767,7 @@ def polar(c, r, ang):
 def build(root, name):
     P = lambda fam, f, crop=None: Piece.load(root, fam, f, crop)  # noqa: E731
     if name == 'mothercore':
-        # The centrepiece: a turbine wheel on a six-armed frame, spiked seed pods at the arm ends, claws between.
-        c = Canvas(480, 480)
-        arm = P(22, 'genericbase')
-        claw = P(25, 'escort')
-        pod = P(2, 'genericbase')
-        wheel = P(13, 'smallspaceport')
-        hub = P(13, 'miningstation')
-        for ang in (0, 60, 120, 180, 240, 300):
-            x, y = polar(240, 165, ang)
-            c.put(claw, x, y, 0.95, ang - 90, shadow=0, gain=0.8, tone=-0.05)
-        for ang in (90, 150, 210, 270, 330, 30):
-            x, y = polar(240, 150, ang)
-            c.put(arm, x, y, 0.62, ang - 90, shadow=0.3, gain=0.95)
-        for ang in (90, 150, 210, 270, 330, 30):
-            x, y = polar(240, 205, ang)
-            c.put(pod, x, y, 0.42, ang - 90, shadow=0.5)
-        c.put(wheel, 240, 240, 0.98, 0, shadow=0.7)
-        c.put(hub, 240, 240, 0.5, 0, shadow=0.8, gain=1.1)
-        spec = dict(unit=2.2, conduits=0, stubs=6, pinpoints=4, scratches=1.3, impacts=1.2, sym=True, thrusters=[], core=0.2)
-        return c, spec
+        return build_mothercore(root)
     if name == 'escort':
         # Ring drone: a ring hull spitted on a long sensor needle.
         c = Canvas(200, 200)
@@ -720,9 +887,11 @@ def main():
             continue
         c, spec = build(root, name)
         L, A, S, T = c.result()
-        r8, lights = paint(name, L, A, S, T, spec, zlib.crc32(('probe-swarm:' + name).encode()))
+        r8, lights, g8 = paint(name, L, A, S, T, spec, zlib.crc32(('probe-swarm:' + name).encode()), getattr(c, 'G', None))
         img = Image.fromarray(r8, 'RGBA')
         img.save(os.path.join(args.out, name + '.png'), optimize=True)
+        if g8 is not None:
+            Image.fromarray(g8, 'RGBA').save(os.path.join(args.out, name + '-glow.png'), optimize=True)
         made.append((name, img))
         print(name, img.size, 'lights', lights)
     if args.preview:
