@@ -205,7 +205,9 @@ describe('wizard', () => {
     it("the Other Empires page's Smarter AI choice reaches StartGameOptions and createGame's options", () => {
         const cat = addonCatalog(scenarioIndexFs());
         const none = { flags: {}, params: {} };
-        expect(addonChoiceFor(cat, [], none, defaultSmarterAIChoice())).toBeNull(); // off by default
+        // On by default, every sub-option with it (the ship design ones too); unticked = no add-on.
+        expect(addonChoiceFor(cat, [], none, defaultSmarterAIChoice())).toMatchObject({ id: SC, flags: { smarterAI: true, smarterAIResearch: true, smarterAIDesignTune: true, smarterAIWeaponFocus: true, smarterAIDesignScale: true, smarterAIDesignTrim: true, smarterAIOpening: true } });
+        expect(addonChoiceFor(cat, [], none, { ...defaultSmarterAIChoice(), enabled: false })).toBeNull();
         const smart = { enabled: true, research: true, growthTaxes: false, growthTaxThreshold: 55 };
         const choice = addonChoiceFor(cat, [], none, smart)!;
         expect(choice).toMatchObject({ id: SC, flags: { smarterAI: true, smarterAIResearch: true, smarterAIGrowthTax: false, ...STATECRAFT_ON }, params: { smarterAIGrowthTaxThreshold: 55 }, addons: [SC] });

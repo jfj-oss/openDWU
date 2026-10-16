@@ -220,7 +220,7 @@ export interface SmarterAIChoice {
 }
 
 export function defaultSmarterAIChoice(): SmarterAIChoice {
-    return { enabled: false, research: true, growthTaxes: true, growthTaxThreshold: 50, budget: true, retrofit: true, colonies: true, independents: true, defence: true, pirates: true, researchStations: true, wonders: true, espionage: true, diplomacy: true, designTune: false, weaponFocus: false, designScale: false, designTrim: false, opening: true, openingPopShare: 90 };
+    return { enabled: true, research: true, growthTaxes: true, growthTaxThreshold: 50, budget: true, retrofit: true, colonies: true, independents: true, defence: true, pirates: true, researchStations: true, wonders: true, espionage: true, diplomacy: true, designTune: true, weaponFocus: true, designScale: true, designTrim: true, opening: true, openingPopShare: 90 };
 }
 
 /**
