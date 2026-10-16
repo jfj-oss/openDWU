@@ -55,6 +55,7 @@ import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission 
 import { makeHabitatIntoColonyRuntime } from '../../missions/cmdTroops';
 import { habitatGenerateNewTroop } from '../../troops';
 import { TroopList, TroopType, type Troop } from '../../cargo';
+import { SECTOR_SIZE } from '../../logistics/orders';
 import { calculateForceStrengths, calculatePopulationStrength } from '../../combat/invasion';
 import { stellarObjectCharacters } from '../../characters';
 import { empireShipGroups, shipGroupAssignMission, type ShipGroup } from '../../fleets/shipGroup';
@@ -187,6 +188,10 @@ export interface GenShipsState {
     /** Retarget mode (the landing was hopeless): the original target to take back once the troops are made at the
      *  fallback colony; the fallback is `target` until it falls (then `base` is the colony the troops are made at). */
     retake?: Habitat | null;
+    /** Landings that failed at `failTarget` (raises the margin asked of the next one), and a landing in progress awaiting its outcome. */
+    failTarget?: Habitat | null;
+    fails?: number;
+    landedAt?: Habitat | null;
     base?: Habitat | null;
     /** When the first retarget happened (the retake cap counts from here), last monthly recruiting, troops made so far, retargets so far. */
     retargetDate?: number;
@@ -287,7 +292,10 @@ const P = {
     rearmPct: (g: Galaxy) => p(g, 'genShipsRearmPct', 300),
     pumpPerMonth: (g: Galaxy) => Math.trunc(p(g, 'genShipsPumpPerMonth', 3)),
     pumpMaxShips: (g: Galaxy) => Math.trunc(p(g, 'genShipsPumpMaxShips', 150)),
-    assaultMarginPct: (g: Galaxy) => p(g, 'genShipsAssaultMarginPct', 130),
+    assaultMarginPct: (g: Galaxy) => p(g, 'genShipsAssaultMarginPct', 200),
+    /** Each failed landing at a target raises the margin required for it by this many points, up to the cap. */
+    assaultFailStepPct: (g: Galaxy) => p(g, 'genShipsAssaultFailStepPct', 25),
+    assaultFailCapPct: (g: Galaxy) => p(g, 'genShipsAssaultFailCapPct', 100),
     retakeYears: (g: Galaxy) => p(g, 'genShipsRetakeYears', 15),
     retakeTroopsPerMonth: (g: Galaxy) => Math.trunc(p(g, 'genShipsRetakeTroopsPerMonth', 6)),
     retakeGarrison: (g: Galaxy) => Math.trunc(p(g, 'genShipsRetakeGarrison', 8)),
@@ -1019,7 +1027,7 @@ function directWar(galaxy: Galaxy, st: GenShipsState): void {
         // land only if they win with the margin (once under way, a bare win holds them to it). Otherwise: hopeless.
         const loaded = loadedTroops(st);
         if (loaded.length === 0) st.committed = st.committed === true || superior;
-        else if (genShipsAssaultWins(galaxy, target, faction, loaded, st.committed ? 100 : P.assaultMarginPct(galaxy))) st.committed = true;
+        else if (genShipsAssaultWins(galaxy, target, faction, loaded, st.committed ? 100 : assaultMargin(galaxy, st, target))) st.committed = true;
         else {
             st.committed = false;
             if (hopelessLanding(galaxy, st, loaded)) return;
@@ -1034,6 +1042,7 @@ function directWar(galaxy: Galaxy, st: GenShipsState): void {
             for (const t of troops) t.builtObject = null;
             invadeFromInside(galaxy, target, faction, troops);
             st.landings++;
+            st.landedAt = target;
             continue;
         }
         const m = builtObjectMission(bo.mission);
@@ -1047,6 +1056,15 @@ function directWar(galaxy: Galaxy, st: GenShipsState): void {
         }
     }
     const troopsLeft = st.transports.some((b) => b.troops !== null && b.troops.count > 0) || (target.invadingTroops !== null && target.invadingTroops.items.some((t) => t.empire === faction));
+    // A landing that ended with the troops gone and the world still held is a failure: the next one asks for more margin.
+    if (st.landedAt != null && !troopsLeft) {
+        if (st.landedAt.empire !== faction) {
+            if (st.failTarget !== st.landedAt) st.fails = 0;
+            st.failTarget = st.landedAt;
+            st.fails = (st.fails ?? 0) + 1;
+        }
+        st.landedAt = null;
+    }
     const sinceWar = galaxyStarDate(galaxy) - st.warDate;
     const sinceEngage = st.engageDate ? galaxyStarDate(galaxy) - st.engageDate : 0;
     // The war clock starts when the escort reaches the world (the trip from the staging point is not part of it); never
@@ -1134,6 +1152,12 @@ function nearestColony(galaxy: Galaxy, empire: Empire, x: number, y: number): Ha
     return best;
 }
 
+/** The margin (%) asked of a landing at `target`: the base margin plus a step per failed landing there, capped. */
+export function assaultMargin(galaxy: Galaxy, st: GenShipsState, target: Habitat): number {
+    const fails = st.failTarget === target ? (st.fails ?? 0) : 0;
+    return P.assaultMarginPct(galaxy) + Math.min(P.assaultFailCapPct(galaxy), fails * P.assaultFailStepPct(galaxy));
+}
+
 /**
  * The stock ground war's comparison for `troops` (of `faction`) invading `habitat` as it stands now: the garrison with
  * its defender bonuses (combat/invasion.ts calculateForceStrengths, as resolveInvasionBattles calls it) plus the
@@ -1146,6 +1170,36 @@ export function genShipsAssaultStrengths(galaxy: Galaxy, habitat: Habitat, facti
     const r = calculateForceStrengths(galaxy, habitat, habitat.empire, faction, garrison, stellarObjectCharacters(habitat), attackers, null);
     let attacking = r.attackingStrength;
     let defending = r.defendingStrength;
+    // What resolveInvasionBattles adds while the fight runs, through the same stock functions: checkForReinforcements (only
+    // while the defence is under 1.5x the attack: the owner's troop ships already unloading here, then those within a sector
+    // of it) and the troops still being recruited at the colony, all in the garrison list so the stock bonuses apply.
+    const owner = habitat.empire;
+    if (owner !== null && owner !== galaxy.independentEmpire && owner !== faction) {
+        const limit = Math.trunc(attacking * 1.5);
+        const joined = new TroopList();
+        for (const t of garrison.items) joined.add(t);
+        const unloading: Troop[] = [];
+        const nearby: Troop[] = [];
+        const sector = SECTOR_SIZE * SECTOR_SIZE;
+        for (const b of owner.builtObjects) {
+            if (b.hasBeenDestroyed || b.troops === null || b.troops.count === 0 || b.topSpeed <= 0) continue;
+            const m = builtObjectMission(b.mission);
+            if (m !== null && m.type === BuiltObjectMissionType.UnloadTroops && m.targetHabitat === habitat) unloading.push(...b.troops.items);
+            else if (b.warpSpeed > 0 && galaxy.calculateDistanceSquared(b.xpos, b.ypos, habitat.xpos, habitat.ypos) < sector) nearby.push(...b.troops.items);
+        }
+        const extra: Troop[] = [];
+        if (defending < limit) extra.push(...unloading);
+        if (defending < limit) {
+            const j2 = new TroopList();
+            for (const t of [...garrison.items, ...extra]) j2.add(t);
+            if (calculateForceStrengths(galaxy, habitat, habitat.empire, faction, j2, stellarObjectCharacters(habitat), attackers, null).defendingStrength < limit) extra.push(...nearby);
+        }
+        if (habitat.troopsToRecruit != null) extra.push(...habitat.troopsToRecruit.items);
+        if (extra.length > 0) {
+            for (const t of extra) joined.add(t);
+            defending = calculateForceStrengths(galaxy, habitat, habitat.empire, faction, joined, stellarObjectCharacters(habitat), attackers, null).defendingStrength;
+        }
+    }
     if (habitat.population != null && habitat.empire !== null) {
         const ps = calculatePopulationStrength(galaxy, habitat, faction, habitat.empire);
         if (!ps.isDefending) attacking += ps.result;
@@ -1314,7 +1368,7 @@ function directRetake(galaxy: Galaxy, st: GenShipsState): void {
         }
     }
     const stock = base.troops.items.slice(P.retakeGarrison(galaxy));
-    if (stock.length === 0 || !genShipsAssaultWins(galaxy, goal, faction, stock, P.assaultMarginPct(galaxy))) return;
+    if (stock.length === 0 || !genShipsAssaultWins(galaxy, goal, faction, stock, assaultMargin(galaxy, st, goal))) return;
     // Transports: the empty ones at the base, then bought (the design's price from the state money) until every troop has a place.
     const free = st.transports.filter((b) => (b.troops === null || b.troops.count === 0) && home(b));
     const need = (): boolean => {

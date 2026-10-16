@@ -34,7 +34,7 @@ import { annualTroopMaintenance } from '../src/sim/troops';
 import { militaryPotency, FleetPosture } from '../src/sim/diplomacyTick';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { empireTechLevel } from '../src/sim/scenario/threats/robotMutiny';
-import { averageTechLevel, syncFactionTech } from '../src/sim/scenario/threats/factionNavy';
+import { averageTechLevel, givePortAt, syncFactionTech } from '../src/sim/scenario/threats/factionNavy';
 import { cultNavyMonthly, cultFleets } from '../src/sim/scenario/threats/cult';
 import { makeFactionTroop } from '../src/sim/scenario/threats/framework';
 import { BuiltObjectMissionPriority } from '../src/sim/missions/mission';
@@ -325,6 +325,7 @@ describe('Cult: navy rebuild and mining stations', () => {
         cultNavyMonthly(g);
         expect(st.navy!.pumpBought ?? 0).toBe(bought0);
         g.scenario!.params.cultPumpPct = 500; // far above the galaxy average
+        g.scenario!.params.cultPumpThreatPct = 1e9; // (the host's navy sits beside the colony: the threat check has its own test)
         // Wiped out: three a month, paid at the design's price, free upkeep, in a fleet at its port world.
         for (const b of [...live()]) builtObjectCompleteTeardown(g, b);
         expect(live().length).toBe(0);
@@ -361,5 +362,85 @@ describe('Cult: navy rebuild and mining stations', () => {
         g.scenario!.params.cultStationMax = faction.miningStations.length;
         cultNavyMonthly(g);
         expect((st.navy!.stationsFounded ?? 0) - found0).toBe(founded);
+    }, 1200000);
+});
+
+describe('Cult: the pump spawns at the safest home and banks while every home is threatened', () => {
+    it('safest port world chosen; banked while threatened; released together as one fleet', () => {
+        const { game } = ctGame();
+        const g = game.galaxy;
+        const st = cultState(g);
+        const host = normalEmpires(g).find((e) => e.colonies.some((c) => c !== e.capital && c.population.totalAmount > 0) && e.miningStations.length > 0 && e.builtObjects.filter((b) => b.role === BuiltObjectRole.Military).length >= 5)!;
+        const cols = host.colonies.filter((c) => c !== host.capital && c.population.totalAmount > 0);
+        const colony = cols[0];
+        const governor = generateNewCharacter(g, host, CharacterRole.ColonyGovernor, colony).character;
+        convert(g, st, governor!);
+        cultCheckTrigger(g);
+        const faction = st.faction!;
+        takeOwnershipOfColonyFull(g, host, colony, faction, false, false);
+        cultNavyMonthly(g); // the starting navy (and its first port)
+        const navy = st.navy!;
+        const live = () => faction.builtObjects.filter((b) => b.role === BuiltObjectRole.Military && !b.hasBeenDestroyed);
+        // A second home far from the first.
+        const far = [...host.colonies, ...normalEmpires(g).flatMap((e) => e.colonies)].filter((c) => c.empire !== faction && !c.hasBeenDestroyed && g.calculateDistance(c.xpos, c.ypos, colony.xpos, colony.ypos) > 60000).sort((a, b) => b.population.totalAmount - a.population.totalAmount)[0];
+        takeOwnershipOfColonyFull(g, far.empire!, far, faction, false, false);
+        givePortAt(g, 'cult', faction, navy, far);
+        givePortAt(g, 'cult', faction, navy, colony);
+        for (const b of [...live()]) builtObjectCompleteTeardown(g, b);
+        g.scenario!.params.cultPumpPct = 500;
+        g.scenario!.params.cultPumpMaxShips = 100;
+        faction.stateMoney = 50000000;
+        // Park the host's whole navy on the first home: the second is the safer one.
+        const park = (h: { xpos: number; ypos: number }): void => {
+            for (const b of host.builtObjects) if (b.role === BuiltObjectRole.Military && !b.hasBeenDestroyed) { b.xpos = h.xpos + 300; b.ypos = h.ypos; }
+        };
+        park(colony);
+        navy.pumpShipStrength = 1000; // a strong batch estimate: the second home (nothing of the host's there) is clear
+        const bought0 = navy.pumpBought ?? 0;
+        const before = live().length;
+        // Threatened everywhere: nothing is spawned, the purchases are banked (nothing charged yet).
+        park(colony);
+        // Second home is safe: the three ships appear there.
+        cultNavyMonthly(g);
+        const spawned = live();
+        expect(spawned.length).toBe(before + 3);
+        expect(spawned.every((b) => g.calculateDistance(b.xpos, b.ypos, far.xpos, far.ypos) < 5000)).toBe(true);
+        expect(navy.pumpBought).toBe(bought0 + 3);
+        // Now both homes are threatened: banked.
+        for (const b of [...live()]) builtObjectCompleteTeardown(g, b);
+        const hostShips = host.builtObjects.filter((b) => b.role === BuiltObjectRole.Military && !b.hasBeenDestroyed);
+        hostShips.forEach((b, i) => { const h = i % 2 === 0 ? colony : far; b.xpos = h.xpos + 300; b.ypos = h.ypos; });
+        const money0 = faction.stateMoney;
+        navy.pumpShipStrength = 1; // a tiny estimate: the batch cannot beat the host's navy
+        cultNavyMonthly(g);
+        expect(live().length).toBe(0);
+        expect(navy.pumpBank).toBe(3);
+        expect(faction.stateMoney).toBeGreaterThanOrEqual(money0); // nothing charged while banked
+        cultNavyMonthly(g);
+        cultNavyMonthly(g);
+        expect(live().length).toBe(0);
+        expect(navy.pumpBank).toBe(9);
+        // The bank reaches its size: all released together at the least-threatened home, one fleet.
+        const fleets0 = empireShipGroups(faction).filter((sg) => sg !== null).length;
+        cultNavyMonthly(g);
+        expect(live().length).toBe(12);
+        expect(navy.pumpBank).toBe(0);
+        expect(new Set(live().map((b) => b.shipGroup)).size).toBe(1);
+        expect(empireShipGroups(faction).filter((sg) => sg !== null).length).toBe(fleets0 + 1);
+        // Banked, then a home clears: released at once.
+        for (const b of [...live()]) builtObjectCompleteTeardown(g, b);
+        navy.pumpShipStrength = 1;
+        cultNavyMonthly(g);
+        expect(navy.pumpBank).toBe(3);
+        for (const b of host.builtObjects) if (b.role === BuiltObjectRole.Military && !b.hasBeenDestroyed) { b.xpos = 1e9; b.ypos = 1e9; }
+        cultNavyMonthly(g);
+        expect(navy.pumpBank).toBe(0);
+        expect(live().length).toBe(6);
+        // The ship cap bounds the bank.
+        for (const b of [...live()]) builtObjectCompleteTeardown(g, b);
+        g.scenario!.params.cultPumpMaxShips = 2;
+        hostShips.forEach((b) => { b.xpos = colony.xpos + 300; b.ypos = colony.ypos; });
+        cultNavyMonthly(g);
+        expect(navy.pumpBank ?? 0).toBeLessThanOrEqual(2);
     }, 1200000);
 });

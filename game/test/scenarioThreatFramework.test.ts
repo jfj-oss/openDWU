@@ -38,7 +38,8 @@ import { threatMarker, THREAT_CONFIRMED_COLOR, THREAT_SUSPECTED_COLOR } from '..
 import type { CreateGameOptions } from '../src/sim/game';
 import { comboOverlayFs, createScenarioGame } from './helpers/scenarioGame';
 import { registerScenarioEvent, scenarioEmit, scenarioQuery } from '../src/sim/scenario/hooks';
-import { genShipsAssaultStrengths, genShipsAssaultWins, genShipsLowLevel, genShipsPeriodic, genShipsState, genShipsStates, genShipsWaveSize, peekGenShipsState } from '../src/sim/scenario/threats/generationShips';
+import { TroopList } from '../src/sim/cargo';
+import { assaultMargin, genShipsAssaultStrengths, genShipsAssaultWins, genShipsLowLevel, genShipsPeriodic, genShipsState, genShipsStates, genShipsWaveSize, peekGenShipsState } from '../src/sim/scenario/threats/generationShips';
 import { empireTechLevel, maxDesignTechLevel } from '../src/sim/scenario/threats/robotMutiny';
 import { calculateOverallStrengthFactorWithoutShields } from '../src/sim/diplomacyTick';
 import { ComponentType } from '../src/sim/data/components';
@@ -588,6 +589,34 @@ describe('new threats: generation ships, archive cores, probe swarm', () => {
         expect(ships.filter((b) => !b.hasBeenDestroyed).every((b) => b.actualEmpire === pirate && b.supportCostFactor === 0)).toBe(true);
         expect(pirate.builtObjects.length).toBeGreaterThan(ships.length); // the stock base, construction ship and freighters came too
         expect(faction.builtObjects.filter((b) => !b.hasBeenDestroyed).length).toBe(0);
+    }, 600000);
+
+    it('generation ships: the assault estimate counts the defender reinforcements and recruits; a failed landing raises the next margin', () => {
+        const g = ntGame(ALL, { ...WAVE, genShipsStrikeDays: 0 });
+        const st = genShipsState(g);
+        genShipsPeriodic(g);
+        const owner = st.owner!;
+        const target = st.target!;
+        const faction = st.faction!;
+        const loaded = st.transports.flatMap((b) => [...(b.troops?.items ?? [])]);
+        const base = genShipsAssaultStrengths(g, target, faction, loaded).defending;
+        // Troops in training at the colony count.
+        target.troopsToRecruit ??= new TroopList();
+        for (let i = 0; i < 10; i++) {
+            const t = makeFactionTroop(g, owner, 900, 'Test Recruit', owner.dominantRace);
+            t.colony = target;
+            target.troopsToRecruit.add(t);
+        }
+        const withRecruits = genShipsAssaultStrengths(g, target, faction, loaded).defending;
+        expect(withRecruits).toBeGreaterThan(base);
+        // The default margin is 200 %, and each failed landing at the target asks 25 points more, capped at +100.
+        expect(assaultMargin(g, st, target)).toBe(200);
+        st.failTarget = target;
+        st.fails = 2;
+        expect(assaultMargin(g, st, target)).toBe(250);
+        st.fails = 50;
+        expect(assaultMargin(g, st, target)).toBe(300);
+        expect(assaultMargin(g, st, owner.colonies.find((c) => c !== target)!)).toBe(200);
     }, 600000);
 
     it('generation ships: a hopeless landing retargets another world of the same empire; troops are made there and the original is invaded again', () => {

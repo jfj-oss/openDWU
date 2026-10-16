@@ -274,6 +274,7 @@ describe('Hive: navy rebuild and mining stations', () => {
         hiveNavyMonthly(g);
         expect(st.navy!.pumpBought ?? 0).toBe(0);
         g.scenario!.params.hivePumpPct = 500;
+        g.scenario!.params.hivePumpThreatPct = 1e9; // (the threat check has its own test, in the Cult file)
         for (const b of [...live()]) builtObjectCompleteTeardown(g, b);
         faction.stateMoney = 5000000;
         hiveNavyMonthly(g);

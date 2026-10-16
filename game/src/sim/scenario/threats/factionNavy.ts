@@ -65,6 +65,13 @@ export interface NavyState {
     /** Warships bought by the monthly pump (also the cursor through the design cycle). */
     shipsPumped?: number;
     pumpBought?: number;
+    /** Warships bought but not yet spawned: held back while every home is threatened, released together as one fleet (saved). */
+    pumpBank?: number;
+    /** Mean strength of the ships the pump last spawned (estimates a batch before it is bought). */
+    pumpShipStrength?: number;
+    /** Debug counters: months a purchase was banked, banked batches released. */
+    pumpBanked?: number;
+    pumpReleased?: number;
     /** Mining / gas stations the faction founded itself. */
     stationsFounded?: number;
     /** Debug counters of the station founder: months with no target, with no design, with no money. */
@@ -100,6 +107,12 @@ const P = {
     pumpCapPct: (g: Galaxy, k: NavyPrefix) => Math.max(0, scenarioParam(g, `${k}PumpCapPct`, 100)),
     /** ... but never below this many warships. */
     pumpMinShips: (g: Galaxy, k: NavyPrefix) => Math.max(0, Math.trunc(scenarioParam(g, `${k}PumpMinShips`, 30))),
+    /** Home threat radius = defendRadius x this. */
+    pumpThreatRadiusMult: (g: Galaxy, k: NavyPrefix) => Math.max(0, scenarioParam(g, `${k}PumpThreatRadiusMult`, 3)),
+    /** A home is threatened when enemy warship strength within the radius exceeds this % of (batch + local friendly strength). */
+    pumpThreatPct: (g: Galaxy, k: NavyPrefix) => Math.max(0, scenarioParam(g, `${k}PumpThreatPct`, 100)),
+    /** Banked purchases are released at the least-threatened home once the bank reaches this size. */
+    pumpBankMax: (g: Galaxy, k: NavyPrefix) => Math.max(1, Math.trunc(scenarioParam(g, `${k}PumpBankMax`, 10))),
     /** Mining / gas stations the faction founds itself per month at its best free resource bodies (0: none). */
     stationsPerMonth: (g: Galaxy, k: NavyPrefix) => Math.max(0, Math.trunc(scenarioParam(g, `${k}StationsPerMonth`, 1))),
     /** Most mining / gas stations it holds before it stops founding more. */
@@ -328,25 +341,66 @@ export function pumpNavy(galaxy: Galaxy, k: NavyPrefix, faction: Empire, navy: N
         if (biggest === null) return 0;
         homes.push(biggest);
     }
-    homes.sort((a, b) => b.population.totalAmount - a.population.totalAmount);
     const target = (averageMilitary(galaxy, faction) * P.pumpPct(galaxy, k)) / 100;
     let strength = militaryPotency(faction);
     let live = 0;
     for (const b of faction.builtObjects) if (!b.hasBeenDestroyed && b.role === BuiltObjectRole.Military) live++;
     const cap = pumpShipCap(galaxy, k, faction);
-    let counted = 0;
     const cycle = PUMP_CYCLE.filter((sub) => designsFindNewestCanBuild(faction.designs, sub) !== null); // a missing design would use up a purchase
     if (cycle.length === 0) return 0;
-    const res = purchaseWarships(galaxy, faction, homes, cycle, navy.shipsPumped ?? 0, perMonth, (bought) => {
+    const bank = Math.max(0, navy.pumpBank ?? 0);
+    // Estimated strength of one pumped ship (last batch; else the live fleet's mean).
+    if (live > 0 && strength > 0) navy.pumpShipStrength = strength / live;
+    const per = navy.pumpShipStrength ?? 0;
+    // New purchases this month, within the same limits as buying (cap, strength target), the bank counted as already bought.
+    let n = 0;
+    while (n < perMonth && live + bank + n < cap && strength + (bank + n) * per < target) n++;
+    if (bank + n === 0) return 0;
+    // Rank the homes by enemy warship strength nearby (safest first, ties by population).
+    const radius = P.defendRadius(galaxy, k) * P.pumpThreatRadiusMult(galaxy, k);
+    const threat = new Map<Habitat, number>();
+    for (const h of homes) threat.set(h, nearbyWarStrength(galaxy, h, radius, faction, false));
+    homes.sort((a, b) => threat.get(a)! - threat.get(b)! || b.population.totalAmount - a.population.totalAmount);
+    const best = homes[0];
+    const batchStrength = (bank + n) * per + nearbyWarStrength(galaxy, best, P.defendRadius(galaxy, k), faction, true);
+    const threatened = threat.get(best)! > (batchStrength * P.pumpThreatPct(galaxy, k)) / 100;
+    if (threatened && bank + n < P.pumpBankMax(galaxy, k)) {
+        navy.pumpBank = bank + n;
+        if (n > 0) navy.pumpBanked = (navy.pumpBanked ?? 0) + 1;
+        return 0;
+    }
+    let counted = 0;
+    const res = purchaseWarships(galaxy, faction, [best], cycle, navy.shipsPumped ?? 0, bank + n, (bought) => {
         for (; counted < bought.length; counted++) strength += Math.max(0, calculateOverallStrengthFactorWithoutShields(bought[counted]));
         return live + bought.length < cap && strength < target;
     });
     navy.shipsPumped = res.cursor;
-    const byHome = new Map<Habitat, BuiltObject[]>();
-    res.ships.forEach((b, i) => byHome.set(res.homeOf[i], [...(byHome.get(res.homeOf[i]) ?? []), b]));
-    for (const [home, ships] of byHome) formBeaconFleets(galaxy, faction, home, ships, FleetPosture.Defend);
+    // Left over only when stopped by money / designs (still wanted); a cap or target stop drops the rest.
+    const wantedMore = live + res.ships.length < cap && strength < target;
+    navy.pumpBank = wantedMore ? Math.max(0, bank + n - res.ships.length) : 0;
+    if (bank > 0 && res.ships.length > 0) navy.pumpReleased = (navy.pumpReleased ?? 0) + 1;
+    if (res.ships.length > 0) {
+        let sum = 0;
+        for (const b of res.ships) sum += Math.max(0, calculateOverallStrengthFactorWithoutShields(b));
+        navy.pumpShipStrength = sum / res.ships.length;
+        formBeaconFleets(galaxy, faction, best, res.ships, FleetPosture.Defend);
+    }
     navy.pumpBought = (navy.pumpBought ?? 0) + res.ships.length;
     return res.ships.length;
+}
+
+/** Summed warship strength (no shields) within `radius` of `home`: the faction's own (friendly) or every other active empire's. */
+function nearbyWarStrength(galaxy: Galaxy, home: Habitat, radius: number, faction: Empire, friendly: boolean): number {
+    let sum = 0;
+    const scan = (e: Empire): void => {
+        for (const b of e.builtObjects) {
+            if (b.hasBeenDestroyed || b.role !== BuiltObjectRole.Military) continue;
+            if (galaxy.calculateDistance(b.xpos, b.ypos, home.xpos, home.ypos) <= radius) sum += Math.max(0, calculateOverallStrengthFactorWithoutShields(b));
+        }
+    };
+    if (friendly) scan(faction);
+    else for (const e of galaxy.empires) if (e !== faction && e.active && e !== galaxy.independentEmpire) scan(e);
+    return sum;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
