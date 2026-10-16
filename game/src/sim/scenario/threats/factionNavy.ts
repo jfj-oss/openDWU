@@ -33,7 +33,7 @@ import { scenarioParam } from '../state';
 import { empireTechLevel, formBeaconFleets, maxDesignTechLevel, raiseFactionTech } from './robotMutiny';
 import { normalEmpires } from './framework';
 
-export type NavyPrefix = 'cult' | 'hive';
+export type NavyPrefix = 'cult' | 'hive' | 'genShips';
 
 /** Saved per-faction bookkeeping (plain data; lives in the Cult's / Hive's state bag as `navy`). */
 export interface NavyState {

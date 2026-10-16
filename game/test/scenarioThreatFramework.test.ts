@@ -387,11 +387,76 @@ describe('new threats: generation ships, archive cores, probe swarm', () => {
             expect(st.phase).toBe('settled');
             expect(st.worldShipFate).toBe('landed');
             expect(st.settleAt!.population.totalAmount).toBeGreaterThan(pop);
+            // Settled: money, hull research up to the top, a free medium port, its own big-hull designs, and an AI that builds up.
+            genShipsPeriodic(g);
+            expect(faction.stateMoney).toBeGreaterThanOrEqual(1000000);
+            expect(faction.privateMoney).toBeGreaterThanOrEqual(10000000);
+            expect(faction.spacePorts.some((b) => !b.hasBeenDestroyed && b.supportCostFactor === 0)).toBe(true);
+            expect(st.econStarted).toBe(true);
+            expect(scenarioQuery(g, 'forceStructureWarships', 10, { empire: faction, threat: 0 })).toBe(30);
+            const cap = faction.designs.filter((d) => d.subRole === BuiltObjectSubRole.CapitalShip && !d.isObsolete).at(-1);
+            expect(cap).toBeDefined();
             expect(scenarioQuery(g, 'stateAIDormant', false, { empire: faction })).toBe(false);
         }
     }, 600000);
 
     const WAVE = { genShipsEarliestYear: 0, genShipsTechLevel: 1, genShipsEmpiresAtTech: 1, genShipsFlavour: 1, genShipsAiFightRatioPct: 100000, genShipsMinFirepower: 500 };
+
+    it('generation ships: starts at the galaxy edge, stages at a free system outside every territory, the mothership is heavily armoured and shielded', () => {
+        const g = ntGame(ALL, { ...WAVE });
+        const st = genShipsState(g);
+        genShipsPeriodic(g);
+        const edge = Math.min(st.spawnX, st.spawnY, g.sizeX - st.spawnX, g.sizeY - st.spawnY);
+        expect(edge).toBeLessThan(g.sizeX * 0.1);
+        // The staging point: a star system with no colony in it and outside all empire territory, nearer the target than the spawn.
+        expect(st.stageName ?? '').not.toBe('');
+        expect(g.checkEmpireTerritoryIdAtLocation(st.stageX!, st.stageY!)).toBe(-1);
+        const sys = g.systems.find((x) => x?.systemStar && x.systemStar.xpos === st.stageX && x.systemStar.ypos === st.stageY)!;
+        expect(sys).toBeDefined();
+        expect(g.habitats.some((h) => h !== null && h.empire !== null && !h.hasBeenDestroyed && g.determineHabitatSystemStar(h)?.systemIndex === sys.systemStar!.systemIndex)).toBe(false);
+        expect(g.calculateDistance(st.stageX!, st.stageY!, st.target!.xpos, st.target!.ypos)).toBeLessThan(g.calculateDistance(st.spawnX, st.spawnY, st.target!.xpos, st.target!.ypos));
+        // The world ship heads there and stays; it is never left to the stock AI.
+        const ws = st.worldShip!;
+        expect(ws.isAutoControlled).toBe(false);
+        expect(builtObjectMission(ws.mission)?.type).toBe(BuiltObjectMissionType.Move);
+        // Mothership: a lot of armour and shields, well above any escort hull.
+        const best = (k: 'armor' | 'shieldsCapacity'): number => Math.max(...st.escorts.map((b) => b[k]));
+        expect(ws.armor).toBeGreaterThan(best('armor') * 2);
+        expect(ws.shieldsCapacity).toBeGreaterThan(best('shieldsCapacity') * 2);
+    }, 600000);
+
+    it('generation ships: troops land once the escort holds the world, defenders or not; the transports wait beside the world ship until then', () => {
+        const g = ntGame(ALL, { ...WAVE, genShipsStrikeDays: 0 });
+        const st = genShipsState(g);
+        genShipsPeriodic(g);
+        const owner = st.owner!;
+        const target = st.target!;
+        st.phase = 'war';
+        st.warDate = galaxyStarDate(g);
+        st.strikeDone = true;
+        genShipsPeriodic(g);
+        expect(st.committed).toBe(false);
+        expect(st.transports.every((b) => builtObjectMission(b.mission)?.type === BuiltObjectMissionType.Escort)).toBe(true);
+        // An owner warship parked over the world (what the threatened AI does) no longer blocks the landing, a stronger escort on station opens it.
+        const defender = owner.builtObjects.find((b) => !b.hasBeenDestroyed && b.role === BuiltObjectRole.Military && b.topSpeed > 0)!;
+        defender.xpos = target.xpos;
+        defender.ypos = target.ypos;
+        for (const e of st.escorts) {
+            e.xpos = target.xpos + 500;
+            e.ypos = target.ypos;
+        }
+        genShipsPeriodic(g);
+        expect(st.committed).toBe(true);
+        expect(st.engageDate).toBeGreaterThan(0);
+        expect(st.transports.every((b) => builtObjectMission(b.mission)?.type === BuiltObjectMissionType.Move && builtObjectMission(b.mission)?.targetHabitat === target)).toBe(true);
+        for (const t of st.transports) {
+            t.xpos = target.xpos + 1000;
+            t.ypos = target.ypos;
+        }
+        genShipsPeriodic(g);
+        expect(st.landings).toBe(st.transports.length);
+        expect(st.transports.every((b) => (b.troops?.count ?? 0) === 0)).toBe(true);
+    }, 600000);
 
     it('generation ships: one per six empires (1..4), staggered 2-4 years, each at a different empire', () => {
         expect([5, 6, 11, 12, 18, 24, 40].map((n) => genShipsWaveSize(n, 6))).toEqual([1, 1, 1, 2, 3, 4, 4]);

@@ -47,7 +47,7 @@ import { generateDesignFromSpec } from '../../designGeneration';
 import { galaxyDesignSpecificationBySubRole } from '../../gameStartTail';
 import { takeOwnershipOfBuiltObject, takeOwnershipOfColonyFull } from '../../combat/ownership';
 import { builtObjectCompleteTeardown } from '../../combat/teardown';
-import { calculateOverallStrengthFactorWithoutShields, changeDiplomaticRelation, identifyShakturiEmpire, militaryPotency } from '../../diplomacyTick';
+import { FleetPosture, calculateOverallStrengthFactorWithoutShields, changeDiplomaticRelation, identifyShakturiEmpire, militaryPotency } from '../../diplomacyTick';
 import { identifyMechanoidEmpire } from '../../fleets/militaryAI';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../../diplomacy';
 import { assignMission } from '../../missions/assign';
@@ -66,7 +66,10 @@ import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
 import { scenarioFlag, scenarioParam } from '../state';
 import { applyReputation } from '../reputation/ledger';
 import { grantArchiveCore } from './archiveCores';
-import { empireTechLevel, maxDesignTechLevel, raiseFactionTech } from './robotMutiny';
+import { empireTechLevel, formBeaconFleets, maxDesignTechLevel, raiseFactionTech } from './robotMutiny';
+import { designsFindNewestCanBuild } from '../../stationPlacement';
+import { ResearchAbilityType, abilityTypeFromFile } from '../../researchSystem';
+import { applyIncomeFloor, givePortAt, newNavyState, type NavyState } from './factionNavy';
 import {
     KNOWLEDGE_CONFIRMED,
     arcMessage,
@@ -165,6 +168,20 @@ export interface GenShipsState {
     pirate: Empire | null;
     pirateShips: BuiltObject[];
     pirateBase: Habitat | null;
+    /** Staging point: a system near the target empire but outside every territory and colony (the fleet waits there). */
+    stageX?: number;
+    stageY?: number;
+    stageName?: string | null;
+    /** The first time an escort was on station at the target (the war clock starts then), and the transports' go order. */
+    engageDate?: number;
+    committed?: boolean;
+    /** The settled faction's economy: bookkeeping, last monthly check, last design refresh. */
+    navy?: NavyState | null;
+    econDate?: number;
+    designDate?: number;
+    econStarted?: boolean;
+    /** Warships bought by the settled faction so far (the design cycle position). */
+    pumped?: number;
 }
 
 function newState(): GenShipsState {
@@ -174,6 +191,7 @@ function newState(): GenShipsState {
         fleetStrength: 0, ownerStrengthAtSpawn: 0, ownerStrengthAtUltimatum: 0, regiments: 0, sleepers: 0,
         answer: null, answeredBy: null, outcome: null, worldShipFate: null, worldShipTaker: null, landings: 0, sentStages: {}, knowledge: [],
         index: 0, planned: 1, spawned: 1, nextDate: 0, strikeStart: 0, strikeDone: false, stationsHit: 0, strikeTargets: [], lastX: 0, lastY: 0, pirate: null, pirateShips: [], pirateBase: null,
+        stageX: 0, stageY: 0, stageName: null, engageDate: 0, committed: false, navy: null, econDate: 0, designDate: 0, econStarted: false,
     };
 }
 
@@ -247,6 +265,15 @@ const P = {
     grudge: (g: Galaxy) => p(g, 'genShipsGrudge', 60),
     gratitude: (g: Galaxy) => p(g, 'genShipsGratitude', 50),
     refuelRange: (g: Galaxy) => p(g, 'genShipsRefuelRange', 6000),
+    stagingMinSectors: (g: Galaxy) => p(g, 'genShipsStagingMinSectors', 0.25),
+    stagingMaxSectors: (g: Galaxy) => p(g, 'genShipsStagingMaxSectors', 4),
+    worldShipArmourPct: (g: Galaxy) => p(g, 'genShipsWorldShipArmourPct', 400),
+    worldShipShieldPct: (g: Galaxy) => p(g, 'genShipsWorldShipShieldPct', 200),
+    landingRatioPct: (g: Galaxy) => p(g, 'genShipsLandingRatioPct', 150),
+    designRefreshDays: (g: Galaxy) => p(g, 'genShipsDesignRefreshDays', 150),
+    rearmPct: (g: Galaxy) => p(g, 'genShipsRearmPct', 300),
+    pumpPerMonth: (g: Galaxy) => Math.trunc(p(g, 'genShipsPumpPerMonth', 3)),
+    pumpMaxShips: (g: Galaxy) => Math.trunc(p(g, 'genShipsPumpMaxShips', 150)),
 };
 
 /** The escort's three groups, by share of the firepower: big hulls, carriers, and the screens (also the strike fleets). */
@@ -367,6 +394,50 @@ export function genShipsSpawnPoint(galaxy: Galaxy, target: Habitat): { x: number
     return { x, y };
 }
 
+/**
+ * The staging point: a star system near the target empire but a little outside it. Never a system with a colony (any
+ * empire's) and never inside any empire's territory. Systems within genShipsStagingMinSectors .. MaxSectors of the
+ * owner's nearest colony; a system by one of the owner's mining / gas stations counts for more, else the nearest to the
+ * target. Falls back to the nearest free system at any range. Pure (no Rnd).
+ */
+export function genShipsStagingPoint(galaxy: Galaxy, owner: Empire, target: Habitat, fromX: number, fromY: number): { x: number; y: number; name: string | null } | null {
+    const sector = galaxy.sectorSize;
+    const colonised = new Set<number>();
+    for (const h of galaxy.habitats) {
+        if (h === null || h.empire === null || h.hasBeenDestroyed) continue;
+        const star = galaxy.determineHabitatSystemStar(h);
+        if (star !== null && star !== undefined) colonised.add(star.systemIndex);
+    }
+    const stations: { x: number; y: number }[] = [];
+    for (const b of [...owner.builtObjects, ...owner.privateBuiltObjects]) {
+        if (!b.hasBeenDestroyed && (b.subRole === BuiltObjectSubRole.GasMiningStation || b.subRole === BuiltObjectSubRole.MiningStation)) stations.push({ x: b.xpos, y: b.ypos });
+    }
+    const homes = owner.colonies.filter((c) => !c.hasBeenDestroyed);
+    const lo = P.stagingMinSectors(galaxy) * sector;
+    const hi = P.stagingMaxSectors(galaxy) * sector;
+    let best: { score: number; star: Habitat } | null = null;
+    let fallback: { score: number; star: Habitat } | null = null;
+    for (const sys of galaxy.systems) {
+        const star = sys?.systemStar ?? null;
+        if (star === null || colonised.has(star.systemIndex)) continue;
+        if (galaxy.checkEmpireTerritoryIdAtLocation(star.xpos, star.ypos) >= 0) continue;
+        if (sys.dominantEmpire?.empire != null) continue;
+        let dHome = Infinity;
+        for (const c of homes) dHome = Math.min(dHome, galaxy.calculateDistance(star.xpos, star.ypos, c.xpos, c.ypos));
+        let dStation = Infinity;
+        for (const m of stations) dStation = Math.min(dStation, galaxy.calculateDistance(star.xpos, star.ypos, m.x, m.y));
+        const dTarget = galaxy.calculateDistance(star.xpos, star.ypos, target.xpos, target.ypos);
+        const dSpawn = galaxy.calculateDistance(star.xpos, star.ypos, fromX, fromY);
+        const score = dTarget * (dStation <= sector ? 0.6 : 1) + dSpawn * 0.05;
+        if (fallback === null || score < fallback.score) fallback = { score, star };
+        if (dHome < lo || dHome > hi) continue;
+        if (best === null || score < best.score) best = { score, star };
+    }
+    const pick = best ?? fallback;
+    if (pick === null) return null;
+    return { x: pick.star.xpos, y: pick.star.ypos, name: pick.star.name ?? null };
+}
+
 /** The world ships' race: always Human (user 2026-10-15); a race no active empire uses only if the data has no Human. */
 function pickRace(galaxy: Galaxy, rnd: Random): Race | null {
     const human = galaxy.races.find((r) => r !== null && r.name === 'Human') ?? null;
@@ -448,6 +519,28 @@ function factionDesigns(galaxy: Galaxy, faction: Empire, lvl: number): Map<Built
     return out;
 }
 
+/**
+ * The mothership's plating: copies of the escort designs' own armour and shield parts adding about `armourPct` / `shieldPct`
+ * % of its size (a lot of both), then the stock ReDefine. Pure apart from `d`.
+ */
+function addPlating(d: Design, sources: readonly Design[], armourPct: number, shieldPct: number): void {
+    let added = 0;
+    for (const [type, pct] of [[ComponentType.Armor, armourPct], [ComponentType.Shields, shieldPct]] as const) {
+        if (pct <= 0) continue;
+        let part = null as (typeof d.components)[number] | null;
+        for (const src of sources) {
+            for (const c of src.components) {
+                if (c.type === type && c.size > 0 && (part === null || c.value1 + c.value2 > part.value1 + part.value2)) part = c;
+            }
+        }
+        if (part === null) continue;
+        const n = Math.round((d.size * pct) / 100 / part.size);
+        for (let i = 0; i < n; i++) d.components.push(part);
+        added += n;
+    }
+    if (added > 0) d.reDefine();
+}
+
 /** As robotMutiny's beacon spawn (GenerateMilitaryConvoy: GenerateNewBuiltObject + TakeOwnershipOfBuiltObject). */
 function spawnShip(galaxy: Galaxy, faction: Empire, design: Design, x: number, y: number, name: string | null = null): BuiltObject {
     const pt = galaxy.selectRelativeParkingPoint();
@@ -493,7 +586,7 @@ function resupply(galaxy: Galaxy, st: GenShipsState): void {
 function guardWorldShip(galaxy: Galaxy, st: GenShipsState, ships: readonly BuiltObject[]): void {
     const ws = st.worldShip;
     if (ws === null) {
-        for (const b of ships) if (isIdle(b)) hold(galaxy, b, st.spawnX, st.spawnY);
+        for (const b of ships) if (isIdle(b)) hold(galaxy, b, st.stageX ?? st.spawnX, st.stageY ?? st.spawnY);
         return;
     }
     for (const b of ships) {
@@ -508,6 +601,22 @@ function guardWorldShip(galaxy: Galaxy, st: GenShipsState, ships: readonly Built
         b.isAutoControlled = false;
         if (free) assignMission(galaxy, b, want, ws, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
     }
+}
+
+/**
+ * The world ship goes to the staging point and stays there until it lands (user 2026-10-16: it starts at the galaxy edge
+ * and waits near, not in, the target's territory). It is never left to the stock AI (an idle automated colony ship was
+ * sent off to colonise and died). Missions only.
+ */
+function pinWorldShip(galaxy: Galaxy, st: GenShipsState): void {
+    const ws = st.worldShip;
+    if (ws === null) return;
+    ws.isAutoControlled = false;
+    const x = st.stageX ?? st.spawnX;
+    const y = st.stageY ?? st.spawnY;
+    if (galaxy.calculateDistance(ws.xpos, ws.ypos, x, y) <= ARRIVE_RANGE) return;
+    const m = builtObjectMission(ws.mission);
+    if (m === null || m.type !== BuiltObjectMissionType.Move) hold(galaxy, ws, x, y);
 }
 
 /** Arrival: the faction, its fleet and the world ship at the galaxy edge. Returns false when nothing could arrive. */
@@ -545,6 +654,10 @@ export function genShipsArrive(galaxy: Galaxy, st: GenShipsState, aimAt: Empire 
     st.settleAt = target;
     st.spawnX = st.lastX = pt.x;
     st.spawnY = st.lastY = pt.y;
+    const stage = genShipsStagingPoint(galaxy, owner, target, pt.x, pt.y);
+    st.stageX = stage?.x ?? target.xpos;
+    st.stageY = stage?.y ?? target.ypos;
+    st.stageName = stage?.name ?? null;
     st.arrivalDate = galaxyStarDate(galaxy);
     st.contactDate = st.arrivalDate + P.contactDays(galaxy) * GAME_DAY_LENGTH;
     st.ownerStrengthAtSpawn = militaryPotency(owner);
@@ -588,7 +701,22 @@ export function genShipsArrive(galaxy: Galaxy, st: GenShipsState, aimAt: Empire 
             left -= k;
         }
     }
-    const colony = designs.get(BuiltObjectSubRole.ColonyShip) ?? designs.get(BuiltObjectSubRole.Cruiser) ?? null;
+    let colony = designs.get(BuiltObjectSubRole.ColonyShip) ?? designs.get(BuiltObjectSubRole.Cruiser) ?? null;
+    const cspec = faction.designSpecifications.find((x) => x !== null && x.subRole === BuiltObjectSubRole.ColonyShip) ?? galaxyDesignSpecificationBySubRole(BuiltObjectSubRole.ColonyShip);
+    if (colony !== null && colony === designs.get(BuiltObjectSubRole.ColonyShip) && cspec !== null && cspec !== undefined) {
+        // The mothership: its own design (never the AI's colony-ship pattern) with a lot of armour and shields.
+        try {
+            const plated = generateDesignFromSpec(galaxy, faction, cspec, lvl, galaxyStarDate(galaxy));
+            if (plated !== null) {
+                addPlating(plated, [...designs.entries()].filter(([k]) => HEAVY_OR_CARRIER.has(k)).map(([, d]) => d), P.worldShipArmourPct(galaxy), P.worldShipShieldPct(galaxy));
+                plated.isObsolete = true;
+                faction.designs.push(plated);
+                colony = plated;
+            }
+        } catch {
+            /* the plain design stands */
+        }
+    }
     if (colony !== null) st.worldShip = spawnShip(galaxy, faction, colony, pt.x, pt.y, scenarioText(`${TAG} World Ship Name ${FLAVOUR_TEXT[st.flavour]}`));
     st.sleepers = Math.round(P.sleepersM(galaxy) * 1e6);
     const scoutDesign = designs.get(BuiltObjectSubRole.ExplorationShip) ?? designs.get(BuiltObjectSubRole.Escort) ?? null;
@@ -598,7 +726,7 @@ export function genShipsArrive(galaxy: Galaxy, st: GenShipsState, aimAt: Empire 
         assignMission(galaxy, scout, BuiltObjectMissionType.Move, target, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
     }
     for (const b of [...st.escorts, ...st.transports]) hold(galaxy, b, pt.x, pt.y);
-    if (st.worldShip !== null) hold(galaxy, st.worldShip, pt.x, pt.y);
+    if (st.worldShip !== null) pinWorldShip(galaxy, st);
     guardWorldShip(galaxy, st, [...st.escorts, ...st.transports]); // from the first moment (an idle automated ship would wander off)
     st.phase = 'arrived';
     const where = galaxy.determineHabitatSystemStar(target)?.name ?? target.name;
@@ -758,7 +886,7 @@ export function genShipsStrikeTargets(galaxy: Galaxy, st: GenShipsState): BuiltO
     const all = [...owner.builtObjects, ...owner.privateBuiltObjects];
     for (const b of all) {
         if (b.hasBeenDestroyed || b.subRole !== BuiltObjectSubRole.GasMiningStation) continue;
-        const d = galaxy.calculateDistance(st.spawnX, st.spawnY, b.xpos, b.ypos);
+        const d = galaxy.calculateDistance(st.stageX || st.spawnX, st.stageY || st.spawnY, b.xpos, b.ypos);
         if (d <= reach) out.push({ b, d });
     }
     out.sort((a, b) => a.d - b.d || all.indexOf(a.b) - all.indexOf(b.b));
@@ -827,31 +955,37 @@ function directWar(galaxy: Galaxy, st: GenShipsState): void {
     const holder = target.empire;
     if (holder !== null && holder === st.owner) commitDefence(galaxy, st, holder, target);
     let onStation = 0;
+    let onStationStrength = 0;
     for (const bo of escorts) {
-        if (galaxy.calculateDistance(bo.xpos, bo.ypos, target.xpos, target.ypos) <= STATION_RANGE) onStation++;
+        if (galaxy.calculateDistance(bo.xpos, bo.ypos, target.xpos, target.ypos) <= STATION_RANGE) {
+            onStation++;
+            onStationStrength += calculateOverallStrengthFactorWithoutShields(bo);
+        }
         const m = builtObjectMission(bo.mission);
         if (m === null || m.type !== BuiltObjectMissionType.Attack || m.targetHabitat !== target) {
             bo.isAutoControlled = true;
             assignMission(galaxy, bo, BuiltObjectMissionType.Attack, target, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
         }
     }
-    let defenders = 0;
+    if (onStation > 0 && !st.engageDate) st.engageDate = galaxyStarDate(galaxy);
+    let defenderStrength = 0;
     if (holder !== null) {
         for (const b of holder.builtObjects) {
             if (b.hasBeenDestroyed || b.role !== BuiltObjectRole.Military || b.topSpeed <= 0) continue;
-            if (galaxy.calculateDistance(b.xpos, b.ypos, target.xpos, target.ypos) <= STATION_RANGE) defenders++;
+            if (galaxy.calculateDistance(b.xpos, b.ypos, target.xpos, target.ypos) <= STATION_RANGE) defenderStrength += calculateOverallStrengthFactorWithoutShields(b);
         }
     }
-    // Transports wait at a staging point (STATION_RANGE × 3 short of the world, on the edge side) until half the
-    // escort is on station and no defending warship is near, then close in and land (the stock landing of a troop ship
-    // attacking a colony, cmdAttack.ts ~590, done here as darkFarms.directFaction does). Move orders only: an Attack
-    // order would let the stock command land them past the defenders.
-    const clear = defenders === 0 && (escorts.length === 0 || onStation * 2 >= escorts.length);
-    const dx = st.spawnX - target.xpos;
-    const dy = st.spawnY - target.ypos;
-    const dl = Math.max(1, Math.sqrt(dx * dx + dy * dy));
-    const stageX = target.xpos + (dx / dl) * STATION_RANGE * 3;
-    const stageY = target.ypos + (dy / dl) * STATION_RANGE * 3;
+    // The transports wait beside the world ship at the staging point until the escort holds the world: on station in
+    // strength (at least half of it, and genShipsLandingRatioPct % of the defending warships' strength). Then they go in
+    // and stay committed (a flicker of the odds mid-flight must not turn them around over the defenders) until the
+    // escort is gone. Move orders only: an Attack order would let the stock command land them past the defenders.
+    // (Until 2026-10-16 the rule was "no defending warship near", which never held: the threatened AI parks its whole
+    // navy over the world, so the transports waited beside the world ship until the war timed out.)
+    const ratio = P.landingRatioPct(galaxy) / 100;
+    const superior = onStationStrength > 0 && onStationStrength >= defenderStrength * ratio && onStation * 2 >= escorts.length;
+    if (escorts.length === 0) st.committed = false;
+    else if (superior) st.committed = true;
+    const clear = st.committed === true;
     for (const bo of st.transports) {
         if (bo.troops === null || bo.troops.count === 0) continue;
         if (clear && galaxy.calculateDistance(bo.xpos, bo.ypos, target.xpos, target.ypos) <= LANDING_RANGE) {
@@ -868,14 +1002,16 @@ function directWar(galaxy: Galaxy, st: GenShipsState): void {
                 bo.isAutoControlled = true;
                 assignMission(galaxy, bo, BuiltObjectMissionType.Move, target, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
             }
-        } else if (st.worldShip !== null) {
+        } else {
             guardWorldShip(galaxy, st, [bo]); // beside the world ship until sent to land
-        } else if (galaxy.calculateDistance(bo.xpos, bo.ypos, stageX, stageY) > LANDING_RANGE && (m === null || m.type !== BuiltObjectMissionType.Move || m.targetHabitat !== null)) {
-            hold(galaxy, bo, stageX, stageY);
         }
     }
     const troopsLeft = st.transports.some((b) => b.troops !== null && b.troops.count > 0) || (target.invadingTroops !== null && target.invadingTroops.items.some((t) => t.empire === faction));
-    const tooLong = galaxyStarDate(galaxy) - st.warDate > P.warYears(galaxy) * YEAR_LENGTH;
+    const sinceWar = galaxyStarDate(galaxy) - st.warDate;
+    const sinceEngage = st.engageDate ? galaxyStarDate(galaxy) - st.engageDate : 0;
+    // The war clock starts when the escort reaches the world (the trip from the staging point is not part of it); never
+    // longer than twice the war time in all.
+    const tooLong = st.engageDate ? sinceEngage > P.warYears(galaxy) * YEAR_LENGTH || sinceWar > P.warYears(galaxy) * 2 * YEAR_LENGTH : sinceWar > P.warYears(galaxy) * YEAR_LENGTH;
     if ((escorts.length === 0 && !troopsLeft) || tooLong) endScatter(galaxy, st, 'repelled');
 }
 
@@ -1206,6 +1342,7 @@ function harass(galaxy: Galaxy, st: GenShipsState): void {
 
 function driveInstance(galaxy: Galaxy, st: GenShipsState): void {
     if (st.pirate !== null) harass(galaxy, st);
+    if (st.phase === 'settled') settledEconomy(galaxy, st);
     if (st.phase === 'waiting' || st.phase === 'settled' || st.phase === 'ended') return;
     const faction = st.faction;
     if (faction === null || !faction.active) {
@@ -1251,13 +1388,120 @@ function driveInstance(galaxy: Galaxy, st: GenShipsState): void {
         if (st.phase !== 'war') commitDefence(galaxy, st, st.owner, st.target);
         levyGarrison(galaxy, st, st.owner, st.target);
     }
-    if (st.phase === 'arrived' || st.phase === 'contact' || st.phase === 'ultimatum') {
-        guardWorldShip(galaxy, st, [...st.escorts, ...st.transports]);
-        if (st.worldShip !== null && isIdle(st.worldShip)) hold(galaxy, st.worldShip, st.spawnX, st.spawnY);
-    }
+    if (st.phase === 'arrived' || st.phase === 'contact' || st.phase === 'ultimatum') guardWorldShip(galaxy, st, [...st.escorts, ...st.transports]);
+    if (st.phase === 'arrived' || st.phase === 'contact' || st.phase === 'ultimatum' || st.phase === 'war') pinWorldShip(galaxy, st);
     if (st.worldShip === null && st.faction !== null && st.faction.colonies.length === 0 && (st.phase === 'war' || st.phase === 'contact' || st.phase === 'ultimatum' || st.phase === 'arrived')) {
         endScatter(galaxy, st, st.worldShipFate === 'captured' ? 'captured' : 'destroyed');
     }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The settled faction: money, hull research, designs and a port (user 2026-10-16: it pumps out big, slow, low-tech ships)
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * Researches what sets ship size (construction-size, ship-role and troop abilities) up to `top`, and only that: the weapon,
+ * armour and shield techs stay as they are. As raiseFactionTech otherwise. Returns true if anything changed.
+ */
+export function genShipsRaiseHullTech(galaxy: Galaxy, faction: Empire, top: number): boolean {
+    const race = faction.dominantRace;
+    const allowed = galaxy.researchStatic?.allowedRaces;
+    let changed = false;
+    for (const n of faction.research.techTree) {
+        if (n.isResearched || n.def.techLevel > top) continue;
+        if (!n.def.abilities.some((a) => [ResearchAbilityType.ConstructionSize, ResearchAbilityType.EnableShipSubRole, ResearchAbilityType.Troop].includes(abilityTypeFromFile(a.type)))) continue;
+        const a = allowed?.get(n.def.projectId);
+        if (a !== undefined && (race === null || !a.has(race.name))) continue;
+        n.isResearched = true;
+        n.selfResearched = true;
+        n.progress = n.cost;
+        changed = true;
+    }
+    if (!changed) return false;
+    faction.research.update(race);
+    faction.reviewResearchAbilities();
+    faction.reviewDesignsBuiltObjectsImprovedComponents();
+    return true;
+}
+
+/** The faction's warship designs again from the outdated parts (big hulls, extra fuel), newest, the previous ones obsolete so the AI builds only these. */
+function refreshDesigns(galaxy: Galaxy, st: GenShipsState): void {
+    const faction = st.faction!;
+    const before = new Set(faction.designs);
+    const lvl = Math.max(1, Math.min(st.owner !== null && st.owner.active ? empireTechLevel(st.owner) : empireTechLevel(faction), maxDesignTechLevel(galaxy) || 7));
+    const fresh = factionDesigns(galaxy, faction, lvl);
+    const keep = new Set(fresh.values());
+    for (const d of before) if (!keep.has(d) && DESIGN_SUBROLES.includes(d.subRole)) d.isObsolete = true;
+    for (const d of keep) d.isObsolete = false;
+    st.designDate = galaxyStarDate(galaxy);
+}
+
+/** Once it holds a world: money, hull research, designs, a free medium space port; then the monthly income floor and a yearly design refresh. */
+function settledEconomy(galaxy: Galaxy, st: GenShipsState): void {
+    const faction = st.faction;
+    if (faction === null || !faction.active || faction.colonies.length === 0) return;
+    const now = galaxyStarDate(galaxy);
+    const navy = (st.navy ??= newNavyState());
+    if (!st.econStarted) {
+        st.econStarted = true;
+        faction.stateMoney = Math.max(faction.stateMoney, p(galaxy, 'genShipsStateMoney', 1000000));
+        faction.privateMoney = Math.max(faction.privateMoney, p(galaxy, 'genShipsPrivateMoney', 10000000));
+        navy.lastWealth = faction.stateMoney + faction.privateMoney;
+        st.econDate = now;
+        genShipsRaiseHullTech(galaxy, faction, maxDesignTechLevel(galaxy) || 7);
+        refreshDesigns(galaxy, st);
+    }
+    if (navy.portColonies.length === 0) {
+        let home: Habitat | null = null;
+        for (const c of faction.colonies) if (!c.hasBeenDestroyed && (home === null || c.population.totalAmount > home.population.totalAmount)) home = c;
+        if (home !== null) givePortAt(galaxy, 'genShips', faction, navy, home);
+    }
+    if (now - (st.econDate ?? 0) >= 30 * GAME_DAY_LENGTH) {
+        st.econDate = now;
+        applyIncomeFloor(galaxy, 'genShips', faction, navy);
+        pumpShips(galaxy, st);
+    }
+    if (now - (st.designDate ?? 0) >= P.designRefreshDays(galaxy) * GAME_DAY_LENGTH) refreshDesigns(galaxy, st);
+}
+
+/**
+ * The yard of a one-world faction has no minerals to build with, so the stock AI builds almost nothing; the money buys ships
+ * instead: each month up to genShipsPumpPerMonth warships of its current big, slow, low-tech designs appear at its biggest
+ * world (heavy hulls, carriers, then screens in a fixed cycle), each paid from its state money at the design's price, up to
+ * genShipsPumpMaxShips warships. No upkeep. Draws Rnd (stock ship generation) only when it builds.
+ */
+function pumpShips(galaxy: Galaxy, st: GenShipsState): void {
+    const faction = st.faction!;
+    const live = faction.builtObjects.filter((b) => !b.hasBeenDestroyed && b.role === BuiltObjectRole.Military).length;
+    let home: Habitat | null = null;
+    for (const c of faction.colonies) if (!c.hasBeenDestroyed && (home === null || c.population.totalAmount > home.population.totalAmount)) home = c;
+    if (home === null || faction.spacePorts.every((b) => b.hasBeenDestroyed)) return;
+    const cycle = [...HEAVY_CYCLE, ...CARRIER_CYCLE, ...SCREEN_CYCLE];
+    const ships: BuiltObject[] = [];
+    for (let i = 0; i < P.pumpPerMonth(galaxy) && live + ships.length < P.pumpMaxShips(galaxy); i++) {
+        const sub = cycle[(st.pumped ?? 0) % cycle.length];
+        const design = designsFindNewestCanBuild(faction.designs, sub);
+        if (design === null) {
+            st.pumped = (st.pumped ?? 0) + 1;
+            continue;
+        }
+        const price = design.calculateCurrentPurchasePrice(galaxy);
+        if (!(price >= 0) || faction.stateMoney < price) break;
+        faction.stateMoney -= price;
+        const pt = galaxy.selectRelativeParkingPoint();
+        const bo = generateNewBuiltObject(galaxy, faction, design, null, home.xpos + pt.x, home.ypos + pt.y);
+        takeOwnershipOfBuiltObject(galaxy, faction, bo, faction, false);
+        bo.supportCostFactor = 0;
+        bo.isAutoControlled = true;
+        ships.push(bo);
+        st.pumped = (st.pumped ?? 0) + 1;
+    }
+    if (ships.length > 0) formBeaconFleets(galaxy, faction, home, ships, FleetPosture.Defend);
+}
+
+/** The settled faction's empire (its AI builds up: more warships, a budget for them). */
+function rearming(galaxy: Galaxy, empire: Empire): boolean {
+    return genShipsStates(galaxy).some((st) => st.faction === empire && st.phase === 'settled' && st.econStarted === true);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1332,6 +1576,9 @@ export function registerGenerationShips(): void {
         run: (g, v, a) => (threatened(g, a.empire) ? Math.max(v, (v * P.aiBuildupPct(g)) / 100) : v),
     });
     registerScenarioQuery({ id: 'genShips.buildupBudget', flag: GEN_SHIPS_FLAG, query: 'stateConstructionBudget', run: (g, v, a) => (threatened(g, a.empire) ? Math.max(v, a.projectedSupport) : v) });
+    registerScenarioQuery({ id: 'genShips.rearmThreat', flag: GEN_SHIPS_FLAG, query: 'forceStructureThreat', run: (g, v, a) => (rearming(g, a.empire) ? Math.max(v, 4) : v) });
+    registerScenarioQuery({ id: 'genShips.rearmWarships', flag: GEN_SHIPS_FLAG, query: 'forceStructureWarships', run: (g, v, a) => (rearming(g, a.empire) ? Math.max(v, (v * P.rearmPct(g)) / 100) : v) });
+    registerScenarioQuery({ id: 'genShips.rearmBudget', flag: GEN_SHIPS_FLAG, query: 'stateConstructionBudget', run: (g, v, a) => (rearming(g, a.empire) ? Math.max(v, a.projectedSupport) : v) });
     registerScenarioQuery({ id: 'genShips.factionDormant', flag: GEN_SHIPS_FLAG, query: 'stateAIDormant', run: (g, v, a) => v || factionDormant(g, a.empire) });
     registerThreatKnownSites(GEN_SHIPS_KEY, genShipsKnownSites);
 }
