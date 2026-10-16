@@ -19,7 +19,8 @@ import type { Habitat } from '../../types';
 import { CharacterRole, CharacterTraitType, type Character, type IntelligenceMission, getEmpireCharacters } from '../../characters';
 import { EmpireMessageType } from '../../messages';
 import { GameEndOutcome } from '../../victory';
-import { gameYear, registerScenarioEvent, registerScenarioPeriodic, registerScenarioYearly } from '../hooks';
+import { gameYear, registerScenarioEvent, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly } from '../hooks';
+import { militaryPotency } from '../../diplomacyTick';
 import { scenarioParam } from '../state';
 import { scenarioText } from '../messages';
 import { startStarDateForAge } from '../../galaxyTime';
@@ -48,6 +49,7 @@ import {
     type ThreatKnowledge,
     forcedThreatVictim,
 } from './framework';
+import { applyIncomeFloor, ensureConstructionShips, givePortAt, navyRise, newNavyState, spawnPendingNavy, syncFactionTech, takeMiningStationsNear, type NavyState } from './factionNavy';
 
 export const CULT_KEY = 'cult';
 export const CULT_FLAG = 'cult';
@@ -74,6 +76,8 @@ export interface CultState {
     factionHadColonies: boolean;
     hadConverts: boolean;
     ended: boolean;
+    /** The faction's economy / navy bookkeeping (factionNavy.ts); null until it rises. */
+    navy?: NavyState | null;
 }
 
 function newState(): CultState {
@@ -268,6 +272,8 @@ export function cultTrigger(galaxy: Galaxy, st: CultState, host: Empire, held: H
         });
         if (faction === null) return false;
         st.faction = faction;
+        st.navy = newNavyState();
+        navyRise(galaxy, 'cult', faction, st.navy, militaryPotency(host)); // tech, money, the starting navy (30 % of the host's military)
     }
     for (const h of held) {
         if (h.empire !== host || h.hasBeenDestroyed) continue;
@@ -369,16 +375,54 @@ export function cultKnownSites(galaxy: Galaxy, empire: Empire): KnownThreatSite[
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// The faction's economy and navy (factionNavy.ts)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Monthly: income floor, and the starting ships once it holds a world. */
+export function cultNavyMonthly(galaxy: Galaxy): void {
+    const st = peekCultState(galaxy);
+    const faction = st?.faction ?? null;
+    if (st === null || faction === null || !faction.active || st.ended) return;
+    st.navy ??= newNavyState();
+    applyIncomeFloor(galaxy, 'cult', faction, st.navy);
+    spawnPendingNavy(galaxy, faction, st.navy);
+    ensureConstructionShips(galaxy, 'cult', faction);
+}
+
+/** Yearly: research re-synced to the galaxy average (never above), designs refreshed. */
+export function cultNavyYearly(galaxy: Galaxy): void {
+    const st = peekCultState(galaxy);
+    const faction = st?.faction ?? null;
+    if (st === null || faction === null || !faction.active || st.ended) return;
+    syncFactionTech(galaxy, faction);
+}
+
+/** A colony falls to the Cult: a space port (the first medium, then small ones), and the host's nearest mining stations. */
+export function cultNavyColony(galaxy: Galaxy, colony: Habitat, from: Empire | null, to: Empire | null): void {
+    const st = peekCultState(galaxy);
+    const faction = st?.faction ?? null;
+    if (st === null || faction === null || to !== faction || !faction.active) return;
+    st.navy ??= newNavyState();
+    if (faction.capital === null) faction.capital = colony; // the stock AI wants a capital (as the Hive's first world)
+    givePortAt(galaxy, 'cult', faction, st.navy, colony);
+    if (from !== null && from !== galaxy.independentEmpire && from.pirateEmpireBaseHabitat === null) takeMiningStationsNear(galaxy, 'cult', faction, st.navy, from, colony);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // Registration
 // ---------------------------------------------------------------------------------------------------------------
 
-export const CULT_HANDLER_IDS = ['cult.yearly', 'cult.periodic', 'cult.characterCreated'] as const;
+export const CULT_HANDLER_IDS = ['cult.yearly', 'cult.periodic', 'cult.characterCreated', 'cult.navy', 'cult.navyYearly', 'cult.navyColony', 'cult.navyTroops'] as const;
 
 export function registerCult(): void {
     registerThreatExistence(CULT_KEY, CULT_FLAG);
     registerScenarioYearly({ id: 'cult.yearly', flag: CULT_FLAG, order: 10, run: cultYearly });
     registerScenarioPeriodic({ id: 'cult.periodic', flag: CULT_FLAG, order: 10, periodDays: PERIOD_DAYS, run: cultPeriodic });
     registerScenarioEvent({ id: 'cult.characterCreated', flag: CULT_FLAG, event: 'characterCreated', run: (g, e) => onCharacterCreated(g, e.character, e.empire) });
+    registerScenarioYearly({ id: 'cult.navyYearly', flag: CULT_FLAG, order: 11, run: (g) => cultNavyYearly(g) });
+    registerScenarioPeriodic({ id: 'cult.navy', flag: CULT_FLAG, order: 11, periodDays: 30, run: (g) => cultNavyMonthly(g) });
+    registerScenarioEvent({ id: 'cult.navyColony', flag: CULT_FLAG, order: 20, event: 'colonyOwnerChanged', run: (g, e) => cultNavyColony(g, e.colony, e.from, e.to) });
+    registerScenarioQuery({ id: 'cult.navyTroops', flag: CULT_FLAG, query: 'troopMaintenanceFactor', run: (g, v, a) => (peekCultState(g)?.faction === a.empire ? 0 : v) });
     registerThreatKnownSites(CULT_KEY, cultKnownSites);
 }
 

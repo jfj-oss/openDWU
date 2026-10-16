@@ -30,6 +30,14 @@ import { CharacterRole, IntelligenceMission, generateNewCharacter, getEmpireChar
 import { GameEndOutcome, setGameEndHandler, type GameEndEventArgs } from '../src/sim/victory';
 import { builtObjectCompleteTeardown } from '../src/sim/combat/teardown';
 import { takeOwnershipOfColonyFull } from '../src/sim/combat/ownership';
+import { annualTroopMaintenance } from '../src/sim/troops';
+import { militaryPotency, FleetPosture } from '../src/sim/diplomacyTick';
+import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
+import { empireTechLevel } from '../src/sim/scenario/threats/robotMutiny';
+import { averageTechLevel, syncFactionTech } from '../src/sim/scenario/threats/factionNavy';
+import { cultNavyMonthly } from '../src/sim/scenario/threats/cult';
+import { makeFactionTroop } from '../src/sim/scenario/threats/framework';
+import { empireShipGroups } from '../src/sim/fleets/shipGroup';
 
 let base: GameData;
 beforeAll(async () => {
@@ -152,4 +160,59 @@ describe('Cult: forced conversion on seed 1', () => {
         expect(ends[0].outcomeForPlayer).toBe(GameEndOutcome.Victory);
         setGameEndHandler(g, null);
     }, 600000);
+});
+
+describe('Cult: economy and navy', () => {
+    it('rises at the galaxy tech with money, a free port, the host\'s mining stations, a free navy, an income floor and free troops', () => {
+        const { game } = ctGame();
+        const g = game.galaxy;
+        const st = cultState(g);
+        const host = normalEmpires(g).find((e) => e.colonies.some((c) => c !== e.capital && c.population.totalAmount > 0) && e.miningStations.length > 0)!;
+        expect(host).toBeDefined();
+        const colony = host.colonies.find((c) => c !== host.capital && c.population.totalAmount > 0)!;
+        const governor = generateNewCharacter(g, host, CharacterRole.ColonyGovernor, colony).character;
+        convert(g, st, governor!);
+        const hostPotency = militaryPotency(host);
+        cultCheckTrigger(g);
+        const faction = st.faction!;
+        expect(faction).not.toBeNull();
+        // Tech and money.
+        expect(empireTechLevel(faction)).toBeGreaterThanOrEqual(averageTechLevel(g, faction));
+        expect(faction.stateMoney).toBeGreaterThanOrEqual(1000000);
+        expect(faction.privateMoney).toBeGreaterThanOrEqual(10000000);
+        expect(st.navy!.pendingStrength).toBeCloseTo(hostPotency * 0.3, 3);
+        // Smarter AI treats it like any AI empire.
+        expect(faction.pirateEmpireBaseHabitat).toBeNull();
+        expect(faction.dominantRace).not.toBeNull();
+        expect(faction.playerEmpire).toBe(false);
+        // The colony falls: a medium port with no upkeep, and the host's nearest mining stations.
+        const hostStations = host.miningStations.length;
+        takeOwnershipOfColonyFull(g, host, colony, faction, false, false);
+        expect(faction.spacePorts.length).toBe(1);
+        expect(faction.spacePorts[0].supportCostFactor).toBe(0);
+        expect(st.navy!.stationsTaken).toBeGreaterThan(0);
+        expect(faction.miningStations.length).toBe(st.navy!.stationsTaken);
+        expect(host.miningStations.length).toBe(hostStations - st.navy!.stationsTaken);
+        // The monthly handler: the starting navy at its tech, no upkeep, in a Defend fleet.
+        cultNavyMonthly(g);
+        const warships = faction.builtObjects.filter((b) => b.role === BuiltObjectRole.Military && !b.hasBeenDestroyed);
+        expect(warships.length).toBeGreaterThan(0);
+        expect(st.navy!.shipsSpawned).toBe(warships.length);
+        expect(warships.every((b) => b.supportCostFactor === 0)).toBe(true);
+        expect(st.navy!.pendingStrength).toBe(0);
+        expect(empireShipGroups(faction).some((sg) => sg !== null && sg.posture === FleetPosture.Defend && sg.ships.length > 0)).toBe(true);
+        expect((faction.constructionShips as import('../src/sim/builtObject').BuiltObject[]).filter((b) => b.isShipYard).length).toBeGreaterThanOrEqual(2); // so its AI can build mining stations
+        // Income floor: a month that nets less than the floor is topped up to it.
+        const before = faction.stateMoney + faction.privateMoney;
+        faction.stateMoney -= 200000;
+        cultNavyMonthly(g);
+        expect(faction.stateMoney + faction.privateMoney).toBeCloseTo(before + 50000, 0);
+        // Troops cost it nothing; the host's still do.
+        const t = makeFactionTroop(g, faction, 60, 'Cult Militia', null);
+        faction.troops.add(t);
+        expect(annualTroopMaintenance(faction)).toBe(0);
+        expect(annualTroopMaintenance(host)).toBeGreaterThan(0);
+        // The yearly sync never lowers it and does nothing when it is level with the galaxy.
+        expect(syncFactionTech(g, faction)).toBe(false);
+    }, 1200000);
 });

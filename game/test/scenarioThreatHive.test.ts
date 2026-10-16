@@ -24,6 +24,14 @@ import {
     type HiveState,
 } from '../src/sim/scenario/threats/hive';
 import { takeOwnershipOfColonyFull } from '../src/sim/combat/ownership';
+import { annualTroopMaintenance } from '../src/sim/troops';
+import { FleetPosture } from '../src/sim/diplomacyTick';
+import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
+import { empireTechLevel } from '../src/sim/scenario/threats/robotMutiny';
+import { averageTechLevel } from '../src/sim/scenario/threats/factionNavy';
+import { hiveNavyMonthly } from '../src/sim/scenario/threats/hive';
+import { makeFactionTroop } from '../src/sim/scenario/threats/framework';
+import { empireShipGroups } from '../src/sim/fleets/shipGroup';
 import { GameEndOutcome, setGameEndHandler, type GameEndEventArgs } from '../src/sim/victory';
 import { builtObjectCompleteTeardown } from '../src/sim/combat/teardown';
 
@@ -114,6 +122,33 @@ describe('Hive: forced trigger on seed 1', () => {
             if (h.hasBeenDestroyed) continue;
             expect(h.empire === faction || (h.invadingTroops !== null && h.invadingTroops.count > 0)).toBe(true);
         }
+    }, 600000);
+
+    it('economy and navy: tech at the galaxy average, money, free ports on its biggest worlds, a free navy, an income floor, free troops', () => {
+        const st = hiveState(g);
+        const faction = st.faction!;
+        expect(empireTechLevel(faction)).toBeGreaterThanOrEqual(averageTechLevel(g, faction));
+        expect(faction.stateMoney).toBeGreaterThanOrEqual(1000000);
+        expect(faction.privateMoney).toBeGreaterThanOrEqual(10000000);
+        expect(st.navy!.pendingStrength).toBeGreaterThan(0);
+        // Give it a few worlds (the nodes' ground wars may not have resolved), then the monthly handler.
+        for (const n of st.nodes.slice(0, 5)) if (n.habitat.empire !== faction && !n.habitat.hasBeenDestroyed) takeOwnershipOfColonyFull(g, n.habitat.empire!, n.habitat, faction, false, false);
+        expect(faction.colonies.length).toBeGreaterThan(0);
+        hiveNavyMonthly(g);
+        expect(faction.spacePorts.length).toBeGreaterThanOrEqual(1);
+        expect(faction.spacePorts.length).toBeLessThanOrEqual(4);
+        expect(faction.spacePorts.every((b) => b.supportCostFactor === 0)).toBe(true);
+        const warships = faction.builtObjects.filter((b) => b.role === BuiltObjectRole.Military && !b.hasBeenDestroyed);
+        expect(warships.length).toBeGreaterThan(0);
+        expect(warships.every((b) => b.supportCostFactor === 0)).toBe(true);
+        expect(empireShipGroups(faction).some((sg) => sg !== null && sg.posture === FleetPosture.Defend && sg.ships.length > 0)).toBe(true);
+        expect((faction.constructionShips as import('../src/sim/builtObject').BuiltObject[]).filter((b) => b.isShipYard).length).toBeGreaterThanOrEqual(2); // so its AI can build mining stations
+        const before = faction.stateMoney + faction.privateMoney;
+        faction.stateMoney -= 200000;
+        hiveNavyMonthly(g);
+        expect(faction.stateMoney + faction.privateMoney).toBeCloseTo(before + 50000, 0);
+        faction.troops.add(makeFactionTroop(g, faction, 60, 'Chorus Militia', null));
+        expect(annualTroopMaintenance(faction)).toBe(0);
     }, 600000);
 
     it('containment: destroying every Chorus colony/ship tears the faction down and ends the game (victory)', () => {

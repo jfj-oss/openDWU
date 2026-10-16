@@ -17,7 +17,7 @@ import { takeOwnershipOfColonyFull } from '../../combat/ownership';
 import { CharacterRole, generateNewCharacter } from '../../characters';
 import { EmpireMessageType } from '../../messages';
 import { GameEndOutcome } from '../../victory';
-import { registerScenarioEvent, registerScenarioGameStart, registerScenarioPeriodic } from '../hooks';
+import { registerScenarioEvent, registerScenarioGameStart, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly } from '../hooks';
 import { scenarioParam } from '../state';
 import { scenarioText } from '../messages';
 import { registerHiddenThing, retireHiddenTarget } from '../security/registry';
@@ -44,6 +44,7 @@ import {
     type SentStages,
     type ThreatKnowledge,
 } from './framework';
+import { applyIncomeFloor, ensureConstructionShips, averageMilitary, navyRise, newNavyState, spawnPendingNavy, syncFactionTech, takeMiningStationsNear, topUpPorts, type NavyState } from './factionNavy';
 
 export const HIVE_KEY = 'hive';
 export const HIVE_FLAG = 'hive';
@@ -69,6 +70,8 @@ export interface HiveState {
     sentStages: SentStages;
     factionHadColonies: boolean;
     ended: boolean;
+    /** The faction's economy / navy bookkeeping (factionNavy.ts); null until it rises. */
+    navy?: NavyState | null;
 }
 
 function newState(): HiveState {
@@ -241,6 +244,8 @@ export function hiveTrigger(galaxy: Galaxy, st: HiveState): boolean {
     });
     if (faction === null) return false;
     st.faction = faction;
+    st.navy = newNavyState();
+    navyRise(galaxy, 'hive', faction, st.navy, averageMilitary(galaxy, faction)); // tech, money, the starting navy (the empires' average military)
     const seized = seizedIndependentNodes(galaxy, st);
     for (const n of [...st.nodes].sort((a, b) => galaxy.habitats.indexOf(a.habitat) - galaxy.habitats.indexOf(b.habitat))) {
         const h = n.habitat;
@@ -253,9 +258,11 @@ export function hiveTrigger(galaxy: Galaxy, st: HiveState): boolean {
             const nodeRace = h.population?.dominantRace ?? null;
             const strength = Math.trunc((nodeRace?.troopStrength ?? 60) * P.militiaFactor(galaxy));
             const troop = makeFactionTroop(galaxy, faction, strength, scenarioText(`${TAG} Militia Name`), nodeRace);
+            takeMiningStationsNear(galaxy, 'hive', faction, st.navy, h.empire, h); // the host's stations nearest the node change hands
             invadeFromInside(galaxy, h, faction, [troop]);
         }
     }
+    topUpPorts(galaxy, 'hive', faction, st.navy);
     arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Turn', textTag: `${TAG} Turn News` });
     for (const e of normalEmpires(galaxy, faction)) arcMessage(galaxy, st.sentStages, [e], { prefix: TAG, stage: 'Turn', type: EmpireMessageType.GeneralBadEvent });
     return true;
@@ -275,6 +282,30 @@ function onFactionColonyOwnerChanged(galaxy: Galaxy, colony: Habitat, from: Empi
     if (st === null || st.faction === null || to !== st.faction) return;
     if (st.faction.capital === null) st.faction.capital = colony;
     hiveGiveAgents(galaxy, st);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The faction's economy and navy (factionNavy.ts)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Monthly: income floor, ports on its biggest worlds, and the starting ships once it holds a world. */
+export function hiveNavyMonthly(galaxy: Galaxy): void {
+    const st = peekHiveState(galaxy);
+    const faction = st?.faction ?? null;
+    if (st === null || faction === null || !faction.active || st.ended) return;
+    st.navy ??= newNavyState();
+    applyIncomeFloor(galaxy, 'hive', faction, st.navy);
+    topUpPorts(galaxy, 'hive', faction, st.navy);
+    spawnPendingNavy(galaxy, faction, st.navy);
+    ensureConstructionShips(galaxy, 'hive', faction);
+}
+
+/** Yearly: research re-synced to the galaxy average (never above), designs refreshed. */
+export function hiveNavyYearly(galaxy: Galaxy): void {
+    const st = peekHiveState(galaxy);
+    const faction = st?.faction ?? null;
+    if (st === null || faction === null || !faction.active || st.ended) return;
+    syncFactionTech(galaxy, faction);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -315,7 +346,7 @@ export function hiveKnownSites(galaxy: Galaxy, empire: Empire): KnownThreatSite[
 // Registration
 // ---------------------------------------------------------------------------------------------------------------
 
-export const HIVE_HANDLER_IDS = ['hive.init', 'hive.periodic', 'hive.colony', 'hive.factionColony'] as const;
+export const HIVE_HANDLER_IDS = ['hive.init', 'hive.periodic', 'hive.colony', 'hive.factionColony', 'hive.navy', 'hive.navyYearly', 'hive.navyTroops'] as const;
 
 export function registerHive(): void {
     registerThreatExistence(HIVE_KEY, HIVE_FLAG);
@@ -323,6 +354,9 @@ export function registerHive(): void {
     registerScenarioPeriodic({ id: 'hive.periodic', flag: HIVE_FLAG, order: 10, periodDays: PERIOD_DAYS, run: hivePeriodic });
     registerScenarioEvent({ id: 'hive.colony', flag: HIVE_FLAG, order: 0, event: 'colonyOwnerChanged', run: (g, e) => onColonyOwnerChanged(g, e.colony, e.from, e.to) });
     registerScenarioEvent({ id: 'hive.factionColony', flag: HIVE_FLAG, order: 10, event: 'colonyOwnerChanged', run: (g, e) => onFactionColonyOwnerChanged(g, e.colony, e.from, e.to) });
+    registerScenarioYearly({ id: 'hive.navyYearly', flag: HIVE_FLAG, order: 11, run: (g) => hiveNavyYearly(g) });
+    registerScenarioPeriodic({ id: 'hive.navy', flag: HIVE_FLAG, order: 11, periodDays: 30, run: (g) => hiveNavyMonthly(g) });
+    registerScenarioQuery({ id: 'hive.navyTroops', flag: HIVE_FLAG, query: 'troopMaintenanceFactor', run: (g, v, a) => (peekHiveState(g)?.faction === a.empire ? 0 : v) });
     registerThreatKnownSites(HIVE_KEY, hiveKnownSites);
 }
 

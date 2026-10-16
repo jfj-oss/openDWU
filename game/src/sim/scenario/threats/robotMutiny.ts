@@ -916,7 +916,7 @@ function directAssault(galaxy: Galaxy, st: RobotMutinyState): void {
 }
 
 /** The new warships gather at the transmitter in fleets of BEACON_FLEET_SIZE, posture Attack (stock fleet AI tasks them). */
-function formBeaconFleets(galaxy: Galaxy, faction: Empire, source: Habitat, ships: BuiltObject[]): void {
+export function formBeaconFleets(galaxy: Galaxy, faction: Empire, source: Habitat, ships: BuiltObject[], posture: FleetPosture = FleetPosture.Attack): void {
     const shipGroups = empireShipGroups(faction);
     for (let i = 0; i < ships.length; i += BEACON_FLEET_SIZE) {
         const batch = ships.slice(i, i + BEACON_FLEET_SIZE).filter((b) => b.shipGroup === null);
@@ -929,7 +929,7 @@ function formBeaconFleets(galaxy: Galaxy, faction: Empire, source: Habitat, ship
         addShipsToShipGroup(galaxy, faction, g, batch, batch.length, true, source);
         if (g.ships.length === 0) continue;
         g.name = `${getNextFleetNumberDescription(faction)} Fleet`;
-        g.posture = FleetPosture.Attack;
+        g.posture = posture;
         shipGroups.push(g);
         netSort(shipGroups, compareShipGroups);
     }

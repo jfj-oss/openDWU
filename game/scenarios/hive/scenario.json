@@ -12,6 +12,13 @@
     { "name": "hiveMinNodes", "label": "Minimum independent colonies for the Hive to seed", "default": 5, "min": 1, "max": 50 },
     { "name": "hiveDetectPct", "label": "Node confirmation chance per period (%)", "default": 15, "min": 0, "max": 100 },
     { "name": "hiveMaxNodesSeized", "label": "Still-independent nodes seized outright at the trigger (cap; nearest the largest absorbed cluster first)", "default": 30, "min": 1, "max": 500 },
+    { "name": "hiveStateMoney", "label": "Hive: state money when it rises", "default": 1000000, "min": 0, "max": 1000000000 },
+    { "name": "hivePrivateMoney", "label": "Hive: private money when it rises", "default": 10000000, "min": 0, "max": 1000000000 },
+    { "name": "hiveIncomeFloor", "label": "Hive: income floor per month (topped up to this while it lives)", "default": 50000, "min": 0, "max": 100000000 },
+    { "name": "hiveSmallPorts", "label": "Hive: small space ports besides the medium one (no upkeep)", "default": 3, "min": 0, "max": 20 },
+    { "name": "hiveNavyPct", "label": "Hive: starting fleet as % of the empires' average military", "default": 100, "min": 0, "max": 1000 },
+    { "name": "hiveConstructionShips", "label": "Hive: construction ships kept working (so its AI can build mining stations)", "default": 2, "min": 0, "max": 20 },
+    { "name": "hiveStationCount", "label": "Hive: nearest mining stations taken from the host when none is in the colony system", "default": 3, "min": 0, "max": 50 },
     { "name": "hiveExistChancePct", "label": "Chance the Hive exists in this game (%; -1 = use the shared value)", "default": -1, "min": -1, "max": 100 },
     { "name": "hiveMinYear", "label": "Earliest year the Hive may seed, trigger or rise (-1 = use the shared value)", "default": -1, "min": -1, "max": 200 }
   ]

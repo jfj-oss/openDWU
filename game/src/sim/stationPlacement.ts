@@ -501,7 +501,13 @@ export function buildSpacePortAtColony(galaxy: Galaxy, empire: Empire, colony: H
     if (empire.colonies.length === 1 && design !== null && design.subRole === S.LargeSpacePort) {
         design = designsFindNewestCanBuild(empire.designs, S.MediumSpacePort);
     }
-    if (design !== null) {
+    if (design !== null) return placeSpacePortAtColony(galaxy, empire, colony, design);
+    return null;
+}
+
+/** The second half of BuildSpacePortAtColony: the port of `design` placed at `colony` (also used with a chosen size by the Cult / Hive). */
+export function placeSpacePortAtColony(galaxy: Galaxy, empire: Empire, colony: Habitat, design: Design): BuiltObject {
+    {
         design.buildCount++;
         const purchasePrice = design.calculateCurrentPurchasePrice(galaxy);
         const name = galaxy.generateBuiltObjectName(design, colony);
@@ -522,7 +528,6 @@ export function buildSpacePortAtColony(galaxy: Galaxy, empire: Empire, colony: H
         empire.addBuiltObjectToGalaxy(builtObject, colony, false, true, Math.trunc(builtObject.parentOffsetX), Math.trunc(builtObject.parentOffsetY));
         return builtObject;
     }
-    return null;
 }
 
 // ---------------------------------------------------------------------------

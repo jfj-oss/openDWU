@@ -2081,7 +2081,8 @@ export function determineMonitoringStationLocation(galaxy: Galaxy, empire: Empir
     const flag = checkConstructionShipAndMiningStationCanSurviveStorms(empire);
     const habitatList: Habitat[] = [];
     const list: number[] = [];
-    const capital = empire.capital!;
+    if (empire.capital === null) return; // a threat faction before its first world (Cult / Hive); a normal empire always has one
+    const capital = empire.capital;
     for (let i = 0; i < galaxy.empires.length; i++) {
         const other = galaxy.empires[i];
         const diplomaticRelation = obtainDiplomaticRelation(empire, other);
