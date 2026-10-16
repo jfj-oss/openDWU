@@ -26,6 +26,11 @@ export interface DietMotionRow {
     kind: DietMotionKind;
     text: string;
     proposer: string;
+    /** The proposing empire and the empire it names (for the screen's flags; read-only). */
+    proposerEmpire: Empire;
+    targetEmpire: Empire | null;
+    /** The kind's short name ('Elect a Regent'). */
+    kindName: string;
     /** What it does, in a line. */
     effect: string;
     /** Our advisers' reading (the AI score for our empire): favourable / unfavourable / neutral. */
@@ -37,6 +42,12 @@ export interface DietMotionRow {
     ourVote: 'yes' | 'no' | 'abstain' | '';
     vetoed: boolean;
     status: string;
+}
+
+export interface DietSanctionRow {
+    target: Empire;
+    kind: 'sanction' | 'embargo';
+    since: number;
 }
 
 export interface DietMemberRow {
@@ -66,6 +77,14 @@ export interface DietViewModel {
     regent: string;
     regentIsYou: boolean;
     emperor: string;
+    /** Structured read-only copies for the screen (flags, countdowns): empire refs and star dates (-1 = none). */
+    hostEmpire: Empire | null;
+    regentEmpire: Empire | null;
+    regentUntilAt: number;
+    emperorBid: { empire: Empire; capital: string; untilAt: number; yearsLeft: number } | null;
+    /** The current star date and the next session's star date (-1 = not scheduled). */
+    now: number;
+    nextSessionAt: number;
     nextSession: string;
     session: {
         id: number;
@@ -73,20 +92,27 @@ export interface DietViewModel {
         stage: 'gathering' | 'voting';
         opens: string;
         closes: string;
+        calledAt: number;
+        opensAt: number;
+        closesAt: number;
         motions: DietMotionRow[];
         ourDelegate: string;
         ourPresence: string;
+        /** Our delegate's presence and whether they are a lesser delegate (read-only copies of ourPresence's parts). */
+        ourPresenceKind: DietMemberRow['presence'];
+        ourLesser: boolean;
         vetoAvailable: boolean;
         vetoMotionId: number;
     } | null;
     laws: DietLawRow[];
     sanctions: string[];
-    enforcers: { target: string; ships: number; stage: string; station: string; lead: BuiltObject | null }[];
+    sanctionRows: DietSanctionRow[];
+    enforcers: { targetEmpire: Empire; target: string; ships: number; stage: string; station: string; lead: BuiltObject | null }[];
     history: { text: string; result: string; tally: string; date: string }[];
     /** Every recorded motion, newest first (the History tab groups them by year and filters by result). */
-    motionLog: { year: number; text: string; proposer: string; result: 'passed' | 'failed' | 'vetoed'; yes: number; no: number; target: string }[];
+    motionLog: { year: number; text: string; proposer: string; proposerEmpire: Empire; targetEmpire: Empire | null; result: 'passed' | 'failed' | 'vetoed'; yes: number; no: number; target: string }[];
     members: DietMemberRow[];
-    governors: { character: Character; label: string; best: boolean; current: boolean }[];
+    governors: { character: Character; label: string; /** The colony governed ('' = none) and its strategic value. */ post: string; value: number; best: boolean; current: boolean }[];
     canEmergency: boolean;
     canEmperor: boolean;
     /** Why a bid cannot start now ('' = it can), e.g. 'Available from year 65'. */
@@ -219,6 +245,9 @@ export function dietView(galaxy: Galaxy, player: Empire): DietViewModel | null {
                 kind: m.kind,
                 text: m.text,
                 proposer: m.proposer.name,
+                proposerEmpire: m.proposer,
+                targetEmpire: m.target,
+                kindName: kindLabel(m.kind),
                 effect: effectOf(st, m),
                 advice: !member ? '' : advise >= 5 ? `Favourable to us (${Math.round(advise)})` : advise <= -5 ? `Against our interest (${Math.round(advise)})` : 'Of little concern to us',
                 projectedYes: Math.round(yes * 10) / 10,
@@ -236,8 +265,13 @@ export function dietView(galaxy: Galaxy, player: Empire): DietViewModel | null {
             stage: s.stage,
             opens: dateOf(s.opens),
             closes: dateOf(s.closes),
+            calledAt: s.called,
+            opensAt: s.opens,
+            closesAt: s.closes,
             motions,
             ourDelegate: mine?.character?.name ?? '—',
+            ourPresenceKind: pres.presence,
+            ourLesser: mine?.lesser ?? false,
             ourPresence: mine === null ? '' : mine.lesser ? `${pres.presence} (lesser delegate: ${Math.round(dietParam(galaxy, 'dietLesserDelegatePct'))}% weight)` : pres.presence,
             vetoAvailable: regentActive && st.regent === player && !s.vetoUsed,
             vetoMotionId: st.vetoMotionId ?? 0,
@@ -266,7 +300,7 @@ export function dietView(galaxy: Galaxy, player: Empire): DietViewModel | null {
               .filter((g) => g.active && g.location !== null)
               .map((g) => {
                   const post = [...player.colonies].find((h) => colonyGovernor(h) === g) ?? null;
-                  return { character: g, label: `${g.name}${post !== null ? ` (${post.name}, value ${Math.round(strategicValue(post))})` : ''}`, best: g === best, current: chosen === null ? g === best : g === chosen };
+                  return { character: g, label: `${g.name}${post !== null ? ` (${post.name}, value ${Math.round(strategicValue(post))})` : ''}`, post: post?.name ?? '', value: post !== null ? Math.round(strategicValue(post)) : 0, best: g === best, current: chosen === null ? g === best : g === chosen };
               })
               .sort((a, b) => Number(b.best) - Number(a.best) || a.character.name.localeCompare(b.character.name))
         : [];
@@ -284,14 +318,21 @@ export function dietView(galaxy: Galaxy, player: Empire): DietViewModel | null {
         regentIsYou: regentActive && st.regent === player,
         emperor: em !== null ? `${em.empire.name}: must hold ${em.capital.name} until ${dateOf(em.until)} (${Math.max(0, Math.ceil((em.until - now) / YEAR_LENGTH))} years left)` : '',
         emperorNote: em === null ? emperorBidNote(galaxy, st, player) : '',
+        hostEmpire: st.host,
+        regentEmpire: regentActive ? st.regent : null,
+        regentUntilAt: regentActive ? st.regentUntil : -1,
+        emperorBid: em !== null ? { empire: em.empire, capital: em.capital.name, untilAt: em.until, yearsLeft: Math.max(0, Math.ceil((em.until - now) / YEAR_LENGTH)) } : null,
+        now,
+        nextSessionAt: st.nextSessionAt,
         nextSession: s !== null ? 'in session' : dateOf(st.nextSessionAt),
         warCrimes: dietWarCrimesLine.fn?.(galaxy) ?? '',
         session,
         laws: st.laws.map((l) => ({ text: l.text, since: dateOf(l.since), until: l.until < 0 ? 'until repealed' : dateOf(l.until) })),
         sanctions: c.sanctions.map((x) => `${x.kind === 'sanction' ? 'Sanctions' : 'Embargo'} on the ${x.target.name} (since ${x.year})`),
-        enforcers: st.enforcers.map((f) => ({ target: f.target.name, ships: f.ships.filter((b) => !b.hasBeenDestroyed).length, stage: f.stage === 'blockading' ? 'blockading' : f.stage === 'enRoute' ? 'en route' : 'gathering', station: f.station?.name ?? '—', lead: f.fleet?.leadShip ?? f.ships[0] ?? null })),
+        sanctionRows: c.sanctions.map((x): DietSanctionRow => ({ target: x.target, kind: x.kind === 'sanction' ? 'sanction' : 'embargo', since: x.year })),
+        enforcers: st.enforcers.map((f) => ({ targetEmpire: f.target, target: f.target.name, ships: f.ships.filter((b) => !b.hasBeenDestroyed).length, stage: f.stage === 'blockading' ? 'blockading' : f.stage === 'enRoute' ? 'en route' : 'gathering', station: f.station?.name ?? '—', lead: f.fleet?.leadShip ?? f.ships[0] ?? null })),
         history: [...st.history].reverse().slice(0, 12).map((h) => ({ text: h.text, result: h.result, tally: `${h.yes.toFixed(1)}–${h.no.toFixed(1)}`, date: dateOf(h.starDate) })),
-        motionLog: [...st.history].reverse().map((h) => ({ year: h.year ?? gameYear(h.starDate), text: h.text, proposer: h.proposer.name, result: h.result, yes: h.yes, no: h.no, target: h.target?.name ?? '—' })),
+        motionLog: [...st.history].reverse().map((h) => ({ year: h.year ?? gameYear(h.starDate), text: h.text, proposer: h.proposer.name, proposerEmpire: h.proposer, targetEmpire: h.target ?? null, result: h.result, yes: h.yes, no: h.no, target: h.target?.name ?? '—' })),
         members,
         governors,
         canEmergency: regentActive && st.regent === player && s === null && (lastEm < 0 || now - lastEm >= dietParam(galaxy, 'dietEmergencyYears') * 600_000),

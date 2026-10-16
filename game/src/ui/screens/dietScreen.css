@@ -1,0 +1,338 @@
+/* The Interstellar Diet window (dietScreen.ts) on the original-style window (../originalWindow.css): the Diplomacy
+   screen's empire flags and name colours, EmpireDetailView's dark section blocks, ListViewBase grids, GlassButtons.
+   Everything is in the original's pixels. */
+
+.diet-page {
+    color: rgb(200, 200, 200);
+}
+
+/* --- an empire: its flag and its name in its colour (as the Diplomacy list) --- */
+.diet-emp {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+.diet-flag {
+    flex: none;
+    display: block;
+    pointer-events: none;
+}
+.diet-emp-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: bold;
+    text-shadow: 1px 1px 0 var(--diet-shadow, #000);
+}
+.diet-muted {
+    color: rgb(130, 130, 130);
+    font-weight: normal;
+}
+.diet-shadow {
+    text-shadow: 1px 1px 0 #000;
+}
+
+/* --- section blocks and their headings --- */
+.diet-block {
+    position: absolute;
+    background: rgba(0, 0, 0, 0.376);
+}
+.diet-block.diet-alarm {
+    box-shadow: inset 0 0 0 1px rgb(160, 40, 40);
+}
+.diet-heading {
+    position: absolute;
+    font-size: 18.67px;
+    font-weight: bold;
+    color: rgb(200, 200, 200);
+    text-shadow: 1px 1px 0 #000;
+    white-space: nowrap;
+}
+.diet-note {
+    position: absolute;
+    color: rgb(130, 130, 130);
+    text-shadow: 1px 1px 0 #000;
+    white-space: nowrap;
+}
+.diet-row {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.diet-label {
+    flex: none;
+    color: rgb(170, 170, 170);
+    text-shadow: 1px 1px 0 #000;
+}
+
+/* the facts column: a right-aligned label and its value */
+.diet-facts {
+    position: absolute;
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    column-gap: 8px;
+    row-gap: 5px;
+    align-items: center;
+}
+.diet-facts > .diet-label {
+    text-align: right;
+}
+.diet-facts > .diet-fact {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: bold;
+    text-shadow: 1px 1px 0 #000;
+}
+
+/* --- the session's stages (EnhancedTabControl colours) --- */
+.diet-steps {
+    position: absolute;
+    display: flex;
+    gap: 3px;
+}
+.diet-step {
+    flex: 1;
+    min-width: 0;
+    text-align: center;
+    padding: 3px 0 4px;
+    background: rgb(32, 32, 40);
+    color: rgb(120, 120, 120);
+    border: 1px solid rgb(48, 48, 64);
+    text-shadow: 1px 1px 0 #000;
+}
+.diet-step.diet-done {
+    background: rgb(48, 48, 56);
+    color: rgb(170, 170, 170);
+}
+.diet-step.diet-now {
+    background: rgb(64, 64, 80);
+    border-color: rgb(128, 128, 144);
+    color: rgb(255, 192, 0);
+    font-weight: bold;
+}
+.diet-stepdate {
+    position: absolute;
+    text-align: center;
+    color: rgb(150, 150, 150);
+    text-shadow: 1px 1px 0 #000;
+    white-space: nowrap;
+}
+
+/* --- the agenda: one card per motion --- */
+.diet-agenda {
+    border: 1px solid rgb(30, 30, 38);
+}
+.diet-card {
+    position: relative;
+    margin: 4px 6px 0 4px;
+    padding: 6px 8px 6px 12px;
+    background: rgba(0, 0, 0, 0.376);
+    border-left: 4px solid rgb(96, 96, 112);
+    cursor: pointer;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 296px;
+    column-gap: 14px;
+}
+.diet-card:hover {
+    background: rgba(48, 48, 80, 0.45);
+}
+.diet-card.diet-pass {
+    border-left-color: rgb(96, 200, 96);
+}
+.diet-card.diet-fail {
+    border-left-color: rgb(210, 70, 70);
+}
+.diet-card.diet-veto {
+    border-left-color: rgb(255, 128, 0);
+}
+.diet-card-main {
+    min-width: 0;
+}
+.diet-card-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 16.67px;
+    font-weight: bold;
+    color: rgb(220, 220, 220);
+    text-shadow: 1px 1px 0 #000;
+    white-space: nowrap;
+}
+.diet-card-title > span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.diet-card-sub {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 6px 14px;
+    margin-top: 4px;
+    color: rgb(170, 170, 170);
+    text-shadow: 1px 1px 0 #000;
+    white-space: nowrap;
+    overflow: hidden;
+}
+.diet-tally {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 6px;
+    color: rgb(170, 170, 170);
+    text-shadow: 1px 1px 0 #000;
+    font-size: 14px;
+    white-space: nowrap;
+}
+.diet-vbar {
+    flex: none;
+    display: flex;
+    width: 200px;
+    height: 10px;
+    background: rgb(24, 24, 24);
+    border: 1px solid rgb(67, 67, 77);
+}
+.diet-vbar > .diet-for {
+    background: linear-gradient(to bottom, rgb(150, 238, 150), rgb(60, 140, 60));
+}
+.diet-vbar > .diet-against {
+    background: linear-gradient(to bottom, rgb(255, 130, 130), rgb(150, 40, 40));
+}
+.diet-detail {
+    grid-column: 1 / -1;
+    margin-top: 6px;
+    padding-top: 5px;
+    border-top: 1px solid rgb(48, 48, 64);
+    color: rgb(190, 190, 190);
+    text-shadow: 1px 1px 0 #000;
+    line-height: 1.3;
+}
+.diet-card-actions {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    align-content: start;
+}
+.diet-card-actions > .diet-wide {
+    grid-column: 1 / -1;
+}
+.diet-card-actions > button {
+    height: 30px;
+    position: relative;
+}
+
+/* --- small tags --- */
+.diet-badge {
+    flex: none;
+    display: inline-block;
+    padding: 0 7px 1px;
+    border: 1px solid rgb(96, 96, 112);
+    border-radius: 7px;
+    font-size: 13.33px;
+    font-weight: bold;
+    line-height: 1.25;
+    color: rgb(170, 170, 170);
+    background: rgba(0, 0, 16, 0.7);
+    text-shadow: 1px 1px 0 #000;
+}
+.diet-badge.diet-pass {
+    color: rgb(144, 238, 144);
+    border-color: rgb(70, 140, 70);
+}
+.diet-badge.diet-fail {
+    color: rgb(255, 120, 120);
+    border-color: rgb(160, 60, 60);
+}
+.diet-badge.diet-veto {
+    color: rgb(255, 160, 40);
+    border-color: rgb(180, 100, 20);
+}
+.diet-badge.diet-ours {
+    color: rgb(255, 192, 0);
+    border-color: rgb(150, 112, 0);
+}
+.diet-good {
+    color: rgb(144, 238, 144);
+}
+.diet-bad {
+    color: rgb(255, 120, 120);
+}
+.diet-warn {
+    color: rgb(255, 192, 0);
+}
+
+/* --- the empty agenda: the latest votes --- */
+.diet-vote {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 4px 6px 0 4px;
+    padding: 5px 10px;
+    background: rgba(0, 0, 0, 0.376);
+    color: rgb(190, 190, 190);
+    text-shadow: 1px 1px 0 #000;
+    white-space: nowrap;
+}
+.diet-vote > .diet-vote-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.diet-vote > .diet-vote-date,
+.diet-vote > .diet-vote-tally {
+    flex: none;
+    color: rgb(150, 150, 150);
+}
+.diet-empty {
+    padding: 12px 14px;
+    color: rgb(150, 150, 150);
+    text-shadow: 1px 1px 0 #000;
+}
+
+/* --- grids (ListViewBase) --- */
+.diet-grid .ow-grid-cell {
+    align-items: center;
+}
+.diet-grid .diet-cell-bar {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+}
+.diet-grid .diet-cell-bar > .ow-bar {
+    left: 0;
+}
+.diet-grid .diet-cell-bar > span {
+    position: relative;
+}
+.ow-grid-row.diet-you {
+    color: rgb(255, 255, 255);
+}
+.ow-grid-row.diet-warn-row {
+    color: rgb(255, 120, 120);
+}
+.diet-grid .ow-grid-cell.diet-r {
+    justify-content: flex-end;
+}
+
+/* the stock controls are absolutely positioned; in the flowing rows and cards they sit in the flow */
+.diet-row > .ow-input,
+.diet-row > .ow-glass,
+.diet-card-actions > .ow-glass,
+.diet-tally > .ow-link,
+.diet-row > .character-portrait {
+    position: relative;
+}
+.diet-tally > .ow-link {
+    flex: none;
+}
+.diet-card.diet-idle {
+    border-left-color: rgb(96, 96, 112);
+}
