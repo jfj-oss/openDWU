@@ -12,6 +12,7 @@
     { "name": "cultSpreadPct", "label": "Base conversion chance per period (%)", "default": 8, "min": 0, "max": 100 },
     { "name": "cultAmbassadorPct", "label": "Ambassador conversion chance per period (%)", "default": 15, "min": 0, "max": 100 },
     { "name": "cultSecedeColonies", "label": "Cult-held colonies needed to secede", "default": 4, "min": 1, "max": 50 },
+    { "name": "cultSecedeMinColonies", "label": "Fewest cult-held colonies needed when an empire has fewer governed colonies than that", "default": 2, "min": 1, "max": 50 },
     { "name": "cultAgentDetectPct", "label": "Counter-intelligence detection factor (per mille per espionage point)", "default": 15, "min": 0, "max": 1000 },
     { "name": "cultExistChancePct", "label": "Chance the Cult exists in this game (%; -1 = use the shared value)", "default": -1, "min": -1, "max": 100 },
     { "name": "cultMinYear", "label": "Earliest year the Cult may seed or trigger (-1 = use the shared value)", "default": -1, "min": -1, "max": 200 }

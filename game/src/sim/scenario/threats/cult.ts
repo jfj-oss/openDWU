@@ -97,6 +97,7 @@ const P = {
     spreadPct: (g: Galaxy) => p(g, 'cultSpreadPct', 8),
     ambassadorPct: (g: Galaxy) => p(g, 'cultAmbassadorPct', 15),
     secedeColonies: (g: Galaxy) => p(g, 'cultSecedeColonies', 4),
+    secedeMinColonies: (g: Galaxy) => p(g, 'cultSecedeMinColonies', 2),
     agentDetectPct: (g: Galaxy) => p(g, 'cultAgentDetectPct', 15),
 };
 
@@ -235,13 +236,23 @@ function cultHeldColoniesOf(galaxy: Galaxy, st: CultState, empire: Empire): Habi
     return cultHeldColonies(galaxy, st).filter((h) => h.empire === empire);
 }
 
-/** §2 trigger: an empire with ≥ cultSecedeColonies cult-held colonies loses them to the theocracy. */
+/**
+ * §2 trigger: an empire whose cult-held colonies reach its threshold loses them to the theocracy. The threshold is
+ * cultSecedeColonies, lowered to the empire's number of governed colonies (but not below cultSecedeMinColonies) when it
+ * has fewer: without governors on every colony (the Characters add-on off, stock governors only) the creed can still rise.
+ */
+export function cultSecedeThreshold(galaxy: Galaxy, empire: Empire): number {
+    const chars = getEmpireCharacters(empire);
+    let governed = 0;
+    for (const colony of empire.colonies) if (chars.some((c) => c.active && c.role === CharacterRole.ColonyGovernor && c.location === colony)) governed++;
+    return Math.min(P.secedeColonies(galaxy), Math.max(P.secedeMinColonies(galaxy), governed));
+}
+
 export function cultCheckTrigger(galaxy: Galaxy): void {
     const st = cultState(galaxy);
-    const need = P.secedeColonies(galaxy);
     for (const e of normalEmpires(galaxy, st.faction)) {
         const held = cultHeldColoniesOf(galaxy, st, e);
-        if (held.length >= need) cultTrigger(galaxy, st, e, held);
+        if (held.length > 0 && held.length >= cultSecedeThreshold(galaxy, e)) cultTrigger(galaxy, st, e, held);
     }
 }
 

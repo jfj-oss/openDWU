@@ -18,6 +18,7 @@ import {
     cultDiscovery,
     cultEndCheck,
     cultHeldColonies,
+    cultSecedeThreshold,
     cultKnownSites,
     cultSpread,
     cultState,
@@ -25,7 +26,7 @@ import {
     registerCult,
 } from '../src/sim/scenario/threats/cult';
 import { normalEmpires, teardownIfDead } from '../src/sim/scenario/threats/framework';
-import { CharacterRole, IntelligenceMission, generateNewCharacter } from '../src/sim/characters';
+import { CharacterRole, IntelligenceMission, generateNewCharacter, getEmpireCharacters } from '../src/sim/characters';
 import { GameEndOutcome, setGameEndHandler, type GameEndEventArgs } from '../src/sim/victory';
 import { builtObjectCompleteTeardown } from '../src/sim/combat/teardown';
 import { takeOwnershipOfColonyFull } from '../src/sim/combat/ownership';
@@ -104,6 +105,16 @@ describe('Cult: forced conversion on seed 1', () => {
     it('the trigger: enough cult-held colonies secede — Way of Darkness rises, militia invades from inside', () => {
         const st = cultState(g);
         expect(cultHeldColonies(g, st)).toContain(colony);
+        // The threshold follows the governed colonies: cultSecedeColonies 4 with one governed colony = the floor (2);
+        // with 4+ governed it is 4; never above cultSecedeColonies (1 here, forced).
+        const [empireA] = normalEmpires(g);
+        const params = g.scenario!.params;
+        const forced = params.cultSecedeColonies;
+        params.cultSecedeColonies = 4;
+        const governed = empireA.colonies.filter((c) => c.empire === empireA && getEmpireCharacters(empireA).some((ch) => ch.active && ch.role === CharacterRole.ColonyGovernor && ch.location === c)).length;
+        expect(cultSecedeThreshold(g, empireA)).toBe(Math.min(4, Math.max(2, governed)));
+        params.cultSecedeColonies = forced;
+        expect(cultSecedeThreshold(g, empireA)).toBe(1);
         cultCheckTrigger(g);
         expect(st.faction).not.toBeNull();
         expect(st.faction!.name).toBe('Way of Darkness');

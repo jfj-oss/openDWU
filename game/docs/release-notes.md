@@ -8,6 +8,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 - Crash reports and play sessions now carry a random install id, so we can count how many people play each version (README privacy section).
 - **Deep Azure is now the default galaxy backdrop** for new games (navy and steel-blue dust). Players still on the old default (Deep) switch to it; any other pick is kept, and Game Options or the new-game wizard can change it.
 - **Smarter AI is now on by default** for new games, with all of its options, including the four ship design ones (Mod-style designs, One weapon type, Bigger warships, Trim by priority) that used to start off. Untick it on the Other Empires page for the stock AI.
+- **The Cult can rise without the Characters add-on:** it needed 4 cult-held (governed) colonies in one empire, which a stock game, with few governors, rarely has. The bar now drops to the empire's number of governed colonies, but never below 2 (new setting).
 - Crash reports no longer let Sentry store the sender's IP address (it kept it before, despite the privacy note); only the country is kept.
 
 ## 0.1.31
