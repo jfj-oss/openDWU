@@ -20,17 +20,21 @@ Per output frame (bow up, as the stock frames; square canvas):
    trusses, drop pods, the dock's cradle ring and clamp arms, drifting debris) layered back to front, each casting a
    soft contact shadow on what is below. Every piece is reduced to its shading (luminance, levelled per piece); the
    Shakturi red lamps ride along as a glow channel, and the thruster (pure blue) / light (pure yellow) marker pixels
-   as points, mapped through each placement and dropped where a later piece covers them. Distinct per role at play
-   zoom: a needle frigate, a destroyer with gun sponsons on outriggers, a cruiser with swept aft wings, a broad
-   fortress capital ship flanked by bulwark hulls, a twin-hulled carrier joined by an open ribbed hangar deck, a fat
-   troop transport racked with drop pods (some clamps empty).
+   as points, mapped through each placement and dropped where a later piece covers them. One shipyard, one era: each
+   escort is a symmetric Shakturi hull (bow up, engines aft) with the same armoured pointed prow and mirrored fins /
+   flank armour; the roles differ by size and outline at play zoom: a small finned frigate, a long straight-sided
+   destroyer with flush gun rails, an arrowhead cruiser on swept wings, a broad fortress capital ship with armour
+   flanks, a box-sided carrier between two flight decks, a troop transport lined with drop pods.
 2. Paint: the shading gradient-mapped onto the planet destroyer's bronze ramp (its saturated pixels' median colour
    per luminance band), dulled and a little desaturated (tarnish); trusses and cradles in a darker bronze.
 3. Battle damage (never mirrored): verdigris pooled in the crevices and streaked aft, mismatched alloy patches (dull
    steel, dark bronze, verdigris-green; seams, rivet rows, some overhanging the hull edge), broad scorch, missing
    plates (a dark hole with the ribs and stringers inside, a torn lit lip), skeletal breaches at the hull edge (the
-   skin gone, the ribs standing out to the old outline, space showing between them), impact craters (lit rim, cracks,
-   soot halo), long gouges, melted edges (eaten silhouette, slag rim, heat tint), chipped edges and fine pitting.
+   skin gone, space showing between the ribs, the edge rail of the outline left standing), impact craters (lit rim,
+   cracks, soot halo), long gouges, shallow melted edges (slag rim, heat tint), small chips and fine pitting: the
+   damage sits inside the silhouette, which keeps its shape. Value contrast: recesses darkened, raised detail lifted,
+   lit bronze on the outline's upper-left edges and shadow on the far ones, then a dark outline (1 px on the ships,
+   2 px on the stations) so the frames read on bright and red nebulae.
    Sized for the drawn sizes (about 60-130 px at the closest zoom, 15-35 px at play zoom), so the patches, the
    notches in the outline and the breaches still read small.
 4. Lights: the red lamps become a dim amber ember (as the destroyer's palette), a third of them dead. The marker
@@ -362,7 +366,7 @@ def plate(w, h, chamfer=0.25, taper=0.0, bevel=2, seams=(), skew=0.0):
         L[y:y + 1] *= 0.45
         if y + 1 < h:
             L[y + 1] = np.minimum(1, L[y + 1] * 1.25)
-    L = tex(L, yy * 0.9, xx * 1.1 + 7, 0.45)
+    L = tex(L, yy * 0.9, xx * 1.1 + 7, 0.45) * 0.86
     return Piece(L, A)
 
 
@@ -525,6 +529,8 @@ EMBER = np.array([1.0, 0.52, 0.16])
 def paint(L, A, T, M, xs, cols):
     v = np.clip(L * 0.76 * (1 + T), 0, 1)
     v = np.where(v > 0.5, 0.5 + (v - 0.5) * 0.6, v)  # aged: highlights compressed (dull, not polished)
+    # value contrast: darker recesses, brighter raised edges (so the hulls do not blur into one tan at play zoom)
+    v = np.clip(v + (v - fblur(v * (A > 0.5), 2.5) / np.maximum(fblur((A > 0.5).astype(np.float64), 2.5), 1e-3)) * 0.8, 0, 1)
     bronze = ramp_lookup(xs, cols, v)
     grey = np.repeat(v[..., None], 3, axis=2)
     out = bronze * 1.0 + (bronze - grey) * 0.12  # a touch richer than the ramp: old bronze, not grey
@@ -687,7 +693,7 @@ class Damage:
                 broken |= (np.abs(self.yy - yb - 0.5) < 1.5) & (np.abs(self.xx - xa) < rng.uniform(1, pitch * 1.2))
         struct = hole & (rib | stringer) & ~broken
         if see_through:
-            rail = hole & (self.depth <= 1) & (self.jag < 0.6)
+            rail = hole & (self.depth <= 2) & (self.jag < 0.78)  # the outline stays: the hull's edge rail, rarely broken
             struct |= rail
         # shadow cast into the hole by the upper-left skin
         sh = np.zeros(hole.shape)
@@ -719,7 +725,7 @@ class Damage:
         out[burn] *= 0.7
 
     # -- missing plates: a dark hole with the frame inside
-    def missing(self, n, size=(0.1, 0.15)):
+    def missing(self, n, size=(0.08, 0.12)):
         rng, side = self.rng, self.side
         for (py, px) in pick_points(rng, self.cand(6), n, side * 0.14, self.taken):
             pw = side * rng.uniform(*size)
@@ -817,9 +823,6 @@ class Damage:
             out[mid] = np.minimum(1, out[mid] * 2.4 + 0.06)
             out[lip] = np.minimum(1, out[lip] * 1.55 + 0.08)
             out[shadow] *= 0.5
-            # where the gouge runs off the hull it bites the outline
-            bite = seg & (np.abs(s) < wd * 0.9) & (self.depth <= 2) & self.solid & ~self.protect
-            self.alpha[bite] = 0
         self.refresh()
 
     # -- melted edges: the outline eaten into rounded bays, a slag rim, heat tint further in
@@ -829,7 +832,7 @@ class Damage:
             r = side * rng.uniform(*size)
             d = np.sqrt((self.xx - px) ** 2 + (self.yy - py) ** 2) / r
             n2 = fbm(rng, self.h, self.w, max(2, int(r // 2)))
-            eat = (d + (n2 - 0.5) * 0.8 < 0.6) & ~self.protect
+            eat = (d + (n2 - 0.5) * 0.8 < 0.6) & ~self.protect & (self.depth <= 3)  # shallow: the outline keeps its shape
             self.alpha[eat] = 0
             self.solid = self.alpha > 0.85
             dep = depth_inside(self.solid, 8)
@@ -850,7 +853,7 @@ class Damage:
         rng = self.rng
         c = self.solid & (self.depth == 1) & ~self.protect & (self.M['thin'] < 0.5)
         for (py, px) in pick_points(rng, c, n, 4):
-            r = rng.uniform(1.0, 2.6)
+            r = rng.uniform(1.0, 1.8)
             m = ((self.xx - px) ** 2 + (self.yy - py) ** 2) < r * r
             self.alpha[m & ~self.protect] = 0
         self.refresh()
@@ -872,12 +875,12 @@ class Damage:
 
 # Damage per frame: patches, scorches, missing plates, edge breaches, craters, gouges, melted edges, chips.
 WEAR = {
-    'frigate': (3, 2, 1, 1, 2, 1, 1, 14),
-    'destroyer': (4, 3, 2, 2, 3, 2, 1, 18),
-    'cruiser': (5, 3, 2, 2, 4, 2, 1, 22),
-    'capitalship': (6, 4, 3, 3, 5, 3, 2, 26),
-    'carrier': (5, 3, 2, 2, 4, 2, 1, 22),
-    'trooptransport': (4, 3, 2, 1, 3, 2, 1, 18),
+    'frigate': (3, 2, 1, 0, 2, 1, 0, 8),
+    'destroyer': (4, 3, 2, 1, 3, 2, 0, 10),
+    'cruiser': (5, 3, 2, 1, 4, 2, 1, 12),
+    'capitalship': (6, 4, 3, 1, 5, 3, 1, 14),
+    'carrier': (5, 3, 2, 1, 4, 2, 1, 12),
+    'trooptransport': (4, 3, 2, 0, 3, 2, 0, 10),
     'base_0': (5, 3, 2, 2, 3, 2, 2, 20),
     'base_1': (7, 4, 3, 2, 5, 3, 2, 30),
 }
@@ -885,69 +888,62 @@ WEAR = {
 
 def build(root, name, rng):
     P = lambda f, crop=None, **k: Piece.load(root, f, crop, **k)  # noqa: E731
+    # One shipyard, one era: every escort is a Shakturi hull (symmetric, bow up, engines aft) with the same armoured
+    # prow and the same kind of swept aft fins / flank armour, mirrored; the roles differ by size and outline.
+    def prow(c, w, h, y, x=None, gain=0.95):
+        c.put(plate(w, h, chamfer=0.42, taper=0.72, seams=(0.45,)), c.w / 2 if x is None else x, y, shadow=0.35, gain=gain)
+
     if name == 'frigate':
-        # A needle: the slim Shakturi destroyer hull squeezed narrower still, swept fins and the frigate's engine
-        # block aft.
-        c = Canvas(200)
-        c.put(plate(14, 34, chamfer=0.1, skew=0.8, seams=(0.4,)), 82, 150, shadow=0, mirror=True)
-        c.put(P('frigate', (31, 100, 129, 159)), 100, 166, 0.62, shadow=0)
-        c.put(P('destroyer'), 100, 96, 0.82, shadow=0.5, sx=0.62, sy=1.0)
+        # Small and short: the Shakturi frigate a little slimmed, a pointed prow, two small swept fins.
+        c = Canvas(180)
+        c.put(plate(16, 34, chamfer=0.15, skew=0.7, seams=(0.5,)), 52, 136, shadow=0, mirror=True)
+        c.put(P('frigate'), 90, 100, 1.0, shadow=0.5, sx=0.84)
+        prow(c, 40, 30, 22)
         return c
     if name == 'destroyer':
-        # The Shakturi destroyer with two gun sponsons (frigate hulls cut short) out on lattice outriggers.
+        # Long and lean, straight-sided: the slim Shakturi destroyer with gun rails flush down both flanks (no wings),
+        # a long pointed prow.
         c = Canvas(240)
-        sp = P('frigate', (31, 30, 129, 159))
-        c.put(truss(10, 150, bay=10), 120, 124, rot=90, shadow=0.3)
-        c.put(truss(10, 150, bay=10, cut=(30, 36)), 120, 156, rot=90, shadow=0.3)
-        c.put(sp, 56, 140, 0.48, shadow=0.45, mirror=True, sy=1.25)
-        c.put(P('destroyer'), 120, 116, 0.92, shadow=0.55, sx=0.95)
-        c.put(plate(16, 26, chamfer=0.45, taper=0.4), 120, 16, shadow=0.3, gain=0.95)
+        c.put(plate(18, 132, chamfer=0.5, taper=0.2, seams=(0.25, 0.5, 0.75)), 120 - 41, 142, shadow=0, mirror=True)
+        c.put(P('destroyer'), 120, 126, 1.0, shadow=0.5, sx=0.9)
+        prow(c, 44, 36, 26)
         return c
     if name == 'cruiser':
-        # Long, with heavy swept wings aft (an arrowhead at play zoom) and a dorsal armour spine.
+        # An arrowhead: the Shakturi cruiser on broad swept wings, a dorsal armour spine.
         c = Canvas(280)
-        wing = plate(46, 74, chamfer=0.2, skew=0.55, seams=(0.33, 0.66))
-        c.put(wing, 86, 186, shadow=0, mirror=True)
-        c.put(P('capitalship', (73, 190, 197, 266)), 140, 236, 0.9, shadow=0.3, gain=0.9)
-        c.put(P('cruiser'), 140, 132, 1.0, shadow=0.55, sx=0.92, sy=1.0)
-        c.put(plate(14, 70, chamfer=0.4, taper=0.3, seams=(0.25, 0.5, 0.75)), 140, 96, shadow=0.4, gain=0.85, tone=-0.08)
+        c.put(plate(48, 80, chamfer=0.18, skew=0.6, seams=(0.33, 0.66)), 88, 190, shadow=0, mirror=True)
+        c.put(P('cruiser'), 140, 140, 1.0, shadow=0.55, sx=0.92)
+        c.put(plate(16, 84, chamfer=0.4, taper=0.3, seams=(0.25, 0.5, 0.75)), 140, 112, shadow=0.4, gain=0.85, tone=-0.06)
+        prow(c, 50, 36, 22)
         return c
     if name == 'capitalship':
-        # A broad fortress: the Shakturi capital hull widened, flanked by two bulwark hulls (destroyer frames) and
-        # slab armour across the bow (a hammerhead).
+        # A broad fortress, the biggest outline: the Shakturi capital hull widened, long armour flanks down both
+        # sides, a wide heavy prow, short fins at the stern.
         c = Canvas(320)
-        c.put(P('destroyer'), 98, 176, 0.86, shadow=0, mirror=True, sx=0.9)
-        c.put(truss(12, 70, bay=12), 160, 132, rot=90, shadow=0.3)
-        c.put(truss(12, 70, bay=12), 160, 222, rot=90, shadow=0.3)
-        c.put(P('capitalship'), 160, 168, 1.0, shadow=0.6, sx=1.12, sy=1.04)
-        c.put(plate(110, 26, chamfer=0.12, taper=0.15, seams=(0.5,)), 160, 44, shadow=0.45, gain=0.92)
+        c.put(plate(22, 56, chamfer=0.1, skew=0.5, seams=(0.5,)), 72, 262, shadow=0, mirror=True)
+        c.put(plate(34, 184, chamfer=0.35, taper=0.25, seams=(0.2, 0.4, 0.6, 0.8)), 160 - 68, 180, shadow=0, mirror=True)
+        c.put(P('capitalship'), 160, 170, 1.0, shadow=0.6, sx=1.14, sy=1.02)
+        prow(c, 84, 40, 30)
         return c
     if name == 'carrier':
-        # Twin hulls (the carrier frame split down the keel) joined by an open, ribbed hangar deck.
+        # Broad and box-sided: the Shakturi carrier hull between two long flat flight decks, launch bays at their bows.
         c = Canvas(300)
-        left = P('carrier', (63, 5, 125, 245))
-        right = P('carrier', (125, 5, 187, 245))
-        c.put(hangar(64, 176, missing=(5, 6, 11)), 150, 152, shadow=0)
-        c.put(plate(70, 20, chamfer=0.3, seams=(0.5,)), 150, 70, shadow=0.35, gain=0.9)
-        c.put(plate(70, 16, chamfer=0.0), 150, 236, shadow=0.35, gain=0.85)
-        c.put(left, 92, 150, 1.0, shadow=0.55, sx=1.05)
-        c.put(right, 208, 150, 1.0, shadow=0.55, sx=1.05)
+        deck = plate(36, 206, chamfer=0.2, seams=(0.18, 0.36, 0.54, 0.72, 0.9))
+        for y in (96, 150, 204):  # the deck struts, under everything
+            c.put(plate(40, 12, chamfer=0.0, bevel=1), 150 - 58, y, shadow=0, mirror=True, gain=0.8)
+        c.put(deck, 150 - 64, 158, shadow=0, mirror=True, tone=-0.04)
+        c.put(hangar(22, 26, pitch=7), 150 - 66, 76, shadow=0.3, mirror=True)
+        c.put(P('carrier'), 150, 152, 1.0, shadow=0.55)
+        prow(c, 52, 34, 30)
         return c
     if name == 'trooptransport':
-        # A fat drop-ship: the troop transport hull racked both sides with drop pods, some clamps empty.
+        # Fat and short: the Shakturi troop transport, drop pods tucked in a neat rack down each flank.
         c = Canvas(240)
-        pd = pod(20, 30, bands=(0.35, 0.7))
-        cl = clamp_arm(14, 28)
-        c.put(P('trooptransport'), 120, 120, 1.0, shadow=0.6, sx=0.92, sy=1.05)
-        c.put(truss(8, 132, bay=8), 61, 114, shadow=0.3, mirror=True, marks=False)
-        for k, y in enumerate((66, 98, 130, 162)):
-            for side in (0, 1):
-                x = 48 if side == 0 else 192
-                empty = (k, side) in ((1, 1), (3, 0))
-                if empty:
-                    c.put(cl, x + (8 if side == 0 else -8), y, shadow=0.3, flipx=(side == 1), marks=False)
-                else:
-                    c.put(pd, x, y, shadow=0.35, tone=0.02 * k)
+        pd = pod(20, 28, bands=(0.35, 0.7))
+        for k, y in enumerate((70, 100, 130, 160)):
+            c.put(pd, 120 - 62, y, shadow=0, mirror=True)
+        c.put(P('trooptransport'), 120, 122, 1.0, shadow=0.6, sx=0.96)
+        prow(c, 48, 30, 22)
         return c
     if name == 'base_0':
         # A broken outpost: the Shakturi station body inside a half-ring of gantry, one arm snapped, debris adrift.
@@ -1042,7 +1038,23 @@ def finish(name, c, xs, cols, rng):
     out[off] = np.array([0.16, 0.06, 0.035]) * (0.6 + g[off])[:, None]
     if name.startswith('base'):
         out = out * 1.12  # the stations sit in nebulae and gas clouds: a little lift so the ruin still reads there
+    # the silhouette: lit bronze on the edges facing the light (upper left), shadowed on the far side
+    solid = alpha > 0.5
+    d = depth_inside(solid, 3)
+    ext = ~solid
+    near_ul = shift(ext, 1, 1) | shift(ext, 1, 0) | shift(ext, 0, 1) | shift(ext, 2, 2)
+    near_br = shift(ext, -1, -1) | shift(ext, -1, 0) | shift(ext, 0, -1) | shift(ext, -2, -2)
+    lit = solid & (d <= 2) & near_ul & ~near_br & ~protect
+    out[lit] = np.minimum(1, out[lit] * 1.35 + 0.05)
+    shd = solid & (d <= 2) & near_br & ~near_ul & ~protect
+    out[shd] *= 0.6
     out = np.clip(out, 0, 1)
+    # a dark outline round everything (2 px on the stations, 1 px on the ships): reads on bright / red nebulae
+    ow = 2 if name.startswith('base') else 1
+    ring_ = dilate(solid, ow) & ~solid & (alpha < 0.5)
+    oa = 0.85 if name.startswith('base') else 0.6
+    out[ring_] = np.array([0.025, 0.02, 0.016])
+    alpha = np.where(ring_, np.maximum(alpha, oa), alpha)
     res = np.zeros((h, w, 4), np.uint8)
     res[..., :3] = np.round(out * 255)
     res[..., 3] = np.round(np.clip(alpha, 0, 1) * 255)
