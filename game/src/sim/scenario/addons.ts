@@ -66,6 +66,7 @@ export const ADDON_STATUS: Readonly<Record<string, string>> = {
     'colony-economy': 'new, balance pending',
     'voidbloom': 'recommended',
     'generation-ships': 'recommended',
+    'purifier': 'recommended',
     'archive-cores': 'recommended',
     'probe-swarm': 'recommended',
     'slavery': 'recommended',
