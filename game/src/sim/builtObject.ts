@@ -1228,6 +1228,8 @@ export class BuiltObject {
         this.turnRate = Math.fround(Math.fround(0.1) + Math.fround(Math.fround(Math.fround(num18) * 2) / Math.fround(num23)));
         const num49 = this.reactorPowerOutput - this.staticEnergyConsumption;
         let num50 = num49 / num16;
+        // openDWU guard (not in the original): a wrecked ship (reactor and engines all destroyed) is 0 / 0 = NaN, which poisoned its speed and position.
+        if (Number.isNaN(num50)) num50 = 0;
         if (num50 > 1.0) {
             num50 = Math.sqrt(Math.sqrt(num50));
             num50 = Math.min(num50, 2.0);
