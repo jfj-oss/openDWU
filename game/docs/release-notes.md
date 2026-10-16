@@ -6,6 +6,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 - Crash reports were never sent: the crash reporter failed to start in every release since it was added. Fixed.
 - Crash reports and play sessions now carry a random install id, so we can count how many people play each version (README privacy section).
+- **Deep Azure is now the default galaxy backdrop** for new games (navy and steel-blue dust). Players still on the old default (Deep) switch to it; any other pick is kept, and Game Options or the new-game wizard can change it.
 - Crash reports no longer let Sentry store the sender's IP address (it kept it before, despite the privacy note); only the country is kept.
 
 ## 0.1.31

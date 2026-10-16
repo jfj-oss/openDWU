@@ -3,7 +3,7 @@
 // (a stored `false` written with every other setting before the flip is not a choice), the in-thread fallback through
 // the setting and through `?simWorker=0`.
 import { afterEach, describe, expect, it } from 'vitest';
-import { DEFAULT_SETTINGS, SIM_WORKER_SETTING_VERSION, loadSettings, saveSettings, setSettingsStorage, type SettingsStorage } from '../src/ui/settings';
+import { DEFAULT_SETTINGS, NEW_GAME_BACKDROP_SETTING_VERSION, SIM_WORKER_SETTING_VERSION, loadSettings, saveSettings, setSettingsStorage, type SettingsStorage } from '../src/ui/settings';
 import { simWorkerEnabled } from '../src/simworker/workerClient';
 
 function memoryStorage(init: Record<string, string> = {}): SettingsStorage & { data: Record<string, string> } {
@@ -53,5 +53,24 @@ describe('the sim worker setting', () => {
         expect(simWorkerEnabled('?simWorker=0', true)).toBe(false);
         expect(simWorkerEnabled('?autostart=1&simWorker=false', true)).toBe(false);
         expect(simWorkerEnabled('?simWorker=1', false)).toBe(true);
+    });
+});
+
+// The same kind of migration for the new-game backdrop: Deep Azure replaced Deep as the default.
+describe('the new-game backdrop setting', () => {
+    it('defaults to Deep Azure; a stored Deep from before gives way to it, any other pick is kept', () => {
+        expect(DEFAULT_SETTINGS.newGameBackdrop).toBe('deepAzure');
+        setSettingsStorage(memoryStorage({ 'dwu-ui-settings': JSON.stringify({ ...DEFAULT_SETTINGS, newGameBackdrop: 'deep' }) }));
+        expect(loadSettings().newGameBackdrop).toBe('deepAzure');
+        setSettingsStorage(memoryStorage({ 'dwu-ui-settings': JSON.stringify({ ...DEFAULT_SETTINGS, newGameBackdrop: 'original' }) }));
+        expect(loadSettings().newGameBackdrop).toBe('original');
+    });
+
+    it('Deep picked since the change is kept', () => {
+        const st = memoryStorage();
+        setSettingsStorage(st);
+        saveSettings({ ...DEFAULT_SETTINGS, newGameBackdrop: 'deep' });
+        expect(JSON.parse(st.data['dwu-ui-settings']).newGameBackdropVersion).toBe(NEW_GAME_BACKDROP_SETTING_VERSION);
+        expect(loadSettings().newGameBackdrop).toBe('deep');
     });
 });

@@ -274,7 +274,7 @@ export const DEFAULT_SETTINGS: UiSettings = {
     // [galaxymarkers] end
     cleanGalaxyView: false,
     animateBackdrop: true,
-    newGameBackdrop: 'deep',
+    newGameBackdrop: 'deepAzure',
     backgroundMood: 'off',
     moodLevel: 0.6,
     musicSource: 'original',
@@ -381,7 +381,9 @@ export function loadSettings(): UiSettings {
         if (typeof parsed.pullStationsToCentre === 'boolean') out.pullStationsToCentre = parsed.pullStationsToCentre;
         if (typeof parsed.cleanGalaxyView === 'boolean') out.cleanGalaxyView = parsed.cleanGalaxyView;
         if (typeof parsed.animateBackdrop === 'boolean') out.animateBackdrop = parsed.animateBackdrop;
-        if (typeof parsed.newGameBackdrop === 'string') out.newGameBackdrop = parsed.newGameBackdrop;
+        // Deep Azure became the default with NEW_GAME_BACKDROP_SETTING_VERSION 2: a stored 'deep' from before (the old default,
+        // written with every settings save) gives way to it; any other stored pick, or one saved since, is kept.
+        if (typeof parsed.newGameBackdrop === 'string' && (parsed.newGameBackdrop !== 'deep' || (parsed as { newGameBackdropVersion?: unknown }).newGameBackdropVersion === NEW_GAME_BACKDROP_SETTING_VERSION)) out.newGameBackdrop = parsed.newGameBackdrop;
         // [musicmood]
         if (parsed.backgroundMood === 'off' || parsed.backgroundMood === 'rim' || parsed.backgroundMood === 'deep') out.backgroundMood = parsed.backgroundMood;
         if (typeof parsed.moodLevel === 'number' && Number.isFinite(parsed.moodLevel)) out.moodLevel = Math.min(1, Math.max(0, parsed.moodLevel));
@@ -482,12 +484,16 @@ export function clampAutoSaveMinutes(v: number): number {
 
 /** Persist the given settings to storage. */
 export function saveSettings(settings: UiSettings): void {
-    storage?.setItem(STORAGE_KEY, JSON.stringify({ ...settings, simWorkerVersion: SIM_WORKER_SETTING_VERSION }));
+    storage?.setItem(STORAGE_KEY, JSON.stringify({ ...settings, simWorkerVersion: SIM_WORKER_SETTING_VERSION, newGameBackdropVersion: NEW_GAME_BACKDROP_SETTING_VERSION }));
 }
 
 /** Stored next to `simWorker` (loadSettings): 2 = saved while the worker was the default, 3 = saved since the default
  *  depends on the machine's RAM (values stored under 1-2 are ignored, so everyone gets the RAM-based default). */
 export const SIM_WORKER_SETTING_VERSION = 3;
+
+/** Stored next to `newGameBackdrop` (loadSettings): 2 = saved since Deep Azure became the default (a stored 'deep' without it
+ *  was the old default and is ignored). */
+export const NEW_GAME_BACKDROP_SETTING_VERSION = 2;
 
 /** Current in-memory copy of the settings (loaded once at first use). */
 let current: UiSettings | null = null;
