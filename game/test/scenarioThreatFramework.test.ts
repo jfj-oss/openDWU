@@ -38,12 +38,14 @@ import { threatMarker, THREAT_CONFIRMED_COLOR, THREAT_SUSPECTED_COLOR } from '..
 import type { CreateGameOptions } from '../src/sim/game';
 import { comboOverlayFs, createScenarioGame } from './helpers/scenarioGame';
 import { registerScenarioEvent, scenarioEmit, scenarioQuery } from '../src/sim/scenario/hooks';
-import { genShipsLowLevel, genShipsPeriodic, genShipsState, genShipsStates, genShipsWaveSize, peekGenShipsState } from '../src/sim/scenario/threats/generationShips';
+import { genShipsAssaultStrengths, genShipsAssaultWins, genShipsLowLevel, genShipsPeriodic, genShipsState, genShipsStates, genShipsWaveSize, peekGenShipsState } from '../src/sim/scenario/threats/generationShips';
 import { empireTechLevel, maxDesignTechLevel } from '../src/sim/scenario/threats/robotMutiny';
 import { calculateOverallStrengthFactorWithoutShields } from '../src/sim/diplomacyTick';
 import { ComponentType } from '../src/sim/data/components';
 import { HabitatType } from '../src/sim/types';
 import { YEAR_LENGTH } from '../src/sim/galaxyTime';
+import { lockWar, makeFactionTroop } from '../src/sim/scenario/threats/framework';
+import { takeOwnershipOfColonyFull } from '../src/sim/combat/ownership';
 import { archiveCoresPeriodic, grantArchiveCore, peekArchiveCoresState } from '../src/sim/scenario/threats/archiveCores';
 import { peekProbeSwarmState, probeSwarmIncome, probeSwarmPeriodic, probeSwarmState } from '../src/sim/scenario/threats/probeSwarm';
 import { peekVoidWhaleState, referenceHyperSpeed, voidWhalePeriodic, voidWhaleState } from '../src/sim/scenario/threats/voidWhale';
@@ -576,6 +578,72 @@ describe('new threats: generation ships, archive cores, probe swarm', () => {
         expect(ships.filter((b) => !b.hasBeenDestroyed).every((b) => b.actualEmpire === pirate && b.supportCostFactor === 0)).toBe(true);
         expect(pirate.builtObjects.length).toBeGreaterThan(ships.length); // the stock base, construction ship and freighters came too
         expect(faction.builtObjects.filter((b) => !b.hasBeenDestroyed).length).toBe(0);
+    }, 600000);
+
+    it('generation ships: a hopeless landing retargets another world of the same empire; troops are made there and the original is invaded again', () => {
+        const g = ntGame(ALL, { ...WAVE, genShipsStrikeDays: 0, genShipsRetakeTroopsPerMonth: 20, genShipsRetakeGarrison: 0 });
+        const st = genShipsState(g);
+        genShipsPeriodic(g);
+        const owner = st.owner!;
+        const target = st.target!;
+        const faction = st.faction!;
+        // Make the target hopeless: a huge garrison.
+        for (let i = 0; i < 60; i++) {
+            const t = makeFactionTroop(g, owner, 900, 'Test Guard', owner.dominantRace);
+            t.colony = target;
+            target.troops!.add(t);
+        }
+        const loaded = st.transports.flatMap((b) => [...(b.troops?.items ?? [])]);
+        expect(genShipsAssaultWins(g, target, faction, loaded, 130)).toBe(false);
+        expect(genShipsAssaultStrengths(g, target, faction, loaded).defending).toBeGreaterThan(genShipsAssaultStrengths(g, target, faction, loaded).attacking);
+        st.phase = 'war';
+        st.warDate = galaxyStarDate(g);
+        st.strikeDone = true;
+        lockWar(g, faction, owner);
+        for (const e of st.escorts) {
+            e.xpos = target.xpos + 500;
+            e.ypos = target.ypos;
+        }
+        const others = owner.colonies.filter((c) => c !== target && !c.hasBeenDestroyed && c.population != null && c.population.totalAmount > 0);
+        expect(others.length).toBeGreaterThan(0);
+        genShipsPeriodic(g);
+        // Another colony of the same owner is now the target; the original is kept to retake; the troops stay on the transports.
+        expect(st.committed).toBe(false);
+        expect(st.target).not.toBe(target);
+        expect(st.target!.empire).toBe(owner);
+        expect(st.retake).toBe(target);
+        expect(st.retargets).toBe(1);
+        expect(st.transports.some((b) => (b.troops?.count ?? 0) > 0)).toBe(true);
+        // The fallback falls: the world ship lands there, the war goes on, the faction settles and makes troops.
+        const fb = st.target!;
+        takeOwnershipOfColonyFull(g, faction, fb, faction, false, true);
+        genShipsPeriodic(g);
+        expect(st.phase).toBe('settling');
+        expect(st.base).toBe(fb);
+        expect(obtainDiplomaticRelation(faction, owner).type).toBe(DiplomaticRelationType.War);
+        st.worldShip!.xpos = fb.xpos;
+        st.worldShip!.ypos = fb.ypos;
+        genShipsPeriodic(g);
+        expect(st.phase).toBe('settled');
+        expect(st.retake).toBe(target);
+        for (const b of st.transports) b.troops?.clear(); // the first force is spent
+        st.recruitDate = 0;
+        genShipsPeriodic(g);
+        expect(st.recruited).toBeGreaterThan(0);
+        expect(fb.troops!.items.filter((t) => t.empire === faction).length).toBeGreaterThanOrEqual(1);
+        // Enough troops to beat the original target's current defence: they load onto transports and go (phase war again, at the original).
+        target.troops!.clear();
+        for (let i = 0; i < 40; i++) {
+            const t = makeFactionTroop(g, faction, 300, 'Test Raiser', faction.dominantRace);
+            t.colony = fb;
+            fb.troops!.add(t);
+        }
+        faction.stateMoney = 1e9;
+        genShipsPeriodic(g);
+        expect(st.phase).toBe('war');
+        expect(st.target).toBe(target);
+        expect(st.launches).toBe(1);
+        expect(st.transports.some((b) => (b.troops?.count ?? 0) > 0)).toBe(true);
     }, 600000);
 
     it('generation ships: the Force start option guarantees the threat and aims the first ship at the player', () => {

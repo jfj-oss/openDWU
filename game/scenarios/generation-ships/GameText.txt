@@ -64,3 +64,7 @@ GenShips Strike News;The {0} fleet is hunting the {1}'s gas mining stations ({2}
 GenShips Regroup News;The {0} have finished their raids on the {1}'s gas mining stations ({2} destroyed) and gathered every fleet to take {3}.
 GenShips Pirates News;Beaten, the {0} fleet has turned pirate: the {3} raid the {1} from a base at {2}.
 GenShips Pirate Name;{0} Raiders
+GenShips Retarget News;Over {2} the {0} troops cannot win, so the fleet turns on {3}, another world of the {1}. They will return for {2}.
+GenShips Foothold News;The {0} have taken {1} from the {3}. They are raising troops there to take {2}.
+GenShips Return News;The {0} have gathered {2} regiments and a fleet against {1}, a world of the {3}.
+GenShips Retaken News;The {0} have taken {1} from the {2} at last.

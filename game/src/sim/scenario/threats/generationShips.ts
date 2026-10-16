@@ -54,8 +54,10 @@ import { assignMission } from '../../missions/assign';
 import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission } from '../../missions/mission';
 import { makeHabitatIntoColonyRuntime } from '../../missions/cmdTroops';
 import { habitatGenerateNewTroop } from '../../troops';
-import { TroopType } from '../../cargo';
-import { empireShipGroups, shipGroupAssignMission } from '../../fleets/shipGroup';
+import { TroopList, TroopType, type Troop } from '../../cargo';
+import { calculateForceStrengths, calculatePopulationStrength } from '../../combat/invasion';
+import { stellarObjectCharacters } from '../../characters';
+import { empireShipGroups, shipGroupAssignMission, type ShipGroup } from '../../fleets/shipGroup';
 import { reviewEmpireTerritory } from '../../exploration';
 import { Population, PopulationList } from '../../population';
 import { generateDebrisField } from '../../story/storyStart';
@@ -182,6 +184,16 @@ export interface GenShipsState {
     econStarted?: boolean;
     /** Warships bought by the settled faction so far (the design cycle position). */
     pumped?: number;
+    /** Retarget mode (the landing was hopeless): the original target to take back once the troops are made at the
+     *  fallback colony; the fallback is `target` until it falls (then `base` is the colony the troops are made at). */
+    retake?: Habitat | null;
+    base?: Habitat | null;
+    /** When the first retarget happened (the retake cap counts from here), last monthly recruiting, troops made so far, retargets so far. */
+    retargetDate?: number;
+    recruitDate?: number;
+    recruited?: number;
+    retargets?: number;
+    launches?: number;
 }
 
 function newState(): GenShipsState {
@@ -192,6 +204,7 @@ function newState(): GenShipsState {
         answer: null, answeredBy: null, outcome: null, worldShipFate: null, worldShipTaker: null, landings: 0, sentStages: {}, knowledge: [],
         index: 0, planned: 1, spawned: 1, nextDate: 0, strikeStart: 0, strikeDone: false, stationsHit: 0, strikeTargets: [], lastX: 0, lastY: 0, pirate: null, pirateShips: [], pirateBase: null,
         stageX: 0, stageY: 0, stageName: null, engageDate: 0, committed: false, navy: null, econDate: 0, designDate: 0, econStarted: false,
+        retake: null, base: null, retargetDate: 0, recruitDate: 0, recruited: 0, retargets: 0, launches: 0,
     };
 }
 
@@ -274,6 +287,11 @@ const P = {
     rearmPct: (g: Galaxy) => p(g, 'genShipsRearmPct', 300),
     pumpPerMonth: (g: Galaxy) => Math.trunc(p(g, 'genShipsPumpPerMonth', 3)),
     pumpMaxShips: (g: Galaxy) => Math.trunc(p(g, 'genShipsPumpMaxShips', 150)),
+    assaultMarginPct: (g: Galaxy) => p(g, 'genShipsAssaultMarginPct', 130),
+    retakeYears: (g: Galaxy) => p(g, 'genShipsRetakeYears', 15),
+    retakeTroopsPerMonth: (g: Galaxy) => Math.trunc(p(g, 'genShipsRetakeTroopsPerMonth', 6)),
+    retakeGarrison: (g: Galaxy) => Math.trunc(p(g, 'genShipsRetakeGarrison', 8)),
+    retakeMaxTroops: (g: Galaxy) => Math.trunc(p(g, 'genShipsRetakeMaxTroops', 600)),
 };
 
 /** The escort's three groups, by share of the firepower: big hulls, carriers, and the screens (also the strike fleets). */
@@ -586,7 +604,10 @@ function resupply(galaxy: Galaxy, st: GenShipsState): void {
 function guardWorldShip(galaxy: Galaxy, st: GenShipsState, ships: readonly BuiltObject[]): void {
     const ws = st.worldShip;
     if (ws === null) {
-        for (const b of ships) if (isIdle(b)) hold(galaxy, b, st.stageX ?? st.spawnX, st.stageY ?? st.spawnY);
+        const base = st.base ?? null;
+        const x = base !== null && !base.hasBeenDestroyed && base.empire === st.faction ? base.xpos : (st.stageX ?? st.spawnX);
+        const y = base !== null && !base.hasBeenDestroyed && base.empire === st.faction ? base.ypos : (st.stageY ?? st.spawnY);
+        for (const b of ships) if (isIdle(b) || (st.base != null && builtObjectMission(b.mission)?.type === BuiltObjectMissionType.Move)) hold(galaxy, b, x, y);
         return;
     }
     for (const b of ships) {
@@ -938,6 +959,7 @@ function directWar(galaxy: Galaxy, st: GenShipsState): void {
     const target = st.target!;
     // Third party took the target: at war with it too. Target gone: the owner's nearest colony.
     if (target.hasBeenDestroyed) {
+        if (st.retake === target) st.retake = null;
         const next = st.owner !== null ? nearestColony(galaxy, st.owner, st.spawnX, st.spawnY) : null;
         if (next === null) return endScatter(galaxy, st, 'repelled');
         st.target = st.settleAt = next;
@@ -945,6 +967,17 @@ function directWar(galaxy: Galaxy, st: GenShipsState): void {
     }
     if (target.empire === faction) {
         st.outcome = 'conquered';
+        if (st.retake != null && target !== st.retake) {
+            // The fallback world: the world ship lands here, the war goes on and the troops for the original target are made here.
+            st.base = target;
+            beginSettling(galaxy, st);
+            arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Foothold', onceKey: `Foothold${st.retargets ?? 0}`, textTag: `${TAG} Foothold News`, args: [faction.name, target.name, st.retake.name, st.owner?.name ?? ''] });
+            return;
+        }
+        if (st.retake === target) {
+            arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Retaken', textTag: `${TAG} Retaken News`, args: [faction.name, target.name, st.owner?.name ?? ''] });
+            st.retake = null;
+        }
         beginSettling(galaxy, st);
         arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Conquered', textTag: `${TAG} Conquered News ${flavourText(st)}`, args: [faction.name, target.name, st.owner?.name ?? ''] });
         return;
@@ -956,16 +989,13 @@ function directWar(galaxy: Galaxy, st: GenShipsState): void {
     if (holder !== null && holder === st.owner) commitDefence(galaxy, st, holder, target);
     let onStation = 0;
     let onStationStrength = 0;
+    const ordered = new Set<ShipGroup>();
     for (const bo of escorts) {
         if (galaxy.calculateDistance(bo.xpos, bo.ypos, target.xpos, target.ypos) <= STATION_RANGE) {
             onStation++;
             onStationStrength += calculateOverallStrengthFactorWithoutShields(bo);
         }
-        const m = builtObjectMission(bo.mission);
-        if (m === null || m.type !== BuiltObjectMissionType.Attack || m.targetHabitat !== target) {
-            bo.isAutoControlled = true;
-            assignMission(galaxy, bo, BuiltObjectMissionType.Attack, target, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
-        }
+        orderShip(galaxy, bo, BuiltObjectMissionType.Attack, target, ordered);
     }
     if (onStation > 0 && !st.engageDate) st.engageDate = galaxyStarDate(galaxy);
     let defenderStrength = 0;
@@ -984,7 +1014,17 @@ function directWar(galaxy: Galaxy, st: GenShipsState): void {
     const ratio = P.landingRatioPct(galaxy) / 100;
     const superior = onStationStrength > 0 && onStationStrength >= defenderStrength * ratio && onStation * 2 >= escorts.length;
     if (escorts.length === 0) st.committed = false;
-    else if (superior) st.committed = true;
+    else if (superior || st.committed) {
+        // The escort holds the world. Before the troops go down, the stock ground war's sums (genShipsAssaultStrengths):
+        // land only if they win with the margin (once under way, a bare win holds them to it). Otherwise: hopeless.
+        const loaded = loadedTroops(st);
+        if (loaded.length === 0) st.committed = st.committed === true || superior;
+        else if (genShipsAssaultWins(galaxy, target, faction, loaded, st.committed ? 100 : P.assaultMarginPct(galaxy))) st.committed = true;
+        else {
+            st.committed = false;
+            if (hopelessLanding(galaxy, st, loaded)) return;
+        }
+    }
     const clear = st.committed === true;
     for (const bo of st.transports) {
         if (bo.troops === null || bo.troops.count === 0) continue;
@@ -1011,7 +1051,11 @@ function directWar(galaxy: Galaxy, st: GenShipsState): void {
     const sinceEngage = st.engageDate ? galaxyStarDate(galaxy) - st.engageDate : 0;
     // The war clock starts when the escort reaches the world (the trip from the staging point is not part of it); never
     // longer than twice the war time in all.
-    const tooLong = st.engageDate ? sinceEngage > P.warYears(galaxy) * YEAR_LENGTH || sinceWar > P.warYears(galaxy) * 2 * YEAR_LENGTH : sinceWar > P.warYears(galaxy) * YEAR_LENGTH;
+    const retaking = st.retake != null;
+    // The troops are spent: at the fallback with no base yet the arc is over; from the base, back to it to make more.
+    if (retaking && !troopsLeft && st.base == null) return endScatter(galaxy, st, 'repelled');
+    if (retaking && (!troopsLeft || escorts.length === 0) && st.base != null && st.retake === target) return recallToBase(galaxy, st);
+    const tooLong = retaking ? galaxyStarDate(galaxy) - (st.retargetDate ?? st.warDate) > P.retakeYears(galaxy) * YEAR_LENGTH : st.engageDate ? sinceEngage > P.warYears(galaxy) * YEAR_LENGTH || sinceWar > P.warYears(galaxy) * 2 * YEAR_LENGTH : sinceWar > P.warYears(galaxy) * YEAR_LENGTH;
     if ((escorts.length === 0 && !troopsLeft) || tooLong) endScatter(galaxy, st, 'repelled');
 }
 
@@ -1062,8 +1106,14 @@ function commitDefence(galaxy: Galaxy, st: GenShipsState, owner: Empire, target:
  */
 function levyGarrison(galaxy: Galaxy, st: GenShipsState, owner: Empire, target: Habitat): void {
     if (!owner.troopCanRecruitInfantry || target.troops === null || target.troopsToRecruit === null || target.troopsToRecruit.count >= 3) return;
+    // Until the war the whole force counts (the AI hears it is coming); in the war only the transports actually en route
+    // (committed, or near the world), so troops waiting at the staging point or being made at the base do not raise it.
     let invaders = 0;
-    for (const b of st.transports) if (b.troops !== null) invaders += b.troops.totalAttackStrength;
+    for (const b of st.transports) {
+        if (b.troops === null) continue;
+        if (st.phase === 'war' && !st.committed && galaxy.calculateDistance(b.xpos, b.ypos, target.xpos, target.ypos) > STATION_RANGE * 3) continue;
+        invaders += b.troops.totalAttackStrength;
+    }
     const have = target.troops.totalDefendStrengthExcludeReadiness + target.troopsToRecruit.totalDefendStrengthExcludeReadiness;
     if (have >= (invaders * P.aiGarrisonPct(galaxy)) / 100) return;
     const t = habitatGenerateNewTroop(galaxy, target, TroopType.Infantry, null, false);
@@ -1082,6 +1132,228 @@ function nearestColony(galaxy: Galaxy, empire: Empire, x: number, y: number): Ha
         }
     }
     return best;
+}
+
+/**
+ * The stock ground war's comparison for `troops` (of `faction`) invading `habitat` as it stands now: the garrison with
+ * its defender bonuses (combat/invasion.ts calculateForceStrengths, as resolveInvasionBattles calls it) plus the
+ * population's share (calculatePopulationStrength, on the side it fights for). Pure: nothing is written, no Rnd.
+ */
+export function genShipsAssaultStrengths(galaxy: Galaxy, habitat: Habitat, faction: Empire, troops: readonly Troop[]): { attacking: number; defending: number } {
+    const attackers = new TroopList();
+    for (const t of troops) attackers.add(t);
+    const garrison = habitat.troops ?? new TroopList();
+    const r = calculateForceStrengths(galaxy, habitat, habitat.empire, faction, garrison, stellarObjectCharacters(habitat), attackers, null);
+    let attacking = r.attackingStrength;
+    let defending = r.defendingStrength;
+    if (habitat.population != null && habitat.empire !== null) {
+        const ps = calculatePopulationStrength(galaxy, habitat, faction, habitat.empire);
+        if (!ps.isDefending) attacking += ps.result;
+        else if (garrison.count > 0 && garrison.totalDefendStrength > 0) defending += ps.result;
+    }
+    return { attacking, defending };
+}
+
+/** True when `troops` would beat `habitat`'s defence by `marginPct` % (100 = a bare win). Pure. */
+export function genShipsAssaultWins(galaxy: Galaxy, habitat: Habitat, faction: Empire, troops: readonly Troop[], marginPct: number): boolean {
+    if (troops.length === 0) return false;
+    const s = genShipsAssaultStrengths(galaxy, habitat, faction, troops);
+    return s.attacking > 0 && s.attacking >= (s.defending * marginPct) / 100;
+}
+
+/**
+ * The fallback world when the landing at the target is hopeless: a populated colony of the target's owner (the same
+ * empire) that `troops` beat with the margin, other than the target itself and the world to retake. Nearest to the
+ * world to retake first, weighted by how strongly it is held (score = distance x (1 + defence / attack)); ties by
+ * colony order. Pure.
+ */
+export function genShipsFallbackWorld(galaxy: Galaxy, st: GenShipsState, troops: readonly Troop[], marginPct: number): Habitat | null {
+    const owner = st.owner;
+    const faction = st.faction;
+    const ref = st.retake ?? st.target;
+    if (owner === null || !owner.active || faction === null || ref === null || troops.length === 0) return null;
+    let best: Habitat | null = null;
+    let bestScore = Number.MAX_VALUE;
+    for (const c of owner.colonies) {
+        if (c.hasBeenDestroyed || c === st.target || c === ref || c.empire !== owner || c.population == null || c.population.totalAmount <= 0) continue;
+        const s = genShipsAssaultStrengths(galaxy, c, faction, troops);
+        if (!(s.attacking > 0) || s.attacking < (s.defending * marginPct) / 100) continue;
+        const score = (galaxy.calculateDistance(ref.xpos, ref.ypos, c.xpos, c.ypos) + 1) * (1 + s.defending / s.attacking);
+        if (score < bestScore) {
+            bestScore = score;
+            best = c;
+        }
+    }
+    return best;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Retargeting: a hopeless landing, the fallback world, the troops made there, the second invasion
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The troops now on the transports. Pure. */
+function loadedTroops(st: GenShipsState): Troop[] {
+    const out: Troop[] = [];
+    for (const b of st.transports) if (b.troops !== null && !b.hasBeenDestroyed) out.push(...b.troops.items);
+    return out;
+}
+
+/** The faction's most populous colony (where its troops are made), null when it has none. */
+function homeColony(faction: Empire): Habitat | null {
+    let home: Habitat | null = null;
+    for (const c of faction.colonies) if (!c.hasBeenDestroyed && (home === null || c.population.totalAmount > home.population.totalAmount)) home = c;
+    return home;
+}
+
+/** Peace with the owner (the locked war ends), as beginSettling's opening. */
+function makePeace(galaxy: Galaxy, st: GenShipsState): void {
+    const faction = st.faction!;
+    const owner = st.owner;
+    if (owner === null || !owner.active) return;
+    const a = obtainDiplomaticRelation(faction, owner);
+    const b = obtainDiplomaticRelation(owner, faction);
+    a.locked = false;
+    b.locked = false;
+    if (a.type === DiplomaticRelationType.War) changeDiplomaticRelation(galaxy, faction, a, DiplomaticRelationType.None);
+}
+
+/** One order for a ship, or once for its whole fleet when it is in one (the fleet AI would override a member's own order). */
+function orderShip(galaxy: Galaxy, bo: BuiltObject, type: BuiltObjectMissionType, target: Habitat, done: Set<ShipGroup>): void {
+    const sg = bo.shipGroup as ShipGroup | null;
+    if (sg !== null && sg !== undefined) {
+        if (done.has(sg)) return;
+        done.add(sg);
+        const m = sg.mission;
+        if (m === null || m.type !== type || m.targetHabitat !== target) shipGroupAssignMission(galaxy, sg, type, target, null, BuiltObjectMissionPriority.High, true);
+        return;
+    }
+    const m = builtObjectMission(bo.mission);
+    if (m === null || m.type !== type || m.targetHabitat !== target) {
+        bo.isAutoControlled = true;
+        assignMission(galaxy, bo, type, target, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
+    }
+}
+
+/**
+ * The troops on the transports cannot take the world (genShipsAssaultWins false) though the escort holds it. A
+ * second invasion from the base (st.retake set, the troops made there) is recalled to it; otherwise a fallback
+ * world of the same empire that they can beat becomes the target and the original is kept to retake. Returns true
+ * when the target changed (the caller stops for this period); false: nothing beatable, hold and wait for the timer.
+ */
+function hopelessLanding(galaxy: Galaxy, st: GenShipsState, loaded: readonly Troop[]): boolean {
+    if (st.retake != null && st.target === st.retake && st.base != null) {
+        recallToBase(galaxy, st);
+        return true;
+    }
+    const fallback = genShipsFallbackWorld(galaxy, st, loaded, P.assaultMarginPct(galaxy));
+    if (fallback === null) return false;
+    const from = st.target!;
+    st.retake ??= from;
+    if (!st.retargetDate) st.retargetDate = galaxyStarDate(galaxy);
+    st.retargets = (st.retargets ?? 0) + 1;
+    st.target = st.settleAt = fallback;
+    st.committed = false;
+    st.engageDate = 0;
+    arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Retarget', onceKey: `Retarget${st.retargets}`, textTag: `${TAG} Retarget News`, args: [st.faction!.name, st.owner?.name ?? '', from.name, fallback.name] });
+    return true;
+}
+
+/** The second invasion fell short (or the escort is gone): everything back to the base, the troops are unloaded there, the build-up goes on. */
+function recallToBase(galaxy: Galaxy, st: GenShipsState): void {
+    const base = st.base!;
+    st.phase = 'settled';
+    st.target = st.settleAt = base;
+    st.committed = false;
+    st.engageDate = 0;
+    for (const b of [...st.escorts, ...st.transports]) if (!b.hasBeenDestroyed) hold(galaxy, b, base.xpos, base.ypos);
+}
+
+/**
+ * The settled faction's war for the world it came for (st.retake): at its colony (the base) it makes troops of its race
+ * every month for free (makeFactionTroop: full readiness, no upkeep, kept in the garrison; the first genShipsRetakeGarrison stay),
+ * and when the rest beat the original target's defence as it stands now with the margin, they are loaded onto transports
+ * (the idle ones; more are bought from its designs) and, with every warship it has, sent against it (phase war again).
+ * Missions, stock troop / ship generation (Rnd).
+ */
+function directRetake(galaxy: Galaxy, st: GenShipsState): void {
+    const faction = st.faction;
+    const goal = st.retake;
+    if (faction === null || !faction.active || goal == null) return;
+    const now = galaxyStarDate(galaxy);
+    if (goal.hasBeenDestroyed || goal.empire === faction || now - (st.retargetDate ?? now) > P.retakeYears(galaxy) * YEAR_LENGTH) {
+        if (goal.empire === faction) arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Retaken', textTag: `${TAG} Retaken News`, args: [faction.name, goal.name, st.owner?.name ?? ''] });
+        st.retake = null;
+        makePeace(galaxy, st);
+        return;
+    }
+    const base = homeColony(faction);
+    if (base === null || base.troops === null) return;
+    st.base = base;
+    st.escorts = st.escorts.filter((b) => alive(b, faction));
+    st.transports = st.transports.filter((b) => alive(b, faction));
+    const home = (b: BuiltObject): boolean => galaxy.calculateDistance(b.xpos, b.ypos, base.xpos, base.ypos) <= STATION_RANGE;
+    // Troops back from a recalled invasion rejoin the garrison.
+    for (const t of st.transports) {
+        if (t.troops === null || t.troops.count === 0 || !home(t)) continue;
+        for (const tr of [...t.troops.items]) {
+            tr.colony = base;
+            base.troops.add(tr);
+        }
+        t.troops.clear();
+    }
+    // Monthly: the faction's troops rise at the base.
+    const race = faction.dominantRace;
+    if (race !== null && now - (st.recruitDate ?? 0) >= 30 * GAME_DAY_LENGTH) {
+        st.recruitDate = now;
+        for (let i = 0; i < P.retakeTroopsPerMonth(galaxy) && base.troops.count < P.retakeMaxTroops(galaxy); i++) {
+            const t = makeFactionTroop(galaxy, faction, P.troopStrength(galaxy), scenarioText(`${TAG} Troop Name`, race.name, (st.recruited ?? 0) + 1), race);
+            t.colony = base;
+            base.troops.add(t);
+            if (!faction.troops.contains(t)) faction.troops.add(t);
+            st.recruited = (st.recruited ?? 0) + 1;
+        }
+    }
+    const stock = base.troops.items.slice(P.retakeGarrison(galaxy));
+    if (stock.length === 0 || !genShipsAssaultWins(galaxy, goal, faction, stock, P.assaultMarginPct(galaxy))) return;
+    // Transports: the empty ones at the base, then bought (the design's price from the state money) until every troop has a place.
+    const free = st.transports.filter((b) => (b.troops === null || b.troops.count === 0) && home(b));
+    const need = (): boolean => {
+        let cap = 0;
+        for (const b of free) cap += b.troopCapacityRemaining;
+        let size = 0;
+        for (const t of stock) size += t.size;
+        return size > cap;
+    };
+    const design = designsFindNewestCanBuild(faction.designs, BuiltObjectSubRole.TroopTransport);
+    while (need() && design !== null && free.length < 40) {
+        const price = design.calculateCurrentPurchasePrice(galaxy);
+        if (!(price >= 0) || faction.stateMoney < price) return; // wait for the money
+        faction.stateMoney -= price;
+        const bo = spawnShip(galaxy, faction, design, base.xpos, base.ypos);
+        st.transports.push(bo);
+        free.push(bo);
+    }
+    if (free.length === 0) return;
+    const loaded: Troop[] = [];
+    for (const t of stock) {
+        const bo = free.find((b) => b.troopCapacityRemaining >= t.size);
+        if (bo === undefined) continue;
+        base.troops.remove(t);
+        loadTroopsOnto(bo, faction, [t]);
+        loaded.push(t);
+    }
+    if (loaded.length === 0) return;
+    // Every warship it has near the base joins the escort.
+    for (const b of faction.builtObjects) {
+        if (b.hasBeenDestroyed || b.role !== BuiltObjectRole.Military || b.topSpeed <= 0 || !WARSHIP_SUBROLES.has(b.subRole) || st.escorts.includes(b) || !home(b)) continue;
+        st.escorts.push(b);
+    }
+    st.launches = (st.launches ?? 0) + 1;
+    st.phase = 'war';
+    st.target = st.settleAt = goal;
+    st.committed = false;
+    st.engageDate = 0;
+    arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Return', onceKey: `Return${st.launches}`, textTag: `${TAG} Return News`, args: [faction.name, goal.name, loaded.length, st.owner?.name ?? ''] });
 }
 
 function isGasGiant(h: Habitat): boolean {
@@ -1183,8 +1455,8 @@ function beginSettling(galaxy: Galaxy, st: GenShipsState): void {
     st.settleDate = galaxyStarDate(galaxy);
     const faction = st.faction!;
     const owner = st.owner;
-    // Peace (the locked war ends) and the after-story relations.
-    if (owner !== null && owner.active) {
+    // Peace (the locked war ends) and the after-story relations; not while the original target is still to be retaken.
+    if (owner !== null && owner.active && st.retake == null) {
         const a = obtainDiplomaticRelation(faction, owner);
         const b = obtainDiplomaticRelation(owner, faction);
         a.locked = false;
@@ -1342,7 +1614,8 @@ function harass(galaxy: Galaxy, st: GenShipsState): void {
 
 function driveInstance(galaxy: Galaxy, st: GenShipsState): void {
     if (st.pirate !== null) harass(galaxy, st);
-    if (st.phase === 'settled') settledEconomy(galaxy, st);
+    if (st.phase === 'settled' || (st.phase === 'war' && st.econStarted === true)) settledEconomy(galaxy, st);
+    if (st.phase === 'settled' && st.retake != null) directRetake(galaxy, st);
     if (st.phase === 'waiting' || st.phase === 'settled' || st.phase === 'ended') return;
     const faction = st.faction;
     if (faction === null || !faction.active) {
@@ -1501,7 +1774,7 @@ function pumpShips(galaxy: Galaxy, st: GenShipsState): void {
 
 /** The settled faction's empire (its AI builds up: more warships, a budget for them). */
 function rearming(galaxy: Galaxy, empire: Empire): boolean {
-    return genShipsStates(galaxy).some((st) => st.faction === empire && st.phase === 'settled' && st.econStarted === true);
+    return genShipsStates(galaxy).some((st) => st.faction === empire && (st.phase === 'settled' || (st.phase === 'war' && st.retake != null)) && st.econStarted === true);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
