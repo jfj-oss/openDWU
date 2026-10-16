@@ -267,8 +267,8 @@ export function factionRingBandAlpha(f: number): number {
     return f > SYSTEM_RING_MIN_FACTOR ? 1 : 0;
 }
 
-/** Dead Probe Swarm presence: a dark, calm brown. */
-const SWARM_BROWN = 0x6b4220;
+/** Dead Probe Swarm presence: a cold, dark slate (its derelict hulls' blue-grey). */
+const SWARM_SLATE = 0x4f5f74;
 
 /** Presence disc alpha: the territory layer's 0.25 once zoomed out past system level (the backdrop pass, f > 70). */
 export function presenceBandAlpha(f: number): number {
@@ -911,7 +911,7 @@ export class GalaxyMarkerLayer {
     private ringKey = { z: NaN, v: -1, a: NaN, x0: 0, y0: 0, x1: 0, y1: 0, sig: '' };
     /** Whether the owned / independent system rings are listed (method_250 5395: !CleanGalaxyView). */
     private ringsGated = true;
-    /** The Dead Probe Swarm's faction while it has a presence the viewer knows (dark-brown discs, drawn whatever the presence toggle). */
+    /** The Dead Probe Swarm's faction while it has a presence the viewer knows (dark-slate discs, drawn whatever the presence toggle). */
     private swarmFaction: Empire | null = null;
     private discKey = { z: NaN, v: -1, x: NaN, y: NaN, all: true };
 
@@ -1206,7 +1206,7 @@ export class GalaxyMarkerLayer {
             const cnt = isSwarm ? 1 : p.count; // the swarm marks the system, not the station count
             const r = Math.max(presenceDiscRadius(cnt), presenceMinScreenPx(cnt, t) / z);
             if (!boundsOnScreen(star.xpos, star.ypos, r, 0, cam.x, cam.y, cam.width, cam.height, z)) continue;
-            const tint = isSwarm ? SWARM_BROWN : empireMarkerColor(p.empire);
+            const tint = isSwarm ? SWARM_SLATE : empireMarkerColor(p.empire);
             if (softA > 0.004) put(star.xpos, star.ypos, r, tint, softA, this.discTex);
             if (vividA > 0.004) put(star.xpos, star.ypos, r, tint, vividA, this.discVividTex);
         }

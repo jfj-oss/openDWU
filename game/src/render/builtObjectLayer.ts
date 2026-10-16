@@ -29,7 +29,7 @@ import { CONCORD_LIMBS_MIN_PX, ConcordFxLayer, concordArtEmpire, concordShipArt,
 import { ConstructionOverlays, DamageOverlays, shipConstructionSubject, shipDamageSubject } from './shipOverlays';
 import { artBundleFlag } from './artBundleFlags';
 import { LiveryOverlays } from './liveryLayer';
-import { ANCIENT_TINT, ANCIENT_WEAR, SwarmFxLayer, isAncientHull, isSwarmHull, purifierArtUrl, swarmArtFor, threatDrawScale, threatLooks } from './threatArt';
+import { ANCIENT_TINT, ANCIENT_WEAR, SwarmFxLayer, isAncientHull, threatArtUrl, threatDrawScale, threatLooks } from './threatArt';
 import { fogOf } from './fog';
 import { Galaxy } from '../sim/galaxy';
 import type { BuiltObject } from '../sim/builtObject';
@@ -697,8 +697,8 @@ export class BuiltObjectLayer {
             // [concordArt] end
             let img: LoadedShipImage | ConcordShipArt | null | undefined = cArt;
             if (img === null) {
-                // threatArt.ts: the Purifier's escorts / station draw the bundled bronze frames.
-                let url = looks.purifierFaction !== null ? purifierArtUrl(bo, looks) : null;
+                // threatArt.ts: the Purifier's escorts / station and the probe swarm's hulls draw their bundled frames.
+                let url = threatArtUrl(bo, looks);
                 if (url === null) {
                     const pictureRef = resolveDrawPictureRef(bo);
                     let stock = this.urlByPictureRef.get(pictureRef);
@@ -774,9 +774,8 @@ export class BuiltObjectLayer {
                     ? this.construction.texture(bo, constructionSubject, shipArtRecord, builtObjectSizePx(bo.size, metrics.areaRatio, 1, bo.design?.imageScalingType ?? DesignImageScalingMode.None, bo.design?.imageScalingFactor ?? 1))
                     : null;
             // [concordArt] at close zoom the Concord's limbs animate: the limbless body under the moving limbs.
-            const swarm = shipArtRecord !== null && isSwarmHull(looks, bo) ? swarmArtFor(shipArtRecord, bo === looks.mothercore, this.frame) ?? null : null;
             const ancient = isAncientHull(looks, bo);
-            const shipTex = cArt !== null && cArt.body !== undefined && px >= CONCORD_LIMBS_MIN_PX ? cArt.body : swarm !== null ? swarm.texture : texture;
+            const shipTex = cArt !== null && cArt.body !== undefined && px >= CONCORD_LIMBS_MIN_PX ? cArt.body : texture;
             sprite.texture = revealTex ?? shipTex;
             sprite.position.set(x, y);
             if (revealTex !== null) sprite.anchor.set(0.5);
@@ -795,7 +794,7 @@ export class BuiltObjectLayer {
                 this.concordFx.draw(cArt, x, y, sprite.rotation, sprite.scale.x, sprite.anchor.x, sprite.anchor.y, bo.builtObjectID, px, nowMs, this.concordAnimMs);
             }
             // [concordArt] end
-            if (swarm !== null && revealTex === null) this.swarmFx.draw(swarm, x, y, sprite.rotation, sprite.scale.x, sprite.anchor.x, sprite.anchor.y, bo.builtObjectID, px, sec);
+            if (bo === looks.mothercore && revealTex === null) this.swarmFx.draw(x, y, sprite.rotation, sprite.scale.x, sprite.anchor.x, sprite.anchor.y, texture.width, texture.height, px, sec);
             if (ancient && !this.liveries.forced.has(bo)) this.liveries.forced.set(bo, ANCIENT_WEAR);
             if ((liveries || ancient) && shipArtRecord !== null) this.liveries.draw(bo, shipArtRecord, px, z, sprite.alpha, x, y, heading);
             // 19r: MainView.cs 3253 method_73 → Main.Part12.cs 4988 method_106 while DamagedComponentCount > 0.

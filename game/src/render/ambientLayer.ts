@@ -57,7 +57,7 @@ import { EngineType } from '../sim/builtObject';
 import { DesignImageScalingMode } from '../sim/data/designSpecifications';
 import { HabitatCategoryType, HabitatType, type Habitat } from '../sim/types';
 import type { ConstructionQueue } from '../sim/construction/constructionQueue';
-import { purifierArtUrl, threatDrawScale, threatLooks } from './threatArt';
+import { threatArtUrl, threatDrawScale, threatLooks } from './threatArt';
 
 const FX = '/assets/dwu/images/effects';
 
@@ -569,7 +569,7 @@ export class AmbientLayer {
                 if (cv !== null) {
                     art = concordShipArt(cv, 0, false);
                 } else {
-                    const url = (looks.purifierFaction !== null ? purifierArtUrl(bo, looks) : null) ?? builtObjectImageUrl(resolveDrawPictureRef(bo));
+                    const url = threatArtUrl(bo, looks) ?? builtObjectImageUrl(resolveDrawPictureRef(bo));
                     if (url === null) continue;
                     art = this.artFor(url);
                 }
