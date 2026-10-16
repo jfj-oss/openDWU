@@ -151,8 +151,8 @@ describe('generation ships art', () => {
     });
 });
 
-// The Purifier's escorts and dock (scripts/purifier-ships.py: worn-down bronze war machines, a half-ruined shipyard);
-// the planet destroyer itself keeps its stock frame.
+// The Purifier's escorts and dock (scripts/purifier-ships.py: lopsided war-forged machines in the planet destroyer's
+// silver / champagne / copper with lit antennas, a half-ruined shipyard); the planet destroyer itself keeps its stock frame.
 describe('purifier art', () => {
     const png = (f: string): string => resolve(__dirname, '../public/art/purifier', `${f}.png`);
     const faction = {} as Empire;
@@ -179,11 +179,12 @@ describe('purifier art', () => {
         expect(purifierArtUrl(bo(BuiltObjectSubRole.Cruiser, other), l)).toBeNull();
         expect(purifierArtUrl(bo(BuiltObjectSubRole.ExplorationShip, faction), l)).toBeNull();
     });
-    it('frames: square, bronze, thruster marks on every escort, no opaque black; the dock berth is empty space', () => {
+    it('frames: square, warm metal, thruster marks on every escort, antenna lights, no opaque black; the dock berth is empty space', () => {
         for (const f of [...ESCORTS, 'base_0', 'base_1']) {
             const img = decodePng(png(f));
             expect(img.width).toBe(img.height);
             let blue = 0;
+            let yellow = 0;
             let n = 0;
             let r0 = 0;
             let b0 = 0;
@@ -194,6 +195,7 @@ describe('purifier art', () => {
                     blue++;
                     continue;
                 }
+                if (r === 255 && g === 255 && b === 0) yellow++;
                 expect(a === 255 && r === 0 && g === 0 && b === 0, f).toBe(false);
                 if (a > 200 && !(r === 255 && g === 255 && b === 0)) {
                     n++;
@@ -202,7 +204,10 @@ describe('purifier art', () => {
                 }
             }
             if (ESCORTS.includes(f)) expect(blue, f).toBeGreaterThan(0);
-            expect(r0 / n, f).toBeGreaterThan((b0 / n) * 1.4); // warm bronze, not the stock grey
+            // the antenna tip lights: nav-light markers (blinking like the planet destroyer's), within the scan cap of 20
+            expect(yellow, f).toBeGreaterThan(0);
+            expect(yellow, f).toBeLessThanOrEqual(20);
+            expect(r0 / n, f).toBeGreaterThan((b0 / n) * 1.15); // the planet destroyer's warm metal (red / blue ~1.29), not the stock grey (~1.0)
         }
         const dock = decodePng(png('base_1'));
         const c = (Math.round(dock.height * 0.44) * dock.width + Math.round(dock.width / 2)) * 4;
