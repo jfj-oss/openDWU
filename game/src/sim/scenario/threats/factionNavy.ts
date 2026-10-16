@@ -94,8 +94,12 @@ const P = {
     pumpPerMonth: (g: Galaxy, k: NavyPrefix) => Math.max(0, Math.trunc(scenarioParam(g, `${k}PumpPerMonth`, 3))),
     /** The pump rebuilds the navy while its militaryPotency is below this % of the normal empires' average. */
     pumpPct: (g: Galaxy, k: NavyPrefix) => Math.max(0, scenarioParam(g, `${k}PumpPct`, k === 'cult' ? 50 : 100)),
-    /** Most warships the pump keeps alive. */
-    pumpMaxShips: (g: Galaxy, k: NavyPrefix) => Math.max(0, Math.trunc(scenarioParam(g, `${k}PumpMaxShips`, 120))),
+    /** Most warships the pump keeps alive: a fixed number when set (> 0); by default it scales with the galaxy (pumpCapPct, pumpMinShips). */
+    pumpMaxShips: (g: Galaxy, k: NavyPrefix) => Math.max(0, Math.trunc(scenarioParam(g, `${k}PumpMaxShips`, 0))),
+    /** Default cap: this % of the largest normal empire's warship count (user 2026-10-16: scale it with the galaxy). */
+    pumpCapPct: (g: Galaxy, k: NavyPrefix) => Math.max(0, scenarioParam(g, `${k}PumpCapPct`, 100)),
+    /** ... but never below this many warships. */
+    pumpMinShips: (g: Galaxy, k: NavyPrefix) => Math.max(0, Math.trunc(scenarioParam(g, `${k}PumpMinShips`, 30))),
     /** Mining / gas stations the faction founds itself per month at its best free resource bodies (0: none). */
     stationsPerMonth: (g: Galaxy, k: NavyPrefix) => Math.max(0, Math.trunc(scenarioParam(g, `${k}StationsPerMonth`, 1))),
     /** Most mining / gas stations it holds before it stops founding more. */
@@ -291,11 +295,24 @@ export function purchaseWarships(galaxy: Galaxy, faction: Empire, homes: readonl
     return { ships, homeOf, cursor };
 }
 
+/** The pump's warship cap: <prefix>PumpMaxShips when set, else <prefix>PumpCapPct % of the largest normal empire's live warships, at least <prefix>PumpMinShips. Pure. */
+export function pumpShipCap(galaxy: Galaxy, k: NavyPrefix, faction: Empire): number {
+    const fixed = P.pumpMaxShips(galaxy, k);
+    if (fixed > 0) return fixed;
+    let largest = 0;
+    for (const e of normalEmpires(galaxy, faction)) {
+        let n = 0;
+        for (const b of e.builtObjects) if (!b.hasBeenDestroyed && b.role === BuiltObjectRole.Military) n++;
+        if (n > largest) largest = n;
+    }
+    return Math.max(P.pumpMinShips(galaxy, k), Math.round((largest * P.pumpCapPct(galaxy, k)) / 100));
+}
+
 const PUMP_CYCLE: readonly BuiltObjectSubRole[] = [BuiltObjectSubRole.Cruiser, BuiltObjectSubRole.Destroyer, BuiltObjectSubRole.CapitalShip, BuiltObjectSubRole.Cruiser, BuiltObjectSubRole.Frigate, BuiltObjectSubRole.Destroyer];
 
 /**
  * The navy's floor: each month, while the faction's militaryPotency is below <prefix>PumpPct % of the normal empires' average and
- * it has fewer than <prefix>PumpMaxShips warships, up to <prefix>PumpPerMonth warships of its current designs appear at its port
+ * it has fewer than pumpShipCap warships, up to <prefix>PumpPerMonth warships of its current designs appear at its port
  * worlds (paid from state money, no upkeep), formed into fleets there (the fleet handler directs them). Returns the number bought.
  */
 export function pumpNavy(galaxy: Galaxy, k: NavyPrefix, faction: Empire, navy: NavyState): number {
@@ -316,7 +333,7 @@ export function pumpNavy(galaxy: Galaxy, k: NavyPrefix, faction: Empire, navy: N
     let strength = militaryPotency(faction);
     let live = 0;
     for (const b of faction.builtObjects) if (!b.hasBeenDestroyed && b.role === BuiltObjectRole.Military) live++;
-    const cap = P.pumpMaxShips(galaxy, k);
+    const cap = pumpShipCap(galaxy, k, faction);
     let counted = 0;
     const cycle = PUMP_CYCLE.filter((sub) => designsFindNewestCanBuild(faction.designs, sub) !== null); // a missing design would use up a purchase
     if (cycle.length === 0) return 0;

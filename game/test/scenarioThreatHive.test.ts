@@ -28,9 +28,9 @@ import { annualTroopMaintenance } from '../src/sim/troops';
 import { FleetPosture } from '../src/sim/diplomacyTick';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { empireTechLevel } from '../src/sim/scenario/threats/robotMutiny';
-import { averageTechLevel } from '../src/sim/scenario/threats/factionNavy';
+import { averageTechLevel, pumpShipCap } from '../src/sim/scenario/threats/factionNavy';
 import { hiveNavyMonthly, hiveFleets } from '../src/sim/scenario/threats/hive';
-import { makeFactionTroop } from '../src/sim/scenario/threats/framework';
+import { makeFactionTroop, normalEmpires } from '../src/sim/scenario/threats/framework';
 import { empireShipGroups } from '../src/sim/fleets/shipGroup';
 import { GameEndOutcome, setGameEndHandler, type GameEndEventArgs } from '../src/sim/victory';
 import { builtObjectCompleteTeardown } from '../src/sim/combat/teardown';
@@ -282,6 +282,15 @@ describe('Hive: navy rebuild and mining stations', () => {
         g.scenario!.params.hivePumpMaxShips = 4;
         hiveNavyMonthly(g);
         expect(live().length).toBe(4);
+        // Default cap scales with the galaxy: the largest normal empire's warships (pumpCapPct 100), at least pumpMinShips.
+        delete g.scenario!.params.hivePumpMaxShips;
+        const largest = Math.max(...normalEmpires(g, faction).map((e) => e.builtObjects.filter((b) => b.role === BuiltObjectRole.Military && !b.hasBeenDestroyed).length));
+        expect(pumpShipCap(g, 'hive', faction)).toBe(Math.max(30, largest));
+        g.scenario!.params.hivePumpCapPct = 1000;
+        g.scenario!.params.hivePumpMinShips = 0;
+        expect(pumpShipCap(g, 'hive', faction)).toBe(largest * 10);
+        delete g.scenario!.params.hivePumpCapPct;
+        delete g.scenario!.params.hivePumpMinShips;
         g.scenario!.params.hiveStationsPerMonth = 1;
         const stations0 = faction.miningStations.length;
         const found0 = st.navy!.stationsFounded ?? 0;
