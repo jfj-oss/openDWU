@@ -70,7 +70,7 @@ export const ADDON_STATUS: Readonly<Record<string, string>> = {
     'archive-cores': 'recommended',
     'probe-swarm': 'recommended',
     'slavery': 'recommended',
-    'scorched-earth': 'new',
+    'scorched-earth': 'work in progress',
     'orbital-superiority': 'new',
     'longer-ground-combat': 'new',
     'jump-interdiction': 'new',
@@ -666,7 +666,7 @@ export const EXPANSIONS: readonly Expansion[] = [
     { id: 'politics-characters', name: 'Politics & Characters', description: 'Governors, VIPs and the Galactic Council, internal security, reputation, espionage fallout, frontier autonomy, refugees, war crimes remembered and bounty hunters.', members: ['characters-victory', 'internal-security', 'reputation', 'espionage-consequences', 'frontier-autonomy', 'refugees-demographics', 'war-crimes', 'bounty-hunters'] },
     { id: 'economy', name: 'Economy', description: 'Colony economy, the exchange, chartered companies, corporate coups, privateers and wreckage salvage.', members: ['colony-economy', 'exchange', 'chartered-companies', 'corporatecoup', 'privateers', 'wreckage-salvage'] },
     { id: 'galactic-threats', name: 'Galactic Threats', description: 'The hidden end-game threats (cult, hive, silence, greytide, ghost armada, robot mutiny, time bomb, doppelgangers, dark farms) and the early ones: generation ships, a dead probe swarm, the archive cores they leave and the Void Whale, plus the mid-game Purifier: an ancient planet destroyer you can hunt.', members: ['threat-framework', 'generation-ships', 'probe-swarm', 'hollow-fleet', 'archive-cores', 'void-whale', 'purifier', 'cult', 'hive', 'silence', 'greytide', 'ghostarmada', 'robotmutiny', 'timebomb', 'doppelgangers', 'darkfarms'] },
-    { id: 'living-galaxy', name: 'Living Galaxy', description: 'A galaxy that moves on its own: lively events, active independents and scorched earth.', members: ['lively-galaxy', 'independents-active', 'scorched-earth'] },
+    { id: 'living-galaxy', name: 'Living Galaxy', description: 'A galaxy that moves on its own: lively events and active independents.', members: ['lively-galaxy', 'independents-active'] },
 ];
 
 /**
