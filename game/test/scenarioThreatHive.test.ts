@@ -134,6 +134,8 @@ describe('Hive: forced trigger on seed 1', () => {
         // Give it a few worlds (the nodes' ground wars may not have resolved), then the monthly handler.
         for (const n of st.nodes.slice(0, 5)) if (n.habitat.empire !== faction && !n.habitat.hasBeenDestroyed) takeOwnershipOfColonyFull(g, n.habitat.empire!, n.habitat, faction, false, false);
         expect(faction.colonies.length).toBeGreaterThan(0);
+        g.scenario!.params.hivePumpPct = 0; // the pump and the station founder have their own test
+        g.scenario!.params.hiveStationsPerMonth = 0;
         hiveNavyMonthly(g);
         expect(faction.spacePorts.length).toBeGreaterThanOrEqual(1);
         expect(faction.spacePorts.length).toBeLessThanOrEqual(4);
@@ -231,7 +233,11 @@ describe('Hive: garrisons and fleets', () => {
         const colony = faction.colonies[0];
         colony.troops!.items.length = 0;
         hiveNavyMonthly(g);
-        expect(colony.troops!.totalDefendStrength).toBeGreaterThanOrEqual(2000000);
+        expect(colony.troops!.totalDefendStrength).toBeGreaterThan(83333 - 100); // gradual: 2M over hiveGarrisonRefillYears (2)
+        expect(colony.troops!.totalDefendStrength).toBeLessThan(83333 + 100 * 100);
+        const grown = colony.troops!.totalDefendStrength;
+        hiveFleets(g); // the 5-day handler no longer refills
+        expect(colony.troops!.totalDefendStrength).toBe(grown);
         const fleets = empireShipGroups(faction).filter((sg) => sg !== null && sg.ships.length > 0 && sg.leadShip !== null);
         expect(fleets.length).toBeGreaterThan(0);
         for (const sg of fleets) sg!.posture = FleetPosture.Defend;
@@ -247,5 +253,42 @@ describe('Hive: garrisons and fleets', () => {
         enemy.ypos = colony.ypos + 90000;
         hiveFleets(g);
         expect(fleets.every((sg) => sg!.posture === FleetPosture.Attack)).toBe(true);
+    }, 1200000);
+});
+
+describe('Hive: navy rebuild and mining stations', () => {
+    it('the monthly pump buys warships while below its target; the faction founds mining stations itself', () => {
+        const { game } = hvGame({}, {}, false);
+        const g = game.galaxy;
+        const st = hiveState(g);
+        const owner = g.empires.find((e) => e !== null && e.active && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null && e.builtObjects.some((b) => b.role === BuiltObjectRole.Military) && e.miningStations.length > 0)!;
+        for (const n of st.nodes.slice(0, 3)) takeOwnershipOfColonyFull(g, g.independentEmpire!, n.habitat, owner, false, false);
+        hiveTrigger(g, st);
+        const faction = st.faction!;
+        for (const n of st.nodes.slice(0, 3)) if (n.habitat.empire !== faction && !n.habitat.hasBeenDestroyed) takeOwnershipOfColonyFull(g, n.habitat.empire!, n.habitat, faction, false, false);
+        g.scenario!.params.hiveStationsPerMonth = 0;
+        hiveNavyMonthly(g);
+        const live = () => faction.builtObjects.filter((b) => b.role === BuiltObjectRole.Military && !b.hasBeenDestroyed);
+        expect(live().length).toBeGreaterThan(0);
+        g.scenario!.params.hivePumpPct = 0;
+        hiveNavyMonthly(g);
+        expect(st.navy!.pumpBought ?? 0).toBe(0);
+        g.scenario!.params.hivePumpPct = 500;
+        for (const b of [...live()]) builtObjectCompleteTeardown(g, b);
+        faction.stateMoney = 5000000;
+        hiveNavyMonthly(g);
+        expect(live().length).toBe(3);
+        expect(live().every((b) => b.supportCostFactor === 0 && b.shipGroup !== null)).toBe(true);
+        g.scenario!.params.hivePumpMaxShips = 4;
+        hiveNavyMonthly(g);
+        expect(live().length).toBe(4);
+        g.scenario!.params.hiveStationsPerMonth = 1;
+        const stations0 = faction.miningStations.length;
+        const found0 = st.navy!.stationsFounded ?? 0;
+        faction.stateMoney = 5000000;
+        hiveNavyMonthly(g);
+        const founded = (st.navy!.stationsFounded ?? 0) - found0;
+        expect(founded).toBe(1);
+        expect(faction.miningStations.length).toBe(stations0 + 1);
     }, 1200000);
 });

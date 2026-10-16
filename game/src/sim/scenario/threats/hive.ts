@@ -46,7 +46,7 @@ import {
     type SentStages,
     type ThreatKnowledge,
 } from './framework';
-import { applyIncomeFloor, directFleets, topUpGarrisons, ensureConstructionShips, averageMilitary, navyRise, newNavyState, spawnPendingNavy, syncFactionTech, takeMiningStationsNear, topUpPorts, type NavyState } from './factionNavy';
+import { applyIncomeFloor, foundMiningStations, pumpNavy, directFleets, topUpGarrisons, ensureConstructionShips, averageMilitary, navyRise, newNavyState, spawnPendingNavy, syncFactionTech, takeMiningStationsNear, topUpPorts, type NavyState } from './factionNavy';
 
 export const HIVE_KEY = 'hive';
 export const HIVE_FLAG = 'hive';
@@ -284,6 +284,8 @@ function onFactionColonyOwnerChanged(galaxy: Galaxy, colony: Habitat, from: Empi
     if (st === null || st.faction === null || to !== st.faction) return;
     if (st.faction.capital === null) st.faction.capital = colony;
     hiveGiveAgents(galaxy, st);
+    st.navy ??= newNavyState();
+    topUpGarrisons(galaxy, 'hive', st.faction, st.navy, scenarioText(`${TAG} Militia Name`), colony); // a newly held world starts at the full garrison
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -299,6 +301,8 @@ export function hiveNavyMonthly(galaxy: Galaxy): void {
     applyIncomeFloor(galaxy, 'hive', faction, st.navy);
     topUpPorts(galaxy, 'hive', faction, st.navy);
     spawnPendingNavy(galaxy, faction, st.navy);
+    foundMiningStations(galaxy, 'hive', faction, st.navy);
+    pumpNavy(galaxy, 'hive', faction, st.navy); // the navy's floor: bought outright while it is below its target
     ensureConstructionShips(galaxy, 'hive', faction);
     topUpGarrisons(galaxy, 'hive', faction, st.navy, scenarioText(`${TAG} Militia Name`)); // every held world kept at hiveGarrison, free upkeep
 }
@@ -310,7 +314,6 @@ export function hiveFleets(galaxy: Galaxy): void {
     if (st === null || faction === null || !faction.active || st.ended) return;
     st.navy ??= newNavyState();
     directFleets(galaxy, 'hive', faction, st.navy);
-    topUpGarrisons(galaxy, 'hive', faction, st.navy, scenarioText(`${TAG} Militia Name`)); // reinforcements under attack too, not only monthly
 }
 
 /** Yearly: research re-synced to the galaxy average (never above), designs refreshed. */

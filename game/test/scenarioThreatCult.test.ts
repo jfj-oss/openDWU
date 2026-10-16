@@ -170,6 +170,8 @@ describe('Cult: economy and navy', () => {
     it('rises at the galaxy tech with money, a free port, the host\'s mining stations, a free navy, an income floor and free troops', () => {
         const { game } = ctGame();
         const g = game.galaxy;
+        g.scenario!.params.cultPumpPct = 0; // the pump and the station founder have their own test
+        g.scenario!.params.cultStationsPerMonth = 0;
         const st = cultState(g);
         const host = normalEmpires(g).find((e) => e.colonies.some((c) => c !== e.capital && c.population.totalAmount > 0) && e.miningStations.length > 0)!;
         expect(host).toBeDefined();
@@ -201,7 +203,7 @@ describe('Cult: economy and navy', () => {
         cultNavyMonthly(g);
         const warships = faction.builtObjects.filter((b) => b.role === BuiltObjectRole.Military && !b.hasBeenDestroyed);
         expect(warships.length).toBeGreaterThan(0);
-        expect(st.navy!.shipsSpawned).toBe(warships.length);
+        expect(st.navy!.shipsSpawned + (st.navy!.pumpBought ?? 0)).toBe(warships.length);
         expect(warships.every((b) => b.supportCostFactor === 0)).toBe(true);
         expect(st.navy!.pendingStrength).toBe(0);
         expect(empireShipGroups(faction).some((sg) => sg !== null && sg.posture === FleetPosture.Defend && sg.ships.length > 0)).toBe(true);
@@ -233,21 +235,46 @@ describe('Cult: garrisons and fleets', () => {
         cultCheckTrigger(g);
         const faction = st.faction!;
         takeOwnershipOfColonyFull(g, host, colony, faction, false, false);
-        // Monthly top-up: 2M total, free upkeep, and it is maintained (a depleted garrison is refilled).
-        cultNavyMonthly(g);
+        // A newly held world starts at the full 2M at once (free upkeep); after that it recovers gradually.
         expect(colony.troops!.totalDefendStrength).toBeGreaterThanOrEqual(2000000);
         expect(colony.troops!.totalDefendStrength).toBeLessThan(2000000 + 100 * 100);
         expect(annualTroopMaintenance(faction)).toBe(0);
-        colony.troops!.items.splice(0, 3);
-        const left = colony.troops!.totalDefendStrength;
-        expect(left).toBeLessThan(2000000);
         cultNavyMonthly(g);
+        expect(colony.troops!.totalDefendStrength).toBeLessThan(2000000 + 100 * 100); // already full: nothing added
+        colony.troops!.items.length = 0;
+        expect(colony.troops!.totalDefendStrength).toBe(0);
+        // Empty to full takes cultGarrisonRefillYears (2): 2M / 24 = ~83,333 a month.
+        cultNavyMonthly(g);
+        const m1 = colony.troops!.totalDefendStrength;
+        expect(m1).toBeGreaterThan(83333 - 100);
+        expect(m1).toBeLessThan(83333 + 100 * 100);
+        cultNavyMonthly(g);
+        expect(colony.troops!.totalDefendStrength).toBeGreaterThan(2 * 83333 - 200);
+        expect(colony.troops!.totalDefendStrength).toBeLessThan(2 * 83333 + 200 * 100);
+        // The 5-day fleet handler no longer refills it.
+        const before = colony.troops!.totalDefendStrength;
+        cultFleets(g);
+        expect(colony.troops!.totalDefendStrength).toBe(before);
+        // While enemy troops are on the ground, nothing is recovered (and the held counter ticks).
+        colony.invadingTroops = new TroopList();
+        const raider = makeFactionTroop(g, host, 100, 'Raider', null);
+        raider.colony = colony;
+        colony.invadingTroops.add(raider);
+        cultNavyMonthly(g);
+        expect(colony.troops!.totalDefendStrength).toBe(before);
+        expect(st.navy!.garrisonHeld).toBeGreaterThan(0);
+        colony.invadingTroops = new TroopList();
+        // A faster refill param: it recovers again, and tops out at the target.
+        g.scenario!.params.cultGarrisonRefillYears = 0.5;
+        for (let i = 0; i < 6; i++) cultNavyMonthly(g);
         expect(colony.troops!.totalDefendStrength).toBeGreaterThanOrEqual(2000000);
+        expect(colony.troops!.totalDefendStrength).toBeLessThan(2000000 + 100 * 100);
+        g.scenario!.params.cultGarrisonRefillYears = 2;
         g.scenario!.params.cultGarrison = 500000;
         colony.troops!.items.length = 0;
         cultNavyMonthly(g);
-        expect(colony.troops!.totalDefendStrength).toBeGreaterThanOrEqual(500000);
-        expect(colony.troops!.totalDefendStrength).toBeLessThan(600000);
+        expect(colony.troops!.totalDefendStrength).toBeLessThan(500000);
+        g.scenario!.params.cultGarrison = 2000000;
         // Fleets: nothing in range, so they are on the offensive.
         for (const sg of empireShipGroups(faction)) if (sg !== null) sg.posture = FleetPosture.Defend;
         const fleets = empireShipGroups(faction).filter((sg) => sg !== null && sg.ships.length > 0 && sg.leadShip !== null);
@@ -274,5 +301,65 @@ describe('Cult: garrisons and fleets', () => {
         colony.invadingTroops.add(t);
         cultFleets(g);
         expect(fleets.every((sg) => sg!.posture === FleetPosture.Defend)).toBe(true);
+    }, 1200000);
+});
+
+describe('Cult: navy rebuild and mining stations', () => {
+    it('the monthly pump buys warships while below its target; the faction founds mining stations itself', () => {
+        const { game } = ctGame();
+        const g = game.galaxy;
+        const st = cultState(g);
+        const host = normalEmpires(g).find((e) => e.colonies.some((c) => c !== e.capital && c.population.totalAmount > 0) && e.miningStations.length > 0 && e.builtObjects.some((b) => b.role === BuiltObjectRole.Military))!;
+        const colony = host.colonies.find((c) => c !== host.capital && c.population.totalAmount > 0)!;
+        const governor = generateNewCharacter(g, host, CharacterRole.ColonyGovernor, colony).character;
+        convert(g, st, governor!);
+        cultCheckTrigger(g);
+        const faction = st.faction!;
+        takeOwnershipOfColonyFull(g, host, colony, faction, false, false);
+        cultNavyMonthly(g); // the starting navy
+        const live = () => faction.builtObjects.filter((b) => b.role === BuiltObjectRole.Military && !b.hasBeenDestroyed);
+        expect(live().length).toBeGreaterThan(0);
+        // At target: the pump buys nothing.
+        const bought0 = st.navy!.pumpBought ?? 0;
+        g.scenario!.params.cultPumpPct = 0;
+        cultNavyMonthly(g);
+        expect(st.navy!.pumpBought ?? 0).toBe(bought0);
+        g.scenario!.params.cultPumpPct = 500; // far above the galaxy average
+        // Wiped out: three a month, paid at the design's price, free upkeep, in a fleet at its port world.
+        for (const b of [...live()]) builtObjectCompleteTeardown(g, b);
+        expect(live().length).toBe(0);
+        faction.stateMoney = 5000000;
+        cultNavyMonthly(g);
+        expect(live().length).toBe(3);
+        expect(st.navy!.pumpBought).toBe(bought0 + 3);
+        expect(faction.stateMoney).toBeLessThan(5000000 + 50000);
+        expect(live().every((b) => b.supportCostFactor === 0 && b.shipGroup !== null && b.isAutoControlled)).toBe(true);
+        expect(live().every((b) => g.calculateDistance(b.xpos, b.ypos, colony.xpos, colony.ypos) < 5000)).toBe(true);
+        // The ship cap and an empty treasury stop it.
+        g.scenario!.params.cultPumpMaxShips = 4;
+        cultNavyMonthly(g);
+        expect(live().length).toBe(4);
+        g.scenario!.params.cultPumpMaxShips = 120;
+        faction.stateMoney = 0;
+        faction.privateMoney = 0;
+        st.navy!.lastWealth = 0; // (the income floor would otherwise refund the loss)
+        g.scenario!.params.cultIncomeFloor = 0;
+        cultNavyMonthly(g);
+        expect(live().length).toBe(4);
+        g.scenario!.params.cultIncomeFloor = 50000;
+        // Mining stations: founded at the free resource bodies nearest its colony (its own target list is empty, it sits inside the host), paid, free upkeep, to a cap.
+        const stations0 = faction.miningStations.length;
+        const found0 = st.navy!.stationsFounded ?? 0;
+        faction.stateMoney = 5000000;
+        g.scenario!.params.cultStationsPerMonth = 2;
+        cultNavyMonthly(g);
+        const founded = (st.navy!.stationsFounded ?? 0) - found0;
+        expect(founded).toBeGreaterThan(0);
+        expect(founded).toBeLessThanOrEqual(2);
+        expect(faction.miningStations.length).toBe(stations0 + founded);
+        expect(faction.miningStations.slice(stations0).every((b) => b.supportCostFactor === 0)).toBe(true);
+        g.scenario!.params.cultStationMax = faction.miningStations.length;
+        cultNavyMonthly(g);
+        expect((st.navy!.stationsFounded ?? 0) - found0).toBe(founded);
     }, 1200000);
 });

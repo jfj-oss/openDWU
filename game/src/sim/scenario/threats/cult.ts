@@ -50,7 +50,7 @@ import {
     type ThreatKnowledge,
     forcedThreatVictim,
 } from './framework';
-import { applyIncomeFloor, directFleets, ensureConstructionShips, givePortAt, makeTroopOfStrength, navyRise, topUpGarrisons, newNavyState, spawnPendingNavy, syncFactionTech, takeMiningStationsNear, type NavyState } from './factionNavy';
+import { topUpPorts, applyIncomeFloor, foundMiningStations, pumpNavy, directFleets, ensureConstructionShips, givePortAt, makeTroopOfStrength, navyRise, topUpGarrisons, newNavyState, spawnPendingNavy, syncFactionTech, takeMiningStationsNear, type NavyState } from './factionNavy';
 
 export const CULT_KEY = 'cult';
 export const CULT_FLAG = 'cult';
@@ -390,6 +390,9 @@ export function cultNavyMonthly(galaxy: Galaxy): void {
     st.navy ??= newNavyState();
     applyIncomeFloor(galaxy, 'cult', faction, st.navy);
     spawnPendingNavy(galaxy, faction, st.navy);
+    topUpPorts(galaxy, 'cult', faction, st.navy); // a port the war destroyed is given back
+    foundMiningStations(galaxy, 'cult', faction, st.navy);
+    pumpNavy(galaxy, 'cult', faction, st.navy); // the navy's floor: bought outright while it is below its target
     ensureConstructionShips(galaxy, 'cult', faction);
     topUpGarrisons(galaxy, 'cult', faction, st.navy, scenarioText(`${TAG} Militia Name`)); // every held world kept at cultGarrison, free upkeep
 }
@@ -401,7 +404,6 @@ export function cultFleets(galaxy: Galaxy): void {
     if (st === null || faction === null || !faction.active || st.ended) return;
     st.navy ??= newNavyState();
     directFleets(galaxy, 'cult', faction, st.navy);
-    topUpGarrisons(galaxy, 'cult', faction, st.navy, scenarioText(`${TAG} Militia Name`)); // reinforcements under attack too, not only monthly
 }
 
 /** Yearly: research re-synced to the galaxy average (never above), designs refreshed. */
@@ -420,6 +422,7 @@ export function cultNavyColony(galaxy: Galaxy, colony: Habitat, from: Empire | n
     st.navy ??= newNavyState();
     if (faction.capital === null) faction.capital = colony; // the stock AI wants a capital (as the Hive's first world)
     givePortAt(galaxy, 'cult', faction, st.navy, colony);
+    topUpGarrisons(galaxy, 'cult', faction, st.navy, scenarioText(`${TAG} Militia Name`), colony); // a newly held world starts at the full garrison
     if (from !== null && from !== galaxy.independentEmpire && from.pirateEmpireBaseHabitat === null) takeMiningStationsNear(galaxy, 'cult', faction, st.navy, from, colony);
 }
 

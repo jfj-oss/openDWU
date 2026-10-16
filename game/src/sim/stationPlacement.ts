@@ -994,13 +994,14 @@ export function createMiningStations(galaxy: Galaxy, empire: Empire, allowEmpire
 }
 
 // Galaxy.8.cs CreateMiningStation(galaxy, habitat, empire, allowEmpiresToStartInSameSystem) (835). Rnd: see header.
-export function createMiningStation(galaxy: Galaxy, habitat: Habitat | null, empire: Empire, allowEmpiresToStartInSameSystem: boolean): boolean {
+// Mod layer: ignoreTerritory (default false: the stock rule) skips the territory check (the Cult's / Hive's own station founder).
+export function createMiningStation(galaxy: Galaxy, habitat: Habitat | null, empire: Empire, allowEmpiresToStartInSameSystem: boolean, ignoreTerritory = false): boolean {
     if (habitat !== null) {
         const systemStar = systemStarOf(galaxy, habitat);
         const own = checkSystemOwnership(galaxy, systemStar);
         const empire2 = own.empire;
         const disputed = own.disputed;
-        if ((allowEmpiresToStartInSameSystem || empire2 === null || empire2 === empire || disputed) && checkEmpireTerritoryCanBuildAtHabitat(galaxy, empire, habitat) && determineMiningStationAtHabitatForEmpire(habitat, empire) === null && habitat.empire === null) {
+        if ((allowEmpiresToStartInSameSystem || empire2 === null || empire2 === empire || disputed) && (ignoreTerritory || checkEmpireTerritoryCanBuildAtHabitat(galaxy, empire, habitat)) && determineMiningStationAtHabitatForEmpire(habitat, empire) === null && habitat.empire === null) {
             let design: Design | null = null;
             if (habitatResourcesContainsGroup(galaxy, habitat, ResourceGroup.Gas)) design = designsFindNewestCanBuild(empire.designs, S.GasMiningStation);
             if (habitatResourcesContainsGroup(galaxy, habitat, ResourceGroup.Mineral)) design = designsFindNewestCanBuild(empire.designs, S.MiningStation);

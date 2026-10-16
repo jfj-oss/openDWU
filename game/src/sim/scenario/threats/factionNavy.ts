@@ -22,13 +22,15 @@ import type { Habitat } from '../../types';
 import type { Race } from '../../data/races';
 import { BuiltObjectSubRole } from '../../builtObjectTypes';
 import { BuiltObjectRole } from '../../data/designSpecifications';
+import { ResourceGroup } from '../../resourceSystem';
+import { calculateCurrentCompleteResourceValue, checkWhetherHabitatIsDangerous, determineMiningStationAtHabitat } from '../../resourceTargets';
 import { galaxyStarDate } from '../../tick/simTime';
 import { generateNewBuiltObject } from '../../empireEvents';
 import { createNewDesigns, generateDesignFromSpec } from '../../designGeneration';
 import { galaxyDesignSpecificationBySubRole } from '../../gameStartTail';
 import { takeOwnershipOfBuiltObject } from '../../combat/ownership';
 import { FleetPosture, calculateOverallStrengthFactorWithoutShields, militaryPotency } from '../../diplomacyTick';
-import { designsFindNewestCanBuild, placeSpacePortAtColony } from '../../stationPlacement';
+import { createMiningStation, designsFindNewestCanBuild, habitatResourcesContainsGroup, placeSpacePortAtColony } from '../../stationPlacement';
 import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission } from '../../missions/mission';
 import { Troop, TroopList } from '../../cargo';
 import { ShipGroup, empireShipGroups as shipGroupsOfEmpire } from '../../fleets/shipGroup';
@@ -56,6 +58,19 @@ export interface NavyState {
     garrisonAdded?: number;
     defendOrders?: number;
     attackFlips?: number;
+    /** Colonies that have had their first (full) garrison; later top-ups are the gradual monthly recovery. */
+    garrisoned?: Habitat[];
+    /** Colonies whose recovery was held back by an invasion (troops landed / transports bound for it), counted per monthly check. */
+    garrisonHeld?: number;
+    /** Warships bought by the monthly pump (also the cursor through the design cycle). */
+    shipsPumped?: number;
+    pumpBought?: number;
+    /** Mining / gas stations the faction founded itself. */
+    stationsFounded?: number;
+    /** Debug counters of the station founder: months with no target, with no design, with no money. */
+    founderNoTarget?: number;
+    founderNoMoney?: number;
+    founderFailed?: number;
 }
 
 export function newNavyState(): NavyState {
@@ -71,8 +86,20 @@ const P = {
     constructionShips: (g: Galaxy, k: NavyPrefix) => Math.max(0, Math.trunc(scenarioParam(g, `${k}ConstructionShips`, 2))),
     /** Ground defence strength (troops' total defend strength, the Ground Report measure: natural strength x 100 readiness) kept at every held colony. */
     garrison: (g: Galaxy, k: NavyPrefix) => Math.max(0, scenarioParam(g, `${k}Garrison`, 2000000)),
+    /** Years an empty garrison takes to refill to the target (none while the colony is being invaded). */
+    garrisonRefillYears: (g: Galaxy, k: NavyPrefix) => Math.max(0.1, scenarioParam(g, `${k}GarrisonRefillYears`, 2)),
     /** Distance (game units) within which an enemy warship / loaded troop ship counts as attacking a held world. */
     defendRadius: (g: Galaxy, k: NavyPrefix) => Math.max(0, scenarioParam(g, `${k}DefendRadius`, 4000)),
+    /** Warships the monthly pump may buy per month. */
+    pumpPerMonth: (g: Galaxy, k: NavyPrefix) => Math.max(0, Math.trunc(scenarioParam(g, `${k}PumpPerMonth`, 3))),
+    /** The pump rebuilds the navy while its militaryPotency is below this % of the normal empires' average. */
+    pumpPct: (g: Galaxy, k: NavyPrefix) => Math.max(0, scenarioParam(g, `${k}PumpPct`, k === 'cult' ? 50 : 100)),
+    /** Most warships the pump keeps alive. */
+    pumpMaxShips: (g: Galaxy, k: NavyPrefix) => Math.max(0, Math.trunc(scenarioParam(g, `${k}PumpMaxShips`, 120))),
+    /** Mining / gas stations the faction founds itself per month at its best free resource bodies (0: none). */
+    stationsPerMonth: (g: Galaxy, k: NavyPrefix) => Math.max(0, Math.trunc(scenarioParam(g, `${k}StationsPerMonth`, 1))),
+    /** Most mining / gas stations it holds before it stops founding more. */
+    stationMax: (g: Galaxy, k: NavyPrefix) => Math.max(0, Math.trunc(scenarioParam(g, `${k}StationMax`, 20))),
     stationCount: (g: Galaxy, k: NavyPrefix) => Math.max(0, Math.trunc(scenarioParam(g, `${k}StationCount`, 3))),
 };
 
@@ -229,6 +256,83 @@ export function spawnPendingNavy(galaxy: Galaxy, faction: Empire, navy: NavyStat
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// The monthly pump: warships bought outright (the stock AI builds almost none for a threat faction)
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * Buys up to `maxNew` warships, each paid from the faction's state money at its design's price and spawned at a port world
+ * (`homes`, in turn), no upkeep, auto-controlled. `cycle` is the design sub-roles in order, `cursor` where to start in it;
+ * `more` is asked before each purchase with the ships bought so far. Stops when the money runs out. Draws Rnd (stock ship
+ * generation) only when it builds. Returns the ships (not yet in fleets) and the next cursor. Shared by Generation Ships.
+ */
+export function purchaseWarships(galaxy: Galaxy, faction: Empire, homes: readonly Habitat[], cycle: readonly BuiltObjectSubRole[], cursor: number, maxNew: number, more: (bought: readonly BuiltObject[]) => boolean): { ships: BuiltObject[]; homeOf: Habitat[]; cursor: number } {
+    const ships: BuiltObject[] = [];
+    const homeOf: Habitat[] = [];
+    if (homes.length === 0) return { ships, homeOf, cursor };
+    for (let i = 0; i < maxNew && more(ships); i++) {
+        const design = designsFindNewestCanBuild(faction.designs, cycle[cursor % cycle.length]);
+        if (design === null) {
+            cursor++;
+            continue;
+        }
+        const price = design.calculateCurrentPurchasePrice(galaxy);
+        if (!(price >= 0) || faction.stateMoney < price) break;
+        faction.stateMoney -= price;
+        const home = homes[ships.length % homes.length];
+        const pt = galaxy.selectRelativeParkingPoint();
+        const bo = generateNewBuiltObject(galaxy, faction, design, null, home.xpos + pt.x, home.ypos + pt.y);
+        takeOwnershipOfBuiltObject(galaxy, faction, bo, faction, false);
+        bo.supportCostFactor = 0;
+        bo.isAutoControlled = true;
+        ships.push(bo);
+        homeOf.push(home);
+        cursor++;
+    }
+    return { ships, homeOf, cursor };
+}
+
+const PUMP_CYCLE: readonly BuiltObjectSubRole[] = [BuiltObjectSubRole.Cruiser, BuiltObjectSubRole.Destroyer, BuiltObjectSubRole.CapitalShip, BuiltObjectSubRole.Cruiser, BuiltObjectSubRole.Frigate, BuiltObjectSubRole.Destroyer];
+
+/**
+ * The navy's floor: each month, while the faction's militaryPotency is below <prefix>PumpPct % of the normal empires' average and
+ * it has fewer than <prefix>PumpMaxShips warships, up to <prefix>PumpPerMonth warships of its current designs appear at its port
+ * worlds (paid from state money, no upkeep), formed into fleets there (the fleet handler directs them). Returns the number bought.
+ */
+export function pumpNavy(galaxy: Galaxy, k: NavyPrefix, faction: Empire, navy: NavyState): number {
+    const perMonth = P.pumpPerMonth(galaxy, k);
+    if (perMonth <= 0 || navy.pendingStrength > 0) return 0;
+    const homes: Habitat[] = [];
+    for (const port of faction.spacePorts) {
+        const h = port.parentHabitat;
+        if (!port.hasBeenDestroyed && h !== null && !h.hasBeenDestroyed && h.empire === faction && !homes.includes(h)) homes.push(h);
+    }
+    if (homes.length === 0) {
+        const biggest = biggestColony(faction);
+        if (biggest === null) return 0;
+        homes.push(biggest);
+    }
+    homes.sort((a, b) => b.population.totalAmount - a.population.totalAmount);
+    const target = (averageMilitary(galaxy, faction) * P.pumpPct(galaxy, k)) / 100;
+    let strength = militaryPotency(faction);
+    let live = 0;
+    for (const b of faction.builtObjects) if (!b.hasBeenDestroyed && b.role === BuiltObjectRole.Military) live++;
+    const cap = P.pumpMaxShips(galaxy, k);
+    let counted = 0;
+    const cycle = PUMP_CYCLE.filter((sub) => designsFindNewestCanBuild(faction.designs, sub) !== null); // a missing design would use up a purchase
+    if (cycle.length === 0) return 0;
+    const res = purchaseWarships(galaxy, faction, homes, cycle, navy.shipsPumped ?? 0, perMonth, (bought) => {
+        for (; counted < bought.length; counted++) strength += Math.max(0, calculateOverallStrengthFactorWithoutShields(bought[counted]));
+        return live + bought.length < cap && strength < target;
+    });
+    navy.shipsPumped = res.cursor;
+    const byHome = new Map<Habitat, BuiltObject[]>();
+    res.ships.forEach((b, i) => byHome.set(res.homeOf[i], [...(byHome.get(res.homeOf[i]) ?? []), b]));
+    for (const [home, ships] of byHome) formBeaconFleets(galaxy, faction, home, ships, FleetPosture.Defend);
+    navy.pumpBought = (navy.pumpBought ?? 0) + res.ships.length;
+    return res.ships.length;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // Space ports
 // ---------------------------------------------------------------------------------------------------------------
 
@@ -256,6 +360,9 @@ export function givePortAt(galaxy: Galaxy, k: NavyPrefix, faction: Empire, navy:
 
 /** Ports on the faction's biggest worlds that have none yet, up to the wanted number (the Hive's top-up). */
 export function topUpPorts(galaxy: Galaxy, k: NavyPrefix, faction: Empire, navy: NavyState): void {
+    // A port the war destroyed is not replaced by the stock AI (a besieged world is "unsafe to build at"), and without a yard the
+    // navy cannot be rebuilt or repaired: its colony goes back on the list.
+    navy.portColonies = navy.portColonies.filter((c) => !c.hasBeenDestroyed && c.empire === faction && faction.spacePorts.some((b) => !b.hasBeenDestroyed && b.parentHabitat === c));
     const max = 1 + P.smallPorts(galaxy, k);
     const order = [...faction.colonies].filter((c) => !c.hasBeenDestroyed).sort((a, b) => b.population.totalAmount - a.population.totalAmount);
     for (const c of order) {
@@ -295,6 +402,70 @@ export function takeMiningStationsNear(galaxy: Galaxy, k: NavyPrefix, faction: E
     return chosen.length;
 }
 
+/** Free mineral / gas bodies the faction could mine, nearest to any of its colonies first (the stock rules for what is worth mining and safe). */
+function stationCandidates(galaxy: Galaxy, faction: Empire): Habitat[] {
+    const colonies = faction.colonies.filter((c) => !c.hasBeenDestroyed);
+    if (colonies.length === 0) return [];
+    const scored: { h: Habitat; d: number }[] = [];
+    for (const h of galaxy.habitats) {
+        if (h === null || h.hasBeenDestroyed || h.empire !== null || h.resources.length === 0) continue;
+        let d = Infinity;
+        for (const c of colonies) d = Math.min(d, galaxy.calculateDistance(h.xpos, h.ypos, c.xpos, c.ypos));
+        scored.push({ h, d });
+    }
+    scored.sort((a, b) => a.d - b.d || galaxy.habitats.indexOf(a.h) - galaxy.habitats.indexOf(b.h));
+    return scored.map((x) => x.h);
+}
+
+/**
+ * The stock AI builds the faction's mining stations only with its construction ships, which the wars soon lose, and its own
+ * target list is empty (a world inside another empire's territory may not build there, and these factions start inside one). So
+ * the faction also founds them itself: each month up to <prefix>StationsPerMonth stations at the free resource bodies nearest its
+ * colonies worth mining (the stock value threshold, not dangerous), by the stock createMiningStation (territory ignored), paid
+ * from state money, no upkeep, until it holds <prefix>StationMax. Draws Rnd (stock station placement) only when it founds one.
+ * Returns the number founded.
+ */
+export function foundMiningStations(galaxy: Galaxy, k: NavyPrefix, faction: Empire, navy: NavyState): number {
+    const per = P.stationsPerMonth(galaxy, k);
+    if (per <= 0) return 0;
+    let live = faction.miningStations.filter((b) => !b.hasBeenDestroyed).length;
+    const max = P.stationMax(galaxy, k);
+    if (live >= max) return 0;
+    let founded = 0;
+    let tried = 0;
+    for (const habitat of stationCandidates(galaxy, faction)) {
+        if (founded >= per || live >= max || tried >= 60) break;
+        if (determineMiningStationAtHabitat(habitat) !== null) continue;
+        const mineral = habitatResourcesContainsGroup(galaxy, habitat, ResourceGroup.Mineral);
+        const gas = habitatResourcesContainsGroup(galaxy, habitat, ResourceGroup.Gas);
+        if (!mineral && !gas) continue;
+        tried++;
+        if (calculateCurrentCompleteResourceValue(galaxy, habitat) < MIN_STATION_VALUE || checkWhetherHabitatIsDangerous(galaxy, faction, habitat)) continue;
+        const design = designsFindNewestCanBuild(faction.designs, mineral ? BuiltObjectSubRole.MiningStation : BuiltObjectSubRole.GasMiningStation);
+        if (design === null) continue;
+        const price = design.calculateCurrentPurchasePrice(galaxy);
+        if (faction.stateMoney < price) {
+            navy.founderNoMoney = (navy.founderNoMoney ?? 0) + 1;
+            break;
+        }
+        const before = faction.miningStations.length;
+        if (!createMiningStation(galaxy, habitat, faction, true, true)) {
+            navy.founderFailed = (navy.founderFailed ?? 0) + 1;
+            continue;
+        }
+        faction.stateMoney -= price;
+        for (const b of faction.miningStations.slice(before)) b.supportCostFactor = 0;
+        navy.stationsFounded = (navy.stationsFounded ?? 0) + 1;
+        founded++;
+        live++;
+    }
+    if (founded === 0) navy.founderNoTarget = (navy.founderNoTarget ?? 0) + 1;
+    return founded;
+}
+
+/** The stock "worth a station" resource value (civilianAI MINING_STATION_RESOURCE_THRESHHOLD). */
+const MIN_STATION_VALUE = 10;
+
 // ---------------------------------------------------------------------------------------------------------------
 // Garrisons (monthly top-up, free upkeep) and the strength of a troop force
 // ---------------------------------------------------------------------------------------------------------------
@@ -325,15 +496,46 @@ export function makeTroopsOfStrength(galaxy: Galaxy, faction: Empire, strength: 
     return out;
 }
 
-/** Tops every colony the faction holds up to <prefix>Garrison total defence strength. Returns the number of colonies topped up. */
-export function topUpGarrisons(galaxy: Galaxy, k: NavyPrefix, faction: Empire, navy: NavyState, name: string): number {
+/** Enemy troops are on the ground at `colony`, or a loaded enemy troop ship is bound for it within reach (an invasion under way). */
+export function colonyBeingInvaded(galaxy: Galaxy, k: NavyPrefix, faction: Empire, colony: Habitat): boolean {
+    const inv = colony.invadingTroops;
+    if (inv !== null && inv.items.some((t) => troopEmpire(t) !== faction)) return true;
+    const r = 2 * P.defendRadius(galaxy, k);
+    for (const e of galaxy.empires) {
+        if (e === faction || !e.active || e === galaxy.independentEmpire) continue;
+        for (const bo of e.builtObjects) {
+            if (bo.hasBeenDestroyed || bo.troops === null || bo.troops.count <= 0) continue;
+            const m = builtObjectMission(bo.mission);
+            if (m !== null && m.targetHabitat === colony && galaxy.calculateDistance(bo.xpos, bo.ypos, colony.xpos, colony.ypos) <= r) return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Garrisons, monthly. A colony new to the faction starts at the full <prefix>Garrison total defence strength; after that it
+ * recovers target / (12 x <prefix>GarrisonRefillYears) per month (an empty one is full in that many years) up to it (free upkeep), and not at all while it is being
+ * invaded (enemy troops landed, or loaded transports bound for it). Returns the number of colonies that gained troops. With `only`: just that colony, and only its first fill.
+ */
+export function topUpGarrisons(galaxy: Galaxy, k: NavyPrefix, faction: Empire, navy: NavyState, name: string, only: Habitat | null = null): number {
     const target = P.garrison(galaxy, k);
     if (!(target > 0)) return 0;
+    const step = target / (12 * P.garrisonRefillYears(galaxy, k));
+    navy.garrisoned ??= [];
     let n = 0;
     for (const h of faction.colonies) {
-        if (h.hasBeenDestroyed) continue;
+        if (h.hasBeenDestroyed || (only !== null && (h !== only || navy.garrisoned.includes(h)))) continue;
         h.troops ??= new TroopList();
-        const deficit = target - h.troops.totalDefendStrength;
+        let goal = target;
+        if (navy.garrisoned.includes(h)) {
+            if (colonyBeingInvaded(galaxy, k, faction, h)) {
+                navy.garrisonHeld = (navy.garrisonHeld ?? 0) + 1;
+                continue;
+            }
+            goal = Math.min(target, h.troops.totalDefendStrength + step);
+        }
+        const deficit = goal - h.troops.totalDefendStrength;
+        if (!navy.garrisoned.includes(h)) navy.garrisoned.push(h);
         if (!(deficit >= READINESS)) continue;
         const race = (h.population?.dominantRace ?? faction.dominantRace ?? null) as Race | null;
         for (const t of makeTroopsOfStrength(galaxy, faction, deficit, name, race)) {

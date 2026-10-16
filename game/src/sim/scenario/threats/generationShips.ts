@@ -71,7 +71,7 @@ import { grantArchiveCore } from './archiveCores';
 import { empireTechLevel, formBeaconFleets, maxDesignTechLevel, raiseFactionTech } from './robotMutiny';
 import { designsFindNewestCanBuild } from '../../stationPlacement';
 import { ResearchAbilityType, abilityTypeFromFile } from '../../researchSystem';
-import { applyIncomeFloor, givePortAt, newNavyState, type NavyState } from './factionNavy';
+import { applyIncomeFloor, purchaseWarships, givePortAt, newNavyState, type NavyState } from './factionNavy';
 import {
     KNOWLEDGE_CONFIRMED,
     arcMessage,
@@ -1750,25 +1750,9 @@ function pumpShips(galaxy: Galaxy, st: GenShipsState): void {
     for (const c of faction.colonies) if (!c.hasBeenDestroyed && (home === null || c.population.totalAmount > home.population.totalAmount)) home = c;
     if (home === null || faction.spacePorts.every((b) => b.hasBeenDestroyed)) return;
     const cycle = [...HEAVY_CYCLE, ...CARRIER_CYCLE, ...SCREEN_CYCLE];
-    const ships: BuiltObject[] = [];
-    for (let i = 0; i < P.pumpPerMonth(galaxy) && live + ships.length < P.pumpMaxShips(galaxy); i++) {
-        const sub = cycle[(st.pumped ?? 0) % cycle.length];
-        const design = designsFindNewestCanBuild(faction.designs, sub);
-        if (design === null) {
-            st.pumped = (st.pumped ?? 0) + 1;
-            continue;
-        }
-        const price = design.calculateCurrentPurchasePrice(galaxy);
-        if (!(price >= 0) || faction.stateMoney < price) break;
-        faction.stateMoney -= price;
-        const pt = galaxy.selectRelativeParkingPoint();
-        const bo = generateNewBuiltObject(galaxy, faction, design, null, home.xpos + pt.x, home.ypos + pt.y);
-        takeOwnershipOfBuiltObject(galaxy, faction, bo, faction, false);
-        bo.supportCostFactor = 0;
-        bo.isAutoControlled = true;
-        ships.push(bo);
-        st.pumped = (st.pumped ?? 0) + 1;
-    }
+    const res = purchaseWarships(galaxy, faction, [home], cycle, st.pumped ?? 0, P.pumpPerMonth(galaxy), (bought) => live + bought.length < P.pumpMaxShips(galaxy));
+    st.pumped = res.cursor;
+    const ships = res.ships;
     if (ships.length > 0) formBeaconFleets(galaxy, faction, home, ships, FleetPosture.Defend);
 }
 
