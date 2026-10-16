@@ -26,6 +26,24 @@ export function frame(ctx, _dt, g) {
         row.answer = st.answer;
         row.escortsAlive = st.escorts.length;
         row.peakEscorts = Math.max(row.peakEscorts, st.escorts.length);
+        // Patrol check: escort + transport mission types now, the share within 3 world-ship patrol radii, ships out of fuel.
+        const ws = st.worldShip;
+        const mt = {};
+        let near = 0;
+        let dry = 0;
+        for (const b of [...st.escorts, ...st.transports]) {
+            const t = b.mission?.type ?? 'none';
+            mt[t] = (mt[t] ?? 0) + 1;
+            if (ws && Math.hypot(b.xpos - ws.xpos, b.ypos - ws.ypos) < 6000) near++;
+            if (b.fuelCapacity > 0 && b.currentFuel < 0.02 * b.fuelCapacity) dry++;
+        }
+        const yr = +(g.nowMs / 600_000).toFixed(2);
+        if (row.lastTl === undefined || yr - row.lastTl >= 0.05) (row.timeline ??= []).push([+(g.nowMs / 600_000).toFixed(2), st.phase, ws ? 1 : 0, st.escorts.length, st.transports.length, near, dry, JSON.stringify(mt)]);
+        if (row.lastTl === undefined || yr - row.lastTl >= 0.05) row.lastTl = yr;
+        row.missions = mt;
+        row.nearWorldShip = near;
+        row.dry = (row.dry ?? 0) + (dry > 0 ? 1 : 0);
+        row.wsFuel = ws ? +(ws.currentFuel / Math.max(1, ws.fuelCapacity)).toFixed(2) : null;
         row.fleetStrength = Math.round(st.fleetStrength);
         row.stationsHit = st.stationsHit ?? 0;
         row.strikeDone = st.strikeDone ?? false;

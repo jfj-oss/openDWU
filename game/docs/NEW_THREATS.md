@@ -38,7 +38,10 @@ An early-game crisis, once per game.
     `genShipsTroopStrength` (100) each, of the faction's race;
   - the world ship (the faction's colony ship design, named per flavour) with `genShipsSleepersM` (1,500) million
     sleepers; a scout flies to the target.
-  Everything but the scout holds at the edge. The faction's state AI is dormant until it settles (`stateAIDormant`).
+  Everything but the scout stays with the world ship at the edge: the heavy hulls, carriers and troop transports
+  Escort it, the screens Patrol it (stock missions on the world ship, re-issued whenever a ship is idle, so ships
+  return to it after a strike). The world ship has infinite fuel and is the fleet's refuel point: every period it is
+  topped up, and so is every ship within `genShipsRefuelRange` (6,000) of it. The faction's state AI is dormant until it settles (`stateAIDormant`).
 - **First contact** `genShipsContactDays` (60) after arrival (or when the scout is near): a popup to the owner with the
   fleet's size and the countdown (`genShipsUltimatumDays` 540 = 18 months). The Quiet Ship's contact is the scouts'
   report: no life signs, a ship mind following its colonisation orders, the date it moves.

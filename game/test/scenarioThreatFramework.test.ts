@@ -455,6 +455,24 @@ describe('new threats: generation ships, archive cores, probe swarm', () => {
         const striker = st.escorts.find((b) => builtObjectMission(b.mission)?.targetBuiltObject === station);
         expect(striker).toBeDefined();
         expect(st.strikeDone).toBe(false);
+        // The world ship has infinite fuel and refuels the fleet beside it; off-mission ships Escort / Patrol it.
+        const ws = st.worldShip!;
+        ws.currentFuel = 0;
+        const near = st.escorts.find((b) => b.fuelCapacity > 0 && b !== striker)!;
+        near.currentFuel = 0;
+        near.xpos = ws.xpos + 100;
+        near.ypos = ws.ypos;
+        const far = st.escorts.find((b) => b.fuelCapacity > 0 && b !== striker && b !== near)!;
+        far.currentFuel = 0;
+        far.xpos = ws.xpos + 1e7;
+        genShipsPeriodic(g);
+        expect(ws.currentFuel).toBe(ws.fuelCapacity);
+        expect(near.currentFuel).toBe(near.fuelCapacity);
+        expect(far.currentFuel).toBe(0);
+        const guards = [...st.escorts.filter((b) => b !== striker && builtObjectMission(b.mission)?.type !== BuiltObjectMissionType.Attack), ...st.transports];
+        expect(guards.length).toBeGreaterThan(0);
+        expect(guards.every((b) => [BuiltObjectMissionType.Patrol, BuiltObjectMissionType.Escort].includes(builtObjectMission(b.mission)!.type) && builtObjectMission(b.mission)!.targetBuiltObject === ws)).toBe(true);
+        expect(st.transports.every((b) => builtObjectMission(b.mission)!.type === BuiltObjectMissionType.Escort)).toBe(true);
         station.hasBeenDestroyed = true;
         genShipsPeriodic(g);
         expect(st.stationsHit).toBe(1);

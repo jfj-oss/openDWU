@@ -245,12 +245,14 @@ const P = {
     coreOnKillPct: (g: Galaxy) => p(g, 'genShipsCoreOnKillPct', 60),
     grudge: (g: Galaxy) => p(g, 'genShipsGrudge', 60),
     gratitude: (g: Galaxy) => p(g, 'genShipsGratitude', 50),
+    refuelRange: (g: Galaxy) => p(g, 'genShipsRefuelRange', 6000),
 };
 
 /** The escort's three groups, by share of the firepower: big hulls, carriers, and the screens (also the strike fleets). */
 const HEAVY_CYCLE = [BuiltObjectSubRole.CapitalShip, BuiltObjectSubRole.Cruiser, BuiltObjectSubRole.Cruiser, BuiltObjectSubRole.CapitalShip];
 const CARRIER_CYCLE = [BuiltObjectSubRole.Carrier];
 const SCREEN_CYCLE = [BuiltObjectSubRole.Destroyer, BuiltObjectSubRole.Frigate, BuiltObjectSubRole.Destroyer, BuiltObjectSubRole.Frigate];
+const HEAVY_OR_CARRIER: ReadonlySet<BuiltObjectSubRole> = new Set([...HEAVY_CYCLE, ...CARRIER_CYCLE]);
 const SCREEN_SUBROLES: ReadonlySet<BuiltObjectSubRole> = new Set(SCREEN_CYCLE);
 const DESIGN_SUBROLES = [...new Set([...HEAVY_CYCLE, ...CARRIER_CYCLE, ...SCREEN_CYCLE]), BuiltObjectSubRole.TroopTransport, BuiltObjectSubRole.ExplorationShip, BuiltObjectSubRole.ColonyShip, BuiltObjectSubRole.Escort];
 const WARSHIP_SUBROLES: ReadonlySet<BuiltObjectSubRole> = new Set([...HEAVY_CYCLE, ...CARRIER_CYCLE, ...SCREEN_CYCLE]);
@@ -464,6 +466,49 @@ function isIdle(bo: BuiltObject): boolean {
     return m === null || m.type === BuiltObjectMissionType.Undefined || m.type === BuiltObjectMissionType.Hold;
 }
 
+/**
+ * The world ship is the fleet's refuel point and has infinite fuel: it is topped up every period, and so is every
+ * escort, transport and scout within genShipsRefuelRange of it. Only fuel is touched (no Rnd).
+ */
+function resupply(galaxy: Galaxy, st: GenShipsState): void {
+    const ws = st.worldShip;
+    if (ws === null) return;
+    if (ws.fuelCapacity > 0) ws.currentFuel = ws.fuelCapacity;
+    const r = P.refuelRange(galaxy);
+    for (const b of [...st.escorts, ...st.transports, ...st.scouts]) {
+        if (b.hasBeenDestroyed || b.fuelCapacity <= 0 || b.currentFuel >= b.fuelCapacity) continue;
+        const dx = b.xpos - ws.xpos;
+        const dy = b.ypos - ws.ypos;
+        if (dx * dx + dy * dy <= r * r) b.currentFuel = b.fuelCapacity;
+    }
+}
+
+/**
+ * Off-mission ships stay with the world ship: the heavy hulls, carriers and the troop transports Escort it (a close
+ * screen), the screens and the rest Patrol it (the stock hexagon orbit, which follows the ship). A ship is left alone
+ * while it is on any other mission (a strike's Attack, a Refuel or Repair, the landing Move); when that mission
+ * completes it is idle again and returns here. Missions only, no Rnd.
+ */
+function guardWorldShip(galaxy: Galaxy, st: GenShipsState, ships: readonly BuiltObject[]): void {
+    const ws = st.worldShip;
+    if (ws === null) {
+        for (const b of ships) if (isIdle(b)) hold(galaxy, b, st.spawnX, st.spawnY);
+        return;
+    }
+    for (const b of ships) {
+        if (b.hasBeenDestroyed || b.topSpeed <= 0) continue;
+        const close = st.transports.includes(b) || HEAVY_OR_CARRIER.has(b.subRole);
+        const want = close ? BuiltObjectMissionType.Escort : BuiltObjectMissionType.Patrol;
+        const m = builtObjectMission(b.mission);
+        if (m !== null && m.type === want && m.targetBuiltObject === ws) continue;
+        const free = m === null || isIdle(b) || m.type === BuiltObjectMissionType.Patrol || m.type === BuiltObjectMissionType.Escort || m.type === BuiltObjectMissionType.Move;
+        // Not automated: a manually controlled Patrol / Escort renews itself when it ends (cmdReassign), where an
+        // automated one is handed back to the empire AI, which sends it wandering.
+        b.isAutoControlled = false;
+        if (free) assignMission(galaxy, b, want, ws, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
+    }
+}
+
 /** Arrival: the faction, its fleet and the world ship at the galaxy edge. Returns false when nothing could arrive. */
 export function genShipsArrive(galaxy: Galaxy, st: GenShipsState): boolean {
     const rnd = ownRandom(galaxy, 0x47534831 + st.index * 0x1111);
@@ -553,6 +598,7 @@ export function genShipsArrive(galaxy: Galaxy, st: GenShipsState): boolean {
     }
     for (const b of [...st.escorts, ...st.transports]) hold(galaxy, b, pt.x, pt.y);
     if (st.worldShip !== null) hold(galaxy, st.worldShip, pt.x, pt.y);
+    guardWorldShip(galaxy, st, [...st.escorts, ...st.transports]); // from the first moment (an idle automated ship would wander off)
     st.phase = 'arrived';
     const where = galaxy.determineHabitatSystemStar(target)?.name ?? target.name;
     arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Arrival', textTag: `${TAG} Arrival News ${FLAVOUR_TEXT[st.flavour]}`, args: [faction.name, where], subject: st.worldShip });
@@ -746,10 +792,12 @@ function directStrike(galaxy: Galaxy, st: GenShipsState): boolean {
         const goal = st.strikeTargets[i % groups];
         const m = builtObjectMission(bo.mission);
         if (m === null || m.type !== BuiltObjectMissionType.Attack || m.targetBuiltObject !== goal) {
+            bo.isAutoControlled = true; // back to the stock fleet behaviour for the raid
             assignMission(galaxy, bo, BuiltObjectMissionType.Attack, goal, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
         }
     });
-    for (const b of [...st.escorts.filter((x) => !strikers.includes(x)), ...st.transports]) if (isIdle(b)) hold(galaxy, b, st.spawnX, st.spawnY);
+    // The rest of the fleet and the transports stay with the world ship (Escort / Patrol it); strikers return to it after.
+    guardWorldShip(galaxy, st, [...st.escorts.filter((x) => !strikers.includes(x)), ...st.transports]);
     if (st.sentStages['Strike'] === undefined) {
         arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Strike', textTag: `${TAG} Strike News`, args: [st.faction!.name, st.owner?.name ?? '', stations.length] });
     }
@@ -782,6 +830,7 @@ function directWar(galaxy: Galaxy, st: GenShipsState): void {
         if (galaxy.calculateDistance(bo.xpos, bo.ypos, target.xpos, target.ypos) <= STATION_RANGE) onStation++;
         const m = builtObjectMission(bo.mission);
         if (m === null || m.type !== BuiltObjectMissionType.Attack || m.targetHabitat !== target) {
+            bo.isAutoControlled = true;
             assignMission(galaxy, bo, BuiltObjectMissionType.Attack, target, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
         }
     }
@@ -815,8 +864,11 @@ function directWar(galaxy: Galaxy, st: GenShipsState): void {
         const m = builtObjectMission(bo.mission);
         if (clear) {
             if (m === null || m.type !== BuiltObjectMissionType.Move || m.targetHabitat !== target) {
+                bo.isAutoControlled = true;
                 assignMission(galaxy, bo, BuiltObjectMissionType.Move, target, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
             }
+        } else if (st.worldShip !== null) {
+            guardWorldShip(galaxy, st, [bo]); // beside the world ship until sent to land
         } else if (galaxy.calculateDistance(bo.xpos, bo.ypos, stageX, stageY) > LANDING_RANGE && (m === null || m.type !== BuiltObjectMissionType.Move || m.targetHabitat !== null)) {
             hold(galaxy, bo, stageX, stageY);
         }
@@ -1171,6 +1223,7 @@ function driveInstance(galaxy: Galaxy, st: GenShipsState): void {
         st.lastX = st.worldShip.xpos;
         st.lastY = st.worldShip.ypos;
     }
+    resupply(galaxy, st);
     const now = galaxyStarDate(galaxy);
     switch (st.phase) {
         case 'arrived': {
@@ -1198,7 +1251,7 @@ function driveInstance(galaxy: Galaxy, st: GenShipsState): void {
         levyGarrison(galaxy, st, st.owner, st.target);
     }
     if (st.phase === 'arrived' || st.phase === 'contact' || st.phase === 'ultimatum') {
-        for (const b of [...st.escorts, ...st.transports]) if (isIdle(b)) hold(galaxy, b, st.spawnX, st.spawnY);
+        guardWorldShip(galaxy, st, [...st.escorts, ...st.transports]);
         if (st.worldShip !== null && isIdle(st.worldShip)) hold(galaxy, st.worldShip, st.spawnX, st.spawnY);
     }
     if (st.worldShip === null && st.faction !== null && st.faction.colonies.length === 0 && (st.phase === 'war' || st.phase === 'contact' || st.phase === 'ultimatum' || st.phase === 'arrived')) {
