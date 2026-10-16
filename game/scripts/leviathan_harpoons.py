@@ -529,7 +529,8 @@ def place(alpha, to_ref, to_tex, S):
             while inside(rx - dx * s0, ry - dy * s0):
                 s0 += 0.5
             p['far'] = (rx - dx * (s0 - 2), ry - dy * (s0 - 2))
-            rx, ry = rx + dx * (s1 - 2), ry + dy * (s1 - 2)
+            # The entry a little inside the (ragged, chipped) trailing edge, so it sits on the fin's flesh.
+            rx, ry = rx + dx * (s1 - 5), ry + dy * (s1 - 5)
             p['gap'] = (s0 + s1 - 4) * S
         p['rx'], p['ry'] = rx, ry
         p['rang'] = math.atan2(dy, dx)

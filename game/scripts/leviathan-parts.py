@@ -11,10 +11,14 @@ head to the left, on a flat grey background) into the rig's parts:
                                       harpoons' placements
 
 It keys the grey out (clean alpha, the grey unmixed from the edge pixels, no fringe), flips it, splits off the fins
-(the body edge under their roots is interpolated) and the flukes, tones it down to sit in the dark of space (darker,
-a little desaturated, the bright white fin tips and fluke patches compressed to a pale grey, the sides shaded) and
-scales it to about a large space port's pixel count. Before the cut it weathers the hide (an old, hunted animal: scuffs,
-scrapes, scars, worn patches, chipped fin / fluke edges, the scarred entries of the harpoons; leviathan_harpoons.py).
+and the flukes, tones it down to sit in the dark of space (darker, a little desaturated, the bright white fin tips and
+fluke patches compressed to a pale grey, the sides shaded) and scales it to about a large space port's pixel count.
+The joins are made to hold while the parts move: under each fin root the body edge is interpolated and its hide
+repainted (no keyed-out background or root shadow inside the edge), the hide runs out into the fin's base and the body
+carries a fillet over the root (no straight seam), each fin carries a deep strip of hide under its root (no gap as it
+rows), and the flukes' stalk is shaded like the body's and tapered under it (no step, nothing poking out as it sweeps).
+Before the cut it weathers the hide (an old, hunted animal: scuffs, scrapes, scars, worn patches, chipped fin / fluke
+edges, the scarred entries of the harpoons; leviathan_harpoons.py).
 Usage (needs Pillow + numpy):
 
   python3 scripts/leviathan-parts.py [reference=~/data/agent-tmp/leviathan/reference.webp]
@@ -78,10 +82,48 @@ for x in range(CROP[0], CROP[2]):
 fit_x = np.r_[np.arange(300, FIN_X[0]), np.arange(FIN_X[1], 950)]
 pt = np.polyfit(fit_x, top[fit_x], 3)
 pb = np.polyfit(fit_x, bot[fit_x], 3)
-for x in range(FIN_X[0], FIN_X[1]):
-    top[x] = np.polyval(pt, x)
-    bot[x] = np.polyval(pb, x)
-cy = float(np.nanmean((top[200:1200] + bot[200:1200]) / 2))
+# Under the fins: the real edge wherever the flank shows between a fin and the body (the solid run from the centreline
+# outward), and the fit only across each fin's root, where the fin is attached (bent onto the real edge at both ends of
+# the root, so the edge has no step). FIN_ROOT[side] = the root's columns (reference px).
+FIN_ROOT = {}
+# The centreline as measured across the plain fit (kept from the first cut: the glow spots and harpoons stay put).
+_t, _b = top.copy(), bot.copy()
+_t[FIN_X[0]:FIN_X[1]] = np.polyval(pt, np.arange(FIN_X[0], FIN_X[1]))
+_b[FIN_X[0]:FIN_X[1]] = np.polyval(pb, np.arange(FIN_X[0], FIN_X[1]))
+cy = float(np.nanmean((_t[200:1200] + _b[200:1200]) / 2))
+for side, edge, p in ((-1, top, pt), (1, bot, pb)):
+    xs = np.arange(FIN_X[0] - 12, FIN_X[1] + 12)
+    run = np.empty(len(xs))
+    for i, x in enumerate(xs):
+        y = int(round((np.polyval(pt, x) + np.polyval(pb, x)) / 2))
+        while filled[y + side, x]:
+            y += side
+        run[i] = y
+    fit = np.polyval(p, xs)
+    attached = np.convolve((run - fit) * side > 4, np.ones(9), mode='same') > 0
+    attached &= (xs >= FIN_X[0]) & (xs < FIN_X[1])
+    # The longest attached stretch is the root.
+    best, cur = (0, -1), None
+    for i in range(len(xs)):
+        if attached[i]:
+            cur = i if cur is None else cur
+            if i - cur > best[1] - best[0]:
+                best = (cur, i)
+        else:
+            cur = None
+    a, b = best[0] - 1, best[1] + 1
+    ra = float(np.mean(run[a - 3: a + 1] - fit[a - 3: a + 1]))
+    rb = float(np.mean(run[b: b + 4] - fit[b: b + 4]))
+    e = run.copy()
+    for i in range(a + 1, b):
+        k = (xs[i] - xs[a]) / (xs[b] - xs[a])
+        e[i] = fit[i] + ra * (1 - k) + rb * k
+    # A light smoothing (the edge fringe jitters the run by a pixel or so).
+    es = np.convolve(np.pad(e, 3, mode='edge'), np.ones(7) / 7, mode='valid')
+    for i, x in enumerate(xs):
+        if FIN_X[0] <= x < FIN_X[1]:
+            edge[x] = es[i]
+    FIN_ROOT[side] = (int(xs[a + 1]), int(xs[b - 1]))
 
 # --- Tone: darker, a touch desaturated, the whites compressed to a pale grey, sides shaded (lit from above).
 lum = (rgb * [0.3, 0.55, 0.15]).sum(2, keepdims=True)
@@ -94,8 +136,14 @@ tone *= comp
 yy = np.arange(H)[:, None]
 half = np.maximum(1, (bot - top) / 2)[None, :]
 across = np.clip((yy - cy) / half, -1.5, 1.5)
-body_cols = (np.arange(W) >= SNOUT_X - 5) & (np.arange(W) <= ROOT_X + 10)
+body_cols = (np.arange(W) >= SNOUT_X - 5) & (np.arange(W) <= ROOT_X)
 shade = np.where(body_cols[None, :], 0.72 + 0.28 * (1 - np.clip(np.abs(across), 0, 1) ** 2), 0.85)
+# Past the fluke root the stalk's shading runs on (its width at the root) and eases into the flukes' flat 0.85, so the
+# tone has no step where the flukes join the stalk.
+acrossS = np.clip((yy - cy) / max(1.0, (bot[ROOT_X] - top[ROOT_X]) / 2), -1.5, 1.5)
+shadeS = 0.72 + 0.28 * (1 - np.clip(np.abs(acrossS), 0, 1) ** 2)
+wFl = np.clip((np.arange(W)[None, :] - ROOT_X) / 60, 0, 1)
+shade = np.where(np.arange(W)[None, :] > ROOT_X, shadeS * (1 - wFl) + 0.85 * wFl, shade)
 tone *= shade[..., None]
 
 # --- The glowing dots (head V, snout line) and spine beads: bright blue-white blobs; dimmed in the hide, listed for
@@ -159,6 +207,36 @@ glows += spine_glows
 # Dim the blobs a little more in the hide: the glow comes from the additive sprites.
 tone = np.where(glowMask[..., None], tone * 0.85, tone)
 
+# --- The fin roots blended into the flank. Under each root (and a little past its ends) the edge band of the body is
+# repainted with the hide just inside it, mirrored about a line FILL_B px in (its shading taken out and that of the
+# destination put back, so the lighting from above stays right): no keyed-out background or fin-root shadow is left
+# inside the body edge. The same mirrored hide also runs a little way out into the base of the fin, fading into the fin's
+# own skin, so fin and flank are one surface where they meet (the body's fillet over the root, below, then matches it).
+FILL_B = 22  # mirror line (reference px in from the edge)
+FILL_G = 16  # how far into the fin base the hide runs (reference px)
+
+
+def ramp(x, a, b, r):
+    """1 inside [a, b], easing to 0 over r px beyond each end (smoothstep)."""
+    t = np.clip(np.minimum(x - (a - r), (b + r) - x) / r, 0, 1)
+    return t * t * (3 - 2 * t)
+
+
+Xc = np.arange(W)
+for side, edge in ((-1, top), (1, bot)):
+    r0, r1 = FIN_ROOT[side]
+    cols = np.arange(r0 - 24, r1 + 25)
+    lat = ramp(cols, r0 - 4, r1 + 4, 20)
+    for x, lw in zip(cols, lat):
+        e = edge[x]
+        ys_ = np.arange(int(e) - FILL_G - 2, int(e) + FILL_B + 3) if side < 0 else np.arange(int(e) - FILL_B - 2, int(e) + FILL_G + 3)
+        d = (ys_ - e) * -side  # inward distance from the edge
+        w = np.where(d >= 0, np.clip((FILL_B - d) / (FILL_B - 6), 0, 1), np.clip(1 + d / FILL_G, 0, 1) * alpha[ys_, x])
+        w = w * lw
+        src_y = np.round(e - side * (2 * FILL_B - d)).astype(int)
+        mir = tone[src_y, x] / shade[src_y, x][:, None] * shade[ys_, x][:, None]
+        tone[ys_, x] = tone[ys_, x] * (1 - w[:, None]) + mir * w[:, None]
+
 
 def to_tex(x, y):
     """Reference px -> body texture px (flipped: head toward +x)."""
@@ -185,7 +263,6 @@ def save_part(name, mask_alpha, x0, y0, x1, y1):
 os.makedirs(OUT, exist_ok=True)
 X = np.arange(W)[None, :]
 inBody = (yy >= top[None, :] - 0.5) & (yy <= bot[None, :] + 0.5)
-edgeSoft = np.clip(np.minimum(yy - top[None, :], bot[None, :] - yy) + 1.0, 0, 1)
 
 # --- The old wear and the harpoons' entry scars, painted on the toned picture before the cut (the chips bite into the
 # alpha of the fin and fluke edges).
@@ -209,11 +286,25 @@ avoid = np.asarray(Image.fromarray((glowMask * 255).astype(np.uint8)).filter(Ima
 avoid |= spineZone & (np.abs(yy - cy) < 14)
 alpha = harp.weather(tone, alpha, regions, chippable, avoid, to_ref, S, placed)
 
-# Body: inside the (interpolated) edge, snout to the fluke root (soft end on the stalk).
-bodyA = alpha * inBody * np.clip((ROOT_X + 10 - X) / 10, 0, 1)
+# Body: inside the edge, snout to the fluke root. Past the root the stalk runs on, only as wide as at the root, fading
+# out over the flukes' join (the flukes are drawn under it and match it there: no seam across the stalk).
+dIn = np.minimum(yy - top[None, :], bot[None, :] - yy)
+cS, hS = (top[ROOT_X] + bot[ROOT_X]) / 2, (bot[ROOT_X] - top[ROOT_X]) / 2
+endFade = np.clip((ROOT_X + 14 - X) / 16, 0, 1)
+stalkW = np.where(X > ROOT_X, np.clip((hS - np.abs(yy - cS)) / 3 + 0.5, 0, 1), 1.0)
+bodyA = alpha * inBody * endFade ** 1.5 * stalkW
+# Under the fins: the real alpha, trimmed softly at the edge; over each fin's root a fillet of the fin's base (the same
+# pixels as the fin there, fading out FILLET_F px over it), so the flank swells into the fin instead of a hard line
+# across its root.
+FILLET_F = 12
 inFins = (X >= FIN_X[0]) & (X < FIN_X[1])
-soft4 = np.clip(np.minimum(yy - top[None, :], bot[None, :] - yy) + 4.0, 0, 1)
-bodyA = np.where(inFins, np.minimum(soft4, alpha + edgeSoft), bodyA)
+bodyF = alpha * np.clip((dIn + 2) / 3, 0, 1)
+for side, edge in ((-1, top), (1, bot)):
+    r0, r1 = FIN_ROOT[side]
+    dOut = (edge[None, :] - yy) * -side
+    fil = ramp(X, r0 + 6, r1 - 6, 10) * np.clip(1 - dOut / FILLET_F, 0, 1) ** 1.6 * alpha
+    bodyF = np.maximum(bodyF, np.where((dOut > 0) & ((yy < cy) if side < 0 else (yy > cy)), fil, 0))
+bodyA = np.where(inFins, bodyF, bodyA)
 bx0 = int(round(SNOUT_X - (LEV_W - LEV_X1) / S))
 bx1 = bx0 + int(round(LEV_W / S))
 by0 = int(round(cy - LEV_H / 2 / S))
@@ -225,23 +316,29 @@ P = lambda m: np.pad(m, ((pad, pad), (pad, pad)))
 bw, bh = save_part('body.png', P(bodyA), bx0 + pad, by0 + pad, bx1 + pad, by1 + pad)
 assert (bw, bh) == (LEV_W, LEV_H), (bw, bh)
 
-# Fins: outside the body edge in the fins' columns, plus a strip of the hide under the root (so no gap opens when
-# they row).
-ROOT_IN = 12
+# Fins: outside the body edge in the fins' columns, plus a deep strip of the (blended) hide under the whole root, square
+# to its ends: rowing tips the root's ends up to ~6 texture px out of the flank, and the strip fills that, so no gap or
+# dark sliver opens between fin and body at any point of the stroke.
+ROOT_IN = 24
 parts = {}
 for name, side in (('fin-left.png', -1), ('fin-right.png', 1)):
     edge = top if side < 0 else bot
     # Where the fin leaves the body edge (its root), then the fin plus a strip of the hide just under that root.
-    touch = [x for x in range(FIN_X[0], FIN_X[1]) if alpha[int(edge[x]) + side * 10, x] > 0.8 and alpha[int(edge[x]) + side * 5, x] > 0.8]
-    t0, t1 = min(touch), max(touch)
-    depth = np.clip(np.minimum(X - t0, t1 - X) / 12, 0, 1) * ROOT_IN
-    # Beside the root the body's own fringe stays with the body (it reaches ~3 px past the fitted edge).
-    clear = np.where((X >= t0) & (X <= t1), 0, 4)
+    # (Every column where the fin's flesh meets the edge, the corners included: the longest such stretch.)
+    touch = [x for x in range(FIN_X[0], FIN_X[1]) if alpha[int(round(edge[x])) + side * 3, x] > 0.8]
+    spans = np.split(np.array(touch), np.nonzero(np.diff(touch) > 1)[0] + 1)
+    t0, t1 = (lambda sp: (int(sp[0]), int(sp[-1])))(max(spans, key=len))
+    depth = np.clip((np.minimum(X - t0, t1 - X) + 6) / 3, 0, 1) * ROOT_IN
+    # Beside the root the body's own fringe stays with the body (it reaches ~2 px past the edge).
+    clear = np.where((X >= t0) & (X <= t1), 0, 3)
     if side < 0:
         m = inFins & (yy < cy) & (yy < top[None, :] + depth - clear)
     else:
         m = inFins & (yy > cy) & (yy > bot[None, :] - depth + clear)
-    fa = alpha * m
+    # The strip runs a few px past the root's ends, its square ends a little soft (when the stroke tips an end out, it
+    # shows as the root's own flesh).
+    strip = (yy > top[None, :]) if side < 0 else (yy < bot[None, :])
+    fa = alpha * m * np.where(strip, np.clip((np.minimum(X - t0, t1 - X) + 6) / 4, 0, 1), 1.0)
     fy, fx = np.nonzero(fa > 0.05)
     x0, x1 = fx.min() - 2, fx.max() + 3
     y0, y1 = fy.min() - 2, fy.max() + 3
@@ -253,7 +350,11 @@ for name, side in (('fin-left.png', -1), ('fin-right.png', 1)):
 
 # Fluke: from a little before the root to the tips (it is drawn under the body, the stalk overlap hides the joint).
 FL0 = ROOT_X - 34
-fa = alpha * (X >= FL0) * np.clip((X - FL0) / 8, 0, 1)
+# Under the stalk it is narrowed toward FL0 (by more than its sweep turns it: 0.26 rad), so swinging it never pushes it
+# out past the stalk's edge.
+mc = (top + bot)[None, :] / 2
+inStalk = np.clip((bot - top)[None, :] / 2 - (ROOT_X - X) * 0.3 - 1.5 - np.abs(yy - mc) + 0.5, 0, 1)
+fa = alpha * (X >= FL0) * np.clip((X - FL0) / 8, 0, 1) * np.where(X < ROOT_X, inStalk, 1.0)
 fy, fx = np.nonzero(fa > 0.05)
 x1 = fx.max() + 3
 y0, y1 = fy.min() - 2, fy.max() + 3

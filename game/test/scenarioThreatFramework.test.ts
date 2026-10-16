@@ -52,6 +52,7 @@ import { peekVoidWhaleState, referenceHyperSpeed, voidWhalePeriodic, voidWhaleSt
 import { paintWounds, woundCount, woundKey } from '../src/render/whaleWounds';
 import { LEV_H, LEV_W, leviathanSilhouette, levHalf, levU } from '../src/render/leviathanArt';
 import { LEV_BODY_URL, LEV_GLOW_SPOTS, LEV_HARPOONS, LEV_HARPOON_URL, LEV_PARTS } from '../src/render/leviathanParts';
+import { LEV_FIN_SWEEP, LEV_FLUKE_SWEEP } from '../src/render/leviathanRig';
 import { decodePng } from './helpers/pngDecode';
 import { peekWreckageState } from '../src/sim/scenario/wreckage/common';
 import {
@@ -867,6 +868,69 @@ describe('void whale', () => {
         // Same cuts, different colour: open gashes are red, healed scars pale and grey.
         expect(redness(fresh)).toBeGreaterThan(redness(healed));
     }, 300000);
+
+    it('fin and fluke joins: real hide under every fin root (no dark notch), the root strips and the fluke stalk cover the stroke', () => {
+        const pub = (url: string): string => `${__dirname}/../public${url}`;
+        const body = decodePng(pub(LEV_BODY_URL));
+        const a = (img: { width: number; data: Uint8Array | Uint8ClampedArray }, x: number, y: number): number => img.data[(y * img.width + x) * 4 + 3];
+        const lum = (x: number, y: number): number => {
+            const i = (y * body.width + x) * 4;
+            return (body.data[i] + body.data[i + 1] + body.data[i + 2]) / 3;
+        };
+        // The body's edge row in a column (side -1 the left flank, from the top; +1 the right flank, from the bottom)
+        // and the hide's luminance just inside it.
+        const edgeRow = (x: number, side: -1 | 1): number => {
+            for (let k = 0; k < LEV_H / 2; k++) {
+                const y = side < 0 ? k : LEV_H - 1 - k;
+                if (a(body, x, y) > 200) return y;
+            }
+            return -1;
+        };
+        const rim = (x: number, side: -1 | 1): number => {
+            const e = edgeRow(x, side);
+            let s = 0;
+            for (let k = 0; k < 5; k++) s += lum(x, e - side * k);
+            return s / 5;
+        };
+        const all: number[] = [];
+        for (let x = 100; x < 700; x++) all.push(rim(x, -1), rim(x, 1));
+        all.sort((p, q) => p - q);
+        const median = all[all.length >> 1];
+        for (const [key, side] of [['finL', -1], ['finR', 1]] as const) {
+            const p = LEV_PARTS[key];
+            const fin = decodePng(pub(p.url));
+            let roots = 0;
+            for (let x = Math.max(100, Math.ceil(p.rootX - p.ax * p.w)); x < Math.min(700, p.rootX + (1 - p.ax) * p.w); x++) {
+                // Under and beside the fin the flank's rim is hide, not keyed-out background or a dark patch.
+                expect(rim(x, side)).toBeGreaterThan(0.45 * median);
+                // Where the fin meets the edge, the strip of hide it carries under the body is deeper than its rowing
+                // tips that column out of the flank: no gap opens at any point of the stroke.
+                const fx = Math.round(x - p.rootX + p.ax * p.w);
+                const fy = Math.round(edgeRow(x, side) - p.rootY + p.ay * p.h);
+                if (fx < 0 || fx >= fin.width || fy - 3 < 0 || fy + 3 >= fin.height || a(fin, fx, fy + side * 3) <= 200) continue;
+                roots++;
+                let d = 0;
+                while (fy - side * d >= 0 && fy - side * d < fin.height && a(fin, fx, fy - side * d) > 200) d++;
+                expect(d).toBeGreaterThanOrEqual(Math.abs(x - p.rootX) * Math.sin(LEV_FIN_SWEEP * 1.05) + 1);
+            }
+            expect(roots).toBeGreaterThan(40);
+        }
+        // The flukes' stalk under the body stays inside the stalk's edge however far the sweep turns them.
+        const fp = LEV_PARTS.fluke;
+        const fluke = decodePng(pub(fp.url));
+        let under = 0;
+        for (let fy = 0; fy < fluke.height; fy++) {
+            for (let fx = 0; fx < fluke.width; fx++) {
+                const x = fx - fp.ax * fp.w + fp.rootX;
+                if (x <= fp.rootX || a(fluke, fx, fy) <= 128) continue;
+                under++;
+                const y = fy - fp.ay * fp.h + fp.rootY;
+                const turned = Math.abs(y - LEV_H / 2) + (x - fp.rootX) * Math.sin(LEV_FLUKE_SWEEP);
+                expect(turned).toBeLessThanOrEqual(levHalf(levU(x)) + 1.5);
+            }
+        }
+        expect(under).toBeGreaterThan(100);
+    });
 
     it('harpoon art: 5-9 old harpoons pinned in the hide, fins and flukes, their sprites and lines in the atlas', () => {
         const pub = (url: string): string => `${__dirname}/../public${url}`;

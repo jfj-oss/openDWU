@@ -75,6 +75,10 @@ export function leviathanTextures(imgs: LeviathanImages | null): LeviathanTextur
 export const LEV_BEAT_S = 8;
 /** Seconds for the glow ripple to run from snout to tail. */
 export const LEV_GLOW_S = 3.2;
+/** The flukes' sweep and the pectoral fins' rowing swing (rad, at full speed): the parts' joins are cut to cover them
+ * (scripts/leviathan-parts.py). */
+export const LEV_FLUKE_SWEEP = 0.26;
+export const LEV_FIN_SWEEP = 0.16;
 const SEGMENTS = 30;
 const CY = LEV_H / 2;
 /** Points along each harpoon's trailing line. */
@@ -217,14 +221,14 @@ export class LeviathanRig {
         const tail = this.carried(fp.rootX, fp.rootY);
         const stroke = Math.sin(w * t + ph - 0.9);
         this.fluke.position.set(tail.x, tail.y);
-        this.fluke.rotation = tail.ang + 0.26 * amp * stroke;
+        this.fluke.rotation = tail.ang + LEV_FLUKE_SWEEP * amp * stroke;
         this.fluke.scale.set(1 - 0.12 * amp * stroke * stroke, 1 - 0.03 * amp * Math.abs(stroke));
         // Pectoral fins: rowing slowly, swept forward and back together (mirrored), a little out of step.
         const row = w * 0.75 * t + ph;
         const fl = this.carried(LEV_PARTS.finL.rootX, LEV_PARTS.finL.rootY);
         const fr = this.carried(LEV_PARTS.finR.rootX, LEV_PARTS.finR.rootY);
-        const sweepL = 0.16 * Math.sin(row) * amp;
-        const sweepR = 0.16 * Math.sin(row + 0.35) * amp;
+        const sweepL = LEV_FIN_SWEEP * Math.sin(row) * amp;
+        const sweepR = LEV_FIN_SWEEP * Math.sin(row + 0.35) * amp;
         this.finL.position.set(fl.x, fl.y);
         this.finL.rotation = fl.ang + sweepL;
         this.finR.position.set(fr.x, fr.y);
