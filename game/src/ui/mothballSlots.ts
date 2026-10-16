@@ -20,7 +20,7 @@ import { formatEtaDays } from './supplyChainText';
 import { showToast } from './toast';
 import { setToolStripActive, toolStripItem, toolStripMenu } from './originalWindow';
 
-export const MOTHBALL_TITLE = 'Mothball: the force flies to a space port and goes into reserve — upkeep drops to a fraction, it cannot move or fight back, and no automation or Intercept / Defend order uses it until it is reactivated. Right-click to choose the port';
+export const MOTHBALL_TITLE = 'Mothball: the force flies to a space port and goes into reserve — upkeep drops to a fraction, it cannot move or fight back, and no automation or Intercept / Defend order uses it until it is reactivated. Click to choose the port (best one first)';
 export const REACTIVATE_TITLE = 'Reactivate: back to full readiness (as the same fleet) when the slowest ship is ready; full upkeep meanwhile, it stays at the port';
 
 function svgIcon(body: string): string {

@@ -1575,45 +1575,50 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         if (viewer === null || !wiring.galaxy) return [];
         const sel = currentSelection;
         const out: SelectionFreeSlot[] = [];
-        // Mothballing add-on (a Gameplay change): Mothball (right-click: choose the port) / Reactivate for an own fleet
+        // Mothballing add-on (a Gameplay change): Mothball (click or right-click: choose the port) / Reactivate for an own fleet
         // or lone warship (ui/mothballSlots.ts).
         const mb = mothballSlot(wiring.galaxy, viewer, currentSelection);
         if (mb !== null) {
+            const openPortList = (): void => {
+                const menu = toolStripMenu('sel-more-menu');
+                for (const c of mb.choices) {
+                    const row = toolStripItem(c.label, { title: c.hint, tag: 'button' });
+                    row.classList.add('sel-extra-btn');
+                    if (c.chosen) row.classList.add('sel-more-on');
+                    if (c.disabled) {
+                        row.classList.add('is-disabled');
+                        (row as HTMLButtonElement).disabled = true;
+                    }
+                    row.addEventListener('mouseenter', () => setToolStripActive(menu, row));
+                    row.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        if (c.disabled) return;
+                        closeIcList();
+                        c.pick();
+                    });
+                    menu.appendChild(row);
+                }
+                icList.replaceChildren(menu);
+                icList.hidden = false;
+                icListFor = sel;
+            };
+            // Left-click on Mothball opens the port list too (best port first, ★), as the Fleets / Ships screens do (user
+            // 2026-10-16); Reactivate / Cancel act at once.
+            const listOnClick = mb.label.startsWith('Mothball') && mb.choices.length > 0;
             out.push({
                 label: mb.label,
                 hint: mb.hint,
                 icon: mb.icon,
                 disabled: mb.disabled,
                 onClick: () => {
+                    if (listOnClick) {
+                        openPortList();
+                        return;
+                    }
                     closeIcList();
                     mb.click();
                 },
-                onMenu:
-                    mb.choices.length === 0
-                        ? undefined
-                        : () => {
-                              const menu = toolStripMenu('sel-more-menu');
-                              for (const c of mb.choices) {
-                                  const row = toolStripItem(c.label, { title: c.hint, tag: 'button' });
-                                  row.classList.add('sel-extra-btn');
-                                  if (c.chosen) row.classList.add('sel-more-on');
-                                  if (c.disabled) {
-                                      row.classList.add('is-disabled');
-                                      (row as HTMLButtonElement).disabled = true;
-                                  }
-                                  row.addEventListener('mouseenter', () => setToolStripActive(menu, row));
-                                  row.addEventListener('click', (e) => {
-                                      e.stopPropagation();
-                                      if (c.disabled) return;
-                                      closeIcList();
-                                      c.pick();
-                                  });
-                                  menu.appendChild(row);
-                              }
-                              icList.replaceChildren(menu);
-                              icList.hidden = false;
-                              icListFor = sel;
-                          },
+                onMenu: mb.choices.length === 0 ? undefined : openPortList,
             });
         }
         // Veterans add-on: Make flagship for an own warship in a fleet (click) or an own fleet (click lists its ships).
