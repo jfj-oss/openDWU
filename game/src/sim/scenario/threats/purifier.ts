@@ -97,6 +97,7 @@ import {
     type ThreatKnowledge,
 } from './framework';
 import { peekHollowFleetState } from './hollowFleet';
+import { purifierRefugees } from './purifierRefugees';
 
 export const PURIFIER_KEY = 'purifier';
 export const PURIFIER_FLAG = 'threatPurifier';
@@ -1282,6 +1283,7 @@ function onHabitatDestroyed(galaxy: Galaxy, habitat: Habitat, destroyer: Empire 
     if (habitat.population === null || habitat.population.totalAmount <= 0) return;
     st.worlds++;
     const v = habitat.empire;
+    if (v !== null && v !== galaxy.independentEmpire && v.pirateEmpireBaseHabitat === null) purifierRefugees(galaxy, habitat, v); // crisis interactions: part of the population flees
     if (v !== null && v !== galaxy.independentEmpire && v.pirateEmpireBaseHabitat === null) {
         if (!st.victims.includes(v)) {
             st.victims.push(v);

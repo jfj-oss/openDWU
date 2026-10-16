@@ -93,6 +93,16 @@ import { stateDigest } from '../src/sim/tick/digest';
 import { GalaxyTime } from '../src/sim/galaxyTime';
 import { deserializeGame, serializeGame } from '../src/sim/save/gameSave';
 import type { StartGameOptions } from '../src/sim/startGameOptions';
+import { CRISIS_ENTRIES, crisisState, crisisYearly, crisisHelpers, activeCrises } from '../src/sim/scenario/threats/crisis';
+import { crisisJointWar } from '../src/sim/scenario/threats/crisisCouncil';
+import { crowdingTerm, purifierRefugees } from '../src/sim/scenario/threats/purifierRefugees';
+import { reviewCouncil, motionCandidates, councilOf, tallyMotion, proposeMotion } from '../src/sim/scenario/emergent/council';
+import { reputationCauses, reputationSum } from '../src/sim/scenario/reputation/ledger';
+import { DiplomaticRelation } from '../src/sim/diplomacy';
+import { demographicsStateOf } from '../src/sim/scenario/emergent/demographics';
+import { declareWar } from '../src/sim/diplomacyTick';
+import { spawnThreatNow } from '../src/sim/scenario/threats/framework';
+import { cultCheckTrigger } from '../src/sim/scenario/threats/cult';
 
 
 let base: GameData;
@@ -1250,4 +1260,176 @@ describe('Game Editor: spawn a threat (editorSpawnThreat)', () => {
         expect(['contact', 'ultimatum', 'war', 'settling', 'settled', 'ended']).toContain(genShipsStates(g)[0].phase);
         expect(peekCultState(g)!.faction).not.toBeNull();
     }, 3600000);
+});
+
+// Crisis interactions (threats/crisis.ts, crisisCouncil.ts, purifierRefugees.ts): reputation for helping or ignoring,
+// opportunists, the council reacting, Purifier refugees.
+describe('crisis interactions', () => {
+    const ids = ['threat-framework', 'purifier', 'reputation', 'galactic-council', 'refugees-demographics'];
+    const age3 = (o: CreateGameOptions): CreateGameOptions => ({ ...o, player: { ...o.player, age: 3 }, aiEmpires: o.aiEmpires.map((e) => ({ ...e, age: 3 })) });
+    const PARAMS = { purifierExistChancePct: 100, purifierMinYear: 0, purifierYear: 0, councilJoinThreshold: -1000 };
+    const FLAGS = { threatPurifier: true, reputationLedger: true, galacticCouncil: true, refugees: true };
+    const PURIFIER = CRISIS_ENTRIES.find((e) => e.key === 'purifier')!;
+
+    function woken(flags: Record<string, boolean> = {}): Galaxy {
+        const { game } = createScenarioGame(base, { scenario: comboOverlayFs(ids), flags: { ...FLAGS, ...flags }, params: PARAMS, options: age3 });
+        const g = game.galaxy;
+        purifierPeriodic(g);
+        const waker = g.empires.find((e) => e !== null && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null && e !== g.playerEmpire)!;
+        expect(purifierWake(g, purifierState(g), waker)).toBe(true);
+        return g;
+    }
+    const normals = (g: Galaxy): Empire[] => g.empires.filter((e) => e !== null && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null && e.active);
+    function meet(a: Empire, b: Empire): void {
+        for (const [x, y] of [[a, b], [b, a]] as const) {
+            const r = x.diplomaticRelations.byEmpire(y);
+            if (r === null) x.diplomaticRelations.add(new DiplomaticRelation(DiplomaticRelationType.None, x, x, y, false));
+            else r.type = DiplomaticRelationType.None;
+        }
+    }
+
+    it('flag off: no crisis state, no handler runs', () => {
+        const { game } = createScenarioGame(base, { scenario: comboOverlayFs(ids), flags: { ...FLAGS, threatPurifier: false }, params: PARAMS, options: age3 });
+        const g = game.galaxy;
+        const [a, b, c] = normals(g);
+        scenarioEmit(g, 'warDamageInflicted', { inflictor: c, victim: a, builtObject: null, habitat: a.colonies[0], value: 1 });
+        declareWar(g, b, a);
+        expect(g.scenario!.state.crisis).toBeUndefined();
+    }, 600000);
+
+    it('opportunists: a rival that declares war on a crisis victim inside the window is named to both sides, the galaxy and the ledger', () => {
+        const g = woken();
+        const faction = purifierState(g).faction!;
+        const [a, b] = normals(g);
+        meet(a, b);
+        a.diplomaticRelations.byEmpire(b)!.type = DiplomaticRelationType.None;
+        b.diplomaticRelations.byEmpire(a)!.type = DiplomaticRelationType.None;
+        const colony = a.colonies.find((c) => !c.hasBeenDestroyed)!;
+        scenarioEmit(g, 'warDamageInflicted', { inflictor: faction, victim: a, builtObject: null, habitat: colony, value: 1 });
+        const st = crisisState(g);
+        expect(st.hits.length).toBe(1);
+        expect(st.hits[0].victim).toBe(a.empireId);
+        const before = empireMessages(a).length;
+        declareWar(g, b, a);
+        if (b.diplomaticRelations.byEmpire(a)!.type !== DiplomaticRelationType.War) return; // the stock war machinery declined: nothing to report
+        expect(st.hits[0].reported).toEqual([b.empireId]);
+        expect(empireMessages(a).slice(before).some((m) => m.description.includes('takes advantage') && m.description.includes(b.name))).toBe(true);
+        expect(empireMessages(b).some((m) => m.description.includes('taking advantage') || m.description.includes('after the Purifier'))).toBe(true);
+        expect(reputationSum(g, a, b)).toBeLessThan(0);
+        expect(reputationSum(g, a, b)).toBeGreaterThan(-10); // small
+    }, 600000);
+
+    it('reputation: fighting the crisis earns a small, once-only regard; sitting it out in its region costs a little', () => {
+        const g = woken();
+        const st = purifierState(g);
+        const faction = st.faction!;
+        const [a, b, c, d] = normals(g);
+        for (const x of [a, b, c, d]) for (const y of [a, b, c, d]) if (x !== y) meet(x, y);
+        for (const x of [a, b, c, d]) for (const y of [a, b, c, d]) {
+            const r = x.diplomaticRelations.byEmpire(y);
+            if (r !== null && r.type === DiplomaticRelationType.War) r.type = DiplomaticRelationType.None;
+        }
+        const crisisRep = (x: Empire, y: Empire): number => reputationCauses(g, x, y).filter((e) => e.cause.startsWith('crisis.')).reduce((n, e) => n + e.value, 0);
+        for (let i = 0; i < 3; i++) scenarioEmit(g, 'builtObjectKilledBy', { builtObject: st.destroyer!, destroyer: b });
+        const cs = crisisState(g);
+        expect(cs.fight[`purifier:${b.empireId}`].kills).toBe(3);
+        crisisYearly(g, PURIFIER);
+        const gain = crisisRep(a, b);
+        expect(gain).toBeGreaterThan(0);
+        expect(gain).toBeLessThanOrEqual(4);
+        crisisYearly(g, PURIFIER);
+        expect(crisisRep(a, b)).toBe(gain); // once per crisis per empire
+        // d never fought; park the Purifier's destroyer on its colony for the sit-out years.
+        const home = d.colonies.find((x) => !x.hasBeenDestroyed)!;
+        st.destroyer!.xpos = home.xpos;
+        st.destroyer!.ypos = home.ypos;
+        cs.seen.purifier = galaxyStarDate(g) - 3 * YEAR_LENGTH;
+        cs.harmed.purifier = true;
+        crisisYearly(g, PURIFIER);
+        crisisYearly(g, PURIFIER);
+        const loss = crisisRep(a, d);
+        expect(loss).toBeLessThan(0);
+        expect(loss).toBeGreaterThanOrEqual(-3);
+        void faction;
+    }, 600000);
+
+    it('council: tables a joint defence against the loose Purifier and condemns its exposed waker', () => {
+        const g = woken();
+        const st = purifierState(g);
+        const faction = st.faction!;
+        const ms = normals(g);
+        for (const x of ms) for (const y of ms) if (x !== y) meet(x, y);
+        for (const x of ms) obtainDiplomaticRelation(x, faction).type = DiplomaticRelationType.None;
+        reviewCouncil(g, 100);
+        const c = councilOf(g, ms[0])!;
+        expect(c).not.toBeNull();
+        crisisState(g).harmed.purifier = true;
+        let cands = motionCandidates(g, c, 100);
+        expect(cands.some((m) => m.kind === 'threat' && m.target === faction)).toBe(true);
+        expect(cands.some((m) => m.kind === 'sanction' && m.target === faction)).toBe(false); // a pirate-kind faction is not sanctioned
+        st.exposed = true;
+        expect(crisisHelpers(g, PURIFIER, faction)).toEqual([st.waker]);
+        cands = motionCandidates(g, c, 100);
+        const condemn = cands.find((m) => m.kind === 'condemn' && m.target === st.waker);
+        expect(condemn).toBeDefined();
+        expect(condemn!.other).toBe(faction);
+        expect(activeCrises(g).map((x) => x.entry.key)).toEqual(['purifier']);
+        const m = proposeMotion(g, c, { kind: 'threat', proposer: ms[0], target: faction, other: null, resourceId: -1 });
+        if (m.status === 'voting') tallyMotion(g, c, m);
+        if (m.status === 'passed') expect(c.threats).toContain(faction);
+    }, 600000);
+
+    it('refugees: a destroyed colony sends part of its people to the nearest colonies (refugee flows with the add-on, stock moves without)', () => {
+        for (const refugees of [true, false]) {
+            const g = woken({ refugees });
+            const [a] = normals(g);
+            const from = a.colonies.find((x) => x !== a.capital && !x.hasBeenDestroyed && x.population.totalAmount > 100_000_000)!;
+            expect(from).toBeDefined();
+            const before = a.colonies.reduce((n, x) => n + (x === from ? 0 : x.population.totalAmount), 0);
+            const fromBefore = from.population.totalAmount;
+            from.hasBeenDestroyed = true;
+            purifierRefugees(g, from, a);
+            expect(from.population.totalAmount).toBeLessThan(fromBefore);
+            if (refugees) {
+                const flows = demographicsStateOf(g).flows.filter((f) => f.cause === 'crisis');
+                expect(flows.length).toBeGreaterThan(0);
+            } else {
+                const receivers = crisisState(g).crowding;
+                const after = a.colonies.reduce((n, x) => n + (x === from ? 0 : x.population.totalAmount), 0);
+                if (receivers.length > 0) {
+                    expect(after).toBeGreaterThan(before);
+                    expect(crowdingTerm(g, receivers[0].habitat)).toBeLessThan(0);
+                    expect(crowdingTerm(g, receivers[0].habitat)).toBeGreaterThan(-5);
+                }
+            }
+        }
+    }, 900000);
+
+    it('joint war and sanctions on a non-pirate faction (the Cult)', () => {
+        const { game } = createScenarioGame(base, {
+            scenario: comboOverlayFs(['threat-framework', 'cult', 'galactic-council']),
+            flags: { cult: true, galacticCouncil: true },
+            params: { cultSeedYear: 0, cultSpreadPct: 100, cultAmbassadorPct: 100, cultSecedeColonies: 1, cultAgentDetectPct: 0, cultExistChancePct: 100, cultMinYear: 0, councilJoinThreshold: -1000 },
+            options: age3,
+        });
+        const g = game.galaxy;
+        const ms = normals(g);
+        expect(spawnThreatNow(g, ms[0], 'cult')).toBe(true);
+        cultCheckTrigger(g);
+        const faction = peekCultState(g)!.faction;
+        expect(faction).not.toBeNull();
+        for (const x of ms) for (const y of ms) if (x !== y) meet(x, y);
+        for (const x of ms) obtainDiplomaticRelation(x, faction!).type = DiplomaticRelationType.None;
+        reviewCouncil(g, 100);
+        const c = councilOf(g, ms[0])!;
+        expect(motionCandidates(g, c, 100).some((m) => m.kind === 'threat' && m.target === faction && m.weight >= 85)).toBe(false); // a faction that has hurt no one yet is not tabled
+        crisisState(g).harmed.cult = true;
+        const cands = motionCandidates(g, c, 100);
+        expect(cands.some((m) => m.kind === 'sanction' && m.target === faction && m.weight >= 70)).toBe(true);
+        expect(cands.some((m) => m.kind === 'threat' && m.target === faction && m.weight >= 85)).toBe(true);
+        c.threats.push(faction!); // as if the council had declared it a threat
+        crisisJointWar(g);
+        const warring = ms.filter((x) => x !== g.playerEmpire && x.diplomaticRelations.byEmpire(faction!)?.type === DiplomaticRelationType.War);
+        expect(warring.length).toBeGreaterThan(0);
+    }, 900000);
 });

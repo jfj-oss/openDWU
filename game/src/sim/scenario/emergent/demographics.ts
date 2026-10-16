@@ -266,6 +266,44 @@ export function spawnRefugeeFlows(galaxy: Galaxy, empire: Empire): void {
     }
 }
 
+/**
+ * Crisis interactions (threats/purifierRefugees.ts): a share of each race's population at a colony the Purifier is
+ * destroying flees as ordinary refugee flows (cause 'crisis'): the same asylum choice, AI/player acceptance and convoy as
+ * every other flow. Draws no Rnd (the share is fixed; convoy creation draws through generateNewBuiltObject as for any
+ * accepted flow). Returns the flows made (some may already be stranded).
+ */
+export function spawnCrisisRefugeeFlows(galaxy: Galaxy, habitat: Habitat, owner: Empire, share: number): RefugeeFlow[] {
+    if (!scenarioFlag(galaxy, 'refugees')) return [];
+    const st = demographicsState(galaxy);
+    const pop = habitat.population;
+    if (pop === null) return [];
+    const made: RefugeeFlow[] = [];
+    for (const item of pop.items.slice()) {
+        const amount = Math.trunc(item.amount * share);
+        if (amount < 10_000_000) continue;
+        item.amount -= amount;
+        const flow: RefugeeFlow = {
+            id: st.nextFlowId++,
+            race: item.race,
+            amount,
+            origin: habitat,
+            originEmpire: owner,
+            cause: 'crisis',
+            destination: null,
+            host: null,
+            stage: 'pending',
+            created: gameYear(galaxyStarDate(galaxy)),
+            excludedHosts: [],
+            decisionId: null,
+        };
+        st.flows.push(flow);
+        made.push(flow);
+    }
+    pop.recalculateTotalAmount();
+    for (const flow of made) processAsylumSelection(galaxy, flow);
+    return made;
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // §2.3 Destination — chooseAsylum (no Rnd)
 // ---------------------------------------------------------------------------------------------------------------
