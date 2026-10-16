@@ -4,6 +4,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **Emergent Galaxy (character loyalty and ambition, plots and coups) is switched off for now** while it is reworked: it moves to Work in progress and leaves the Living Galaxy pack, and Internal Security and Reputation no longer turn it on. Old saves that used it still load.
 - **Dead Probe Swarm: new look.** Its Mothercore, warships, probes and mining stations now have their own dark-slate derelict shipset (new silhouettes per role, built from pieces of the original ship art, with dense plating, scuffs and wear); the glowing spider eyes are gone. The Mothercore is now a dense, spiked machine cube whose seams glow a dim red, with orange positional lights blinking at its corners. Its galaxy-map presence discs are slate instead of brown.
 - Fixed a rare crash: a ship wrecked down to no working reactor or engines got an invalid speed and position, which crashed the game on its next jump.
 - **Fighting retreats (gameplay change) now works for coalitions and falls back before it repairs:** ships of any empire you are not at war with, fighting the same enemy in the system, now count on a fleet's side, so allied fleets no longer each retreat as if they fought alone. A fleet that is merely outgunned falls back to its home base (or the nearest own colony or base outside the battle) and only goes to a repair yard when more than 30% of its ships in the fight are damaged (new setting).

@@ -51,7 +51,7 @@ export const ADDON_STATUS: Readonly<Record<string, string>> = {
     'robotmutiny': 'recommended',
     'internal-security': 'recommended',
     'reputation': 'recommended',
-    'emergent': 'recommended',
+    'emergent': 'off for now: being reworked',
     'espionage-consequences': 'recommended',
     'exchange': 'recommended',
     'chartered-companies': 'balance still being tuned',
@@ -332,7 +332,9 @@ function withToggleAddon(picked: readonly string[], overrides: AddonOverrides, i
  */
 export const DATA_ONLY_INCLUDES: Readonly<Record<string, readonly string[]>> = {
     // "Includes the hidden threats (their own flags)": the ledger reads them when they run.
-    'internal-security': ['cult', 'doppelgangers', 'hive', 'greytide', 'corporatecoup'],
+    // Emergent Galaxy (internal politics) is off for now (user 2026-10-16): loaded for its shared state, never switched on.
+    'internal-security': ['cult', 'doppelgangers', 'hive', 'greytide', 'corporatecoup', 'emergent'],
+    reputation: ['emergent'],
     // "Includes the rim herders (off by default)": its manifest overrides rimHerders / rimFauna to false.
     'independents-active': ['rim-herders'],
     // "includes darkfarms for the Harvester race the faction wears" (robotMutiny.ts header); the farms stay off.
@@ -646,7 +648,7 @@ export const EXPANSIONS: readonly Expansion[] = [
     { id: 'politics-characters', name: 'Politics & Characters', description: 'Governors, VIPs and the Galactic Council, internal security, reputation, espionage fallout, frontier autonomy, refugees, war crimes remembered and bounty hunters.', members: ['characters-victory', 'internal-security', 'reputation', 'espionage-consequences', 'frontier-autonomy', 'refugees-demographics', 'war-crimes', 'bounty-hunters'] },
     { id: 'economy', name: 'Economy', description: 'Colony economy, the exchange, chartered companies, corporate coups, privateers and wreckage salvage.', members: ['colony-economy', 'exchange', 'chartered-companies', 'corporatecoup', 'privateers', 'wreckage-salvage'] },
     { id: 'galactic-threats', name: 'Galactic Threats', description: 'The hidden end-game threats (cult, hive, silence, greytide, ghost armada, robot mutiny, time bomb, doppelgangers, dark farms) and the early ones: generation ships, a dead probe swarm, the archive cores they leave and the Void Whale, plus the mid-game Purifier: an ancient planet destroyer you can hunt.', members: ['threat-framework', 'generation-ships', 'probe-swarm', 'hollow-fleet', 'archive-cores', 'void-whale', 'purifier', 'cult', 'hive', 'silence', 'greytide', 'ghostarmada', 'robotmutiny', 'timebomb', 'doppelgangers', 'darkfarms'] },
-    { id: 'living-galaxy', name: 'Living Galaxy', description: 'A galaxy that moves on its own: lively events, emergent factions, active independents and scorched earth.', members: ['lively-galaxy', 'emergent', 'independents-active', 'scorched-earth'] },
+    { id: 'living-galaxy', name: 'Living Galaxy', description: 'A galaxy that moves on its own: lively events, active independents and scorched earth.', members: ['lively-galaxy', 'independents-active', 'scorched-earth'] },
 ];
 
 /**
