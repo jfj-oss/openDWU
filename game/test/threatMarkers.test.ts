@@ -14,7 +14,7 @@ import {
 import { threatFrameworkPresent, threatMarkerRadius } from '../src/render/artBundleLayer';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { GEN_LIGHT_FLASH, GEN_LIGHT_PERIOD, GEN_SHIPS_ART_DIR, genShipsArtFile, genShipsFileForSubRole, genShipsLightAlpha, genShipsLightPhase, threatArtUrl, type ThreatLooks } from '../src/render/threatArt';
+import { GEN_LIGHT_FLASH, GEN_LIGHT_PERIOD, GEN_SHIPS_ART_DIR, genShipsArtFile, genShipsFileForSubRole, genShipsLightAlpha, genShipsLightPhase, purifierArtUrl, threatArtUrl, type ThreatLooks } from '../src/render/threatArt';
 import { GEN_SHIPS_LIGHTS } from '../src/render/genShipsLights';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
@@ -148,5 +148,64 @@ describe('generation ships art', () => {
             expect(genShipsLightPhase(id)).toBeGreaterThanOrEqual(0);
             expect(genShipsLightPhase(id)).toBeLessThan(GEN_LIGHT_PERIOD);
         }
+    });
+});
+
+// The Purifier's escorts and dock (scripts/purifier-ships.py: worn-down bronze war machines, a half-ruined shipyard);
+// the planet destroyer itself keeps its stock frame.
+describe('purifier art', () => {
+    const png = (f: string): string => resolve(__dirname, '../public/art/purifier', `${f}.png`);
+    const faction = {} as Empire;
+    const other = {} as Empire;
+    const bo = (subRole: BuiltObjectSubRole, empire: Empire | null, role = BuiltObjectRole.Military, isPlanetDestroyer = false): BuiltObject =>
+        ({ subRole, role, actualEmpire: empire, isPlanetDestroyer }) as unknown as BuiltObject;
+    const ESCORTS = ['frigate', 'destroyer', 'cruiser', 'capitalship', 'carrier', 'trooptransport'];
+    it('picked by subRole for the faction (the dock base_1, other bases base_0), never for the planet destroyer', () => {
+        const dock = bo(BuiltObjectSubRole.GenericBase, faction, BuiltObjectRole.Base);
+        const l: ThreatLooks = { genFactions: [], worldShips: [], swarmFaction: null, mothercore: null, purifierFaction: faction, purifierDock: dock };
+        const want: [BuiltObjectSubRole, string][] = [
+            [BuiltObjectSubRole.Escort, 'frigate'],
+            [BuiltObjectSubRole.Frigate, 'frigate'],
+            [BuiltObjectSubRole.Destroyer, 'destroyer'],
+            [BuiltObjectSubRole.Cruiser, 'cruiser'],
+            [BuiltObjectSubRole.CapitalShip, 'capitalship'],
+            [BuiltObjectSubRole.Carrier, 'carrier'],
+            [BuiltObjectSubRole.TroopTransport, 'trooptransport'],
+        ];
+        for (const [sr, f] of want) expect(purifierArtUrl(bo(sr, faction), l)).toBe(`/art/purifier/${f}.png`);
+        expect(purifierArtUrl(dock, l)).toBe('/art/purifier/base_1.png');
+        expect(purifierArtUrl(bo(BuiltObjectSubRole.SmallSpacePort, faction, BuiltObjectRole.Base), l)).toBe('/art/purifier/base_0.png');
+        expect(purifierArtUrl(bo(BuiltObjectSubRole.CapitalShip, faction, BuiltObjectRole.Military, true), l)).toBeNull();
+        expect(purifierArtUrl(bo(BuiltObjectSubRole.Cruiser, other), l)).toBeNull();
+        expect(purifierArtUrl(bo(BuiltObjectSubRole.ExplorationShip, faction), l)).toBeNull();
+    });
+    it('frames: square, bronze, thruster marks on every escort, no opaque black; the dock berth is empty space', () => {
+        for (const f of [...ESCORTS, 'base_0', 'base_1']) {
+            const img = decodePng(png(f));
+            expect(img.width).toBe(img.height);
+            let blue = 0;
+            let n = 0;
+            let r0 = 0;
+            let b0 = 0;
+            for (let i = 0; i < img.data.length; i += 4) {
+                const [r, g, b, a] = img.data.subarray(i, i + 4);
+                if (a === 0) continue;
+                if (r === 0 && g === 0 && b === 255) {
+                    blue++;
+                    continue;
+                }
+                expect(a === 255 && r === 0 && g === 0 && b === 0, f).toBe(false);
+                if (a > 200 && !(r === 255 && g === 255 && b === 0)) {
+                    n++;
+                    r0 += r;
+                    b0 += b;
+                }
+            }
+            if (ESCORTS.includes(f)) expect(blue, f).toBeGreaterThan(0);
+            expect(r0 / n, f).toBeGreaterThan((b0 / n) * 1.4); // warm bronze, not the stock grey
+        }
+        const dock = decodePng(png('base_1'));
+        const c = (Math.round(dock.height * 0.44) * dock.width + Math.round(dock.width / 2)) * 4;
+        expect(dock.data[c + 3]).toBe(0); // where the Purifier slept
     });
 });

@@ -18,8 +18,9 @@
 //   picked by role (swarmArtUrl), render only. The Mothercore (a spiked machine cube) is drawn larger, with the dim red
 //   light of its seams slowly swelling and orange positional lights blinking at its corners (SwarmFxLayer, pooled
 //   additive sprites).
-// - The Purifier: its escorts, guards and repair station draw our bundled aged-bronze Shakturi frames
-//   (public/art/purifier/, scripts/purifier-ships.py) instead of their race's art; the planet destroyer keeps the stock
+// - The Purifier: its escorts, guards and repair station draw our bundled battle-worn bronze frames kitbashed from the
+//   Shakturi set, the dock (base_1) a half-ruined shipyard (public/art/purifier/, scripts/purifier-ships.py) instead
+//   of their race's art; the planet destroyer keeps the stock
 //   other/planetdestroyer.png. Picked by subRole (purifierArtUrl), render only: the sim's pictureRef is untouched.
 
 import { Container, type Texture } from 'pixi.js';
