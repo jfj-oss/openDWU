@@ -219,15 +219,16 @@ function sample(ctx) {
         return { pairs, entries, crisisCauses };
     });
     row.cl = safe('cl', () => {
-        let holding = 0, oldestD = 0;
+        // holding: ships holding in orbit now (their hold is younger than the 25-day timeout + a margin); stale: a clTarget left on a re-tasked ship.
+        let holding = 0, stale = 0, oldestD = 0;
         const sd = M.simTime.galaxyStarDate(g);
         for (const rec of troopRecs) {
             const b = rec.bo;
             if (b.hasBeenDestroyed || b.clTarget === undefined) continue;
-            holding++;
-            oldestD = Math.max(oldestD, (sd - (b.clSince ?? sd)) / DAY_MS);
+            const age = (sd - (b.clSince ?? sd)) / DAY_MS;
+            if (age <= 40) { holding++; oldestD = Math.max(oldestD, age); } else stale++;
         }
-        return { holding, oldestD: Math.round(oldestD), tracked: troopRecs.length, openWaves: openWaves.size };
+        return { holding, stale, oldestD: Math.round(oldestD), tracked: troopRecs.length, openWaves: openWaves.size };
     });
     row.ev = safe('eventLog', () => ({ n: M.eventLog.eventLogEntries(g).length }));
     row.fin = g.gameIsFinished ? 1 : 0;
