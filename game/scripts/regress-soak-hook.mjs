@@ -24,6 +24,8 @@ let lastSample = -Infinity;
 let startMs = 0;
 let ownerChanges = new Map(); // Habitat -> { to: empireId, t }
 let kills = {}; // faction label -> { killed, lost }
+let captures = {}; // crisis faction key -> what changed hands to it
+let ctx0 = null;
 let landingEvents = { total: 0, pirate: 0, lostWithTroops: 0 };
 let spawned = new Set();
 let handlersFor = null;
@@ -48,7 +50,8 @@ export async function start(ctx) {
     startMs = ctx.g.nowMs;
     sd0 = M.simTime.galaxyStarDate(ctx.g);
     baseGameData = ctx.gameData;
-    ctx.report.regress = { rows, waves, kills, landingEvents, hookErrors, opts };
+    ctx0 = ctx;
+    ctx.report.regress = { rows, waves, kills, captures, landingEvents, hookErrors, opts };
     if (opts.clFlag !== undefined && ctx.g.scenario !== null) ctx.g.scenario.flags.coordinatedLandings = opts.clFlag === true;
     ctx.report.regress.clFlagAtStart = ctx.g.scenario?.flags?.coordinatedLandings ?? null;
     if (opts.env) for (const [k, v] of Object.entries(opts.env)) process.env[k] = String(v); // e.g. SOAK_SAVE_YEARS / SOAK_STOP_YEAR for the timing hook (read when it is imported)
@@ -65,6 +68,24 @@ function registerHandlers(ctx) {
     unregister.push(registerScenarioEvent({ id: 'rg.owner', ...gate, event: 'colonyOwnerChanged', run: (gal, e) => {
         ownerChanges.set(e.colony, { to: e.to?.empireId ?? -1, from: e.from?.empireId ?? -1, t: gal.nowMs });
     } }));
+    // Ships and stations that change hands to a crisis faction, by what was happening (a colony taken in the same frame, an empire eliminated, docked, under construction...).
+    unregister.push(registerScenarioEvent({ id: 'rg.owner2', ...gate, event: 'builtObjectOwnerChanged', run: (gal, e) => safe('captured', () => {
+        const to = e.to == null ? null : factionLabel(gal, e.to);
+        if (to === null) return;
+        const bo = e.builtObject;
+        const rec = (captures[to] ??= { total: 0, byRole: {}, byFrom: {}, docked: 0, parented: 0, samples: [] });
+        rec.total++;
+        const role = bo.role === M.designSpecs.BuiltObjectRole.Military ? 'war' : bo.role === M.designSpecs.BuiltObjectRole.Base ? 'base' : bo.role === M.designSpecs.BuiltObjectRole.Resource ? 'resource' : 'other';
+        rec.byRole[role] = (rec.byRole[role] ?? 0) + 1;
+        const from = e.from == null ? 'none' : e.from.name;
+        rec.byFrom[from] = (rec.byFrom[from] ?? 0) + 1;
+        if (bo.dockedAt != null) rec.docked++;
+        if (bo.parentHabitat != null || bo.builtAt != null) rec.parented++;
+        if (rec.samples.length < 400) rec.samples.push([year(gal), role, from, bo.dockedAt?.name ?? null, bo.parentHabitat?.name ?? null, bo.builtAt?.name ?? null, bo.subRole]);
+    }) }));
+    unregister.push(registerScenarioEvent({ id: 'rg.eliminated', ...gate, event: 'empireEliminated', run: (gal, e) => safe('eliminated', () => {
+        (ctx0.report.regress.eliminated ??= []).push({ y: year(gal), empire: e.empire.name, conqueror: e.conqueror?.name ?? null, ships: e.empire.builtObjects.length });
+    }) }));
     unregister.push(registerScenarioEvent({ id: 'rg.killed', ...gate, event: 'builtObjectKilledBy', run: (gal, e) => safe('killed', () => {
         const bo = e.builtObject;
         if (bo.role !== M.designSpecs.BuiltObjectRole.Military) return;

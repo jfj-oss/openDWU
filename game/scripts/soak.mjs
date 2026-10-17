@@ -262,6 +262,8 @@ const CONFIGS_REGRESS = [
 CONFIGS_REGRESS.push({ ...CONFIGS_REGRESS.find((c) => c.name === 'rg-long-norm-s1'), name: 'rg-prof-long-norm-s1', years: 10, hook: {} });
 // The same run stopped at year 19.6 with a save at year 18 (the long normal start threw two exceptions at years 15.4 and 19.0).
 CONFIGS_REGRESS.push({ ...CONFIGS_REGRESS.find((c) => c.name === 'rg-long-norm-s1'), name: 'rg-dbg-long-norm-s1', hook: { timing: true, sampleDays: 60, env: { SOAK_SAVE_YEARS: '18', SOAK_STOP_YEAR: '19.6' } } });
+// The forced-rising Cult seed 1 stopped at year 7 with the capture log (what changed hands to the Cult, and in what circumstances).
+CONFIGS_REGRESS.push({ ...CONFIGS_REGRESS.find((c) => c.name === 'rg-cult-force-late-s1'), name: 'rg-diag-cult-force-late-s1', years: 7 });
 CONFIGS.push(...CONFIGS_REGRESS);
 
 /** Negative amounts the C# has too. */
