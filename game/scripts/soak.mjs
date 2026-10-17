@@ -249,7 +249,7 @@ const CONFIGS_REGRESS = [
     ...[1, 2].map((seed) => rg(`rg-long-late-s${seed}`, { seed: seed + 10, years: 25, late: LATE4, wizard: RG_W({ otherEmpires: { empireCount: 11 } }), addons: 'recommended', params: { ...RG_ALL, cultSeedYear: 2, purifierYear: 2, purifierWakeYears: 2 }, hook: { timing: true, sampleDays: 60 } })),
     rg('rg-long-defaults-s4', { seed: 4, years: 40, addons: 'recommended', params: {}, hook: { timing: true, sampleDays: 60 } }),
     // Coordinated landings on vs off on a war-heavy seed (the os-war galaxy: aggressive AI, older galaxy, 700 stars, 7 empires), Smarter AI default.
-    ...[true, false].map((on) => rg(`rg-cl-${on ? 'on' : 'off'}-s1`, { seed: 1, years: 25, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, addons: [], hook: { clFlag: on, sampleDays: 60 } })),
+    ...[1, 2].flatMap((seed) => [true, false].map((on) => rg(`rg-cl-${on ? 'on' : 'off'}-s${seed}`, { seed, years: 25, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, addons: [], hook: { clFlag: on, sampleDays: 60 } }))),
 ];
 CONFIGS.push(...CONFIGS_REGRESS);
 
