@@ -32,7 +32,7 @@
 //   organs' light swells through the panes and pulses run out along the veins, and a sighted Watcher's plates swing open
 //   (beaconFx.ts BeaconFxLayer). Who is who comes from the Beacon sim's state bag (BeaconArtState, read only).
 
-import { Container, Graphics, Sprite, type Texture } from 'pixi.js';
+import { Container, Graphics, Matrix, Rectangle, Sprite, Texture } from 'pixi.js';
 import type { Galaxy } from '../sim/galaxy';
 import type { BuiltObject } from '../sim/builtObject';
 import type { Empire } from '../sim/empire';
@@ -49,7 +49,7 @@ import { useMinifyingFilter } from './assets';
 import { loadShipArt } from './shipArt';
 import { SpritePool } from './fxCommon';
 import { GEN_SHIPS_LIGHTS } from './genShipsLights';
-import { GW_LIGHTS, GW_LIGHT_KINDS, GW_SANCTUARY_GLASS_R } from './giantworksLights';
+import { GW_CASINO_LOOKS, GW_CASINO_SPR, GW_LIGHTS, GW_LIGHT_KINDS, GW_SANCTUARY_GLASS_R, type GwCasinoLook } from './giantworksLights';
 import { LeviathanRig, leviathanTextures, type LeviathanTextures } from './leviathanRig';
 import { loadLeviathanImages } from './faunaArt';
 
@@ -75,6 +75,8 @@ export interface ThreatLooks {
      * the planet they wrap (mainView.ts draws the machine shell over it). Optional: absent = none. */
     greatWorks?: Map<BuiltObject, GreatWorkArtSite>;
     ultramindPlanets?: Map<Habitat, GreatWorkArtSite>;
+    /** Giantworks: the casinos that are a pirate den now (their sites; casinoDenOf). Optional: absent = none. */
+    casinoDens?: Set<object>;
 }
 
 const looks: ThreatLooks = {
@@ -90,6 +92,7 @@ const looks: ThreatLooks = {
     beacon: null,
     greatWorks: new Map(),
     ultramindPlanets: new Map(),
+    casinoDens: new Set(),
 };
 
 /**
@@ -133,13 +136,24 @@ export function threatLooks(galaxy: Galaxy): ThreatLooks {
     looks.beacon = null;
     const gws = looks.greatWorks!;
     const ums = looks.ultramindPlanets!;
+    const dens = looks.casinoDens!;
     if (gws.size > 0) gws.clear();
     if (ums.size > 0) ums.clear();
+    if (dens.size > 0) dens.clear();
     if (galaxy.scenario === null) return looks;
     for (const site of greatWorkSites(galaxy)) {
         if (site.base === null || site.base.hasBeenDestroyed) continue;
         gws.set(site.base, site);
         if (site.stage >= 4 && site.wonder === 'ultramind' && site.habitat !== null) ums.set(site.habitat, site);
+    }
+    if (gws.size > 0) {
+        const cs = peekThreatState<CasinoArtState | null | undefined>(galaxy, CASINO_STATE_KEY);
+        if (cs !== null && cs !== undefined && typeof cs === 'object' && Array.isArray(cs.sites)) {
+            for (const rec of cs.sites) {
+                if (rec === null || rec === undefined || rec.phase !== CASINO_DEN_PHASE || typeof rec.workId !== 'number') continue;
+                for (const site of gws.values()) if (site.wonder === 'casino' && site.id === rec.workId) dens.add(site);
+            }
+        }
     }
     const b = peekThreatState<BeaconArtState>(galaxy, BEACON_STATE_KEY);
     if (b !== null) {
@@ -645,11 +659,13 @@ export class GenShipsFxLayer {
 // A Great Work site's base draws our bundled frames (public/art/giantworks/, scripts/giantworks-art.py): while it is
 // built, one of four shared scaffold stages (scaffold_0 Foundations .. scaffold_3 Fitting: the same frames whatever
 // the wonder will be, so the silhouette gives nothing away); once complete, its wonder's frame (the Gilded Orbit
-// casino, the Ultramind, the Leviathan Sanctuary). Every frame is drawn at one fixed world size (the crop square is
-// the whole texture), so the structure grows in place stage by stage. GreatWorkFxLayer lights them: blinking nav
-// lights and strobes, flickering work lamps and welding sparks, the casino's chasing neon and marquee bulbs, the
-// Ultramind's data lights and slow cyan pulse, and the Sanctuary's void whales swimming inside its glass (the
-// Leviathan rig, small, clipped to the sphere) under the front struts. A finished Ultramind built round a planet also
+// casino planet, the Ultramind, the Leviathan Sanctuary). Every frame is drawn at one fixed world size (the crop
+// square is the whole texture), so the structure grows in place stage by stage. GreatWorkFxLayer lights them: blinking
+// nav lights and strobes, flickering work lamps and welding sparks, the casino's neon (each piece of its atlas with its
+// own buzz, dying tube, fill-in sequence or blink), its chasing marquee bulbs, its turning roulette rotors (with the
+// ball) and observation wheel and its streams of ships, the Ultramind's data lights and slow cyan pulse, and the
+// Sanctuary's void whales swimming inside its glass (the Leviathan rig, small, clipped to the sphere) under the front
+// struts. A finished Ultramind built round a planet also
 // wraps that planet in its machine shell (syncUltramindShell, from mainView.ts's planet / moon pass), its base then a
 // smaller uplink node.
 
@@ -667,6 +683,8 @@ export const GIANTWORKS_STATE_KEY = 'giantworks';
  * partners: its lights go red).
  */
 export interface GreatWorkArtSite {
+    /** The site's id (a casino's record names its Great Work by it). */
+    id?: number;
     base: BuiltObject | null;
     stage: number;
     /** 0..1 (the map glyph's stage arcs fill with it). */
@@ -679,6 +697,23 @@ export interface GreatWorkArtSite {
 
 const NO_SITES: readonly GreatWorkArtSite[] = [];
 
+/**
+ * The render contract with the casino's sim (the 'casino' wonder; sim/scenario/threats/giantworks casino.ts
+ * CASINO_KEY): its scenario state bag under CASINO_STATE_KEY, read through peekThreatState, never created. Each record
+ * names its Great Work by `workId` (the site's id); while a record's phase is CASINO_DEN_PHASE ('revealed': the
+ * smugglers' front is out and the pirates hold the system) that casino draws as the pirate den ('casino-pirate'), in
+ * every other phase as the Gilded Orbit. All fields optional.
+ */
+export const CASINO_STATE_KEY = 'giantworksCasino';
+export const CASINO_DEN_PHASE = 'revealed';
+export interface CasinoArtRecord {
+    workId?: number;
+    phase?: string;
+}
+export interface CasinoArtState {
+    sites?: readonly (CasinoArtRecord | null | undefined)[];
+}
+
 /** The Great Work sites (the add-on's state), or none. Read only. */
 export function greatWorkSites(galaxy: Galaxy): readonly GreatWorkArtSite[] {
     const st = peekThreatState<{ sites?: GreatWorkArtSite[] }>(galaxy, GIANTWORKS_STATE_KEY);
@@ -690,14 +725,15 @@ export const GW_ART_DIR = '/art/giantworks/';
 
 /**
  * The frame a site's base draws: the scaffold of its stage (0..3, shared by every wonder), or once complete (stage 4)
- * its wonder's (the Ultramind's uplink node when it wraps a planet). A finished wonder without art of its own yet
- * keeps the finished scaffold. Pure.
+ * its wonder's (the Ultramind's uplink node when it wraps a planet; a casino that is a pirate den now, by `l`'s
+ * casinoDens (the last threatLooks record by default), the den). A finished wonder without art of its own yet keeps
+ * the finished scaffold. Pure but for that record.
  */
-export function greatWorkFrame(site: Pick<GreatWorkArtSite, 'stage' | 'wonder' | 'habitat'>): string {
+export function greatWorkFrame(site: Pick<GreatWorkArtSite, 'stage' | 'wonder' | 'habitat'>, l: ThreatLooks = looks): string {
     if (!(site.stage >= 4)) return `scaffold_${Math.max(0, Math.min(3, Math.trunc(site.stage) || 0))}`;
     switch (site.wonder) {
         case 'casino':
-            return 'casino';
+            return l.casinoDens !== undefined && l.casinoDens.has(site) ? 'casino-pirate' : 'casino';
         case 'ultramind':
             return site.habitat !== null ? 'ultramind-node' : 'ultramind';
         case 'sanctuary':
@@ -711,8 +747,8 @@ export function greatWorkFrame(site: Pick<GreatWorkArtSite, 'stage' | 'wonder' |
 
 /** The frame the Great Work path draws itself (fixed world size and orientation, GreatWorkFxLayer), or null when another
  * look takes over (a finished Beacon: beaconArtUrl, its BEACON_VISUAL_SCALE / BEACON_REF_SIZE floor, BeaconFxLayer). */
-export function greatWorkDrawnFrame(site: Pick<GreatWorkArtSite, 'stage' | 'wonder' | 'habitat'>): string | null {
-    const f = greatWorkFrame(site);
+export function greatWorkDrawnFrame(site: Pick<GreatWorkArtSite, 'stage' | 'wonder' | 'habitat'>, l: ThreatLooks = looks): string | null {
+    const f = greatWorkFrame(site, l);
     return f === 'beacon' ? null : f;
 }
 
@@ -743,7 +779,7 @@ export function greatWorkAt(target: object, l: ThreatLooks = looks): GreatWorkAr
 export function greatWorkArtUrl(bo: BuiltObject, l: ThreatLooks = looks): string | null {
     const site = greatWorkSiteOf(bo, l);
     if (site === null) return null;
-    const f = greatWorkFrame(site);
+    const f = greatWorkFrame(site, l);
     return f === 'beacon' ? `${BEACON_ART_DIR}beacon.png` : `${GW_ART_DIR}${f}.png`;
 }
 
@@ -759,6 +795,7 @@ const GW_NEON_A = GW_LIGHT_KINDS.indexOf('neonA');
 const GW_NEON_B = GW_LIGHT_KINDS.indexOf('neonB');
 const GW_DATA = GW_LIGHT_KINDS.indexOf('data');
 const GW_GOLD = GW_LIGHT_KINDS.indexOf('gold');
+const GW_BULB = GW_LIGHT_KINDS.indexOf('bulb');
 
 /** A 0..1 hash of two integers (sparkles, data blinks). Pure. */
 function hash01(a: number, b: number): number {
@@ -776,17 +813,174 @@ function flash(sec: number, period: number, on: number, ph: number): number {
     return t < rise ? t / rise : 1 - (t - rise) / (on - rise);
 }
 
-/** Casino neon: the two interleaved sets (A / B) take turns, 0.55 s each, with a soft hand-over. Pure. */
-export function gwNeonAlpha(sec: number, setB: boolean): number {
-    const w = 0.5 + 0.5 * Math.sin((2 * Math.PI * sec) / 1.1 + (setB ? Math.PI : 0));
-    return 0.35 + 0.65 * Math.min(1, w * 1.6);
+// --- the Gilded Orbit (the casino planet): its neon, its turning wheels, its ball, its ship lanes ---
+
+/** The casino's neon behaviours (a GwCasinoLook neon row's behaviour column). */
+export const CASINO_BUZZ = 0;
+export const CASINO_DEAD = 1;
+export const CASINO_SEQ = 2;
+export const CASINO_BLINK = 3;
+export const CASINO_BAD = 4;
+const NEON_OFF = 0.04;
+
+/**
+ * Brightness 0..1 of casino neon piece `k` at `sec` (behaviour `beh`, its parameters p1..p3). Every piece shimmers a
+ * little. BUZZ: steady, and now and then (every 5.5 to 10.5 s) it stutters for a fraction of a second (a burst of on /
+ * off); DEAD: a failing tube that sputters, now and then catching for a second or so; SEQ (index p1 of a run of p2,
+ * one step every p3 s): the run's pieces light one by one, hold all lit, then all go dark; BLINK (phase p1, period p2
+ * s): two sets take turns; BAD (the pirate den's: a failing transformer): long dark spells, otherwise sputtering, never
+ * full. Pure.
+ */
+export function casinoNeonAlpha(beh: number, p1: number, p2: number, p3: number, sec: number, k: number): number {
+    const shim = 0.93 + 0.07 * Math.sin(sec * 31.4 + k * 2.1) * Math.sin(sec * 17.9 + k);
+    switch (beh) {
+        case CASINO_BUZZ: {
+            const P = 5.5 + 5.0 * hash01(k, 1);
+            const tt = sec + p1 + k * 0.7;
+            const c = Math.floor(tt / P);
+            const ph = tt - c * P;
+            const start = hash01(c, k) * (P - 1.2);
+            const dur = 0.22 + 0.5 * hash01(c, k + 77);
+            if (ph >= start && ph < start + dur) return hash01(Math.floor(sec * 22), k + 5) > 0.45 ? shim : NEON_OFF;
+            return shim;
+        }
+        case CASINO_DEAD: {
+            const tt = sec + p1;
+            const c = Math.floor(tt / 4.3);
+            if (tt - c * 4.3 < 0.7 + 1.1 * hash01(c, k)) return shim * 0.9;
+            return hash01(Math.floor(sec * 12), k + 3) > 0.74 ? 0.85 : NEON_OFF;
+        }
+        case CASINO_SEQ: {
+            const n = Math.max(1, Math.trunc(p2));
+            const st = ((Math.floor(sec / Math.max(0.02, p3)) % (n + 3)) + (n + 3)) % (n + 3);
+            return st >= Math.trunc(p1) + 1 && st <= n + 1 ? shim : NEON_OFF;
+        }
+        case CASINO_BLINK: {
+            const on = (((Math.floor(sec / Math.max(0.02, p2)) + Math.trunc(p1)) % 2) + 2) % 2 === 0;
+            return on ? shim : NEON_OFF * 2;
+        }
+        case CASINO_BAD: {
+            if (hash01(Math.floor((sec + p1) / 1.7), k + 13) < 0.3) return NEON_OFF;
+            return hash01(Math.floor(sec * 9), k + 21) > 0.35 ? shim * 0.75 : NEON_OFF;
+        }
+        default:
+            return shim;
+    }
+}
+
+/**
+ * The turn (rad, in its plane) of rotor `r` (a GwCasinoLook rotors row) at `sec`: smooth at its spin, or with a jerk
+ * period (the den's, worn out) in fits: a grinding lurch in the first 30 % of each period, then stuck. Pure.
+ */
+export function casinoRotorAngle(r: readonly number[], sec: number): number {
+    const spin = r[7];
+    const P = r[10] ?? 0;
+    if (!(P > 0)) return spin * sec;
+    const c = Math.floor(sec / P);
+    const u = (sec - c * P) / P;
+    const m = Math.min(1, u / 0.3);
+    return spin * P * (c + m * m * (3 - 2 * m)) + (u < 0.3 ? 0.012 * Math.sin(sec * 47) : 0);
+}
+
+/** The roulette ball's cycle (s): flying round the bowl, dropping, riding a pocket. */
+export const CASINO_BALL_PERIOD = 16;
+
+/**
+ * The roulette ball of rotor `r` (a GwCasinoLook rotors row; `idx` its index) at `sec`, in the rotor's plane (frame px
+ * from its centre), into `out`: it flies round the bowl against the rotor's turn, slows, drops into the pocket ring
+ * (a few bounces) and rides it with the rotor, fades as the croupier lifts it, then flies again. Pure but for `out`.
+ */
+export function casinoBallPos(r: readonly number[], idx: number, sec: number, out: { x: number; y: number; a: number }): void {
+    const spin = r[7];
+    const ph0 = hash01(idx + 7, 9) * CASINO_BALL_PERIOD;
+    const tt = sec + ph0;
+    const cyc = Math.floor(tt / CASINO_BALL_PERIOD);
+    const t = tt - cyc * CASINO_BALL_PERIOD;
+    const launch = hash01(cyc, 3) * 2 * Math.PI;
+    const w0 = spin >= 0 ? -3.4 : 3.4;
+    const track = (r[8] + r[9]) / 2 + 0.4;
+    const pocket = r[8] * 0.58;
+    const t1 = 9;
+    const t2 = 10.4;
+    let rad: number;
+    let ang: number;
+    out.a = 1;
+    if (t < t1) {
+        rad = track;
+        ang = launch + w0 * (t - (t * t) / 24);
+    } else {
+        const a1 = launch + w0 * (t1 - (t1 * t1) / 24);
+        const w1 = w0 * (1 - t1 / 12);
+        if (t < t2) {
+            const u = (t - t1) / (t2 - t1);
+            rad = track + (pocket - track) * u + 1.4 * Math.sin(u * Math.PI * 3) * (1 - u);
+            ang = a1 + (w1 * (1 - u) + spin * u) * (t - t1);
+        } else {
+            rad = pocket;
+            ang = a1 + ((w1 + spin) / 2) * (t2 - t1) + spin * (t - t2);
+            out.a = Math.min(1, (CASINO_BALL_PERIOD - t) / 0.4);
+        }
+    }
+    out.x = rad * Math.cos(ang);
+    out.y = rad * Math.sin(ang);
+}
+
+/** A ship lane's brightness at `rho` frame px from the casino's centre (`look`'s laneFade): full near the planet,
+ * nothing far out. Pure. */
+export function casinoLaneFade(look: GwCasinoLook, rho: number): number {
+    const [near, far] = look.laneFade;
+    const f = Math.max(0, Math.min(1, (far - rho) / (far - near)));
+    return f ** 1.3;
+}
+
+/** Each look's lanes' lengths (frame px), once. */
+const CASINO_LANE_LEN = new Map<GwCasinoLook, readonly number[]>(
+    Object.values(GW_CASINO_LOOKS).map((look) => [
+        look,
+        look.lanes.map((l) => {
+            let L = 0;
+            for (let i = 3; i + 1 < l.length; i += 2) L += Math.hypot(l[i] - l[i - 2], l[i + 1] - l[i - 1]);
+            return L;
+        }),
+    ]),
+);
+
+/** How many ships lane `li` of `look` carries (one every look.lane[0] frame px). Pure. */
+export function casinoLaneShips(look: GwCasinoLook, li: number): number {
+    return Math.floor((CASINO_LANE_LEN.get(look)?.[li] ?? 0) / look.lane[0]);
+}
+
+/**
+ * Ship `k` of lane `li` of `look` at `sec` into `out` (frame px; `a` its brightness, 0 for none): the ships stream along
+ * the lane (in toward a gate, or out of it) at look.lane's spacing and speed, fading into / out of the mouth and with
+ * the distance from the casino's centre (`cx`, `cy`). Pure but for `out`.
+ */
+export function casinoLaneShip(look: GwCasinoLook, li: number, k: number, sec: number, cx: number, cy: number, out: { x: number; y: number; a: number }): void {
+    const l = look.lanes[li];
+    const L = CASINO_LANE_LEN.get(look)?.[li] ?? 0;
+    out.a = 0;
+    if (l === undefined || !(L > 0)) return;
+    const s = (((k * look.lane[0] + sec * look.lane[1] + hash01(k, 11) * 3) % L) + L) % L;
+    let acc = 0;
+    for (let i = 3; i + 1 < l.length; i += 2) {
+        const sl = Math.hypot(l[i] - l[i - 2], l[i + 1] - l[i - 1]);
+        if (s <= acc + sl || i + 3 >= l.length) {
+            const u = sl > 0 ? Math.min(1, (s - acc) / sl) : 0;
+            out.x = l[i - 2] + (l[i] - l[i - 2]) * u;
+            out.y = l[i - 1] + (l[i + 1] - l[i - 1]) * u;
+            break;
+        }
+        acc += sl;
+    }
+    const mouth = l[0] === 0 ? Math.min(1, (L - s) / (0.05 * L)) : Math.min(1, s / (0.05 * L));
+    out.a = mouth * look.lane[2] * casinoLaneFade(look, Math.hypot(out.x - cx, out.y - cy));
 }
 
 /**
  * Alpha of light `k` (of `n` in its frame) of kind `kind` (GW_LIGHT_KINDS index) at `sec`: nav lights flash red every
  * 2.4 s each on its own phase; strobes a short white blink; work lamps a steady flicker; welding sparks crackle at
- * random; running lights chase round the rings; casino neon takes turns set by set and the marquee bulbs chase in
- * threes; data lights blink at random. Pure.
+ * random; running lights chase round the rings; the casino's arena bulbs and its marquee bulbs chase in threes (the
+ * marquee faster); data lights blink at random. Pure.
  */
 export function gwLightAlpha(kind: number, sec: number, k: number, n: number): number {
     switch (kind) {
@@ -805,11 +999,12 @@ export function gwLightAlpha(kind: number, sec: number, k: number, n: number): n
             return 0.2 + 0.8 * Math.max(0, 1 - t * 6);
         }
         case GW_NEON_A:
-            return gwNeonAlpha(sec, false);
         case GW_NEON_B:
-            return gwNeonAlpha(sec, true);
+            return (Math.floor(sec / 0.55) + (kind === GW_NEON_B ? 1 : 0)) % 2 === 0 ? 1 : 0.35;
         case GW_GOLD:
             return (k + Math.floor(sec * 5)) % 3 === 0 ? 1 : 0.18;
+        case GW_BULB:
+            return (k + Math.floor(sec * 7)) % 3 === 0 ? 1 : 0.22;
         case GW_DATA: {
             const b = Math.floor(sec * 3 + k * 0.37);
             return hash01(b, k) > 0.5 ? 0.7 : 0.08;
@@ -829,16 +1024,15 @@ const GW_LAMP_COLOURS: readonly (readonly [number, number, number])[] = [
     [0.22, 0.95, 1.0], // neonB
     [0.3, 0.92, 1.0], // data
     [1.0, 0.8, 0.32], // gold
+    [1.0, 0.9, 0.62], // bulb
 ];
 /** The lamp core radius (frame px) per kind, before the on-screen minimum. */
-const GW_LAMP_FRAME_R = [3.2, 2.4, 5.0, 1.8, 2.2, 2.2, 2.2, 1.5, 2.2];
+const GW_LAMP_FRAME_R = [3.2, 2.4, 5.0, 1.8, 2.2, 2.2, 2.2, 1.5, 2.2, 1.1];
 const GW_RED_DATA: readonly [number, number, number] = [1.0, 0.16, 0.12];
 
 /** The additive glow layer of a frame (its lit windows / neon / data seams, pulsed), or null. */
 function gwGlowFiles(frame: string): readonly string[] {
     switch (frame) {
-        case 'casino':
-            return ['casino-neon-a', 'casino-neon-b'];
         case 'ultramind':
             return ['ultramind-glow'];
         case 'ultramind-node':
@@ -978,29 +1172,55 @@ class SanctuaryView {
 /** The Great Work's overlays are skipped below this drawn size (px); the whales below SANCTUARY_WHALES_MIN_PX. */
 export const GW_FX_MIN_PX = 28;
 export const SANCTUARY_WHALES_MIN_PX = 60;
+/** The casino's turning wheels, its roulette balls and its ships are skipped below this drawn size (px; its neon and
+ * bulbs keep GW_FX_MIN_PX). */
+export const CASINO_MOVING_MIN_PX = 60;
+
+const BALL_LAMP: readonly [number, number, number] = [1.0, 1.0, 0.96];
+const SHIP_IN_LAMP: readonly [number, number, number] = [1.0, 0.93, 0.78];
+const SHIP_OUT_LAMP: readonly [number, number, number] = [1.0, 0.2, 0.12];
+
+const casinoNeonTex = new Map<GwCasinoLook, readonly Texture[]>();
+/** A casino look's neon pieces: frames of its atlas (look.neonFile, look.neon), made once it has loaded. */
+function casinoNeonTextures(look: GwCasinoLook): readonly Texture[] | null {
+    const got = casinoNeonTex.get(look);
+    if (got !== undefined) return got;
+    const atlas = gwTexture(look.neonFile);
+    if (atlas === null) return null;
+    const t = look.neon.map((r) => new Texture({ source: atlas.source, frame: new Rectangle(r[0], r[1], r[2], r[3]) }));
+    casinoNeonTex.set(look, t);
+    return t;
+}
 
 /**
  * The Great Work's overlays (pooled; nothing allocated per frame but a Sanctuary's view, once): the Sanctuary's
- * whales and its front struts / glass over them, the additive glow layers, then the lamps.
+ * whales and its front struts / glass over them, the casino's turning sprites, the additive glow layers and neon
+ * pieces, then the lamps.
  */
 export class GreatWorkFxLayer {
     readonly root = new Container();
     private readonly whales = new Container();
     private readonly fronts = new Container();
+    private readonly turns = new Container();
     private readonly glows = new Container();
     private readonly lamps = new Container();
     private frontPool = new SpritePool(this.fronts);
+    /** The casino's turning sprites (each placed whole by setFromMatrix, skew included: nothing else uses this pool). */
+    private turnPool = new SpritePool(this.turns);
+    private readonly mat = new Matrix();
+    private readonly pt = { x: 0, y: 0, a: 0 };
     private glowPool = new SpritePool(this.glows);
     private lampPool = new SpritePool(this.lamps);
     private views = new Map<BuiltObject, SanctuaryView>();
 
     constructor() {
         this.root.eventMode = 'none';
-        this.root.addChild(this.whales, this.fronts, this.glows, this.lamps);
+        this.root.addChild(this.whales, this.fronts, this.turns, this.glows, this.lamps);
     }
 
     begin(): void {
         this.frontPool.begin();
+        this.turnPool.begin();
         this.glowPool.begin();
         this.lampPool.begin();
         for (const v of this.views.values()) v.seen = false;
@@ -1047,6 +1267,8 @@ export class GreatWorkFxLayer {
                 s.scale.set(scale);
             }
         }
+        const look = Object.hasOwn(GW_CASINO_LOOKS, frame) ? GW_CASINO_LOOKS[frame] : null;
+        if (look !== null) this.drawCasino(look, x, y, rotation, cos, sin, scale, ax * tw, ay * th, tw, th, drawnPx, sec);
         const glows = gwGlowFiles(frame);
         for (let i = 0; i < glows.length; i++) {
             const t = gwTexture(glows[i]);
@@ -1057,18 +1279,21 @@ export class GreatWorkFxLayer {
             s.position.set(x, y);
             s.rotation = rotation;
             s.scale.set(scale);
-            s.alpha = frame === 'casino' ? gwNeonAlpha(sec, i === 1) : gwUltramindPulse(sec);
+            s.alpha = gwUltramindPulse(sec);
             s.tint = site.awakened === true ? 0xff3a2a : 0xffffff;
         }
         if (!Object.hasOwn(GW_LIGHTS, frame.replace('-', '_'))) return;
         const pts = GW_LIGHTS[frame.replace('-', '_')];
         const k = drawnPx / Math.max(tw, th); // screen px per frame px
         const red = site.awakened === true;
+        // the casino's dense marquee and arena bulbs merge into blobs when small: they fade out as the casino shrinks
+        const bulbFade = Math.max(0, Math.min(1, (k - 0.22) / 0.3));
         for (let i = 0; i < pts.length; i++) {
             const kind = pts[i][2];
-            const a = gwLightAlpha(kind, sec, i, pts.length);
+            const bulb = kind === GW_BULB || kind === GW_GOLD;
+            const a = gwLightAlpha(kind, sec, i, pts.length) * (bulb ? bulbFade : 1);
             if (a <= 0.02) continue;
-            const rScreen = Math.max(kind === GW_DATA ? 0.9 : 1.3, Math.min(4.5, GW_LAMP_FRAME_R[kind] * k));
+            const rScreen = Math.max(kind === GW_DATA ? 0.9 : bulb ? 0.7 : 1.3, Math.min(4.5, GW_LAMP_FRAME_R[kind] * k));
             const lampScale = ((rScreen * scale) / k) / LAMP_CORE_PX;
             const lx = (pts[i][0] + 0.5 - ax * tw) * scale;
             const ly = (pts[i][1] + 0.5 - ay * th) * scale;
@@ -1080,8 +1305,95 @@ export class GreatWorkFxLayer {
         }
     }
 
+    /**
+     * A casino look's runtime layers over its frame (the Gilded Orbit, or the pirate den; frame px (fx, fy) are at world
+     * (x, y) + R(rotation) * scale * (fx - ox, fy - oy)): each neon piece of the look's atlas lit by its own behaviour
+     * (casinoNeonAlpha), and from CASINO_MOVING_MIN_PX the roulette rotors turning in their planes on the sphere
+     * (sprite -> frame M2 * R(casinoRotorAngle)), the observation wheel turning, the roulette balls, and the ships
+     * along the lanes (fading with the distance from the centre). The marquee bulbs are GW_LIGHTS lamps (draw's lamp
+     * loop).
+     */
+    private drawCasino(look: GwCasinoLook, x: number, y: number, rotation: number, cos: number, sin: number, scale: number, ox: number, oy: number, tw: number, th: number, drawnPx: number, sec: number): void {
+        const neon = casinoNeonTextures(look);
+        if (neon !== null) {
+            for (let i = 0; i < neon.length; i++) {
+                const r = look.neon[i];
+                const a = casinoNeonAlpha(r[6], r[7], r[8], r[9], sec, i);
+                if (a <= 0.02) continue;
+                const s = this.glowPool.acquire(neon[i]);
+                s.blendMode = 'add';
+                s.anchor.set(0, 0);
+                const lx = (r[4] - ox) * scale;
+                const ly = (r[5] - oy) * scale;
+                s.position.set(x + lx * cos - ly * sin, y + lx * sin + ly * cos);
+                s.rotation = rotation;
+                s.scale.set(scale);
+                s.alpha = a;
+            }
+        }
+        if (drawnPx < CASINO_MOVING_MIN_PX) return;
+        const k = scale / GW_CASINO_SPR;
+        for (let i = 0; i < look.rotors.length; i++) {
+            const r = look.rotors[i];
+            const t = gwTexture(look.rotorFiles[r[0]] ?? '');
+            if (t === null) continue;
+            const turn = casinoRotorAngle(r, sec);
+            const c = Math.cos(turn);
+            const sn = Math.sin(turn);
+            // M2 * R(spin t): the rotor turning in its own plane, then seen on the sphere
+            const n00 = r[3] * c + r[4] * sn;
+            const n01 = -r[3] * sn + r[4] * c;
+            const n10 = r[5] * c + r[6] * sn;
+            const n11 = -r[5] * sn + r[6] * c;
+            const lx = (r[1] - ox) * scale;
+            const ly = (r[2] - oy) * scale;
+            this.mat.set(k * (cos * n00 - sin * n10), k * (sin * n00 + cos * n10), k * (cos * n01 - sin * n11), k * (sin * n01 + cos * n11), x + lx * cos - ly * sin, y + lx * sin + ly * cos);
+            this.turnPool.acquire(t).setFromMatrix(this.mat);
+        }
+        const wheel = look.wheel;
+        const wt = look.wheelFile !== null && wheel !== null ? gwTexture(look.wheelFile) : null;
+        if (wt !== null && wheel !== null) {
+            const c = Math.cos(rotation + wheel[2] * sec);
+            const sn = Math.sin(rotation + wheel[2] * sec);
+            const lx = (wheel[0] - ox) * scale;
+            const ly = (wheel[1] - oy) * scale;
+            this.mat.set(k * c, k * sn, -k * sn, k * c, x + lx * cos - ly * sin, y + lx * sin + ly * cos);
+            this.turnPool.acquire(wt).setFromMatrix(this.mat);
+        }
+        const kp = drawnPx / Math.max(tw, th); // screen px per frame px
+        const pt = this.pt;
+        for (let i = 0; look.ball && i < look.rotors.length; i++) {
+            const r = look.rotors[i];
+            casinoBallPos(r, i, sec, pt);
+            if (pt.a <= 0.02) continue;
+            this.lamp(BALL_LAMP, r[1] + r[3] * pt.x + r[4] * pt.y, r[2] + r[5] * pt.x + r[6] * pt.y, 0.8, 1.6, 1.0, pt.a, x, y, cos, sin, scale, ox, oy, kp);
+        }
+        for (let li = 0; li < look.lanes.length; li++) {
+            const tint = look.lanes[li][0] === 0 ? SHIP_IN_LAMP : SHIP_OUT_LAMP;
+            const n = casinoLaneShips(look, li);
+            for (let s = 0; s < n; s++) {
+                casinoLaneShip(look, li, s, sec, tw / 2, th / 2, pt);
+                if (pt.a <= 0.02) continue;
+                this.lamp(tint, pt.x, pt.y, 0.8, 2.0, 1.4, pt.a, x, y, cos, sin, scale, ox, oy, kp);
+            }
+        }
+    }
+
+    /** One additive lamp at frame px (fx, fy): core radius frameR frame px, held between minR and maxR screen px. */
+    private lamp(tint: readonly [number, number, number], fx: number, fy: number, minR: number, maxR: number, frameR: number, alpha: number, x: number, y: number, cos: number, sin: number, scale: number, ox: number, oy: number, kp: number): void {
+        const rScreen = Math.max(minR, Math.min(maxR, frameR * kp));
+        const s = this.lampPool.acquire(lampTexture(tint));
+        s.blendMode = 'add';
+        const lx = (fx - ox) * scale;
+        const ly = (fy - oy) * scale;
+        s.position.set(x + lx * cos - ly * sin, y + lx * sin + ly * cos);
+        s.scale.set(((rScreen * scale) / kp) / LAMP_CORE_PX);
+        s.alpha = alpha;
+    }
+
     end(): void {
         this.frontPool.end();
+        this.turnPool.end();
         this.glowPool.end();
         this.lampPool.end();
         for (const [bo, v] of this.views) {

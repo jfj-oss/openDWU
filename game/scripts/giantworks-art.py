@@ -8,6 +8,9 @@ the blinking nav lights, work lights and neon the runtime layers light up).
     python3 -I scripts/giantworks-art.py [--dwu <DW:U install>] [--out public/art/giantworks]
         [--lights src/render/giantworksLights.ts] [--preview <dir>] [--only scaffold_0,casino]
 
+--only builds just those frames; the light table keeps the other frames' rows (and the casino tables unless the
+casino is built) from the file already there.
+
 Reads images/units/ships/family*/<file>.png and images/units/ships/other/... from the install (default
 public/assets/dwu, the symlink npm run import-assets makes). Needs Python 3 with numpy and Pillow only. Deterministic
 (fixed seeds per output).
@@ -32,9 +35,33 @@ The frames:
   scaffold packed round the hub and thinning outward, partial plating, lit work zones), 3 Fitting (most of the shell
   plated, fresh panels going on, the systems lighting up: window rows and running lights). Everything is one
   connected structure (any loose part is dropped).
-- casino (+ casino-neon-a / -b): the Gilded Orbit, a gaudy gold ring resort: the ring of hotel and casino decks with
-  lit windows, garden and pool domes, a central casino hub under a gold dome, spokes, docking arms; neon strips and
-  marquee bulbs in two interleaved sets the runtime chases.
+- casino: the Gilded Orbit, a planet that is all casino, always at night. A super dense city on a sphere: about 10,000
+  buildings (towers with setbacks, Y-shaped hotel towers, glass and gold domes, black pyramids, arcades, pool decks)
+  in broad districts of gold, marble, red lacquer, black glass, flamingo pink and bronze, on a street grid of latitude
+  rows (the roof detail is stock plating crops, 1 stock px per frame px). It is rendered as a height field: the city
+  map (equirectangular, about a build px a texel) raymarched from the view (orthographic, coarse max-height steps,
+  bisected hits), so towers stand out of the limb as a skyline and their walls show lit window floors, LED bands and
+  crowns near it; shadow rays from the faint key light. No sun: the city's own light (sodium streets, windows,
+  floodlit roofs, neon), the far side a little dimmer, a cool limb light on the near side and a pink / gold haze
+  round it, a bloom of the lights, a broad gold grade. Set into it: the Strip and two more boulevards (great circles
+  of traffic), two roulette arenas (the crown wheel floodlit, the night wheel glowing; each rotor drawn flat in its
+  plane on the sphere), a docking port's lit shaft. On the limb (drawn over it): the CASINO marquee on the north
+  skyline, a starburst on a short mast, two gold casino-front gates (tunnels of lit arches) and the High Roller
+  observation wheel. Flat on dark rooftop pads: JACKPOT, the four card suits, a giant 7, dice, cherries, an arrow to
+  the port. The neon is in the frame as unlit glass; casino-neon.png holds each piece lit (an atlas, one sprite per
+  piece, each with its own behaviour: buzz / dying tube / fill-in sequence / blink); casino-rotor-main / -night and
+  casino-wheel are the turning sprites; giantworksLights.ts gets the marquee bulbs and the GW_CASINO_* tables (the
+  pieces, the rotors' planes, the wheel, the ship lanes and their fade with the distance from the centre). Built at
+  its own 3x (PS) and downsampled like the rest. Dark back streets and unlit yards of low sheds along the districts'
+  edges keep the value contrast; the gates' feet follow the sphere; the observation wheel stands mostly over it on a
+  braced A-frame, its spokes lit.
+- casino-pirate (+ -neon, -rotor-main): the same planet as a pirate den (the casino's smugglers' front found out,
+  threatArt.ts casinoDens): the same city (same seeds) run down by decay_city (rust and soot, scorch marks with fires
+  still burning, patched plating, collapsed and gutted towers, most windows and roof lights out, half the street lamps
+  dead), tarnished materials (LOOKS: the build's look, ramp_c maps the materials), a dim dirty-sodium glow and a rust
+  haze; the signs mostly dark (DEN_FATES: most tubes dead and cracked, a few failing, half lit or dying: CAS NO,
+  J CKP T), most bulbs dead, one roulette rotor grinding round in fits, the other and the observation wheel stopped
+  (laid in the frame, cabins missing), a thin trickle of ships.
 - ultramind (+ ultramind-glow): the Ultramind standing alone, a dark planetoid wrapped in a machine shell: server
   blocks and lattice, white radiator fins, cyan data lights. ultramind-shell (+ ultramind-shell-glow) is the same
   shell as an overlay for the planet the site sits at (mainView.ts draws it over the planet's own picture, which shows
@@ -47,6 +74,7 @@ The frames:
 import argparse
 import math
 import os
+import time
 import zlib
 
 import numpy as np
@@ -1217,221 +1245,2163 @@ def render_ops(ops, stage):
 
 
 # ---------------------------------------------------------------------------------------------------------------
-# The Gilded Orbit (casino resort)
+# The Gilded Orbit: a casino planet (always night)
 # ---------------------------------------------------------------------------------------------------------------
 
-NEON_A = (1.0, 0.24, 0.82)   # magenta
-NEON_B = (0.25, 0.95, 1.0)   # cyan
-NEON_G = (1.0, 0.78, 0.3)    # gold
+PS = 3                       # the planet's build resolution multiple (its own; the kitbash canvas keeps SS)
+NB = FRAME * PS              # build canvas side
+R_PL = 248.0                 # planet radius (frame px)
+H_MAX = 16.0                 # tallest tower (frame px above the ground sphere)
+PL_TILT = math.radians(17)   # the north pole tipped toward the viewer
+PL_LEAN = math.radians(-12)  # ... and leaning left on screen
+LAT0 = -math.radians(78)     # the map's southern edge
+MW, MH = 4700, 2200          # city map texels (lon x lat): about one build px each at the equator
+DLON = 2 * math.pi / MW
+DLAT = (math.pi / 2 - LAT0) / MH
+# It is always night on the Gilded Orbit: no sun. PL_LIGHT is the faint key (a moon, starlight) from the upper left
+# that keeps the sphere's form: a cool sheen and a limb light on that side, the far side darker.
+PL_LIGHT = np.array([-0.7, -0.6, 0.38])
+PL_LIGHT = PL_LIGHT / np.linalg.norm(PL_LIGHT)
 
 
-def pool_dome(r, water=True, rng=None):
-    """A glass dome over a pool (glowing turquoise water) or a garden (greenery): sphere-cap shading, ribs, a bright
-    rim; the water / leaves as emission and native colour under the glass."""
-    S = int(math.ceil(2 * r * SS)) + 2
-    yy, xx = np.mgrid[0:S, 0:S].astype(np.float64) + 0.5
-    dx, dy = (xx - S / 2) / (r * SS), (yy - S / 2) / (r * SS)
-    d = np.hypot(dx, dy)
-    A = np.clip((1 - d) * r * SS + 0.5, 0, 1)
-    nz = np.sqrt(np.clip(1 - d * d, 0, 1))
-    L = shade(dx, dy, nz, amb=0.3, k=0.55, spec=0.9)
-    ang = np.arctan2(dy, dx)
-    rib = np.abs(((ang / (2 * math.pi)) * 10) % 1 - 0.5) > 0.5 - 0.5 / (2 * math.pi * r * np.maximum(d, 0.15) / 10)
-    rim = d > 0.86
-    frame = (rib & (d > 0.25)) | rim
-    n = np.zeros((S, S, 3))
-    e = np.zeros((S, S, 3))
-    if water:
-        wave = 0.5 + 0.5 * np.sin((dx * 9 + np.sin(dy * 7) * 1.5) * 2.2)
-        base = np.array([0.05, 0.42, 0.5]) + np.array([0.1, 0.25, 0.2]) * wave[..., None]
-        n[:] = base
-        e[:] = np.array([0.02, 0.22, 0.26]) * (0.6 + 0.4 * wave)[..., None]
+def planet_basis():
+    """Rows: the planet frame's X (lon 0, facing the viewer), Y and Z (north) axes in view space (x right, y down,
+    z toward the viewer)."""
+    u = np.array([math.sin(PL_LEAN), -math.cos(PL_LEAN), 0.0])
+    P = math.cos(PL_TILT) * u + math.sin(PL_TILT) * np.array([0, 0, 1.0])
+    ez = np.array([0, 0, 1.0])
+    X = ez - ez.dot(P) * P
+    X /= np.linalg.norm(X)
+    Y = np.cross(P, X)
+    return np.stack([X, Y, P])
+
+
+PL_M = planet_basis()
+
+
+def view_dir(sx, sy):
+    """View-space unit vector of the ground sphere under frame px (sx, sy) (on the limb if outside)."""
+    dx, dy = (sx - C0) / R_PL, (sy - C0) / R_PL
+    d2 = dx * dx + dy * dy
+    if d2 >= 1:
+        s = math.sqrt(d2)
+        return np.array([dx / s, dy / s, 0.0])
+    return np.array([dx, dy, math.sqrt(1 - d2)])
+
+
+def limb_dir(deg):
+    a = math.radians(deg)
+    return np.array([math.cos(a), math.sin(a), 0.0])
+
+
+def tangent_frame(v):
+    """At view-space surface direction v: (east, north) unit vectors in view space (planet frame east / north)."""
+    q = PL_M @ v
+    lat = math.asin(max(-1, min(1, q[2])))
+    lon = math.atan2(q[1], q[0])
+    e = PL_M.T @ np.array([-math.sin(lon), math.cos(lon), 0])
+    n = PL_M.T @ np.array([-math.sin(lat) * math.cos(lon), -math.sin(lat) * math.sin(lon), math.cos(lat)])
+    return e, n
+
+
+def affine_at(v, h=0.0):
+    """The orthographic projection of the tangent plane at surface direction v (height h frame px): frame px of a
+    point (e, n) (frame px along the planet's east / north there) = o + e * ex + n * ey. Returns (o, ex, ey) as
+    2-vectors. (The planet's east runs screen-left here, so the flat art uses (a, b) = (west, south), which run
+    screen right / down near the disc centre: M2 = [-ex, -ey].)"""
+    e, n = tangent_frame(v)
+    o = C0 + v[:2] * (R_PL + h)
+    return o, e[:2], n[:2]
+
+
+# ----------------------------------------------------------------------------------------------------------------
+# The features (the roulette arenas, the docking port, the boulevards), placed on screen
+# ----------------------------------------------------------------------------------------------------------------
+
+FEAT = {
+    # name: (screen x, y, radii (wheel, bezel, colonnade, ring road) frame px)
+    'wheel_main': (287.3, 319.4, (40.0, 46.0, 51.0, 57.0)),
+    'wheel_2': (473.3, 458.3, (23.0, 27.0, 30.5, 35.0)),
+    'port': (381.4, 525.7, (16.0, 22.0, 26.0, 31.0)),
+}
+FEAT_V = {k: view_dir(x, y) for k, (x, y, _) in FEAT.items()}
+# the boulevards: great circles through two view directions; width frame px
+BLVDS = [
+    (limb_dir(152), FEAT_V['wheel_main'], 8.0),     # the Strip: the west gate, the crown wheel, the north-east gate
+    (FEAT_V['port'], FEAT_V['wheel_2'], 5.5),
+    (FEAT_V['wheel_main'], FEAT_V['port'], 5.5),
+]
+BLVD_N = [np.cross(a, b) / np.linalg.norm(np.cross(a, b)) for (a, b, _) in BLVDS]
+
+
+# the rooftop signs lying flat on dark pads: (name, screen x, y, rotation deg (in the tangent plane), pad half
+# sizes (a, b) frame px, pad height frame px)
+SIGNS = [
+    ('jackpot', 458.3, 298.0, -14.0, (40.0, 9.5), 6.0),
+    ('suit0', 332.2, 385.7, 0.0, (8.5, 8.5), 7.0),
+    ('suit1', 345.0, 417.7, 0.0, (8.5, 8.5), 8.0),
+    ('suit2', 357.9, 449.8, 0.0, (8.5, 8.5), 7.0),
+    ('suit3', 371.8, 481.9, 0.0, (8.5, 8.5), 6.0),
+    ('seven', 522.5, 366.4, 8.0, (13.0, 17.0), 7.0),
+    ('dice', 417.7, 454.1, 20.0, (16.0, 9.0), 5.0),
+    ('cherry', 204.0, 255.2, -10.0, (13.0, 13.0), 6.0),
+    ('arrow', 437.0, 501.1, 0.0, (17.0, 7.0), 4.0),
+]
+SIGN_V = {s[0]: view_dir(s[1], s[2]) for s in SIGNS}
+
+
+def _tangent_angle(v, toward_xy):
+    """The tangent-plane angle (a west, b south) at v of the screen direction toward frame px toward_xy."""
+    e, n = tangent_frame(v)
+    M2 = np.stack([-e[:2], -n[:2]], -1)
+    t = np.linalg.solve(M2, np.array(toward_xy) - (C0 + v[:2] * R_PL))
+    return math.degrees(math.atan2(t[1], t[0]))
+
+
+SIGNS = [sg if sg[0] not in ('jackpot', 'arrow') else
+         (sg[0], sg[1], sg[2], _tangent_angle(SIGN_V[sg[0]], tuple(C0 + limb_dir(-28)[:2] * R_PL) if sg[0] == 'jackpot' else FEAT['port'][:2]), sg[4], sg[5])
+         for sg in SIGNS]
+
+
+def blvd_dist(v):
+    """Frame px from view direction(s) v (..., 3) to each boulevard's centre line: (..., nb)."""
+    return np.stack([np.abs(np.arcsin(np.clip(v @ nb, -1, 1))) * R_PL for nb in BLVD_N], -1)
+
+
+# ----------------------------------------------------------------------------------------------------------------
+# Materials, themes
+# ----------------------------------------------------------------------------------------------------------------
+
+MATS_C = ['gold', 'white', 'red', 'black', 'glass', 'copper', 'pink', 'cream']
+RAMPS_C = {
+    'gold': RAMPS['gold'],
+    'white': np.array([[.06, .058, .055], [.2, .19, .18], [.42, .41, .39], [.62, .6, .57], [.78, .76, .72], [.89, .87, .83], [.97, .96, .93]]),
+    'red': RAMPS['red'],
+    'black': np.array([[.008, .01, .016], [.025, .03, .045], [.05, .06, .085], [.09, .1, .14], [.16, .17, .22], [.28, .29, .34], [.5, .5, .55]]),
+    'glass': np.array([[.01, .03, .045], [.03, .09, .12], [.06, .18, .22], [.12, .3, .34], [.22, .44, .48], [.4, .62, .64], [.7, .85, .86]]),
+    'copper': RAMPS['copper'],
+    'pink': np.array([[.05, .015, .03], [.18, .05, .1], [.4, .13, .24], [.62, .26, .4], [.8, .42, .55], [.9, .6, .7], [.97, .82, .88]]),
+    'cream': np.array([[.05, .045, .03], [.18, .15, .1], [.4, .35, .25], [.6, .54, .4], [.77, .71, .56], [.88, .83, .7], [.96, .93, .84]]),
+}
+RAMPS_C.update({
+    # the pirate den's decay: tarnished gold, rust, grime, dirty red lacquer, murky glass
+    'tarnish': np.array([[.03, .025, .01], [.1, .08, .035], [.21, .17, .07], [.33, .27, .12], [.44, .37, .18], [.54, .46, .25], [.66, .58, .36]]),
+    'rust': np.array([[.03, .015, .008], [.1, .045, .02], [.22, .1, .045], [.36, .17, .07], [.5, .25, .11], [.62, .34, .16], [.74, .46, .26]]),
+    'grime': np.array([[.025, .024, .022], [.08, .075, .065], [.16, .15, .13], [.26, .24, .2], [.36, .33, .28], [.46, .42, .36], [.58, .54, .47]]),
+    'rustred': np.array([[.03, .008, .006], [.1, .025, .018], [.2, .05, .035], [.32, .09, .06], [.42, .14, .09], [.52, .2, .13], [.62, .3, .2]]),
+    'murk': np.array([[.01, .015, .015], [.03, .045, .045], [.06, .085, .08], [.1, .13, .12], [.15, .18, .16], [.22, .25, .22], [.32, .35, .3]]),
+    'plate': np.array([[.02, .022, .026], [.07, .075, .085], [.15, .16, .18], [.24, .25, .27], [.33, .34, .36], [.42, .43, .45], [.54, .55, .57]]),
+})
+MI = {m: k for k, m in enumerate(MATS_C)}
+THEMES = [
+    ('gold', [('gold', .55), ('cream', .2), ('red', .13), ('white', .12)]),
+    ('marble', [('white', .5), ('gold', .32), ('cream', .18)]),
+    ('gold2', [('gold', .5), ('white', .25), ('black', .1), ('red', .15)]),
+    ('lacquer', [('red', .45), ('gold', .4), ('black', .15)]),
+    ('glass', [('black', .4), ('gold', .35), ('glass', .25)]),
+    ('flamingo', [('pink', .35), ('cream', .3), ('white', .2), ('gold', .15)]),
+    ('bronze', [('copper', .4), ('gold', .4), ('black', .2)]),
+]
+
+
+# The two looks of the frame: the Gilded Orbit, and the same planet as a pirate den (the smugglers' front found out:
+# rust and grime over the gold, most lights out, the signs mostly dark, the few that work failing). Build-time state:
+# build_casino sets LK for the look it builds (ramp_c, the lighting, the items and the neon read it).
+LOOKS = {
+    'casino': dict(
+        pirate=False, mats={},
+        moon=np.array([0.26, 0.3, 0.46], F32),          # the faint cool key
+        flood=np.array([0.56, 0.34, 0.17], F32),        # the city's warm light on its own roofs and walls
+        amb=np.array([0.025, 0.022, 0.035], F32),
+        far=0.62,                                       # the city's light on the far side (form shading), share of the near
+        em_street=1.4, em_roof=1.25, em_win=1.25,
+        haze=((1.0, 0.3, 0.66), (1.0, 0.68, 0.36), (0.8, 0.72, 1.0)), haze_k=0.45,
+        grade=dict(sat=1.3, warm=(1.02, 1.04, 0.8), gain=1.06),
+        face=1.0, glass=1.0, gate_fill=1.0,
+        spin={'wheel_main': 0.32, 'wheel_2': -0.5}, jerk={}, wheel_spin=0.07, ball=True,
+        lane=(8.0, 16.0, 1.0), keep={},
+    ),
+    'casino-pirate': dict(
+        pirate=True,
+        mats={'gold': 'tarnish', 'copper': 'rust', 'white': 'grime', 'cream': 'grime', 'pink': 'rustred', 'red': 'rustred', 'glass': 'murk'},
+        moon=np.array([0.17, 0.19, 0.22], F32),
+        flood=np.array([0.42, 0.19, 0.08], F32),        # a dim, dirty sodium glow
+        amb=np.array([0.02, 0.018, 0.016], F32),
+        far=0.5,
+        em_street=0.85, em_roof=0.8, em_win=1.0,
+        haze=((0.7, 0.2, 0.12), (0.72, 0.36, 0.14), (0.42, 0.4, 0.38)), haze_k=0.5,
+        grade=dict(sat=0.9, warm=(1.05, 0.9, 0.72), gain=0.96),
+        face=0.55, glass=0.5, gate_fill=0.42,
+        spin={'wheel_main': 0.22, 'wheel_2': 0.0}, jerk={'wheel_main': 2.6}, wheel_spin=None, ball=False,
+        lane=(24.0, 10.0, 0.55), keep={'bulb': 0.22, 'gold': 0.25, 'nav': 0.6, 'white': 0.3},
+    ),
+}
+LK = LOOKS['casino']
+
+
+def set_look(name):
+    global LK
+    LK = LOOKS[name]
+
+
+def ramp_c(name, v):
+    c = RAMPS_C[LK['mats'].get(name, name)]
+    return np.stack([np.interp(v, RX, c[:, k]) for k in range(3)], axis=-1)
+
+
+WIN_COLS = np.array([[1.0, 0.78, 0.42], [1.0, 0.9, 0.7], [1.0, 0.66, 0.3], [0.95, 0.95, 1.0], [1.0, 0.55, 0.75], [0.55, 0.9, 1.0]])
+LED_COLS = np.array([[1.0, 0.2, 0.75], [0.25, 0.9, 1.0], [1.0, 0.8, 0.25], [0.65, 0.35, 1.0], [0.3, 1.0, 0.5], [1.0, 0.3, 0.2]])
+SODIUM = np.array([1.0, 0.58, 0.22])
+# the den's windows and LED bands: dim sodium, dirty orange and red, a sickly green-white
+WIN_COLS_DEN = np.array([[0.85, 0.45, 0.15], [0.7, 0.38, 0.14], [0.6, 0.2, 0.1], [0.75, 0.65, 0.4], [0.5, 0.55, 0.3], [0.85, 0.3, 0.12]])
+LED_COLS_DEN = np.array([[0.7, 0.15, 0.1], [0.3, 0.6, 0.5], [0.8, 0.45, 0.12], [0.5, 0.25, 0.35], [0.4, 0.6, 0.25], [0.8, 0.2, 0.1]])
+
+# street / special ids (negative lot ids)
+ST_MINOR, ST_AVE, ST_BLVD, ST_ALLEY, ST_PLAZA = -1, -2, -3, -4, -5
+ID_FEAT = {'wheel_main': -10, 'wheel_2': -11, 'port': -12}   # the floor inside each feature's bezel
+
+
+def noise3(rng, n=6, scale=3.0):
+    """A smooth random field over the unit sphere: random 3D plane waves (seamless). f(planet-frame vectors) -> ~0..1."""
+    ks = rng.normal(size=(n, 3)) * scale
+    ph = rng.uniform(0, 2 * math.pi, n)
+    amp = rng.uniform(0.5, 1.0, n)
+
+    def f(v):
+        s = np.zeros(v.shape[:-1])
+        for k in range(n):
+            s = s + amp[k] * np.sin(v @ ks[k] + ph[k])
+        return 0.5 + 0.5 * s / amp.sum() * 1.6
+
+    return f
+
+
+class CityMap:
+    def __init__(self):
+        self.H = np.zeros((MH, MW), F32)            # height above the ground sphere (build px)
+        self.ID = np.full((MH, MW), ST_MINOR, np.int32)
+        self.ALB = np.zeros((MH, MW, 3), np.float16)  # roof / ground albedo
+        self.EM = np.zeros((MH, MW, 3), np.float16)   # roof / ground emission
+        self.lat = (math.pi / 2 - (np.arange(MH) + 0.5) * DLAT).astype(F32)
+        self.lon = (-math.pi + (np.arange(MW) + 0.5) * DLON).astype(F32)
+        self.lots = []
+
+    def rows(self, la0, la1):
+        i0 = int(math.ceil((math.pi / 2 - la1) / DLAT - 0.5))
+        i1 = int(math.floor((math.pi / 2 - la0) / DLAT - 0.5)) + 1
+        return max(0, i0), min(MH, i1)
+
+    def cols(self, lo0, lo1):
+        j0 = int(math.ceil((lo0 + math.pi) / DLON - 0.5))
+        j1 = int(math.floor((lo1 + math.pi) / DLON - 0.5)) + 1
+        return max(0, j0), min(MW, j1)
+
+    def dirs(self, i0, i1, j0, j1):
+        """View-space unit vectors of a texel block (h, w, 3)."""
+        lat = self.lat[i0:i1, None]
+        lon = self.lon[None, j0:j1]
+        q = np.stack([np.cos(lat) * np.cos(lon), np.cos(lat) * np.sin(lon), np.sin(lat) + 0 * lon], -1)
+        return q @ PL_M  # rows of PL_M are planet axes in view space: v = q0 X + q1 Y + q2 Z
+
+
+def dir_of(lon, lat):
+    q = np.array([math.cos(lat) * math.cos(lon), math.cos(lat) * math.sin(lon), math.sin(lat)])
+    return PL_M.T @ q
+
+
+def visible(lon, lat, margin=0.12):
+    return dir_of(lon, lat)[2] > -margin
+
+
+def roof_kit(root, rng):
+    """Stock plating crops (levelled shading, 32 stock px) for the roof detail: 1 stock px per frame px."""
+    kit = []
+    for (rel, size) in GOLD_SRC + PLATE_SRC[:4]:
+        for p in opaque_crops(root, rel, 32, 4, rng):
+            L = p.L.astype(F32)
+            kit.append((L - L.mean()) / max(1e-3, L.std()))
+    return kit
+
+
+def build_city(root, seed='casino-city'):
+    rng = seeded(seed)
+    cm = CityMap()
+    R = R_PL
+    ctx = dict(
+        rng=rng,
+        dist=noise3(rng, 7, 2.6),       # districts: how tall
+        flash=noise3(rng, 5, 4.0),      # how gaudy
+        theme=noise3(rng, 5, 1.9),      # which palette (broad districts, like continents)
+        kit=roof_kit(root, rng),
+    )
+    cm.ALB[:] = (0.03, 0.029, 0.032)
+    la = math.pi / 2 - math.radians(4.0)
+    rows = []
+    while la > LAT0:
+        depth = float(rng.uniform(11, 16)) / R
+        sw = (4.2 if rng.random() < 0.25 else 2.0) / R
+        rows.append((la - depth, la, sw))
+        la -= depth + sw
+    for (b0, b1, sw) in rows:
+        i0, i1 = cm.rows(b0 - sw, b0)
+        paint_street_band(cm, i0, i1, b0 - sw, b0, ST_AVE if sw > 3 / R else ST_MINOR)
+    i0, i1 = cm.rows(math.pi / 2 - math.radians(4.0), math.pi / 2)
+    cm.ID[i0:i1] = ST_PLAZA
+    for (b0, b1, sw) in rows:
+        lac = (b0 + b1) / 2
+        x = -math.pi
+        while x < math.pi - 1e-6:
+            bw = float(rng.uniform(14, 28))
+            msw = 4.2 if rng.random() < 0.16 else 2.0
+            dlo = bw / (R * math.cos(lac))
+            slo = msw / (R * math.cos(lac))
+            x1 = min(math.pi, x + dlo)
+            if math.pi - x1 < dlo * 0.4:
+                x1 = math.pi
+            s1 = min(math.pi, x1 + slo)
+            if visible((x + x1) / 2, lac, 0.3):
+                j0, j1 = cm.cols(x1, s1)
+                i0, i1 = cm.rows(b0, b1)
+                paint_street_rect(cm, i0, i1, j0, j1, x1, s1, ST_AVE if msw > 3 else ST_MINOR)
+                block(cm, ctx, x, x1, b0, b1)
+            x = s1
+    carve_boulevards(cm)
+    for name in FEAT:
+        carve_feature(cm, name)
+    for sg in SIGNS:
+        carve_pad(cm, sg)
+    return cm
+
+
+def paint_street_band(cm, i0, i1, la0, la1, kind):
+    if i1 <= i0:
+        return
+    lat = cm.lat[i0:i1, None]
+    c = (lat - (la0 + la1) / 2) / max(1e-6, (la1 - la0) / 2)
+    along = cm.lon[None, :] * R_PL * np.cos(lat)
+    cm.ID[i0:i1] = kind
+    cm.EM[i0:i1] = street_light(c, along, kind).astype(np.float16)
+
+
+def paint_street_rect(cm, i0, i1, j0, j1, lo0, lo1, kind):
+    if i1 <= i0 or j1 <= j0:
+        return
+    lat = cm.lat[i0:i1, None]
+    lon = cm.lon[None, j0:j1]
+    c = (lon - (lo0 + lo1) / 2) / max(1e-6, (lo1 - lo0) / 2) + 0 * lat
+    along = lat * R_PL + 0 * lon
+    cm.ID[i0:i1, j0:j1] = kind
+    cm.EM[i0:i1, j0:j1] = street_light(c, along, kind).astype(np.float16)
+
+
+def street_light(c, along, kind):
+    """Emission of a street texel: c -1..1 across it, `along` frame px along it. Sodium lamps along both kerbs and a
+    soft pool between; avenues and boulevards carry traffic (white headlights one way, red tail lights the other)."""
+    ac = np.abs(c)
+    if kind == ST_MINOR:
+        # the back streets stay dark between the blocks (the lit buildings and signs pop against them): a faint pool,
+        # a sodium lamp now and then
+        pool = 0.025 + 0.05 * np.exp(-((ac - 0.8) / 0.25) ** 2)
+        lamp = ((along / 6.3) % 1 < 0.16) & (ac > 0.62)
+        return (pool + 0.55 * lamp)[..., None] * SODIUM
+    pool = (0.05 if kind == ST_AVE else 0.16) + (0.1 if kind == ST_AVE else 0.22) * np.exp(-((ac - 0.8) / 0.25) ** 2)
+    lamp = ((along / 3.6) % 1 < 0.24) & (ac > 0.62)
+    e = (pool + 0.65 * lamp)[..., None] * SODIUM
+    if kind in (ST_AVE, ST_BLVD):
+        lanes = (0.3,) if kind == ST_AVE else (0.18, 0.42)
+        for lc in lanes:
+            lane_w = np.exp(-((c - lc) / 0.1) ** 2)
+            lane_r = np.exp(-((c + lc) / 0.1) ** 2)
+            dash_w = 0.3 + 0.7 * ((np.sin(along * 1.7 + lc * 9) * np.sin(along * 0.37 + 1.3)) > -0.2)
+            dash_r = 0.3 + 0.7 * ((np.sin(along * 1.3 + 2 + lc * 5) * np.sin(along * 0.29)) > -0.2)
+            e = e + (lane_w * dash_w)[..., None] * np.array([1.0, 0.95, 0.85]) * 0.9
+            e = e + (lane_r * dash_r)[..., None] * np.array([1.0, 0.14, 0.08]) * 0.8
+    if kind == ST_BLVD:
+        # the Strip's median: gold lamps, and the glare off the resorts' signs
+        med = np.exp(-(c / 0.06) ** 2) * (0.6 + 0.4 * ((along / 2.2) % 1 < 0.5))
+        e = e + med[..., None] * np.array([1.0, 0.82, 0.45]) * 0.9
+        e = e * 0.95 + 0.06
+    return e
+
+
+DISTRICT_GAP = 0.055   # share of a theme bin, each side of its edge, left as dark yards between the districts
+
+
+def dark_yard(cm, lo0, lo1, la0, la1):
+    """A block between two districts left to low, unlit service sheds and yards (dark roofs, a dim lamp here and
+    there): the dark seams that set the districts apart."""
+    i0, i1 = cm.rows(la0, la1)
+    j0, j1 = cm.cols(lo0, lo1)
+    if i1 <= i0 or j1 <= j0:
+        return
+    lat = cm.lat[i0:i1, None]
+    lon = cm.lon[None, j0:j1]
+    u = (lon - lo0) * R_PL * np.cos(lat)
+    v = (lat - la0) * R_PL + 0 * lon
+    w, d = (lo1 - lo0) * R_PL * math.cos((la0 + la1) / 2), (la1 - la0) * R_PL
+    shed = ((u % 6.5) > 0.9) & ((v % 5.5) > 0.9) & (u > 0.8) & (u < w - 0.8) & (v > 0.8) & (v < d - 0.8)
+    ridge = 0.5 + 0.5 * np.cos((u % 6.5) / 6.5 * 2 * math.pi * 3)
+    dots = (((u / 5.3) % 1) < 0.12) & (((v / 4.7) % 1) < 0.14) & ((np.floor(u / 5.3) + np.floor(v / 4.7)) % 3 == 0) & ~shed
+    cm.H[i0:i1, j0:j1] = np.where(shed, (0.7 + 0.3 * ridge) * PS, 0)
+    cm.ALB[i0:i1, j0:j1] = np.where(shed[..., None], ramp_c('black', 0.38 + 0.12 * ridge), np.array([0.02, 0.022, 0.02])).astype(np.float16)
+    cm.EM[i0:i1, j0:j1] = (dots[..., None] * SODIUM * 0.3).astype(np.float16)
+    cm.ID[i0:i1, j0:j1] = ST_PLAZA
+
+
+def block(cm, ctx, lo0, lo1, la0, la1):
+    rng = ctx['rng']
+    R = R_PL
+    lac = (la0 + la1) / 2
+    k = R * math.cos(lac)
+    w = (lo1 - lo0) * k
+    d = (la1 - la0) * R
+    v = dir_of((lo0 + lo1) / 2, lac)
+    q = PL_M @ v
+    tall = float(np.clip(ctx['dist'](q[None])[0], 0, 1))
+    gaud = float(np.clip(ctx['flash'](q[None])[0], 0, 1))
+    bd = blvd_dist(v[None])[0].min()
+    strip = bd < 22
+    if strip:
+        gaud = max(gaud, 0.85)
+        tall = max(tall, 0.75)
+    th = ctx['theme'](q[None])[0]
+    tb = float(np.clip(th, 0, 0.999)) * len(THEMES)
+    if not strip and min(tb % 1, 1 - tb % 1) < DISTRICT_GAP and feature_clear(v, 6):
+        dark_yard(cm, lo0, lo1, la0, la1)
+        return
+    ti = int(np.clip(th, 0, 0.999) * len(THEMES))
+    if rng.random() < 0.07:
+        ti = int(rng.integers(len(THEMES)))
+    pal = THEMES[ti][1]
+    lots = []
+
+    def split(u0, u1, v0, v1, depth):
+        uw, vd = u1 - u0, v1 - v0
+        lim = rng.uniform(5, 11)
+        if depth > 0 and (max(uw, vd) < lim or depth > 4):
+            lots.append((u0, u1, v0, v1))
+            return
+        if uw >= vd:
+            m = u0 + uw * rng.uniform(0.32, 0.68)
+            split(u0, m, v0, v1, depth + 1)
+            split(m, u1, v0, v1, depth + 1)
+        else:
+            m = v0 + vd * rng.uniform(0.32, 0.68)
+            split(u0, u1, v0, m, depth + 1)
+            split(u0, u1, m, v1, depth + 1)
+
+    mega = rng.random() < (0.14 + 0.3 * strip) * (0.5 + gaud)
+    if mega:
+        lots.append((0, w, 0, d))
     else:
-        g = fbm(rng or np.random.default_rng(3), S, S, max(2, int(r * SS / 3)), 3)
-        n[:] = np.array([0.06, 0.2, 0.06]) + np.array([0.12, 0.25, 0.08]) * g[..., None]
-        e[:] = np.array([0.03, 0.06, 0.02]) * g[..., None]
-    mats = {'nat': np.where(frame, 0.0, 1.0), 'gold': np.where(frame, 1.0, 0.0)}
-    L = np.where(frame, L, np.clip(L * 0.4 + 0.45, 0, 1))
-    e = np.where(frame[..., None], 0, e)
-    # the glass sheen: a soft highlight upper left
-    sheen = np.clip(1 - np.hypot(dx + 0.35, dy + 0.4) / 0.45, 0, 1) ** 2 * 0.5
-    e = e + sheen[..., None] * np.array([0.7, 0.8, 0.85])
-    return Piece(A, np.clip(L, 0, 1), n, e, mats)
+        split(0, w, 0, d, 0)
+    for (u0, u1, v0, v1) in lots:
+        building(cm, ctx, lo0 + u0 / k, lo0 + u1 / k, la0 + v0 / R, la0 + v1 / R, tall, gaud, pal, mega)
 
 
-def roulette(r, rng):
-    """The casino's crown dome seen from above: a wheel of red and black lacquer pockets ringed in gold under glass,
-    gold frets between them, a gold boss in the middle; dome shading, a sheen."""
-    S = int(math.ceil(2 * r * SS)) + 2
-    yy, xx = np.mgrid[0:S, 0:S].astype(np.float64) + 0.5
-    dx, dy = (xx - S / 2) / (r * SS), (yy - S / 2) / (r * SS)
-    d = np.hypot(dx, dy)
-    A = np.clip((1 - d) * r * SS + 0.5, 0, 1)
-    nz = np.sqrt(np.clip(1 - d * d * 0.85, 0, 1))
-    L = shade(dx * 0.6, dy * 0.6, nz, amb=0.3, k=0.6, spec=0.5)
-    ang = (np.arctan2(dy, dx) + math.pi) / (2 * math.pi)
-    pocket = (ang * 37).astype(int)
-    fret = np.abs((ang * 37) % 1 - 0.5) > 0.5 - 0.35 / (2 * math.pi * r * np.maximum(d, 0.2) / 37)
-    ringz = (np.abs(d - 0.62) < 0.035) | (np.abs(d - 0.86) < 0.03) | (d > 0.93)
-    red = (pocket % 2 == 0) & (pocket != 0)
-    green = pocket == 0
-    mats = {'gold': np.zeros((S, S)), 'red': np.zeros((S, S)), 'dark': np.zeros((S, S)), 'nat': np.zeros((S, S))}
-    band = (d > 0.62) & (d < 0.86)
-    inner = d <= 0.62
-    gold = ringz | (band & fret) | (d < 0.2)
-    mats['gold'] = gold.astype(float) + (inner & ~gold) * 0.0
-    mats['red'] = (band & red & ~gold).astype(float)
-    mats['dark'] = (band & ~red & ~green & ~gold).astype(float)
-    n = np.zeros((S, S, 3))
-    n[:] = (0.05, 0.4, 0.15)
-    mats['nat'] = (band & green & ~gold).astype(float)
-    # the inner floor: gold-and-cream starburst (the cone of the wheel)
-    star = (np.abs(((ang * 8) % 1) - 0.5) < 0.12) & inner & (d > 0.2)
-    mats['gold'] = np.maximum(mats['gold'], (inner & ~gold & star).astype(float))
-    mats['red'] = np.maximum(mats['red'], (inner & ~gold & ~star).astype(float) * 0.0)
-    mats['dark'] = np.maximum(mats['dark'], (inner & ~gold & ~star).astype(float))
-    L = np.where(gold, np.clip(L * 1.1, 0, 1), L * 0.85)
-    e = np.zeros((S, S, 3))
-    sheen = np.clip(1 - np.hypot(dx + 0.32, dy + 0.36) / 0.5, 0, 1) ** 2 * 0.35
-    e += sheen[..., None] * np.array([1.0, 0.95, 0.85])
-    return Piece(A, np.clip(L, 0, 1), n, e, mats)
+def feature_clear(v, pad):
+    """True when view direction v keeps clear of every feature (ring road + pad frame px)."""
+    for name, (_, _, rr) in FEAT.items():
+        if math.acos(max(-1, min(1, float(v @ FEAT_V[name])))) * R_PL < rr[3] + pad:
+            return False
+    return True
 
 
-def neon_layers(segments, size=FRAME):
-    """The neon as two additive layers (set A, set B: the runtime takes them in turns) at the output resolution:
-    straight RGBA (colour, alpha = brightness) with a soft halo. segments: (set, kind, params, colour) with kind 'arc'
-    (R, a0, a1, width, dash) or 'line' (x0, y0, x1, y1, width)."""
-    out = {}
-    yy, xx = np.mgrid[0:size, 0:size].astype(np.float64) + 0.5
-    dx, dy = xx - C0, yy - C0
-    r = np.hypot(dx, dy)
-    ang = np.arctan2(dy, dx) % (2 * math.pi)
-    for st in ('A', 'B'):
-        col = np.zeros((size, size, 3))
-        for (sset, kind, prm, c) in segments:
-            if sset != st:
+def carve_pad(cm, sg):
+    """A dark podium roof under a rooftop sign (black glass, a gold rim), its walls lit like the rest."""
+    name, sx, sy, rot, (ha, hb), hp = sg
+    R = R_PL
+    fv = SIGN_V[name]
+    q = PL_M @ fv
+    lat_c = math.asin(q[2])
+    lon_c = math.atan2(q[1], q[0])
+    ang = (math.hypot(ha, hb) + 4) / R
+    i0, i1 = cm.rows(lat_c - ang, lat_c + ang)
+    dlo = ang / max(0.05, math.cos(lat_c))
+    j0, j1 = cm.cols(lon_c - dlo, lon_c + dlo)
+    v = cm.dirs(i0, i1, j0, j1)
+    e, n = tangent_frame(fv)
+    a = -(v @ e) * R
+    b = -(v @ n) * R
+    cr, sr = math.cos(math.radians(rot)), math.sin(math.radians(rot))
+    u = a * cr + b * sr
+    w = -a * sr + b * cr
+    pad = (np.abs(u) < ha + 2.5) & (np.abs(w) < hb + 2.5)
+    rim = pad & ((np.abs(u) > ha + 1.3) | (np.abs(w) > hb + 1.3))
+    H = cm.H[i0:i1, j0:j1]
+    H[pad] = hp * PS
+    cm.ID[i0:i1, j0:j1][pad] = ST_PLAZA
+    alb = np.where(rim[..., None], ramp_c('gold', 0.75), ramp_c('black', 0.32 + 0.05 * np.sin(u * 2.1)))
+    cm.ALB[i0:i1, j0:j1][pad] = alb[pad].astype(np.float16)
+    cm.EM[i0:i1, j0:j1][pad] = 0
+
+
+def building(cm, ctx, lo0, lo1, la0, la1, tall, gaud, pal, mega=False):
+    rng = ctx['rng']
+    R = R_PL
+    i0, i1 = cm.rows(la0, la1)
+    j0, j1 = cm.cols(lo0, lo1)
+    if i1 <= i0 or j1 <= j0:
+        return
+    lac, loc = (la0 + la1) / 2, (lo0 + lo1) / 2
+    half_diag = math.hypot((lo1 - lo0) * R * math.cos(lac), (la1 - la0) * R) / 2
+    if not feature_clear(dir_of(loc, lac), half_diag):
+        return
+    lid = len(cm.lots)
+    lat = cm.lat[i0:i1, None]
+    lon = cm.lon[None, j0:j1]
+    lu = (lon - loc) * R * np.cos(lat) * PS
+    lv = (lat - lac) * R * PS + 0 * lon
+    hw = (lo1 - lo0) * R * math.cos(lac) / 2 * PS
+    hd = (la1 - la0) * R / 2 * PS
+    sb = float(rng.uniform(0.35, 0.8)) * PS
+    aw, ad = hw - sb, hd - sb
+    if aw < 1.5 or ad < 1.5:
+        return
+    t = tall ** 1.6
+    base_h = 1.2 + 9.0 * t * float(rng.uniform(0.4, 1.15))
+    if rng.random() < 0.07 + 0.25 * t:
+        base_h *= float(rng.uniform(1.3, 1.8))
+    if mega:
+        base_h = max(base_h, float(rng.uniform(5, 9)))
+    base_h = min(H_MAX - 0.5, base_h)
+    top = base_h * PS
+    names, ws = zip(*pal)
+    ws = np.array(ws) ** 2.4
+    mat = MI[names[int(rng.choice(len(names), p=ws / ws.sum()))]]
+    acc = MI[names[int(rng.integers(len(names)))]]
+    kind = 'box'
+    r = rng.random()
+    small = min(aw, ad)
+    if mega:
+        kind = ['podium_y', 'pyramid', 'dome', 'podium_tower', 'podium_y'][int(rng.integers(5))]
+    elif r < 0.1 and small > 6:
+        kind = 'cyl'
+    elif r < 0.16 and small > 8:
+        kind = 'dome'
+    elif r < 0.2 and small > 9:
+        kind = 'pyramid'
+    elif r < 0.34 and small > 7:
+        kind = 'podium_tower'
+    elif r < 0.44 and base_h < 4.5:
+        kind = 'arcade'
+    elif r < 0.46:
+        kind = 'pool'
+    h = np.zeros(lu.shape, F32)
+    inside = (np.abs(lu) < aw) & (np.abs(lv) < ad)
+    roofL = np.full(lu.shape, 0.6, F32)
+    em = np.zeros(lu.shape + (3,), F32)
+    rmat = np.full(lu.shape, mat, np.int8)
+    led = int(rng.integers(len(LED_COLS))) if rng.random() < 0.2 + 0.5 * gaud else -1
+    if kind == 'box':
+        h = np.where(inside, top, 0)
+        if rng.random() < 0.45 and small > 5:
+            k2 = float(rng.uniform(0.45, 0.75))
+            t2 = top * float(rng.uniform(1.2, 1.6))
+            in2 = (np.abs(lu) < aw * k2) & (np.abs(lv) < ad * k2)
+            h = np.where(in2, min(t2, H_MAX * PS), h)
+            if rng.random() < 0.5:
+                in3 = (np.abs(lu) < aw * k2 * 0.5) & (np.abs(lv) < ad * k2 * 0.5)
+                h = np.where(in3, min(t2 * 1.15, H_MAX * PS), h)
+        edge = inside & ((np.abs(lu) > aw - 0.9) | (np.abs(lv) > ad - 0.9))
+        roofL = np.where(edge, 0.85, roofL)
+        if led >= 0 and rng.random() < 0.5:
+            em = np.where(edge[..., None], LED_COLS[led] * 0.7, em)
+        # rooftop plant (dark boxes) and a lit atrium now and then
+        if small > 6 and rng.random() < 0.5:
+            bx, by = float(rng.uniform(-0.4, 0.4)) * aw, float(rng.uniform(-0.4, 0.4)) * ad
+            hv = (np.abs(lu - bx) < aw * 0.22) & (np.abs(lv - by) < ad * 0.18)
+            roofL = np.where(hv & inside, 0.3, roofL)
+        if small > 7 and rng.random() < 0.18:
+            at = (np.abs(lu) < aw * 0.3) & (np.abs(lv) < ad * 0.3)
+            em = np.where(at[..., None], np.array([1.0, 0.82, 0.5]) * 0.55, em)
+            rmat = np.where(at, MI['glass'], rmat)
+    elif kind == 'cyl':
+        rad = small
+        rho = np.hypot(lu, lv)
+        inside = rho < rad
+        h = np.where(inside, top, 0)
+        crown = inside & (rho > rad * 0.78)
+        h = np.where(crown, top + 1.0, h)
+        em = np.where((crown & (rho < rad * 0.86))[..., None], WIN_COLS[int(rng.integers(3))] * 0.9, em)
+        rmat = np.where(crown, MI['gold'], rmat)
+    elif kind == 'dome':
+        rad = small
+        rho = np.hypot(lu, lv) / rad
+        inside = rho < 1
+        drum = top * 0.35
+        h = np.where(inside, drum + rad * 0.55 * np.sqrt(np.clip(1 - rho * rho, 0, 1)), 0)
+        ribs = (np.abs(((np.arctan2(lv, lu) / (2 * math.pi)) * 16) % 1 - 0.5) > 0.42) & inside
+        roofL = np.where(ribs, 0.8, 0.55)
+        dm = MI[['glass', 'gold', 'white', 'gold'][int(rng.integers(4))]]
+        rmat = np.where(inside, dm, rmat)
+        rmat = np.where(ribs, MI['gold'], rmat)
+        if dm == MI['glass'] or rng.random() < 0.4:
+            em = np.where((inside & ~ribs)[..., None], np.array([1.0, 0.75, 0.4]) * 0.45 * (1.2 - rho)[..., None], em)
+    elif kind == 'pyramid':
+        hp = min(H_MAX * PS, max(top, small * 0.9))
+        m = np.maximum(np.abs(lu) / aw, np.abs(lv) / ad)
+        h = np.where(inside, hp * (1 - m) + 1.0, 0)
+        rmat = np.where(inside, MI['black'], rmat)
+        ridge = inside & (np.abs(np.abs(lu) / aw - np.abs(lv) / ad) < 0.035)
+        rmat = np.where(ridge, MI['gold'], rmat)
+        roofL = np.where(ridge, 0.9, 0.62)
+        tip = inside & (m < 0.07)
+        em = np.where(tip[..., None], np.array([1.0, 0.95, 0.85]) * 1.5, em)
+    elif kind in ('podium_tower', 'podium_y'):
+        pod = max(1.5 * PS, top * 0.28)
+        h = np.where(inside, pod, 0)
+        edge = inside & ((np.abs(lu) > aw - 1.0) | (np.abs(lv) > ad - 1.0))
+        if led >= 0:
+            em = np.where(edge[..., None], LED_COLS[led] * 0.75, em)
+        if kind == 'podium_tower':
+            ox = float(rng.uniform(-0.3, 0.3)) * aw
+            oy = float(rng.uniform(-0.3, 0.3)) * ad
+            tw, td = aw * float(rng.uniform(0.35, 0.55)), ad * float(rng.uniform(0.35, 0.55))
+            tin = (np.abs(lu - ox) < tw) & (np.abs(lv - oy) < td)
+            h = np.where(tin, top * 1.25, h)
+            rmat = np.where(tin, mat, acc)
+            pool = inside & ~dilate(tin, 2) & (np.abs(lu + ox) < aw * 0.35) & (np.abs(lv + oy) < ad * 0.3)
+        else:
+            a0 = float(rng.uniform(0, 2 * math.pi))
+            ww = small * 0.2
+            L = small * 0.92
+            yin = np.zeros(lu.shape, bool)
+            stepped = np.zeros(lu.shape, F32)
+            for kk in range(3):
+                a = a0 + kk * 2 * math.pi / 3
+                ca, sa = math.cos(a), math.sin(a)
+                al = lu * ca + lv * sa
+                ac = -lu * sa + lv * ca
+                wing = (np.abs(ac) < ww) & (al > -ww) & (al < L)
+                yin |= wing
+                stepped = np.where(wing, np.maximum(stepped, 1 - np.floor(np.clip(al / L, 0, 0.999) * 4) * 0.12), stepped)
+            hy = min(H_MAX * PS, top * 1.4)
+            h = np.where(yin, hy * stepped, h)
+            core = np.hypot(lu, lv) < ww * 1.2
+            h = np.where(core, hy + 1.5, h)
+            rmat = np.where(yin, mat, acc)
+            pool = inside & ~dilate(yin, 3) & (np.hypot(lu, lv) > L * 0.6) & (np.hypot(lu, lv) < L * 0.9)
+        em = np.where(pool[..., None], np.array([0.15, 0.75, 0.85]) * 0.9, em)
+        rmat = np.where(pool, MI['glass'], rmat)
+        roofL = np.where(pool, 0.75, roofL)
+    elif kind == 'arcade':
+        h0 = max(1.0 * PS, top * 0.6)
+        p = 2.4 * PS
+        ph = ((lu if aw > ad else lv) % p) / p
+        barrel = np.sqrt(np.clip(1 - (2 * ph - 1) ** 2, 0, 1))
+        h = np.where(inside, h0 + 0.8 * PS * barrel, 0)
+        sky = inside & (np.abs(ph - 0.5) < 0.12)
+        em = np.where(sky[..., None], np.array([1.0, 0.8, 0.45]) * 0.8, em)
+        rmat = np.where(inside, acc, rmat)
+        roofL = np.where(inside, 0.35 + 0.45 * barrel, roofL)
+    elif kind == 'pool':
+        h = np.where(inside, 0.3 * PS, 0)
+        water = inside & (np.abs(lu) < aw - 1.2) & (np.abs(lv) < ad - 1.2)
+        em = np.where(water[..., None], np.array([0.1, 0.62, 0.75]) * (0.7 + 0.3 * np.sin(lu * 0.9) * np.sin(lv * 0.7))[..., None], em)
+        rmat = np.where(water, MI['glass'], MI['white'])
+        fj = (np.hypot((lu % (3 * PS)) - 1.5 * PS, (lv % (3 * PS)) - 1.5 * PS) < 0.55 * PS) & water
+        em = np.where(fj[..., None], np.array([0.9, 0.95, 1.0]), em)
+    sel = h > 0
+    reg = (slice(i0, i1), slice(j0, j1))
+    cm.H[reg] = np.where(sel, h, 0)
+    cm.ID[reg] = np.where(sel, lid, ST_ALLEY)
+    # roof albedo: the material ramps over a stock plating crop's detail (1 stock px per frame px)
+    kit = ctx['kit']
+    tile = kit[int(rng.integers(len(kit)))]
+    ox, oy = int(rng.integers(32)), int(rng.integers(32))
+    ti = ((lv / PS).astype(np.int32) + oy) % 32
+    tj = ((lu / PS).astype(np.int32) + ox) % 32
+    det = roofL + 0.09 * np.clip(tile[ti, tj], -2.5, 2.5)
+    alb = np.zeros(lu.shape + (3,), F32)
+    for mi in np.unique(rmat[sel]):
+        mm = sel & (rmat == mi)
+        alb[mm] = ramp_c(MATS_C[mi], np.clip(det[mm], 0, 1))
+    alb = np.where(sel[..., None], alb, np.array([0.025, 0.024, 0.027]))
+    cm.ALB[reg] = alb.astype(np.float16)
+    aem = np.where(sel[..., None], 0, SODIUM * 0.015)
+    cm.EM[reg] = (em + aem).astype(np.float16)
+    lit = float(np.clip(rng.uniform(0.45, 0.95) * (0.7 + 0.5 * gaud), 0.3, 0.97))
+    cm.lots.append(dict(lo=loc, la=lac, mat=int(mat), top=float(h.max()), lit=lit, wcol=int(rng.integers(len(WIN_COLS))),
+                        led=led, ledk=int(rng.integers(3, 7)), fh=float(rng.uniform(1.8, 2.4)), kind=kind, box=(i0, i1, j0, j1)))
+
+
+def decay_city(cm):
+    """The pirate den: the same city run down. Most windows dark and the LED bands off; most roofs' lights out; a
+    few towers collapsed to stumps of rubble, a few gutted (the shell standing, burnt out inside, embers); rust and
+    soot over everything; scorch marks; patched plating on the roofs; half the street lamps out, the rest dim."""
+    rng = seeded('casino-pirate-decay')
+    nl = len(cm.lots)
+    for l in cm.lots:
+        l['lit'] *= 0.22
+        if rng.random() < 0.88:
+            l['led'] = -1
+    tall = [lid for lid, l in enumerate(cm.lots) if l['top'] > 5 * PS and l['kind'] in ('box', 'cyl', 'podium_tower', 'podium_y')]
+    order = rng.permutation(len(tall))
+    ncol, ngut = int(len(tall) * 0.09), int(len(tall) * 0.07)
+    for n, idx in enumerate(order[:ncol + ngut]):
+        lid = tall[idx]
+        l = cm.lots[lid]
+        i0, i1, j0, j1 = l['box']
+        reg = (slice(i0, i1), slice(j0, j1))
+        mine = cm.ID[reg] == lid
+        if not mine.any():
+            continue
+        H, ALB, EM = cm.H[reg], cm.ALB[reg], cm.EM[reg]
+        if n < ncol:
+            f = float(rng.uniform(0.2, 0.5))
+            rub = value_noise(rng, i1 - i0, j1 - j0, 2) * 1.8 * PS
+            H[mine] = (H * f + rub)[mine]
+            ALB[mine] = (ALB.astype(F32) * 0.3 + np.array([0.035, 0.03, 0.026], F32))[mine]
+            EM[mine] = 0
+            l['top'] *= f
+            l['lit'] = 0.02
+        else:
+            inner = mine & ~dilate(~mine, 2)
+            H[inner] = (H * 0.3)[inner]
+            ALB[inner] = np.array([0.03, 0.025, 0.02], np.float16)
+            EM[inner] = 0
+            embers = inner & (rng.random(inner.shape) < 0.03)
+            EM[embers] = np.array([0.9, 0.3, 0.06], np.float16)
+            l['lit'] = 0.04
+    kill = np.concatenate([rng.random(nl) < 0.72, [False]])
+    rustn = fbm(rng, MH, MW, 60, 3).astype(F32)
+    sootn = fbm(rng, MH, MW, 36, 3).astype(F32)
+    for i0 in range(0, MH, 200):
+        i1 = min(MH, i0 + 200)
+        ALB = cm.ALB[i0:i1].astype(F32)
+        EM = cm.EM[i0:i1].astype(F32)
+        ID = cm.ID[i0:i1]
+        lot = ID >= 0
+        ii, jj = np.mgrid[i0:i1, 0:MW]
+        out = ((((ii // 7) * 73856093) ^ ((jj // 7) * 19349663)) & 1023) < 460
+        k = np.where(lot, np.where(kill[np.where(lot, ID, nl)], 0.04, 0.5), np.where(ID == ST_PLAZA, 0.3, 0.45))
+        k = np.where(~lot & out, 0.06, k)
+        lum = (ALB @ LUM.astype(F32))[..., None]
+        rustc = np.array([0.42, 0.18, 0.07], F32) * (0.4 + 1.2 * lum)
+        mr = smoothstep(0.5, 0.66, rustn[i0:i1])[..., None]
+        ms = smoothstep(0.55, 0.72, sootn[i0:i1])[..., None]
+        ALB = (ALB * (1 - 0.75 * mr) + rustc * 0.75 * mr) * (1 - 0.6 * ms)
+        EM = EM * k[..., None] * (1 - 0.8 * ms)
+        # what light is left goes dirty sodium (no clean cyan or pink left in the den)
+        EM = EM * 0.3 + (EM @ LUM.astype(F32))[..., None] * np.array([1.3, 0.62, 0.24], F32) * 0.7
+        cm.ALB[i0:i1] = ALB.astype(np.float16)
+        cm.EM[i0:i1] = EM.astype(np.float16)
+    del rustn, sootn
+
+    def spot(lon, lat, rad):
+        """The texel window round (lon, lat) and the frame px distance of each texel from it."""
+        i0, i1 = cm.rows(lat - rad / R_PL, lat + rad / R_PL)
+        dlo = rad / (R_PL * max(0.1, math.cos(lat)))
+        j0, j1 = cm.cols(lon - dlo, lon + dlo)
+        v = cm.dirs(i0, i1, j0, j1)
+        d = np.arccos(np.clip(v @ dir_of(lon, lat), -1, 1)) * R_PL
+        return (slice(i0, i1), slice(j0, j1)), d
+
+    def visible_point():
+        while True:
+            lon, lat = float(rng.uniform(-math.pi, math.pi)), float(rng.uniform(LAT0 + 0.1, math.pi / 2 - 0.1))
+            if dir_of(lon, lat)[2] > 0.2:
+                return lon, lat
+
+    for n in range(34):   # scorch marks, a fire still burning in some
+        lon, lat = visible_point()
+        rad = float(rng.uniform(4, 13))
+        reg, d = spot(lon, lat, rad)
+        f = np.clip(d / rad, 0, 1) ** 0.8
+        em = cm.EM[reg].astype(F32) * (f * f)[..., None]
+        if n % 3 == 0:
+            fire = np.clip(1 - d / (rad * 0.45), 0, 1) ** 1.5
+            flick = 0.6 + 0.4 * (value_noise(rng, *d.shape, 2) > 0.5)
+            em = em + (fire * flick)[..., None] * np.array([1.0, 0.36, 0.07], F32) * 1.4
+        cm.ALB[reg] = (cm.ALB[reg].astype(F32) * (0.15 + 0.85 * f)[..., None]).astype(np.float16)
+        cm.EM[reg] = em.astype(np.float16)
+    for _ in range(320):  # patched plating on the roofs
+        lon, lat = visible_point()
+        a, b = float(rng.uniform(1.0, 3.0)), float(rng.uniform(0.8, 2.0))
+        i0, i1 = cm.rows(lat - b / R_PL, lat + b / R_PL)
+        j0, j1 = cm.cols(lon - a / (R_PL * math.cos(lat)), lon + a / (R_PL * math.cos(lat)))
+        reg = (slice(i0, i1), slice(j0, j1))
+        roof = cm.ID[reg] >= 0
+        cm.ALB[reg][roof] = ramp_c('plate', float(rng.uniform(0.35, 0.65))).astype(np.float16)
+
+
+def carve_boulevards(cm):
+    """The boulevards cut through the blocks (ground level, the Strip's lights)."""
+    R = R_PL
+    step = 64
+    for i0 in range(0, MH, step):
+        i1 = min(MH, i0 + step)
+        v = cm.dirs(i0, i1, 0, MW)
+        vis = v[..., 2] > -0.3
+        if not vis.any():
+            continue
+        d = blvd_dist(v)
+        for b, (_, _, w) in enumerate(BLVDS):
+            m = vis & (d[..., b] < w / 2)
+            if not m.any():
                 continue
-            if kind == 'arc':
-                R, a0, a1, w, dash = prm
-                t = (ang - a0) % (2 * math.pi)
-                m = np.clip(w / 2 + 0.5 - np.abs(r - R), 0, 1) * (t <= (a1 - a0))
-                if dash > 0:
-                    m = m * (((t * R / dash) % 1) < 0.6)
-            else:
-                x0, y0, x1, y1, w = prm
-                vx, vy = x1 - x0, y1 - y0
-                ln2 = vx * vx + vy * vy
-                tt = np.clip(((xx - x0) * vx + (yy - y0) * vy) / ln2, 0, 1)
-                dd = np.hypot(xx - (x0 + tt * vx), yy - (y0 + tt * vy))
-                m = np.clip(w / 2 + 0.5 - dd, 0, 1)
-            col = np.maximum(col, m[..., None] * np.array(c))
-        halo = np.stack([fblur(col[..., k], 2.2) for k in range(3)], -1) * 1.5
-        core = np.clip(col + 0.22 * col.max(2, keepdims=True), 0, 1)  # a hot, paler core
-        tot = np.clip(np.maximum(core, halo), 0, 1)
-        a = np.clip(tot.max(2), 0, 1)
-        rgb = np.where(a[..., None] > 1e-3, tot / np.maximum(a, 1e-3)[..., None], 0)
-        res = np.zeros((size, size, 4), np.uint8)
-        res[..., :3] = np.round(np.clip(rgb, 0, 1) * 255)
-        res[..., 3] = np.round(a * 255)
-        out[st] = res
+            c = np.clip(np.arcsin(np.clip(v @ BLVD_N[b], -1, 1)) * R / (w / 2), -1, 1)
+            # along: the angle round the circle's axis
+            a_ref = BLVDS[b][0]
+            b_ref = np.cross(BLVD_N[b], a_ref)
+            along = np.arctan2(v @ b_ref, v @ a_ref) * R
+            e = street_light(c, along, ST_BLVD)
+            sl = cm.H[i0:i1]
+            sl[m] = 0
+            cm.ID[i0:i1][m] = ST_BLVD
+            cm.EM[i0:i1][m] = e[m].astype(np.float16)
+            cm.ALB[i0:i1][m] = np.array([0.07, 0.065, 0.07], np.float16)
+
+
+def carve_feature(cm, name):
+    """A roulette arena (a flat floor for the wheel, a gold bezel, a colonnade ring, a ring road) or the docking
+    port (its throat, a gold collar, an apron)."""
+    R = R_PL
+    fv = FEAT_V[name]
+    rr = FEAT[name][2]
+    q = PL_M @ fv
+    lat_c = math.asin(q[2])
+    ang = (rr[3] + 2) / R
+    i0, i1 = cm.rows(lat_c - ang * 1.2, lat_c + ang * 1.2)
+    lon_c = math.atan2(q[1], q[0])
+    dlo = ang * 1.2 / max(0.05, math.cos(lat_c))
+    j0, j1 = cm.cols(lon_c - dlo, lon_c + dlo)
+    v = cm.dirs(i0, i1, j0, j1)
+    rho = np.arccos(np.clip(v @ fv, -1, 1)) * R
+    e, n = tangent_frame(fv)
+    a = (v @ e) * R
+    b = (v @ n) * R
+    th = np.arctan2(b, a)
+    H = cm.H[i0:i1, j0:j1]
+    ID = cm.ID[i0:i1, j0:j1]
+    ALB = cm.ALB[i0:i1, j0:j1]
+    EM = cm.EM[i0:i1, j0:j1]
+    road = rho < rr[3]
+    H[road] = 0
+    ID[road] = ST_BLVD
+    c = np.clip((rho - (rr[2] + rr[3]) / 2) / ((rr[3] - rr[2]) / 2), -1, 1)
+    EM[road] = street_light(c, th * rho, ST_AVE)[road].astype(np.float16)
+    ALB[road] = np.array([0.07, 0.065, 0.07], np.float16)
+    col = rho < rr[2]
+    if name == 'port':
+        # a gold collar standing round the throat, lamps on it
+        H[col] = 4.0 * PS
+        ALB[col] = ramp_c('gold', 0.55 + 0.25 * (np.cos(th * 24) > 0.6))[col].astype(np.float16)
+        EM[col] = (np.array([1.0, 0.8, 0.4]) * 0.5 * (np.cos(th * 24) > 0.8)[..., None])[col].astype(np.float16)
+        ID[col] = ST_PLAZA
+    else:
+        # the colonnade: a low gold ring of arches, lit between the columns
+        H[col] = 3.0 * PS
+        arch = (np.cos(th * (rr[2] * 0.9)) > 0.2)
+        ALB[col] = np.where(arch[..., None], ramp_c('white', 0.75), ramp_c('gold', 0.6))[col].astype(np.float16)
+        EM[col] = np.where(arch[..., None], np.array([1.0, 0.75, 0.4]) * 0.4, 0)[col].astype(np.float16)
+        ID[col] = ST_PLAZA
+    fl = rho < rr[1]
+    H[fl] = 0.5 * PS
+    ID[fl] = ID_FEAT[name]
+    ALB[fl] = ramp_c('gold', 0.5).astype(np.float16)
+    EM[fl] = 0
+
+
+# ----------------------------------------------------------------------------------------------------------------
+# The raymarch (orthographic view rays down -z onto the displaced sphere)
+# ----------------------------------------------------------------------------------------------------------------
+
+CF = 8
+
+
+def coarse_max(Hm):
+    ph = (-MH) % CF
+    pw = (-MW) % CF
+    P = np.pad(Hm, ((0, ph), (0, pw)), mode='edge')
+    hc = P.reshape(P.shape[0] // CF, CF, P.shape[1] // CF, CF).max((1, 3))
+    d = hc.copy()
+    for dy in (-1, 0, 1):
+        for dx in (-1, 0, 1):
+            sh = np.roll(hc, dx, axis=1)
+            if dy:
+                sh = np.roll(sh, dy, axis=0)
+                if dy > 0:
+                    sh[0] = np.maximum(sh[0], hc[0])
+                else:
+                    sh[-1] = np.maximum(sh[-1], hc[-1])
+            d = np.maximum(d, sh)
+    return d.astype(F32)
+
+
+def to_texel(px, py, pz):
+    r = np.sqrt(px * px + py * py + pz * pz)
+    qx, qy, qz = px / r, py / r, pz / r
+    M = PL_M.astype(F32)
+    a = M[0, 0] * qx + M[0, 1] * qy + M[0, 2] * qz
+    b = M[1, 0] * qx + M[1, 1] * qy + M[1, 2] * qz
+    c = M[2, 0] * qx + M[2, 1] * qy + M[2, 2] * qz
+    lat = np.arcsin(np.clip(c, -1, 1))
+    lon = np.arctan2(b, a)
+    fi = (math.pi / 2 - lat) / DLAT - 0.5
+    fj = (lon + math.pi) / DLON - 0.5
+    return r, lat, lon, fi, fj
+
+
+def height_at(Hm, fi, fj):
+    i = np.clip(np.rint(fi).astype(np.int32), 0, MH - 1)
+    j = np.rint(fj).astype(np.int32) % MW
+    h = Hm[i, j]
+    return np.where(fi > MH - 0.5, 0, h), i, j
+
+
+def raymarch(Hm, step=0.6, verbose=True):
+    Rb = R_PL * PS
+    Hmax = float(Hm.max()) + 1.0
+    Ro = Rb + Hmax
+    HC = coarse_max(Hm)
+    ys, xs = np.mgrid[0:NB, 0:NB]
+    x = (xs + 0.5 - NB / 2).astype(F32).ravel()
+    y = (ys + 0.5 - NB / 2).astype(F32).ravel()
+    d2 = x * x + y * y
+    rays = np.flatnonzero(d2 < Ro * Ro)
+    X, Y, D2 = x[rays], y[rays], d2[rays]
+    zt = np.sqrt(Ro * Ro - D2).astype(F32)
+    n = len(rays)
+    zhit = np.full(n, np.nan, F32)
+    act = np.arange(n)
+    z = zt.copy()
+    zprev = zt.copy()
+    it = 0
+    t0 = time.time()
+    while act.size:
+        it += 1
+        Xa, Ya, za = X[act], Y[act], z[act]
+        r, lat, lon, fi, fj = to_texel(Xa, Ya, za)
+        h, i, j = height_at(Hm, fi, fj)
+        hh = r - Rb
+        hit = hh <= h
+        if hit.any():
+            hi_ = act[hit]
+            lo = za[hit].copy()
+            up = zprev[hi_].copy()
+            Xh, Yh = Xa[hit], Ya[hit]
+            for _ in range(7):
+                mid = (lo + up) / 2
+                r2, _, _, fi2, fj2 = to_texel(Xh, Yh, mid)
+                h2, _, _ = height_at(Hm, fi2, fj2)
+                ins = (r2 - Rb) <= h2
+                lo = np.where(ins, mid, lo)
+                up = np.where(ins, up, mid)
+            zhit[hi_] = lo
+        ci = np.clip(np.rint(fi).astype(np.int32) // CF, 0, HC.shape[0] - 1)
+        cj = (np.rint(fj).astype(np.int32) % MW) // CF
+        hcd = HC[ci, cj]
+        clat = np.maximum(np.cos(lat), 0.12)
+        room = hh - hcd
+        big = room > 0.5
+        st = np.where(big, np.clip(np.minimum(7.0 * clat, room * r / np.maximum(np.abs(za), 1.0)), step, 7.0), step).astype(F32)
+        zn = za - st
+        cross = (za > 0) & (zn < 0)
+        zn = np.where(cross, 0, zn)
+        out = zn < -zt[act]
+        zprev[act] = za
+        z[act] = zn
+        act = act[~hit & ~out]
+    if verbose:
+        print('  march', it, 'its', round(time.time() - t0, 1), 's', flush=True)
+    return rays, X, Y, zhit
+
+
+def shadow_rays(Hm, px, py, pz, L, length=150.0, step=0.8):
+    Rb = R_PL * PS
+    HC = coarse_max(Hm)
+    hmx = float(Hm.max()) + 2
+    n = len(px)
+    lit = np.ones(n, F32)
+    t = np.zeros(n, F32)
+    act = np.arange(n)
+    Lx, Ly, Lz = (F32(v) for v in L)
+    while act.size:
+        ta = t[act]
+        qx, qy, qz = px[act] + Lx * ta, py[act] + Ly * ta, pz[act] + Lz * ta
+        r, lat, lon, fi, fj = to_texel(qx, qy, qz)
+        h, i, j = height_at(Hm, fi, fj)
+        hh = r - Rb
+        blocked = (hh < h - 0.3) & (ta > 0.5)
+        lit[act[blocked]] = 0
+        ci = np.clip(np.rint(fi).astype(np.int32) // CF, 0, HC.shape[0] - 1)
+        cj = (np.rint(fj).astype(np.int32) % MW) // CF
+        room = hh - HC[ci, cj]
+        st = np.where(room > 0.5, np.clip(np.minimum(7.0 * np.maximum(np.cos(lat), 0.12), room * 4), step, 7.0), step).astype(F32)
+        tn = ta + st
+        t[act] = tn
+        done = blocked | (tn > length) | (hh > hmx)
+        act = act[~done]
+    return lit
+
+
+def hash3(a, b, c):
+    h = (a.astype(np.uint32) * np.uint32(73856093)) ^ (b.astype(np.uint32) * np.uint32(19349663)) ^ (c.astype(np.uint32) * np.uint32(83492791))
+    h = (h ^ (h >> np.uint32(13))) * np.uint32(0x5bd1e995)
+    h = h ^ (h >> np.uint32(15))
+    return (h & np.uint32(0xffffff)).astype(F32) / F32(0x1000000)
+
+
+# ----------------------------------------------------------------------------------------------------------------
+# Shading
+# ----------------------------------------------------------------------------------------------------------------
+
+
+
+def lot_table(lots):
+    T = {}
+    for k in ('lo', 'la', 'top', 'lit', 'fh'):
+        T[k] = np.array([l[k] for l in lots], F32)
+    for k in ('mat', 'wcol', 'led', 'ledk'):
+        T[k] = np.array([l[k] for l in lots], np.int32)
+    T['facade'] = np.stack([ramp_c(MATS_C[l['mat']], 0.45) for l in lots]).astype(F32)
+    return T
+
+
+def shade_planet(cm, rays, X, Y, zhit, shadows=True):
+    Rb = R_PL * PS
+    Hm = cm.H
+    T = lot_table(cm.lots)
+    ok = ~np.isnan(zhit)
+    rid = rays[ok]
+    px, py, pz = X[ok], Y[ok], zhit[ok]
+    r, lat, lon, fi, fj = to_texel(px, py, pz)
+    h, i, j = height_at(Hm, fi, fj)
+    ID = cm.ID[i, j]
+    hh = r - Rb
+    ns = np.stack([px, py, pz], -1) / r[:, None]
+
+    def Hs(di, dj):
+        return Hm[np.clip(i + di, 0, MH - 1), (j + dj) % MW]
+
+    dU = (DLON * Rb * np.maximum(np.cos(lat), 0.05)).astype(F32)
+    dV = F32(DLAT * Rb)
+    Gu = ((Hs(-1, 1) + 2 * Hs(0, 1) + Hs(1, 1)) - (Hs(-1, -1) + 2 * Hs(0, -1) + Hs(1, -1))) / (8 * dU)
+    Gv = ((Hs(-1, -1) + 2 * Hs(-1, 0) + Hs(-1, 1)) - (Hs(1, -1) + 2 * Hs(1, 0) + Hs(1, 1))) / (8 * dV)
+    wall = (ID >= 0) & (hh < h - 0.9)
+    wall |= (ID == ST_PLAZA) & (hh < h - 0.9)
+    M = PL_M.astype(F32)
+    sl, cl, so, co = np.sin(lat), np.cos(lat), np.sin(lon), np.cos(lon)
+    E = np.stack([-so, co, np.zeros_like(so)], -1) @ M
+    Nn = np.stack([-sl * co, -sl * so, cl], -1) @ M
+    gm = np.hypot(Gu, Gv)
+    k = np.minimum(1.0, 1.6 / np.maximum(gm, 1e-6))
+    n_roof = -Gu[:, None] * k[:, None] * E - Gv[:, None] * k[:, None] * Nn + ns
+    wu, wv = -Gu / np.maximum(gm, 1e-6), -Gv / np.maximum(gm, 1e-6)
+    snap = np.maximum(np.abs(wu), np.abs(wv)) > 0.9
+    wu2 = np.where(snap, np.where(np.abs(wu) > np.abs(wv), np.sign(wu), 0), wu)
+    wv2 = np.where(snap, np.where(np.abs(wv) >= np.abs(wu), np.sign(wv), 0), wv)
+    wu, wv = wu2, wv2
+    n_wall = wu[:, None] * E + wv[:, None] * Nn
+    n = np.where(wall[:, None], n_wall, n_roof)
+    n = n / np.maximum(np.linalg.norm(n, axis=-1, keepdims=True), 1e-6)
+    L = PL_LIGHT.astype(F32)
+    dl = np.clip(n @ L, 0, 1)
+    ds = ns @ L
+    key = smoothstep(-0.45, 0.7, ds).astype(F32)   # the side toward the faint key (the sphere's form)
+    MOON, FLOOD, NIGHT_AMB, CITY_FAR = LK['moon'], LK['flood'], LK['amb'], LK['far']
+    sh = np.ones(len(px), F32)
+    if shadows:
+        need = (key > 0.05) & (dl > 0.01)
+        if need.any():
+            q = n[need]
+            sh[need] = shadow_rays(Hm, px[need] + q[:, 0] * 0.8, py[need] + q[:, 1] * 0.8, pz[need] + q[:, 2] * 0.8, L)
+    lid = np.where(ID >= 0, ID, 0)
+    alb = cm.ALB[i, j].astype(F32)
+    emi = cm.EM[i, j].astype(F32)
+    street = ID < 0
+    glowk = (CITY_FAR + (1 - CITY_FAR) * key).astype(F32)   # the city's light a little dimmer on the far side
+    emk = np.where(street, LK['em_street'], LK['em_roof']) * glowk
+    em = emi * emk[:, None]
+    # facades: floors of windows (some lit), LED bands, lit crowns, the bright casino floor at the foot
+    lu = (((lon - T['lo'][lid] + math.pi) % (2 * math.pi)) - math.pi) * Rb * np.cos(lat)
+    lv = (lat - T['la'][lid]) * Rb
+    along = lu * (-wv) + lv * wu
+    FH = T['fh'][lid] * 1.4
+    fl = np.floor(hh / FH)
+    ff = hh / FH - fl
+    CP = 3.0
+    cc = np.floor(along / CP)
+    fc = along / CP - cc
+    pane = (ff > 0.28) & (ff < 0.86) & (fc > 0.18) & (fc < 0.82)
+    flo = fl.astype(np.int64) + 1000
+    col_ = cc.astype(np.int64) + 100000
+    floor_on = hash3(lid, flo, np.full_like(flo, 7)) < 0.85
+    litw = pane & floor_on & (hash3(lid, flo, col_) < T['lit'][lid])
+    wc = (WIN_COLS_DEN if LK['pirate'] else WIN_COLS)[T['wcol'][lid]].astype(F32) * (0.75 + 0.5 * hash3(lid, flo, col_ + 3))[:, None]
+    fac = T['facade'][lid]
+    walb = np.where(pane[:, None], np.array([0.03, 0.035, 0.05], F32), fac)
+    wem = np.where(litw[:, None], wc, 0)
+    led = T['led'][lid]
+    band = (led >= 0) & ((flo % np.maximum(T['ledk'][lid], 1)) == 0) & (ff > 0.2) & (ff < 0.7)
+    wem = np.where(band[:, None], (LED_COLS_DEN if LK['pirate'] else LED_COLS)[np.maximum(led, 0)].astype(F32) * 1.2, wem)
+    crown = (hh > T['top'][lid] - FH * 1.1) & (hash3(lid, np.zeros_like(flo), np.ones_like(flo)) < (0.06 if LK['pirate'] else 0.5))
+    wem = np.where((crown & (ff > 0.15))[:, None], np.array([1.0, 0.85, 0.55], F32) * 1.2, wem)
+    base = hh < 3.2
+    wem = np.where((base & (T['top'][lid] > 5 * PS))[:, None], np.array([1.0, 0.75, 0.35], F32) * (0.25 if LK['pirate'] else 1.0), wem)
+    wemk = LK['em_win'] * glowk
+    plaza_wall = (ID == ST_PLAZA) & wall
+    alb = np.where(wall[:, None] & ~plaza_wall[:, None], walb, alb)
+    em = np.where(wall[:, None] & ~plaza_wall[:, None], wem * wemk[:, None], em)
+    ao = np.where(wall, 0.55 + 0.45 * smoothstep(0, 8, hh), 1.0)
+    # no sun: the cool key on the near side, and the city's own warm glow (floodlights, signs, the streets below)
+    amb = NIGHT_AMB + FLOOD * ((0.45 + 0.55 * key) * (0.5 + 0.5 * wall))[:, None]
+    direct = MOON * (dl * sh * key)[:, None]
+    hv = L + np.array([0, 0, 1.0], F32)
+    hv = hv / np.linalg.norm(hv)
+    sp = np.clip(n @ hv, 0, 1) ** 30
+    shiny = np.where(wall, 0.2, 0.5)
+    col = alb * (direct + amb) * ao[:, None] + MOON * (sp * sh * key * shiny)[:, None] * (0.25 + alb) + em
+    out = np.zeros((NB * NB, 3), F32)
+    out[rid] = col
+    emo = np.zeros((NB * NB, 3), F32)
+    emo[rid] = em
+    A = np.zeros(NB * NB, F32)
+    A[rid] = 1
+    buf = dict(id=np.full(NB * NB, -99, np.int32), hh=np.zeros(NB * NB, F32), key=np.zeros(NB * NB, F32), nz=np.zeros(NB * NB, F32))
+    buf['id'][rid] = ID
+    buf['hh'][rid] = hh
+    buf['key'][rid] = key
+    buf['nz'][rid] = ns[:, 2]
+    buf = {k: v.reshape(NB, NB) for k, v in buf.items()}
+    buf['em'] = emo.reshape(NB, NB, 3)
+    return out.reshape(NB, NB, 3), A.reshape(NB, NB), buf
+
+
+def atmosphere(col, A, buf):
+    """The neon smog: haze over the limb of the disc and a glow ring round it, the city's pink and gold light
+    pollution all round, a cooler, brighter limb light on the key side (the sphere's form)."""
+    ys, xs = np.mgrid[0:NB, 0:NB]
+    dx = (xs + 0.5 - NB / 2) / PS
+    dy = (ys + 0.5 - NB / 2) / PS
+    rho = np.hypot(dx, dy)
+    L = PL_LIGHT
+    sd = (dx * L[0] + dy * L[1]) / np.maximum(rho, 1e-3) / math.hypot(L[0], L[1])
+    pinkc, goldc, keyc = (np.array(c, F32) for c in LK['haze'])
+    t = (0.5 + 0.5 * np.sin(np.arctan2(dy, dx) * 2 + 0.7))[..., None]
+    w = smoothstep(-0.3, 0.8, sd)[..., None]
+    hc = (pinkc * (1 - t) + goldc * t) * (1 - w * 0.6) + keyc * w * 0.6
+    gain = (0.55 + 0.8 * w[..., 0])
+    nz = buf['nz']
+    fres = (np.clip(1 - nz, 0, 1) ** 3 * A)[..., None] * gain[..., None]
+    col = col * (1 - 0.3 * fres) + hc * fres * LK['haze_k']
+    g = np.exp(-np.clip(rho - R_PL, 0, None) / 4.0) * (rho > R_PL - 1) * 0.8 * gain
+    g = g + np.exp(-np.clip(rho - R_PL, 0, None) / 13.0) * (rho > R_PL - 1) * 0.28
+    ga = g * (1 - A)
+    tot = A + ga
+    col = (col * A[..., None] + hc * ga[..., None]) / np.maximum(tot, 1e-4)[..., None]
+    return col, np.clip(tot, 0, 1)
+
+
+def to_frame(col, A):
+    a = np.clip(down(A, FRAME, FRAME), 0, 1)
+    rgb = np.stack([down(col[..., k] * A, FRAME, FRAME) for k in range(3)], -1) / np.maximum(a, 1e-4)[..., None]
+    rgb = np.where(a[..., None] > 1e-3, rgb, 0)
+    rgb = unsharp(rgb, 0.3)
+    return np.clip(rgb, 0, 1.5), a
+
+
+def bloom(rgb, a, em_frame, k1=0.45, k2=0.14):
+    """A soft glow of the emission (the city's light) over the disc and just past it."""
+    g1 = np.stack([fblur(em_frame[..., c], 1.6) for c in range(3)], -1)
+    g2 = np.stack([fblur(em_frame[..., c], 5.0) for c in range(3)], -1)
+    g = g1 * k1 + g2 * k2
+    prem = rgb * a[..., None] + g
+    ga = np.clip(g.max(-1), 0, 1) * (1 - a) * 0.9
+    a2 = np.clip(a + ga, 0, 1)
+    rgb2 = prem / np.maximum(a2, 1e-4)[..., None]
+    return rgb2, a2
+
+
+def rgba8(rgb, a):
+    res = np.zeros(rgb.shape[:2] + (4,), np.uint8)
+    res[..., :3] = np.round(np.clip(rgb, 0, 1) * 255)
+    res[..., 3] = np.round(np.clip(a, 0, 1) * 255)
+    return res
+
+
+POCKETS = 37
+
+
+def rotor(a, b, r, night=False, aa=PS):
+    """The roulette rotor at tangent-plane coords (a east, b south; frame px from its centre), radius r: straight albedo,
+    emission, alpha. Pockets red / black (one green), gold frets, the number ring, a mahogany cone with gold spokes, a
+    gold turret. Lit evenly (a flat disc), so it can turn."""
+    rho = np.hypot(a, b) / r
+    th = np.arctan2(b, a)
+    t = ((th + math.pi) / (2 * math.pi)) * POCKETS
+    k = np.floor(t).astype(np.int32) % POCKETS
+    fr = t - np.floor(t)
+    alb = np.zeros(a.shape + (3,), F32)
+    em = np.zeros(a.shape + (3,), F32)
+    red = np.array([0.72, 0.04, 0.05])
+    blk = np.array([0.035, 0.03, 0.035])
+    grn = np.array([0.02, 0.42, 0.14])
+    pc = np.where((k == 0)[..., None], grn, np.where((k % 2 == 1)[..., None], red, blk))
+    gold = lambda v: ramp_c('gold', v)
+    # rings
+    zone = np.select([rho < 0.1, rho < 0.42, rho < 0.46, rho < 0.7, rho < 0.8, rho < 0.86, rho <= 1.0],
+                     [0, 1, 2, 3, 4, 5, 6], 7)
+    fw = 0.55 / np.maximum(2 * math.pi * rho * r / POCKETS, 0.3)
+    fret = np.abs(fr - 0.5) > 0.5 - fw
+    # turret: dome + a cross of four arms with knobs
+    arms = np.zeros(a.shape, bool)
+    for q in range(4):
+        ang = q * math.pi / 2 + math.pi / 4
+        ca, sa = math.cos(ang), math.sin(ang)
+        al = (a * ca + b * sa) / r
+        ac = (-a * sa + b * ca) / r
+        arms |= (np.abs(ac) < 0.028) & (al > 0) & (al < 0.22)
+        arms |= np.hypot(al - 0.22, ac) < 0.045
+    cone_sp = (np.abs(((th / (2 * math.pi)) * 8) % 1 - 0.5) > 0.5 - 0.5 / np.maximum(2 * math.pi * rho * r / 8, 0.5))
+    mah = np.array([0.32, 0.09, 0.04]) * (0.55 + 0.6 * rho[..., None])
+    alb = np.where((zone == 1)[..., None], np.where(cone_sp[..., None], gold(0.8), mah), alb)
+    alb = np.where((zone == 0)[..., None], gold(0.85 - 0.5 * rho / 0.1), alb)
+    alb = np.where((zone == 2)[..., None], gold(0.75), alb)
+    alb = np.where((zone == 3)[..., None], np.where(fret[..., None], gold(0.9), pc), alb)
+    # the number ring: the same colours, a white numeral dash in each
+    numeral = (np.abs(fr - 0.5) < 0.16) & (np.abs(rho - 0.75) < 0.025)
+    alb = np.where((zone == 4)[..., None], np.where(fret[..., None], gold(0.85), np.where(numeral[..., None], np.array([0.92, 0.9, 0.85]), pc)), alb)
+    alb = np.where((zone == 5)[..., None], gold(0.62), alb)
+    alb = np.where((zone == 6)[..., None], gold(0.78 - 0.3 * ((rho > 0.92) & (rho < 0.935))), alb)
+    alb = np.where(arms[..., None], gold(0.95), alb)
+    if night:
+        # the night wheel is lit from inside: glowing pockets, gold-lit frets
+        glow = np.where((k == 0)[..., None], np.array([0.1, 1.0, 0.35]), np.where((k % 2 == 1)[..., None], np.array([1.0, 0.1, 0.12]), np.array([0.06, 0.04, 0.12])))
+        em = np.where(((zone == 3) & ~fret)[..., None], glow * 0.85, em)
+        em = np.where(((zone == 3) | (zone == 4)) & fret, 1, 0)[..., None] * np.array([1.0, 0.8, 0.35]) * 0.7 + em
+        em = np.where(numeral[..., None], np.array([1.0, 1.0, 0.95]) * 0.8, em)
+        em = np.where((zone == 6)[..., None] & ((np.floor(t * 2) % 2) == 0)[..., None], np.array([1.0, 0.75, 0.3]) * 0.5, em)
+    A = np.clip((1 - rho) * r * aa + 0.5, 0, 1)
+    if LK['pirate']:
+        # tarnished, chipped lacquer; a few pockets' lamps still on
+        lum = (alb @ LUM)[..., None]
+        alb = (alb * 0.45 + lum * 0.25) * np.array([1.0, 0.85, 0.7])
+        em = em * ((k % 7) == 3)[..., None] * 0.5
+    return alb, em, A
+
+
+def bezel(a, b, r0, r1, night=False):
+    """The static bowl round a rotor: the ball track (polished dark wood), eight gold diamond deflectors, the gold rim."""
+    rho = np.hypot(a, b)
+    th = np.arctan2(b, a)
+    u = (rho - r0) / (r1 - r0)
+    wood = np.array([0.22, 0.07, 0.035]) * (0.7 + 0.5 * np.sin(u * math.pi)[..., None])
+    alb = np.where((u > 0.72)[..., None], ramp_c('gold', 0.55 + 0.3 * np.clip((u - 0.72) / 0.28, 0, 1)), wood)
+    dd = np.abs(((th / (2 * math.pi)) * 8) % 1 - 0.5) * 2 * math.pi * rho / 8
+    diamond = (np.abs(u - 0.4) * (r1 - r0) + dd < 1.6)
+    alb = np.where(diamond[..., None], ramp_c('gold', 0.95), alb)
+    em = np.zeros(a.shape + (3,), F32)
+    if night and not LK['pirate']:
+        em = np.where(diamond[..., None], np.array([1.0, 0.85, 0.5]) * 0.8, em)
+    if LK['pirate']:
+        alb = alb * 0.6
+    return alb, em
+
+
+def feature_affine(name, h=0.5):
+    """(o, M2, Minv) of a feature's tangent plane (a east, b south): frame px = o + M2 @ (a, b)."""
+    v = FEAT_V[name]
+    o, ex, ey = affine_at(v, h)
+    M2 = np.stack([-ex, -ey], -1)   # columns: the screen images of west and south (screen right / down near the centre)
+    return o, M2, np.linalg.inv(M2)
+
+
+# the wheels: the crown wheel is floodlit (lacquer and gold under the colonnade's lamps), the other glows from inside
+GLOWING = {'wheel_main': False, 'wheel_2': True}
+
+
+def floodlit(v):
+    """The light on a flat arena floor at view direction v (rgb multiplier): the colonnade's warm floodlights, a
+    touch of the cool key on the near side."""
+    ds = float(v @ PL_LIGHT)
+    key = float(smoothstep(-0.45, 0.7, ds))
+    return (np.array([0.98, 0.82, 0.62]) * (0.8 + 0.2 * key) + LK['moon'] * max(0.0, ds) * 0.5) * (0.55 if LK['pirate'] else 1.0)
+
+
+def draw_features(col, A, buf):
+    """Lay the wheels (rotor + bezel) and the port's throat over the arena / port floors (only where the floor shows)."""
+    ys, xs = np.mgrid[0:NB, 0:NB]
+    for name in FEAT:
+        sel = buf['id'] == ID_FEAT[name]
+        if not sel.any():
+            continue
+        yy, xx = np.nonzero(sel)
+        p = np.stack([(xx + 0.5) / PS, (yy + 0.5) / PS], -1)
+        o, M2, Mi = feature_affine(name)
+        ab = (p - o) @ Mi.T
+        a, b = ab[:, 0], ab[:, 1]
+        rr = FEAT[name][2]
+        m = floodlit(FEAT_V[name])
+        if name == 'port':
+            c, e = throat(p, name)
+            col[yy, xx] = c
+            buf['em'][yy, xx] = e
+            continue
+        night = GLOWING[name]
+        ra, re, rA = rotor(a, b, rr[0], night)
+        ba, be = bezel(a, b, rr[0], rr[1], night)
+        inner = np.hypot(a, b) < rr[0]
+        alb = np.where(inner[:, None], ra, ba)
+        em = np.where(inner[:, None], re, be)
+        # a soft ring shadow of the bezel lip on the rotor's edge
+        lip = np.clip(1 - (rr[0] - np.hypot(a, b)) / 2.5, 0, 1) * inner
+        c = alb * m * (1 - 0.45 * lip)[:, None] + em
+        col[yy, xx] = c
+        buf['em'][yy, xx] = em
+    return col
+
+
+def throat(p, name):
+    """The docking port's throat seen down its shaft: rings of light down the wall, a blazing bay at the bottom."""
+    v = FEAT_V[name]
+    o, M2, Mi = feature_affine(name, 0.0)
+    up = v[:2]  # screen image of the local up (outward)
+    rt = FEAT[name][2][1]
+    n = len(p)
+    depth = np.full(n, np.nan)
+    th_hit = np.zeros(n)
+    for d in np.arange(0, 44, 0.4):
+        ab = (p - o + d * up[None, :]) @ Mi.T
+        rr = np.hypot(ab[:, 0], ab[:, 1])
+        new = np.isnan(depth) & (rr > rt)
+        depth[new] = d
+        th_hit[new] = np.arctan2(ab[new, 1], ab[new, 0])
+    bottom = np.isnan(depth)
+    d = np.where(bottom, 44, depth)
+    # the wall: dark metal, a ring of lights every 7 px of depth, warming and dimming down the shaft
+    band = (d % 7) < 1.4
+    studs = band & ((np.floor((th_hit + math.pi) / (2 * math.pi) * 28) % 2) == 0)
+    fall = np.exp(-d / 40)[:, None]
+    wall = np.array([0.08, 0.07, 0.075])[None, :] * (0.4 + 0.6 * fall)
+    e = np.where(band[:, None], np.array([1.0, 0.7, 0.35]) * 0.35, 0) * fall + np.where(studs[:, None], np.array([1.0, 0.9, 0.7]) * 0.9, 0) * fall
+    e = e + np.array([1.0, 0.75, 0.4])[None, :] * (0.25 * np.exp(-d / 14))[:, None]
+    bay = np.array([1.0, 0.92, 0.75]) * 1.25
+    if LK['pirate']:
+        e = e * 0.35
+        bay = np.array([0.9, 0.42, 0.14]) * 0.6
+    c = np.where(bottom[:, None], bay, wall + e)
+    e = np.where(bottom[:, None], bay, e)
+    return c, e
+
+
+# ----------------------------------------------------------------------------------------------------------------
+# 2D painting at the build resolution (premultiplied over the planet)
+# ----------------------------------------------------------------------------------------------------------------
+
+def seg_dist(xx, yy, pts):
+    """Distance (same units as the inputs) from points to a polyline."""
+    d = np.full(xx.shape, 1e9)
+    for (x0, y0), (x1, y1) in zip(pts[:-1], pts[1:]):
+        vx, vy = x1 - x0, y1 - y0
+        l2 = max(vx * vx + vy * vy, 1e-9)
+        t = np.clip(((xx - x0) * vx + (yy - y0) * vy) / l2, 0, 1)
+        d = np.minimum(d, np.hypot(xx - (x0 + t * vx), yy - (y0 + t * vy)))
+    return d
+
+
+class Painter:
+    """Premultiplied colour / alpha / emission at the build resolution; shapes in frame px."""
+
+    def __init__(self, col, A, em):
+        self.P = col * A[..., None]
+        self.A = A.copy()
+        self.E = em * A[..., None]
+
+    def region(self, x0, y0, x1, y1):
+        i0, i1 = max(0, int((y0) * PS) - 2), min(NB, int(math.ceil(y1 * PS)) + 2)
+        j0, j1 = max(0, int((x0) * PS) - 2), min(NB, int(math.ceil(x1 * PS)) + 2)
+        yy, xx = np.mgrid[i0:i1, j0:j1].astype(np.float64)
+        return (slice(i0, i1), slice(j0, j1)), (xx + 0.5) / PS, (yy + 0.5) / PS
+
+    def over(self, sl, m, rgb, em=None):
+        m = np.clip(m, 0, 1)[..., None]
+        self.P[sl] = rgb * m + self.P[sl] * (1 - m)
+        self.A[sl] = m[..., 0] + self.A[sl] * (1 - m[..., 0])
+        e = 0 if em is None else em
+        self.E[sl] = e * m + self.E[sl] * (1 - m)
+
+    def add_em(self, sl, e):
+        self.P[sl] += e
+        self.E[sl] += e
+
+    def stroke(self, pts, w, rgb_fn, em_fn=None, pad=2):
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        sl, xx, yy = self.region(min(xs) - w - pad, min(ys) - w - pad, max(xs) + w + pad, max(ys) + w + pad)
+        d = seg_dist(xx, yy, pts)
+        m = np.clip((w / 2 - d) * PS + 0.5, 0, 1)
+        if m.max() <= 0:
+            return
+        q = np.clip(d / (w / 2), 0, 1)
+        rgb = rgb_fn(xx, yy, q)
+        em = None if em_fn is None else em_fn(xx, yy, q)
+        self.over(sl, m, rgb, em)
+
+    def poly(self, pts, rgb_fn, em_fn=None):
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        sl, xx, yy = self.region(min(xs) - 1, min(ys) - 1, max(xs) + 1, max(ys) + 1)
+        i0, j0 = sl[0].start, sl[1].start
+        im = Image.new('L', (xx.shape[1] * 2, xx.shape[0] * 2), 0)
+        ImageDraw.Draw(im).polygon([((x * PS - j0) * 2, (y * PS - i0) * 2) for (x, y) in pts], fill=255)
+        m = np.asarray(im.resize((xx.shape[1], xx.shape[0]), Image.BOX)).astype(np.float64) / 255
+        if m.max() <= 0:
+            return
+        rgb = rgb_fn(xx, yy)
+        em = None if em_fn is None else em_fn(xx, yy)
+        self.over(sl, m, rgb, em)
+
+    def disc(self, cx, cy, r, rgb_fn, em_fn=None):
+        sl, xx, yy = self.region(cx - r - 1, cy - r - 1, cx + r + 1, cy + r + 1)
+        d = np.hypot(xx - cx, yy - cy)
+        m = np.clip((r - d) * PS + 0.5, 0, 1)
+        q = np.clip(d / r, 0, 1)
+        self.over(sl, m, rgb_fn(xx, yy, q), None if em_fn is None else em_fn(xx, yy, q))
+
+    def blit(self, rgba, centre, spr):
+        """Lay an RGBA sprite (spr px per frame px, centred) over the canvas with its centre at frame px `centre`."""
+        p = rgba.astype(np.float64) / 255
+        n = int(round(rgba.shape[0] * PS / spr))
+        prem = [np.asarray(Image.fromarray((p[..., k] * (p[..., 3] if k < 3 else 1)).astype(np.float32), 'F').resize((n, n), Image.BICUBIC)) for k in range(4)]
+        a = np.clip(prem[3], 0, 1)
+        i0 = int(round(centre[1] * PS - n / 2))
+        j0 = int(round(centre[0] * PS - n / 2))
+        sl = (slice(i0, i0 + n), slice(j0, j0 + n))
+        P = np.stack(prem[:3], -1).clip(0, None)
+        self.P[sl] = P + self.P[sl] * (1 - a[..., None])
+        self.A[sl] = a + self.A[sl] * (1 - a)
+        self.E[sl] = self.E[sl] * (1 - a[..., None])
+
+    def result(self):
+        A = self.A
+        col = self.P / np.maximum(A, 1e-6)[..., None]
+        em = self.E / np.maximum(A, 1e-6)[..., None]
+        return col, A, em
+
+
+def item_light(at):
+    """Light on an upright item at frame px `at` (a face toward the viewer): the city's warm glow from below, the
+    cool key on the near side. -> (rgb multiplier for the face, key share)."""
+    v = np.array([(at[0] - C0) / R_PL, (at[1] - C0) / R_PL, 0.0])
+    ln = np.linalg.norm(v)
+    v = v / max(ln, 1e-6)
+    ds = float(v @ PL_LIGHT)
+    key = float(smoothstep(-0.45, 0.7, ds))
+    face = (np.array([0.62, 0.44, 0.3]) * (0.75 + 0.25 * key) + LK['moon'] * PL_LIGHT[2] * key * 1.2 + 0.03) * LK['face']
+    return face, key
+
+
+def metal(mat, face, sun, across=None, axis=None):
+    """A shading function for an upright metal part: material ramp, a cylindrical light across it (q 0 centre..1 edge
+    in stroke coordinates) brighter toward the sun."""
+    def fn(xx, yy, q=None):
+        lv = np.full(xx.shape, 0.55)
+        if q is not None:
+            lv = 0.62 - 0.3 * q ** 2
+        c = ramp_c(mat, np.clip(lv, 0, 1))
+        return c * face
+    return fn
+
+
+# ----------------------------------------------------------------------------------------------------------------
+# Neon: stroke letters and shapes, the tubes in the frame (unlit glass), the glow pieces (the runtime lights them)
+# ----------------------------------------------------------------------------------------------------------------
+
+def arc_pts(cx, cy, rx, ry, a0, a1, n=None):
+    n = n or max(6, int(abs(a1 - a0) / 12))
+    return [(cx + rx * math.cos(math.radians(a0 + (a1 - a0) * k / n)), cy + ry * math.sin(math.radians(a0 + (a1 - a0) * k / n))) for k in range(n + 1)]
+
+
+GLYPHS = {
+    'C': [arc_pts(0.52, 0.5, 0.46, 0.5, -42, -318)],
+    'A': [[(0.0, 1.0), (0.5, 0.0), (1.0, 1.0)], [(0.24, 0.62), (0.76, 0.62)]],
+    'S': [arc_pts(0.5, 0.26, 0.42, 0.26, -10, -270)[:-1] + arc_pts(0.5, 0.75, 0.46, 0.25, -90, 165)],
+    'I': [[(0.5, 0.0), (0.5, 1.0)], [(0.22, 0.0), (0.78, 0.0)], [(0.22, 1.0), (0.78, 1.0)]],
+    'N': [[(0.05, 1.0), (0.05, 0.0), (0.95, 1.0), (0.95, 0.0)]],
+    'O': [arc_pts(0.5, 0.5, 0.47, 0.5, 0, 360, 40)],
+    'J': [[(0.25, 0.0), (0.9, 0.0)], [(0.65, 0.0), (0.65, 0.7)] + arc_pts(0.38, 0.7, 0.27, 0.3, 0, 170)],
+    'K': [[(0.08, 0.0), (0.08, 1.0)], [(0.92, 0.0), (0.08, 0.58)], [(0.34, 0.42), (0.95, 1.0)]],
+    'P': [[(0.08, 1.0), (0.08, 0.0), (0.55, 0.0)] + arc_pts(0.55, 0.27, 0.38, 0.27, -90, 90)[1:] + [(0.08, 0.54)]],
+    'T': [[(0.0, 0.0), (1.0, 0.0)], [(0.5, 0.0), (0.5, 1.0)]],
+    '7': [[(0.05, 0.0), (0.95, 0.0), (0.38, 1.0)], [(0.32, 0.5), (0.78, 0.5)]],
+}
+
+
+def glyph(ch, x, y, w, h):
+    return [[(x + px * w, y + py * h) for (px, py) in st] for st in GLYPHS[ch]]
+
+
+def star_pts(cx, cy, r0, r1, n=5, rot=-90):
+    pts = []
+    for k in range(2 * n + 1):
+        r = r1 if k % 2 == 0 else r0
+        a = math.radians(rot + 180 * k / n)
+        pts.append((cx + r * math.cos(a), cy + r * math.sin(a)))
+    return pts
+
+
+# neon colours
+N_PINK = (1.0, 0.22, 0.72)
+N_CYAN = (0.2, 0.92, 1.0)
+N_GOLD = (1.0, 0.74, 0.22)
+N_RED = (1.0, 0.16, 0.12)
+N_WHITE = (1.0, 0.95, 0.88)
+N_GREEN = (0.3, 1.0, 0.45)
+
+# the neon behaviours (threatArt.ts casinoNeonAlpha runs them)
+BUZZ, DEAD, SEQ, BLINK, BAD = 0, 1, 2, 3, 4
+
+# The den's signs: most tubes dead (only their dark glass left), the few that work failing: 'bad' (a failing
+# transformer: dark spells, sputtering, never full), 'dying' (the DEAD behaviour), 'half' (the first half of each tube
+# still lit, badly; the rest dead). Untagged or unlisted pieces are dead.
+DEN_FATES = {
+    'casino:C': 'bad', 'casino:A': 'bad', 'casino:S': 'dying', 'casino:I': 'dead', 'casino:N': 'bad', 'casino:O': 'bad',
+    'casino:frame': 'half',
+    'burst:6': 'dying',
+    'gate152:roof': 'half',
+    'jackpot:0J': 'bad', 'jackpot:2C': 'bad', 'jackpot:K': 'dying', 'jackpot:4P': 'bad', 'jackpot:6T': 'dying', 'jackpot:rule': 'half',
+    'suit:1': 'bad',
+    'seven:red': 'half', 'cherry:red': 'dying',
+}
+# and their colours gone dirty: pink to a dirty red, cyan to a sickly teal, gold to rust orange, white to dim sodium
+DEN_NEON = {N_PINK: (1.0, 0.24, 0.16), N_CYAN: (0.3, 0.78, 0.62), N_GOLD: (1.0, 0.5, 0.16), N_WHITE: (1.0, 0.72, 0.42),
+            N_RED: (1.0, 0.2, 0.1), N_GREEN: (0.5, 0.8, 0.3)}
+
+
+def half_line(pts):
+    """The first half (by length) of a polyline."""
+    L = [math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(pts[:-1], pts[1:])]
+    tot, acc, out = sum(L), 0.0, [pts[0]]
+    for (a, b), l in zip(zip(pts[:-1], pts[1:]), L):
+        if acc + l >= tot / 2:
+            u = (tot / 2 - acc) / max(l, 1e-9)
+            out.append((a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u))
+            return out
+        out.append(b)
+        acc += l
     return out
 
 
-R_RING = 252.0
-RING_T = 44.0
+class Neon:
+    """The neon pieces: tubes (polylines in frame px, width, colour) grouped into pieces that light together, each
+    with a behaviour (BUZZ steady with a flicker now and then, DEAD a failing tube, SEQ (i, n, step s) a sequence,
+    BLINK (phase, period s) alternate)."""
+
+    def __init__(self):
+        self.pieces = []
+        self.glass = []   # every tube, lit or not (the frame bakes them all as glass)
+        self.broken = set()   # the den's dead tubes' indexes in glass (cracked, a piece missing)
+
+    def piece(self, tubes, beh, p1=0.0, p2=0.0, p3=0.0, tag=None):
+        if LK['pirate']:
+            tubes = [(pts, w, DEN_NEON.get(c, c)) for (pts, w, c) in tubes]
+        self.glass += tubes
+        if not LK['pirate']:
+            self.pieces.append(dict(tubes=tubes, beh=beh, p=(p1, p2, p3), tag=tag))
+            return
+        fate = DEN_FATES.get(tag, 'dead')
+        seed = float(zlib.crc32((tag or '').encode()) % 97) / 7.0
+        if fate == 'dead':
+            self.broken.update(range(len(self.glass) - len(tubes), len(self.glass)))
+            return
+        if fate == 'half':
+            tubes = [(half_line(pts), w, c) for (pts, w, c) in tubes]
+        beh, p = (DEAD, (seed, 0.0, 0.0)) if fate == 'dying' else (BAD, (seed, 0.0, 0.0))
+        self.pieces.append(dict(tubes=tubes, beh=beh, p=p, tag=tag))
+
+    def bake_glass(self, pnt):
+        """The tubes in the frame, unlit: pale coloured glass with a faint glow of their own (the den's: dark, dirty,
+        broken in places)."""
+        k = LK['glass']
+        for n, (pts, w, c) in enumerate(self.glass):
+            c = np.array(c)
+            segs = [pts]
+            if n in self.broken and len(pts) > 3:
+                cut = 1 + (n * 7) % (len(pts) - 2)
+                segs = [pts[:cut], pts[cut + 1:]]
+            for sg in segs:
+                if len(sg) < 2:
+                    continue
+                pnt.stroke(sg, w, lambda xx, yy, q: ((0.18 + 0.25 * c) * (1.0 - 0.4 * q[..., None]) + 0.12) * k,
+                           lambda xx, yy, q: c * 0.12 * k * (1 - q[..., None]))
+
+    def glow(self, pc, size=FRAME):
+        """One piece lit: straight RGBA (colour, alpha = brightness) at the frame resolution, and its bbox."""
+        xs = [p[0] for (pts, w, c) in pc['tubes'] for p in pts]
+        ys = [p[1] for (pts, w, c) in pc['tubes'] for p in pts]
+        pad = 22
+        x0, y0 = max(0, int(min(xs)) - pad), max(0, int(min(ys)) - pad)
+        x1, y1 = min(size, int(max(xs)) + pad + 1), min(size, int(max(ys)) + pad + 1)
+        W, H = x1 - x0, y1 - y0
+        S = 4
+        yy, xx = np.mgrid[0:H * S, 0:W * S].astype(np.float64)
+        xx = (xx + 0.5) / S + x0
+        yy = (yy + 0.5) / S + y0
+        core = np.zeros((H, W, 3))
+        hot = np.zeros((H, W))
+        for (pts, w, c) in pc['tubes']:
+            d = seg_dist(xx, yy, pts)
+            m = np.clip((w / 2 - d) * S + 0.5, 0, 1)
+            m = m.reshape(H, S, W, S).mean((1, 3))
+            mh = np.clip((w * 0.22 - d) * S + 0.5, 0, 1).reshape(H, S, W, S).mean((1, 3))
+            core = np.maximum(core, m[..., None] * np.array(c))
+            hot = np.maximum(hot, mh)
+        g1 = np.stack([fblur(core[..., k], 1.3) for k in range(3)], -1)
+        g2 = np.stack([fblur(core[..., k], 4.0) for k in range(3)], -1)
+        g3 = np.stack([fblur(core[..., k], 10.0) for k in range(3)], -1)
+        e = core * 1.2 + hot[..., None] * 1.0 + g1 * 1.1 + g2 * 0.75 + g3 * 0.55
+        a = np.clip(e.max(-1), 0, 1)
+        rgb = np.where(a[..., None] > 1e-4, np.clip(e, 0, None) / np.maximum(e.max(-1, keepdims=True), 1e-4), 0)
+        rgb = np.clip(rgb * np.clip(e.max(-1, keepdims=True), 1, None) ** 0.0, 0, 1)
+        res = np.zeros((H, W, 4), np.uint8)
+        res[..., :3] = np.round(rgb * 255)
+        res[..., 3] = np.round(a * 255)
+        return res, (x0, y0)
+
+
+# ----------------------------------------------------------------------------------------------------------------
+# The limb items (standing proud of the silhouette) and their lights
+# ----------------------------------------------------------------------------------------------------------------
+
+def polar_xy(rho, deg, s=0.0):
+    a = math.radians(deg)
+    return (C0 + rho * math.cos(a) - s * math.sin(a), C0 + rho * math.sin(a) + s * math.cos(a))
+
+
+class Items:
+    def __init__(self):
+        self.neon = Neon()
+        self.lights = []      # (x, y, kind)
+        self.lanes = []       # (points, kind)
+        self.sprites = {}     # rotating parts
+
+
+def casino_sign(pnt, it, x, by1, w=84, h=21):
+    """The CASINO marquee sitting on the north skyline: a red board in a gold frame on three short posts down into the
+    city, the letters in pink neon that fill one by one, a cyan outline tube, chasing bulbs round it, a star on top."""
+    face, key = item_light((x, by1 - h / 2))
+    x0, x1 = x - w / 2, x + w / 2
+    by0 = by1 - h
+    for px in (x0 + 9, x, x1 - 9):
+        pnt.stroke([(px, by1 - 3), (px, by1 + 11)], 3.0, metal('gold', face * 0.85, key))
+    pnt.stroke([(x0 + 9, by1 + 7), (x1 - 9, by1 + 7)], 1.2, metal('gold', face * 0.7, key))
+    pnt.poly([(x0 - 2.6, by0 - 2.6), (x1 + 2.6, by0 - 2.6), (x1 + 2.6, by1 + 2.6), (x0 - 2.6, by1 + 2.6)], lambda xx, yy: ramp_c('gold', 0.62 + 0 * xx) * face)
+    pnt.poly([(x0, by0), (x1, by0), (x1, by1), (x0, by1)], lambda xx, yy: ramp_c('red', 0.3 + 0.1 * ((yy - by0) / h)) * face * 0.8)
+    # bulbs round the frame (in path order for the chase)
+    per = []
+    nt, ns = 22, 5
+    for k in range(nt):
+        per.append((x0 - 1.3 + (w + 2.6) * k / nt, by0 - 1.3))
+    for k in range(ns):
+        per.append((x1 + 1.3, by0 - 1.3 + (h + 2.6) * k / ns))
+    for k in range(nt):
+        per.append((x1 + 1.3 - (w + 2.6) * k / nt, by1 + 1.3))
+    for k in range(ns):
+        per.append((x0 - 1.3, by1 + 1.3 - (h + 2.6) * k / ns))
+    for (bx, by) in per:
+        pnt.disc(bx, by, 0.8, lambda xx, yy, q: np.array([1.0, 0.9, 0.7]) * (0.6 + 0.4 * (1 - q[..., None])))
+        it.lights.append((bx, by, 'bulb'))
+    # the letters (a sequence: C, CA, CAS, ... all, then dark)
+    lw, lh, gap = 10.4, 12.6, 2.7
+    lx0 = x - (6 * lw + 5 * gap) / 2
+    for k, ch in enumerate('CASINO'):
+        g = glyph(ch, lx0 + k * (lw + gap), by0 + (h - lh) / 2, lw, lh)
+        it.neon.piece([(st, 1.9, N_PINK) for st in g], SEQ, k, 6, 0.42, tag='casino:' + ch)
+    it.neon.piece([([(x0 + 1.9, by0 + 1.9), (x1 - 1.9, by0 + 1.9), (x1 - 1.9, by1 - 1.9), (x0 + 1.9, by1 - 1.9), (x0 + 1.9, by0 + 1.9)], 1.1, N_CYAN)], BUZZ, 3.0, tag='casino:frame')
+    sx, sy = x, by0 - 8.5
+    pnt.stroke([(x, by0 - 2.6), (x, sy + 3)], 2.0, metal('gold', face, key))
+    st = star_pts(sx, sy, 3.2, 7.2, 5)
+    pnt.poly(st, lambda xx, yy: ramp_c('gold', 0.5 + 0 * xx) * face)
+    it.neon.piece([(st, 1.4, N_GOLD)], BLINK, 0, 0.9, tag='casino:star')
+    it.lights.append((sx, sy, 'nav'))
+
+
+def starburst(pnt, it, deg):
+    """A googie starburst on a short lattice mast at the limb: twelve rays that fill in turn."""
+    base = polar_xy(R_PL - 12, deg)
+    hub = polar_xy(R_PL + 16, deg)
+    face, key = item_light(hub)
+    for s in (-4.0, 4.0):
+        pnt.stroke([polar_xy(R_PL - 14, deg, s * 1.5), polar_xy(R_PL + 10, deg, s * 0.6)], 2.4, metal('gold', face * 0.9, key))
+    for k in range(4):
+        r0 = R_PL - 12 + k * 5.5
+        f0 = 1.5 - 0.9 * (k / 4)
+        f1 = 1.5 - 0.9 * ((k + 1) / 4)
+        pnt.stroke([polar_xy(r0, deg, -4.0 * f0), polar_xy(r0 + 5.5, deg, 4.0 * f1)], 1.0, metal('gold', face * 0.7, key))
+    pnt.disc(*hub, 6.0, lambda xx, yy, q: ramp_c('gold', 0.75 - 0.35 * q) * face)
+    n = 12
+    cols = [N_GOLD, N_PINK, N_CYAN, N_WHITE]
+    for k in range(n):
+        a = deg + 360 * k / n + 15
+        ln = 25 if k % 2 == 0 else 16
+        p0 = (hub[0] + 7.5 * math.cos(math.radians(a)), hub[1] + 7.5 * math.sin(math.radians(a)))
+        p1 = (hub[0] + ln * math.cos(math.radians(a)), hub[1] + ln * math.sin(math.radians(a)))
+        pnt.stroke([p0, p1], 2.6, metal('gold', face * 0.8, key))
+        it.neon.piece([([p0, p1], 1.7, cols[k % 4])], SEQ, k, n, 0.11, tag='burst:%d' % k)
+        it.lights.append((p1[0], p1[1], 'white'))
+    ring = arc_pts(hub[0], hub[1], 10.0, 10.0, 0, 360, 36)
+    it.neon.piece([(ring, 1.6, N_WHITE)], DEAD, 5.0, tag='burst:ring')
+    it.lights.append((base[0], base[1], 'nav'))
+
+
+def high_roller(pnt, it, deg, rw=44.0):
+    """The observation wheel on the east of the city, mostly over the sphere (its top just clear of the limb): a
+    braced A-frame of two legs on a plinth, the hub, the rim and its inner rings (round, so they stay put as it turns),
+    a neon tube round the rim. Its spokes and cabins are a sprite the runtime turns (it.sprites['wheel']); the den's
+    wheel has stopped, so its sprite is laid in the frame."""
+    hub = polar_xy(R_PL - 20, deg)
+    face, sun = item_light(hub)
+    steel = metal('white', face * 0.9, sun)
+    fr = R_PL - 20 - rw - 6           # the feet, on the city below the wheel
+    feet = [polar_xy(fr, deg, s) for s in (-25, 25)]
+    pnt.poly([polar_xy(fr + 2.5, deg, -31), polar_xy(fr + 2.5, deg, 31), polar_xy(fr - 3.5, deg, 33), polar_xy(fr - 3.5, deg, -33)],
+             lambda xx, yy: ramp_c('gold', 0.5 + 0 * xx) * face)
+    dark = lambda xx, yy, q: np.array([0.02, 0.02, 0.025]) + 0 * q[..., None]
+    lit = metal('white', face * 1.5, sun)   # floodlit from below
+    lerp = lambda a, b, t: (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+    braces = [(lerp(feet[0], hub, t), lerp(feet[1], hub, t), 2.4) for t in (0.3, 0.62)]
+    braces += [(lerp(feet[i], hub, t0), lerp(feet[1 - i], hub, t1), 1.4) for (t0, t1) in ((0.0, 0.3), (0.3, 0.62)) for i in (0, 1)]
+    # a dark outline under every member first, so the A-frame reads over the bright city, then the steel
+    for f in feet:
+        pnt.stroke([f, hub], 7.6, dark)
+    for (a0, a1, w) in braces:
+        pnt.stroke([a0, a1], w + 2.2, dark)
+    for f in feet:
+        pnt.stroke([f, hub], 5.2, lit)
+    for (a0, a1, w) in braces:
+        pnt.stroke([a0, a1], w, lit)
+    for f in feet:
+        it.lights.append((f[0] * 0.1 + hub[0] * 0.9, f[1] * 0.1 + hub[1] * 0.9, 'nav'))
+        for t in (0.15, 0.4, 0.65):
+            it.lights.append((*lerp(f, hub, t), 'bulb'))
+    for (r, w, k) in ((rw, 3.2, 1.0), (rw - 4.5, 1.5, 0.85), (rw * 0.46, 1.6, 0.85), (9.5, 1.4, 0.8)):
+        pnt.stroke(arc_pts(hub[0], hub[1], r, r, 0, 360, max(40, int(r * 3))), w, metal('white', face * k, sun))
+    pnt.disc(*hub, 6.5, lambda xx, yy, q: ramp_c('white', 0.8 - 0.4 * q) * face)
+    pnt.disc(*hub, 2.6, lambda xx, yy, q: ramp_c('gold', 0.9 - 0.3 * q) * face)
+    rim = arc_pts(hub[0], hub[1], rw + 2.4, rw + 2.4, 0, 360, 120)
+    it.neon.piece([(rim, 1.5, N_CYAN)], BLINK, 0, 2.4, tag='wheel:cyan')
+    it.neon.piece([(rim, 1.5, N_PINK)], BLINK, 1, 2.4, tag='wheel:pink')
+    it.sprites['wheel'] = dict(centre=hub, r=rw, face=face, sun=sun)
+    if LK['wheel_spin'] is None:
+        pnt.blit(wheel_sprite(it.sprites['wheel'], missing=(2, 3, 9, 15, 16, 21)), hub, SPR)
+
+
+def gate(pnt, it, deg, col_neon):
+    """A docking gate on the limb: a gold casino front standing out of the skyline (seen side on, its up is the
+    planet's up there): a horseshoe mouth, its tunnel of nested lit arches running in to a blazing bay, columns and
+    a crown over it, red wings; marquee bulbs round the mouth, neon along the roofline; ships come in along
+    it.lanes."""
+    face, sun = item_light(polar_xy(R_PL, deg))
+    q = lambda r, s: polar_xy(r, deg, s)
+    G = R_PL - 14          # the ground the gate stands on (behind the near skyline)
+
+    def ground(s0, s1, n=10):
+        """The gate's foot along the planet's curve (radius G) from tangent offset s0 to s1."""
+        return [polar_xy(G, deg + math.degrees((s0 + (s1 - s0) * k / n) / G)) for k in range(n + 1)]
+
+    # red wings (stepped), the gold front, the crown
+    for s in (-1, 1):
+        pnt.poly([q(R_PL + 14, 30 * s), q(R_PL + 14, 38 * s), q(R_PL + 6, 44 * s)] + ground(46 * s, 30 * s, 6), lambda xx, yy: ramp_c('red', 0.42 + 0 * xx) * face)
+        for k in range(3):
+            pnt.stroke([q(G + 6 + k * 6, 33 * s), q(G + 6 + k * 6, 42 * s)], 1.0, lambda xx, yy, qq: np.array([0.08, 0.05, 0.04]) + 0 * qq[..., None],
+                       lambda xx, yy, qq: np.array([1.0, 0.8, 0.45]) * 0.9 + 0 * qq[..., None])
+    front = ground(30, -30, 12) + [q(R_PL + 26, -30), q(R_PL + 32, -24), q(R_PL + 32, 24), q(R_PL + 26, 30)]
+    pnt.poly(front, lambda xx, yy: ramp_c('gold', 0.46 + 0 * xx) * face)
+    crown = [q(R_PL + 31, -22), q(R_PL + 38, -14), q(R_PL + 35.5, -7), q(R_PL + 42, 0), q(R_PL + 35.5, 7), q(R_PL + 38, 14), q(R_PL + 31, 22)]
+    pnt.poly(crown, lambda xx, yy: ramp_c('gold', 0.7 + 0 * xx) * face)
+    for s in (-1, 1):
+        for k in range(2):
+            c0 = 21 + 4.5 * k
+            pnt.stroke([q(G + 2, c0 * s), q(R_PL + 24, c0 * s)], 2.4, lambda xx, yy, qq: ramp_c('white', 0.8 - 0.35 * qq) * face)
+    # the mouth: nested arches, each smaller and further in, to the bay of light
+    Rm, Hm = 16.0, R_PL + 8
+
+    def arch(r, hc):
+        return ground(r, -r, 4)[1:-1] + [q(G, -r)] + [polar_xy(hc + r * math.cos(math.radians(t)), deg, -r * math.sin(math.radians(t))) for t in range(90, -91, -9)] + [q(G, r)]
+
+    pnt.poly(arch(Rm + 3.5, Hm), lambda xx, yy: ramp_c('gold', 0.85 + 0 * xx) * face)
+    n = 7
+    for k in range(n):
+        f = k / n
+        r = Rm * (1 - 0.8 * f)
+        hc = Hm - 6 * f
+        glow = 0.15 + 1.0 * f ** 1.5
+        dark = k % 2 == 0
+        c = np.array([1.0, 0.72, 0.38]) * glow if dark else np.array([0.18, 0.1, 0.06]) + np.array([1.0, 0.8, 0.5]) * glow * 0.6
+        c = c * LK['gate_fill'] * (np.array([1.0, 0.7, 0.5]) if LK['pirate'] else 1.0)
+        pnt.poly(arch(r, hc), lambda xx, yy, c=c: c + 0 * xx[..., None], lambda xx, yy, c=c: c * 0.9 + 0 * xx[..., None])
+    core = q(Hm - 6, 0)
+    gf = LK['gate_fill']
+    pnt.disc(*core, 3.6, lambda xx, yy, qq: np.array([1.0, 0.97, 0.88]) * (1.4 - 0.4 * qq[..., None]) * gf, lambda xx, yy, qq: np.array([1.0, 0.95, 0.8]) * (1.4 - 0.4 * qq[..., None]) * gf)
+    bulbs = [polar_xy(Hm + (Rm + 1.8) * math.cos(math.radians(t)), deg, -(Rm + 1.8) * math.sin(math.radians(t))) for t in range(-90, 91, 10)]
+    bulbs = [q(G + 3 + 4 * k, -(Rm + 1.8)) for k in range(4)] + bulbs + [q(Hm - 1 - 4 * k, Rm + 1.8) for k in range(4)]
+    for b in bulbs:
+        it.lights.append((b[0], b[1], 'bulb'))
+    roof = [q(R_PL + 14, -44), q(R_PL + 14, -31), q(R_PL + 27, -31), q(R_PL + 33, -24), q(R_PL + 33, 24), q(R_PL + 27, 31), q(R_PL + 14, 31), q(R_PL + 14, 44)]
+    it.neon.piece([(roof, 1.7, col_neon)], BUZZ, deg * 0.37, tag='gate%d:roof' % deg)
+    it.neon.piece([(crown + [crown[0]], 1.4, N_GOLD)], BLINK, 0, 0.7, tag='gate%d:crown' % deg)
+    it.lights.append((*q(R_PL + 41, 0), 'nav'))
+    # the lanes: ships come in from out past the frame edge into the mouth, and leave beside them
+    it.lanes.append(([q(R_PL + 150, -10), q(R_PL + 80, -6), q(Hm, -2.5)], 'in'))
+    it.lanes.append(([q(Hm, 2.5), q(R_PL + 80, 7), q(R_PL + 150, 12)], 'out'))
+
+
+def heart_pts(n=36):
+    pts = []
+    for k in range(n + 1):
+        t = 2 * math.pi * k / n
+        x = 16 * math.sin(t) ** 3 / 17
+        y = -(13 * math.cos(t) - 5 * math.cos(2 * t) - 2 * math.cos(3 * t) - math.cos(4 * t)) / 17
+        pts.append((x, y + 0.1))
+    return pts
+
+
+def suit_tubes(kind, s):
+    if kind == 0:   # spade
+        h = [(x * s, -y * s - 0.15 * s) for (x, y) in heart_pts()]
+        return [h, [(0, 0.35 * s), (-0.3 * s, 0.95 * s), (0.3 * s, 0.95 * s), (0, 0.35 * s)]], N_WHITE
+    if kind == 1:   # heart
+        return [[(x * s, y * s) for (x, y) in heart_pts()]], N_RED
+    if kind == 2:   # diamond
+        return [[(0, -s), (0.68 * s, 0), (0, s), (-0.68 * s, 0), (0, -s)]], N_RED
+    lobes = [arc_pts(cx * s, cy * s, 0.32 * s, 0.32 * s, 0, 360, 20) for (cx, cy) in ((0, -0.42), (-0.4, 0.1), (0.4, 0.1))]
+    return lobes + [[(0, 0.2 * s), (-0.25 * s, 0.95 * s), (0.25 * s, 0.95 * s), (0, 0.2 * s)]], N_WHITE
+
+
+def rooftop_signs(it):
+    """The neon lying flat on the pads, projected (tangent plane at the pad top -> frame px)."""
+    for (name, sx, sy, rot, (ha, hb), hp) in SIGNS:
+        v = SIGN_V[name]
+        o, ex, ey = affine_at(v, hp)
+        M2 = np.stack([-ex, -ey], -1)
+        cr, sr = math.cos(math.radians(rot)), math.sin(math.radians(rot))
+
+        def P(u, w):
+            a = u * cr - w * sr
+            b = u * sr + w * cr
+            p = o + M2 @ np.array([a, b])
+            return (float(p[0]), float(p[1]))
+
+        def T(strokes):
+            return [[P(u, w) for (u, w) in st] for st in strokes]
+
+        if name == 'jackpot':
+            lw, lh, gap = 8.6, 12.0, 2.3
+            x0 = -(7 * lw + 6 * gap) / 2
+            for k, ch in enumerate('JACKPOT'):
+                g = T(glyph(ch, x0 + k * (lw + gap), -lh / 2 - 1.0, lw, lh))
+                if ch == 'K':
+                    it.neon.piece([(st, 1.7, N_GOLD) for st in g], DEAD, 11.0, tag='jackpot:' + ch)
+                else:
+                    it.neon.piece([(st, 1.7, N_GOLD) for st in g], SEQ, k, 7, 0.16, tag='jackpot:%d%s' % (k, ch))
+            it.neon.piece([(T([[(-ha + 1, hb - 1.5), (ha - 1, hb - 1.5)]])[0], 1.3, N_RED), (T([[(-ha + 1, -hb + 1.2), (ha - 1, -hb + 1.2)]])[0], 1.3, N_RED)], BUZZ, 7.0, tag='jackpot:rule')
+        elif name.startswith('suit'):
+            k = int(name[-1])
+            tubes, c = suit_tubes(k, 6.6)
+            it.neon.piece([(st, 1.5, c) for st in T(tubes)], SEQ, k, 4, 0.55, tag='suit:%d' % k)
+        elif name == 'seven':
+            g = glyph('7', -9, -13, 18, 26)
+            it.neon.piece([(st, 2.6, N_RED) for st in T(g)], BUZZ, 13.0, tag='seven:red')
+            out = [[(-11.5, -15.5), (11.5, -15.5), (1.5, 15.0), (-5.5, 15.0), (2.5, -9.5), (-11.5, -9.5), (-11.5, -15.5)]]
+            it.neon.piece([(st, 1.2, N_GOLD) for st in T(out)], BLINK, 0, 0.6, tag='seven:gold')
+        elif name == 'dice':
+            for d, cx in enumerate((-7.5, 7.5)):
+                sq = [[(cx - 6, -6), (cx + 6, -6), (cx + 6, 6), (cx - 6, 6), (cx - 6, -6)]]
+                it.neon.piece([(st, 1.4, N_WHITE) for st in T(sq)], BUZZ, 17.0 + d, tag='dice:%d' % d)
+                pips = [(0, 0)] if d == 0 else [(-3, -3), (3, 3), (-3, 3), (3, -3), (0, 0)]
+                if d == 0:
+                    pips = [(-3, -3), (0, 0), (3, 3)]
+                dots = [[(cx + px - 0.4, py), (cx + px + 0.4, py)] for (px, py) in pips]
+                it.neon.piece([(st, 1.9, N_RED) for st in T(dots)], BLINK, d, 0.8, tag='pips:%d' % d)
+        elif name == 'cherry':
+            ch = [arc_pts(-5, 5, 5.2, 5.2, 0, 360, 24), arc_pts(5.5, 6.5, 5.2, 5.2, 0, 360, 24)]
+            st_ = [[(-4, 0), (-1, -6), (3, -11)], [(5, 1.5), (4, -5), (3, -11)], [(3, -11), (8, -12), (11, -9), (6, -8.5), (3, -11)]]
+            it.neon.piece([(st, 1.8, N_RED) for st in T(ch)], BUZZ, 23.0, tag='cherry:red')
+            it.neon.piece([(st, 1.4, N_GREEN) for st in T(st_)], DEAD, 29.0, tag='cherry:green')
+        elif name == 'arrow':
+            for k in range(3):
+                x = -11 + k * 9
+                chev = [[(x, -5.5), (x + 6, 0), (x, 5.5)]]
+                it.neon.piece([(st, 2.0, N_CYAN) for st in T(chev)], SEQ, k, 3, 0.24, tag='arrow:%d' % k)
+
+
+def build_items(pnt):
+    it = Items()
+    casino_sign(pnt, it, 332.0, 125.0)
+    starburst(pnt, it, 208)
+    gate(pnt, it, 152, N_PINK)
+    gate(pnt, it, -28, N_CYAN)
+    high_roller(pnt, it, 6)
+    rooftop_signs(it)
+    # the port's lane comes down from beyond the south limb
+    po = FEAT['port']
+    it.lanes.append(([(458, 728), (428, 640), (po[0] + 4, po[1] + 4)], 'in'))
+    it.lanes.append(([(po[0] - 4, po[1] + 6), (402, 640), (420, 728)], 'out'))
+    return it
+
+
+# ----------------------------------------------------------------------------------------------------------------
+# The turning sprites (the runtime turns them over the frame), the lamps
+# ----------------------------------------------------------------------------------------------------------------
+
+SPR = 2   # sprite px per frame px
+
+
+def rgba_of(col, A):
+    res = np.zeros(A.shape + (4,), np.uint8)
+    res[..., :3] = np.round(np.clip(col, 0, 1) * 255)
+    res[..., 3] = np.round(np.clip(A, 0, 1) * 255)
+    return res
+
+
+def rotor_sprite(name):
+    """The rotor of a roulette arena, top down (its own tangent plane: x west, y south), SPR px per frame px."""
+    r = FEAT[name][2][0]
+    m = floodlit(FEAT_V[name])
+    S = int(math.ceil(2 * r * SPR)) + 4
+    yy, xx = np.mgrid[0:S, 0:S].astype(np.float64) + 0.5
+    a, b = (xx - S / 2) / SPR, (yy - S / 2) / SPR
+    alb, em, A = rotor(a, b, r, GLOWING[name], aa=SPR)
+    lip = np.clip(1 - (r - np.hypot(a, b)) / 2.5, 0, 1)
+    col = alb * m * (1 - 0.45 * lip)[..., None] + em
+    return rgba_of(col, A)
+
+
+def wheel_sprite(spec, missing=()):
+    """The observation wheel's turning part, face on: 16 bold spokes from the hub to the rim, a thin tension spoke
+    either side of each, 28 lit cabins on the rim (`missing`: cabin indexes gone, the den's)."""
+    r = spec['r']
+    face = spec['face']
+    S = int(math.ceil(2 * (r + 8) * SPR)) + 4
+    yy, xx = np.mgrid[0:S, 0:S].astype(np.float64) + 0.5
+    a, b = (xx - S / 2) / SPR, (yy - S / 2) / SPR
+    A = np.zeros(a.shape)
+    col = np.zeros(a.shape + (3,))
+    steel = ramp_c('white', 0.75) * face
+
+    def line(p0, p1, hw, c):
+        nonlocal col, A
+        d = seg_dist(a, b, [p0, p1])
+        m = np.clip((hw - d) * SPR + 0.5, 0, 1)
+        col = col * (1 - m[..., None]) + c * m[..., None]
+        A = np.maximum(A, m)
+
+    # the spokes are lit along their length (LED strips), so they read over the city at night; the den's are dead
+    led = np.array([0.08, 0.06, 0.05]) + steel * 0.5 if LK['pirate'] else np.array([1.0, 0.9, 0.74])
+    for k in range(16):
+        t = 2 * math.pi * k / 16
+        line((8.5 * math.cos(t), 8.5 * math.sin(t)), ((r - 1.5) * math.cos(t), (r - 1.5) * math.sin(t)), 1.25, np.array([0.03, 0.03, 0.035]))
+        line((8.5 * math.cos(t), 8.5 * math.sin(t)), ((r - 1.5) * math.cos(t), (r - 1.5) * math.sin(t)), 0.62, led)
+        for off in (-0.16, 0.16):
+            line((8.5 * math.cos(t + off), 8.5 * math.sin(t + off)), ((r - 1.5) * math.cos(t - off * 0.35), (r - 1.5) * math.sin(t - off * 0.35)), 0.3, steel * 0.8)
+    ncab = 28
+    tints = [np.array(N_GOLD), np.array(N_PINK), np.array(N_CYAN), np.array(N_WHITE)]
+    for k in range(ncab):
+        if k in missing:
+            continue
+        t = 2 * math.pi * (k + 0.5) / ncab
+        cx, cy = (r + 4.0) * math.cos(t), (r + 4.0) * math.sin(t)
+        ca, sa = math.cos(t), math.sin(t)
+        u = (a - cx) * ca + (b - cy) * sa
+        w = -(a - cx) * sa + (b - cy) * ca
+        q = np.hypot(u / 2.4, w / 1.9)
+        m = np.clip((1 - q) * 2.0 * SPR + 0.5, 0, 1)
+        glass = q < 0.62
+        lit = tints[k % 4] * 0.85 + 0.15
+        if LK['pirate']:
+            lit = np.array([0.06, 0.05, 0.04]) if k % 5 else np.array([0.7, 0.35, 0.12])   # dark cabins, one lamp left in a few
+        c = np.where(glass[..., None], lit, ramp_c('white', 0.75) * face)
+        col = col * (1 - m[..., None]) + c * m[..., None]
+        A = np.maximum(A, m)
+        # the cabin's hanger to the rim
+        d = seg_dist(a, b, [((r - 0.5) * ca, (r - 0.5) * sa), ((r + 2.0) * ca, (r + 2.0) * sa)])
+        mh = np.clip((0.5 - d) * SPR + 0.5, 0, 1)
+        col = col * (1 - mh[..., None]) + steel * mh[..., None]
+        A = np.maximum(A, mh)
+    return rgba_of(col / np.maximum(A, 1e-6)[..., None] * (A > 0)[..., None], A)
+
+
+def item_lamps(it, cm, buf):
+    """Marquee bulbs round the arenas' colonnades and the port's collar (where they show), red aviation lights on
+    the tallest towers, white strobes on the pyramids' tips."""
+    idb = buf['id']
+
+    def shows(x, y, ids):
+        i, j = int(y * PS), int(x * PS)
+        return 0 <= i < NB and 0 <= j < NB and idb[i, j] in ids
+
+    for name, (_, _, rr) in FEAT.items():
+        R0 = (rr[1] + rr[2]) / 2
+        h = 4.0 if name == 'port' else 3.0
+        o, M2, Mi = feature_affine(name, h)
+        n = int(2 * math.pi * R0 / 6.0)
+        for k in range(n):
+            t = 2 * math.pi * k / n
+            p = o + M2 @ np.array([R0 * math.cos(t), R0 * math.sin(t)])
+            if shows(p[0], p[1], (ST_PLAZA,)):
+                it.lights.append((float(p[0]), float(p[1]), 'gold'))
+    navs = []
+    for lid, l in enumerate(cm.lots):
+        topf = l['top'] / PS
+        if topf < 12.5 and l['kind'] != 'pyramid':
+            continue
+        v = dir_of(l['lo'], l['la'])
+        if v[2] < 0.08:
+            continue
+        p = C0 + v[:2] * (R_PL + topf)
+        if shows(p[0], p[1], (lid,)):
+            navs.append((float(p[0]), float(p[1]), 'white' if l['kind'] == 'pyramid' else 'nav'))
+    rng = np.random.default_rng(5)
+    if len(navs) > 48:
+        navs = [navs[i] for i in sorted(rng.choice(len(navs), 48, replace=False))]
+    it.lights += navs
+
+
+# ----------------------------------------------------------------------------------------------------------------
+# The runtime, simulated (the same patterns threatArt.ts runs): neon behaviours, the wheels, the ball, the lanes
+# ----------------------------------------------------------------------------------------------------------------
+
+
+
+LANE_C = {'in': (1.0, 0.93, 0.78), 'out': (1.0, 0.2, 0.12)}   # headlights in, tail lights out
+LANE_NEAR = R_PL + 14.0    # the lanes are full bright within this many frame px of the centre ...
+LANE_FAR = R_PL + 105.0    # ... and gone past this (threatArt.ts fades the ships the same way)
+
+
+def lane_fade(rho):
+    """A lane's brightness at `rho` frame px from the casino's centre: full near the planet, nothing far out."""
+    return np.clip((LANE_FAR - rho) / (LANE_FAR - LANE_NEAR), 0, 1) ** 1.3
+
+
+def lane_glow(pnt, pts, kind):
+    """A faint stream of light along a traffic lane (the ships' wake), fading out with the distance from the centre."""
+    c = np.array(LANE_C[kind])
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    sl, xx, yy = pnt.region(min(xs) - 4, min(ys) - 4, max(xs) + 4, max(ys) + 4)
+    d = seg_dist(xx, yy, pts)
+    m = np.exp(-(d / 1.0) ** 2) * 0.16 * LK['lane'][2] * lane_fade(np.hypot(xx - C0, yy - C0)) * (1 - pnt.A[sl])
+    pnt.over(sl, m, c * 0.9, c * 0.9)
+
+
+
+# ----------------------------------------------------------------------------------------------------------------
+# The whole casino: the frame, its neon atlas and turning sprites, the runtime tables
+# ----------------------------------------------------------------------------------------------------------------
+
+def gold_grade(rgb, sigma=5.0, sat=1.3, warm=(1.02, 1.04, 0.8), gain=1.06):
+    """A grade of the frame's broad colour only (a blur of it): richer, warmer, a touch brighter, so from afar the
+    casino reads as a gold blaze; the fine detail (the sparkle of a thousand lights) rides on it untouched."""
+    low = np.stack([fblur(rgb[..., k], sigma) for k in range(3)], -1)
+    high = rgb - low
+    lum = (low @ LUM)[..., None]
+    graded = np.clip((lum + (low - lum) * sat) * np.array(warm) * gain, 0, None)
+    return np.clip(graded + high, 0, 1.5)
+
+
+def pack_atlas(imgs, pad=4):
+    """Shelf-pack RGBA pieces into one square atlas (side a multiple of 8): (atlas, [(x, y)] per piece)."""
+    area = sum((g.shape[0] + pad) * (g.shape[1] + pad) for g in imgs)
+    side = int(math.ceil(math.sqrt(area) * 1.12 / 8)) * 8
+    order = sorted(range(len(imgs)), key=lambda k: (-imgs[k].shape[0], k))
+    while True:
+        pos = [None] * len(imgs)
+        x = y = pad
+        shelf = 0
+        ok = True
+        for k in order:
+            h, w = imgs[k].shape[:2]
+            if x + w + pad > side:
+                x = pad
+                y += shelf + pad
+                shelf = 0
+            if y + h + pad > side or w + 2 * pad > side:
+                ok = False
+                break
+            pos[k] = (x, y)
+            x += w + pad
+            shelf = max(shelf, h)
+        if ok:
+            break
+        side += 16
+    atlas = np.zeros((side, side, 4), np.uint8)
+    for k, g in enumerate(imgs):
+        x, y = pos[k]
+        atlas[y:y + g.shape[0], x:x + g.shape[1]] = g
+    return atlas, pos
 
 
 def build_casino(root):
-    """The Gilded Orbit: a fat gold ring of hotel and casino decks (lit windows by the thousand, pool and garden domes,
-    red lacquer and white enamel), six enclosed promenades to the crown hub (a roulette wheel under glass in a gold
-    collar ringed with marquee bulbs), six docking arms outside; neon along every edge, in two sets."""
-    rng = seeded('casino')
-    gkit = plate_kit(root, rng, 6, GOLD_SRC)
-    c = Canvas(FRAME)
-    segs = []
-    # docking piers (under the ring), between the spokes: a gold deck between two girders, private yachts moored
-    yacht = [stock(root, f, light_col=(0.7, 0.9, 1.0)) for f in ('family14/escort.png', 'family14/explorationship.png', 'family14/frigate.png')]
-    for k in range(6):
-        a = math.radians(30 + 60 * k)
-        na = a + math.pi / 2
-        x0, y0 = polar(R_RING + 26, a)
-        x1, y1 = polar(R_RING + 100, a)
-        for sd in (-1, 1):
-            ox, oy = math.cos(na) * 7 * sd, math.sin(na) * 7 * sd
-            girder(c, x0 + ox, y0 + oy, x1 + ox, y1 + oy, 6, rail=1.5, bay=6, mat='gold', shadow=0.6)
-        ln = math.hypot(x1 - x0, y1 - y0)
-        c.put(box_module(9, ln, seams=5, vents=False), (x0 + x1) / 2, (y0 + y1) / 2, rot=90 - math.degrees(a), mat='white', shadow=0.5, edge=0.8)
-        for j, f in enumerate((0.38, 0.78)):
-            for sd in (-1, 1):
-                x, y = polar(R_RING + 26 + 74 * f, a)
-                ex, ey = x + math.cos(na) * 21 * sd, y + math.sin(na) * 21 * sd
-                girder(c, x, y, x + math.cos(na) * 11 * sd, y + math.sin(na) * 11 * sd, 4.0, rail=1.0, mat='gold', shadow=0.4)
-                yi = (k + j + (sd > 0)) % 3
-                c.put(yacht[yi], ex, ey, scale=0.2 if yi else 0.24, rot=-math.degrees(a) - 90 + (0 if sd > 0 else 180) + 90 * 0, mat='white', nat=0.55, shadow=0.6, edge=0.5)
-                c.light(*polar(R_RING + 26 + 74 * f, a), 'white')
-        c.put(cylinder(12, 12), *polar(R_RING + 102, a), mat='gold', shadow=0.5)
-        c.light(*polar(R_RING + 103, a), 'nav')
-        for q in range(6):
-            c.light(*polar(R_RING + 32 + q * 12, a + 0.0), 'gold')
-        segs.append(('B', 'line', (*polar(R_RING + 28, a), *polar(R_RING + 96, a), 1.2), NEON_B))
-    # the ring of decks
-    W = 2 * math.pi * R_RING
-    H = RING_T * 2
-    st = deck_strip(rng, gkit, W, H, 16, 5, period=12, smooth=0.3, contrast=0.6, mat='gold', smooth_mat='gold', nat=0.2)
-    span = W / 12
-    for wv in (0.17, 0.33, 0.67, 0.83):
-        st.put(window_row(W, 3.6, 2.6, rng, lit=0.85, col=(1.0, 0.85, 0.55)), W / 2, wv * H, mat='red', shadow=0.3, edge=0.6)
-    st.put(box_module(W, 4.0, seams=0, vents=False), W / 2, 2.2, mat='gold', shadow=0.3, edge=1.0)
-    st.put(box_module(W, 4.0, seams=0, vents=False), W / 2, H - 2.2, mat='gold', shadow=0.0, edge=1.0)
-    for p in range(12):
-        x0 = p * span
-        st.put(cylinder(5.0, H, caps=False), x0 + 1, H / 2, mat='gold', shadow=0.55)
-        st.put(pool_dome(19, True), x0 + span * 0.5, H * 0.5, shadow=0.6)
-        for fu in (0.2, 0.8):
-            st.put(pool_dome(11, False, np.random.default_rng(p * 7 + int(fu * 10))), x0 + span * fu, H * 0.5, shadow=0.5)
-        for fu in (0.36, 0.64):
-            st.put(stock(root, 'family10/resortbase.png', light_col=(1.0, 0.8, 0.45)), x0 + span * fu, H * 0.5, scale=0.13, rot=90, mat='gold', nat=0.3, shadow=0.55, edge=0.5)
-    ring = polar_wrap(st.as_piece(), R_RING - RING_T, R_RING + RING_T, shade_k=0.55)
-    c.put(ring, C0, C0, shadow=0.7, edge=1.0)
-    for (R, w) in ((R_RING - RING_T + 1.5, 4.0), (R_RING + RING_T - 1.5, 4.0)):
-        c.put(arc_beam(R, w, ticks=7.0, mat='gold'), C0, C0, shadow=0.4)
-    segs.append(('A', 'arc', (R_RING + RING_T + 2.2, 0, 2 * math.pi, 1.6, 9.0), NEON_A))
-    segs.append(('B', 'arc', (R_RING + RING_T + 2.2, 0.035, 2 * math.pi + 0.035, 1.6, 9.0), NEON_B))
-    segs.append(('B', 'arc', (R_RING - RING_T - 2.2, 0, 2 * math.pi, 1.6, 9.0), NEON_A))
-    segs.append(('A', 'arc', (R_RING - RING_T - 2.2, 0.04, 2 * math.pi + 0.04, 1.6, 9.0), NEON_B))
-    # the promenades: enclosed tubes on gold girders, hub to ring
-    for k in range(6):
-        a = math.radians(60 * k)
-        girder(c, *polar(78, a), *polar(R_RING - RING_T + 4, a), 24, rail=2.4, bay=12, mat='gold', shadow=0.65)
-        x0, y0 = polar(80, a)
-        x1, y1 = polar(R_RING - RING_T + 2, a)
-        tube = cylinder(12, math.hypot(x1 - x0, y1 - y0), caps=False, bands=(0.2, 0.4, 0.6, 0.8))
-        c.put(tube, (x0 + x1) / 2, (y0 + y1) / 2, rot=90 - math.degrees(a), mat='white', shadow=0.6)
-        ln = math.hypot(x1 - x0, y1 - y0)
-        c.put(window_row(ln, 3.0, 2.4, rng, lit=0.9), (x0 + x1) / 2, (y0 + y1) / 2, rot=-math.degrees(a), mat='dark', shadow=0.0)
-        na = a + math.pi / 2
-        for sd in (-1, 1):
-            ox, oy = math.cos(na) * 9 * sd, math.sin(na) * 9 * sd
-            segs.append(('A' if sd > 0 else 'B', 'line', (x0 + ox, y0 + oy, x1 + ox, y1 + oy, 1.3), NEON_G if sd > 0 else NEON_A))
-    # the crown hub: a gold collar of decks, the roulette dome on it, marquee bulbs round it
-    W2 = 2 * math.pi * 84
-    st2 = deck_strip(rng, gkit, W2, 26, 12, 2, period=8, smooth=0.25, contrast=0.65, mat='gold', smooth_mat='white', nat=0.2)
-    st2.put(window_row(W2, 3.0, 2.2, rng, lit=0.95), W2 / 2, 13, mat='red', shadow=0.2)
-    c.put(polar_wrap(st2.as_piece(), 70, 98, shade_k=0.5), C0, C0, shadow=0.7, edge=1.0)
-    c.put(arc_beam(98, 5.0, ticks=6.0, mat='gold'), C0, C0, shadow=0.5)
-    c.put(arc_beam(70, 5.0, ticks=6.0, mat='red'), C0, C0, shadow=0.5)
-    c.put(roulette(68, rng), C0, C0, shadow=0.7)
-    c.put(cylinder(20, 20, caps=True), C0, C0, mat='gold', shadow=0.6)
-    c.light(C0, C0, 'white')
-    for k in range(32):
-        c.light(*polar(98, k * 2 * math.pi / 32), 'gold')
-    for k in range(24):
-        c.light(*polar(R_RING + RING_T - 1.5, k * 2 * math.pi / 24 + 0.06), 'gold')
-    segs.append(('A', 'arc', (102, 0, 2 * math.pi, 1.8, 0), NEON_A))
-    segs.append(('B', 'arc', (66, 0, 2 * math.pi, 1.4, 0), NEON_B))
-    # neon in the frame itself (dim, so it reads without the runtime layers too)
-    neon = neon_layers(segs)
-    return c, neon
+    """The Gilded Orbit: a planet that is all casino, always at night (see the header). Returns the frame (RGBA uint8,
+    FRAME px), its lamps (frame px, kind) and the extras: the neon atlas, the two rotor sprites, the observation
+    wheel sprite and the runtime tables (giantworksLights.ts GW_CASINO_*)."""
+    t0 = time.time()
+    cm = build_city(root)
+    if LK['pirate']:
+        decay_city(cm)
+    t1 = time.time()
+    rays, X, Y, zhit = raymarch(cm.H, verbose=False)
+    t2 = time.time()
+    col, A, buf = shade_planet(cm, rays, X, Y, zhit)
+    del rays, X, Y, zhit
+    col = draw_features(col, A, buf)
+    col2, A2 = atmosphere(col, A, buf)
+    pnt = Painter(col2, A2, buf['em'] * A[..., None] / np.maximum(A2, 1e-6)[..., None])
+    it = build_items(pnt)
+    it.neon.bake_glass(pnt)
+    for (pts, kind) in it.lanes:
+        lane_glow(pnt, pts, kind)
+    col2, A2, emb = pnt.result()
+    rgb, a = to_frame(col2, A2)
+    emf = np.stack([down(emb[..., k] * A2, FRAME, FRAME) for k in range(3)], -1)
+    rgb, a = bloom(rgb, a, emf)
+    rgb = gold_grade(rgb, **LK['grade'])
+    res = rgba8(rgb, a)
+    item_lamps(it, cm, buf)
+    if LK['keep']:
+        # the den: most bulbs dead, half the aviation lights out
+        it.lights = [L for n, L in enumerate(it.lights) if zlib.crc32(b'den%d' % n) % 1000 < 1000 * LK['keep'].get(L[2], 1.0)]
+    glows = [it.neon.glow(pc) for pc in it.neon.pieces]
+    atlas, places = pack_atlas([g for g, _ in glows])
+    print('   casino: city %.1f s (%d lots), march %.1f s, the rest %.1f s; %d neon pieces in a %d px atlas' % (
+        t1 - t0, len(cm.lots), t2 - t1, time.time() - t2, len(glows), atlas.shape[0]), flush=True)
+    neon = []
+    for pc, (g, (fx, fy)), (ax, ay) in zip(it.neon.pieces, glows, places):
+        neon.append([ax, ay, g.shape[1], g.shape[0], fx, fy, pc['beh'], *pc['p']])
+    rotors, sprites = [], []
+    for name in ('wheel_main', 'wheel_2'):
+        spin = LK['spin'][name]
+        if spin == 0:
+            continue   # stopped: the frame's wheel is all there is
+        o, M2, Mi = feature_affine(name)
+        rr = FEAT[name][2]
+        rotors.append([len(sprites), o[0], o[1], M2[0, 0], M2[0, 1], M2[1, 0], M2[1, 1], spin, rr[0], rr[1], LK['jerk'].get(name, 0.0)])
+        sprites.append((('rotor-main', 'rotor-night')[name == 'wheel_2'], rotor_sprite(name)))
+    hs = it.sprites['wheel']
+    turning = LK['wheel_spin'] is not None
+    extras = dict(
+        atlas=atlas,
+        rotors=sprites,
+        wheel=wheel_sprite(hs) if turning else None,
+        tables=dict(neon=neon, rotors=rotors, wheel=[hs['centre'][0], hs['centre'][1], LK['wheel_spin']] if turning else None,
+                    lanes=[[0 if kind == 'in' else 1] + [v for p in pts for v in p] for (pts, kind) in it.lanes],
+                    fade=[LANE_NEAR, LANE_FAR], lane=list(LK['lane']), ball=LK['ball']),
+    )
+    return res, it.lights, extras
+
+
+def casino_lights(lights, res):
+    """The casino's lamps that sit on the finished frame (an opaque pixel), as rounded frame px."""
+    out = []
+    H, W = res.shape[:2]
+    for (x, y, k) in lights:
+        xi, yi = int(math.floor(x)), int(math.floor(y))
+        if 0 <= xi < W and 0 <= yi < H and res[yi, xi, 3] > 120:
+            out.append((xi, yi, k))
+    return out
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -1911,6 +3881,15 @@ def finish(c, one_body=True, outline=True, seed_r=12.0, halo=None):
     return res
 
 
+def no_faint(res, below=4):
+    """Clear the faintest pixels (alpha < `below`): a browser reads the PNG through a premultiplied canvas, and a
+    warm glow pixel at alpha 1 or 2 comes back as exactly (255, 255, 0), a light marker (shipArt.ts scanShipMarkers),
+    which the ambient layer would then light as a navigation lamp."""
+    res = res.copy()
+    res[res[..., 3] < below] = 0
+    return res
+
+
 def sanitize(res):
     """No opaque black (shipImageMetrics), no pixel in either marker colour (scanShipMarkers), two registration pixels
     so the crop square is the whole frame."""
@@ -1938,10 +3917,57 @@ def lights_of(c, res, kinds=None):
     return out
 
 
-LIGHT_KINDS = ('nav', 'white', 'work', 'weld', 'run', 'neonA', 'neonB', 'data', 'gold')
+LIGHT_KINDS = ('nav', 'white', 'work', 'weld', 'run', 'neonA', 'neonB', 'data', 'gold', 'bulb')
 
 
-def write_lights(path, table):
+def _num(v, dp=2):
+    if isinstance(v, (float, np.floating)):
+        t = ('%.*f' % (dp, v)).rstrip('0').rstrip('.')
+        return '0' if t in ('-0', '') else t
+    return '%d' % v
+
+
+def _rows(rows, dp=2):
+    return ', '.join('[' + ', '.join(_num(v, dp) for v in r) + ']' for r in rows)
+
+
+def _look_ts(name, t):
+    f = t['files']
+    return ("    '%s': { neonFile: '%s', neon: [%s], rotorFiles: [%s], rotors: [%s], wheelFile: %s, wheel: %s, lanes: [%s], "
+            "laneFade: [%s], lane: [%s], ball: %s }," % (
+                name, f['neon'], _rows(t['neon']), ', '.join("'%s'" % r for r in f['rotors']), _rows(t['rotors'], 4),
+                "'%s'" % f['wheel'] if f['wheel'] else 'null',
+                '[' + ', '.join(_num(v) for v in t['wheel']) + ']' if t['wheel'] is not None else 'null',
+                _rows(t['lanes']), ', '.join(_num(v) for v in t['fade']), ', '.join(_num(v) for v in t['lane']),
+                'true' if t['ball'] else 'false'))
+
+
+def write_lights(path, table, casino=None):
+    """The light table and the casino looks' runtime tables. A partial build (--only) keeps the rows of the frames
+    (and the casino looks) it did not build from the file already there."""
+    old_rows, old_looks = {}, {}
+    if os.path.exists(path):
+        with open(path) as f:
+            old = f.read().split('\n')
+        at = None
+        for ln in old:
+            if ln.startswith('export const GW_LIGHTS'):
+                at = 'lights'
+            elif ln.startswith('export const GW_CASINO_LOOKS'):
+                at = 'looks'
+            elif ln.startswith('};'):
+                at = None
+            elif at == 'lights' and ln.startswith('    '):
+                old_rows[ln.strip().split(':')[0]] = ln
+            elif at == 'looks' and ln.startswith("    '"):
+                old_looks[ln.strip().split("'")[1]] = ln
+    rows = dict(old_rows)
+    for name in table:
+        pts = ', '.join('[%d, %d, %d]' % (x, y, LIGHT_KINDS.index(k)) for (x, y, k) in table[name])
+        rows[name.replace('-', '_')] = '    %s: [%s],' % (name.replace('-', '_'), pts)
+    looks = dict(old_looks)
+    for name, t in (casino or {}).items():
+        looks[name] = _look_ts(name, t)
     lines = [
         '// Generated by scripts/giantworks-art.py — do not edit. Frame px [x, y, kind] of the lights threatArt.ts',
         '// GreatWorkFxLayer lights over each Great Work frame (public/art/giantworks/<frame>.png); kind indexes',
@@ -1951,9 +3977,32 @@ def write_lights(path, table):
         'export const GW_SANCTUARY_GLASS_R = %d;' % int(R_GLASS),
         'export const GW_LIGHTS: Readonly<Record<string, readonly (readonly [number, number, number])[]>> = {',
     ]
-    for name in sorted(table):
-        pts = ', '.join('[%d, %d, %d]' % (x, y, LIGHT_KINDS.index(k)) for (x, y, k) in table[name])
-        lines.append('    %s: [%s],' % (name.replace('-', '_'), pts))
+    lines += [rows[k] for k in sorted(rows)]
+    lines += [
+        '};',
+        '/** The Gilded Orbit\'s runtime layers, one look per frame (the casino; the pirate den). */',
+        'export interface GwCasinoLook {',
+        '    /** The neon atlas (public/art/giantworks/<neonFile>.png) and its pieces: [atlas x, y, w, h, frame x, y (the piece\'s top left), behaviour (0 buzz, 1 dead, 2 seq, 3 blink, 4 bad), p1, p2, p3]. */',
+        '    neonFile: string;',
+        '    neon: readonly (readonly number[])[];',
+        '    /** The roulette rotors that turn: [sprite (rotorFiles index), centre x, y (frame px), m00, m01, m10, m11 (frame px per rotor px: its plane seen on the sphere), spin rad/s, rotor radius, bowl radius, jerk (s; 0 a smooth turn)]. */',
+        '    rotorFiles: readonly string[];',
+        '    rotors: readonly (readonly number[])[];',
+        '    /** The observation wheel turning ([hub x, y (frame px), spin rad/s]), or null (stopped: it is in the frame). */',
+        '    wheelFile: string | null;',
+        '    wheel: readonly number[] | null;',
+        '    /** The ship lanes: [kind (0 in, 1 out), x0, y0, x1, y1, ...] (frame px, the way the ships fly); full bright within laneFade[0] frame px of the centre, gone past laneFade[1]; lane: [frame px between ships, speed frame px/s, brightness]. */',
+        '    lanes: readonly (readonly number[])[];',
+        '    laneFade: readonly [number, number];',
+        '    lane: readonly [number, number, number];',
+        '    /** A roulette ball runs on the turning rotors. */',
+        '    ball: boolean;',
+        '}',
+        '/** The casino\'s turning sprites are this many px per frame px. */',
+        'export const GW_CASINO_SPR = %d;' % SPR,
+        'export const GW_CASINO_LOOKS: Readonly<Record<string, GwCasinoLook>> = {',
+    ]
+    lines += [looks[k] for k in sorted(looks)]
     lines.append('};')
     with open(path, 'w') as f:
         f.write('\n'.join(lines) + '\n')
@@ -1967,6 +4016,7 @@ def build_all(root, only):
     import time
     made = {}
     lights = {}
+    tables = {}
     want = lambda n: only is None or n in only
     if any(want('scaffold_%d' % s) for s in range(4)):
         t0 = time.time()
@@ -1982,26 +4032,26 @@ def build_all(root, only):
             res = sanitize(finish(c))
             made[name] = res
             lights[name] = lights_of(c, res)
-    if want('casino'):
+    for look in ('casino', 'casino-pirate'):
+        if not want(look):
+            continue
         t0 = time.time()
-        c, neon = build_casino(root)
-        res = finish(c)
-        # the neon, dim, baked over the frame where it lies on the structure or just beside it
-        for st in ('A', 'B'):
-            nl = neon[st].astype(np.float64) / 255
-            a = nl[..., 3:4] * 0.55
-            rgb = res[..., :3].astype(np.float64) / 255
-            al = res[..., 3:4].astype(np.float64) / 255
-            out_a = a + al * (1 - a)
-            rgb = (nl[..., :3] * a + rgb * al * (1 - a)) / np.maximum(out_a, 1e-4)
-            res[..., :3] = np.round(np.clip(rgb, 0, 1) * 255)
-            res[..., 3:4] = np.round(np.clip(out_a, 0, 1) * 255)
-        res = sanitize(res)
-        made['casino'] = res
-        lights['casino'] = lights_of(c, res)
-        made['casino-neon-a'] = neon['A']
-        made['casino-neon-b'] = neon['B']
-        print('casino', round(time.time() - t0, 1), 's', flush=True)
+        set_look(look)
+        res, lts, extra = build_casino(root)
+        res = sanitize(no_faint(res))
+        made[look] = res
+        lights[look] = casino_lights(lts, res)
+        made[look + '-neon'] = no_faint(extra['atlas'])
+        files = dict(neon=look + '-neon', rotors=[], wheel=None)
+        for (nm, img) in extra['rotors']:
+            made[look + '-' + nm] = no_faint(img)
+            files['rotors'].append(look + '-' + nm)
+        if extra['wheel'] is not None:
+            made[look + '-wheel'] = no_faint(extra['wheel'])
+            files['wheel'] = look + '-wheel'
+        tables[look] = dict(extra['tables'], files=files)
+        set_look('casino')
+        print(look, round(time.time() - t0, 1), 's', flush=True)
     for name, fn, frame in (('ultramind', build_ultramind, None), ('ultramind-shell', build_ultramind_shell, None), ('ultramind-node', build_ultramind_node, None)):
         if not want(name):
             continue
@@ -2030,7 +4080,7 @@ def build_all(root, only):
         made['sanctuary-front'] = front
         lights['sanctuary'] += [(int(round(x)), int(round(y)), k) for (x, y, k) in f.lights]
         print('sanctuary', round(time.time() - t0, 1), 's', flush=True)
-    return made, lights
+    return made, lights, tables
 
 
 def main():
@@ -2042,7 +4092,7 @@ def main():
     ap.add_argument('--only', default=None)
     args = ap.parse_args()
     only = None if args.only is None else set(args.only.split(','))
-    made, lights = build_all(args.dwu, only)
+    made, lights, tables = build_all(args.dwu, only)
     os.makedirs(args.out, exist_ok=True)
     for name, res in made.items():
         if name not in lights:  # an overlay: no registration pixels, but no opaque black nor marker colours either
@@ -2052,8 +4102,8 @@ def main():
             res[m, 2] = np.where(res[m, 2] > 0, res[m, 2] - 1, 1)
         Image.fromarray(res, 'RGBA').save(os.path.join(args.out, name + '.png'), optimize=True)
         print(name, res.shape[1], 'x', res.shape[0], 'lights', len(lights.get(name, [])))
-    if only is None:
-        write_lights(args.lights, lights)
+    if args.lights:
+        write_lights(args.lights, lights, tables)
     if args.preview:
         preview(args.preview, made, lights)
 
@@ -2067,7 +4117,7 @@ def preview(out_dir, made, lights):
         bg.alpha_composite(im)
         d = ImageDraw.Draw(bg)
         cols = {'nav': (255, 40, 30), 'white': (255, 255, 255), 'work': (255, 200, 120), 'weld': (180, 220, 255), 'run': (120, 200, 255),
-                'neonA': (255, 60, 220), 'neonB': (60, 230, 255), 'data': (80, 240, 255), 'gold': (255, 210, 90)}
+                'neonA': (255, 60, 220), 'neonB': (60, 230, 255), 'data': (80, 240, 255), 'gold': (255, 210, 90), 'bulb': (255, 236, 170)}
         for (x, y, k) in lights.get(name, []):
             d.ellipse((x - 2, y - 2, x + 2, y + 2), outline=cols[k])
         bg.save(os.path.join(out_dir, name + '.png'))
