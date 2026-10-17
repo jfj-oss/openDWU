@@ -2055,17 +2055,33 @@ describe('giantworks', () => {
         expect(spawnableThreats(g).some((t) => t.key === 'giantworks:casino')).toBe(true); // the Game Editor entry
     }, 900000);
 
-    it('casino: the twist is rolled once at completion from the add-on own stream, the reveal a year or three later', () => {
+    it('casino: it opens honest; the dice are rolled 3-6 years later from the add-on own stream, and half the time smugglers take it over', () => {
         const yes = casinoOpen({ gwCasinoFrontPct: 100 }, -1);
-        expect(yes.rec.front).toBe(true);
+        expect(yes.rec.front).toBe(false); // nothing is decided at opening
+        expect(yes.rec.turned).toBe(false);
         const dt = (yes.rec.revealAt - yes.w.completeDate!) / YEAR_LENGTH;
-        expect(dt).toBeGreaterThanOrEqual(1);
-        expect(dt).toBeLessThanOrEqual(3);
-        expect(casinoOpen({ gwCasinoFrontPct: 0 }, -1).rec.front).toBe(false);
+        expect(dt).toBeGreaterThanOrEqual(3);
+        expect(dt).toBeLessThanOrEqual(6);
+        giantworksPeriodic(yes.g); // not due yet
+        expect(yes.rec.turned).toBe(false);
+        expect(yes.rec.phase).toBe('open');
+        yes.rec.revealAt = 0; // due
+        giantworksPeriodic(yes.g);
+        expect(yes.rec.turned).toBe(true);
+        expect(yes.rec.front).toBe(true);
+        expect(yes.rec.phase).toBe('revealed');
+        const no = casinoOpen({ gwCasinoFrontPct: 0 }, -1);
+        no.rec.revealAt = 0;
+        giantworksPeriodic(no.g);
+        expect(no.rec.turned).toBe(true);
+        expect(no.rec.front).toBe(false);
+        expect(no.rec.phase).toBe('open');
+        giantworksPeriodic(no.g); // rolled once: an honest casino stays honest
+        expect(no.rec.phase).toBe('open');
         // The same seed and work give the same roll and date (it never draws galaxy.rnd).
-        const a = casinoOpen({ gwCasinoFrontPct: 40 }, -1);
-        const b = casinoOpen({ gwCasinoFrontPct: 40 }, -1);
-        expect(b.rec.front).toBe(a.rec.front);
+        const a = casinoOpen({ gwCasinoFrontPct: 50 }, -1);
+        const b = casinoOpen({ gwCasinoFrontPct: 50 }, -1);
+        expect(b.rec.turnRoll).toBe(a.rec.turnRoll);
         expect(b.rec.revealAt - b.w.completeDate!).toBeCloseTo(a.rec.revealAt - a.w.completeDate!, 6);
     }, 1800000);
 
@@ -2166,7 +2182,7 @@ describe('giantworks', () => {
         // Hostile, no benefit, a crisis the other empires may help against, a pirate slot of its own, the front's friends spared.
         expect(greatWorkIsHostile(w)).toBe(true);
         expect(rec.benefit).toBe(0);
-        expect(w.base!.name).toMatch(/front/);
+        expect(w.base!.name).toMatch(/smugglers' den/);
         expect(casinoLocalBenefit(g, e.capital!, 99)).toBe(0);
         expect(activeCrises(g).some((c) => c.entry.key === CASINO_KEY && c.faction === f)).toBe(true);
         expect(scenarioQuery(g, 'pirateFactionCount', 3, {})).toBe(4);
@@ -2192,24 +2208,6 @@ describe('giantworks', () => {
         expect(reveal(g, w, rec, null)).toBe(false);
     }, 1800000);
 
-    it('casino: a successful Deep Cover mission against the Compact finds the front out early; other missions and honest casinos are unaffected', () => {
-        const { g, w, rec, e } = casinoOpen({ gwCasinoFrontPct: 100, gwCasinoDeepCoverPct: 100 });
-        const compact = compactFaction(g)!;
-        const spy = actors(g)[1];
-        scenarioEmit(g, 'intelMissionCompleted', { empire: spy, mission: { type: IntelligenceMissionType.StealTechData, targetEmpire: compact }, outcome: null });
-        scenarioEmit(g, 'intelMissionCompleted', { empire: spy, mission: { type: IntelligenceMissionType.DeepCover, targetEmpire: actors(g)[2] }, outcome: null });
-        expect(rec.phase).toBe('open');
-        scenarioEmit(g, 'intelMissionCompleted', { empire: spy, mission: { type: IntelligenceMissionType.DeepCover, targetEmpire: compact }, outcome: null });
-        expect(rec.phase).toBe('revealed');
-        expect(rec.exposedBy).toBe(spy);
-        expect(rec.revealAt).toBeGreaterThan(galaxyStarDate(g)); // well before the planned date
-        expect(greatWorkIsHostile(w)).toBe(true);
-        void e;
-        const honest = casinoOpen({ gwCasinoFrontPct: 0, gwCasinoDeepCoverPct: 100 });
-        scenarioEmit(honest.g, 'intelMissionCompleted', { empire: actors(honest.g)[1], mission: { type: IntelligenceMissionType.DeepCover, targetEmpire: compactFaction(honest.g) }, outcome: null });
-        expect(honest.rec.phase).toBe('open');
-        expect(honest.rec.faction).toBeNull();
-    }, 1800000);
 
     it('casino: the smugglers plant stock criminal networks that cut the colonies income; the purge (all three bases gone) breaks the faction, closes the casino for renovation and reopens it at 80%', () => {
         const { g, w, rec, e } = casinoOpen({ gwCasinoFrontPct: 100 });

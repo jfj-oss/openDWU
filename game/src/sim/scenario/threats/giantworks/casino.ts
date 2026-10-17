@@ -8,9 +8,9 @@
 //              That empire's colonies within gwCasinoHappinessSectors are happier (query empireApprovalRating) and draw
 //              tourists (colonyScenicFactor: the stock tourism destinations); those within gwCasinoImmigrationSectors draw
 //              immigrants (query colonyMigrationFactor: the stock migration destinations).
-//   The twist - with gwCasinoFrontPct (40 %) the resort is a front for a huge smuggling empire, rolled at completion from the
-//              add-on's own random stream. It surfaces gwCasinoRevealMinYears..MaxYears after completion, sooner when an
-//              agent's DeepCover mission against the Compact succeeds (gwCasinoDeepCoverPct): a new pirate faction (the stock
+//   The twist - the resort opens honest. gwCasinoRevealMinYears..MaxYears (3-6) after it opens the dice are rolled (the
+//              add-on's own random stream): with gwCasinoFrontPct (50 %) a smuggling empire takes it over then and there:
+//              a new pirate faction (the stock
 //              createEmpireMidGame pirate, its designs at the best tech level the empires have reached) fortifies the system
 //              with THREE huge pirate bases (the super-pirate base design) guarded by a fleet of high-tier warships; the
 //              resort's income and its colonies' bonuses stop, the casino counts as hostile (destroying or seizing it is no
@@ -44,7 +44,6 @@ import { checkRemoveFacilityTracking, facilitiesCountCompletedByType, queueFacil
 import { PlanetaryFacilityType } from '../../../researchSystem';
 import { generateDesignFromSpec } from '../../../designGeneration';
 import { galaxyDesignSpecificationBySubRole } from '../../../gameStartTail';
-import { IntelligenceMissionType } from '../../../espionage';
 import { isObjectVisibleToThisEmpire } from '../../../independentTraders';
 import { addResortIncome } from '../../../treasury';
 import { annualTaxRevenue } from '../../../forceStructure';
@@ -63,7 +62,7 @@ import { empireTechLevel, maxDesignTechLevel, raiseFactionTech } from '../robotM
 import { isActor } from './actions';
 import { compactFaction, greatWorkBeneficiary, greatWorkPay, greatWorkShares, greatWorks, kindName, markGreatWorkHostile, registerGreatWork, registerHostileWonderCrisis, type GreatWorkRecord } from './framework';
 import type { GreatWorkSite } from './types';
-import { GW_FLAG, PERIOD_DAYS, TAG, isCompact, logGw, nextRandom, ordinaryEmpires, ownRandom } from './state';
+import { GW_FLAG, PERIOD_DAYS, TAG, isCompact, logGw, ordinaryEmpires, ownRandom } from './state';
 
 export const CASINO_ID = 'casino';
 export const CASINO_KEY = 'giantworksCasino';
@@ -73,10 +72,9 @@ export const CASINO_KEY = 'giantworksCasino';
 // ---------------------------------------------------------------------------------------------------------------
 
 const DEFAULTS = {
-    gwCasinoFrontPct: 40,
-    gwCasinoRevealMinYears: 1,
-    gwCasinoRevealMaxYears: 3,
-    gwCasinoDeepCoverPct: 60,
+    gwCasinoFrontPct: 50,
+    gwCasinoRevealMinYears: 3,
+    gwCasinoRevealMaxYears: 6,
     gwCasinoIncomePct: 50,
     gwCasinoHappiness: 8,
     gwCasinoHappinessSectors: 2,
@@ -137,7 +135,7 @@ const FLEET_CYCLE: readonly BuiltObjectSubRole[] = [
 
 /**
  * open       - the resort is running (a front not yet found out, or an honest casino) at the full benefit;
- * revealed   - the smugglers' front is out: the pirate faction holds the system; no benefit;
+ * revealed   - smugglers took it over: the pirate faction holds the system; no benefit;
  * renovation - the front is broken; closed for gwCasinoRenovationDays;
  * clean      - reopened after a purge, at gwCasinoCleanPct of the benefit;
  * closed     - the casino was destroyed (the front, if it never surfaced, with it).
@@ -148,11 +146,15 @@ export interface CasinoRec {
     workId: number;
     /** The site's system star (distance base of the benefits). */
     star: Habitat;
-    /** The twist was rolled (a smugglers' front). */
+    /** The smugglers took it over (or will on their next attempt); false while honest and before the roll. */
     front: boolean;
+    /** The roll was made (at revealAt); before it the resort is simply honest. */
+    turned: boolean;
+    /** The pre-drawn roll (0..100), compared with gwCasinoFrontPct when it is made. */
+    turnRoll: number;
     phase: CasinoPhase;
     openedAt: number;
-    /** Star date the front surfaces by itself (front only). */
+    /** Star date of the roll; after a takeover that could not spawn yet, the next attempt. */
     revealAt: number;
     revealedAt: number;
     /** The empire whose agent found the front out (null: it surfaced by itself). */
@@ -301,7 +303,8 @@ function ensureRec(galaxy: Galaxy, site: GreatWorkRecord): CasinoRec {
     let rec = st.sites.find((r) => r.workId === site.id) ?? null;
     if (rec !== null) return rec;
     const now = galaxyStarDate(galaxy);
-    // The twist and the reveal date: the add-on's own stream (a fixed number of draws, whatever the roll).
+    // The roll and its date: the add-on's own stream (a fixed number of draws, whatever the outcome). The roll is only
+    // compared at its date, so nothing is decided while the resort is young.
     const rnd = ownRandom(galaxy, 9100 + site.id);
     const roll = rnd.nextDouble() * 100;
     const minY = Math.max(0, casinoParam(galaxy, 'gwCasinoRevealMinYears'));
@@ -310,7 +313,9 @@ function ensureRec(galaxy: Galaxy, site: GreatWorkRecord): CasinoRec {
     rec = {
         workId: site.id,
         star: site.system.systemStar,
-        front: roll < casinoParam(galaxy, 'gwCasinoFrontPct'),
+        front: false,
+        turned: false,
+        turnRoll: roll,
         phase: 'open',
         openedAt: site.completeDate ?? now,
         revealAt: (site.completeDate ?? now) + years * YEAR_LENGTH,
@@ -348,7 +353,7 @@ function onComplete(galaxy: Galaxy, site: GreatWorkSite): void {
     const rec = ensureRec(galaxy, w);
     rec.beneficiary = greatWorkBeneficiary(galaxy, w);
     rec.benefit = benefitFor(galaxy, rec);
-    logGw(galaxy, galaxyStarDate(galaxy), `casino ${w.id} opens: front ${rec.front ? `yes, reveal due year ${(rec.revealAt / YEAR_LENGTH).toFixed(2)}` : 'no'}`);
+    logGw(galaxy, galaxyStarDate(galaxy), `casino ${w.id} opens: the roll is due year ${(rec.revealAt / YEAR_LENGTH).toFixed(2)}`);
     const b = rec.beneficiary;
     if (b !== null && isHumanEmpire(galaxy, b)) {
         scenarioMessage(galaxy, b, scenarioText(`${TAG} Casino Open Title`), scenarioText(`${TAG} Casino Open`, w.system.systemStar.name), {
@@ -369,6 +374,11 @@ function periodic(galaxy: Galaxy, site: GreatWorkSite): void {
     rec.benefit = benefitFor(galaxy, rec);
     if (rec.phase === 'open' || rec.phase === 'clean') payIncome(galaxy, w, rec);
     else rec.lastPay = now; // closed or hunted: no back pay
+    if (rec.phase === 'open' && !rec.turned && now >= rec.revealAt) {
+        rec.turned = true;
+        rec.front = rec.turnRoll < casinoParam(galaxy, 'gwCasinoFrontPct');
+        logGw(galaxy, now, `casino ${w.id}: the roll ${rec.front ? 'turns it into a smugglers\' den' : 'keeps it honest'}`);
+    }
     if (rec.phase === 'open' && rec.front && now >= rec.revealAt) reveal(galaxy, w, rec, null);
 }
 
@@ -547,9 +557,6 @@ export function reveal(galaxy: Galaxy, site: GreatWorkRecord, rec: CasinoRec, by
     const b = rec.beneficiary;
     if (b !== null && isHumanEmpire(galaxy, b)) {
         scenarioMessage(galaxy, b, scenarioText(`${TAG} Casino Front Title`), scenarioText(`${TAG} Casino Front Income`, name), { type: EmpireMessageType.GeneralBadEvent, subject: site.base ?? site.system.systemStar, popup: false });
-    }
-    if (by !== null && isHumanEmpire(galaxy, by)) {
-        scenarioMessage(galaxy, by, scenarioText(`${TAG} Casino Front Title`), scenarioText(`${TAG} Casino Front Found`, name, where), { type: EmpireMessageType.GeneralWarning, subject: site.base ?? site.system.systemStar, popup: false });
     }
     return true;
 }
@@ -812,21 +819,6 @@ function onKilledBy(galaxy: Galaxy, bo: BuiltObject, destroyer: Empire | null): 
     }
 }
 
-/** A successful DeepCover mission against the Compact (or an independent world) may find the front out early. */
-function onIntelCompleted(galaxy: Galaxy, empire: Empire, mission: unknown): void {
-    const m = mission as { type: number; targetEmpire?: Empire | null };
-    if (m.type !== IntelligenceMissionType.DeepCover) return;
-    const st = peekCasinoState(galaxy);
-    if (st === null || st.sites.length === 0) return;
-    const te = m.targetEmpire ?? null;
-    if (te === null || (!isCompact(galaxy, te) && te !== galaxy.independentEmpire) || !isActor(galaxy, empire)) return;
-    for (const rec of st.sites) {
-        if (rec.phase !== 'open' || !rec.front) continue;
-        const site = recSite(galaxy, rec);
-        if (site === null || site.phase !== 'complete') continue;
-        if (nextRandom(galaxy).nextDouble() * 100 < casinoParam(galaxy, 'gwCasinoDeepCoverPct')) reveal(galaxy, site, rec, empire);
-    }
-}
 
 // ---------------------------------------------------------------------------------------------------------------
 // Registration (module load; imported from scenario/packages.ts)
@@ -850,7 +842,6 @@ registerHostileWonderCrisis({ key: CASINO_KEY, flag: GW_FLAG, label: 'Smugglers'
 
 registerScenarioFramePeriodic({ id: 'giantworks.casino.pirates', flag: GW_FLAG, periodDays: PERIOD_DAYS, order: 21, run: (g) => casinoPiratesPeriodic(g) });
 registerScenarioEvent({ id: 'giantworks.casino.killed', flag: GW_FLAG, event: 'builtObjectKilledBy', run: (g, e) => onKilledBy(g, e.builtObject, e.destroyer) });
-registerScenarioEvent({ id: 'giantworks.casino.intel', flag: GW_FLAG, event: 'intelMissionCompleted', run: (g, e) => onIntelCompleted(g, e.empire, e.mission) });
 
 registerScenarioQuery({
     id: 'giantworks.casino.approval',
@@ -890,5 +881,5 @@ registerScenarioQuery({
     },
 });
 
-export const CASINO_HANDLER_IDS = ['giantworks.casino.pirates', 'giantworks.casino.killed', 'giantworks.casino.intel'] as const;
+export const CASINO_HANDLER_IDS = ['giantworks.casino.pirates', 'giantworks.casino.killed'] as const;
 export const CASINO_QUERY_IDS = ['giantworks.casino.approval', 'giantworks.casino.scenic', 'giantworks.casino.immigration', 'giantworks.casino.slots'] as const;

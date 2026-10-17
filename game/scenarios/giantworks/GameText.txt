@@ -61,16 +61,15 @@ Giantworks Kind ark;The Ark Engine
 Giantworks Complete casino;The Gilded Orbit, the Founders' Compact's great resort and casino, has opened its doors: gold, neon and a river of credits for whoever holds the space it floats in.
 Giantworks Casino Open Title;The Gilded Orbit opens
 Giantworks Casino Open;The Gilded Orbit at {0} is open for business. Its resort income, its tourists and a happier, growing population will reward us while it lasts.
-Giantworks Casino Front Title;The Gilded Orbit is a front
-Giantworks Casino Front News;{0} at {1} is exposed as the front of a smuggling empire. A pirate faction, {2}, has fortified the system with {3} huge bases and a fleet of warships, and criminal networks are taking root on the colonies around it.
-Giantworks Casino Front Income;The smugglers behind {0} are exposed and its income has stopped. The colonies nearby no longer feel its glitter, and the pirates' reach is growing.
-Giantworks Casino Front Found;Our agents among the Compact's people have found the truth about {0} at {1}: it is the front of a smuggling empire. The galaxy will know it shortly.
+Giantworks Casino Front Title;The Gilded Orbit falls to smugglers
+Giantworks Casino Front News;{0} at {1} has been taken over by a smuggling empire. A pirate faction, {2}, has fortified the system with {3} huge bases and a fleet of warships, and criminal networks are taking root on the colonies around it.
+Giantworks Casino Front Income;Smugglers have taken over {0} and its income has stopped. The colonies nearby no longer feel its glitter, and the pirates' reach is growing.
 Giantworks Casino Network Title;A criminal network
 Giantworks Casino Network;A criminal network of the Gilded Syndicate has taken root on {0}. Its corruption eats the colony's income until it is rooted out.
 Giantworks Casino Purged News;The Gilded Syndicate is broken: {2} destroyed the last of its huge bases at {1}. {0} closes for renovation.
 Giantworks Casino Purged News Unknown;The Gilded Syndicate is broken: the last of its huge bases at {1} is gone. {0} closes for renovation.
 Giantworks Casino Reopened News;{0} at {1} has reopened after its renovation, with a clean name and a smaller crowd.
-Giantworks Casino Front Name;{0} (smugglers' front)
+Giantworks Casino Front Name;{0} (smugglers' den)
 Giantworks Casino Renovation Name;{0} (under renovation)
 Giantworks Casino Faction Name;The Gilded Syndicate
 Giantworks Casino Base Name;Syndicate Stronghold {0}
