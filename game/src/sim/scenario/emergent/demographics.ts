@@ -105,6 +105,10 @@ export interface DemographicsState {
      * used to detect the transition into Exterminate/Enslave the "policy" cause needs (colonyTick.ts
      * reviewColonyPopulationPolicy only *applies* an already-set policy; it never emits a scenario event). */
     lastPolicy: Map<Habitat, [number, number]>;
+    /** Year of the last high-tension warning per colony (cadence: once per 5 years). Saved, so a loaded game keeps the cadence. Absent in older saves. */
+    tensionWarned?: Map<Habitat, number>;
+    /** The dominant race each colony was last seen with (for the "dominant race changed" notice). Saved, so a change between the last check and a save is still announced after the load. Absent in older saves. */
+    lastDominant?: Map<Habitat, Race | null>;
 }
 
 const POPULATION_FLOOR = 10_000_000; // spec §2.2 "the port's population floor"
@@ -915,11 +919,11 @@ registerScenarioYearly({
 // §5 Messages that need per-tick tracking (tension warning cadence, dominant-race change)
 // ---------------------------------------------------------------------------------------------------------------
 
-const lastTensionWarningYear = new WeakMap<Habitat, number>();
-const lastKnownDominantRace = new WeakMap<Habitat, Race | null>();
-
-function checkTensionWarnings(galaxy: Galaxy): void {
+export function checkTensionWarnings(galaxy: Galaxy): void {
     const year = gameYear(galaxyStarDate(galaxy));
+    const st = demographicsState(galaxy);
+    const lastTensionWarningYear = (st.tensionWarned ??= new Map());
+    const lastKnownDominantRace = (st.lastDominant ??= new Map());
     for (const empire of galaxy.empires) {
         for (const h of empire.colonies) {
             const t = colonyTension(galaxy, h);

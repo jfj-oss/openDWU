@@ -17,12 +17,14 @@ import { takeOwnershipOfColonyFull } from '../src/sim/combat/ownership';
 import { reviewMigrationTourism } from '../src/sim/civilianAI';
 import { gameYear, scenarioYearlyTick } from '../src/sim/scenario/hooks';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
-import { YEAR_LENGTH } from '../src/sim/galaxyTime';
+import { GalaxyTime, YEAR_LENGTH } from '../src/sim/galaxyTime';
+import { deserializeGame, serializeGame } from '../src/sim/save/gameSave';
 import {
     acceptFlow,
     addChainMigrationDestinations,
     addChainMigrationSources,
     aiAcceptsRefugeeFlow,
+    checkTensionWarnings,
     chooseAsylum,
     colonyTension,
     demographicsApprovalTerm,
@@ -390,6 +392,25 @@ describe('harness: conquest -> cause -> flow -> convoy -> arrival (§7)', () => 
         expect(homeColony.population.dominantRace).toBe(otherRace);
         expect(() => habitatRacialHappiness(g, homeColony)).not.toThrow();
     });
+});
+
+describe('dominant-race / tension-warning bookkeeping is saved', () => {
+    it('a loaded game keeps each colony\'s last dominant race and warning year (they used to be module-level WeakMaps, lost on load)', () => {
+        const { game, gameData } = createScenarioGame(base, { scenario: 'refugees-demographics', flags: { refugees: true } });
+        const g = game.galaxy;
+        checkTensionWarnings(g);
+        const st = demographicsStateOf(g);
+        const capital = game.playerEmpire.capital!;
+        expect(st.lastDominant!.get(capital)).toBe(capital.population.dominantRace);
+        st.tensionWarned!.set(capital, 7);
+        const text = serializeGame(game, new GalaxyTime(), {} as never);
+        const loaded = deserializeGame(text, gameData);
+        const st2 = demographicsStateOf(loaded.game.galaxy);
+        const capital2 = loaded.game.playerEmpire.capital!;
+        expect(st2.lastDominant!.get(capital2)?.name).toBe(capital2.population.dominantRace?.name);
+        expect(st2.tensionWarned!.get(capital2)).toBe(7);
+        expect(st2.lastDominant!.size).toBe(st.lastDominant!.size);
+    }, 600000);
 });
 
 describe('flags off = byte-identical (repin gate)', () => {
