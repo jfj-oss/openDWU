@@ -468,8 +468,10 @@ export function cultEndCheck(galaxy: Galaxy, st: CultState): void {
     }
     arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Contained' });
     st.ended = true;
+    // Only a Cult that rose and was then destroyed ends the game (a Victory). One whose converts were all purged before it ever
+    // rose has only had its own story end: the game carries on (user 2026-10-17).
     const player = galaxy.playerEmpire;
-    if (player !== null) threatGameEnd(galaxy, player, GameEndOutcome.Victory, scenarioText(`${TAG} Victory Title`), CULT_CODE_CONTAINED, true);
+    if (faction !== null && player !== null) threatGameEnd(galaxy, player, GameEndOutcome.Victory, scenarioText(`${TAG} Victory Title`), CULT_CODE_CONTAINED, true);
 }
 
 // ---------------------------------------------------------------------------------------------------------------

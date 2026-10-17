@@ -172,6 +172,31 @@ describe('Cult: forced conversion on seed 1', () => {
     }, 600000);
 });
 
+describe('Cult: contained before it rose', () => {
+    it('purging every convert before the theocracy exists ends only the cult\'s own story: the news is posted, no game end', () => {
+        const { game } = ctGame();
+        const g = game.galaxy;
+        const st = cultState(g);
+        const [empireA] = normalEmpires(g);
+        const governor = generateNewCharacter(g, empireA, CharacterRole.ColonyGovernor, empireA.colonies.find((c) => c !== empireA.capital && c.population.totalAmount > 0) ?? empireA.capital!).character;
+        convert(g, st, governor);
+        expect(st.hadConverts).toBe(true);
+        expect(st.faction).toBeNull();
+        deconvert(g, st, governor);
+        const ends: GameEndEventArgs[] = [];
+        setGameEndHandler(g, (e) => ends.push(e));
+        try {
+            cultEndCheck(g, st);
+            expect(st.ended).toBe(true);
+            expect(st.sentStages['Contained']).toBeDefined();
+            expect(ends).toEqual([]);
+            expect(g.gameIsFinished).toBe(false);
+        } finally {
+            setGameEndHandler(g, null);
+        }
+    }, 600000);
+});
+
 describe('Cult: economy and navy', () => {
     it('rises at the galaxy tech with money, a free port, the host\'s mining stations, a free navy, an income floor and free troops', () => {
         const { game } = ctGame();
