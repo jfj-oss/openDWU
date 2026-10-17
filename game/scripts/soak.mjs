@@ -216,7 +216,7 @@ const RG_ALL = { threatExistChancePct: 100, threatMinYear: 0 };
 const RG_CORE = ['characters-victory', 'reputation', 'internal-security'];
 const rg = (name, o) => ({ set: 'regress', seed: 1, years: 5, wizard: RG_W(), hook: {}, ...o, name });
 const RG_CULT = { cultExistChancePct: 100, cultMinYear: 0, cultSeedYear: 0, cultSpreadPct: 30, cultAmbassadorPct: 30 };
-const RG_HIVE = { hiveExistChancePct: 100, hiveMinYear: 0, hiveThresholdPct: 5, hiveMinNodes: 1 };
+const RG_HIVE = { hiveExistChancePct: 100, hiveMinYear: 0, hiveThresholdPct: 5, hiveMinNodes: 1, hiveRiseChancePct: 100 };
 const RG_PUR = { purifierExistChancePct: 100, purifierMinYear: 0, purifierYear: 1, purifierWakeYears: 1 };
 const RG_GEN = { generationShipsExistChancePct: 100, generationShipsMinYear: 0 };
 const LATE4 = { age: 4, tech: 3 };
@@ -228,6 +228,9 @@ const CONFIGS_REGRESS = [
     ...[1, 2, 3].map((seed) => rg(`rg-cult-noIS-late-s${seed}`, { seed, years: 6, late: LATE4, addons: ['cult', 'characters-victory', 'reputation'], params: { ...RG_ALL, ...RG_CULT } })),
     // The creed is unmasked and purged in the natural settings (counter-intelligence); the forced rising (as the 2026-10-16 spread tuning: one cult-held colony rises, no detection) shows the faction's whole arc.
     ...[1, 2].map((seed) => rg(`rg-cult-force-late-s${seed}`, { seed, years: 8, late: LATE4, addons: ['cult', ...RG_CORE], params: { ...RG_ALL, ...RG_CULT, cultSpreadPct: 8, cultAmbassadorPct: 15, cultSecedeColonies: 1, cultSecedeMinColonies: 1, cultAgentDetectPct: 0 } })),
+    // The Hive at its natural settings (40% of the nodes, 5 nodes at least, a 20% chance each year once met): late starts and a normal one.
+    ...[1, 2, 3].map((seed) => rg(`rg-hive-nat-late-s${seed}`, { seed, years: 9, late: LATE4, addons: ['hive', ...RG_CORE], params: { ...RG_ALL, hiveExistChancePct: 100, hiveMinYear: 0 } })),
+    rg('rg-hive-nat-norm-s1', { seed: 1, years: 15, addons: ['hive', ...RG_CORE], params: { ...RG_ALL, hiveExistChancePct: 100, hiveMinYear: 4 } }),
     ...[1, 2].map((seed) => rg(`rg-hive-late-s${seed}`, { seed, years: 5, late: LATE4, addons: ['hive', ...RG_CORE], params: { ...RG_ALL, ...RG_HIVE } })),
     ...[1, 2].map((seed) => rg(`rg-purifier-late-s${seed}`, { seed, years: 5, late: LATE4, addons: ['purifier', ...RG_CORE], params: { ...RG_ALL, ...RG_PUR } })),
     rg('rg-purifier-late6-s3', { seed: 3, years: 5, late: LATE6, addons: ['purifier', ...RG_CORE, 'refugees-demographics'], params: { ...RG_ALL, ...RG_PUR } }),
