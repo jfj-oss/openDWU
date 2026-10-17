@@ -1622,7 +1622,9 @@ function identifyBestEmpireToAttackEnemy(galaxy: Galaxy, self: Empire, enemyEmpi
         const diplomaticRelation2 = obtainDiplomaticRelation(empire, enemyEmpire);
         const t = diplomaticRelation2.type;
         if (t !== DiplomaticRelationType.NotMet && t !== DiplomaticRelationType.MutualDefensePact && t !== DiplomaticRelationType.Protectorate && t !== DiplomaticRelationType.War && t !== desiredRelationType) {
-            const num3 = galaxy.calculateDistance(empire.capital!.xpos, empire.capital!.ypos, enemyEmpire.capital!.xpos, enemyEmpire.capital!.ypos);
+            // (Mod layer: a threat faction that holds no colony yet has no capital, which the C# NullReferenceException would crash on.)
+            if (empire.capital === null || enemyEmpire.capital === null) continue;
+            const num3 = galaxy.calculateDistance(empire.capital.xpos, empire.capital.ypos, enemyEmpire.capital.xpos, enemyEmpire.capital.ypos);
             const ev = obtainEmpireEvaluation(galaxy, empire, enemyEmpire);
             const num4 = weightedMilitaryPotency(empire) / weightedMilitaryPotency(enemyEmpire);
             const num5 = ev.overallAttitude + 50;

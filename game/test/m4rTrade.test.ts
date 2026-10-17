@@ -7,6 +7,7 @@ import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
 import { DiplomaticRelationType, DiplomaticStrategy, obtainDiplomaticRelation, obtainEmpireEvaluation } from '../src/sim/diplomacy';
 import { processMessages } from '../src/sim/diplomacyTick';
+import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { EmpireMessage, EmpireMessageType, sendEmpireMessage } from '../src/sim/messages';
 import {
     TradeOfferResponse,
@@ -159,5 +160,25 @@ describe('ReviewEnemyHelpEnlistment / ReviewDisputedTerritory (Empire.7.cs 2060 
         };
         const r1 = run();
         expect(run()).toEqual(r1);
+    });
+
+    it('an enemy without a capital (a threat faction that holds no colony yet) is skipped, not a crash', () => {
+        const { galaxy } = cachedTickGame(gameData);
+        meetAll(galaxy);
+        const [a, b, c] = galaxy.empires.filter((e) => e !== galaxy.playerEmpire);
+        obtainDiplomaticRelation(a, b).type = DiplomaticRelationType.War;
+        obtainDiplomaticRelation(b, a).type = DiplomaticRelationType.War;
+        obtainDiplomaticRelation(a, b).strategy = DiplomaticStrategy.Conquer;
+        const capital = b.capital;
+        a.builtObjects = a.builtObjects.filter((x) => x.role !== BuiltObjectRole.Military); // a is the weaker side: it looks for an ally
+        b.capital = null;
+        try {
+            expect(() => reviewEnemyHelpEnlistment(galaxy, a)).not.toThrow();
+            b.capital = capital;
+            c.capital = null; // a would-be ally without a capital
+            expect(() => reviewEnemyHelpEnlistment(galaxy, a)).not.toThrow();
+        } finally {
+            b.capital = capital;
+        }
     });
 });
