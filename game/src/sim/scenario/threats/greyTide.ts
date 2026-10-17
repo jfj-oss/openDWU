@@ -297,8 +297,10 @@ export function greyTideEndCheck(galaxy: Galaxy, st: GreyTideState): void {
     teardownIfDead(galaxy, st.faction);
     arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Contained' });
     st.ended = true;
+    // Only a Tide that declared and was then contained ends the game (a Victory); nests destroyed before it ever declared end only this
+    // threat's story (user 2026-10-17).
     const player = galaxy.playerEmpire;
-    if (player !== null) threatGameEnd(galaxy, player, GameEndOutcome.Victory, scenarioText(`${TAG} Victory Title`), GREY_TIDE_CODE_CONTAINED, true);
+    if (st.declared && player !== null) threatGameEnd(galaxy, player, GameEndOutcome.Victory, scenarioText(`${TAG} Victory Title`), GREY_TIDE_CODE_CONTAINED, true);
 }
 
 // ---------------------------------------------------------------------------------------------------------------

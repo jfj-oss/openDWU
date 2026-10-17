@@ -89,6 +89,29 @@ describe('Grey Tide: year floor (§0 rarity and timing)', () => {
     }, 1200000);
 });
 
+describe('Grey Tide: contained before it declared', () => {
+    it('every nest destroyed before the Tide ever declared ends only its own story: no game end', () => {
+        const { game } = gtGame();
+        const g = game.galaxy;
+        const st = greyTideState(g);
+        forceYear(g);
+        runGameSeconds(game, 125);
+        expect(st.nests.length).toBeGreaterThan(0);
+        expect(st.declared).toBe(false);
+        for (const n of st.nests) destroyNest(n);
+        const ends: GameEndEventArgs[] = [];
+        setGameEndHandler(g, (e) => ends.push(e));
+        try {
+            greyTideEndCheck(g, st);
+            expect(st.ended).toBe(true);
+            expect(st.sentStages['Contained']).toBeDefined();
+            expect(ends).toEqual([]);
+        } finally {
+            setGameEndHandler(g, null);
+        }
+    }, 1200000);
+});
+
 describe('Grey Tide: forced seed on seed 1', () => {
     let game: Game;
     let g: Galaxy;

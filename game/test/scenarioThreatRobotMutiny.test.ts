@@ -369,3 +369,23 @@ describe('Robot Mutiny: seeding, sleepers, risings, empire, beacon', () => {
         setGameEndHandler(g, null);
     }, 600000);
 });
+
+describe('Robot Mutiny: defused before it triggered', () => {
+    it('a troop landing on the source before the trigger ends only this threat\'s story: the news is posted, no game end', () => {
+        const { g } = rmGame();
+        const st = seeded(g);
+        expect(st.triggered).toBe(false);
+        placeGuard(st.source!, g.playerEmpire!, 100);
+        const ends: GameEndEventArgs[] = [];
+        setGameEndHandler(g, (e) => ends.push(e));
+        try {
+            mutinyPeriodic(g);
+            expect(st.sourceTaken).toBe(true);
+            expect(st.ended).toBe(true);
+            expect(st.sentStages['Defused']).toBeDefined();
+            expect(ends).toEqual([]);
+        } finally {
+            setGameEndHandler(g, null);
+        }
+    }, 600000);
+});

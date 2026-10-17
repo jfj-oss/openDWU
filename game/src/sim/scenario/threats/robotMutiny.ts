@@ -993,10 +993,9 @@ function checkDefused(galaxy: Galaxy, st: RobotMutinyState): void {
         return;
     }
     arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Defused', args: [st.source.name] });
-    if (threatsGameEndOn(galaxy)) {
-        st.ended = true;
-        threatGameEnd(galaxy, galaxy.playerEmpire, GameEndOutcome.Victory, scenarioText(`${TAG} Victory Title`), ROBOT_MUTINY_CODE_CONTAINED, true);
-    }
+    // Defused before it ever triggered: only this threat's story ends (no mutiny will come), the game carries on (user 2026-10-17: a threat
+    // contained before it materialised is not a victory condition).
+    st.ended = true;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
