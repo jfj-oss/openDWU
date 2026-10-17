@@ -95,7 +95,7 @@ import { stateDigest } from '../src/sim/tick/digest';
 import { GalaxyTime } from '../src/sim/galaxyTime';
 import { deserializeGame, serializeGame } from '../src/sim/save/gameSave';
 import type { StartGameOptions } from '../src/sim/startGameOptions';
-import { CRISIS_ENTRIES, crisisState, crisisYearly, crisisHelpers, activeCrises } from '../src/sim/scenario/threats/crisis';
+import { CRISIS_ENTRIES, crisisState, crisisYearly, crisisHelpers, activeCrises, agreedHandover } from '../src/sim/scenario/threats/crisis';
 import { crisisJointWar } from '../src/sim/scenario/threats/crisisCouncil';
 import { crowdingTerm, purifierRefugees } from '../src/sim/scenario/threats/purifierRefugees';
 import { reviewCouncil, motionCandidates, councilOf, tallyMotion, proposeMotion } from '../src/sim/scenario/emergent/council';
@@ -1512,6 +1512,32 @@ describe('crisis interactions', () => {
         expect(loss).toBeLessThan(0);
         expect(loss).toBeGreaterThanOrEqual(-3);
         void faction;
+    }, 600000);
+
+    it('harm: killing pirate ships, or being handed a colony by agreement, hurts no one (no harm mark, no hit); a blow to an empire does', () => {
+        const g = woken();
+        const st = purifierState(g);
+        const [a] = normals(g);
+        const cs = crisisState(g);
+        // The faction shoots a pirate ship: nobody ordinary has been hurt.
+        const pirateShip = g.pirateEmpires.map((p) => p.builtObjects.find((b) => !b.hasBeenDestroyed)).find((b) => b !== undefined)!;
+        expect(pirateShip).toBeDefined();
+        scenarioEmit(g, 'builtObjectKilledBy', { builtObject: pirateShip, destroyer: st.faction! });
+        expect(cs.harmed.purifier).toBeUndefined();
+        // A colony ceded to the faction by agreement is not a rising.
+        const colony = a.colonies.find((c) => !c.hasBeenDestroyed)!;
+        agreedHandover(colony, () => scenarioEmit(g, 'colonyOwnerChanged', { colony, from: a, to: st.faction! }));
+        expect(cs.hits).toHaveLength(0);
+        expect(cs.harmed.purifier).toBeUndefined();
+        // The same change of hands against the owner's will is.
+        scenarioEmit(g, 'colonyOwnerChanged', { colony, from: a, to: st.faction! });
+        expect(cs.hits).toHaveLength(1);
+        expect(cs.harmed.purifier).toBe(true);
+        // And so is killing a ship of an ordinary empire.
+        cs.harmed.purifier = false;
+        const ship = a.builtObjects.find((b) => !b.hasBeenDestroyed)!;
+        scenarioEmit(g, 'builtObjectKilledBy', { builtObject: ship, destroyer: st.faction! });
+        expect(cs.harmed.purifier).toBe(true);
     }, 600000);
 
     it('council: tables a joint defence against the loose Purifier and condemns its exposed waker', () => {

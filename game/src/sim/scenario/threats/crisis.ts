@@ -256,9 +256,26 @@ function onWarDeclared(galaxy: Galaxy, entry: CrisisEntry, rival: Empire, victim
     }
 }
 
+/** The colony being handed over by agreement right now (Generation Ships' cession), if any: synchronous bookkeeping, never saved. */
+let agreedColony: Habitat | null = null;
+
+/**
+ * Runs `transfer` (a colony changing hands by agreement, as an empire cedes a world to the Generation Ships): the ownership change
+ * is not a rising, so it opens no hit and marks no harm (nobody takes advantage of a gift, and the crisis has hurt no one).
+ */
+export function agreedHandover<T>(colony: Habitat, transfer: () => T): T {
+    const prev = agreedColony;
+    agreedColony = colony;
+    try {
+        return transfer();
+    } finally {
+        agreedColony = prev;
+    }
+}
+
 function onColonyOwnerChanged(galaxy: Galaxy, entry: CrisisEntry, colony: Habitat, from: Empire | null, to: Empire | null): void {
     const faction = crisisFaction(galaxy, entry);
-    if (faction === null || to !== faction || !isNormal(galaxy, from)) return;
+    if (faction === null || to !== faction || !isNormal(galaxy, from) || colony === agreedColony) return;
     recordHit(galaxy, entry, from, 'rising', colony);
 }
 
@@ -297,7 +314,9 @@ function onKilledBy(galaxy: Galaxy, entry: CrisisEntry, bo: { actualEmpire?: Emp
     const faction = crisisFaction(galaxy, entry);
     if (faction === null) return;
     const owner = ownerOf(bo);
-    if (destroyer === faction && owner !== faction) crisisState(galaxy).harmed[entry.key] = true;
+    // Only a blow to an ordinary empire counts as harm: a faction that has only shot pirates (or independents) has hurt nobody, so the
+    // council does not table it and nobody is marked down for sitting it out.
+    if (destroyer === faction && owner !== faction && isNormal(galaxy, owner)) crisisState(galaxy).harmed[entry.key] = true;
     if (owner === faction && destroyer !== faction && isNormal(galaxy, destroyer)) fightRecord(galaxy, entry, destroyer).kills++;
     else if (destroyer === faction && owner !== faction && isNormal(galaxy, owner)) fightRecord(galaxy, entry, owner).lost++;
 }

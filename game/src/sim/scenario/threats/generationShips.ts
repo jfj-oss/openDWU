@@ -97,6 +97,7 @@ import {
     type SentStages,
     type ThreatKnowledge,
 } from './framework';
+import { agreedHandover } from './crisis';
 
 export const GEN_SHIPS_KEY = 'generationShips';
 export const GEN_SHIPS_FLAG = 'threatGenerationShips';
@@ -877,13 +878,13 @@ function resolveUltimatum(galaxy: Galaxy, d: ScenarioDecision, optionId: string)
         }
         if (sub.empire === owner) {
             faction.capital = null;
-            takeOwnershipOfColonyFull(galaxy, owner, sub, faction, false, true);
+            agreedHandover(sub, () => takeOwnershipOfColonyFull(galaxy, owner, sub, faction, false, true));
         }
         st.settleAt = sub;
         st.outcome = 'substitute';
     } else {
         faction.capital = null;
-        takeOwnershipOfColonyFull(galaxy, owner, st.target!, faction, false, true);
+        agreedHandover(st.target!, () => takeOwnershipOfColonyFull(galaxy, owner, st.target!, faction, false, true));
         st.outcome = 'ceded';
     }
     beginSettling(galaxy, st);
