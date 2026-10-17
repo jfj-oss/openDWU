@@ -72,6 +72,12 @@ import {
     greatWorkFrame,
     greatWorkSites,
     gwLightAlpha,
+    SANCTUARY_SPILL_LEN,
+    SANCTUARY_SPILL_PUFFS,
+    sanctuaryAlarmPulse,
+    sanctuaryBreached,
+    sanctuaryEmergencyAlpha,
+    sanctuarySpillPuff,
     sanctuaryWhaleCount,
     sanctuaryWhalePose,
     type GreatWorkArtSite,
@@ -785,6 +791,70 @@ describe('giantworks art', () => {
         expect(sanctuaryWhaleCount({})).toBe(4);
         expect(sanctuaryWhaleCount({ whales: 0 })).toBe(1);
         expect(sanctuaryWhaleCount({ whales: 99 })).toBe(SANCTUARY_WHALES.length);
+    });
+    it('the Sanctuary breached: only an exact true; broken panes, venting plumes, alarm glow and emergency lamps', () => {
+        expect(sanctuaryBreached({})).toBe(false);
+        expect(sanctuaryBreached({ breached: false })).toBe(false);
+        expect(sanctuaryBreached({ breached: true })).toBe(true);
+        expect(sanctuaryBreached({ breached: 1 as unknown as boolean })).toBe(false);
+        expect(sanctuaryBreached({ breached: 'yes' as unknown as boolean })).toBe(false);
+        // the layers: there, clean (no opaque black, no marker colour even after a browser's premultiplied read)
+        for (const f of ['sanctuary-breach', 'sanctuary-alarm', 'sanctuary-spill']) {
+            expect(existsSync(png(f)), f).toBe(true);
+            const img = decodePng(png(f));
+            if (f !== 'sanctuary-spill') expect([img.width, img.height]).toEqual([720, 720]);
+            const d = img.data;
+            let bad = 0;
+            let lit = 0;
+            for (let i = 0; i < d.length; i += 4) {
+                const a = d[i + 3];
+                if (a === 0) continue;
+                lit++;
+                const c = [0, 1, 2].map((k) => Math.round((Math.round((d[i + k] * a) / 255) * 255) / a));
+                if ((c[0] === 255 && c[1] === 255 && c[2] === 0) || (c[0] === 0 && c[1] === 0 && c[2] === 255)) bad++;
+                else if (a === 255 && d[i] === 0 && d[i + 1] === 0 && d[i + 2] === 0) bad++;
+            }
+            expect(bad, f).toBe(0);
+            expect(lit, f).toBeGreaterThan(500);
+        }
+        // the breaks sit on the glass, one plume length each; the emergency lamps are red nav lamps
+        const breaks = GW_LIGHTS.sanctuary_breaks;
+        expect(breaks.length).toBe(SANCTUARY_SPILL_LEN.length);
+        for (const [x, y] of breaks) expect(Math.hypot(x - 360, y - 360)).toBeLessThan(GW_SANCTUARY_GLASS_R);
+        const lamps = GW_LIGHTS.sanctuary_emergency;
+        expect(lamps.length).toBeGreaterThan(8);
+        for (const l of lamps) expect(l[2]).toBe(GW_LIGHT_KINDS.indexOf('nav'));
+        // each plume puffs: phases spread, growing as they drift out, fading in and out
+        for (let k = 0; k < breaks.length; k++) {
+            const ts = new Set<number>();
+            for (let j = 0; j < SANCTUARY_SPILL_PUFFS; j++) {
+                const p = sanctuarySpillPuff(12.3, k, j);
+                expect(p.t).toBeGreaterThanOrEqual(0);
+                expect(p.t).toBeLessThan(1);
+                expect(p.alpha).toBeGreaterThanOrEqual(0);
+                expect(p.alpha).toBeLessThanOrEqual(1);
+                expect(p.len).toBeLessThanOrEqual(SANCTUARY_SPILL_LEN[k] * 1.2);
+                ts.add(Math.round(p.t * 100));
+            }
+            expect(ts.size).toBe(SANCTUARY_SPILL_PUFFS);
+            const a = sanctuarySpillPuff(0, k, 0);
+            const b = sanctuarySpillPuff(0.4, k, 0);
+            if (b.t > a.t) expect(b.len).toBeGreaterThan(a.len);
+            expect(sanctuarySpillPuff(-5, k, 1).t).toBeGreaterThanOrEqual(0);
+        }
+        // the alarm glow fades in and out, never quite off; the lamps flash odd and even in turn
+        let lo = 1;
+        let hi = 0;
+        for (let t = 0; t < 4.4; t += 0.05) {
+            const p = sanctuaryAlarmPulse(t);
+            lo = Math.min(lo, p);
+            hi = Math.max(hi, p);
+        }
+        expect(lo).toBeGreaterThanOrEqual(0.1);
+        expect(lo).toBeLessThan(0.2);
+        expect(hi).toBeGreaterThan(0.9);
+        expect(sanctuaryEmergencyAlpha(0, 0)).toBeGreaterThan(0.9);
+        expect(sanctuaryEmergencyAlpha(0, 1)).toBeLessThan(0.2);
     });
     it('sites are read from the add-on\'s state by their base; the Ultramind\'s planet once complete', () => {
         const base = { hasBeenDestroyed: false } as unknown as BuiltObject;

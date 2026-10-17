@@ -665,7 +665,7 @@ export class GenShipsFxLayer {
 // own buzz, dying tube, fill-in sequence or blink), its chasing marquee bulbs, its turning roulette rotors (with the
 // ball) and observation wheel and its streams of ships, the Ultramind's data lights and slow cyan pulse, and the
 // Sanctuary's void whales swimming inside its glass (the Leviathan rig, small, clipped to the sphere) under the front
-// struts. A finished Ultramind built round a planet also
+// struts (while breached: broken panes venting water, emergency lamps, a red alarm glow). A finished Ultramind built round a planet also
 // wraps that planet in its machine shell (syncUltramindShell, from mainView.ts's planet / moon pass), its base then a
 // smaller uplink node.
 
@@ -678,9 +678,10 @@ export const GIANTWORKS_STATE_KEY = 'giantworks';
 
 /**
  * What the art reads of a Great Work site: giantworks/types.ts GreatWorkSite's base / stage / wonder / habitat (a
- * structural subset, so the render needs no import of the add-on), plus two optional extras a wonder module may keep
- * on its site: `whales` (the Sanctuary's whale count, default 4) and `awakened` (the Ultramind turned on its
- * partners: its lights go red).
+ * structural subset, so the render needs no import of the add-on), plus optional extras a wonder module may keep on
+ * its site: `whales` (the Sanctuary's whale count, default 4), `breached` (the Sanctuary's sphere broken: cracked
+ * panes venting water, the emergency lamps and red alarm glow; only an exact `true` counts) and `awakened` (the
+ * Ultramind turned on its partners: its lights go red).
  */
 export interface GreatWorkArtSite {
     /** The site's id (a casino's record names its Great Work by it). */
@@ -692,6 +693,7 @@ export interface GreatWorkArtSite {
     wonder: string;
     habitat: Habitat | null;
     whales?: number;
+    breached?: boolean;
     awakened?: boolean;
 }
 
@@ -1104,6 +1106,50 @@ export function sanctuaryWhaleCount(site: Pick<GreatWorkArtSite, 'whales'>): num
     return Math.max(1, Math.min(SANCTUARY_WHALES.length, Math.trunc(Number.isFinite(n) ? n : 4)));
 }
 
+/** Whether a Sanctuary site is breached (its `breached`, read defensively: only an exact `true`). Pure. */
+export function sanctuaryBreached(site: Pick<GreatWorkArtSite, 'breached'>): boolean {
+    return site.breached === true;
+}
+
+/**
+ * The venting plumes' lengths (frame px), one per break of the light table's `sanctuary_breaks` row, in its order
+ * (scripts/giantworks-art.py SANC_BREAKS, the biggest hole first).
+ */
+export const SANCTUARY_SPILL_LEN: readonly number[] = [300, 215, 150];
+/** Puffs of water out of each break at once, and the seconds one takes to drift out and fade (the biggest break's). */
+export const SANCTUARY_SPILL_PUFFS = 4;
+const SPILL_PERIOD = 2.6;
+
+/** One puff of a breach's venting plume at `sec`: how far out it has drifted (0..1), its length / width (frame px)
+ * and its alpha, and a slow wobble of its heading (rad). `k` the break, `j` the puff. Pure. */
+export function sanctuarySpillPuff(sec: number, k: number, j: number): { t: number; len: number; wid: number; alpha: number; wobble: number } {
+    const L = SANCTUARY_SPILL_LEN[Math.max(0, Math.min(SANCTUARY_SPILL_LEN.length - 1, k))];
+    const period = SPILL_PERIOD * (0.7 + 0.3 * (L / SANCTUARY_SPILL_LEN[0]));
+    const t = (((sec / period + j / SANCTUARY_SPILL_PUFFS + k * 0.37) % 1) + 1) % 1;
+    const fadeIn = Math.min(1, t / 0.12);
+    return {
+        t,
+        len: L * (0.3 + 0.8 * t),
+        wid: Math.sqrt(L / SANCTUARY_SPILL_LEN[0]) * (0.7 + 1.1 * t),
+        alpha: fadeIn * Math.pow(1 - t, 1.1),
+        wobble: 0.1 * Math.sin(sec * 1.7 + k * 2.1 + j * 1.3),
+    };
+}
+
+/** The breached Sanctuary's red alarm glow, fading in and out (0.1..1, a 2.2 s cycle). Pure. */
+export function sanctuaryAlarmPulse(sec: number): number {
+    const w = 0.5 + 0.5 * Math.sin((2 * Math.PI * sec) / 2.2);
+    return 0.1 + 0.9 * w * w;
+}
+
+/** Emergency lamp `k`'s alpha at `sec`: the odd and the even ones flash in turn, a fast warning beat. Pure. */
+export function sanctuaryEmergencyAlpha(sec: number, k: number): number {
+    const c = 0.5 + 0.5 * Math.cos(2 * Math.PI * (sec / 0.9 + (k % 2) * 0.5));
+    return 0.12 + 0.88 * c * c * c * c;
+}
+
+const SPILL_W = 200; // sanctuary-spill.png, frame px (scripts/giantworks-art.py SPILL_W)
+
 let whaleTex: LeviathanTextures | null = null;
 let whaleTexLoading = false;
 /** The Leviathan's part textures without its harpoons (these whales were raised here, never hunted). */
@@ -1138,9 +1184,10 @@ class SanctuaryView {
         for (let i = count - 1; i >= 0; i--) {
             const rig = new LeviathanRig(tex, i * 1.37);
             const w = SANCTUARY_WHALES[i];
-            // The smaller ones swim deeper: fainter and bluer through more water.
+            // Seen from above through the water (the glass's tint and the struts go over them in sanctuary-front): every
+            // one a little blue, the smaller ones swimming deeper, fainter and bluer through more water.
             const deep = 1 - w.len / SANCTUARY_WHALES[0].len; // 0 the largest .. ~0.8 the smallest
-            rig.root.tint = deep > 0.3 ? 0x9cbcdc : 0xffffff;
+            rig.root.tint = deep > 0.3 ? 0xa4c4dc : 0xdce8f0;
             rig.root.alpha = 1 - 0.5 * deep;
             this.rigs[i] = rig;
             this.root.addChild(rig.root);
@@ -1258,14 +1305,13 @@ export class GreatWorkFxLayer {
                 v.root.scale.set(scale);
                 v.pose(sec);
             }
+            const breached = sanctuaryBreached(site);
+            const alarm = breached ? gwTexture('sanctuary-alarm') : null;
+            const pulse = sanctuaryAlarmPulse(sec);
+            if (alarm !== null) this.frameSprite(alarm, 'normal', pulse, x, y, rotation, scale, ax, ay); // in the water, under the struts
             const front = gwTexture('sanctuary-front');
-            if (front !== null) {
-                const s = this.frontPool.acquire(front);
-                s.anchor.set(ax, ay);
-                s.position.set(x, y);
-                s.rotation = rotation;
-                s.scale.set(scale);
-            }
+            if (front !== null) this.frameSprite(front, 'normal', 1, x, y, rotation, scale, ax, ay);
+            if (breached) this.drawSanctuaryBreach(alarm, pulse, x, y, rotation, cos, sin, scale, ax * tw, ay * th, tw, th, drawnPx, sec);
         }
         const look = Object.hasOwn(GW_CASINO_LOOKS, frame) ? GW_CASINO_LOOKS[frame] : null;
         if (look !== null) this.drawCasino(look, x, y, rotation, cos, sin, scale, ax * tw, ay * th, tw, th, drawnPx, sec);
@@ -1298,6 +1344,72 @@ export class GreatWorkFxLayer {
             const lx = (pts[i][0] + 0.5 - ax * tw) * scale;
             const ly = (pts[i][1] + 0.5 - ay * th) * scale;
             const s = this.lampPool.acquire(lampTexture(red && kind === GW_DATA ? GW_RED_DATA : GW_LAMP_COLOURS[kind]));
+            s.blendMode = 'add';
+            s.position.set(x + lx * cos - ly * sin, y + lx * sin + ly * cos);
+            s.scale.set(lampScale);
+            s.alpha = a;
+        }
+    }
+
+    /** A whole-frame Sanctuary layer (sanctuary-front and the breach's), placed like the base sprite. */
+    private frameSprite(t: Texture, blend: 'normal' | 'add', alpha: number, x: number, y: number, rotation: number, scale: number, ax: number, ay: number): void {
+        const s = this.frontPool.acquire(t);
+        s.blendMode = blend;
+        s.anchor.set(ax, ay);
+        s.position.set(x, y);
+        s.rotation = rotation;
+        s.scale.set(scale);
+        s.alpha = alpha;
+    }
+
+    /**
+     * A breached Sanctuary over its front (frame px (fx, fy) at world (x, y) + R(rotation) * scale * (fx - ox, fy - oy)):
+     * the broken panes, the red alarm glow lighting the struts too (its additive echo), the water venting from each
+     * break (SANCTUARY_SPILL_PUFFS puffs of sanctuary-spill drifting out along the radius and fading, sanctuarySpillPuff),
+     * and the emergency lamps flashing (the light table's sanctuary_emergency row).
+     */
+    private drawSanctuaryBreach(alarm: Texture | null, pulse: number, x: number, y: number, rotation: number, cos: number, sin: number, scale: number, ox: number, oy: number, tw: number, th: number, drawnPx: number, sec: number): void {
+        const ax = ox / tw;
+        const ay = oy / th;
+        const cracks = gwTexture('sanctuary-breach');
+        if (cracks !== null) this.frameSprite(cracks, 'normal', 1, x, y, rotation, scale, ax, ay);
+        if (alarm !== null) this.frameSprite(alarm, 'add', 0.3 * pulse, x, y, rotation, scale, ax, ay);
+        const spill = gwTexture('sanctuary-spill');
+        const breaks = Object.hasOwn(GW_LIGHTS, 'sanctuary_breaks') ? GW_LIGHTS.sanctuary_breaks : [];
+        if (spill !== null) {
+            for (let k = 0; k < breaks.length; k++) {
+                const bx = breaks[k][0] + 0.5;
+                const by = breaks[k][1] + 0.5;
+                const out = Math.atan2(by - th / 2, bx - tw / 2);
+                const lx = (bx - ox) * scale;
+                const ly = (by - oy) * scale;
+                const L = SANCTUARY_SPILL_LEN[Math.min(k, SANCTUARY_SPILL_LEN.length - 1)];
+                // the jet at the mouth (never off, flickering), then the puffs drifting out
+                for (let j = -1; j < SANCTUARY_SPILL_PUFFS; j++) {
+                    const p = j < 0 ? null : sanctuarySpillPuff(sec, k, j);
+                    if (p !== null && p.alpha <= 0.02) continue;
+                    const s = this.frontPool.acquire(spill);
+                    s.blendMode = 'normal';
+                    s.anchor.set(0, 0.5);
+                    s.position.set(x + lx * cos - ly * sin, y + lx * sin + ly * cos);
+                    s.rotation = rotation + out + (p?.wobble ?? 0.04 * Math.sin(sec * 5.3 + k));
+                    if (p === null) s.scale.set((scale * L * 0.42) / SPILL_W, scale * 0.5 * Math.sqrt(L / SANCTUARY_SPILL_LEN[0]));
+                    else s.scale.set((scale * p.len) / SPILL_W, scale * p.wid);
+                    s.alpha = p?.alpha ?? 0.75 + 0.2 * Math.sin(sec * 9.1 + k * 1.7);
+                }
+            }
+        }
+        const pts = Object.hasOwn(GW_LIGHTS, 'sanctuary_emergency') ? GW_LIGHTS.sanctuary_emergency : [];
+        const k = drawnPx / Math.max(tw, th); // screen px per frame px
+        const rScreen = Math.max(1.6, Math.min(5.5, 5 * k));
+        const lampScale = ((rScreen * scale) / k) / LAMP_CORE_PX;
+        const tex = lampTexture(GW_LAMP_COLOURS[GW_NAV]);
+        for (let i = 0; i < pts.length; i++) {
+            const a = sanctuaryEmergencyAlpha(sec, i);
+            if (a <= 0.02) continue;
+            const lx = (pts[i][0] + 0.5 - ox) * scale;
+            const ly = (pts[i][1] + 0.5 - oy) * scale;
+            const s = this.lampPool.acquire(tex);
             s.blendMode = 'add';
             s.position.set(x + lx * cos - ly * sin, y + lx * sin + ly * cos);
             s.scale.set(lampScale);

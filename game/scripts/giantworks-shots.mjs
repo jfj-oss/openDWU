@@ -1,13 +1,14 @@
 // Giantworks art captures. Usage: node scripts/giantworks-shots.mjs <baseUrl> <outDir> [prefix]
 // Boots `?autostart=1&scenario=threat-framework&simWorker=0&reveal=1`, pauses the clock and stands up one Great Work site
 // per look in empty space beside the player's home (scaffold stages 0-3, the Gilded Orbit, the Ultramind alone, the
-// Leviathan Sanctuary) plus an Ultramind wrapping a planet of the home system, as render-only state
+// Leviathan Sanctuary, whole and breached) plus an Ultramind wrapping a planet of the home system, as render-only state
 // (galaxy.scenario.state.giantworks.sites: threatArt.ts GIANTWORKS_STATE_KEY; the bases are plain player bases), and
 // marks the site / founders on the map (artBundleLayer setThreatSitesSource). Then close and play-zoom shots of each,
 // two Sanctuary frames ~2 s apart (the whales swim), the wrapped planet, the map glyphs, and a burst of light frames;
 // then the Gilded Orbit animated: casino-anim-<i>.png (close zoom, cropped, timestamps in casino-anim.json, for a strip
 // and a GIF) and casino-play-anim-<i>.png (play zoom), the same for the casino that is a pirate den (casino-pirate-*).
-// GW_ONLY=casino,casino-pirate: only those looks' shots.
+// Then the Sanctuary's strips, whole and breached (sanctuary[-breached]-strip-<i>.png, 0.5 s apart).
+// GW_ONLY=casino,casino-pirate (or sanctuary,sanctuary-breached): only those looks' shots.
 // Headless Chromium on the GPU (ANGLE / Vulkan), never SwiftShader.
 import { writeFileSync } from 'node:fs';
 import { chromium } from 'playwright-core';
@@ -47,6 +48,7 @@ const setup = await page.evaluate(async () => {
             { stage: 4, wonder: 'ultramind', progress: 1 },
             { stage: 4, wonder: 'sanctuary', progress: 1, whales: 5 },
             { stage: 4, wonder: 'casino', progress: 1, den: true },
+            { stage: 4, wonder: 'sanctuary', progress: 1, whales: 2, breached: true },
         ];
         const sites = [];
         const spots = [];
@@ -64,7 +66,7 @@ const setup = await page.evaluate(async () => {
             }
             // knowledge / seenBy: the add-on's known-site readers (overlay rows) walk them
             sites.push({ id: i, base: bo, habitat: null, knowledge: [], seenBy: [], ...l });
-            spots.push({ x, y, name: l.stage < 4 ? `scaffold-${l.stage}` : l.den === true ? 'casino-pirate' : l.wonder });
+            spots.push({ x, y, name: l.stage < 4 ? `scaffold-${l.stage}` : l.den === true ? 'casino-pirate' : l.breached === true ? 'sanctuary-breached' : l.wonder });
         });
         // An Ultramind round a planet of the home system (its uplink node beside it).
         const planet = galaxy.habitats.find((h) => h.parent === home.parent && h !== home && h.category === 1 && h.diameter > 150) ?? galaxy.habitats.find((h) => h.category === 1 && h !== home && h.diameter > 150);
@@ -128,6 +130,19 @@ async function casinoAnim(name) {
     console.log(`saved ${outDir}/${prefix}${name}-anim-0..39.png, ${name}-play-anim-0..11.png`);
 }
 for (const name of ['casino', 'casino-pirate']) if (only.length === 0 || only.includes(name)) await casinoAnim(name);
+// The Sanctuary, whole and breached: a strip of close frames 0.5 s apart (the whales swim; the breach vents and flashes).
+async function sanctuaryStrip(name) {
+    const c = spots.find((s) => s.name === name);
+    if (c === undefined) return;
+    const clip = { x: 500, y: 200, width: 600, height: 600 };
+    await shot(`${name}-strip-0.png`, 1, c.x, c.y, 3000, clip);
+    for (let i = 1; i < 8; i++) {
+        await page.waitForTimeout(500);
+        await page.screenshot({ path: `${outDir}/${prefix}${name}-strip-${i}.png`, clip });
+    }
+    console.log(`saved ${outDir}/${prefix}${name}-strip-0..7.png`);
+}
+for (const name of ['sanctuary', 'sanctuary-breached']) if (only.length === 0 || only.includes(name)) await sanctuaryStrip(name);
 if (only.length > 0) {
     await browser.close();
     for (const l of logs.filter((l) => /error|pageerror|warn/i.test(l)).slice(0, 30)) console.log(l);
@@ -135,7 +150,7 @@ if (only.length > 0) {
 }
 await shot('lineup-mid.png', 1 / 3, spots[0].x + 1350, spots[0].y + 450, 2500);
 // The whales swim: two frames of the Sanctuary ~4 s apart.
-const sanct = spots[spots.length - 1];
+const sanct = spots.find((s) => s.name === 'sanctuary');
 await shot('sanctuary-whales-a.png', 1, sanct.x, sanct.y, 3000, { x: 500, y: 200, width: 600, height: 600 });
 await page.waitForTimeout(4000);
 await page.screenshot({ path: `${outDir}/${prefix}sanctuary-whales-b.png`, clip: { x: 500, y: 200, width: 600, height: 600 } });

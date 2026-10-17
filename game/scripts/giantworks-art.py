@@ -67,9 +67,13 @@ The frames:
   shell as an overlay for the planet the site sits at (mainView.ts draws it over the planet's own picture, which shows
   through the gaps); ultramind-node (+ ultramind-node-glow) is the site's station then (a machine hub with
   radiators, drawn at half the size).
-- sanctuary + sanctuary-front: the Leviathan Sanctuary, a glass sphere in a cage of structural struts: the base frame
-  holds the outer equator ring and its docks, the back struts seen through the glass and the deep water-dark inside;
-  the front frame (drawn over the runtime whales) holds the front struts, the glass rim and highlights.
+- sanctuary + sanctuary-front: the Leviathan Sanctuary, a glass sphere in a cage of struts seen from straight above
+  (like its ring): the base frame holds the support ring and its docks with the dome's shadow across it, the deep
+  water inside and the far struts seen through it; the front frame (drawn over the runtime whales) holds the glass
+  (the water's tint, the dome's shading and highlights), the near struts radiating from the pole hub, the rim clamp.
+  While breached: sanctuary-breach (the broken, cracked panes, over the front), sanctuary-alarm (the red glow the
+  runtime fades in and out under the struts) and sanctuary-spill (the venting plume it puffs out of each break; the
+  breaks and the emergency lamps are the light table's sanctuary_breaks / sanctuary_emergency rows).
 """
 import argparse
 import math
@@ -3670,68 +3674,164 @@ def build_ultramind_node(root):
 # The Leviathan Sanctuary (a void aquarium)
 # ---------------------------------------------------------------------------------------------------------------
 
+# Seen from straight above, like the support ring round it: the cage's pole (the life-support hub) at the centre, the
+# meridians straight spokes out to the rim, the parallels concentric rings closing up toward the rim (r = cos lat).
 R_GLASS = 230.0     # the glass sphere (frame px): threatArt.ts GW_SANCTUARY_GLASS_R masks the whales to it
-CAGE_TILT = math.radians(34)
+SANC_MERIDIANS = 8   # from the hub; as many more join between them from the SANC_SPLIT parallel out (the panels keep a size)
+SANC_LATS = (18, 36, 54, 72)       # the parallels (deg)
+SANC_SPLIT = 54
+SANC_HUB = 40.0     # the pole hub's radius (frame px)
+SANC_ZRING = 0.24   # the support ring's deck height above the equator (units of the glass radius): the dome's shadow
+SANC_PERSP = 7.0    # the camera's distance (glass radii) for the far struts' slight perspective through the water
 
 
-def water(Rg, rng):
-    """The deep inside of the glass: dark void-water, lighter toward the upper left (the light falls in there),
+def dome_coords(S, Rg):
+    """Per pixel of an S x S canvas (build px) round its centre, the glass seen from straight above: x, y (units of
+    Rg), the radius d, the dome's normal z (nz), the angle th and the inside-disc coverage."""
+    yy, xx = np.mgrid[0:S, 0:S].astype(np.float64) + 0.5
+    x = (xx - S / 2) / (Rg * SS)
+    y = (yy - S / 2) / (Rg * SS)
+    d = np.hypot(x, y)
+    nz = np.sqrt(np.clip(1 - d * d, 0, 1))
+    inside = np.clip((1 - d) * Rg * SS + 0.5, 0, 1)
+    return x, y, d, nz, np.arctan2(y, x), inside
+
+
+def sanc_water(Rg, rng):
+    """The deep inside of the glass looking down through it: dark void-water, a soft glow where the light falls in
+    (upper left) and the light the sphere focuses through the water pooling inside the far (lower right) wall,
     rippling caustics, drifting plankton motes (emission)."""
     S = int(math.ceil(2 * Rg * SS)) + 4
-    yy, xx = np.mgrid[0:S, 0:S].astype(np.float64) + 0.5
-    x, y = (xx - S / 2) / (Rg * SS), (yy - S / 2) / (Rg * SS)
-    d = np.hypot(x, y)
-    A = np.clip((1 - d) * Rg * SS + 0.5, 0, 1)
-    lightf = np.clip(1 - np.hypot(x + 0.3, y + 0.35) / 1.3, 0, 1)
-    deep = np.array([0.02, 0.1, 0.16])
-    mid = np.array([0.1, 0.36, 0.46])
-    col = deep + (mid - deep) * (lightf ** 1.5)[..., None]
+    x, y, d, nz, th, A = dome_coords(S, Rg)
+    deep = np.array([0.025, 0.13, 0.19])
+    mid = np.array([0.12, 0.46, 0.56])
+    glow = np.clip(1 - np.hypot(x + 0.22, y + 0.28) / 1.45, 0, 1) ** 1.3
+    # the ball-lens focus: a crescent inside the lower right wall
+    lr = np.clip((x * 0.6 + y * 0.8), 0, None)
+    focus = smoothstep(0.45, 0.9, d) * (1 - smoothstep(0.93, 1.0, d)) * smoothstep(0.1, 0.85, lr / np.maximum(d, 1e-6) * d)
+    col = deep + (mid - deep) * glow[..., None] * 0.85 + np.array([0.05, 0.24, 0.26]) * (focus ** 1.4)[..., None] * 0.75
     n1 = fbm(rng, S, S, int(26 * SS), 3)
     n2 = fbm(rng, S, S, int(11 * SS), 2)
     caust = np.clip(1 - np.abs(np.sin((n1 * 3.2 + n2 * 1.3) * math.pi)) * 2.6, 0, 1) ** 2
-    caust = fblur(caust, 1.2 * SS)
-    col = col + caust[..., None] * np.array([0.06, 0.2, 0.22]) * (0.3 + 0.7 * lightf)[..., None]
-    # the rim darker (the glass bends the light away)
-    col *= (1 - 0.5 * smoothstep(0.7, 1.0, d))[..., None]
+    caust = fblur(caust, 0.8 * SS)
+    col = col + caust[..., None] * np.array([0.04, 0.14, 0.16]) * (0.2 + 0.45 * glow + 0.6 * focus)[..., None]
+    # the far wall: darker toward the rim (the water deepens, the light bends away)
+    col *= (1 - 0.35 * smoothstep(0.75, 1.0, d) * (1 - focus))[..., None]
     e = np.zeros((S, S, 3))
-    for _ in range(260):
+    yy, xx = np.mgrid[0:S, 0:S].astype(np.float64) + 0.5
+    for _ in range(300):
         r_ = rng.random() ** 0.6 * 0.95
         a_ = rng.uniform(0, 2 * math.pi)
         mx, my = S / 2 + math.cos(a_) * r_ * Rg * SS, S / 2 + math.sin(a_) * r_ * Rg * SS
         rad = rng.uniform(0.5, 1.4) * SS
-        dd = np.hypot(xx[int(max(0, my - 6)):int(my + 6), int(max(0, mx - 6)):int(mx + 6)] - mx, yy[int(max(0, my - 6)):int(my + 6), int(max(0, mx - 6)):int(mx + 6)] - my)
+        sl = (slice(int(max(0, my - 6)), int(my + 6)), slice(int(max(0, mx - 6)), int(mx + 6)))
+        dd = np.hypot(xx[sl] - mx, yy[sl] - my)
         g = np.clip(1 - dd / rad, 0, 1) ** 1.5 * rng.uniform(0.25, 0.8)
         cc = np.array([0.35, 0.95, 0.85]) if rng.random() < 0.7 else np.array([0.5, 0.7, 1.0])
-        e[int(max(0, my - 6)):int(my + 6), int(max(0, mx - 6)):int(mx + 6)] += g[..., None] * cc
-    mats = {'nat': np.ones((S, S))}
-    return Piece(A, np.full((S, S), 0.5), col, e, mats)
+        e[sl] += g[..., None] * cc
+    return Piece(A, np.full((S, S), 0.5), col, e, {'nat': np.ones((S, S))})
 
 
-def cage_mask(S, Rg, back=False, step=30, w=6.0, tilt=CAGE_TILT):
-    """The cage's struts on the front (or, seen through the glass, the back) of the sphere: meridians and parallels
-    every `step` deg, w layout px wide, thinning as they turn away; and the node points where they cross."""
-    inside, x, y, z, lon, lat, d = sphere_coords(S, Rg, tilt)
-    if back:
-        zb = -z
-        Y = -y * math.cos(tilt) + zb * math.sin(tilt)
-        Z = y * math.sin(tilt) + zb * math.cos(tilt)
-        lon = np.arctan2(x, Z)
-        lat = np.arcsin(np.clip(Y, -1, 1))
-        z = np.abs(zb)
-    st = math.radians(step)
-    dl = np.abs(((lat + st / 2) % st) - st / 2) * Rg
-    dm = np.abs(((lon + st / 2) % st) - st / 2) * Rg * np.cos(lat)
-    k = np.sqrt(np.clip(z, 0.04, 1))
-    m = np.clip(w / 2 * k + 0.5 - np.minimum(dl, dm) * k, 0, 1)
-    m = np.where(np.abs(lat) > math.radians(78), 0, m) * inside
-    node = (dl < w * 0.9) & (dm < w * 0.9) & inside & (np.abs(lat) < math.radians(78))
-    return m, node, x, y, z, inside
+def sanc_cage(S, Rg, w_m, w_l, far=False, joints=True):
+    """The cage's struts seen from straight above: meridians as spokes from the pole hub to the rim, parallels as
+    concentric rings at r = cos(lat) (closing up toward the rim, foreshortened there to a sliver), boss joints where
+    they cross. The near (upper) hemisphere: round-section steel bars with a centre groove, shaded from their own
+    normals on the dome; far: the lower hemisphere seen through the water (staggered half a bay, a touch smaller with
+    the perspective), flat and dim. Returns A, L."""
+    x, y, d, nz, th, inside = dome_coords(S, Rg)
+    st = 2 * math.pi / SANC_MERIDIANS
+    # the far hemisphere's points at lat phi sit sin(phi) below the centre: r' = cos(phi) * D / (D + sin(phi))
+    pk = (lambda s: SANC_PERSP / (SANC_PERSP + s)) if far else (lambda s: 1.0)
+    r_split = math.cos(math.radians(SANC_SPLIT)) * pk(math.sin(math.radians(SANC_SPLIT)))
+    hw_m = w_m * SS / 2 * (pk(nz) if far else 1.0)
+    A_m = np.zeros_like(d)
+    u_m = np.zeros_like(d)
+    sets = ((st / 4, SANC_HUB / Rg - 0.03), (st * 3 / 4, r_split)) if far else ((0.0, SANC_HUB / Rg - 0.03), (st / 2, r_split))
+    for ph, r0 in sets:
+        dth = ((th - ph + st / 2) % st) - st / 2
+        dist_m = d * Rg * SS * np.sin(dth)                      # signed, build px
+        a = np.clip(hw_m - np.abs(dist_m) + 0.5, 0, 1) * np.clip((d - r0) * Rg * SS + 0.5, 0, 1)
+        sel = a > A_m
+        A_m = np.where(sel, a, A_m)
+        u_m = np.where(sel, np.clip(dist_m / hw_m, -1, 1), u_m)
+    A_l = np.zeros_like(d)
+    u_l = np.zeros_like(d)
+    for la in SANC_LATS:
+        s = math.sin(math.radians(la))
+        rk = math.cos(math.radians(la)) * pk(s)
+        dr = (d - rk) * Rg * SS
+        hw = max(0.32, s) * w_l * SS / 2 * pk(s)
+        a = np.clip(hw - np.abs(dr) + 0.5, 0, 1)
+        sel = a > A_l
+        A_l = np.where(sel, a, A_l)
+        u_l = np.where(sel, np.clip(dr / hw, -1, 1), u_l)
+    ring = A_l > A_m
+    A = np.maximum(A_m, A_l) * inside
+    if far:
+        L = np.full((S, S), 0.42) * (0.75 + 0.25 * np.cos(np.where(ring, u_l, u_m) * 1.4))
+        return A, L
+    # the bar's normal: the dome normal tipped across the bar (tangential for a meridian, down the meridian for a ring)
+    cs, sn = np.cos(th), np.sin(th)
+    u = np.where(ring, u_l, u_m)
+    tx = np.where(ring, cs * nz, -sn)
+    ty = np.where(ring, sn * nz, cs)
+    tz = np.where(ring, -d, 0.0)
+    k = 0.85
+    c0 = np.sqrt(np.clip(1 - (u * k) ** 2, 0, 1))
+    n_x, n_y, n_z = x * c0 + tx * u * k, y * c0 + ty * u * k, nz * c0 + tz * u * k
+    L = shade(n_x, n_y, n_z, amb=0.2, k=0.8, spec=0.4)
+    L = np.where(np.abs(u) < 0.2, L * 0.5, L)                # the groove down the middle
+    L = np.where(np.abs(u) > 0.82, L * 0.7, L)                # the bar's edges
+    if joints:
+        rb = 0.62 * max(w_m, w_l)
+        for la in SANC_LATS:
+            s = math.sin(math.radians(la))
+            rk = math.cos(math.radians(la))
+            ar = rb * max(0.4, s)
+            for j in range(SANC_MERIDIANS * 2):
+                if j % 2 and la > SANC_SPLIT:
+                    continue
+                a_ = j * st / 2
+                ca, sa = math.cos(a_), math.sin(a_)
+                px, py = S / 2 + rk * ca * Rg * SS, S / 2 + rk * sa * Rg * SS
+                m = int(rb * SS) + 3
+                sl = (slice(int(py) - m, int(py) + m + 1), slice(int(px) - m, int(px) + m + 1))
+                yy, xx = np.mgrid[sl].astype(np.float64) + 0.5
+                ur = ((xx - px) * ca + (yy - py) * sa) / (ar * SS)
+                ut = (-(xx - px) * sa + (yy - py) * ca) / (rb * SS)
+                e = np.hypot(ur, ut)
+                ab = np.clip((1 - e) * ar * SS + 0.5, 0, 1)
+                q = np.sqrt(np.clip(1 - np.minimum(e, 1) ** 2 * 0.8, 0, 1))
+                ux, uy, uz = ca * s, sa * s, -rk                 # down the meridian (unit)
+                vx, vy = -sa, ca                                  # across it
+                bx = rk * ca * q + (ux * ur + vx * ut) * 0.9
+                by = rk * sa * q + (uy * ur + vy * ut) * 0.9
+                bz = s * q + uz * ur * 0.9
+                nn = np.sqrt(bx * bx + by * by + bz * bz)
+                lb = shade(bx / nn, by / nn, bz / nn, amb=0.22, k=0.8, spec=0.5)
+                lb = np.where(e < 0.38, 0.12 + 0.25 * np.clip(-(ur * LIGHT[0] * ca + ut * LIGHT[1]), 0, 1), lb)
+                A[sl] = np.maximum(A[sl], ab)
+                L[sl] = np.where(ab > 0.02, lb, L[sl])
+    return A, np.clip(L, 0, 1)
+
+
+def dome_shadow(c, Rg, k=0.68):
+    """The dome's shadow on the support ring round it (light from the upper left): the ring deck SANC_ZRING above the
+    equator, the shade where a ray toward the light from the deck meets the glass, a soft edge."""
+    yy, xx = np.mgrid[0:c.h, 0:c.w].astype(np.float64) + 0.5
+    x, y = (xx / SS - C0) / Rg, (yy / SS - C0) / Rg
+    pz = SANC_ZRING
+    pl = x * LIGHT[0] + y * LIGHT[1] + pz * LIGHT[2]
+    dist = np.sqrt(np.clip(x * x + y * y + pz * pz - pl * pl, 0, None))
+    sh = (1 - smoothstep(0.93, 1.03, dist)) * (pl < 0) * smoothstep(0.985, 1.0, np.hypot(x, y))
+    c.ch['D'] *= (1 - k * sh).astype(F32)
 
 
 def build_sanctuary(root):
-    """Two frames: the base (the support ring round the sphere with its galleries and four liner docks, the dark
-    water inside the glass with the far struts seen through it) and the front (the near struts of the cage, their
-    joints, the glass: a blue film, a bright rim, sheen), the runtime whales swimming between the two."""
+    """Two frames, the sphere seen from straight above in its ring: the base (the four liner docks, the support ring
+    with its galleries, the dome's shadow across it, the dark water inside the glass with the far hemisphere's struts
+    seen through it) and the front (the glass: the water's tint, the dome's shading and highlights, then the near
+    struts, their joints, the pole hub and the rim clamp), the runtime whales swimming between the two."""
     rng = seeded('sanctuary')
     c = Canvas(FRAME)
     S = int(math.ceil(2 * R_GLASS * SS)) + 4
@@ -3767,62 +3867,315 @@ def build_sanctuary(root):
     c.put(arc_beam(R1 - 1, 5.0, ticks=8.0, mat='steel'), C0, C0, shadow=0.5)
     for k in range(48):
         c.light(*polar(R1 - 1, k * 2 * math.pi / 48), 'run')
+    dome_shadow(c, R_GLASS)
     # inside: the water, the far struts through it
-    c.put(water(R_GLASS, rng), C0, C0, shadow=0.0)
-    bm, bnode, x, y, z, inside = cage_mask(S, R_GLASS, back=True, w=5.0)
-    back = Piece(bm * 0.55, np.full((S, S), 0.35), None, None, {'glass': np.ones((S, S))})
-    c.put(back, C0, C0, shadow=0.0)
-    # the front frame: near struts and joints (painted), then the glass under them
+    c.put(sanc_water(R_GLASS, rng), C0, C0, shadow=0.0)
+    bA, bL = sanc_cage(S, R_GLASS, 5.0, 6.0, far=True)
+    c.put(Piece(bA * 0.5, bL, None, None, {'glass': np.ones((S, S))}), C0, C0, shadow=0.0)
+    # the far pole: a dim boss under the hub
+    fp = cylinder(2 * SANC_HUB * 0.86, 2 * SANC_HUB * 0.86)
+    c.put(Piece(fp.A * 0.45, fp.L, None, None, {'glass': np.ones(fp.A.shape)}), C0, C0, shadow=0.0)
+    # the front frame: the near struts and joints, the pole hub, the rim clamp (the glass goes under them in build_all)
     f = Canvas(FRAME)
-    fm, fnode, x, y, z, inside = cage_mask(S, R_GLASS, back=False, w=10.0)
-    groove, _, _, _, _, _ = cage_mask(S, R_GLASS, back=False, w=3.0)
-    sph = shade(x, y, z, amb=0.2, k=0.8, spec=0.35)
-    Ls = np.clip(0.25 + 0.7 * sph, 0, 1) * (1 - 0.45 * groove)
-    f.put(Piece(fm, Ls, None, None, {'steel': np.ones((S, S))}), C0, C0, shadow=0.0)
-    # joints: a boss at each crossing on the front face (the lat / lon grid crossings, projected)
-    ct, sn = math.cos(CAGE_TILT), math.sin(CAGE_TILT)
-    for la in (-60, -30, 0, 30, 60):
-        for lo in range(-180, 180, 30):
-            la_r, lo_r = math.radians(la), math.radians(lo)
-            X, Y, Z = math.cos(la_r) * math.sin(lo_r), math.sin(la_r), math.cos(la_r) * math.cos(lo_r)
-            # planet frame -> view: invert Y = -y cos t + z sin t, Z = y sin t + z cos t
-            yv = -Y * ct + Z * sn
-            zv = Y * sn + Z * ct
-            if zv < 0.22:
-                continue
-            px_, py_ = C0 + X * R_GLASS, C0 + yv * R_GLASS
-            rr_ = 10 * math.sqrt(zv) + 3
-            f.put(cylinder(rr_, rr_), px_, py_, mat='steel', shadow=0.45)
-            f.put(cylinder(rr_ * 0.45, rr_ * 0.45), px_, py_, mat='dark', shadow=0.0)
-            if (la + lo) % 60 == 0:
-                f.light(px_, py_, 'white')
-    # the pole cap: the life-support hub the meridians run into (seen at an angle)
-    px_, py_ = C0, C0 - math.cos(CAGE_TILT) * R_GLASS
-    f.put(cylinder(58, 58), px_, py_, sy=math.sin(CAGE_TILT) * 1.15, mat='steel', shadow=0.5)
-    f.put(stock(root, 'family13/gasminingstation.png', light_col=(0.6, 0.95, 1.0)), px_, py_, scale=0.3, sy=math.sin(CAGE_TILT) * 1.15, mat='steel', nat=0.4, shadow=0.5)
-    f.light(px_, py_, 'nav')
-    # the rim clamp: a heavy ring where the glass meets the support ring
-    f.put(arc_beam(R_GLASS + 1, 8.0, ticks=10.0, mat='steel'), C0, C0, shadow=0.0)
+    fA, fL = sanc_cage(S, R_GLASS, 6.0, 7.0)
+    f.put(Piece(fA, fL, None, None, {'steel': np.ones((S, S))}), C0, C0, shadow=0.0)
+    for la in (36, 72):
+        for j in range(0, SANC_MERIDIANS, 2):
+            a_ = (j + (1 if la == 72 else 0)) * 2 * math.pi / SANC_MERIDIANS
+            f.light(*polar(math.cos(math.radians(la)) * R_GLASS, a_), 'white')
+    f.put(cylinder(2 * SANC_HUB + 6, 2 * SANC_HUB + 6), C0, C0, mat='dark', shadow=0.6)
+    f.put(stock(root, 'family13/resortbase.png', light_col=(0.6, 0.95, 1.0)), C0, C0, scale=2 * SANC_HUB / 300 * 1.04, mat='steel', nat=0.55, shadow=0.5, edge=0.6)
+    f.put(cylinder(13, 13), C0, C0, mat='steel', shadow=0.5)
+    f.light(C0, C0, 'nav')
+    for k in range(8):
+        f.light(*polar(SANC_HUB * 0.8, k * math.pi / 4 + math.pi / 8), 'run')
+    # the rim clamp: a heavy ring where the glass meets the support ring, its bolts, an inner lip
+    f.put(arc_beam(R_GLASS + 1, 9.0, ticks=10.0, mat='steel'), C0, C0, shadow=0.0)
+    f.put(arc_beam(R_GLASS - 4.5, 2.4, mat='dark'), C0, C0, shadow=0.0)
     return c, f
 
 
-def glass_rgba(Rg, size=FRAME):
-    """The glass over the whales (output px, straight RGBA): a faint blue film, a brighter fresnel rim, a soft sheen
-    upper left and a sharp window glint."""
-    yy, xx = np.mgrid[0:size, 0:size].astype(np.float64) + 0.5
-    x, y = (xx - C0) / Rg, (yy - C0) / Rg
-    d = np.hypot(x, y)
-    inside = np.clip((1 - d) * Rg + 0.5, 0, 1)
-    film = 0.1
-    rim = smoothstep(0.8, 1.0, d) ** 2 * 0.55
-    sheen = np.clip(1 - np.hypot((x + 0.42) / 0.55, (y + 0.48) / 0.28), 0, 1) ** 1.5 * 0.3
-    glint = np.clip(1 - np.hypot((x + 0.52) / 0.09, (y + 0.3) / 0.035), 0, 1) * 0.7
-    a = np.clip(film + rim + sheen + glint, 0, 1) * inside
-    col = np.zeros((size, size, 3))
-    col[:] = (0.45, 0.7, 0.85)
-    w = np.clip((sheen + glint) / np.maximum(a, 1e-3), 0, 1)[..., None]
-    col = col * (1 - w) + np.array([0.92, 0.97, 1.0]) * w
-    return col, a
+def glass_rgba(Rg, size=FRAME, occ=None):
+    """The glass over the whales (output px, straight RGBA; built at SS x and brought down): the water's tint, deeper
+    toward the rim; the dome's shading (darker on the side away from the light); its highlights from the upper-left
+    light (a broad sheen, a hot spot and a sharp window glint where the dome's normal halves light and view); a
+    Fresnel rim, brighter toward the light; the ring's reflection skimming the edge; the clamp's shadow and the
+    occlusion under its lip; occ (output px alpha of the struts over it): their shadows on the glass."""
+    S = size * SS
+    x, y, d, nz, th, inside = dome_coords(S, Rg)
+    lam = np.clip(x * LIGHT[0] + y * LIGHT[1] + nz * LIGHT[2], 0, 1)
+    far = np.clip((LIGHT[2] - lam) / LIGHT[2], 0, 1)          # 0 at the centre and the lit side .. 1 the far rim
+    rim = smoothstep(0.62, 1.0, d) ** 1.6
+    # the clamp's shadow (its inner edge, offset away from the light) and the occlusion under its lip
+    cs = smoothstep(0.0, 0.012, np.hypot(x + LIGHT[0] * 0.03, y + LIGHT[1] * 0.03) - (1 - 0.02))
+    ao = smoothstep(0.94, 0.985, d)
+    sh = 0.0
+    if occ is not None:
+        o = np.asarray(Image.fromarray((occ * 255).astype(np.uint8)).resize((S, S), Image.BILINEAR)).astype(np.float64) / 255
+        sh = fblur(shift(o, int(3.0 * SS), int(2.2 * SS)), 0.8 * SS) * 0.5
+    ad = np.clip(0.03 + 0.2 * rim + 0.34 * far ** 1.4 + 0.35 * cs + 0.3 * ao + sh, 0, 0.9)
+    # the tint: clear teal water on the lit side, deep blue-black on the far side and under the lip
+    dk = np.clip(far ** 1.2 + cs + ao + sh * 1.5, 0, 1)[..., None]
+    cd = np.array([0.05, 0.22, 0.28]) * (1 - dk) + np.array([0.01, 0.04, 0.07]) * dk
+    # the bright: highlights and the rim, over the dark
+    hv = LIGHT + np.array([0, 0, 1.0])
+    hv = hv / np.linalg.norm(hv)
+    nh = np.clip(x * hv[0] + y * hv[1] + nz * hv[2], 0, 1)
+    sheen = nh ** 9 * 0.26
+    hot = nh ** 70 * 0.55
+    # the glint: a crisp small ellipse on the hot spot (the sun), and a crescent of reflected light inside the lit rim
+    hx, hy = hv[0], hv[1]
+    ga = math.atan2(hy, hx)
+    gu = ((x - hx) * math.cos(ga) + (y - hy) * math.sin(ga)) / 0.03
+    gv = (-(x - hx) * math.sin(ga) + (y - hy) * math.cos(ga)) / 0.055
+    glint = np.clip((1 - np.hypot(gu, gv)) * 0.03 * Rg * SS + 0.5, 0, 1) * 0.8
+    dang = np.abs(((th - ga + math.pi) % (2 * math.pi)) - math.pi)
+    cres = np.clip((0.035 - np.abs(d - 0.84)) * Rg * SS + 0.5, 0, 1) * smoothstep(0.75, 0.2, dang) * 0.3
+    glint = glint + cres
+    side = np.clip(-(x * LIGHT[0] + y * LIGHT[1]) / np.maximum(d, 1e-6) / math.hypot(LIGHT[0], LIGHT[1]), -1, 1)
+    fres = smoothstep(0.86, 0.975, d) * (1 - smoothstep(0.975, 0.99, d)) * (0.32 + 0.4 * np.clip(side, 0, 1) + 0.1 * np.clip(-side, 0, 1))
+    refl = smoothstep(0.9, 0.96, d) * (1 - smoothstep(0.96, 0.975, d)) * 0.18
+    ab = np.clip(sheen + hot + glint + fres + refl, 0, 1)
+    cb_w = np.clip((hot + glint) / np.maximum(ab, 1e-4), 0, 1)[..., None]
+    cb = np.array([0.55, 0.82, 0.92]) * (1 - cb_w) + np.array([0.95, 0.98, 1.0]) * cb_w
+    cb = np.where((refl / np.maximum(ab, 1e-4))[..., None] > 0.5, np.array([0.6, 0.66, 0.7]), cb)
+    a = ab + ad * (1 - ab)
+    col = (cb * ab[..., None] + cd * (ad * (1 - ab))[..., None]) / np.maximum(a, 1e-4)[..., None]
+    a = a * inside
+    pa = np.clip(down(a, size, size), 0, 1)
+    pc = np.stack([down(col[..., k] * a, size, size) for k in range(3)], -1) / np.maximum(pa, 1e-4)[..., None]
+    return np.clip(pc, 0, 1), pa
+
+
+# The breach (drawn only while the sim has the sphere breached, threatArt.ts site.breached): three broken panes,
+# each (pane ring index from the rim 0 = between the 18 and 36 deg parallels, outer-zone bay 0..2*SANC_MERIDIANS-1,
+# hole size 0..1). Their order is threatArt.ts SANCTUARY_SPILL_LEN's (the venting plume's length, biggest first).
+SANC_BREAKS = ((0, 6, 1.35), (1, 0, 1.0), (0, 12, 0.7))
+SANC_BX = 3         # the breach overlays' own build multiple
+
+
+def sanc_pane(ring, bay):
+    """A pane of the outer zone: (inner r, outer r) in units of the glass radius, (a0, a1) its bay's angles (rad)."""
+    rs = [math.cos(math.radians(la)) for la in SANC_LATS]   # .95 .81 .59 .31
+    st = 2 * math.pi / (2 * SANC_MERIDIANS)
+    return rs[ring + 1], rs[ring], bay * st, (bay + 1) * st
+
+
+def sanc_break_centres():
+    """Each break's centre (frame px) and its outward angle."""
+    out = []
+    for ring, bay, _ in SANC_BREAKS:
+        r0, r1, a0, a1 = sanc_pane(ring, bay)
+        r, a = (r0 + r1) / 2, (a0 + a1) / 2
+        out.append((C0 + math.cos(a) * r * R_GLASS, C0 + math.sin(a) * r * R_GLASS, a))
+    return out
+
+
+def sanc_breach(strut_a):
+    """The breach overlay (straight RGBA, frame size): over the front, three broken panes - the jagged hole (the
+    water bared, boiling into the vacuum: dark, a froth of ice at its lip), glass shards left hanging in it with lit
+    edges, cracks running out across the pane in a spider web (stopping at the struts: `strut_a`, the near struts'
+    alpha), a rime of frost round it. Built at SANC_BX x with PIL and brought down."""
+    rng = seeded('sanctuary-breach')
+    B = SANC_BX
+    N = FRAME * B
+    sa = np.asarray(Image.fromarray((np.clip(strut_a, 0, 1) * 255).astype(np.uint8)).resize((N, N), Image.BILINEAR)).astype(np.float64) / 255
+    yy, xx = np.mgrid[0:N, 0:N].astype(np.float64) + 0.5
+    disc = np.clip((R_GLASS - 5 - np.hypot(xx / B - C0, yy / B - C0)) * B + 0.5, 0, 1)
+    glass_ok = np.clip(1 - sa * 1.6, 0, 1) * disc
+    hole = Image.new('L', (N, N), 0)
+    froth = np.zeros((N, N))
+    crack_l = Image.new('L', (N, N), 0)
+    crack_d = Image.new('L', (N, N), 0)
+    edge_l = Image.new('L', (N, N), 0)
+    shard = Image.new('L', (N, N), 0)
+    frost = np.zeros((N, N))
+    dh, dc, dd, de, ds = (ImageDraw.Draw(im) for im in (hole, crack_l, crack_d, edge_l, shard))
+    for (ring, bay, size), (bx, by, ba) in zip(SANC_BREAKS, sanc_break_centres()):
+        r0, r1, a0, a1 = sanc_pane(ring, bay)
+        rm = (r0 + r1) / 2
+        # the pane's half extents (frame px): radial, tangential
+        hr = (r1 - r0) / 2 * R_GLASS - 4
+        ht = (a1 - a0) / 2 * rm * R_GLASS - 4
+        ur, ut = math.cos(ba), math.sin(ba)
+        vr, vt = -math.sin(ba), math.cos(ba)
+        to_px = lambda u, v: ((bx + u * ur + v * vr) * B, (by + u * ut + v * vt) * B)
+        # the hole: a jagged polygon round the centre, off-centre a little
+        n = 13
+        ou, ov = rng.uniform(-0.15, 0.15) * hr, rng.uniform(-0.2, 0.2) * ht
+        pts = []
+        for k in range(n):
+            t = 2 * math.pi * k / n + rng.uniform(-0.15, 0.15)
+            f = size * (0.8 + 0.45 * rng.random()) * (0.72 if k % 2 else 1.0)
+            pts.append((ou + math.cos(t) * hr * f * 1.3, ov + math.sin(t) * ht * f * 0.95))
+        poly = [to_px(u, v) for u, v in pts]
+        dh.polygon(poly, fill=255)
+        de.line(poly + [poly[0]], fill=255, width=max(1, B))
+        # shards hanging in from the lip
+        for k in rng.choice(n, 3, replace=False):
+            p0, p1 = pts[k], pts[(k + 1) % n]
+            m = ((p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2)
+            tip = (m[0] * rng.uniform(0.25, 0.6) + ou * 0.4, m[1] * rng.uniform(0.25, 0.6) + ov * 0.4)
+            tri = [to_px(*p0), to_px(*p1), to_px(*tip)]
+            ds.polygon(tri, fill=255)
+            de.line([tri[0], tri[2], tri[1]], fill=200, width=max(1, B))
+        # cracks: from each lip vertex out across the pane, wandering and forking; web arcs between them
+        spokes = []
+        for k in range(n):
+            u, v = pts[k]
+            ang = math.atan2(v / max(ht, 1), u / max(hr, 1)) + rng.uniform(-0.3, 0.3)
+            path = [(u, v)]
+            reach = rng.uniform(0.6, 1.3) * (0.5 + 0.5 * size)
+            step = max(hr, ht) * 0.13 * reach
+            for s_ in range(7):
+                ang += rng.uniform(-0.35, 0.35)
+                u += math.cos(ang) * step
+                v += math.sin(ang) * step
+                path.append((u, v))
+                if rng.random() < 0.18:
+                    fu, fv, fa = u, v, ang + rng.choice([-1, 1]) * rng.uniform(0.5, 1.0)
+                    fork = [(fu, fv)]
+                    for _ in range(3):
+                        fu += math.cos(fa) * step * 0.8
+                        fv += math.sin(fa) * step * 0.8
+                        fork.append((fu, fv))
+                    pp = [to_px(*q) for q in fork]
+                    dc.line(pp, fill=200, width=max(1, B - 1))
+                    dd.line([(x + B, y + B) for x, y in pp], fill=150, width=max(1, B - 1))
+            spokes.append(path)
+            pp = [to_px(*q) for q in path]
+            dc.line(pp, fill=255, width=B)
+            dd.line([(x + B, y + B) for x, y in pp], fill=190, width=B)
+        for ring_k in (2,):
+            arc = [spokes[k][min(ring_k, len(spokes[k]) - 1)] for k in range(n)]
+            for k in range(n):
+                if rng.random() < 0.45:
+                    pp = [to_px(*arc[k]), to_px(*arc[(k + 1) % n])]
+                    dc.line(pp, fill=170, width=max(1, B - 1))
+        # frost: a rime of fine ice round the lip, thinning outward
+        dist = np.hypot(((xx / B - bx) * ur + (yy / B - by) * ut) / max(hr, 1), ((xx / B - bx) * vr + (yy / B - by) * vt) / max(ht, 1))
+        win = dist < 3.2
+        spk = (value_noise(rng, N, N, 2 * B) > 0.62) * np.clip(1.6 - dist / size, 0, 1) ** 1.5
+        frost = np.maximum(frost, np.where(win, spk * 0.55 + np.clip(1.25 - dist / size, 0, 1) * 0.18, 0))
+        fr_ = np.clip(1 - np.abs(dist / size - 0.62) / 0.18, 0, 1) * (value_noise(rng, N, N, 3 * B) > 0.45)
+        froth = np.maximum(froth, fr_)
+    H = np.asarray(hole).astype(np.float64) / 255 * glass_ok
+    CL = np.asarray(crack_l).astype(np.float64) / 255 * glass_ok * (1 - H)
+    CD = np.asarray(crack_d).astype(np.float64) / 255 * glass_ok * (1 - H) * (1 - CL)
+    EL = np.asarray(edge_l).astype(np.float64) / 255 * glass_ok
+    SH = np.asarray(shard).astype(np.float64) / 255 * H
+    FR = frost * glass_ok * (1 - H)
+    FH = froth * H
+    # layer it: hole (water bared), froth, shards, frost, dark crack sides, lit cracks, lit lips
+    col = np.zeros((N, N, 3))
+    a = np.zeros((N, N))
+
+    def over(c, al):
+        nonlocal col, a
+        al = np.clip(al, 0, 1)
+        na = al + a * (1 - al)
+        col = (np.asarray(c)[None, None, :] * al[..., None] + col * (a * (1 - al))[..., None]) / np.maximum(na, 1e-5)[..., None]
+        a = na
+
+    wn = value_noise(rng, N, N, 4 * B)
+    over((0.015, 0.05, 0.075), H * (0.78 + 0.12 * wn))
+    over((0.75, 0.88, 0.95), FH * 0.75)
+    over((0.42, 0.62, 0.72), SH * 0.55)
+    over((0.88, 0.95, 1.0), FR)
+    over((0.0, 0.02, 0.04), CD * 0.55)
+    over((0.9, 0.97, 1.0), CL * 0.85)
+    over((0.95, 1.0, 1.0), EL * glass_ok * 0.9)
+    pa = np.clip(down(a, FRAME, FRAME), 0, 1)
+    pc = np.stack([down(col[..., k] * a, FRAME, FRAME) for k in range(3)], -1) / np.maximum(pa, 1e-4)[..., None]
+    return to_rgba(pc, pa)
+
+
+def to_rgba(col, a):
+    res = np.zeros(a.shape + (4,), np.uint8)
+    res[..., :3] = np.round(np.clip(col, 0, 1) * 255)
+    res[..., 3] = np.round(np.clip(a, 0, 1) * 255)
+    return res
+
+
+SPILL_W, SPILL_H = 200, 104   # the venting plume's texture (frame px): from its mouth at (0, SPILL_H / 2) along +x
+
+
+def sanc_spill():
+    """The plume of water venting from a break into space, seen from above (straight RGBA, along +x from its mouth at
+    the left middle): a dense jet at the mouth flashing to mist and ice as it spreads, streaks along its flow, ice
+    grains thrown out, all fading toward the tip. threatArt.ts puffs it out of each break (several at once, each
+    growing and fading as it drifts out)."""
+    rng = seeded('sanctuary-spill')
+    B = SANC_BX
+    W, H = SPILL_W * B, SPILL_H * B
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float64) + 0.5
+    u = xx / W
+    v = (yy - H / 2) / (H / 2)
+    wid = 0.07 + 0.88 * u ** 0.75
+    q = v / wid
+    streak = value_noise(rng, H, W, 3 * B)
+    # flow streaks: noise stretched along the flow (sampled along q, slowly along u)
+    sv = np.asarray(Image.fromarray((rng.random((64, 12)) * 255).astype(np.uint8)).resize((W, H), Image.BICUBIC)).astype(np.float64) / 255
+    qs = np.clip((q + 1) / 2, 0, 1)
+    idx = np.clip((qs * (H - 1)).astype(int), 0, H - 1)
+    flow = sv[idx, np.clip((u ** 0.7 * (W - 1)).astype(int), 0, W - 1)]
+    body = np.exp(-(q * q) * 1.8) * (1 - smoothstep(0.62, 1.0, u)) * smoothstep(0.0, 0.03, u)
+    dens = body * (0.55 + 0.45 * flow) * (0.85 + 0.3 * streak - 0.15)
+    core = np.exp(-(q * q) * 9) * (1 - smoothstep(0.05, 0.4, u))
+    al = np.clip(dens * (1.15 - 0.4 * u) + core * 0.6, 0, 0.95)
+    col = np.zeros((H, W, 3))
+    mist = np.array([0.82, 0.92, 1.0])
+    jet = np.array([0.45, 0.72, 0.85])
+    wv = np.clip(core * 1.4, 0, 1)[..., None]
+    col[:] = mist
+    col = col * (1 - wv) + jet * wv
+    # ice grains: sharp specks scattered through the plume and just past it
+    grains = np.zeros((H, W))
+    for _ in range(260):
+        gu = rng.random() ** 0.8
+        gv = rng.normal(0, 0.45) * (0.07 + 0.88 * gu ** 0.75)
+        gx, gy = gu * W * 0.97, H / 2 + gv * H / 2
+        rr = rng.uniform(0.45, 1.0) * B
+        x0, x1 = int(max(0, gx - 4 * B)), int(min(W, gx + 4 * B))
+        y0, y1 = int(max(0, gy - 4 * B)), int(min(H, gy + 4 * B))
+        if x1 <= x0 or y1 <= y0:
+            continue
+        d = np.hypot(xx[y0:y1, x0:x1] - gx, yy[y0:y1, x0:x1] - gy)
+        grains[y0:y1, x0:x1] = np.maximum(grains[y0:y1, x0:x1], np.clip(1.2 - d / rr, 0, 1) * rng.uniform(0.4, 1.0) * (1 - 0.6 * gu))
+    ga = np.clip(grains, 0, 1)
+    na = ga + al * (1 - ga)
+    col = (np.array([0.95, 0.99, 1.0]) * ga[..., None] + col * (al * (1 - ga))[..., None]) / np.maximum(na, 1e-5)[..., None]
+    al = na
+    pa = np.clip(down(al, SPILL_W, SPILL_H), 0, 1)
+    pc = np.stack([down(col[..., k] * al, SPILL_W, SPILL_H) for k in range(3)], -1) / np.maximum(pa, 1e-4)[..., None]
+    return to_rgba(pc, pa)
+
+
+def sanc_alarm():
+    """The emergency glow inside the glass (straight RGBA, frame size): a dark red that threatArt.ts fades in and out
+    over the whales, under the struts - strongest round the hub's lamps and under the rim, pooling at the breaks."""
+    S = FRAME * SS
+    x, y, d, nz, th, inside = dome_coords(S, R_GLASS)
+    al = 0.28 + 0.3 * smoothstep(0.55, 1.0, d) + 0.35 * np.clip(1 - d / 0.35, 0, 1)
+    for (bx, by, _), (_, _, size) in zip(sanc_break_centres(), SANC_BREAKS):
+        bxu, byu = (bx - C0) / R_GLASS, (by - C0) / R_GLASS
+        al = al + 0.3 * size * np.clip(1 - np.hypot(x - bxu, y - byu) / 0.3, 0, 1) ** 1.5
+    al = np.clip(al, 0, 0.85) * inside
+    col = np.zeros((S, S, 3))
+    col[:] = (0.62, 0.05, 0.03)
+    col = col + np.array([0.3, 0.06, 0.02]) * np.clip(1 - d / 0.3, 0, 1)[..., None]
+    pa = np.clip(down(al, FRAME, FRAME), 0, 1)
+    pc = np.stack([down(col[..., k] * al, FRAME, FRAME) for k in range(3)], -1) / np.maximum(pa, 1e-4)[..., None]
+    return to_rgba(pc, pa)
+
+
+def sanc_emergency_lights():
+    """The emergency lamps lit while breached (frame px, kind 'nav'): round the rim clamp, on the hub, at the dock arms'
+    roots and beside each break."""
+    pts = [polar(R_GLASS + 1, math.radians(15 + 30 * k)) for k in range(12)]
+    pts += [polar(SANC_HUB * 0.62, math.radians(45 + 90 * k)) for k in range(4)]
+    pts += [polar(R_GLASS + 50, math.radians(45 + 90 * k)) for k in range(4)]
+    return [(int(round(x)), int(round(y)), 'nav') for x, y in pts]
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -4065,20 +4418,27 @@ def build_all(root, only):
     if want('sanctuary'):
         t0 = time.time()
         c, f = build_sanctuary(root)
-        res = sanitize(finish(c))
+        res = sanitize(no_faint(finish(c)))
         made['sanctuary'] = res
         lights['sanctuary'] = lights_of(c, res)
         fr = finish(f, one_body=False, outline=False)
-        gcol, ga = glass_rgba(R_GLASS)
         fa = fr[..., 3:4].astype(np.float64) / 255
+        gcol, ga = glass_rgba(R_GLASS, occ=fa[..., 0])
         fc = fr[..., :3].astype(np.float64) / 255
         oa = fa + ga[..., None] * (1 - fa)
         oc = (fc * fa + gcol * ga[..., None] * (1 - fa)) / np.maximum(oa, 1e-4)
         front = np.zeros_like(fr)
         front[..., :3] = np.round(np.clip(oc, 0, 1) * 255)
         front[..., 3:4] = np.round(np.clip(oa, 0, 1) * 255)
-        made['sanctuary-front'] = front
+        made['sanctuary-front'] = no_faint(front)
         lights['sanctuary'] += [(int(round(x)), int(round(y)), k) for (x, y, k) in f.lights]
+        # the breach (only while breached): the broken panes over the front, the venting plume, the red alarm glow; the
+        # breaks' centres (their plumes' mouths) and the emergency lamps as rows of the light table
+        made['sanctuary-breach'] = no_faint(sanc_breach(fa[..., 0]))
+        made['sanctuary-spill'] = no_faint(sanc_spill())
+        made['sanctuary-alarm'] = no_faint(sanc_alarm())
+        lights['sanctuary-breaks'] = [(int(round(x)), int(round(y)), 'nav') for (x, y, _) in sanc_break_centres()]
+        lights['sanctuary-emergency'] = sanc_emergency_lights()
         print('sanctuary', round(time.time() - t0, 1), 's', flush=True)
     return made, lights, tables
 
