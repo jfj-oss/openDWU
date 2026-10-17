@@ -5405,9 +5405,12 @@ function isSpaceBattleStatsData(o: unknown): o is SpaceBattleStatsData {
 }
 
 /** Character.Empire.SendMessageToEmpire(Character.Empire, CharacterSkillTraitChange, character, description). */
-function sendCharacterSkillTraitMessage(character: Character, description: string): void {
+export function sendCharacterSkillTraitMessage(character: Character, description: string): void {
     const empire = character.empire;
-    if (empire === null) throw new Error(`DoCharacterEvent: character without an empire (C# NullReferenceException): ${character.name}, role ${character.role}, active ${character.active}`);
+    // The C# dereferences Character.Empire here unguarded (a NullReferenceException that aborts the whole empire tick). A dead character
+    // (Kill clears its empire) can still be the target of a failed assassination or the leader of an intercepted mission, as it was
+    // in a 30-year soak (a killed leader, rg-long-norm-s1 day 6832); there is nobody to tell, so the message is skipped.
+    if (empire === null) return;
     sendMessageToEmpire(empire, empire, EmpireMessageType.CharacterSkillTraitChange, character, description);
 }
 

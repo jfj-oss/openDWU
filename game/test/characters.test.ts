@@ -65,8 +65,9 @@ import {
     resolveCharacterColonyIncomeBonus,
     resolveEmpireLeaderWarWearinessDivisor,
     resolveLeaderTroopMaintenanceFactor,
+    sendCharacterSkillTraitMessage,
     stellarObjectCharacters,
-    type Character,
+    Character,
 } from '../src/sim/characters';
 
 // Empire.6.cs GenerateStartingCharacters (4304/4309), called as Start.2.cs 1477-1485 does
@@ -921,4 +922,12 @@ describe('war crimes remembered', () => {
         expect(wc.tribunalVoteScore(g, a, a)).toBe(-100);
         expect(dietWarCrimesLine.fn!(g)).toContain(a.name);
     }, 300000);
+});
+
+describe('DoCharacterEvent: a character without an empire', () => {
+    it('a dead character (Kill clears its empire) that gets a skill / trait message is skipped, not a NullReferenceException that aborts the empire tick', () => {
+        const dead = new Character('Jukri Paklidu', CharacterRole.Leader, '', null, null, null, 0);
+        expect(dead.empire).toBeNull();
+        expect(() => sendCharacterSkillTraitMessage(dead, 'a new trait')).not.toThrow();
+    });
 });
