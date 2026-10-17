@@ -239,6 +239,23 @@ export function symbolBand(f: number): SymbolBand {
     return 'galaxy';
 }
 
+/** Render-only (not in the original): the f at which the per-ship filled symbols are fully in. Between
+ *  OUTLINE_SYMBOL_MAX_FACTOR and this the outline frame cross-fades into the filled symbol (symbolFilledBlend). */
+export const FILLED_SYMBOL_FULL_FACTOR = 13;
+
+/**
+ * 0 .. 1 share of the filled look of a per-ship symbol at zoom factor f: 0 up to f = 10 (outline only, as the original),
+ * smoothstep to 1 at f = FILLED_SYMBOL_FULL_FACTOR. The original swaps a faint hollow frame for a solid symbol 1.2 x
+ * bigger at f = 10, which pops a blue blob over every colony with ships or stations in orbit (twice the planet's own
+ * size) just as the planet itself stops shrinking (planetZoomFactor): the planet seems to "get bigger".
+ */
+export function symbolFilledBlend(f: number): number {
+    if (f <= OUTLINE_SYMBOL_MAX_FACTOR) return 0;
+    if (f >= FILLED_SYMBOL_FULL_FACTOR) return 1;
+    const u = (f - OUTLINE_SYMBOL_MAX_FACTOR) / (FILLED_SYMBOL_FULL_FACTOR - OUTLINE_SYMBOL_MAX_FACTOR);
+    return u * u * (3 - 2 * u);
+}
+
 /** Render-only softening of the role markers (not in the original). */
 const OUTLINE_MARKER_ALPHA = 0.45;
 const FILLED_MARKER_ALPHA = 0.85;
@@ -1530,19 +1547,27 @@ export class GalaxyMarkerLayer {
             if (!galaxyPass && !fog.builtObject(bo)) continue;
             const pos = this.positionOf(bo);
             if (!boundsOnScreen(pos.x, pos.y, 0, pad, cam.x, cam.y, cam.width, cam.height, z)) continue;
-            const heightPx = galaxyPass
-                ? (isBase ? basePx : shipPx) * symbolSizeMultiplier(bo.role, bo.subRole, true)
-                : perShipSymbolPx(this.shipPxOf(bo), isBase) * symbolSizeMultiplier(bo.role, bo.subRole, band === 'filled');
+            // Per-ship pass in the cross-fade band (10 < f < 13): the outline frame at its own size fades out while the
+            // filled symbol, growing from the outline's size to its x1.2, fades in (symbolFilledBlend).
+            const blend = galaxyPass ? 1 : symbolFilledBlend(f);
+            const mixed = !galaxyPass && blend > 0 && blend < 1;
+            const filled = galaxyPass || blend > 0;
+            const unitPx = galaxyPass ? (isBase ? basePx : shipPx) : perShipSymbolPx(this.shipPxOf(bo), isBase);
+            const multOutline = symbolSizeMultiplier(bo.role, bo.subRole, false);
+            const multFilled = symbolSizeMultiplier(bo.role, bo.subRole, true);
+            const heightPx = unitPx * (galaxyPass ? multFilled : multOutline + (multFilled - multOutline) * blend);
             let base = owned ? empireMarkerColor(bo.empire!) : UNOWNED_SYMBOL_COLOR;
             if (bo.mothball !== undefined) base = mothballGreyColor(base, mothballGrey(bo, galaxyStarDate(this.galaxy))); // Mothballing add-on: a ship in reserve is greyer
             const tint = brighten(base, 48);
             // Restyle: the outline frame recedes (it must not out-shout the ship / base it frames); filled markers are a touch softer.
-            const alpha = symbolAlpha(f, owned, isBase) * (band === 'outline' ? OUTLINE_MARKER_ALPHA : FILLED_MARKER_ALPHA);
+            const symAlpha = symbolAlpha(f, owned, isBase);
             const artIdx = SYMBOL_ART.indexOf(art);
-            if (band === 'outline') {
-                this.pushSymbol(n++, SYMBOL_ART.length + artIdx, pos.x - ox, pos.y - oy, heightPx, z, tint, alpha);
-            } else {
+            if (!filled || mixed) {
+                this.pushSymbol(n++, SYMBOL_ART.length + artIdx, pos.x - ox, pos.y - oy, unitPx * multOutline, z, tint, symAlpha * OUTLINE_MARKER_ALPHA * (1 - blend));
+            }
+            if (filled) {
                 // Filled art over a darker, slightly larger copy: the contour.
+                const alpha = symAlpha * FILLED_MARKER_ALPHA * blend;
                 this.pushSymbol(n++, artIdx, pos.x - ox, pos.y - oy, heightPx + 2.5, z, brighten(base, -96), alpha * 0.9);
                 this.pushSymbol(n++, artIdx, pos.x - ox, pos.y - oy, heightPx, z, tint, alpha);
             }

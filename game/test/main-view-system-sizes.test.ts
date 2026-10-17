@@ -52,6 +52,23 @@ describe('planetSpritePx / moonDotPx (Diameter / factor, min 4 px)', () => {
     });
 });
 
+describe('drawn body size never grows while zooming out (user report: planets seem to get bigger part-way)', () => {
+    it('planetSpritePx / moonDotPx are non-increasing in f over the whole system range, at every diameter', () => {
+        for (const d of [30, 120, 300, 900, 2400]) {
+            let lastP = Infinity;
+            let lastM = Infinity;
+            for (let f = 1; f <= 520; f *= 1.01) {
+                const p = planetSpritePx(d, 1 / f);
+                const m = moonDotPx(d, 1 / f);
+                expect(p).toBeLessThanOrEqual(lastP);
+                expect(m).toBeLessThanOrEqual(lastM);
+                lastP = p;
+                lastM = m;
+            }
+        }
+    });
+});
+
 describe('starSpritePx / starGalaxySpritePx (no compression)', () => {
     it('stars are D/f with a 4 px floor and no cap', () => {
         expect(starSpritePx(1000, 1)).toBe(1000);

@@ -22,6 +22,8 @@ import {
     symbolAlpha,
     symbolArtFor,
     symbolBand,
+    symbolFilledBlend,
+    FILLED_SYMBOL_FULL_FACTOR,
     symbolSizeMultiplier,
     systemRingRadiusPx,
     SYSTEM_INFLUENCE_RADIUS,
@@ -137,6 +139,20 @@ describe('alpha / style by zoom band', () => {
         expect(symbolBand(150)).toBe('filled');
         expect(symbolBand(151)).toBe('galaxy');
         expect(symbolBand(20000)).toBe('galaxy');
+    });
+    it('the per-ship outline cross-fades into the filled symbol over 10 < f < 13 instead of popping at f = 10', () => {
+        expect(symbolFilledBlend(1)).toBe(0);
+        expect(symbolFilledBlend(10)).toBe(0); // the original's outline band is untouched
+        expect(symbolFilledBlend(FILLED_SYMBOL_FULL_FACTOR)).toBe(1);
+        expect(symbolFilledBlend(150)).toBe(1);
+        let last = 0;
+        for (let f = 10; f <= 13.5; f += 0.05) {
+            const b = symbolFilledBlend(f);
+            expect(b).toBeGreaterThanOrEqual(last);
+            expect(b - last).toBeLessThan(0.1); // no step anywhere
+            last = b;
+        }
+        expect(symbolFilledBlend(10.01)).toBeLessThan(0.01);
     });
     it('outline alpha max(0.6, f/3) (+48 for ships), opaque for galaxy-level and unowned symbols', () => {
         expect(symbolAlpha(1, true, true)).toBe(153 / 255);
