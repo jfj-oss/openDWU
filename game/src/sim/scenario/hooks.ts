@@ -190,6 +190,8 @@ export interface HomePlacementHelpers {
     startTechLevel?: number;
     /** Each empire's own start tech level (createGame's EmpireStartOptions.techLevel; not saved). */
     empireTechLevels?: ReadonlyMap<Empire, number>;
+    /** Independent colonies the settling of an older start gave to an empire (game.ts "Settling colonies"), in the order settled; not saved. */
+    settledIndependents?: readonly Habitat[];
 }
 
 /** Runs once at the end of createGame (after every stock start step, before the first scheduler frame). May draw. */

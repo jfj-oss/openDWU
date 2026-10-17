@@ -15,6 +15,7 @@ import {
     HIVE_CODE_CONTAINED,
     HIVE_HANDLER_IDS,
     hiveEndCheck,
+    formerIndependentGuess,
     hiveKnownSites,
     hivePeriodic,
     hiveState,
@@ -25,6 +26,7 @@ import {
 } from '../src/sim/scenario/threats/hive';
 import { takeOwnershipOfColonyFull } from '../src/sim/combat/ownership';
 import { annualTroopMaintenance } from '../src/sim/troops';
+import { Population } from '../src/sim/population';
 import { FleetPosture } from '../src/sim/diplomacyTick';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { empireTechLevel } from '../src/sim/scenario/threats/robotMutiny';
@@ -40,7 +42,7 @@ beforeAll(async () => {
     base = await loadGameDataFs();
 }, 120000);
 
-const FORCE = { hiveThresholdPct: 40, hiveMinNodes: 1, hiveMilitiaFactor: 1.5, hiveDetectPct: 0, hiveExistChancePct: 100, hiveMinYear: 0 };
+const FORCE = { hiveThresholdPct: 40, hiveMinNodes: 1, hiveMilitiaFactor: 1.5, hiveDetectPct: 0, hiveExistChancePct: 100, hiveMinYear: 0, hiveRiseChancePct: 100 };
 const age3 = (o: CreateGameOptions): CreateGameOptions => ({ ...o, player: { ...o.player, age: 3 }, aiEmpires: o.aiEmpires.map((e) => ({ ...e, age: 3 })) });
 
 function hvGame(params: Record<string, number> = {}, flags: Record<string, boolean> = {}, older = true): { game: Game; gameData: GameData } {
@@ -170,6 +172,76 @@ describe('Hive: forced trigger on seed 1', () => {
         expect(ends[0].outcomeForPlayer).toBe(GameEndOutcome.Victory);
         setGameEndHandler(g, null);
     }, 600000);
+});
+
+describe('Hive: nodes are every colony that was independent', () => {
+    it('an older start: the colonies its settling took from the independents are nodes, already absorbed by their empires', () => {
+        const { game } = hvGame({}, {}, true);
+        const g = game.galaxy;
+        const st = hiveState(g);
+        expect(st.tracked).toBe(true);
+        expect(st.absorbed.length).toBeGreaterThan(0);
+        for (const h of st.absorbed) {
+            expect(h.empire).not.toBeNull();
+            expect(h.empire).not.toBe(g.independentEmpire);
+            expect(st.nodes.some((n) => n.habitat === h)).toBe(true);
+        }
+        // Still-independent colonies are nodes too, and no habitat is listed twice.
+        for (const h of g.independentColonies) expect(st.nodes.some((n) => n.habitat === h)).toBe(true);
+        expect(new Set(st.nodes.map((n) => n.habitat)).size).toBe(st.nodes.length);
+    }, 1200000);
+
+    it('the record is kept in a game the Hive rolled "not this game" for (no advisory, no rise), so a later editor spawn knows the nodes', () => {
+        const { game } = hvGame({ hiveExistChancePct: 0 }, {}, false);
+        const g = game.galaxy;
+        const st = peekHiveState(g)!;
+        expect(st).not.toBeNull();
+        expect(st.tracked).toBe(true);
+        expect(st.nodes.length).toBeGreaterThan(0);
+        const node = st.nodes[0];
+        const owner = g.empires.find((e) => e !== null && e.active && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null)!;
+        takeOwnershipOfColonyFull(g, g.independentEmpire!, node.habitat, owner, false, false);
+        expect(st.absorbed).toContain(node.habitat);
+        expect(hiveKnownSites(g, owner)).toEqual([]);
+        hivePeriodic(g, galaxyStarDate(g));
+        expect(st.faction).toBeNull();
+    }, 1200000);
+
+    it('formerIndependentGuess: an empire colony whose people are of a race no empire has was taken from the independents; colonies of an empire\'s own race are not', () => {
+        const { game } = hvGame({}, {}, true);
+        const g = game.galaxy;
+        expect(formerIndependentGuess(g)).toEqual([]);
+        const owner = g.empires.find((e) => e !== null && e.active && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null)!;
+        const colony = owner.colonies.find((c) => c !== owner.capital && c.population.totalAmount > 0)!;
+        const used = new Set(g.empires.map((e) => e.dominantRace));
+        const stranger = g.races.find((r) => !used.has(r))!;
+        expect(stranger).toBeDefined();
+        colony.population.items.length = 0;
+        colony.population.add(new Population(stranger, 1000000, g));
+        colony.population.recalculateTotalAmount();
+        expect(formerIndependentGuess(g)).toEqual([colony]);
+    }, 1200000);
+});
+
+describe('Hive: the rise chance (hiveRiseChancePct)', () => {
+    it('meeting the threshold does not raise the Chorus by itself: a yearly roll, once per game year', () => {
+        const { game } = hvGame({ hiveRiseChancePct: 0 }, {}, false);
+        const g = game.galaxy;
+        const st = hiveState(g);
+        const owner = g.empires.find((e) => e !== null && e.active && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null)!;
+        for (const n of st.nodes) if (n.habitat.empire === g.independentEmpire) takeOwnershipOfColonyFull(g, g.independentEmpire!, n.habitat, owner, false, false);
+        expect(st.absorbed.length).toBe(st.nodes.length);
+        hivePeriodic(g, galaxyStarDate(g));
+        expect(st.faction).toBeNull(); // chance 0: not this year
+        const year = st.riseRollYear;
+        expect(year).toBeDefined();
+        g.scenario!.params.hiveRiseChancePct = 100;
+        hivePeriodic(g, galaxyStarDate(g));
+        expect(st.faction).toBeNull(); // the year's roll has been made
+        st.riseRollYear = year! - 1;
+        hivePeriodic(g, galaxyStarDate(g));
+        expect(st.faction).not.toBeNull(); // next year, chance 100: it rises
+    }, 1200000);
 });
 
 describe('Hive: hiveMaxNodesSeized (§4 rarity and timing)', () => {

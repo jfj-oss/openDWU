@@ -1426,6 +1426,7 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
         list9.push(1400000000.0 / galaxy.starCount + num22 * 1.0 * galaxy.sizeScale); // C# SizeX; sizeScale = SizeX when square
     }
     galaxy.empireTerritory.reviewEmpireTerritory(galaxy);
+    const settledIndependents: Habitat[] = []; // independent colonies the settling below gives to an empire (handed to the scenario game-start handlers)
     for (let n = 0; n < list8.length; n++) {
         if (n % 8 === 0) yield { step: `Settling colonies (${n}/${list8.length})`, fraction: 0.4 + (0.25 * n) / list8.length };
         const e = empireList.find((x) => x.empireId === list8[n])!;
@@ -1493,7 +1494,10 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
             if (!list10[num23].includes(star)) list10[num23].push(star);
             makeHabitatIntoColony(galaxy, h5, e, list6[num23], e.dominantRace!, 1.0, false);
             const i = independentColonies.indexOf(h5);
-            if (i >= 0) independentColonies.splice(i, 1);
+            if (i >= 0) {
+                independentColonies.splice(i, 1);
+                settledIndependents.push(h5);
+            }
             galaxy.empireTerritory.reviewEmpireTerritoryUpdate(galaxy, { x: Math.trunc(h5.xpos) - 1600000, y: Math.trunc(h5.ypos) - 1600000, w: 3200000, h: 3200000 });
         }
     }
@@ -1674,7 +1678,7 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
     }
     baconInitializeSettings(galaxy, gd.baconSettings);
     // Mod layer: the scenario game-start hook (after every stock start step, before the first frame; no-op without one).
-    if (galaxy.scenario !== null) scenarioGameStart(galaxy, { randomPointInRing, inNebula, startTechLevel: opts.player.techLevel, empireTechLevels: new Map(empireList.map((e, i) => [e, listTech[i]] as const)) });
+    if (galaxy.scenario !== null) scenarioGameStart(galaxy, { randomPointInRing, inNebula, startTechLevel: opts.player.techLevel, empireTechLevels: new Map(empireList.map((e, i) => [e, listTech[i]] as const)), settledIndependents });
     // Start.2.cs 2147-2190: game2.DisplayMessage* / DisplayPopup* = gameOptions_0's (the Game Options the player saved;
     // unset: method_260's defaults). The player's message pipeline reads them (playerMessages.ts).
     if (opts.messageOptions !== undefined && opts.messageOptions !== null) galaxy.messageOptions = copyMessageOptions(opts.messageOptions);

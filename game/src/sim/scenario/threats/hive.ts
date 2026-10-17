@@ -17,7 +17,8 @@ import { takeOwnershipOfColonyFull } from '../../combat/ownership';
 import { CharacterRole, generateNewCharacter } from '../../characters';
 import { EmpireMessageType } from '../../messages';
 import { GameEndOutcome } from '../../victory';
-import { registerScenarioEvent, registerScenarioGameStart, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly } from '../hooks';
+import { galaxyStarDate } from '../../tick/simTime';
+import { gameYear, registerScenarioEvent, registerScenarioGameStart, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly, type HomePlacementHelpers } from '../hooks';
 import { scenarioParam } from '../state';
 import { scenarioText } from '../messages';
 import { registerHiddenThing, retireHiddenTarget } from '../security/registry';
@@ -63,10 +64,17 @@ export interface HiveNode {
 }
 
 export interface HiveState {
-    /** galaxy.independentColonies at scenario start (habitat, plus this empire's knowledge of its node status). */
+    /**
+     * Every colony that was independent: the ones at scenario start (habitat, plus this empire's knowledge of its node status) and the
+     * ones the settling of an older start had already given to an empire.
+     */
     nodes: HiveNode[];
     /** Nodes absorbed by a normal empire (subset of nodes' habitats). */
     absorbed: Habitat[];
+    /** The add-on was on from game start, so `nodes` / `absorbed` are exact (also in a game the Hive rolled "not this game" for). Absent: a Game Editor spawn fell back on a guess. */
+    tracked?: boolean;
+    /** Game year of the last yearly rise roll (hiveRiseChancePct). */
+    riseRollYear?: number;
     faction: Empire | null;
     agentsGiven: boolean;
     sentStages: SentStages;
@@ -98,6 +106,8 @@ const P = {
     minNodes: (g: Galaxy) => p(g, 'hiveMinNodes', 5),
     detectPct: (g: Galaxy) => p(g, 'hiveDetectPct', 15),
     maxNodesSeized: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'hiveMaxNodesSeized', 30))),
+    /** Once the threshold is met (and the year floor passed) the Chorus rises with this chance each game year (100: at the first check). */
+    riseChancePct: (g: Galaxy) => Math.max(0, Math.min(100, p(g, 'hiveRiseChancePct', 20))),
 };
 
 /** Nearest-cluster radius for "the largest absorbed cluster" (§4 hiveMaxNodesSeized: nearest that cluster first). */
@@ -111,11 +121,23 @@ function nodeOf(st: HiveState, h: Habitat): HiveNode | undefined {
 // Init (game start): every independent colony at the start of the game is a node.
 // ---------------------------------------------------------------------------------------------------------------
 
-export function hiveInit(galaxy: Galaxy): void {
-    if (!threatExists(galaxy, HIVE_KEY)) return; // §0 rarity: not this game — no state, no draws.
+export function hiveInit(galaxy: Galaxy, ctx?: HomePlacementHelpers): void {
+    // The record is kept in every game the add-on is on in, also one the Hive rolled "not this game" for (§0 rarity: it draws nothing
+    // and posts nothing), so a Game Editor spawn in year 50 still knows which colonies were independent.
     const st = hiveState(galaxy);
-    if (st.nodes.length > 0) return;
+    if (st.tracked === true) return;
+    st.tracked = true;
     st.nodes = [...galaxy.independentColonies].map((habitat) => ({ habitat, knowledge: [] }));
+    // An older start's settling gave some independent colonies to the empires (the extra colonies of "Settling colonies", game.ts): nodes already absorbed.
+    const exists = threatExists(galaxy, HIVE_KEY);
+    for (const habitat of ctx?.settledIndependents ?? []) {
+        const owner = habitat.empire;
+        if (habitat.hasBeenDestroyed || owner === null || owner === galaxy.independentEmpire || st.nodes.some((n) => n.habitat === habitat)) continue;
+        const node: HiveNode = { habitat, knowledge: [] };
+        st.nodes.push(node);
+        st.absorbed.push(habitat);
+        if (exists) registerHiddenThing(galaxy, { kind: 'hiveNode', concealment: 70, empire: owner, target: habitat, package: '19f.hive', site: node }); // 19m (flag-gated)
+    }
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -127,14 +149,17 @@ export function onColonyOwnerChanged(galaxy: Galaxy, colony: Habitat, from: Empi
     if (st === null || st.faction !== null) return;
     const node = nodeOf(st, colony);
     if (node === undefined) return;
+    // Recorded in every game the add-on is on in; the hidden thing and the advisory only where the Hive exists.
+    const exists = threatExists(galaxy, HIVE_KEY);
     if (from === galaxy.independentEmpire && to !== null && to !== galaxy.independentEmpire) {
         if (!st.absorbed.includes(colony)) st.absorbed.push(colony);
+        if (!exists) return;
         registerHiddenThing(galaxy, { kind: 'hiveNode', concealment: 70, empire: to, target: colony, package: '19f.hive', site: node }); // 19m (flag-gated)
         // Advisory to the new owner: it is standing on a Hive node (level 2 — "garrison it").
         revealTo(galaxy, node, to, KNOWLEDGE_SUSPECTED);
     } else if (to === galaxy.independentEmpire && st.absorbed.includes(colony)) {
         st.absorbed.splice(st.absorbed.indexOf(colony), 1);
-        retireHiddenTarget(galaxy, 'hiveNode', colony); // 19m (flag-gated)
+        if (exists) retireHiddenTarget(galaxy, 'hiveNode', colony); // 19m (flag-gated)
     }
 }
 
@@ -169,7 +194,16 @@ export function hivePeriodic(galaxy: Galaxy, now: number): void {
                 }
             }
         }
-        if (st.nodes.length >= P.minNodes(galaxy) && absorptionPct(st) >= P.thresholdPct(galaxy) && pastThreatMinYear(galaxy, HIVE_KEY)) hiveTrigger(galaxy, st);
+        if (st.nodes.length >= P.minNodes(galaxy) && absorptionPct(st) >= P.thresholdPct(galaxy) && pastThreatMinYear(galaxy, HIVE_KEY)) {
+            // Most nodes are usually absorbed long before the year floor passes (an older start's settling alone absorbs most of them), so
+            // meeting the threshold does not raise the Chorus at once: from then on it has a chance each game year.
+            const year = gameYear(galaxyStarDate(galaxy));
+            if (st.riseRollYear !== year) {
+                st.riseRollYear = year;
+                const chance = P.riseChancePct(galaxy);
+                if (chance >= 100 || galaxy.rnd.nextDouble() * 100 < chance) hiveTrigger(galaxy, st);
+            }
+        }
     }
     hiveEndCheck(galaxy, st);
 }
@@ -364,6 +398,20 @@ export function hiveKnownSites(galaxy: Galaxy, empire: Empire): KnownThreatSite[
 
 export const HIVE_HANDLER_IDS = ['hive.init', 'hive.periodic', 'hive.colony', 'hive.factionColony', 'hive.navy', 'hive.navyYearly', 'hive.navyTroops', 'hive.fleets'] as const;
 
+/** Colonies of the empires whose dominant race is no empire's (active or not, pirates and independents aside): natives taken from the independents. Habitat order. Pure. */
+export function formerIndependentGuess(galaxy: Galaxy): Habitat[] {
+    const races = new Set<unknown>();
+    for (const e of [...galaxy.empires, ...galaxy.pirateEmpires]) if (e.dominantRace !== null) races.add(e.dominantRace);
+    const out: Habitat[] = [];
+    for (const h of galaxy.habitats) {
+        const owner = h.empire;
+        if (h.hasBeenDestroyed || owner === null || owner === galaxy.independentEmpire || owner.pirateEmpireBaseHabitat !== null) continue;
+        const race = h.population?.dominantRace ?? null;
+        if (race !== null && !races.has(race) && h.population.totalAmount > 0) out.push(h);
+    }
+    return out;
+}
+
 /** Game Editor: null when the Chorus can be raised now. Pure. */
 export function hiveSpawnNote(galaxy: Galaxy): string | null {
     const st = peekHiveState(galaxy);
@@ -374,7 +422,16 @@ export function hiveSpawnNote(galaxy: Galaxy): string | null {
 /** Game Editor: the Chorus declares now: every still-independent colony is handed to it (the ones nearest the player first when capped). */
 export function hiveSpawnNow(galaxy: Galaxy, victim: Empire): boolean {
     const st = hiveState(galaxy);
-    if (st.nodes.length === 0) st.nodes = [...galaxy.independentColonies].map((habitat) => ({ habitat, knowledge: [] }));
+    if (st.nodes.length === 0 && st.tracked !== true) {
+        st.nodes = [...galaxy.independentColonies].map((habitat) => ({ habitat, knowledge: [] }));
+        // No record (the add-on was not on from the start): the colonies that went to an empire from the independents are guessed from
+        // their people: a dominant race that no empire has ever had (the settling of an older start gives a colony the empire's own race,
+        // so only the ones absorbed in play, with their natives, can be recognised this way).
+        for (const habitat of formerIndependentGuess(galaxy)) {
+            st.nodes.push({ habitat, knowledge: [] });
+            st.absorbed.push(habitat);
+        }
+    }
     if (st.nodes.length === 0) return false;
     return hiveTrigger(galaxy, st, nearestToEmpire(galaxy, victim, st.nodes.map((n) => n.habitat)));
 }
@@ -382,7 +439,7 @@ export function hiveSpawnNow(galaxy: Galaxy, victim: Empire): boolean {
 export function registerHive(): void {
     registerThreatExistence(HIVE_KEY, HIVE_FLAG);
     registerThreatSpawn({ key: HIVE_KEY, label: 'The Hive', group: 'galactic', addons: ['hive'], note: hiveSpawnNote, spawn: hiveSpawnNow });
-    registerScenarioGameStart({ id: 'hive.init', flag: HIVE_FLAG, run: (g) => hiveInit(g) });
+    registerScenarioGameStart({ id: 'hive.init', flag: HIVE_FLAG, run: (g, ctx) => hiveInit(g, ctx) });
     registerScenarioPeriodic({ id: 'hive.periodic', flag: HIVE_FLAG, order: 10, periodDays: PERIOD_DAYS, run: hivePeriodic });
     registerScenarioEvent({ id: 'hive.colony', flag: HIVE_FLAG, order: 0, event: 'colonyOwnerChanged', run: (g, e) => onColonyOwnerChanged(g, e.colony, e.from, e.to) });
     registerScenarioEvent({ id: 'hive.factionColony', flag: HIVE_FLAG, order: 10, event: 'colonyOwnerChanged', run: (g, e) => onFactionColonyOwnerChanged(g, e.colony, e.from, e.to) });
