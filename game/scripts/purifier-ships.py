@@ -20,20 +20,24 @@ Python 3 with numpy and Pillow only. Deterministic (fixed seeds per output).
 
 Per output frame (bow up, as the stock frames; square canvas with a margin for the masts):
 1. Assembly, at SS x the output resolution: whole stock hulls layered back to front (the hidden ones' engine marks
-   dropped: thrusters only where open space lies aft), each casting a soft contact shadow on what is below; the
-   stock pieces carry their levelled shading, the AncientHelpers ones their native colour, their lights as a glow
-   channel and their thruster (pure blue) / light (pure yellow) marker pixels as points, mapped through each
-   placement. The escorts are long and lean, their hulls meshed end to end: a frigate of a needle bow hull run into
-   a longer main hull; a destroyer of a needle bow, a long main hull and a slim engine hull; a cruiser of a pointed
-   bow hull, a broad main hull and a tapering stern hull; the capital ship, the longest, of a needle bow, two heavy
-   hulls and a wide engine hull with two slim hulls along its midsection as sponsons; a troop transport of a slim
-   bow hull run into the troop hull; and the carrier of three hulls end to end with the angled flight deck (landing
-   lanes, chevrons, landing lights, hangar lifts) fused along its port flank, the whole bent into a banana curve
-   (bend()). Then masts and the edge dressing: whips and sensor masts (single and in
-   fanned clusters), short spikes, small dishes on stalks, fins, small turrets, vents and pipes planted round the
-   outline pointing outward. Some tips and beads (at most 18 per frame, under the scan cap of 20) are pure-yellow
-   nav-light markers, so they blink at runtime as the planet destroyer's own spike lights do. The dock and outpost:
-   the Shakturi station bodies, the cradle ring and clamp arms, trusses and drifting debris, with masts.
+   dropped: thrusters only where open space lies aft), each casting a soft contact shadow on what is below; the stock
+   pieces carry their levelled shading, the AncientHelpers ones their native colour, their lights as a glow channel
+   and their thruster (pure blue) / light (pure yellow) marker pixels as points, mapped through each placement. The
+   escorts are long and lean, their hulls meshed end to end: a frigate of a needle bow hull run into a longer main
+   hull; a destroyer of a needle bow, a long main hull and a slim engine hull; a cruiser of a pointed bow hull, a
+   broad main hull and a tapering stern hull; the capital ship, the longest, of a needle bow, two heavy hulls and a
+   wide engine hull with two slim hulls along its midsection as sponsons; a troop transport of a slim bow hull run
+   into the troop hull; the four smaller ones each end in a broad flared engine block (the aft rows of a wide stock
+   hull with its nozzles, stern(), its upper corners cut at an angle) wider than the hull ahead; and the carrier of
+   three hulls end to end with the angled flight deck (landing lanes, chevrons, landing lights, hangar lifts) fused
+   along its port flank, the whole bent into a banana curve (bend()), a straight engine block fused over its stern so
+   the thrusters point straight aft. Then masts and the edge dressing: whips and sensor masts (single and in fanned
+   clusters), short spikes, small dishes on stalks, fins, small turrets, vents and pipes planted round the outline
+   pointing outward, every one rooted on a hull edge pixel (masts are slid along their direction onto the hull's
+   outline, taken before any mast goes on) with a small mount, and kept out of the battle damage. Some tips and beads
+   (at most 18 per frame, under the scan cap of 20) are pure-yellow nav-light markers, so they blink at runtime as
+   the planet destroyer's own spike lights do. The dock and outpost: the Shakturi station bodies, the cradle ring and
+   clamp arms, trusses and drifting debris, with masts.
 2. Paint: the stock AncientHelpers pieces keep their own colour at the new value (a little toward the destroyer's
    ramp); everything else is gradient-mapped onto the planet destroyer's metal ramp (the median colour of its pixels
    per luminance band: silver, champagne, warm dark steel, a touch warmed as its champagne plates); guns in its dark
@@ -1220,8 +1224,12 @@ def build(root, name, rng):
         """Break the outline up: walk the hull edge and plant, pointing outward (jittered), whips and sensor masts
         (some in fanned clusters, a few lit), short spikes, small dishes on stalks, small fins, turrets, vents and
         pipes poking out past the edge; none over the engines' thruster marks or within `avoid` (x, y, r layout)."""
-        solid = hm > 0.5
-        edge = solid & ~(shift(solid, SS, 0) & shift(solid, -SS, 0) & shift(solid, 0, SS) & shift(solid, 0, -SS))
+        solid = hull_mask(c)  # only the hull itself: nothing grows off another mast
+        hm = solid.astype(np.float64)
+        edge = solid & ~(shift(solid, 1, 0) & shift(solid, -1, 0) & shift(solid, 0, 1) & shift(solid, 0, -1))
+        edge &= depth_inside(solid, 3) >= 1
+        # only solid stretches of edge (not the tip of a thin spur): the pixel has hull all round within 2 px inward
+        edge &= fblur(solid.astype(np.float64), 2.0 * SS) > 0.3
         thr = [(mx, my) for (mx, my, k_) in c.marks if k_ == 1]
         ys, xs = np.nonzero(edge)
         keep = np.ones(len(ys), bool)
@@ -1246,12 +1254,13 @@ def build(root, name, rng):
                     blocked = True
             if blocked:
                 continue
-            ang = math.degrees(math.atan2(-nx_, -ny_)) + rng.uniform(-28, 28)
+            ang = math.degrees(math.atan2(-nx_, -ny_)) + rng.uniform(-18, 18)
             x, y = px / c.k - c.pad, py / c.k - c.pad
             kind = rng.choice(['whip', 'whip', 'whip', 'cluster', 'spike', 'spike', 'dish', 'fin', 'turret', 'vent', 'pipe'])
 
             def plant(piece, out, a, **k):
                 th = math.radians(a)
+                k.setdefault('mat', 'thin')
                 c.put(piece, x - math.sin(th) * out, y - math.cos(th) * out, rot=a, shadow=0.25, **k)
 
             if kind in ('whip', 'cluster'):
@@ -1261,22 +1270,26 @@ def build(root, name, rng):
                     on = lit > 0 and rng.random() < 0.35
                     lit -= int(on)
                     plant(antenna(ln, w=rng.uniform(1.4, 2.2), bars=(rng.uniform(0.3, 0.7),) if ln > 18 * k else (),
-                                  rings=(0.6,), light=on), ln / 2 - 1, a)
+                                  rings=(0.6,), light=on), ln / 2 - 1.5, a)
+                mount(c, x, y, 1.5 + 0.5 * (kind == 'cluster'))
             elif kind == 'spike':
                 ln = int(k * rng.uniform(6, 14))
-                plant(antenna(ln, w=3.2 * k, bars=(), rings=(0.5,), light=False), ln / 2 - 1, ang)
+                plant(antenna(ln, w=3.2 * k, bars=(), rings=(0.5,), light=False), ln / 2 - 1.5, ang)
+                mount(c, x, y, 1.6)
             elif kind == 'dish':
                 ln = int(k * rng.uniform(6, 12))
-                plant(antenna(ln, w=2.0, bars=(), rings=(), light=False), ln / 2, ang)
-                plant(dish(k * rng.uniform(3.5, 5.5)), ln, ang, marks=False)
+                plant(antenna(ln, w=2.0, bars=(), rings=(), light=False), ln / 2 - 1.5, ang)
+                plant(dish(k * rng.uniform(3.5, 5.5)), ln - 1.5, ang, marks=False)
+                mount(c, x, y, 1.6)
             elif kind == 'fin':
-                plant(plate(max(3, int(k * rng.uniform(4, 7))), int(k * rng.uniform(9, 16)), chamfer=0.6, taper=0.6, seams=()), 3 * k, ang,
+                fh = int(k * rng.uniform(9, 16))
+                plant(plate(max(3, int(k * rng.uniform(4, 7))), fh, chamfer=0.6, taper=0.6, seams=()), fh / 2 - 2, ang,
                       edge=0.8)
             elif kind == 'turret':
-                plant(turret(k * rng.uniform(3.5, 5.5)), 1.5 * k, ang, marks=False, edge=0.6)
+                plant(turret(k * rng.uniform(3.5, 5.5)), 0.5, ang, marks=False, edge=0.6)
             else:
                 g = greeble('vent' if kind == 'vent' else 'pipe', SS, rng)
-                plant(g, 2, ang + 90 if kind == 'pipe' else ang, marks=False, edge=0.8)
+                plant(g, 1, ang + 90 if kind == 'pipe' else ang, marks=False, edge=0.8)
 
     def greebles(c, hm, n, avoid=None):
         """Small detail scattered over the hull (vents, hatches, small domes, pipe runs, rivet rows), crisp."""
@@ -1292,14 +1305,68 @@ def build(root, name, rng):
             c.put(g, px / c.k - c.pad, py / c.k - c.pad, 1.0, rot=int(rng.choice([0, 90, 180, 270])), shadow=0.4, clip=hm,
                   edge=0.8, marks=False)
 
+    def hull_mask(c):
+        """The hull as it stands before any mast or dressing goes on (taken at the first call): masts root on it."""
+        if getattr(c, 'hullm', None) is None:
+            c.hullm = c.A > 0.5
+        return c.hullm
+
+    def root_on_hull(c, x, y, ang, reach=40):
+        """Where a mast pointing `ang` leaves the hull near (x, y) (layout px): from inside, the last hull pixel
+        outward along it; from outside, the first hull pixel back along it; None if there is no hull within reach."""
+        hm = hull_mask(c)
+        th = math.radians(ang)
+        ux, uy = -math.sin(th), -math.cos(th)
+        inside = lambda px, py: (0 <= int(py) < c.h and 0 <= int(px) < c.w and hm[int(py), int(px)])  # noqa: E731
+        px, py = (x + c.pad) * c.k, (y + c.pad) * c.k
+        step = 0.5
+        if inside(px, py):
+            while inside(px + ux * step, py + uy * step):
+                px, py = px + ux * step, py + uy * step
+        else:
+            for _ in range(int(reach * c.k / step)):
+                px, py = px - ux * step, py - uy * step
+                if inside(px, py):
+                    break
+            else:
+                return None
+        return px / c.k - c.pad, py / c.k - c.pad
+
+    def mount(c, x, y, r):
+        """The small round base where a mast meets the hull."""
+        c.put(dome(r), x, y, shadow=0.3, marks=False, mat='thin')
+
     def mast(c, x, y, length, ang, **k):
-        """An antenna rooted at (x, y), `ang` degrees from straight ahead (positive: to port; past 90: swept back)."""
+        """An antenna pointing `ang` degrees from straight ahead (positive: to port; past 90: swept back), rooted on
+        the hull edge nearest (x, y) along that direction, on a small mount."""
+        r = root_on_hull(c, x, y, ang)
+        if r is None:
+            return
+        x, y = r
         th = math.radians(ang)
         length = int(length * (1.3 if name.startswith('base') else 0.8))  # the escorts' hulls are at half scale
         k.setdefault('w', 2.4 if name.startswith('base') else 1.8)
-        c.put(antenna(length, **k), x - math.sin(th) * length / 2, y - math.cos(th) * length / 2, rot=ang, shadow=0.25)
+        sink = 1.5
+        c.put(antenna(length, **k), x - math.sin(th) * (length / 2 - sink), y - math.cos(th) * (length / 2 - sink), rot=ang,
+              shadow=0.25, mat='thin')
+        mount(c, x, y, 2.6 if name.startswith('base') else 1.9)
 
     H = lambda fam, f, **k: Piece.load(root, f, kit=fam, **k)  # noqa: E731  # a whole stock hull
+
+    def stern(c, fam, f, rows, x, scale=0.5, top=0.5):
+        """A broad engine block: the aft `rows` px of a stock hull (its nozzles and thruster marks), its upper corners
+        cut away at an angle (a flared section, `top` of its width at the top edge, full width halfway down), fused on
+        at the stern so it reaches a little past the hull's last pixel there: wider than the hull ahead of it."""
+        path = os.path.join(root, '..', fam, f + '.png')
+        bb = Image.open(path).getbbox()
+        src = Piece.load(root, f, (bb[0], bb[3] - rows, bb[2], bb[3]), kit=fam)
+        h_, w_ = src.A.shape
+        yy, xx = np.mgrid[0:h_, 0:w_].astype(np.float64) + 0.5
+        half = w_ / 2 * (top + (1 - top) * np.clip(yy / (h_ * 0.5), 0, 1))
+        pc = Piece(src.L, src.A * (np.abs(xx - w_ / 2) <= half), src.G, src.mats, src.marks)
+        col = c.A[:, int((x - 12 + c.pad) * c.k):int((x + 12 + c.pad) * c.k)] > 0.5
+        last = np.nonzero(col.any(1))[0].max() / c.k - c.pad
+        c.put(pc, x, last + 3 - h_ * scale / 2, scale, shadow=0.55)
 
     def dress(c, n, avoid=()):
         edge_dress(c, (c.A > 0.5).astype(np.float64), n, lights=18, avoid=avoid, k=0.6)
@@ -1309,6 +1376,7 @@ def build(root, name, rng):
         c = Canvas(190, pad=20, z=1.25)
         c.put(H('family14', 'frigate'), 95, 120, 0.5, shadow=0)
         c.put(H('family25', 'frigate'), 95, 52, 0.5, shadow=0.55)
+        stern(c, 'family23', 'destroyer', 64, 95, 0.55, top=0.4)
         mast(c, 95, 14, 18, 0, beads=(0.5,))
         mast(c, 72, 140, 22, 70)
         mast(c, 118, 150, 20, -110)
@@ -1320,6 +1388,7 @@ def build(root, name, rng):
         c.put(H('family7', 'destroyer'), 130, 206, 0.5, shadow=0)
         c.put(H('family24', 'destroyer'), 130, 132, 0.5, shadow=0.5)
         c.put(H('family25', 'destroyer'), 130, 54, 0.5, shadow=0.55)
+        stern(c, 'family22', 'capitalship', 70, 130, 0.62)
         mast(c, 130, 12, 20, 0, beads=(0.5,))
         mast(c, 106, 120, 26, 60)
         mast(c, 154, 170, 24, -120)
@@ -1331,6 +1400,7 @@ def build(root, name, rng):
         c.put(H('family14', 'cruiser'), 160, 250, 0.5, shadow=0)
         c.put(H('family22', 'cruiser'), 160, 152, 0.5, shadow=0.5)
         c.put(H('family25', 'cruiser'), 160, 62, 0.5, shadow=0.55)
+        stern(c, 'family11', 'capitalship', 74, 160, 0.62)
         mast(c, 160, 14, 24, 0, beads=(0.5,))
         mast(c, 124, 150, 30, 64)
         mast(c, 196, 150, 30, -64)
@@ -1366,6 +1436,13 @@ def build(root, name, rng):
         c.put(H('family14', 'destroyer'), 104, 70, 0.4, shadow=0.4)
         c.put(H('family12', 'carrier'), 104, 136, 0.5, shadow=0.6)
         bend(c, 150, 100, 138)
+        # the bend turned the stern nozzles sideways: a straight engine section (the same stern hull's nozzles) fused
+        # on over them, pointing straight aft, carries the thrusters
+        c.marks = [m_ for m_ in c.marks if m_[2] != 1]
+        rows_ = np.nonzero((c.A > 0.5).any(1))[0]
+        low = (c.A[rows_.max() - int(6 * c.k):rows_.max() + 1] > 0.5).any(0)
+        sx_ = np.nonzero(low)[0].mean() / c.k - c.pad
+        stern(c, 'family25', 'carrier', 46, sx_, 0.46, top=0.7)
         mast(c, 124, 30, 24, -10, beads=(0.5,))
         mast(c, 132, 120, 30, -62)
         mast(c, 140, 232, 26, -140)
@@ -1376,6 +1453,7 @@ def build(root, name, rng):
         c = Canvas(210, pad=20, z=1.25)
         c.put(H('family21', 'trooptransport'), 105, 138, 0.5, shadow=0)
         c.put(H('family25', 'trooptransport'), 105, 56, 0.5, shadow=0.55)
+        stern(c, 'family9', 'capitalship', 62, 105, 0.62, top=0.4)
         mast(c, 105, 12, 18, 0, beads=(0.5,))
         mast(c, 78, 140, 22, 70)
         mast(c, 132, 150, 22, -110)
@@ -1422,8 +1500,8 @@ def build(root, name, rng):
                               (310, 86, 22, 210), (50, 70, 20, 300), (262, 40, 14, 80), (196, 104, 12, 140)):
             c.put(debris(rng, root, sz), x, y, rot=r, shadow=0, marks=False, gain=0.85)
         # masts with lights off the forge block and the ring (as the Purifier's spikes)
-        for (x, y, ln, a) in ((cx - 70, cy + 120, 44, 64), (cx + 70, cy + 122, 40, -66), (cx - 40, cy + 170, 30, 160),
-                              (cx + 44, cy + 168, 30, -160), (cx - 128, cy - 52, 34, 66), (cx + 132, cy - 40, 30, -70)):
+        for (x, y, ln, a) in ((cx - 70, cy + 120, 44, 64), (cx + 70, cy + 122, 40, -66), (cx - 40, cy + 170, 20, 160),
+                              (cx + 44, cy + 168, 20, -160), (cx - 128, cy - 52, 34, 66), (cx + 132, cy - 40, 30, -70)):
             mast(c, x, y, ln, a)
         return c
     raise KeyError(name)
@@ -1476,7 +1554,7 @@ def finish(name, c, xs, cols, rng):
     mk = np.zeros((h, w), bool)
     for (x, y) in marks:
         mk[y, x] = True
-    protect = dilate(mk, 3)
+    protect = dilate(mk, 3) | dilate(M['thin'] > 0.4, 2)  # the markers and the masts / dressing (never chipped off)
     dm = Damage(name, out, alpha, v, M, protect, rng)
     dm.ramp = (xs, cols)
     npatch, nsc, nmiss, nbr, ncr, ngo, nmel, nch = WEAR[name]
