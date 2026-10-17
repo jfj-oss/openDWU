@@ -230,6 +230,7 @@ function sample(ctx) {
         return { holding, oldestD: Math.round(oldestD), tracked: troopRecs.length, openWaves: openWaves.size };
     });
     row.ev = safe('eventLog', () => ({ n: M.eventLog.eventLogEntries(g).length }));
+    row.fin = g.gameIsFinished ? 1 : 0;
     row.mem = { heapMB: Math.round(process.memoryUsage().heapUsed / 1048576) };
     rows.push(row);
 }
