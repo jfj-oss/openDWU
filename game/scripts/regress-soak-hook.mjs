@@ -160,7 +160,7 @@ function sample(ctx) {
             if (b.currentTarget != null) target++;
             if (b.currentSpeed > 0) moving++;
             if (b.shipGroup != null) grouped++;
-            comps += b.components ? b.components.length : 0;
+            comps += b.components ? b.components.count : 0;
         }
         return { total, armed, target, moving, grouped, comps };
     });
