@@ -256,6 +256,8 @@ const CONFIGS_REGRESS = [
     // Coordinated landings on vs off on a war-heavy seed (the os-war galaxy: aggressive AI, older galaxy, 700 stars, 7 empires), Smarter AI default.
     ...[1, 2].flatMap((seed) => [true, false].map((on) => rg(`rg-cl-${on ? 'on' : 'off'}-s${seed}`, { seed, years: 25, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, addons: [], hook: { clFlag: on, sampleDays: 60 } }))),
 ];
+// The long normal-start run for 10 years with CPU-profile windows (--cpuprof FILE --cpuprof-windows 3-5,7-9.5): the step time doubles at about year 7.
+CONFIGS_REGRESS.push({ ...CONFIGS_REGRESS.find((c) => c.name === 'rg-long-norm-s1'), name: 'rg-prof-long-norm-s1', years: 10, hook: {} });
 CONFIGS.push(...CONFIGS_REGRESS);
 
 /** Negative amounts the C# has too. */
@@ -554,15 +556,27 @@ async function runOne(name) {
         if ((await hook?.start?.(hookCtx)) === 'stop') return;
         doScan('start');
         // --cpuprof FILE: a V8 CPU profile of the sim run (not createGame), written at the end (scripts/cpuprofile-summary.mjs reads it).
+        // --cpuprof-windows 3-5,7-9.5: instead profile only those game-year windows (FILE.0.cpuprofile, FILE.1.cpuprofile, ...).
         let profSession = null;
-        if (arg('cpuprof', null) !== null) {
-            const { Session } = await import('node:inspector');
-            profSession = new Session();
-            profSession.connect();
-            await new Promise((res) => profSession.post('Profiler.enable', () => res()));
-            await new Promise((res) => profSession.post('Profiler.setSamplingInterval', { interval: 1000 }, () => res()));
+        let profRunning = false;
+        const profWindows = arg('cpuprof-windows', null) === null ? null : String(arg('cpuprof-windows')).split(',').map((w) => w.split('-').map(Number));
+        let profWindowIdx = 0;
+        const profStart = async () => {
+            if (profSession === null) {
+                const { Session } = await import('node:inspector');
+                profSession = new Session();
+                profSession.connect();
+                await new Promise((res) => profSession.post('Profiler.enable', () => res()));
+                await new Promise((res) => profSession.post('Profiler.setSamplingInterval', { interval: 1000 }, () => res()));
+            }
             await new Promise((res) => profSession.post('Profiler.start', () => res()));
-        }
+            profRunning = true;
+        };
+        const profStop = async (file) => {
+            await new Promise((res) => profSession.post('Profiler.stop', (e, r) => { if (!e) writeFileSync(file, JSON.stringify(r.profile)); res(); }));
+            profRunning = false;
+        };
+        if (arg('cpuprof', null) !== null && profWindows === null) await profStart();
         for (let s = 0; s < total; s += chunk) {
             // Frame times exclude the scans / save checks / hooks between chunks.
             lastFrameT = performance.now();
@@ -576,6 +590,12 @@ async function runOne(name) {
                 const atKey = `${key}@${g.nowMs}`;
                 if (atKey === lastExcKey) { report.stuck = true; console.log(`! STUCK at d${day().toFixed(1)}`); break; }
                 lastExcKey = atKey;
+            }
+            if (profWindows !== null && arg('cpuprof', null) !== null && profWindowIdx < profWindows.length) {
+                const yNow = (g.nowMs - startMs) / 1000 / YEAR_S;
+                const [a, b] = profWindows[profWindowIdx];
+                if (!profRunning && yNow >= a - chunk / YEAR_S) await profStart();
+                else if (profRunning && yNow >= b) { await profStop(`${arg('cpuprof')}.${profWindowIdx}.cpuprofile`); profWindowIdx++; }
             }
             if ((await overhead(() => hook?.chunk?.(hookCtx))) === 'stop') break;
             const elapsedS = (g.nowMs - startMs) / 1000;
@@ -611,7 +631,7 @@ async function runOne(name) {
             });
         }
         if (profSession !== null) {
-            await new Promise((res) => profSession.post('Profiler.stop', (e, r) => { if (!e) writeFileSync(String(arg('cpuprof')), JSON.stringify(r.profile)); res(); }));
+            if (profRunning) await profStop(profWindows === null ? String(arg('cpuprof')) : `${arg('cpuprof')}.${profWindowIdx}.cpuprofile`);
             profSession.disconnect();
         }
         doScan('end');
