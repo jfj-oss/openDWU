@@ -34,6 +34,7 @@ import { normalEmpires, teardownIfDead } from '../src/sim/scenario/threats/frame
 import { CharacterRole, CharacterTraitType, IntelligenceMission, generateNewCharacter, getEmpireCharacters } from '../src/sim/characters';
 import { GameEndOutcome, setGameEndHandler, type GameEndEventArgs } from '../src/sim/victory';
 import { builtObjectCompleteTeardown } from '../src/sim/combat/teardown';
+import { empireCompleteTeardown } from '../src/sim/events';
 import { takeOwnershipOfColonyFull } from '../src/sim/combat/ownership';
 import { annualTroopMaintenance } from '../src/sim/troops';
 import { calculateForceStrengths, calculatePopulationStrength } from '../src/sim/combat/invasion';
@@ -170,6 +171,40 @@ describe('Cult: forced conversion on seed 1', () => {
         expect(ends[0].outcomeForPlayer).toBe(GameEndOutcome.Victory);
         setGameEndHandler(g, null);
     }, 600000);
+});
+
+describe('Cult: the fleet of an empire it wipes out', () => {
+    it('is handed at most cultCapturedFleetMax warships (the strongest); the rest are scuttled with the empire; bases and other ships are handed over as in the original', () => {
+        const { game } = ctGame();
+        const g = game.galaxy;
+        g.scenario!.params.cultCapturedFleetMax = 3;
+        const st = cultState(g);
+        const host = normalEmpires(g).find((e) => e.colonies.some((c) => c !== e.capital && c.population.totalAmount > 0) && e.miningStations.length > 0)!;
+        const colony = host.colonies.find((c) => c !== host.capital && c.population.totalAmount > 0)!;
+        convert(g, st, generateNewCharacter(g, host, CharacterRole.ColonyGovernor, colony).character);
+        cultCheckTrigger(g);
+        const faction = st.faction!;
+        expect(faction).not.toBeNull();
+        const isWar = (b: { role: BuiltObjectRole; subRole: number; hasBeenDestroyed: boolean }): boolean => b.role === BuiltObjectRole.Military && b.subRole !== 6 && !b.hasBeenDestroyed;
+        const victim = normalEmpires(g, faction).find((e) => e !== host && e.builtObjects.filter(isWar).length > 3)!;
+        expect(victim).toBeDefined();
+        const warships = victim.builtObjects.filter(isWar);
+        const strongest = [...warships].sort((a, b) => calculateOverallStrengthFactorWithoutShields(b) - calculateOverallStrengthFactorWithoutShields(a)).slice(0, 3);
+        const before = faction.builtObjects.filter(isWar).length;
+        const others = victim.builtObjects.filter((b) => !isWar(b) && !b.hasBeenDestroyed);
+        empireCompleteTeardown(g, victim, faction);
+        const gained = faction.builtObjects.filter(isWar);
+        expect(gained.length).toBe(before + 3);
+        for (const b of strongest) expect(b.actualEmpire).toBe(faction);
+        for (const b of warships) if (!strongest.includes(b)) expect(b.hasBeenDestroyed || b.actualEmpire !== faction).toBe(true);
+        expect(others.some((b) => b.actualEmpire === faction)).toBe(true);
+        // A conqueror that is not the Cult is handed all of them, as before.
+        const victim2 = normalEmpires(g, faction).find((e) => e !== host && e.active && e.builtObjects.filter(isWar).length > 3)!;
+        const ships2 = victim2.builtObjects.filter(isWar);
+        const conqueror = normalEmpires(g, faction).find((e) => e !== victim2)!;
+        empireCompleteTeardown(g, victim2, conqueror);
+        for (const b of ships2) expect(b.actualEmpire).toBe(conqueror);
+    }, 900000);
 });
 
 describe('Cult: contained before it rose', () => {

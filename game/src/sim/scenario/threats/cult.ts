@@ -56,7 +56,7 @@ import {
     type ThreatKnowledge,
     forcedThreatVictim,
 } from './framework';
-import { coloniesUnderAttack, topUpPorts, applyIncomeFloor, foundMiningStations, pumpNavy, directFleets, ensureConstructionShips, givePortAt, makeTroopOfStrength, makeTroopsOfStrength, navyRise, topUpGarrisons, newNavyState, spawnPendingNavy, syncFactionTech, takeMiningStationsNear, type NavyState } from './factionNavy';
+import { capturedFleetLimit, coloniesUnderAttack, topUpPorts, applyIncomeFloor, foundMiningStations, pumpNavy, directFleets, ensureConstructionShips, givePortAt, makeTroopOfStrength, makeTroopsOfStrength, navyRise, topUpGarrisons, newNavyState, spawnPendingNavy, syncFactionTech, takeMiningStationsNear, type NavyState } from './factionNavy';
 
 export const CULT_KEY = 'cult';
 export const CULT_FLAG = 'cult';
@@ -587,7 +587,7 @@ export function cultSpawnNow(galaxy: Galaxy, victim: Empire): boolean {
     return true;
 }
 
-export const CULT_HANDLER_IDS = ['cult.yearly', 'cult.periodic', 'cult.characterCreated', 'cult.navy', 'cult.navyYearly', 'cult.navyColony', 'cult.navyTroops', 'cult.fleets'] as const;
+export const CULT_HANDLER_IDS = ['cult.yearly', 'cult.periodic', 'cult.characterCreated', 'cult.navy', 'cult.navyYearly', 'cult.navyColony', 'cult.navyTroops', 'cult.conquestFleet', 'cult.fleets'] as const;
 
 export function registerCult(): void {
     registerThreatExistence(CULT_KEY, CULT_FLAG);
@@ -600,6 +600,7 @@ export function registerCult(): void {
     registerScenarioPeriodic({ id: 'cult.fleets', flag: CULT_FLAG, order: 12, periodDays: 5, run: (g) => cultFleets(g) });
     registerScenarioEvent({ id: 'cult.navyColony', flag: CULT_FLAG, order: 20, event: 'colonyOwnerChanged', run: (g, e) => cultNavyColony(g, e.colony, e.from, e.to) });
     registerScenarioQuery({ id: 'cult.navyTroops', flag: CULT_FLAG, query: 'troopMaintenanceFactor', run: (g, v, a) => (peekCultState(g)?.faction === a.empire ? 0 : v) });
+    registerScenarioQuery({ id: 'cult.conquestFleet', flag: CULT_FLAG, query: 'conquestWarshipLimit', run: (g, v, a) => capturedFleetLimit(g, 'cult', a.conqueror, peekCultState(g)?.faction ?? null, v) });
     registerThreatKnownSites(CULT_KEY, cultKnownSites);
 }
 

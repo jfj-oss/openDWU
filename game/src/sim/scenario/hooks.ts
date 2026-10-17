@@ -487,6 +487,12 @@ export interface ScenarioQueries {
      */
     combatCaptureAllowed: { value: boolean; args: { capturingEmpire: Empire | null; habitat: Habitat } };
     /**
+     * events.ts empireCompleteTeardown (Empire.cs 4879): the most warships an eliminated empire's `conqueror` is handed (the strongest
+     * ones; the rest are scuttled with the empire, as when there is no conqueror). Default Infinity = all of them, as the original.
+     * The Cult and the Hive cap what they take from the empires they wipe out.
+     */
+    conquestWarshipLimit: { value: number; args: { conqueror: Empire; empire: Empire } };
+    /**
      * logistics/freight.ts addForeignTradingPosts (Empire.4.cs 540-576): `undefined` = stock posts; otherwise the only
      * trading post `empire` may use at `other` (null: none) — 19c companyHqExportOnly.
      */

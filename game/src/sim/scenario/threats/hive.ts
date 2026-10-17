@@ -47,7 +47,7 @@ import {
     type SentStages,
     type ThreatKnowledge,
 } from './framework';
-import { applyIncomeFloor, foundMiningStations, pumpNavy, directFleets, topUpGarrisons, ensureConstructionShips, averageMilitary, navyRise, newNavyState, spawnPendingNavy, syncFactionTech, takeMiningStationsNear, topUpPorts, type NavyState } from './factionNavy';
+import { applyIncomeFloor, capturedFleetLimit, foundMiningStations, pumpNavy, directFleets, topUpGarrisons, ensureConstructionShips, averageMilitary, navyRise, newNavyState, spawnPendingNavy, syncFactionTech, takeMiningStationsNear, topUpPorts, type NavyState } from './factionNavy';
 
 export const HIVE_KEY = 'hive';
 export const HIVE_FLAG = 'hive';
@@ -396,7 +396,7 @@ export function hiveKnownSites(galaxy: Galaxy, empire: Empire): KnownThreatSite[
 // Registration
 // ---------------------------------------------------------------------------------------------------------------
 
-export const HIVE_HANDLER_IDS = ['hive.init', 'hive.periodic', 'hive.colony', 'hive.factionColony', 'hive.navy', 'hive.navyYearly', 'hive.navyTroops', 'hive.fleets'] as const;
+export const HIVE_HANDLER_IDS = ['hive.init', 'hive.periodic', 'hive.colony', 'hive.factionColony', 'hive.navy', 'hive.navyYearly', 'hive.navyTroops', 'hive.conquestFleet', 'hive.fleets'] as const;
 
 /** Colonies of the empires whose dominant race is no empire's (active or not, pirates and independents aside): natives taken from the independents. Habitat order. Pure. */
 export function formerIndependentGuess(galaxy: Galaxy): Habitat[] {
@@ -447,6 +447,7 @@ export function registerHive(): void {
     registerScenarioPeriodic({ id: 'hive.navy', flag: HIVE_FLAG, order: 11, periodDays: 30, run: (g) => hiveNavyMonthly(g) });
     registerScenarioPeriodic({ id: 'hive.fleets', flag: HIVE_FLAG, order: 12, periodDays: 5, run: (g) => hiveFleets(g) });
     registerScenarioQuery({ id: 'hive.navyTroops', flag: HIVE_FLAG, query: 'troopMaintenanceFactor', run: (g, v, a) => (peekHiveState(g)?.faction === a.empire ? 0 : v) });
+    registerScenarioQuery({ id: 'hive.conquestFleet', flag: HIVE_FLAG, query: 'conquestWarshipLimit', run: (g, v, a) => capturedFleetLimit(g, 'hive', a.conqueror, peekHiveState(g)?.faction ?? null, v) });
     registerThreatKnownSites(HIVE_KEY, hiveKnownSites);
 }
 

@@ -20,6 +20,7 @@
     { "name": "cultSmallPorts", "label": "Cult: small space ports besides the medium one (no upkeep)", "default": 3, "min": 0, "max": 20 },
     { "name": "cultNavyPct", "label": "Cult: starting fleet as % of the host empire's military", "default": 50, "min": 0, "max": 1000 },
     { "name": "cultConstructionShips", "label": "Cult: construction ships kept working (so its AI can build mining stations)", "default": 2, "min": 0, "max": 20 },
+    { "name": "cultCapturedFleetMax", "label": "Cult: most warships it is handed when it wipes out an empire (the strongest; the rest are scuttled)", "default": 10, "min": 0, "max": 1000 },
     { "name": "cultStationCount", "label": "Cult: nearest mining stations taken from the host when none is in the colony system", "default": 3, "min": 0, "max": 50 },
     { "name": "cultExistChancePct", "label": "Chance the Cult exists in this game (%; -1 = use the shared value)", "default": -1, "min": -1, "max": 100 },
     { "name": "cultMinYear", "label": "Earliest year the Cult may seed or trigger (-1 = use the shared value)", "default": -1, "min": -1, "max": 200 }

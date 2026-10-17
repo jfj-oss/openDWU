@@ -120,10 +120,17 @@ const P = {
     /** Most mining / gas stations it holds before it stops founding more. */
     stationMax: (g: Galaxy, k: NavyPrefix) => Math.max(0, Math.trunc(scenarioParam(g, `${k}StationMax`, 20))),
     stationCount: (g: Galaxy, k: NavyPrefix) => Math.max(0, Math.trunc(scenarioParam(g, `${k}StationCount`, 3))),
+    /** The most warships the faction is handed when it wipes out an empire (stock: all of them; the strongest are kept, the rest scuttled). */
+    capturedFleetMax: (g: Galaxy, k: NavyPrefix) => Math.max(0, Math.trunc(scenarioParam(g, `${k}CapturedFleetMax`, 10))),
 };
 
 /** Most ships one rising may spawn (a safety cap). */
 const MAX_START_SHIPS = 150;
+
+/** The faction's cap on the warships it takes from an empire it wipes out (events.ts conquestWarshipLimit). */
+export function capturedFleetLimit(galaxy: Galaxy, k: NavyPrefix, conqueror: Empire, faction: Empire | null, value: number): number {
+    return faction !== null && conqueror === faction ? Math.min(value, P.capturedFleetMax(galaxy, k)) : value;
+}
 
 // ---------------------------------------------------------------------------------------------------------------
 // Tech

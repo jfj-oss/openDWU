@@ -54,7 +54,7 @@ import { empireDoTasks } from './tick/empireTick';
 import { ensureStrategicResourceSupply } from './construction/empireConstruction';
 import { galaxyStarDate } from './tick/simTime';
 import { DiplomaticRelationType } from './diplomacy';
-import { fastFindNearestColony } from './diplomacyTick';
+import { calculateOverallStrengthFactorWithoutShields, fastFindNearestColony } from './diplomacyTick';
 import { reviewEmpireAbilityBonusesFull } from './treasury';
 import { resolveDescription } from './messages';
 import { HabitatCategoryType, HabitatType, type SystemInfo } from './types';
@@ -1231,6 +1231,22 @@ export function processEmpireElimination(galaxy: Galaxy, thisEmpire: Empire | nu
 }
 
 /** Empire.cs 4874 CompleteTeardown(conqueror) → CompleteTeardown(conqueror, removeFromGalaxy: true, sendMessages: true). */
+/**
+ * The warships of an eliminated empire the `conquestWarshipLimit` query (Cult / Hive) will not hand to the conqueror: everything
+ * beyond the limit, the weakest first. Null when there is no limit (every game without those add-ons). No Rnd.
+ */
+function conquestScuttledWarships(galaxy: Galaxy, self: Empire, conqueror: Empire, ships: readonly (BuiltObject | null)[]): Set<BuiltObject> | null {
+    const limit = scenarioQuery(galaxy, 'conquestWarshipLimit', Number.POSITIVE_INFINITY, { conqueror, empire: self });
+    if (!(limit < Number.POSITIVE_INFINITY)) return null;
+    const war: { bo: BuiltObject; strength: number; index: number }[] = [];
+    ships.forEach((bo, index) => {
+        if (bo != null && bo.role === BuiltObjectRole.Military && bo.subRole !== BuiltObjectSubRole.TroopTransport && bo.empire !== conqueror) war.push({ bo, strength: calculateOverallStrengthFactorWithoutShields(bo), index });
+    });
+    if (war.length <= limit) return null;
+    war.sort((a, b) => b.strength - a.strength || a.index - b.index);
+    return new Set(war.slice(Math.max(0, Math.trunc(limit))).map((w) => w.bo));
+}
+
 export function empireCompleteTeardown(galaxy: Galaxy, empire: Empire, conqueror: Empire | null, removeFromGalaxy = true, sendMessages = true): void {
     if (galaxy.scenario !== null) scenarioEmit(galaxy, 'empireEliminated', { empire, conqueror }); // mod layer
     empireCompleteTeardownFull(galaxy, empire, conqueror, removeFromGalaxy, sendMessages);
@@ -1393,9 +1409,16 @@ function empireCompleteTeardownFull(galaxy: Galaxy, self: Empire, conqueror: Emp
         builtObjectList2.length = 0;
         if (self.builtObjects != null) {
             builtObjectList2 = self.builtObjects.slice();
+            // Mod layer (Cult / Hive): a cap on the warships the conqueror is handed; the weaker rest are scuttled with the empire.
+            const scuttled = galaxy.scenario !== null ? conquestScuttledWarships(galaxy, self, conqueror, builtObjectList2) : null;
             for (let m = 0; m < builtObjectList2.length; m++) {
                 const builtObject3 = builtObjectList2[m];
                 if (builtObject3 == null) continue;
+                if (scuttled !== null && scuttled.has(builtObject3)) {
+                    builtObjectCompleteTeardown(galaxy, builtObject3, false);
+                    removeFromGalaxyBuiltObjects(galaxy, builtObject3);
+                    continue;
+                }
                 takeOwnershipOfCargo(galaxy, builtObject3.cargo, self, conqueror);
                 if (builtObject3.empire !== conqueror) {
                     if (builtObject3.mission !== null) {

@@ -10,7 +10,7 @@ import type { Galaxy } from '../src/sim/galaxy';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import { stateDigest } from '../src/sim/tick/digest';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
-import { registerScenarioEvent, registerScenarioGameStart, registerScenarioPeriodic } from '../src/sim/scenario/hooks';
+import { registerScenarioEvent, registerScenarioGameStart, registerScenarioPeriodic, scenarioQuery } from '../src/sim/scenario/hooks';
 import {
     HIVE_CODE_CONTAINED,
     HIVE_HANDLER_IDS,
@@ -220,6 +220,18 @@ describe('Hive: nodes are every colony that was independent', () => {
         colony.population.add(new Population(stranger, 1000000, g));
         colony.population.recalculateTotalAmount();
         expect(formerIndependentGuess(g)).toEqual([colony]);
+    }, 1200000);
+});
+
+describe('Hive: the fleet of an empire it wipes out', () => {
+    it('conquestWarshipLimit answers hiveCapturedFleetMax for the Chorus and nothing for any other conqueror', () => {
+        const { game } = hvGame({ hiveCapturedFleetMax: 7 }, {}, false);
+        const g = game.galaxy;
+        const st = hiveState(g);
+        expect(hiveTrigger(g, st)).toBe(true);
+        const [a, b] = normalEmpires(g, st.faction);
+        expect(scenarioQuery(g, 'conquestWarshipLimit', Number.POSITIVE_INFINITY, { conqueror: st.faction!, empire: a })).toBe(7);
+        expect(scenarioQuery(g, 'conquestWarshipLimit', Number.POSITIVE_INFINITY, { conqueror: b, empire: a })).toBe(Number.POSITIVE_INFINITY);
     }, 1200000);
 });
 
