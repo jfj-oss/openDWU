@@ -219,14 +219,15 @@ export function siteBlocked(galaxy: Galaxy, sys: SystemInfo, bases: ReadonlySet<
     return null;
 }
 
-/** The barren (else any rocky or icy) planet or moon of the system to build around, or null. Pure. */
+/** The body of the system to build around, or null: a gas giant first (the Ultramind cages it), else a barren, else any
+ *  rocky or icy planet or moon; the largest of its kind. Pure. */
 export function siteHabitat(galaxy: Galaxy, sys: SystemInfo): Habitat | null {
     let best: Habitat | null = null;
     let bestScore = -1;
     for (const h of galaxy.systemHabitatsOf(sys.systemStar.systemIndex)) {
         if (h.category !== HabitatCategoryType.Planet && h.category !== HabitatCategoryType.Moon) continue;
-        if (h.type === HabitatType.GasGiant || h.type === HabitatType.FrozenGasGiant) continue;
-        const score = (h.type === HabitatType.BarrenRock ? 1e9 : 0) + h.diameter;
+        const gas = h.type === HabitatType.GasGiant || h.type === HabitatType.FrozenGasGiant;
+        const score = (gas ? 2e9 : h.type === HabitatType.BarrenRock ? 1e9 : 0) + h.diameter;
         if (score > bestScore) {
             bestScore = score;
             best = h;
