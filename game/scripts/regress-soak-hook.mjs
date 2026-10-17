@@ -281,6 +281,7 @@ function landing(g, now, rec, bo, dropped) {
     landingEvents.total++;
     const tgt = rec.tgt ?? null;
     if (tgt === null) { landingEvents.noTarget = (landingEvents.noTarget ?? 0) + 1; return; }
+    if (tgt.empire === rec.e) { landingEvents.friendly = (landingEvents.friendly ?? 0) + 1; return; } // reinforcements unloading at its own colony
     const key = `${rec.e.empireId}|${tgt.name}`;
     let w = openWaves.get(key);
     if (w === undefined || now - w.last > 4 * DAY_MS) {
