@@ -359,6 +359,8 @@ export const DATA_ONLY_INCLUDES: Readonly<Record<string, readonly string[]>> = {
     'independents-active': ['rim-herders'],
     // "includes darkfarms for the Harvester race the faction wears" (robotMutiny.ts header); the farms stay off.
     robotmutiny: ['darkfarms'],
+    // Giantworks loads darkfarms for the Harvester race the awakened Ultramind wears (ultramind.ts, as Robot Mutiny); the farms stay off.
+    giantworks: ['darkfarms'],
     // Loaded only so the war goals (peace talks) can run: llmFoundations requiresFlags forces warGoals on and the rest off.
     'llm-layer': ['lively-galaxy'],
 };

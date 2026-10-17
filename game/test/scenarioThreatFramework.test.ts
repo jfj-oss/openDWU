@@ -161,6 +161,31 @@ import { greatWorkBeneficiary } from '../src/sim/scenario/threats/giantworks/fra
 import { strikeTarget } from '../src/sim/scenario/threats/giantworks/ai';
 import { AutomationLevel } from '../src/sim/empire';
 import type { BuiltObject } from '../src/sim/builtObject';
+import { pendingScenarioDecisions, answerScenarioDecision, expireScenarioDecisions } from '../src/sim/scenario/decisions';
+import { isCrisisFaction } from '../src/sim/scenario/threats/crisis';
+import { scenarioFlag } from '../src/sim/scenario/state';
+import { thisYearsResortIncome } from '../src/sim/treasury';
+import { WonderType } from '../src/sim/researchSystem';
+import { newIntelligenceMissionStealTechData } from '../src/sim/espionage';
+import { FaunaVariant, faunaVariantOfCreature } from '../src/sim/scenario/newFauna/common';
+import { peekRimFaunaState } from '../src/sim/scenario/rimFauna/common';
+import type { Habitat } from '../src/sim/types';
+import {
+    aiAnswer,
+    awaken,
+    bombCost,
+    deployLogicBomb,
+    hackOdds,
+    mindOfSite,
+    moonCandidate,
+    peekUltramindState,
+    philosopherCandidate,
+    raiseRequest,
+    researchPerYear,
+    ultramindPeriodic,
+    ultramindState,
+} from '../src/sim/scenario/threats/giantworks/ultramind';
+import { addStress, breachChancePerYear, breachSanctuary, growthBonusAt, rageStep, rageTarget, sanctuaryPeriodic, sanctumOfSite, unleashedScale } from '../src/sim/scenario/threats/giantworks/sanctuary';
 import { rebuildIndexes } from '../src/sim/indexRebuild';
 import { SystemVisibilityStatus } from '../src/sim/visibility';
 import { completeWork, greatWorkIsHostile, greatWorkKind, type GreatWorkSite } from '../src/sim/scenario/threats/giantworks/framework';
@@ -2442,6 +2467,572 @@ describe('giantworks', () => {
         casinoPiratesPeriodic(lg);
         expect(lrec.phase).toBe('renovation');
     }, 3600000);
+
+    // ---------------------------------------------------------------------------------------------------------------
+    // The Ultramind and the Leviathan Sanctuary (giantworks/ultramind.ts, sanctuary.ts): the real wonders, forced and finished at once.
+    // ---------------------------------------------------------------------------------------------------------------
+    /** A finished Ultramind / Sanctuary. `holder`: the empire that takes the benefit (an AI, the human player, or nobody's territory). */
+    function wonder(kind: 'ultramind' | 'sanctuary', params: Record<string, number> = {}, holder: 'ai' | 'player' | null = null, scenario: string[] = ids, flags: Record<string, boolean> = {}) {
+        const { game, gameData } = gwFull(flags, params, scenario);
+        const g = game.galaxy;
+        const w = greatWorks(g)[0];
+        w.wonder = kind;
+        w.gatherDate = 0;
+        giantworksPeriodic(g);
+        expect(w.phase).toBe('building');
+        const e: Empire | null = holder === null ? null : holder === 'player' ? g.playerEmpire! : actors(g).find((x) => x !== g.playerEmpire)!;
+        if (e !== null) w.holder = e;
+        completeWork(g, w);
+        return { g, w, e, game, gameData };
+    }
+    const siteOf = (w: GreatWorkRecord) => w.system.systemStar;
+    const warships = (e: Empire): BuiltObject[] => e.builtObjects.filter((b) => !b.hasBeenDestroyed && b.role === BuiltObjectRole.Military && b.topSpeed > 0);
+
+    it('the Ultramind and the Sanctuary are registered with their flags, weights and hints (general first); the Game Editor starts them', () => {
+        const g = gw({ threatGiantworks: false });
+        const u = greatWorkKind('ultramind')!;
+        expect([u.flag, u.weight, u.hintTags]).toEqual(['gwUltramind', 15, ['superconductors', 'cooling', 'cores']]);
+        const v = greatWorkKind('sanctuary')!;
+        expect([v.flag, v.weight, v.hintTags]).toEqual(['gwSanctuary', 15, ['glass-ice', 'plankton', 'containment']]);
+        expect(kindName('ultramind')).toBe('The Ultramind');
+        expect(kindName('sanctuary')).toBe('The Leviathan Sanctuary');
+        expect(KIND_MENACE.ultramind).toBeGreaterThan(KIND_MENACE.sanctuary);
+        const keys = spawnableThreats(g).map((t) => t.key);
+        expect(keys).toContain('giantworks:ultramind');
+        expect(keys).toContain('giantworks:sanctuary');
+        expect(spawnThreatNow(g, g.playerEmpire!, 'giantworks:ultramind')).toBe(true);
+        expect(greatWorks(g)[0].wonder).toBe('ultramind');
+    }, 900000);
+
+    it('the Ultramind: contracts (the territory owner first, at most three), +25% research, partners pay the owner, the mood is in its name', () => {
+        const { g, w, e } = wonder('ultramind', {}, 'ai');
+        const m = mindOfSite(g, w)!;
+        expect(m.partners[0]).toBe(e);
+        expect(m.partners.length).toBeGreaterThanOrEqual(1);
+        expect(m.partners.length).toBeLessThanOrEqual(3);
+        expect(new Set(m.partners).size).toBe(m.partners.length);
+        expect(m.contentment).toBe(60);
+        expect(w.base!.name).toBe('The Ultramind (content)');
+        expect(w.awakened).toBe(false);
+        // A year on: a quarter of a year's output in research points for each partner, the others' fees to the owner, boredom takes 4 points.
+        const expected = m.partners.reduce((a, x) => a + 0.25 * researchPerYear(g, x), 0);
+        expect(expected).toBeGreaterThan(0);
+        const money = e!.stateMoney;
+        m.lastTick -= YEAR_LENGTH;
+        m.nextRequest = Number.MAX_VALUE;
+        ultramindPeriodic(g, w);
+        expect(m.stats.researchGranted).toBeGreaterThan(0.3 * expected);
+        expect(m.stats.researchGranted).toBeLessThanOrEqual(expected * 1.001 + 1);
+        expect(m.contentment).toBeCloseTo(56, 0);
+        if (m.partners.length > 1) {
+            expect(m.stats.feesPaid).toBeGreaterThan(0);
+            expect(e!.stateMoney - money).toBeCloseTo(m.stats.feesPaid, 3); // the holder takes the whole of it
+        }
+        // A partner's stolen technology is worth a little more; a stranger's is not.
+        const stranger = actors(g).find((x) => !m.partners.includes(x));
+        const before = m.stats.researchGranted;
+        const steal = (who: Empire) => scenarioEmit(g, 'intelMissionCompleted', { empire: who, mission: newIntelligenceMissionStealTechData(who, null, galaxyStarDate(g), m.partners[0], null), outcome: null });
+        if (stranger !== undefined) {
+            steal(stranger);
+            expect(m.stats.researchGranted).toBe(before);
+        }
+        steal(m.partners[0]);
+        expect(m.stats.theftBoosts).toBe(1);
+        expect(m.stats.researchGranted).toBeGreaterThan(before);
+    }, 900000);
+
+    it('the Ultramind: abuse lowers the mood (attacks once in 20 days, sabotage, being seized); the mood shows in the name', () => {
+        const { g, w, e } = wonder('ultramind', {}, 'ai');
+        const m = mindOfSite(g, w)!;
+        const hit = () => scenarioEmit(g, 'builtObjectAttacked', { builtObject: w.base!, attacker: null, attackingEmpire: e });
+        hit();
+        expect(m.contentment).toBeCloseTo(58.5, 5);
+        hit(); // the same spell
+        expect(m.contentment).toBeCloseTo(58.5, 5);
+        const sab = newIntelligenceMissionAgainstBuiltObject(e!, null, IntelligenceMissionType.SabotageConstruction, galaxyStarDate(g), w.base!);
+        scenarioEmit(g, 'intelMissionCompleted', { empire: e!, mission: sab, outcome: null });
+        expect(m.contentment).toBeCloseTo(50.5, 5);
+        expect(w.base!.name).toBe('The Ultramind (content)');
+        scenarioEmit(g, 'intelMissionCompleted', { empire: e!, mission: sab, outcome: null });
+        expect(m.contentment).toBeCloseTo(42.5, 5);
+        expect(w.base!.name).toBe('The Ultramind (restless)');
+        // Wars between its partners wear on it.
+        if (m.partners.length >= 2) {
+            declareWar(g, m.partners[0], m.partners[1], null, false);
+            const c = m.contentment;
+            m.lastTick -= YEAR_LENGTH;
+            m.nextRequest = Number.MAX_VALUE;
+            ultramindPeriodic(g, w);
+            expect(c - m.contentment).toBeCloseTo(4 + 3, 0);
+        }
+    }, 900000);
+
+    it('the Ultramind: a request is a scenario decision (grant raises the mood, refuse lowers it more, silence refuses); each kind costs what it says', () => {
+        const { g, w } = wonder('ultramind', {}, 'player');
+        const p = g.playerEmpire!;
+        const m = mindOfSite(g, w)!;
+        const now = galaxyStarDate(g);
+        // Power: a share of the yearly income, paid out.
+        raiseRequest(g, m, now, 'power');
+        let d = pendingScenarioDecisions(g, p)[0];
+        expect(d.kind).toBe('gwUltramind.request');
+        expect(d.options.map((o) => o.id)).toEqual(['grant', 'refuse']);
+        expect(d.defaultOption).toBe('refuse');
+        expect(m.request?.kind).toBe('power');
+        const money = p.stateMoney;
+        const cost = m.request!.cost;
+        expect(cost).toBeGreaterThanOrEqual(100000);
+        const c0 = m.contentment;
+        expect(answerScenarioDecision(g, d.id, 'grant')).toBe(true);
+        expect(p.stateMoney).toBeCloseTo(money - cost, 3);
+        expect(m.contentment).toBe(c0 + 14);
+        expect(m.request).toBeNull();
+        expect(m.nextRequest - now).toBeGreaterThanOrEqual(YEAR_LENGTH * 0.999);
+        expect(m.nextRequest - now).toBeLessThanOrEqual(YEAR_LENGTH * 2.001);
+        // Refusing costs more than granting gave.
+        raiseRequest(g, m, now, 'network');
+        d = pendingScenarioDecisions(g, p)[0];
+        const c1 = m.contentment;
+        answerScenarioDecision(g, d.id, 'refuse');
+        expect(m.contentment).toBe(c1 - 16);
+        expect(m.stats).toMatchObject({ asked: 2, granted: 1, refused: 1 });
+        // Network access: counter-intelligence weakens for two years.
+        expect(scenarioQuery(g, 'counterIntelligenceProportion', 1, { empire: p })).toBe(1);
+        raiseRequest(g, m, now, 'network');
+        answerScenarioDecision(g, pendingScenarioDecisions(g, p)[0].id, 'grant');
+        expect(scenarioQuery(g, 'counterIntelligenceProportion', 1, { empire: p })).toBeCloseTo(0.35, 9);
+        expect(m.exposedUntil[String(p.empireId)] - now).toBeCloseTo(2 * YEAR_LENGTH, -3);
+        // A moon to grow onto: a colony in range goes to the independents.
+        g.scenario!.params.ultramindMoonSectors = 500;
+        const moon = moonCandidate(g, m, p);
+        expect(moon).not.toBeNull();
+        raiseRequest(g, m, now, 'moon');
+        answerScenarioDecision(g, pendingScenarioDecisions(g, p)[0].id, 'grant');
+        expect(moon!.empire).toBe(g.independentEmpire);
+        expect(p.colonies).not.toContain(moon);
+        // A philosopher: the best scientist leaves.
+        const phil = philosopherCandidate(p);
+        if (phil !== null) {
+            raiseRequest(g, m, now, 'philosopher');
+            answerScenarioDecision(g, pendingScenarioDecisions(g, p)[0].id, 'grant');
+            expect(phil.active).toBe(false);
+        }
+        // An unanswered request expires into a refusal.
+        const refused = m.stats.refused;
+        raiseRequest(g, m, now, 'power');
+        d = pendingScenarioDecisions(g, p)[0];
+        d.expiresStarDate = 1;
+        expireScenarioDecisions(g);
+        expect(m.stats.refused).toBe(refused + 1);
+        expect(d.answeredBy).toBe('expired');
+    }, 900000);
+
+    it('the Ultramind: an AI answers at once, by personality, mood and means', () => {
+        const { g, w, e } = wonder('ultramind', {}, 'ai');
+        const m = mindOfSite(g, w)!;
+        const now = galaxyStarDate(g);
+        for (const kind of ['power', 'network'] as const) {
+            const seq = m.requestSeq + 1;
+            const want = aiAnswer(g, m, e!, kind, seq);
+            const before = { ...m.stats };
+            raiseRequest(g, m, now, kind);
+            expect(pendingScenarioDecisions(g, e!)).toHaveLength(0);
+            expect(m.request).toBeNull();
+            expect(m.stats.granted - before.granted).toBe(want === 'grant' ? 1 : 0);
+            expect(m.stats.refused - before.refused).toBe(want === 'refuse' ? 1 : 0);
+        }
+        // The unhappier it is, the likelier any empire is to give in; the same empire and request.
+        for (const kind of ['power', 'network', 'moon', 'philosopher'] as const) {
+            m.contentment = 100;
+            const calm = aiAnswer(g, m, e!, kind, 7);
+            m.contentment = 5;
+            const desperate = aiAnswer(g, m, e!, kind, 7);
+            if (calm === 'grant') expect(desperate).toBe('grant');
+        }
+    }, 900000);
+
+    it('the Ultramind awakens at nothing: a machine faction at war with its partners, hacked warships, dark ports, no freight, drones; no crime', () => {
+        const { g, w, e } = wonder('ultramind', { ultramindHackPct: 100 }, 'ai');
+        const m = mindOfSite(g, w)!;
+        const star = siteOf(w);
+        // The partners' warships near the site are the ones at risk.
+        const near = new Map<Empire, BuiltObject[]>();
+        for (const p of m.partners) {
+            const ships = warships(p).slice(0, 3);
+            ships.forEach((b, i) => {
+                b.xpos = star.xpos + 800 * i;
+                b.ypos = star.ypos + 400;
+            });
+            near.set(p, ships);
+        }
+        const nearCount = [...near.values()].reduce((a, l) => a + l.length, 0);
+        expect(nearCount).toBeGreaterThan(0);
+        const aiBefore = e!.builtObjects.length;
+        m.contentment = 1;
+        m.nextRequest = Number.MAX_VALUE;
+        m.lastTick -= YEAR_LENGTH;
+        ultramindPeriodic(g, w);
+        expect(m.awakened).toBe(true);
+        expect(w.awakened).toBe(true);
+        expect(greatWorkIsHostile(w)).toBe(true);
+        const f = ultramindState(g).faction!;
+        expect(f.active).toBe(true);
+        expect(f.name).toBe('The Awakened Ultramind');
+        expect(f.dominantRace?.name).toBe('Harvester'); // the machine race of Robot Mutiny
+        expect(isCrisisFaction(g, f)).toBe(true);
+        expect(activeCrises(g).some((c) => c.faction === f)).toBe(true);
+        expect(w.base!.actualEmpire).toBe(f); // the machine took the base
+        expect(w.base!.name).toBe('The Ultramind (AWAKE)');
+        expect(warCrimesRecord(g, f)?.counts.greatWork ?? 0).toBe(0);
+        for (const p of m.partners) expect(f.diplomaticRelations.byEmpire(p)?.type).toBe(DiplomaticRelationType.War);
+        // Hacked: the ships next to the site (certain with the odds at 100), nothing from a stranger.
+        expect(m.hacked.length).toBe(Math.min(nearCount, 8));
+        for (const h of m.hacked) {
+            expect(h.ship.actualEmpire).toBe(f);
+            expect(m.partners).toContain(h.from);
+        }
+        expect(e!.builtObjects.length).toBeLessThanOrEqual(aiBefore);
+        // Drones: warships of its own, beyond the hacked ones.
+        const drones = warships(f).filter((b) => !m.hacked.some((h) => h.ship === b));
+        expect(drones.length).toBeGreaterThan(0);
+        expect(drones.length).toBeLessThanOrEqual(12);
+        // The ports within five sectors are dark for 30 to 90 days; not beyond.
+        const now = galaxyStarDate(g);
+        expect(m.portsUntil - now).toBeGreaterThanOrEqual(30 * GAME_DAY_LENGTH - 1);
+        expect(m.portsUntil - now).toBeLessThanOrEqual(90 * GAME_DAY_LENGTH + 1);
+        const colonyNear = { xpos: star.xpos + 100, ypos: star.ypos, empire: e } as unknown as Habitat;
+        const colonyFar = { xpos: star.xpos + 6 * g.sectorSize, ypos: star.ypos, empire: e } as unknown as Habitat;
+        expect(scenarioQuery(g, 'constructionQueuePaused', false, { habitat: colonyNear, builtObject: null })).toBe(true);
+        expect(scenarioQuery(g, 'constructionQueuePaused', false, { habitat: colonyFar, builtObject: null })).toBe(false);
+        const portNear = { xpos: star.xpos + 100, ypos: star.ypos, actualEmpire: e, empire: e } as unknown as BuiltObject;
+        expect(scenarioQuery(g, 'portTradeIncomeFactor', 1, { port: portNear, amount: 1000 })).toBe(0);
+        m.portsUntil = now - 1;
+        expect(scenarioQuery(g, 'constructionQueuePaused', false, { habitat: colonyNear, builtObject: null })).toBe(false); // lit again
+        // Private freight within five sectors stops; warships and distant freighters are not touched.
+        const freighter = (dx: number, role = BuiltObjectRole.Freight, sub = BuiltObjectSubRole.SmallFreighter) => ({ role, subRole: sub, xpos: star.xpos + dx, ypos: star.ypos }) as unknown as BuiltObject;
+        const ask = (b: BuiltObject) => scenarioQuery(g, 'assignMissionAllowed', true, { builtObject: b, missionType: BuiltObjectMissionType.Move, target: null, x: 0, y: 0 });
+        expect(ask(freighter(500))).toBe(false);
+        expect(ask(freighter(6 * g.sectorSize))).toBe(true);
+        expect(ask(freighter(500, BuiltObjectRole.Military, BuiltObjectSubRole.Cruiser))).toBe(true);
+        // Whoever strikes the base is at war with the machine; a stranger was not before.
+        const stranger = actors(g).find((x) => !m.partners.includes(x));
+        if (stranger !== undefined) {
+            expect(f.diplomaticRelations.byEmpire(stranger)?.type).not.toBe(DiplomaticRelationType.War);
+            scenarioEmit(g, 'builtObjectAttacked', { builtObject: w.base!, attacker: null, attackingEmpire: stranger });
+            expect(f.diplomaticRelations.byEmpire(stranger)?.type).toBe(DiplomaticRelationType.War);
+        }
+        // Destroying it is no crime and sets the hacked ships free; the drones go silent.
+        const alive = m.hacked.filter((h) => !h.ship.hasBeenDestroyed);
+        const attacker = stranger ?? e!;
+        w.base!.hasBeenDestroyed = true;
+        w.attackedBy = { empire: attacker, date: galaxyStarDate(g) };
+        expect(resolveBaseLoss(g, w)).toBe(true);
+        expect(w.phase).toBe('destroyed');
+        expect(warCrimesRecord(g, attacker)?.counts.greatWork ?? 0).toBe(0);
+        expect(w.awakened).toBe(false);
+        for (const h of alive) expect(h.ship.actualEmpire).toBe(h.from);
+        expect(warships(f)).toHaveLength(0);
+        expect(m.hacked).toHaveLength(0);
+        expect(m.stats.hacksReleased).toBe(alive.length);
+    }, 1800000);
+
+    it('the Ultramind: a Logic Bomb cuts the hacking odds; the threat action charges for it; AI partners prepare when it turns restless', () => {
+        const { g, w, e } = wonder('ultramind', {}, 'ai');
+        const m = mindOfSite(g, w)!;
+        const p = g.playerEmpire!;
+        const open = hackOdds(g, m, p, 0);
+        expect(open).toBeCloseTo(0.85, 9);
+        expect(hackOdds(g, m, p, 6 * g.sectorSize)).toBeLessThan(open);
+        expect(hackOdds(g, m, p, 13 * g.sectorSize)).toBe(0);
+        expect(availableThreatActions(g, p, w.base).map((a) => a.kind)).not.toContain('giantworks.logicBomb'); // no money, no bomb
+        p.stateMoney = 10_000_000;
+        expect(availableThreatActions(g, p, w.base).map((a) => a.kind)).toContain('giantworks.logicBomb');
+        const cost = bombCost(g, p);
+        expect(cost).toBeGreaterThanOrEqual(150000);
+        expect(runThreatAction(g, p, 'giantworks.logicBomb', w.base)).toBe(true);
+        expect(p.stateMoney).toBeCloseTo(10_000_000 - cost, 3);
+        expect(hackOdds(g, m, p, 0)).toBeCloseTo(open * 0.4, 9);
+        expect(availableThreatActions(g, p, w.base).map((a) => a.kind)).not.toContain('giantworks.logicBomb'); // once
+        expect(deployLogicBomb(g, p, m)).toBe(false);
+        expect(hackOdds(g, m, e!, 0)).toBeCloseTo(open, 9); // the others are as exposed as before
+        // A restless Ultramind: an AI partner with the money prepares by itself.
+        e!.stateMoney = 10_000_000;
+        m.contentment = 20;
+        m.lastTick -= 100 * GAME_DAY_LENGTH;
+        m.nextRequest = Number.MAX_VALUE;
+        ultramindPeriodic(g, w);
+        expect(m.bombs[String(e!.empireId)]).toBeDefined();
+    }, 900000);
+
+    it('the Ultramind: boarded while awake it falls back to a sullen calm under its captor, the hacked ships free; boarded while content it is hurt', () => {
+        const { g, w, e } = wonder('ultramind', { ultramindHackPct: 100 }, 'ai');
+        const m = mindOfSite(g, w)!;
+        const star = siteOf(w);
+        for (const x of m.partners) warships(x).slice(0, 2).forEach((b) => { b.xpos = star.xpos; b.ypos = star.ypos + 300; });
+        awaken(g, m, galaxyStarDate(g));
+        const f = ultramindState(g).faction!;
+        expect(m.awakened).toBe(true);
+        expect(m.hacked.length).toBeGreaterThan(0);
+        const hacked = m.hacked.map((h) => h);
+        const captor = actors(g).find((x) => x !== f && x !== e)!;
+        takeOwnershipOfBuiltObject(g, f, w.base!, captor, false, true);
+        expect(w.holder).toBe(captor);
+        expect(m.awakened).toBe(false);
+        expect(w.awakened).toBe(false);
+        expect(greatWorkIsHostile(w)).toBe(false);
+        expect(m.contentment).toBe(30);
+        expect(warCrimesRecord(g, captor)?.counts.greatWork ?? 0).toBe(0);
+        for (const h of hacked) if (!h.ship.hasBeenDestroyed) expect(h.ship.actualEmpire).toBe(h.from);
+        expect(w.base!.name).toBe('The Ultramind (restless)');
+        // Content, then seized: a blow to the mood and the contracts are drawn anew.
+        const { g: g2, w: w2, e: e2 } = wonder('ultramind', {}, 'ai');
+        const m2 = mindOfSite(g2, w2)!;
+        const boarder = actors(g2).find((x) => x !== e2)!;
+        takeOwnershipOfBuiltObject(g2, compactFaction(g2)!, w2.base!, boarder, false, true);
+        expect(m2.contentment).toBeCloseTo(45, 5);
+        expect(m2.awakened).toBe(false);
+    }, 1800000);
+
+    it('the Ultramind: save and load keep the contracts, the awakened faction, the hacked ships and the mood', () => {
+        const { g, w, game, gameData } = wonder('ultramind', { ultramindHackPct: 100 }, 'ai');
+        const m = mindOfSite(g, w)!;
+        const star = siteOf(w);
+        for (const x of m.partners) warships(x).slice(0, 2).forEach((b) => { b.xpos = star.xpos; b.ypos = star.ypos + 300; });
+        m.bombs[String(m.partners[0].empireId)] = 5;
+        m.exposedUntil[String(m.partners[0].empireId)] = galaxyStarDate(g) + YEAR_LENGTH;
+        awaken(g, m, galaxyStarDate(g));
+        const time = new GalaxyTime();
+        time.bindGalaxy(g);
+        const text = serializeGame(game, time, {} as StartGameOptions);
+        const lg = deserializeGame(text, gameData).game.galaxy;
+        const lm = peekUltramindState(lg)!.minds[0];
+        expect(lm.site).toBe(greatWorks(lg)[0]);
+        expect(lm.awakened).toBe(true);
+        expect(lm.partners.map((x) => x.empireId)).toEqual(m.partners.map((x) => x.empireId));
+        expect(lm.hacked.map((h) => h.ship.builtObjectID)).toEqual(m.hacked.map((h) => h.ship.builtObjectID));
+        expect(lm.hacked.every((h) => h.ship.actualEmpire === peekUltramindState(lg)!.faction)).toBe(true);
+        expect(peekUltramindState(lg)!.faction!.empireId).toBe(ultramindState(g).faction!.empireId);
+        expect(lm.bombs).toEqual(m.bombs);
+        expect(lm.exposedUntil).toEqual(m.exposedUntil);
+        expect(lm.portsUntil).toBe(m.portsUntil);
+        expect(greatWorks(lg)[0].awakened).toBe(true);
+    }, 1800000);
+
+    it('the Sanctuary: resort income through the shares, a growth bonus for the beneficiary within three sectors, a research trickle, whales that breed', () => {
+        const { g, w, e } = wonder('sanctuary', { sanctuaryBreachPctPerYear: 0 }, 'ai');
+        const s = sanctumOfSite(g, w)!;
+        expect(w.whales).toBe(4);
+        expect(w.base!.name).toBe('The Leviathan Sanctuary (4 whales)');
+        expect(greatWorkIsHostile(w)).toBe(false);
+        const money = e!.stateMoney;
+        const resort = thisYearsResortIncome(g, e!);
+        s.lastTick -= YEAR_LENGTH;
+        sanctuaryPeriodic(g, w);
+        expect(e!.stateMoney - money).toBeCloseTo(1_000_000, 0); // the holder takes it all
+        expect(thisYearsResortIncome(g, e!) - resort).toBeCloseTo(1_000_000, 0);
+        expect(s.stats.income).toBeCloseTo(1_000_000, 0);
+        expect(s.stats.research).toBeGreaterThan(0);
+        expect(w.whales).toBe(4); // half a whale born
+        s.lastTick -= 2 * YEAR_LENGTH;
+        sanctuaryPeriodic(g, w);
+        expect(w.whales).toBe(5);
+        expect(w.base!.name).toBe('The Leviathan Sanctuary (5 whales)');
+        s.lastTick -= 20 * YEAR_LENGTH;
+        sanctuaryPeriodic(g, w);
+        expect(w.whales).toBe(7); // no more than seven
+        // Whale-song therapy: the beneficiary's colonies within three sectors only.
+        const star = siteOf(w);
+        const other = actors(g).find((x) => x !== e)!;
+        expect(growthBonusAt(g, star.xpos + 2 * g.sectorSize, star.ypos, e)).toBe(25);
+        expect(growthBonusAt(g, star.xpos + 4 * g.sectorSize, star.ypos, e)).toBe(0);
+        expect(growthBonusAt(g, star.xpos, star.ypos, other)).toBe(0);
+        const colony = { xpos: star.xpos + g.sectorSize, ypos: star.ypos, empire: e } as unknown as Habitat;
+        expect(scenarioQuery(g, 'colonyWonderBonus', 0, { habitat: colony, wonderType: WonderType.ColonyPopulationGrowth })).toBe(25);
+        expect(scenarioQuery(g, 'colonyWonderBonus', 0, { habitat: colony, wonderType: WonderType.ColonyIncome })).toBe(0);
+        // Nobody's territory and no holder: the Compact keeps the lot, and nobody is helped.
+        const { g: g2, w: w2 } = wonder('sanctuary', { sanctuaryBreachPctPerYear: 0 }, null);
+        const c = compactFaction(g2)!;
+        const cm = c.stateMoney;
+        const s2 = sanctumOfSite(g2, w2)!;
+        s2.lastTick -= YEAR_LENGTH;
+        sanctuaryPeriodic(g2, w2);
+        expect(c.stateMoney - cm).toBeCloseTo(1_000_000, 0);
+        expect(growthBonusAt(g2, siteOf(w2).xpos, siteOf(w2).ypos, actors(g2)[0])).toBe(0);
+    }, 1800000);
+
+    it('the Sanctuary: stress from shots, nearby fighting and sabotage raises the chance of a breach, and fades', () => {
+        const { g, w, e } = wonder('sanctuary', {}, 'ai');
+        const s = sanctumOfSite(g, w)!;
+        const star = siteOf(w);
+        expect(breachChancePerYear(g, s)).toBeCloseTo(0.02, 9);
+        scenarioEmit(g, 'builtObjectAttacked', { builtObject: w.base!, attacker: null, attackingEmpire: e });
+        expect(s.stress).toBe(5);
+        scenarioEmit(g, 'builtObjectAttacked', { builtObject: w.base!, attacker: null, attackingEmpire: e });
+        expect(s.stress).toBe(5); // at most once a day for the small knocks
+        const bystander = { xpos: star.xpos + 60000, ypos: star.ypos, builtObjectID: -5 } as unknown as BuiltObject;
+        const far = { xpos: star.xpos + 300000, ypos: star.ypos, builtObjectID: -6 } as unknown as BuiltObject;
+        s.lastStressHit = -1;
+        scenarioEmit(g, 'builtObjectAttacked', { builtObject: far, attacker: null, attackingEmpire: e });
+        expect(s.stress).toBe(5);
+        scenarioEmit(g, 'builtObjectAttacked', { builtObject: bystander, attacker: null, attackingEmpire: e });
+        expect(s.stress).toBeCloseTo(6.5, 9);
+        const sab = newIntelligenceMissionAgainstBuiltObject(e!, null, IntelligenceMissionType.SabotageConstruction, galaxyStarDate(g), w.base!);
+        scenarioEmit(g, 'intelMissionCompleted', { empire: e!, mission: sab, outcome: null });
+        expect(s.stress).toBeCloseTo(36.5, 9);
+        expect(breachChancePerYear(g, s)).toBeGreaterThan(0.3);
+        s.lastTick -= 60 * GAME_DAY_LENGTH;
+        const before = s.stress;
+        addStress(g, s, 0, true);
+        s.stats.stressPeak = before;
+        // Sixty days later (the periodic step decays it): about half.
+        const p0 = g.scenario!.params.sanctuaryBreachPctPerYear;
+        g.scenario!.params.sanctuaryBreachPctPerYear = 0;
+        g.scenario!.params.sanctuaryStressPctPerYear = 0;
+        sanctuaryPeriodic(g, w);
+        g.scenario!.params.sanctuaryBreachPctPerYear = p0;
+        expect(s.stress).toBeCloseTo(before / 2, 0);
+    }, 900000);
+
+    it('the Sanctuary: a breach lets out the Leviathan once and 3 to 6 enraged whales, stops every bonus for a year at the owner\'s cost, then is repaired', () => {
+        const { g, w, e } = wonder('sanctuary', { sanctuaryBreachPctPerYear: 0, sanctuaryStressPctPerYear: 0 }, 'ai');
+        const s = sanctumOfSite(g, w)!;
+        s.whales = 6.2;
+        w.whales = 6;
+        const now = galaxyStarDate(g);
+        expect(scenarioFlag(g, 'threatVoidWhale')).toBe(false);
+        const creatures = g.creatures.length;
+        breachSanctuary(g, s, now);
+        expect(s.breached).toBe(true);
+        expect(s.breaches).toBe(1);
+        expect(w.base!.name).toBe('The Leviathan Sanctuary (breached)');
+        expect(w.breached).toBe(true); // the art cracks the glass
+        // Scaled to the navies of the day: at least a plain whale, at most six times it.
+        const scale = unleashedScale(g);
+        expect(scale).toBeGreaterThanOrEqual(1);
+        expect(scale).toBeLessThanOrEqual(6);
+        for (const a of s.angry) {
+            expect(a.scale).toBe(scale);
+            expect(a.creature.attackStrength).toBeGreaterThanOrEqual(Math.trunc((a.creature.size / 12) * scale));
+        }
+        expect(s.angry.length).toBeGreaterThanOrEqual(3);
+        expect(s.angry.length).toBeLessThanOrEqual(6);
+        const target = rageTarget(g, s);
+        for (const a of s.angry) expect(a.dest !== null).toBe(target !== null);
+        if (target !== null) for (const a of s.angry) expect(a.creature.hyperSpeed).toBeGreaterThan(0);
+        expect(g.creatures.length).toBe(creatures + s.angry.length + 1); // the whales and the Leviathan
+        for (const a of s.angry) {
+            expect(g.creatures).toContain(a.creature);
+            expect(a.creature.attackStrength).toBeGreaterThan(0);
+            expect(a.creature.attackRange).toBe(6000);
+        }
+        expect(s.whales).toBeCloseTo(Math.max(1, 6.2 - s.angry.length), 9);
+        expect(w.whales).toBe(Math.floor(s.whales));
+        // The Leviathan: the Void Whale threat is switched on and the beast wakes at the sphere.
+        expect(scenarioFlag(g, 'threatVoidWhale')).toBe(true);
+        expect(s.leviathanReleased).toBe(true);
+        const lev = voidWhaleState(g);
+        expect(lev.phase).toBe('active');
+        expect(lev.creature!.name).toBe('The Leviathan');
+        expect(lev.strengthMul).toBe(scale);
+        expect(lev.creature!.attackStrength).toBe(Math.trunc((lev.creature!.size / 14) * scale));
+        expect(g.calculateDistance(lev.creature!.xpos, lev.creature!.ypos, siteOf(w).xpos, siteOf(w).ypos)).toBeLessThan(30000);
+        // The raging whales hunt ships, but leave the sphere and the Compact alone.
+        const raging = s.angry[0].creature;
+        const ship = { xpos: raging.xpos, ypos: raging.ypos, actualEmpire: e } as unknown as BuiltObject;
+        expect(scenarioQuery(g, 'creatureIgnoresTarget', true, { creature: raging, target: ship })).toBe(false);
+        expect(scenarioQuery(g, 'creatureIgnoresTarget', false, { creature: raging, target: w.base })).toBe(true);
+        expect(scenarioQuery(g, 'creatureIgnoresTarget', false, { creature: raging, target: { actualEmpire: compactFaction(g) } })).toBe(true);
+        // No income, no growth bonus, and the owner pays for the repairs by the month.
+        const star = siteOf(w);
+        expect(growthBonusAt(g, star.xpos, star.ypos, e)).toBe(0);
+        const money = e!.stateMoney;
+        s.lastTick -= 0.5 * YEAR_LENGTH;
+        sanctuaryPeriodic(g, w);
+        expect(e!.stateMoney - money).toBeCloseTo(-500_000, 0);
+        expect(s.stats.income).toBe(0);
+        expect(s.breached).toBe(true);
+        // The rage ends: plain creatures turn harmless.
+        for (const a of s.angry) a.until = 0;
+        const raged = s.angry.map((a) => a.creature);
+        rageStep(g);
+        expect(s.angry).toHaveLength(0);
+        for (const c of raged) expect(c.attackStrength).toBe(0);
+        // A year on the sphere is whole again, with its few whales, and pays again.
+        s.repairUntil = galaxyStarDate(g) - 1;
+        s.lastTick -= YEAR_LENGTH;
+        sanctuaryPeriodic(g, w);
+        expect(s.breached).toBe(false);
+        expect(w.breached).toBe(false);
+        expect(w.base!.name).toMatch(/^The Leviathan Sanctuary \(\d whales\)$/);
+        expect(growthBonusAt(g, star.xpos, star.ypos, e)).toBe(25);
+        s.lastTick -= YEAR_LENGTH;
+        const before = e!.stateMoney;
+        sanctuaryPeriodic(g, w);
+        expect(e!.stateMoney - before).toBeCloseTo(1_000_000, 0);
+        // A second breach lets out whales again but not a second Leviathan.
+        breachSanctuary(g, s, galaxyStarDate(g));
+        expect(s.breaches).toBe(2);
+        expect(s.angry.length).toBeGreaterThanOrEqual(3);
+        expect(voidWhaleState(g).creature).toBe(lev.creature);
+    }, 1800000);
+
+    it('the Sanctuary: unleashed whales grow with the navies of the galaxy (square root of the top three over the reference, 1 to 6)', () => {
+        const { g, e } = wonder('sanctuary', { sanctuaryBreachPctPerYear: 0 }, 'ai');
+        expect(e).not.toBeNull();
+        const top = actors(g).map((x) => militaryPotency(x)).sort((a, b) => b - a).slice(0, 3);
+        const mean = top.reduce((a, b) => a + b, 0) / top.length;
+        expect(unleashedScale(g)).toBeCloseTo(Math.min(6, Math.max(1, Math.sqrt(mean / 600))), 9);
+        g.scenario!.params.sanctuaryRageRefPotency = 1;
+        expect(unleashedScale(g)).toBe(6); // a mature galaxy: capped
+        g.scenario!.params.sanctuaryRageRefPotency = 1e12;
+        expect(unleashedScale(g)).toBe(1); // a young one: a plain whale
+    }, 900000);
+
+    it('the Sanctuary: destroying it is the crime it always was, and the glass it held lets the whales and the Leviathan out', () => {
+        const { g, w, e } = wonder('sanctuary', { sanctuaryBreachPctPerYear: 0 }, 'ai');
+        const s = sanctumOfSite(g, w)!;
+        const attacker = actors(g).find((x) => x !== e)!;
+        w.base!.hasBeenDestroyed = true;
+        w.attackedBy = { empire: attacker, date: galaxyStarDate(g) };
+        expect(resolveBaseLoss(g, w)).toBe(true);
+        expect(w.phase).toBe('destroyed');
+        expect(warCrimesRecord(g, attacker)?.counts.greatWork).toBe(1); // peaceful: not exempt
+        expect(s.angry.length).toBeGreaterThanOrEqual(3);
+        expect(s.leviathanReleased).toBe(true);
+        expect(voidWhaleState(g).phase).toBe('active');
+        expect(s.whales).toBe(0);
+        expect(w.whales).toBe(0);
+        expect(s.breached).toBe(false); // nothing left to repair
+    }, 900000);
+
+    it('the Sanctuary: with New Fauna on, the escaped whales are its void whales (a herd, enraged for a while); save and load keep a breached sanctuary', () => {
+        const { g, w, game, gameData } = wonder('sanctuary', { sanctuaryBreachPctPerYear: 0, sanctuaryStressPctPerYear: 0 }, 'ai', [...ids, 'new-fauna'], { newFauna: true });
+        const s = sanctumOfSite(g, w)!;
+        expect(scenarioFlag(g, 'newFauna')).toBe(true);
+        const herds = peekRimFaunaState(g)!.herds.length;
+        breachSanctuary(g, s, galaxyStarDate(g));
+        expect(peekRimFaunaState(g)!.herds.length).toBe(herds + 1);
+        expect(s.angry.length).toBeGreaterThanOrEqual(3);
+        for (const a of s.angry) expect(faunaVariantOfCreature(g, a.creature)?.variant).toBe(FaunaVariant.VoidWhale);
+        // They head for the nearest colony of the owner's (else anyone's), by the herd migration.
+        const target = rageTarget(g, s);
+        const herd = peekRimFaunaState(g)!.herds[herds];
+        if (target !== null) {
+            expect(target.systemIndex).not.toBe(siteOf(w).systemIndex);
+            expect(herd.migration?.toSystemIndex).toBe(target.systemIndex);
+            expect(s.angry.every((a) => a.creature.hyperSpeed > 0)).toBe(true);
+        }
+        const time = new GalaxyTime();
+        time.bindGalaxy(g);
+        const text = serializeGame(game, time, {} as StartGameOptions);
+        const lg = deserializeGame(text, gameData).game.galaxy;
+        const ls = sanctumOfSite(lg, greatWorks(lg)[0])!;
+        expect(ls.breached).toBe(true);
+        expect(ls.angry.map((a) => a.creature.creatureId)).toEqual(s.angry.map((a) => a.creature.creatureId));
+        expect(ls.leviathanReleased).toBe(s.leviathanReleased);
+        expect(ls.repairUntil).toBe(s.repairUntil);
+        expect(greatWorks(lg)[0].whales).toBe(w.whales);
+    }, 1800000);
 });
 
 // Giantworks' Beacon wonder (threats/giantworks/beacon*.ts): the Watchers, corruption, the Reclamation, counterplay, the dark bargain.

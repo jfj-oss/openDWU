@@ -35,6 +35,8 @@ import './threats/archiveCores';
 import './threats/generationShips';
 import './threats/giantworks/framework';
 import './threats/giantworks/casino';
+import './threats/giantworks/ultramind';
+import './threats/giantworks/sanctuary';
 import './threats/probeSwarm';
 import './threats/voidWhale';
 import './threats/hollowFleet';

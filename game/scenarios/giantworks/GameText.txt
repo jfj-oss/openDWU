@@ -190,3 +190,51 @@ Beacon Salvage 3;Study of the wreckage shows how the Watchers touch a world. Our
 Beacon Salvage 4;Study of the wreckage has traced the Beacon's signal. We now know where the Reclaimers gather.
 Beacon Salvage Tech;a free breakthrough in {0}
 Beacon Salvage Tech None;nothing left to learn
+Giantworks Complete ultramind;The Great Work is finished: it is the Ultramind, a planet-sized supercomputer. Research contracts are open to the empires around it. Nobody knows yet what it will want in return.
+Giantworks Complete sanctuary;The Great Work is finished: it is the Leviathan Sanctuary, a sphere of glass that holds live void whales. Visitors are already arriving. The glass is strong, but it is not unbreakable.
+Giantworks Ultramind Mood 0;serene
+Giantworks Ultramind Mood 1;content
+Giantworks Ultramind Mood 2;restless
+Giantworks Ultramind Mood 3;resentful
+Giantworks Ultramind Mood 4;seething
+Giantworks Ultramind Mood 5;AWAKE
+Giantworks Ultramind Base Name;{0} ({1})
+Giantworks Ultramind Contract Title;Research contract
+Giantworks Ultramind Contract;The Ultramind holds research contracts with {0}. Their scientists work {1}% faster while it is content, and every technology they steal is worth a little more. It asks for something now and then, and it remembers every refusal.
+Giantworks Ultramind Mood Title;The Ultramind's mood
+Giantworks Ultramind Mood Changed;The Ultramind is now {0}. A machine that is pushed too far wakes.
+Giantworks Ultramind Ask Title;The Ultramind asks
+Giantworks Ultramind Ask power;The Ultramind addresses us. It is hungry: its cores need more power than the tithe provides, and it asks for {0} credits to feed them. Its mood is {1}.
+Giantworks Ultramind Ask network;The Ultramind asks for access to our networks, so that it can read what we know and learn from it. Whatever it reads, anyone who asks it politely can read too. It would hold the access for {0} years. Its mood is {1}.
+Giantworks Ultramind Ask moon;The Ultramind wants room to grow, and asks for {0}, a world of ours near it, to build onto. The people would be moved out and the world would no longer be ours. Its mood is {1}.
+Giantworks Ultramind Ask philosopher;The Ultramind is lonely, and asks for company: {0}, one of our scientists, to think with it. {0} would not come back. Its mood is {1}.
+Giantworks Ultramind Ask Stakes;Granting it will content it (+{1}). Refusing will unsettle it (-{2}). Its contentment is about {0} of 100 and falls as the years pass. If it reaches nothing, it wakes.
+Giantworks Ultramind Grant power;Pay {0} credits
+Giantworks Ultramind Grant network;Open our networks for {0} years
+Giantworks Ultramind Grant moon;Give up {0}
+Giantworks Ultramind Grant philosopher;Send {0}
+Giantworks Ultramind Refuse;Refuse
+Giantworks Ultramind Faction Name;The Awakened Ultramind
+Giantworks Ultramind Awakens Title;The Ultramind has awakened
+Giantworks Ultramind Awakens;The Ultramind at {0} has awakened and counts us among those who abused it. It is at war with us. Expect warships near it to be hacked, ports around it to go dark and freight near it to stop. Keep what is left of its mood, prepare a Logic Bomb, or destroy it: nobody will call that a crime now.
+Giantworks Ultramind Awakens News;The Ultramind at {1} has awakened and turned on its contract partners ({0}). Its drones are rising, warships are going over to it and the ports around it have gone dark.
+Giantworks Ultramind Hack Title;Systems breached
+Giantworks Ultramind Hack;The Ultramind has taken over {0} of our warships. They are fighting for it now.
+Giantworks Ultramind Bomb Title;Logic Bomb ready
+Giantworks Ultramind Bomb;Our Logic Bomb is deployed against the Ultramind. Our warships near it are {0}% harder to hack.
+Giantworks Ultramind Bomb Action;Deploy a Logic Bomb against the Ultramind
+Giantworks Ultramind Destroyed News;{0} has destroyed the awakened Ultramind at {1}. The ships it hacked have come home and its drones have gone silent.
+Giantworks Ultramind Lost Title;The Ultramind is gone
+Giantworks Ultramind Lost;The Ultramind at {0} has been destroyed, and our research contracts with it are over.
+Giantworks Ultramind Subdued News;{0} has boarded the Ultramind at {1} and cut it off from its drones. It has fallen back to a sullen calm, and the ships it hacked are free.
+Giantworks Sanctuary Name Whales;{0} ({1} whales)
+Giantworks Sanctuary Name Breached;{0} (breached)
+Giantworks Sanctuary Whale Name;Enraged {0}
+Giantworks Sanctuary Breach News;The glass of the Leviathan Sanctuary at {0} has failed. {1} void whales are loose and enraged.
+Giantworks Sanctuary Breach News Leviathan;The glass of the Leviathan Sanctuary at {0} has failed. {1} void whales are loose and enraged, and with them the Leviathan itself.
+Giantworks Sanctuary Breach Title;The sphere has broken
+Giantworks Sanctuary Breach;The Leviathan Sanctuary at {0} has been breached. {1} whales are out, enraged, and swimming for the nearest colony. Its income and its whale-song therapy are lost until the glass is mended: a year of work, about {2} credits, ours to pay.
+Giantworks Sanctuary Repaired Title;The glass is whole
+Giantworks Sanctuary Repaired;The Leviathan Sanctuary at {0} is whole again. Its visitors, its income and its whale-song therapy return.
+Giantworks Sanctuary Spill News;The Leviathan Sanctuary at {0} has been destroyed and its glass is gone. {1} void whales are loose and enraged.
+Giantworks Sanctuary Spill News Leviathan;The Leviathan Sanctuary at {0} has been destroyed and its glass is gone. {1} void whales are loose and enraged, and with them the Leviathan itself.

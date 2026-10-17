@@ -102,8 +102,9 @@ export interface GreatWorkRecord extends GreatWorkSite, ThreatSite {
     aiNext: Record<string, number>;
     aiPlan: Record<string, { action: string; since: number }>;
     scaffoldName: string;
-    /** Set by the wonder modules, read by the renderer: the Sanctuary's whale count, whether the Ultramind awoke. */
+    /** Set by the wonder modules, read by the renderer: the Sanctuary's whale count and whether it is breached, whether the Ultramind awoke. */
     whales?: number;
+    breached?: boolean;
     awakened?: boolean;
 }
 

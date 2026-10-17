@@ -105,6 +105,8 @@ export interface VoidWhaleState {
     killer: Empire | null;
     killDate: number;
     bountyPaid: number;
+    /** A multiplier of its attack and health (the Leviathan Sanctuary's breach scales it to the galaxy's navies); absent: 1. */
+    strengthMul?: number;
     history: { year: number; swallowed: number; damagePct: number; mode: WhaleMode }[];
 }
 
@@ -207,8 +209,9 @@ function systemHasColony(galaxy: Galaxy, systemIndex: number): boolean {
 function applyStats(galaxy: Galaxy, c: Creature): void {
     c.size = Math.min(c.size, P.maxSize(galaxy));
     c.maxSize = P.maxSize(galaxy);
-    c.attackStrength = Math.trunc(c.size / P.strengthDiv(galaxy));
-    c.damageKillThreshold = Math.trunc(c.size * P.healthMul(galaxy));
+    const mul = peekVoidWhaleState(galaxy)?.strengthMul ?? 1;
+    c.attackStrength = Math.trunc((c.size / P.strengthDiv(galaxy)) * mul);
+    c.damageKillThreshold = Math.trunc(c.size * P.healthMul(galaxy) * mul);
     c.healRate = 0; // damage persists: this module heals it (voidWhaleHealPctPerYear)
     const speed = Math.fround(P.speed(galaxy));
     c.movementSpeed = speed;
@@ -479,8 +482,9 @@ function swallow(galaxy: Galaxy, st: VoidWhaleState, c: Creature, prey: BuiltObj
     // Heals a bit and grows slightly (capped).
     c.damage = Math.max(0, c.damage - (c.damageKillThreshold * P.healFeedPct(galaxy)) / 100);
     c.size = Math.min(P.maxSize(galaxy), Math.round(c.size * (1 + P.growPct(galaxy) / 100)));
-    c.attackStrength = Math.trunc(c.size / P.strengthDiv(galaxy));
-    c.damageKillThreshold = Math.trunc(c.size * P.healthMul(galaxy));
+    const mul = peekVoidWhaleState(galaxy)?.strengthMul ?? 1;
+    c.attackStrength = Math.trunc((c.size / P.strengthDiv(galaxy)) * mul);
+    c.damageKillThreshold = Math.trunc(c.size * P.healthMul(galaxy) * mul);
     // Flee to a quiet system.
     const dest = voidWhaleQuietSystem(galaxy, st);
     const ang = hash01(st.swallowed, 7) * Math.PI * 2;

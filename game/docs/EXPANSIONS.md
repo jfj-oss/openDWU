@@ -115,6 +115,10 @@ Independent worlds in three far-apart regions band together as the Founders' Com
 
 **The Gilded Orbit.** The resort wonder pays its holder a flood of resort and tourism income and lifts the colonies round it. Three to six years after it opens, half the time smugglers take it over: that brings a pirate faction with three huge bases and a high-tier fleet, criminal networks and freighter raids, until all three bases are destroyed and the resort reopens, renovated, at 80%.
 
+**The Ultramind.** A planet-sized supercomputer that sells research to up to three empires (+25% research each) and asks the owner for favours every year or two: power, access to its networks, a world to grow onto, a scientist. Grant them and it stays content; refuse too often and it wakes, takes the owner's warships, darkens the ports around it, stops the freight and builds drones. Keep it content, hold a Logic Bomb ready, or destroy it.
+
+**The Leviathan Sanctuary.** A glass sphere of live void whales that pays resort income, speeds the owner's nearby colonies' growth and lets its whales breed. It breaches about once in fifty years if left alone, far sooner if it is shot at or sabotaged: enraged whales then hunt the nearest colony and the Leviathan itself comes out, while the owner pays a year of repairs.
+
 **The Diet.** Destroying the work before it is finished is a war crime unless the Diet authorises demolition. The Diet can also send inspectors, protect the work or internationalise a finished wonder.
 
 
