@@ -29,7 +29,7 @@ import {
     threatState,
     type ThreatSite,
 } from '../src/sim/scenario/threats/framework';
-import { DiplomaticRelationType, obtainDiplomaticRelation } from '../src/sim/diplomacy';
+import { DiplomaticRelationType, obtainDiplomaticRelation, obtainEmpireEvaluation } from '../src/sim/diplomacy';
 import { EmpireMessageType, empireMessages } from '../src/sim/messages';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import { findNewestCanBuild, generateDesignFromSpec } from '../src/sim/designGeneration';
@@ -198,6 +198,11 @@ import { builtObjectVisibility, isObjectVisibleToThisEmpire, isObjectVisibleToTh
 import type { ScenarioDecision } from '../src/sim/scenario/decisions';
 import { generateNewBuiltObject } from '../src/sim/empireEvents';
 import { galaxyDesignSpecificationBySubRole } from '../src/sim/gameStartTail';
+import { ARK_KEY, arkAiChoice, arkParam, arkFightsAgainst, arkLooks, arkPeriodic, arkPopulation, arkRecOf, escapeSystem, peekArkState, siphonable, type ArkRec, type ArkTarget } from '../src/sim/scenario/threats/giantworks/ark';
+import { breakShields, shieldBreakOf, shieldScheduleFraction, stepShields } from '../src/sim/scenario/threats/giantworks/shields';
+import { warpSpeedWithBonuses } from '../src/sim/movement';
+import { Population } from '../src/sim/population';
+import { isHumanEmpire } from '../src/sim/humanEmpires';
 
 
 let base: GameData;
@@ -1714,7 +1719,7 @@ describe('giantworks', () => {
     });
     function gwFull(flags: Record<string, boolean> = {}, params: Record<string, number> = {}, scenario: string[] = ids): { game: Game; gameData: GameData } {
         // The real wonders (casino.ts ...) are switched off here: these tests use the throw-away kinds above (flags undefined = on).
-        return createScenarioGame(base, { scenario: comboOverlayFs(scenario), flags: { threatGiantworks: true, gwCasino: false, gwUltramind: false, gwSanctuary: false, gwBeacon: false, ...flags }, params, options: age3 });
+        return createScenarioGame(base, { scenario: comboOverlayFs(scenario), flags: { threatGiantworks: true, gwCasino: false, gwUltramind: false, gwSanctuary: false, gwBeacon: false, gwArk: false, ...flags }, params, options: age3 });
     }
     function gw(flags: Record<string, boolean> = {}, params: Record<string, number> = {}, scenario: string[] = ids): Galaxy {
         return gwFull(flags, params, scenario).game.galaxy;
@@ -3038,6 +3043,402 @@ describe('giantworks', () => {
         expect(ls.repairUntil).toBe(s.repairUntil);
         expect(greatWorks(lg)[0].whales).toBe(w.whales);
     }, 1800000);
+
+    // ---------------------------------------------------------------------------------------------------------------
+    // The Ark Engine (giantworks/ark.ts)
+    // ---------------------------------------------------------------------------------------------------------------
+
+    /** A finished Ark at the site (the Great Work forced to be the Ark). */
+    function arkOpen(params: Record<string, number> = {}): { g: Galaxy; w: GreatWorkRecord; rec: ArkRec; ark: BuiltObject; old: BuiltObject; game: Game; gameData: GameData } {
+        const { g, w, game, gameData } = building(params, { gwArk: true }, 'ark');
+        const old = w.base!;
+        addProgress(g, w, 2);
+        expect(w.phase).toBe('complete');
+        const rec = arkRecOf(g, w.id)!;
+        return { g, w, rec, ark: rec.ship!, old, game, gameData };
+    }
+    /** Gives the first colony of each of `only` (default: every ordinary empire) 400 million people of a foreign race and makes those the only former independents on record. */
+    function arkSeed(g: Galaxy, only: Empire[] = actors(g)): void {
+        const st = peekArkState(g)!;
+        st.origins = [];
+        for (const e of only) {
+            const h = e.colonies.find((c) => c.empire === e && !c.hasBeenDestroyed)!;
+            const race = g.races.find((r) => r !== null && r.name !== e.dominantRace?.name)!;
+            h.population.add(new Population(race, 400_000_000, g));
+            h.population.recalculateTotalAmount();
+            st.origins.push({ habitat: h, races: [race.name] });
+        }
+    }
+    /** The Ark sets out and arrives at the colony it picked (the owner's answer given); returns the target. */
+    function arkAtColony(a: { g: Galaxy; rec: ArkRec; ark: BuiltObject }, answer = 'accommodate'): ArkTarget {
+        const { g, rec, ark } = a;
+        rec.waitUntil = 0;
+        arkPeriodic(g);
+        expect(rec.phase).toBe('roaming');
+        const t = rec.target!;
+        ark.xpos = t.parkX;
+        ark.ypos = t.parkY;
+        arkPeriodic(g);
+        expect(rec.phase).toBe('siphoning');
+        if (t.decision === 'pending') expect(answerScenarioDecision(g, t.decisionId, answer)).toBe(true);
+        expect(t.startedAt).toBeGreaterThanOrEqual(0);
+        return t;
+    }
+    const attack = (g: Galaxy, a: { ark: BuiltObject }, e: Empire): void => scenarioEmit(g, 'builtObjectAttacked', { builtObject: a.ark, attacker: e.builtObjects[0] ?? a.ark, attackingEmpire: e });
+    const arkEval = (g: Galaxy, a: Empire, b: Empire): number => obtainEmpireEvaluation(g, a, b).incidentEvaluation;
+
+    it('ark: registered with the general hint first, a lore guess, its texts and parameters, and a Game Editor entry', () => {
+        const kind = greatWorkKind('ark')!;
+        expect(kind.flag).toBe('gwArk');
+        expect(kind.hintTags).toEqual(['slag', 'stasis', 'engines']);
+        expect(KIND_MENACE.ark).toBeGreaterThan(0);
+        expect(KIND_VALUE.ark).toBeGreaterThan(0);
+        const g = gw({ gwArk: true });
+        for (const tag of ['Giantworks Kind ark', 'Giantworks Complete ark', 'Giantworks Hint slag', 'Giantworks Ark Decision', 'Giantworks Ark Fight News', 'Giantworks Ark Broken News', 'Giantworks Ark Destroyed News', 'Reputation Cause giantworks.arkTransport']) expect(tryGetText(tag)).not.toBeNull();
+        expect(spawnableThreats(g).some((t) => t.key === 'giantworks:ark')).toBe(true);
+        expect(arkParam(g, 'gwArkShields')).toBe(30000);
+        expect(arkParam(g, 'gwArkEscapeSectors')).toBe(2);
+    }, 900000);
+
+    it('ark: the record of former independents (and their species) is taken at game start, only with the flag on; add-on off leaves no Ark state', () => {
+        const on = gw({ gwArk: true });
+        const st = peekArkState(on)!;
+        expect(st.tracked).toBe(true);
+        expect(st.origins.length).toBeGreaterThan(0);
+        for (const o of st.origins) expect(o.races.length).toBeGreaterThan(0);
+        for (const h of on.independentColonies) if (!h.hasBeenDestroyed && h.population.totalAmount > 0) expect(st.origins.some((o) => o.habitat === h)).toBe(true);
+        expect(peekArkState(gw({ gwArk: false }))).toBeNull();
+        expect(peekArkState(gw({ threatGiantworks: false }))).toBeNull();
+        // A Game Editor spawn in a game without the record guesses (the independents now, colonies holding a people no empire has).
+        const late = gw({ gwArk: false }, { giantworksExistChancePct: 0 });
+        expect(spawnGreatWork(late, 'ark')).toBe(true);
+        expect(peekArkState(late)!.tracked).toBe(false);
+        for (const o of peekArkState(late)!.origins) expect(o.races.length).toBeGreaterThan(0);
+    }, 1800000);
+
+    it('ark: the finished scaffold becomes a slow, heavily shielded Compact ship that is the Great Work\'s base', () => {
+        const { g, w, rec, ark, old } = arkOpen();
+        expect(w.base).toBe(ark);
+        expect(old.hasBeenDestroyed).toBe(true);
+        expect(ark.actualEmpire).toBe(compactFaction(g));
+        expect(w.guards).toHaveLength(0);
+        expect(ark.shieldsCapacity).toBeGreaterThan(27000);
+        expect(ark.shieldsCapacity).toBeLessThan(36000);
+        expect(ark.currentShields).toBe(ark.shieldsCapacity);
+        expect(ark.armor).toBeGreaterThan(20000); // a short: it must not wrap negative
+        expect(ark.firepowerRaw).toBeGreaterThan(0);
+        expect(warpSpeedWithBonuses(ark)).toBeLessThanOrEqual(Math.trunc(ark.warpSpeed * 0.51)); // slow
+        expect(warpSpeedWithBonuses(ark)).toBeGreaterThan(0);
+        expect(rec.phase).toBe('idle');
+        expect(rec.waitUntil).toBeGreaterThan(galaxyStarDate(g));
+        expect(arkLooks(g).ships).toEqual([ark]);
+        expect(arkLooks(g).key).toBe('ark');
+        // The framework treats it as the work's base: destroyed, the work is destroyed (a crime unless authorised).
+        ark.hasBeenDestroyed = true;
+        resolveBaseLoss(g, w);
+        expect(w.phase).toBe('destroyed');
+    }, 1800000);
+
+    it('ark: it picks one colony of one empire at a time, never the same empire twice running, and takes only the original species', () => {
+        const a = arkOpen();
+        const { g, rec } = a;
+        arkSeed(g);
+        const e1Targets: Empire[] = [];
+        for (let i = 0; i < 3; i++) {
+            const t = arkAtColony(a);
+            const colony = t.colony;
+            expect(t.empire).toBe(colony.empire);
+            expect(t.species.length).toBeGreaterThan(0);
+            for (const sp of t.species) expect(peekArkState(g)!.origins.find((o) => o.habitat === colony)!.races).toContain(sp.race);
+            expect(siphonable(g, colony).map((x) => x.race).sort()).toEqual(t.species.map((x) => x.race).sort());
+            expect(g.calculateDistance(t.parkX, t.parkY, colony.xpos, colony.ypos) / g.sectorSize).toBeCloseTo(arkParam(g, 'gwArkParkSectors'), 1);
+            e1Targets.push(t.empire);
+            // The visit is over: the next colony is another empire's.
+            t.finishing = true;
+            t.finishedAt = galaxyStarDate(g);
+            rec.transports = [];
+            arkPeriodic(g);
+            expect(rec.lastEmpire).toBe(t.empire);
+            expect(rec.visits).toHaveLength(i + 1);
+            expect(siphonable(g, colony)).toHaveLength(0); // struck off: it does not come back for that species
+        }
+        expect(e1Targets[1]).not.toBe(e1Targets[0]);
+        expect(e1Targets[2]).not.toBe(e1Targets[1]);
+    }, 3600000);
+
+    it('ark: a free passenger ship launches with a slice, the people leave the colony then and join the Ark on arrival; a ship shot down loses them and costs its killer standing', () => {
+        const a = arkOpen();
+        const { g, rec, ark } = a;
+        arkSeed(g);
+        const t = arkAtColony(a);
+        const compact = compactFaction(g)!;
+        const left0 = siphonable(g, t.colony).reduce((n, x) => n + x.amount, 0);
+        t.nextLaunch = 0;
+        arkPeriodic(g);
+        expect(rec.transports).toHaveLength(1);
+        const x = rec.transports[0];
+        expect(x.ship.actualEmpire).toBe(compact);
+        expect(x.ship.supportCostFactor).toBe(0); // free
+        expect(x.amount).toBeGreaterThanOrEqual(10_000_000);
+        expect(x.amount).toBeLessThanOrEqual(60_000_000);
+        expect(siphonable(g, t.colony).reduce((n, y) => n + y.amount, 0)).toBe(left0 - x.amount); // gone from the colony at the launch ...
+        expect(arkPopulation(rec)).toBe(0); // ... not yet aboard
+        x.ship.xpos = ark.xpos;
+        x.ship.ypos = ark.ypos;
+        arkPeriodic(g);
+        expect(arkPopulation(rec)).toBe(Math.trunc(x.amount)); // ... until it arrives
+        expect(rec.stats.landed).toBe(1);
+        expect(x.ship.hasBeenDestroyed).toBe(true);
+        expect(rec.transports).toHaveLength(0);
+        // Another is shot down on the way: its passengers are lost, the killer is marked.
+        t.nextLaunch = 0;
+        arkPeriodic(g);
+        const y = rec.transports[0];
+        const killer = actors(g).find((e) => e !== t.empire)!;
+        const witness = actors(g).find((e) => e !== killer)!;
+        const before = arkEval(g, witness, killer);
+        const aboard = arkPopulation(rec);
+        scenarioEmit(g, 'builtObjectKilledBy', { builtObject: y.ship, destroyer: killer });
+        y.ship.hasBeenDestroyed = true;
+        arkPeriodic(g);
+        expect(rec.stats.lost).toBe(1);
+        expect(arkPopulation(rec)).toBe(aboard);
+        expect(arkEval(g, witness, killer)).toBeLessThan(before);
+    }, 3600000);
+
+    it('ark: the colony owner is asked (a decision pop-up for a human, an answer at once for the AI); accommodating earns the Compact\'s favour and a free-trade treaty, refusing does not stop it', () => {
+        const a = arkOpen();
+        const { g, rec } = a;
+        const player = g.playerEmpire!;
+        const compact = compactFaction(g)!;
+        arkSeed(g, [player]);
+        rec.waitUntil = 0;
+        arkPeriodic(g);
+        const t = rec.target!;
+        expect(t.empire).toBe(player);
+        a.ark.xpos = t.parkX;
+        a.ark.ypos = t.parkY;
+        arkPeriodic(g);
+        expect(t.decision).toBe('pending');
+        expect(pendingScenarioDecisions(g, player).filter((d) => d.kind === 'giantworks.ark')).toHaveLength(1);
+        expect(t.startedAt).toBe(-1); // waits for the answer
+        t.nextLaunch = 0;
+        arkPeriodic(g);
+        expect(rec.transports).toHaveLength(0);
+        const favour0 = arkEval(g, compact, player);
+        expect(answerScenarioDecision(g, t.decisionId, 'accommodate')).toBe(true);
+        expect(t.decision).toBe('accommodate');
+        expect(arkEval(g, compact, player)).toBeGreaterThan(favour0);
+        expect(obtainDiplomaticRelation(compact, player).type).toBe(DiplomaticRelationType.FreeTradeAgreement);
+        t.nextLaunch = 0;
+        arkPeriodic(g);
+        expect(rec.transports).toHaveLength(1);
+        // Refusing: no favour, but it siphons all the same.
+        const b = arkOpen();
+        arkSeed(b.g, [b.g.playerEmpire!]);
+        const t2 = arkAtColony(b, 'refuse');
+        expect(t2.decision).toBe('refuse');
+        expect(arkEval(b.g, compactFaction(b.g)!, b.g.playerEmpire!)).toBe(0);
+        t2.nextLaunch = 0;
+        arkPeriodic(b.g);
+        expect(b.rec.transports).toHaveLength(1);
+        // An undecided human is treated as accommodating when the time is up (the stock decision expiry).
+        const c = arkOpen();
+        arkSeed(c.g, [c.g.playerEmpire!]);
+        c.rec.waitUntil = 0;
+        arkPeriodic(c.g);
+        const t3 = c.rec.target!;
+        c.ark.xpos = t3.parkX;
+        c.ark.ypos = t3.parkY;
+        arkPeriodic(c.g);
+        expect(pendingScenarioDecisions(c.g, c.g.playerEmpire!).find((d) => d.kind === 'giantworks.ark')!.defaultOption).toBe('accommodate');
+    }, 3600000);
+
+    it('ark: an AI owner answers by personality and strength, and only a strong, aggressive one plans to attack', () => {
+        const a = arkOpen();
+        const { g, rec } = a;
+        const ai = actors(g).find((e) => !isHumanEmpire(g, e))!;
+        arkSeed(g, [ai]);
+        const t = arkAtColony(a);
+        expect(t.empire).toBe(ai);
+        expect(['accommodate', 'refuse']).toContain(t.decision);
+        expect(t.plan).not.toBeNull();
+        expect(t.decision).toBe(t.plan === 'accommodate' ? 'accommodate' : 'refuse');
+        expect(['accommodate', 'ignore', 'attack']).toContain(arkAiChoice(g, rec, ai));
+        // A navy that cannot reach the Ark never attacks it.
+        const weak = ai.builtObjects.filter((b) => b.role === BuiltObjectRole.Military);
+        for (const b of weak) builtObjectCompleteTeardown(g, b);
+        expect(arkAiChoice(g, rec, ai)).not.toBe('attack');
+    }, 3600000);
+
+    it('ark: an attack stops the siphoning and puts it in fight mode (it fires back at the attackers only), and it resumes when the attack ends', () => {
+        const a = arkOpen();
+        const { g, rec } = a;
+        arkSeed(g);
+        const t = arkAtColony(a);
+        const attacker = actors(g).find((e) => e !== t.empire)!;
+        const bystander = actors(g).find((e) => e !== t.empire && e !== attacker)!;
+        const compact = compactFaction(g)!;
+        expect(arkFightsAgainst(g, compact, attacker)).toBe(false);
+        attack(g, a, attacker);
+        expect(rec.fight).toBe(true);
+        expect(rec.fights).toBe(1);
+        expect(arkFightsAgainst(g, compact, attacker)).toBe(true); // the stock attackWithoutWar query
+        expect(arkFightsAgainst(g, compact, bystander)).toBe(false);
+        expect(arkFightsAgainst(g, attacker, compact)).toBe(false);
+        t.nextLaunch = 0;
+        arkPeriodic(g);
+        expect(rec.transports).toHaveLength(0); // no launches in a fight
+        expect(rec.phase).toBe('siphoning');
+        rec.lastAttack = galaxyStarDate(g) - 11 * GAME_DAY_LENGTH;
+        arkPeriodic(g); // the fight is over, and the waiting launch goes at once
+        expect(rec.fight).toBe(false);
+        expect(arkFightsAgainst(g, compact, attacker)).toBe(false);
+        expect(rec.transports).toHaveLength(1);
+    }, 3600000);
+
+    it('ark: broken shields send it to an empty system about two sectors away, where the shields refill over a year (the stock recharge cannot beat the schedule), then it roams on', () => {
+        const a = arkOpen();
+        const { g, rec, ark } = a;
+        arkSeed(g);
+        const t = arkAtColony(a);
+        const attacker = actors(g).find((e) => e !== t.empire)!;
+        attack(g, a, attacker);
+        const from = { x: ark.xpos, y: ark.ypos };
+        ark.currentShields = 0;
+        arkPeriodic(g);
+        expect(rec.phase).toBe('escaping');
+        expect(rec.breached).toBe(true);
+        expect(rec.escapes).toBe(1);
+        expect(rec.visits[rec.visits.length - 1].why).toBe('shields broken');
+        expect(rec.target).toBeNull();
+        const star = rec.escapeStar!;
+        expect(g.systemHabitatsOf(star.systemIndex).every((h) => h.empire === null && !(h.population !== null && h.population !== undefined && h.population.totalAmount > 0))).toBe(true); // empty
+        const sectors = g.calculateDistance(star.xpos, star.ypos, from.x, from.y) / g.sectorSize;
+        expect(sectors).toBeGreaterThan(0.8);
+        expect(sectors).toBeLessThan(4);
+        expect(escapeSystem(g, from.x, from.y)).toBe(star);
+        const rb = shieldBreakOf(g, ark)!;
+        expect(rb.days).toBe(360);
+        ark.xpos = star.xpos;
+        ark.ypos = star.ypos;
+        arkPeriodic(g);
+        expect(rec.phase).toBe('repairing');
+        arkPeriodic(g);
+        expect(rec.phase).toBe('repairing'); // stays while the shields are down
+        // Half a year on, the stock recharge has refilled it, but the schedule holds it to half.
+        rb.brokenAt = galaxyStarDate(g) - 180 * GAME_DAY_LENGTH;
+        ark.currentShields = ark.shieldsCapacity;
+        stepShields(g);
+        expect(ark.currentShields / ark.shieldsCapacity).toBeCloseTo(0.5, 1);
+        expect(shieldScheduleFraction(g, ark)!).toBeCloseTo(0.5, 1);
+        expect(rec.breached).toBe(true);
+        // A year on, it is whole and goes roaming again (to another empire).
+        rb.brokenAt = galaxyStarDate(g) - 361 * GAME_DAY_LENGTH;
+        rec.lastAttack = galaxyStarDate(g) - 30 * GAME_DAY_LENGTH; // the fight is long over
+        stepShields(g);
+        expect(shieldBreakOf(g, ark)).toBeNull();
+        expect(ark.currentShields).toBe(ark.shieldsCapacity);
+        arkPeriodic(g);
+        expect(rec.breached).toBe(false);
+        expect(rec.phase).toBe('roaming');
+        expect(rec.target?.empire).not.toBe(t.empire);
+    }, 3600000);
+
+    it('shields: a broken object holds to its schedule, an unbroken one is untouched', () => {
+        const { g, ark } = arkOpen();
+        const rb = breakShields(g, ark, 100);
+        expect(ark.currentShields).toBe(0);
+        expect(breakShields(g, ark, 5)).toBe(rb); // a second break while one runs changes nothing
+        ark.currentShields = ark.shieldsCapacity;
+        rb.brokenAt = galaxyStarDate(g) - 25 * GAME_DAY_LENGTH;
+        stepShields(g);
+        expect(ark.currentShields / ark.shieldsCapacity).toBeCloseTo(0.25, 1);
+        rb.brokenAt = galaxyStarDate(g) - 101 * GAME_DAY_LENGTH;
+        stepShields(g);
+        expect(shieldBreakOf(g, ark)).toBeNull();
+        ark.currentShields = 5;
+        stepShields(g);
+        expect(ark.currentShields).toBe(5); // no schedule, no clamp
+    }, 1800000);
+
+    it('ark: the people aboard keep growing at their race\'s rate, with no cap', () => {
+        const { g, rec } = arkOpen();
+        const race = g.races.find((r) => r !== null && r.playable)!;
+        rec.aboard = { [race.name]: 1_000_000_000 };
+        rec.grownAt = galaxyStarDate(g) - YEAR_LENGTH;
+        const before = arkPopulation(rec);
+        arkPeriodic(g);
+        const after = arkPopulation(rec);
+        expect(after).toBeGreaterThan(before);
+        expect(after).toBeLessThan(before * 1.2);
+        expect(rec.stats.grown).toBeGreaterThan(0);
+        rec.aboard[race.name] = 5e12; // far beyond any colony's room
+        rec.grownAt = galaxyStarDate(g) - YEAR_LENGTH;
+        arkPeriodic(g);
+        expect(rec.aboard[race.name]).toBeGreaterThan(5e12);
+    }, 1800000);
+
+    it('ark: destroyed, its people die and the killer loses standing with every empire; a seized Ark stops roaming', () => {
+        const a = arkOpen();
+        const { g, rec, ark } = a;
+        const race = g.races.find((r) => r !== null && r.playable)!;
+        rec.aboard = { [race.name]: 700_000_000 };
+        const killer = actors(g)[0];
+        const witness = actors(g)[1];
+        const before = arkEval(g, witness, killer);
+        ark.hasBeenDestroyed = true;
+        scenarioEmit(g, 'builtObjectKilledBy', { builtObject: ark, destroyer: killer });
+        expect(rec.phase).toBe('lost');
+        expect(rec.died).toBe(700_000_000);
+        expect(arkPopulation(rec)).toBe(0);
+        expect(rec.destroyedBy).toBe(killer);
+        expect(arkEval(g, witness, killer)).toBeLessThan(before - 10);
+        // Seized by boarding: the record keeps the people and the state for the capture feature, and the Ark stops.
+        const b = arkOpen();
+        b.rec.aboard = { [race.name]: 300_000_000 };
+        const captor = actors(b.g)[0];
+        b.ark.empire = captor;
+        arkPeriodic(b.g);
+        expect(b.rec.phase).toBe('seized');
+        expect(b.rec.seizedBy).toBe(captor);
+        expect(arkPopulation(b.rec)).toBe(300_000_000);
+    }, 3600000);
+
+    it('ark: save and load keep the Ark, its target, transports, people, shield schedule and speed', () => {
+        const a = arkOpen();
+        const { g, w, rec, ark, game, gameData } = a;
+        arkSeed(g);
+        const t = arkAtColony(a);
+        t.nextLaunch = 0;
+        arkPeriodic(g);
+        const race = g.races.find((r) => r !== null && r.playable)!;
+        rec.aboard = { [race.name]: 123_456_789 };
+        attack(g, a, actors(g).find((e) => e !== t.empire)!);
+        ark.currentShields = 0;
+        arkPeriodic(g);
+        expect(rec.phase).toBe('escaping');
+        const time = new GalaxyTime();
+        time.bindGalaxy(g);
+        const text = serializeGame(game, time, {} as StartGameOptions);
+        const lg = deserializeGame(text, gameData).game.galaxy;
+        const lrec = arkRecOf(lg, w.id)!;
+        expect(lrec.phase).toBe('escaping');
+        expect(lrec.breached).toBe(true);
+        expect(lrec.fight).toBe(rec.fight);
+        expect(lrec.ship!.builtObjectID).toBe(ark.builtObjectID);
+        expect(lg.scenario!.state[ARK_KEY]).toBeDefined();
+        expect(lrec.escapeStar!.habitatIndex).toBe(rec.escapeStar!.habitatIndex);
+        expect(lrec.aboard).toEqual(rec.aboard);
+        expect(lrec.attackers).toEqual(rec.attackers);
+        expect(lrec.visits.map((v) => v.colony)).toEqual(rec.visits.map((v) => v.colony));
+        expect(lrec.transports.map((x) => x.ship.builtObjectID)).toEqual(rec.transports.map((x) => x.ship.builtObjectID));
+        expect(shieldBreakOf(lg, lrec.ship!)?.days).toBe(360);
+        expect(peekArkState(lg)!.origins.length).toBe(peekArkState(g)!.origins.length);
+        expect(warpSpeedWithBonuses(lrec.ship!)).toBeLessThanOrEqual(Math.trunc(lrec.ship!.warpSpeed * 0.51));
+        expect(w.base).toBe(ark);
+        expect(greatWorks(lg)[0].base).toBe(lrec.ship);
+    }, 3600000);
 });
 
 // Giantworks' Beacon wonder (threats/giantworks/beacon*.ts): the Watchers, corruption, the Reclamation, counterplay, the dark bargain.

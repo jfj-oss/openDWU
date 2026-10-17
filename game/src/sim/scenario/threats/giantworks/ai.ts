@@ -43,7 +43,7 @@ export type AiAction = 'destroy' | 'sabotage' | 'protect' | 'none';
 /** Spies reach a site within this many sectors of one of its colonies; fleets only within giantworksAiReachSectors (their fuel range). */
 const SPY_REACH_SECTORS = 14;
 
-function personality(e: Empire): { aggression: number; caution: number; friendly: number } {
+export function personality(e: Empire): { aggression: number; caution: number; friendly: number } {
     return { aggression: (aggressionLevel(e) - 100) / 50, caution: (cautionLevel(e) - 100) / 50, friendly: (friendlinessLevel(e) - 100) / 50 };
 }
 
@@ -96,11 +96,11 @@ function strengthNeeded(galaxy: Galaxy, strike: { target: BuiltObject; defenders
     return Math.trunc((s * (strike.marginPct ?? gwParam(galaxy, 'giantworksAiStrikeMarginPct'))) / 100);
 }
 
-function sendStrike(galaxy: Galaxy, work: GreatWorkRecord, e: Empire): boolean {
+export function sendStrike(galaxy: Galaxy, work: GreatWorkRecord, e: Empire, marginPct?: number): boolean {
     const strike = strikeTarget(galaxy, work);
     if (strike === null) return false;
     const base = strike.target;
-    const need = strengthNeeded(galaxy, strike);
+    const need = strengthNeeded(galaxy, marginPct === undefined ? strike : { ...strike, marginPct });
     let fleet = findNearestAvailableFleet(galaxy, e, base.xpos, base.ypos, BuiltObjectMissionPriority.Low, need, FleetPosture.Attack, true, 0.1, false, false, false, true);
     if (fleet === null) fleet = formStrikeFleet(galaxy, e, base.xpos, base.ypos, need);
     if (fleet === null || fleet.leadShip === null || !isAiControlled(fleet.leadShip)) return false;

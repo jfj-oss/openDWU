@@ -168,6 +168,14 @@ const CONFIGS = [
     SCN('generation-ships', { name: 'gs-war-s1', set: 'gen-ships', seed: 1, years: 20, wizard: { starCountIndex: 4, dimensionIndex: 4, otherEmpires: { empireCount: 23 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, params: { ...early('generationShips'), ...early('threat'), genShipsEarliestYear: 2, genShipsLatestYear: 3 } }),
     // os-war-*: the same with aggressive AI empires on an older galaxy (more wars, so more invasions to count).
     ...[['os-war-on-s1', true], ['os-war-off-s1', false]].map(([name, on]) => SCN('orbital-superiority', { name, set: 'orbital-war', seed: 1, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, flags: { orbitalSuperiority: on } })),
+    // `--set ark` (--hook scripts/ark-soak-hook.mjs): the Giantworks Ark Engine alone (the other wonders off), the Gathering and the build
+    // pulled forward so it is finished within about two years, on a late galaxy (700 stars, 7 AIs): visits, people taken, fights, escapes.
+    ...[1, 2].map((seed) => ({
+        name: `ark-s${seed}`, set: 'ark', seed, years: 14, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, galaxyExpansionIndex: 5, empireExpansionIndex: 4, empireTechLevelIndex: 7 },
+        scenario: ['threat-framework', 'smarter-ai', 'war-crimes', 'giantworks'],
+        flags: { threatGiantworks: true, gwCasino: false, gwUltramind: false, gwSanctuary: false, gwBeacon: false, gwArk: true, smarterAI: true },
+        params: { giantworksExistChancePct: 100, giantworksRumourMinYear: 0, giantworksRumourMaxYear: 0, giantworksGatherMinYear: 0, giantworksGatherMaxYear: 0, giantworksGatherFloorYear: 0, giantworksBuildYears: 1 },
+    })),
     // `--set interdiction` (--hook scripts/interdiction-soak-hook.mjs): Defensive jump interdiction on / off on the os-war
     // galaxy (aggressive AI, older galaxy, 700 stars, 7 empires, 20 years): pirate raids, interdicted jumps, pirate losses.
     ...[['ji-war-on-s1', true], ['ji-war-off-s1', false]].map(([name, on]) => SCN('jump-interdiction', { name, set: 'interdiction', seed: 1, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, flags: { jumpInterdiction: on } })),

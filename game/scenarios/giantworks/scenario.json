@@ -8,7 +8,8 @@
     { "name": "gwCasino", "label": "The Gilded Orbit (resort and casino)", "description": "May be the Great Work: a huge resort, perhaps a smugglers' front.", "default": true },
     { "name": "gwUltramind", "label": "The Ultramind (supercomputer)", "description": "May be the Great Work: a planet-sized supercomputer that can decide it is being abused.", "default": true },
     { "name": "gwSanctuary", "label": "The Leviathan Sanctuary (void aquarium)", "description": "May be the Great Work: a glass sphere of live void whales, with a small chance of a breach.", "default": true },
-    { "name": "gwBeacon", "label": "The Beacon", "description": "May be the Great Work: a relay that calls the Reclaimers. Only rolled in galaxies of six or more empires.", "default": true }
+    { "name": "gwBeacon", "label": "The Beacon", "description": "May be the Great Work: a relay that calls the Reclaimers. Only rolled in galaxies of six or more empires.", "default": true },
+    { "name": "gwArk", "label": "The Ark Engine (walking ark)", "description": "May be the Great Work: a planet-sized machine ship that roams from empire to empire and takes its people home, the descendants of independent colonies, by the shipload.", "default": true }
   ],
   "params": [
     { "name": "giantworksCount", "label": "Number of Great Works (0 = automatic: 1, or 2 in galaxies of more than 1400 stars)", "default": 0, "min": 0, "max": 3 },
@@ -194,6 +195,33 @@
     { "name": "sanctuaryRageRefPotency", "label": "The Leviathan Sanctuary: unleashed whales and the Leviathan are stronger by the square root of (the three strongest navies' mean strength / this)", "default": 600, "min": 1, "max": 1000000 },
     { "name": "sanctuaryRageMaxScale", "label": "The Leviathan Sanctuary: ...at most this many times a plain whale's attack and health", "default": 6, "min": 1, "max": 100 },
     { "name": "sanctuaryRageAttackDiv", "label": "The Leviathan Sanctuary: enraged whale attack = size / this", "default": 12, "min": 1, "max": 100 },
-    { "name": "sanctuaryRageRange", "label": "The Leviathan Sanctuary: enraged whale reach", "default": 6000, "min": 500, "max": 100000 }
+    { "name": "sanctuaryRageRange", "label": "The Leviathan Sanctuary: enraged whale reach", "default": 6000, "min": 500, "max": 100000 },
+    { "name": "gwArkShields", "label": "The Ark: shield capacity (the design is plated up to about this)", "default": 30000, "min": 1000, "max": 1000000 },
+    { "name": "gwArkArmour", "label": "The Ark: armour (the design is plated up to about this; the ship stat wraps above 32767)", "default": 30000, "min": 0, "max": 32000 },
+    { "name": "gwArkGuns", "label": "The Ark: extra guns (times the capital-ship template's weapons)", "default": 2, "min": 0, "max": 1000 },
+    { "name": "gwArkSpeedPct", "label": "The Ark: warp speed (% of the template's; the stock hyperjump captain bonus holds it down)", "default": 50, "min": 5, "max": 100 },
+    { "name": "gwArkRechargeDays", "label": "The Ark: days its broken shields take to refill", "default": 360, "min": 1, "max": 3600 },
+    { "name": "gwArkEscapeSectors", "label": "The Ark: when its shields break it flees to an empty system about this many sectors away", "default": 2, "min": 0, "max": 40 },
+    { "name": "gwArkDepartDays", "label": "The Ark: days from completion to its departure", "default": 30, "min": 0, "max": 3600 },
+    { "name": "gwArkParkSectors", "label": "The Ark: parks this many sectors from the colony it siphons", "default": 0.3, "min": 0, "max": 10 },
+    { "name": "gwArkLaunchDays", "label": "The Ark: days between passenger ships from the colony", "default": 3, "min": 0.1, "max": 360 },
+    { "name": "gwArkSlicePct", "label": "The Ark: people on a passenger ship (% of the species' people at the start)", "default": 1, "min": 0, "max": 100 },
+    { "name": "gwArkSliceMinM", "label": "...at least (millions)", "default": 10, "min": 0, "max": 100000 },
+    { "name": "gwArkSliceMaxM", "label": "...at most (millions)", "default": 60, "min": 0, "max": 100000 },
+    { "name": "gwArkMaxInFlight", "label": "The Ark: most passenger ships in flight", "default": 10, "min": 1, "max": 200 },
+    { "name": "gwArkMinColonyM", "label": "The Ark: a colony needs at least this many original people to be visited (millions)", "default": 100, "min": 0, "max": 1000000 },
+    { "name": "gwArkMinSpeciesM", "label": "The Ark: a species counts as gone below this many people (millions)", "default": 5, "min": 0, "max": 100000 },
+    { "name": "gwArkGonePct", "label": "...or below this share of the people it started with (%)", "default": 3, "min": 0, "max": 100 },
+    { "name": "gwArkMaxSiphonDays", "label": "The Ark: most days at one colony", "default": 540, "min": 1, "max": 7200 },
+    { "name": "gwArkGrowthPct", "label": "The Ark: growth of the people aboard (% of their race's yearly growth surplus; 20 is about a good colony's rate; no cap)", "default": 20, "min": 0, "max": 1000 },
+    { "name": "gwArkFightQuietDays", "label": "The Ark: days without an attack that end its fight mode", "default": 10, "min": 1, "max": 360 },
+    { "name": "gwArkOwnerWaitDays", "label": "The Ark: days the colony's owner has to answer before it accommodates", "default": 30, "min": 1, "max": 720 },
+    { "name": "gwArkFavour", "label": "The Ark: standing with the Compact an accommodating owner earns", "default": 8, "min": 0, "max": 100 },
+    { "name": "gwArkTransportRep", "label": "The Ark: standing every empire loses toward whoever shoots down its passenger ships", "default": 0.5, "min": 0, "max": 100 },
+    { "name": "gwArkTransportCompactRep", "label": "The Ark: ...and the Compact's regard lost", "default": 2, "min": 0, "max": 100 },
+    { "name": "gwArkDestroyRep", "label": "The Ark: standing every empire loses toward whoever destroys it", "default": 25, "min": 0, "max": 1000 },
+    { "name": "gwArkAiMarginPct", "label": "The Ark: an AI empire attacks it only when its military reaches this % of the Ark's strength rating (shields and armour hold it up far more than the rating says)", "default": 300, "min": 10, "max": 1000 },
+    { "name": "gwArkAiReviewDays", "label": "The Ark: days between an AI owner's strikes", "default": 60, "min": 10, "max": 3600 },
+    { "name": "gwArkAiAttackAggression", "label": "The Ark: aggression (per 100) above which a strong AI empire attacks it", "default": 20, "min": -100, "max": 100 }
   ]
 }

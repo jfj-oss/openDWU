@@ -111,13 +111,15 @@ Independent worlds in three far-apart regions band together as the Founders' Com
 
 **The Founders' Compact.** Independent worlds in three far-apart regions band together as the Founders' Compact and, years later, build a gigantic scaffold in five stages that nobody can identify for certain until it is finished. Cargo hints and spies give a shortlist of what it could be (a resort, a supercomputer, an aquarium of void whales, a beacon that calls an extinction fleet); protect it, sabotage it or destroy it, and answer for it to the Diet.
 
-**The wonders.** The Gilded Orbit (a resort that smugglers may take over), the Ultramind (a supercomputer that can decide it is being abused), the Leviathan Sanctuary (a glass sphere of live void whales that can breach) and the Beacon (a relay that calls the Reclaimers; only in galaxies of six or more empires). Each can be switched off in the add-on's settings.
+**The wonders.** The Gilded Orbit (a resort that smugglers may take over), the Ultramind (a supercomputer that can decide it is being abused), the Leviathan Sanctuary (a glass sphere of live void whales that can breach), the Ark Engine (a walking ark that takes the independents' descendants home) and the Beacon (a relay that calls the Reclaimers; only in galaxies of six or more empires). Each can be switched off in the add-on's settings.
 
 **The Gilded Orbit.** The resort wonder pays its holder a flood of resort and tourism income and lifts the colonies round it. Three to six years after it opens, half the time smugglers take it over: that brings a pirate faction with three huge bases and a high-tier fleet, criminal networks and freighter raids, until all three bases are destroyed and the resort reopens, renovated, at 80%.
 
 **The Ultramind.** A planet-sized supercomputer that sells research to up to three empires (+25% research each) and asks the owner for favours every year or two: power, access to its networks, a world to grow onto, a scientist. Grant them and it stays content; refuse too often and it wakes, takes the owner's warships, darkens the ports around it, stops the freight and builds drones. Keep it content, hold a Logic Bomb ready, or destroy it.
 
 **The Leviathan Sanctuary.** A glass sphere of live void whales that pays resort income, speeds the owner's nearby colonies' growth and lets its whales breed. It breaches about once in fifty years if left alone, far sooner if it is shot at or sabotaged: enraged whales then hunt the nearest colony and the Leviathan itself comes out, while the owner pays a year of repairs.
+
+**The Ark Engine.** A planet-sized machine ship that roams from empire to empire. At each it picks one colony that used to be independent, parks beside it and takes that colony's original people home in a stream of free passenger ships. The people keep growing aboard. Its owner may let them go (the Compact's favour and a trade deal) or refuse; shooting down the passenger ships costs standing. Attack the Ark and it fights back; break its 30,000 shields and it flees to an empty system for a year to mend.
 
 **The Diet.** Destroying the work before it is finished is a war crime unless the Diet authorises demolition. The Diet can also send inspectors, protect the work or internationalise a finished wonder.
 

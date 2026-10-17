@@ -238,3 +238,32 @@ Giantworks Sanctuary Repaired Title;The glass is whole
 Giantworks Sanctuary Repaired;The Leviathan Sanctuary at {0} is whole again. Its visitors, its income and its whale-song therapy return.
 Giantworks Sanctuary Spill News;The Leviathan Sanctuary at {0} has been destroyed and its glass is gone. {1} void whales are loose and enraged.
 Giantworks Sanctuary Spill News Leviathan;The Leviathan Sanctuary at {0} has been destroyed and its glass is gone. {1} void whales are loose and enraged, and with them the Leviathan itself.
+
+'The Ark Engine (Giantworks wonder, giantworks/ark.ts): message texts. {n} items are filled by the scenario code.
+Giantworks Hint slag;Smelting furnaces, slag hauling and foundry crews by the shipload.
+Giantworks Complete ark;The Ark Engine, the Founders' Compact's great work, has risen on its walker legs and is under way. It is a world-sized machine, and it is going to fetch its own people home.
+Giantworks Ark Name;The Ark
+Giantworks Ark Design;The Ark Engine
+Giantworks Ark Decision Title;The Ark has come for its people
+Giantworks Ark Decision;The Founders' Compact's colossal Ark Engine has parked beside {0}. It has come for the {1} of {0} (about {2} million of them), who were independent before we took the colony. It asks, politely, to take them home. It will send a stream of passenger ships.
+Giantworks Ark Option Accommodate;Let them go (the Compact's favour and a trade deal)
+Giantworks Ark Option Refuse;Refuse (it will take them anyway)
+Giantworks Ark Accommodated Title;The Ark is welcome
+Giantworks Ark Accommodated;We have let the {0} go home. The Founders' Compact remembers who was gracious.{1}
+Giantworks Ark Trade Deal; A free-trade treaty has been signed with the Compact.
+Giantworks Ark Refused Title;The Ark takes them anyway
+Giantworks Ark Refused;We have refused, and the Ark is taking the people of {0} regardless. Its passenger ships are unarmed. Shooting them down will cost us dearly in the galaxy's eyes, and fighting the Ark itself will not be easy.
+Giantworks Ark Left Title;The Ark has gone
+Giantworks Ark Left;The Ark has left {0}, with {1} million of its people.
+Giantworks Ark Arrived News;The Ark has parked beside {0}, a colony of {1}, and asks to take home the {2} who were independent once. A stream of passenger ships will follow.
+Giantworks Ark Fight News;{0} has attacked the Ark. It has stopped taking people and is fighting back.
+Giantworks Ark Broken Title;The Ark's shields are down
+Giantworks Ark Broken Msg;The Ark's shields at {0} have broken. It is limping away. It will need about a year to mend.
+Giantworks Ark Broken News;The shields of {0} have been broken. The Ark is slowly fleeing to the empty system of {1}, where it will mend for about a year.
+Giantworks Ark Destroyed News;{0} has destroyed the Ark. The {1} million people aboard are dead.
+Giantworks Ark Destroyed News Unknown;The Ark is destroyed. The {0} million people aboard are dead.
+Giantworks Ark Transport Title;Passenger ships shot down
+Giantworks Ark Transport;We have destroyed an unarmed ship carrying people from {0} to the Ark. The galaxy will not forget it.
+Reputation Cause giantworks.ark;You let the Ark take its people
+Reputation Cause giantworks.arkTransport;You shot down the Ark's passenger ships
+Reputation Cause giantworks.arkKiller;You destroyed the Ark and everyone aboard it

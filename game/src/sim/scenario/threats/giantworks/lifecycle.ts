@@ -137,7 +137,7 @@ export function ensureCompact(galaxy: Galaxy, work: GreatWorkRecord): Empire | n
 // Objects
 // ---------------------------------------------------------------------------------------------------------------
 
-function factionDesign(galaxy: Galaxy, faction: Empire, subRole: BuiltObjectSubRole, fresh = false): Design | null {
+export function factionDesign(galaxy: Galaxy, faction: Empire, subRole: BuiltObjectSubRole, fresh = false): Design | null {
     if (!fresh) {
         const d = latestDesignsFindNewestCanBuild(faction, subRole);
         if (d !== null) return d;
@@ -148,7 +148,7 @@ function factionDesign(galaxy: Galaxy, faction: Empire, subRole: BuiltObjectSubR
 }
 
 /** A state-owned base / ship of the faction at `parent` (createIndependentShip / createStartingShip pattern, as the Exchange). */
-function placeObject(galaxy: Galaxy, faction: Empire, design: Design, parent: Habitat, name: string | null, parking: boolean): BuiltObject {
+export function placeObject(galaxy: Galaxy, faction: Empire, design: Design, parent: Habitat, name: string | null, parking: boolean): BuiltObject {
     design.buildCount++;
     const bo = new BuiltObject(design, name ?? galaxy.generateBuiltObjectName(design, parent), galaxy, true);
     bo.empire = faction;
