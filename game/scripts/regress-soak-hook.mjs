@@ -124,6 +124,7 @@ function facSnap(g, e) {
     if (e == null) return null;
     const c = shipCounts(e);
     const t = troopStats(e);
+    c.stn = e.miningStations ? e.miningStations.filter((b) => !b.hasBeenDestroyed).length : -1;
     return { act: e.active ? 1 : 0, col: e.colonies.length, pop: Math.round(e.totalPopulation / 1e6), ...c, mil: Math.round(M.diplomacyTick.militaryPotency(e) / 1000), trK: t.total, trMinK: t.min, trAvgK: t.avg, moneyK: Math.round((e.stateMoney + e.privateMoney) / 1000), tech: r1(M.thRobot.empireTechLevel(e)) };
 }
 
