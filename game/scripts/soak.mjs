@@ -260,6 +260,8 @@ const CONFIGS_REGRESS = [
 ];
 // The long normal-start run for 10 years with CPU-profile windows (--cpuprof FILE --cpuprof-windows 3-5,7-9.5): the step time doubles at about year 7.
 CONFIGS_REGRESS.push({ ...CONFIGS_REGRESS.find((c) => c.name === 'rg-long-norm-s1'), name: 'rg-prof-long-norm-s1', years: 10, hook: {} });
+// The same run stopped at year 19.6 with a save at year 18 (the long normal start threw two exceptions at years 15.4 and 19.0).
+CONFIGS_REGRESS.push({ ...CONFIGS_REGRESS.find((c) => c.name === 'rg-long-norm-s1'), name: 'rg-dbg-long-norm-s1', hook: { timing: true, sampleDays: 60, env: { SOAK_SAVE_YEARS: '18', SOAK_STOP_YEAR: '19.6' } } });
 CONFIGS.push(...CONFIGS_REGRESS);
 
 /** Negative amounts the C# has too. */

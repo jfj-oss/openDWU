@@ -5407,7 +5407,7 @@ function isSpaceBattleStatsData(o: unknown): o is SpaceBattleStatsData {
 /** Character.Empire.SendMessageToEmpire(Character.Empire, CharacterSkillTraitChange, character, description). */
 function sendCharacterSkillTraitMessage(character: Character, description: string): void {
     const empire = character.empire;
-    if (empire === null) throw new Error('DoCharacterEvent: character without an empire (C# NullReferenceException)');
+    if (empire === null) throw new Error(`DoCharacterEvent: character without an empire (C# NullReferenceException): ${character.name}, role ${character.role}, active ${character.active}`);
     sendMessageToEmpire(empire, empire, EmpireMessageType.CharacterSkillTraitChange, character, description);
 }
 

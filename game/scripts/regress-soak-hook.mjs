@@ -51,6 +51,7 @@ export async function start(ctx) {
     ctx.report.regress = { rows, waves, kills, landingEvents, hookErrors, opts };
     if (opts.clFlag !== undefined && ctx.g.scenario !== null) ctx.g.scenario.flags.coordinatedLandings = opts.clFlag === true;
     ctx.report.regress.clFlagAtStart = ctx.g.scenario?.flags?.coordinatedLandings ?? null;
+    if (opts.env) for (const [k, v] of Object.entries(opts.env)) process.env[k] = String(v); // e.g. SOAK_SAVE_YEARS / SOAK_STOP_YEAR for the timing hook (read when it is imported)
     if (opts.timing) { timing = await import(resolve(ctx.cfg.hookRoot ?? process.cwd(), 'scripts/soak-timing-hook.mjs')); await timing.start(ctx); }
     registerHandlers(ctx);
 }
@@ -428,5 +429,5 @@ export async function chunk(ctx) {
         lastEventsDump = y;
         try { await dumpEventsFile(ctx); } catch (e) { err('eventsFile', e); }
     }
-    if (timing?.chunk) await timing.chunk(ctx);
+    if (timing?.chunk) return await timing.chunk(ctx);
 }
