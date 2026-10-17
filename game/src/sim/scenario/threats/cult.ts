@@ -9,6 +9,10 @@
 // colony rises from inside with converted-race militia (invadeFromInside) — the stock ground war hands it to the
 // theocracy, as 19b Dark Farms' turn does for the Harvesters.
 //
+// Once the faction exists the creed keeps moving: every further cult-held colony rises on its own (no threshold, with a force
+// sized to beat the colony's defence), and every cult-held colony and theocracy world has a chance per period to convert the
+// governor of a colony in reach (cultWorldSpread; a believer takes the post where there is none).
+//
 // Rnd (§0.4): draws only in the flag-gated yearly seed handler, the periodic spread/discovery handler (and the stock
 // functions they call). Fixed iteration orders: converted characters in conversion order, galaxy.empires order, each
 // empire's character-list order.
@@ -16,7 +20,7 @@
 import type { Galaxy } from '../../galaxy';
 import type { Empire } from '../../empire';
 import type { Habitat } from '../../types';
-import { spawnGovernorFor } from '../governors';
+import { colonyGovernor, spawnGovernorFor } from '../governors';
 import { CharacterRole, CharacterTraitType, type Character, type IntelligenceMission, getEmpireCharacters } from '../../characters';
 import { EmpireMessageType } from '../../messages';
 import { GameEndOutcome } from '../../victory';
@@ -24,6 +28,7 @@ import { GAME_DAY_LENGTH, gameYear, registerScenarioEvent, registerScenarioPerio
 import { militaryPotency } from '../../diplomacyTick';
 import { scenarioParam } from '../state';
 import { scenarioText } from '../messages';
+import { calculateForceStrengths, calculatePopulationStrength } from '../../combat/invasion';
 import { galaxyStarDate } from '../../tick/simTime';
 import { startStarDateForAge } from '../../galaxyTime';
 import { registerHiddenThing, retireHiddenTarget } from '../security/registry';
@@ -51,7 +56,7 @@ import {
     type ThreatKnowledge,
     forcedThreatVictim,
 } from './framework';
-import { coloniesUnderAttack, topUpPorts, applyIncomeFloor, foundMiningStations, pumpNavy, directFleets, ensureConstructionShips, givePortAt, makeTroopOfStrength, navyRise, topUpGarrisons, newNavyState, spawnPendingNavy, syncFactionTech, takeMiningStationsNear, type NavyState } from './factionNavy';
+import { coloniesUnderAttack, topUpPorts, applyIncomeFloor, foundMiningStations, pumpNavy, directFleets, ensureConstructionShips, givePortAt, makeTroopOfStrength, makeTroopsOfStrength, navyRise, topUpGarrisons, newNavyState, spawnPendingNavy, syncFactionTech, takeMiningStationsNear, type NavyState } from './factionNavy';
 
 export const CULT_KEY = 'cult';
 export const CULT_FLAG = 'cult';
@@ -82,6 +87,10 @@ export interface CultState {
     navy?: NavyState | null;
     /** Spawned from the Game Editor: the secession check skips the year floor. */
     forced?: boolean;
+    /** Debug counters: uprisings raised (one per cult-held colony per rising force), conversions (characters), of which by a cult world's own reach. */
+    risings?: number;
+    converts?: number;
+    worldConverts?: number;
 }
 
 function newState(): CultState {
@@ -112,6 +121,19 @@ const P = {
     secureMaxDays: (g: Galaxy) => p(g, 'cultSecureHomeMaxDays', 360),
     /** Total strength (the Ground Report measure) of the force that rises inside each cult-held colony. */
     risingStrength: (g: Galaxy) => p(g, 'cultRisingStrength', 800000),
+    /**
+     * Once the theocracy exists its risings are backed by its own arms: the force is sized to beat the colony's defence
+     * (the stock ground war needs 20 times the defenders), this many times the defence, between cultRisingStrength and
+     * cultRisingMaxStrength. 0: always cultRisingStrength.
+     */
+    risingOverkill: (g: Galaxy) => Math.max(0, p(g, 'cultRisingOverkill', 24)),
+    risingMaxStrength: (g: Galaxy) => Math.max(0, p(g, 'cultRisingMaxStrength', 10000000)),
+    /** Chance per period (%) that each cult-held / theocracy world spreads the creed to the governor of a colony of another empire in reach. */
+    worldSpreadPct: (g: Galaxy) => p(g, 'cultWorldSpreadPct', 7),
+    /** How far (game units) a cult world's creed reaches colonies of other empires (same system, then neighbouring systems). */
+    worldSpreadRange: (g: Galaxy) => Math.max(0, p(g, 'cultWorldSpreadRange', 1000000)),
+    /** 1: a nearby colony with no governor gets a new one who is a believer (stock games have few governors); 0: such colonies are out of reach. */
+    newGovernors: (g: Galaxy) => p(g, 'cultWorldSpreadNewGovernors', 1),
 };
 
 function recordOf(st: CultState, c: Character): ConvertRecord | undefined {
@@ -161,6 +183,7 @@ export function convert(galaxy: Galaxy, st: CultState, c: Character): void {
     const record: ConvertRecord = { character: c, knowledge: [] };
     st.converted.push(record);
     st.hadConverts = true;
+    st.converts = (st.converts ?? 0) + 1;
     // 19m: the convert joins the hidden-thing registry (no-op unless internalSecurity).
     registerHiddenThing(galaxy, { kind: 'convert', concealment: CONVERT_CONCEALMENT, empire: c.empire, target: c, package: '19f.cult', site: record });
 }
@@ -211,10 +234,66 @@ export function cultSpread(galaxy: Galaxy, st: CultState): void {
         const base = c.role === CharacterRole.Ambassador ? ambassadorPct : basePct;
         if (base <= 0) continue;
         for (const other of allCharactersAtLocation(galaxy, c.location, st.faction)) {
-            if (other === c || isConverted(st, other)) continue;
+            if (other === c || isConverted(st, other) || (st.faction !== null && other.empire === st.faction)) continue; // the theocracy's own people are not converts
             const pct = base * spreadFactor(other);
             if (galaxy.rnd.nextDouble() * 100 < pct) convert(galaxy, st, other);
         }
+    }
+}
+
+/** The worlds the creed spreads from by its own reach: cult-held colonies (governor converted) and the theocracy's own worlds. Pure. */
+export function cultSourceWorlds(galaxy: Galaxy, st: CultState): Habitat[] {
+    const out = cultHeldColonies(galaxy, st);
+    const f = st.faction;
+    if (f !== null && f.active) for (const h of f.colonies) if (!h.hasBeenDestroyed && !out.includes(h)) out.push(h);
+    return out;
+}
+
+/**
+ * The colonies (any normal empire) within `range` of `source` whose governor the creed can take: one whose governor is not
+ * converted yet, or none (a preacher then takes the post, so the creed also moves in a game where few colonies have governors).
+ * Nearest first (ties in empire / colony order). Pure.
+ */
+export function cultReachableColonies(galaxy: Galaxy, st: CultState, source: Habitat, range: number): Habitat[] {
+    const found: { h: Habitat; d: number }[] = [];
+    for (const e of normalEmpires(galaxy, st.faction)) {
+        for (const h of e.colonies) {
+            if (h === source || h.hasBeenDestroyed || h.population.totalAmount <= 0) continue;
+            const d = galaxy.calculateDistance(source.xpos, source.ypos, h.xpos, h.ypos);
+            if (d > range) continue;
+            const governor = colonyGovernor(h);
+            if (governor !== null && isConverted(st, governor)) continue;
+            if (governor === null && (P.newGovernors(galaxy) <= 0 || st.converted.some((r) => r.character.active && r.character.transferDestination === h))) continue; // none to take, or a believer is already on the way
+            found.push({ h, d });
+        }
+    }
+    found.sort((a, b) => a.d - b.d);
+    return found.map((f) => f.h);
+}
+
+/**
+ * Each cult-held colony and each theocracy world has cultWorldSpreadPct per period of spreading the creed to one colony
+ * within cultWorldSpreadRange (a random one in reach): its governor is converted (Logical / Lawful governors resist half the
+ * time, Spiritual ones never), or, when the colony has none (and cultWorldSpreadNewGovernors is on), a new governor who
+ * is a believer takes the post. This keeps the creed moving once the governors who carried it have joined the theocracy.
+ */
+export function cultWorldSpread(galaxy: Galaxy, st: CultState): void {
+    const pct = P.worldSpreadPct(galaxy);
+    if (pct <= 0) return;
+    const range = P.worldSpreadRange(galaxy);
+    for (const source of cultSourceWorlds(galaxy, st)) {
+        if (galaxy.rnd.nextDouble() * 100 >= pct) continue;
+        const reachable = cultReachableColonies(galaxy, st, source, range);
+        if (reachable.length === 0) continue;
+        const target = reachable[galaxy.rnd.next(0, reachable.length)];
+        const governor = colonyGovernor(target);
+        if (governor === null) {
+            const preacher = target.empire !== null ? spawnGovernorFor(galaxy, target.empire, target) : null;
+            if (preacher == null) continue;
+            convert(galaxy, st, preacher);
+        } else if (galaxy.rnd.nextDouble() < Math.min(1, spreadFactor(governor))) convert(galaxy, st, governor);
+        else continue;
+        st.worldConverts = (st.worldConverts ?? 0) + 1;
     }
 }
 
@@ -263,15 +342,35 @@ export function cultSecedeThreshold(galaxy: Galaxy, empire: Empire): number {
 
 export function cultCheckTrigger(galaxy: Galaxy): void {
     const st = cultState(galaxy);
+    // Once the theocracy exists, every further cult-held colony rises on its own (no threshold).
+    const risen = st.faction !== null && st.faction.active;
     for (const e of normalEmpires(galaxy, st.faction)) {
         const held = cultHeldColoniesOf(galaxy, st, e);
-        if (held.length > 0 && held.length >= cultSecedeThreshold(galaxy, e)) cultTrigger(galaxy, st, e, held);
+        if (held.length > 0 && (risen || held.length >= cultSecedeThreshold(galaxy, e))) cultTrigger(galaxy, st, e, held);
     }
+}
+
+/**
+ * How much more rising strength (the Ground Report measure) `h` needs, on top of the force already in h.invadingTroops,
+ * for the stock ground war to be won: cultRisingOverkill times the defence (defenders and the population's own strength,
+ * with the modifiers), capped at cultRisingMaxStrength in all. 0 when the force already suffices. No Rnd.
+ */
+export function risingShortfall(galaxy: Galaxy, h: Habitat, host: Empire, faction: Empire): number {
+    const inv = h.invadingTroops;
+    if (inv === null || h.troops === null) return 0;
+    const { attackingStrength, defendingStrength } = calculateForceStrengths(galaxy, h, host, faction, h.troops, null, inv, null);
+    const defence = defendingStrength + calculatePopulationStrength(galaxy, h, faction, host).result;
+    const have = inv.totalAttackStrength;
+    if (!(attackingStrength > 0) || !(have > 0)) return 0;
+    const modifier = attackingStrength / have; // the attack modifiers (stock ground war)
+    const wanted = Math.min(P.risingMaxStrength(galaxy), (P.risingOverkill(galaxy) * defence) / modifier);
+    return Math.max(0, wanted - have);
 }
 
 /** Ensures the theocracy exists (created once, from the first empire to secede) and rises its held colonies. */
 export function cultTrigger(galaxy: Galaxy, st: CultState, host: Empire, held: Habitat[]): boolean {
     let faction = st.faction;
+    const backed = faction !== null && faction.active; // a rising after the theocracy exists is backed by its arms
     if (faction === null || !faction.active) {
         faction = createThreatFaction(galaxy, {
             race: host.dominantRace ?? 'Human',
@@ -289,8 +388,14 @@ export function cultTrigger(galaxy: Galaxy, st: CultState, host: Empire, held: H
         const inv = h.invadingTroops;
         if (inv !== null && inv.count > 0) continue;
         const race = h.population?.dominantRace ?? host.dominantRace ?? null;
-        const troop = makeTroopOfStrength(galaxy, faction, P.risingStrength(galaxy), scenarioText(`${TAG} Militia Name`), race);
+        const name = scenarioText(`${TAG} Militia Name`);
+        const troop = makeTroopOfStrength(galaxy, faction, P.risingStrength(galaxy), name, race);
         invadeFromInside(galaxy, h, faction, [troop]);
+        if (backed && P.risingOverkill(galaxy) > 0) {
+            const extra = risingShortfall(galaxy, h, host, faction);
+            if (extra > 0) invadeFromInside(galaxy, h, faction, makeTroopsOfStrength(galaxy, faction, extra, name, race));
+        }
+        st.risings = (st.risings ?? 0) + 1;
     }
     if (cultHooks.triggered !== null) cultHooks.triggered(galaxy, host, faction);
     arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Turn', onceKey: `Turn:${host.empireId}`, textTag: `${TAG} Turn News`, args: [host.name] });
@@ -340,6 +445,7 @@ export function cultPeriodic(galaxy: Galaxy, now: number): void {
     if (st.ended) return;
     st.converted = st.converted.filter((r) => r.character.active);
     cultSpread(galaxy, st);
+    cultWorldSpread(galaxy, st);
     if (st.forced === true || pastThreatMinYear(galaxy, CULT_KEY)) cultCheckTrigger(galaxy); // §0 timing: the secession trigger waits for the floor.
     cultDiscovery(galaxy, st);
     cultEndCheck(galaxy, st);

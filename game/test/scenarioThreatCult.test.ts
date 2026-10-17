@@ -21,20 +21,26 @@ import {
     cultSecedeThreshold,
     cultKnownSites,
     cultSpread,
+    deconvert,
+    cultWorldSpread,
+    cultReachableColonies,
+    cultSourceWorlds,
     cultState,
     peekCultState,
     registerCult,
 } from '../src/sim/scenario/threats/cult';
+import { colonyGovernor } from '../src/sim/scenario/governors';
 import { normalEmpires, teardownIfDead } from '../src/sim/scenario/threats/framework';
-import { CharacterRole, IntelligenceMission, generateNewCharacter, getEmpireCharacters } from '../src/sim/characters';
+import { CharacterRole, CharacterTraitType, IntelligenceMission, generateNewCharacter, getEmpireCharacters } from '../src/sim/characters';
 import { GameEndOutcome, setGameEndHandler, type GameEndEventArgs } from '../src/sim/victory';
 import { builtObjectCompleteTeardown } from '../src/sim/combat/teardown';
 import { takeOwnershipOfColonyFull } from '../src/sim/combat/ownership';
 import { annualTroopMaintenance } from '../src/sim/troops';
-import { militaryPotency, FleetPosture } from '../src/sim/diplomacyTick';
+import { calculateForceStrengths, calculatePopulationStrength } from '../src/sim/combat/invasion';
+import { militaryPotency, FleetPosture, calculateOverallStrengthFactorWithoutShields } from '../src/sim/diplomacyTick';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { empireTechLevel } from '../src/sim/scenario/threats/robotMutiny';
-import { averageTechLevel, givePortAt, syncFactionTech } from '../src/sim/scenario/threats/factionNavy';
+import { averageTechLevel, givePortAt, makeTroopOfStrength, syncFactionTech } from '../src/sim/scenario/threats/factionNavy';
 import { cultNavyMonthly, cultFleets } from '../src/sim/scenario/threats/cult';
 import { makeFactionTroop } from '../src/sim/scenario/threats/framework';
 import { BuiltObjectMissionPriority } from '../src/sim/missions/mission';
@@ -509,5 +515,174 @@ describe('Cult: the pump spawns at the safest home and banks while every home is
         hostShips.forEach((b) => { b.xpos = colony.xpos + 300; b.ypos = colony.ypos; });
         cultNavyMonthly(g);
         expect(navy.pumpBank ?? 0).toBeLessThanOrEqual(2);
+    }, 1200000);
+});
+
+describe('Cult: keeps spreading once it has risen', () => {
+    /** A game with the host's `n` populated non-capital colonies given governors (returned), pump and station founder off. */
+    function hostWithColonies(params: Record<string, number>, n: number) {
+        const { game } = ctGame({ cultPumpPct: 0, cultStationsPerMonth: 0, cultWorldSpreadPct: 0, ...params });
+        const g = game.galaxy;
+        Object.assign(g.scenario!.params, { cultPumpPct: 0, cultStationsPerMonth: 0, cultWorldSpreadPct: 0, ...params }); // hidden settings are not declared in the manifest
+        const st = cultState(g);
+        const host = normalEmpires(g).filter((e) => e.colonies.filter((c) => c !== e.capital && c.population.totalAmount > 0).length >= n).sort((a, b) => b.colonies.length - a.colonies.length)[0];
+        expect(host).toBeDefined();
+        const colonies = host.colonies.filter((c) => c !== host.capital && c.population.totalAmount > 0).slice(0, n);
+        const governors = colonies.map((c) => generateNewCharacter(g, host, CharacterRole.ColonyGovernor, c).character!);
+        return { g, st, host, colonies, governors };
+    }
+
+    it('before the theocracy exists a lone cult-held colony waits for the threshold; after it exists, any cult-held colony rises on its own', () => {
+        const { g, st, host, colonies, governors } = hostWithColonies({ cultSecedeColonies: 2, cultSecedeMinColonies: 2 }, 3);
+        // One held colony of an empire with several governed colonies: below the threshold of 2, nothing rises.
+        convert(g, st, governors[0]);
+        cultCheckTrigger(g);
+        expect(st.faction).toBeNull();
+        expect(colonies[0].invadingTroops === null || colonies[0].invadingTroops.count === 0).toBe(true);
+        // A second one reaches it: both rise.
+        convert(g, st, governors[1]);
+        cultCheckTrigger(g);
+        const faction = st.faction!;
+        expect(faction).not.toBeNull();
+        expect(st.risings).toBe(2);
+        for (const c of [colonies[0], colonies[1]]) {
+            expect(c.invadingTroops!.count).toBeGreaterThan(0);
+            expect(c.invadingTroops!.totalAttackStrength).toBe(800000);
+        }
+        // The third, alone (a threshold of 2 would never be met by it), rises as soon as it is cult-held; the theocracy
+        // backs the rising with enough force to win (24 times the defence, at least the base 800,000).
+        expect(cultHeldColonies(g, st).filter((c) => c.empire === host)).not.toContain(colonies[2]);
+        colonies[2].troops!.add(makeTroopOfStrength(g, host, 300000, 'Garrison', null));
+        convert(g, st, governors[2]);
+        cultCheckTrigger(g);
+        const inv = colonies[2].invadingTroops!;
+        expect(inv.count).toBeGreaterThan(0);
+        for (const t of inv.items) expect(t.empire).toBe(faction);
+        expect(inv.totalAttackStrength).toBeGreaterThan(800000);
+        expect(inv.totalAttackStrength).toBeLessThanOrEqual(10000000);
+        const { attackingStrength, defendingStrength } = calculateForceStrengths(g, colonies[2], host, faction, colonies[2].troops!, null, inv, null);
+        expect(attackingStrength / (defendingStrength + calculatePopulationStrength(g, colonies[2], faction, host).result)).toBeGreaterThan(20);
+        expect(st.risings).toBe(3);
+        // A rising still unresolved is not doubled on the next check.
+        const force = inv.totalAttackStrength;
+        cultCheckTrigger(g);
+        expect(colonies[2].invadingTroops!.totalAttackStrength).toBe(force);
+        expect(st.risings).toBe(3);
+        // With cultRisingOverkill 0 it is the base force again.
+        g.scenario!.params.cultRisingOverkill = 0;
+        colonies[2].invadingTroops = null;
+        cultCheckTrigger(g);
+        expect(colonies[2].invadingTroops!.totalAttackStrength).toBe(800000);
+    }, 1200000);
+
+    it('a cult world spreads the creed to a governor of another colony within range; Logical / Lawful governors resist half the time, Spiritual ones never', () => {
+        const { g, st, host, colonies, governors } = hostWithColonies({ cultSecedeColonies: 1, cultWorldSpreadPct: 100, cultWorldSpreadRange: 1e9, cultWorldSpreadNewGovernors: 0 }, 2);
+        const source = colonies[0];
+        convert(g, st, governors[0]);
+        cultCheckTrigger(g);
+        const faction = st.faction!;
+        takeOwnershipOfColonyFull(g, host, source, faction, false, false);
+        expect(cultSourceWorlds(g, st)).toEqual([source]);
+        // Reach: colonies with an unconverted governor (none without, new governors off), nearest first; none out of range.
+        const reach = cultReachableColonies(g, st, source, 1e9);
+        expect(reach).toContain(colonies[1]);
+        expect(reach.every((h) => h.empire !== faction && colonyGovernor(h) !== null && !st.converted.some((r) => r.character === colonyGovernor(h)))).toBe(true);
+        expect(cultReachableColonies(g, st, source, 0)).toEqual([]);
+        // Narrow the range to the nearest one only, so the outcome is that one governor.
+        const targetColony = reach[0];
+        const target = colonyGovernor(targetColony)!;
+        const range = g.calculateDistance(source.xpos, source.ypos, targetColony.xpos, targetColony.ypos);
+        g.scenario!.params.cultWorldSpreadRange = range;
+        expect(cultReachableColonies(g, st, source, range)).toEqual([targetColony]);
+        // Out of range / spread off: nothing.
+        g.scenario!.params.cultWorldSpreadRange = Math.max(0, range - 1);
+        cultWorldSpread(g, st);
+        expect(st.worldConverts ?? 0).toBe(0);
+        g.scenario!.params.cultWorldSpreadRange = range;
+        g.scenario!.params.cultWorldSpreadPct = 0;
+        cultWorldSpread(g, st);
+        expect(st.worldConverts ?? 0).toBe(0);
+        g.scenario!.params.cultWorldSpreadPct = 100;
+        // Spiritual: always converted, the colony is cult-held, and it rises at the next check (the theocracy exists).
+        target.traits = [CharacterTraitType.Spiritual];
+        cultWorldSpread(g, st);
+        expect(st.worldConverts).toBe(1);
+        expect(cultHeldColonies(g, st)).toContain(targetColony);
+        cultCheckTrigger(g);
+        expect(targetColony.invadingTroops!.count).toBeGreaterThan(0);
+        // Logical: about half the tries convert it (deconverted between tries).
+        target.traits = [CharacterTraitType.Logical];
+        let hits = 0;
+        for (let i = 0; i < 80; i++) {
+            deconvert(g, st, target);
+            const before = st.worldConverts!;
+            cultWorldSpread(g, st);
+            if (st.worldConverts! > before) hits++;
+        }
+        expect(hits).toBeGreaterThan(20);
+        expect(hits).toBeLessThan(60);
+    }, 1200000);
+
+    it('a nearby colony with no governor gets a believer as its governor (unless cultWorldSpreadNewGovernors is 0)', () => {
+        const { g, st, host, colonies, governors } = hostWithColonies({ cultSecedeColonies: 1, cultWorldSpreadPct: 100, cultWorldSpreadRange: 1e9 }, 2);
+        const source = colonies[0];
+        convert(g, st, governors[0]);
+        cultCheckTrigger(g);
+        takeOwnershipOfColonyFull(g, host, source, st.faction!, false, false);
+        // The nearest populated colony of anyone, stripped of its governor, is the one candidate in range.
+        const bare = cultReachableColonies(g, st, source, 1e9)[0];
+        colonyGovernor(bare)?.kill(g);
+        expect(colonyGovernor(bare)).toBeNull();
+        const range = g.calculateDistance(source.xpos, source.ypos, bare.xpos, bare.ypos);
+        g.scenario!.params.cultWorldSpreadRange = range;
+        g.scenario!.params.cultWorldSpreadNewGovernors = 0;
+        expect(cultReachableColonies(g, st, source, range)).toEqual([]);
+        cultWorldSpread(g, st);
+        expect(colonyGovernor(bare)).toBeNull();
+        g.scenario!.params.cultWorldSpreadNewGovernors = 1;
+        expect(cultReachableColonies(g, st, source, range)).toEqual([bare]);
+        cultWorldSpread(g, st);
+        const preacher = colonyGovernor(bare);
+        expect(preacher).not.toBeNull();
+        expect(st.converted.some((r) => r.character === preacher)).toBe(true);
+        expect(cultHeldColonies(g, st)).toContain(bare);
+        // A converted governor is not a target again.
+        expect(cultReachableColonies(g, st, source, range)).toEqual([]);
+    }, 1200000);
+
+    it('the theocracy\'s own characters are not converts, though their world still spreads the creed', () => {
+        const { g, st, host, colonies, governors } = hostWithColonies({ cultSecedeColonies: 1, cultSpreadPct: 100, cultAmbassadorPct: 100 }, 1);
+        convert(g, st, governors[0]);
+        cultCheckTrigger(g);
+        const faction = st.faction!;
+        takeOwnershipOfColonyFull(g, host, colonies[0], faction, false, false);
+        const member = generateNewCharacter(g, faction, CharacterRole.ShipCaptain, colonies[0]).character;
+        expect(member).toBeDefined();
+        convert(g, st, governors[0]); // (already converted: no-op) the spreader stays on the list
+        cultSpread(g, st);
+        expect(st.converted.some((r) => r.character === member)).toBe(false);
+    }, 1200000);
+
+    it('the starting fleet scales with cultNavyPct', () => {
+        const fleetAt = (pct: number) => {
+            const { g, st, host, colonies, governors } = hostWithColonies({ cultSecedeColonies: 1, cultNavyPct: pct }, 1);
+            convert(g, st, governors[0]);
+            cultCheckTrigger(g);
+            const pending = st.navy!.pendingStrength;
+            takeOwnershipOfColonyFull(g, host, colonies[0], st.faction!, false, false);
+            cultNavyMonthly(g);
+            expect(st.navy!.pendingStrength).toBe(0);
+            const ships = st.faction!.builtObjects.filter((b) => b.role === BuiltObjectRole.Military && !b.hasBeenDestroyed);
+            const strength = ships.reduce((sum, b) => sum + calculateOverallStrengthFactorWithoutShields(b), 0);
+            return { pending, strength, ships: st.navy!.shipsSpawned };
+        };
+        const small = fleetAt(30);
+        const large = fleetAt(50);
+        expect(large.pending / small.pending).toBeCloseTo(5 / 3, 6);
+        // The fleet's strength reaches the share asked for (the last ship overshoots a little), so 50 % is a bigger fleet than 30 %.
+        expect(small.strength).toBeGreaterThanOrEqual(small.pending);
+        expect(large.strength).toBeGreaterThanOrEqual(large.pending);
+        expect(large.ships).toBeGreaterThan(small.ships);
+        expect(large.strength).toBeGreaterThan(small.strength);
     }, 1200000);
 });
