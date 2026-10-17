@@ -1,0 +1,171 @@
+// Giantworks: Smarter AI decisions about a Great Work (flag smarterAI; AI empires only, never the player). Not a port.
+// Every `giantworksAiDecideDays` an AI empire that suspects a work reviews it and picks ONE plan, from what it knows:
+//   - its shortlist's expected menace and value (common lore about the candidates, never the secret answer: KIND_MENACE / KIND_VALUE),
+//   - its personality (aggression, caution, friendliness) and its reach (a colony within range of the site),
+//   - whether destroying would be a war crime (War crimes on, no Diet authorisation): a cautious empire then only destroys
+//     what it is nearly sure is a menace.
+//   destroy  - a strike fleet is sent to attack the scaffold (stock mission Attack: no war needed), strong enough for its guards;
+//   sabotage - a free attack agent gets a DestroyBase / SabotageConstruction mission on the scaffold (stock difficulty rules), at
+//              most one a year per empire;
+//   protect  - one idle fleet patrols the site (earning the Compact's regard);
+//   none     - waits.
+// A finished wonder that turned hostile is attacked by whoever can (menace is certain; no crime). Rnd: the stock mission assignment only.
+
+import type { Galaxy } from '../../../galaxy';
+import type { Empire } from '../../../empire';
+import { CharacterRole, getEmpireCharacters, type Character, type IntelligenceMission } from '../../../characters';
+import { calculateOverallStrengthFactor } from '../../../combat/threats';
+import { aggressionLevel, cautionLevel, friendlinessLevel, FleetPosture } from '../../../diplomacyTick';
+import { IntelligenceMissionType, calculateIntelligenceMissionSkill, cascadeTimeLength, characterMission, checkWhetherTargetOfIntelligenceMission, intelligenceMissionDifficulty, newIntelligenceMissionAgainstBuiltObject } from '../../../espionage';
+import { csInt } from '../../../builtObjectComponent';
+import { findNearestAvailableFleet } from '../../../fleets/militaryAI';
+import { determineDestroyOrCaptureTargetForFleet, shipGroupAssignMission, shipGroupCheckFleetTargetWithinFuelRangeAndRefuel } from '../../../fleets/shipGroupTasks';
+import { BuiltObjectMissionPriority, BuiltObjectMissionType } from '../../../missions/mission';
+import { isAiControlled } from '../../../missions/playerOrder';
+import { YEAR_LENGTH } from '../../../galaxyTime';
+import { isHumanEmpire } from '../../../humanEmpires';
+import { galaxyStarDate } from '../../../tick/simTime';
+import { GAME_DAY_LENGTH } from '../../hooks';
+import { scenarioFlag } from '../../state';
+import { WAR_CRIMES_FLAG } from '../../charactersVictory/diet/warCrimes';
+import { SMARTER_AI_FLAG, isSmarterAIStrategist } from '../../smarterAI/common';
+import { formStrikeFleet } from '../../smarterAI/pirates';
+import { KNOWLEDGE_SUSPECTED } from '../framework';
+import { demolitionAuthorised } from './actions';
+import { expectedMenace, expectedValue, workLevel } from './knowledge';
+import { compactFaction, greatWorks, gwParam, logGw, ordinaryEmpires, type GreatWorkRecord } from './state';
+
+export type AiAction = 'destroy' | 'sabotage' | 'protect' | 'none';
+
+/** The AI reaches a site within this many sectors of one of its colonies. */
+const REACH_SECTORS = 14;
+const T = IntelligenceMissionType;
+
+function personality(e: Empire): { aggression: number; caution: number; friendly: number } {
+    return { aggression: (aggressionLevel(e) - 100) / 50, caution: (cautionLevel(e) - 100) / 50, friendly: (friendlinessLevel(e) - 100) / 50 };
+}
+
+function nearestColonyDistance(galaxy: Galaxy, e: Empire, x: number, y: number): number {
+    let best = Number.MAX_VALUE;
+    for (const h of e.colonies) if (h !== null && h.empire === e) best = Math.min(best, galaxy.calculateDistance(h.xpos, h.ypos, x, y));
+    return best;
+}
+
+/** What the empire would do about the work now (pure; no orders). */
+export function aiChoice(galaxy: Galaxy, work: GreatWorkRecord, e: Empire): AiAction {
+    const base = work.base;
+    if (base === null || base.hasBeenDestroyed) return 'none';
+    if (nearestColonyDistance(galaxy, e, base.xpos, base.ypos) > REACH_SECTORS * galaxy.sectorSize) return 'none';
+    const pr = personality(e);
+    const hostile = work.phase === 'complete' && work.hostile;
+    const menace = hostile ? 1 : expectedMenace(galaxy, work, e);
+    const value = hostile ? 0 : expectedValue(galaxy, work, e);
+    const destroyAt = gwParam(galaxy, 'giantworksAiDestroyMenacePct') / 100;
+    const sabotageAt = gwParam(galaxy, 'giantworksAiSabotageMenacePct') / 100;
+    const protectAt = gwParam(galaxy, 'giantworksAiProtectValuePct') / 100;
+    const crime = !hostile && scenarioFlag(galaxy, WAR_CRIMES_FLAG) && !demolitionAuthorised(galaxy);
+    const needMenace = destroyAt + (crime ? 0.1 + 0.15 * Math.max(0, pr.caution) : 0) - 0.08 * pr.aggression;
+    if (menace >= needMenace && (hostile || pr.aggression > -0.3 || menace >= 0.8)) return 'destroy';
+    if (work.phase === 'building' && menace >= sabotageAt - 0.05 * pr.aggression) return 'sabotage';
+    if (work.phase === 'building' && value >= protectAt && menace < sabotageAt && pr.friendly > -0.4) return 'protect';
+    return 'none';
+}
+
+function strengthNeeded(galaxy: Galaxy, work: GreatWorkRecord): number {
+    let s = work.base !== null ? calculateOverallStrengthFactor(work.base) : 0;
+    for (const g of work.guards) if (!g.hasBeenDestroyed) s += calculateOverallStrengthFactor(g);
+    return Math.trunc(s * 1.5);
+}
+
+function sendStrike(galaxy: Galaxy, work: GreatWorkRecord, e: Empire): boolean {
+    const base = work.base!;
+    const need = strengthNeeded(galaxy, work);
+    let fleet = findNearestAvailableFleet(galaxy, e, base.xpos, base.ypos, BuiltObjectMissionPriority.Low, need, FleetPosture.Attack, true, 0.1, false, false, false, true);
+    if (fleet === null) fleet = formStrikeFleet(galaxy, e, base.xpos, base.ypos, need);
+    if (fleet === null || fleet.leadShip === null || !isAiControlled(fleet.leadShip)) return false;
+    if (!shipGroupCheckFleetTargetWithinFuelRangeAndRefuel(galaxy, fleet, base.xpos, base.ypos, 0.1)) return false;
+    return shipGroupAssignMission(galaxy, fleet, determineDestroyOrCaptureTargetForFleet(galaxy, e, fleet, base), base, null, BuiltObjectMissionPriority.High, true);
+}
+
+function freeAgents(e: Empire): Character[] {
+    return getEmpireCharacters(e).filter((c) => {
+        if (c === null || !c.active || c.role !== CharacterRole.IntelligenceAgent) return false;
+        const m = characterMission(c);
+        return m === null || m.type === T.Undefined || m.type === T.CounterIntelligence;
+    });
+}
+
+function sendSpy(galaxy: Galaxy, work: GreatWorkRecord, e: Empire, menace: number): boolean {
+    const compact = compactFaction(galaxy);
+    const base = work.base!;
+    const p = e.policy;
+    if (compact === null || p == null) return false;
+    const type = menace >= 0.6 && p.intelligenceAllowMissionDestroyBase ? T.DestroyBase : p.intelligenceAllowMissionSabotageConstruction ? T.SabotageConstruction : null;
+    if (type === null || checkWhetherTargetOfIntelligenceMission(e, compact, base, type)) return false;
+    const now = galaxyStarDate(galaxy);
+    let best: { agent: Character; mission: IntelligenceMission; margin: number } | null = null;
+    // Keep a share of the agents on counter-intelligence: only agents beyond the first free one go.
+    const free = freeAgents(e);
+    if (free.length < 2) return false;
+    for (const a of free) {
+        const d = calculateIntelligenceMissionSkill(e, a, type, compact);
+        const m = newIntelligenceMissionAgainstBuiltObject(e, null, type, now, base);
+        const margin = csInt(d.oneYearDifficulty) - intelligenceMissionDifficulty(m);
+        if (margin < 0) continue;
+        if (best === null || margin > best.margin) best = { agent: a, mission: cascadeTimeLength(m, d), margin };
+    }
+    if (best === null) return false;
+    best.mission.agent = best.agent;
+    best.agent.mission = best.mission;
+    return true;
+}
+
+function sendPatrol(galaxy: Galaxy, work: GreatWorkRecord, e: Empire): boolean {
+    const base = work.base!;
+    const fleet = findNearestAvailableFleet(galaxy, e, base.xpos, base.ypos, BuiltObjectMissionPriority.Low, 0, FleetPosture.Defend, true, 0.1, false, true, false, true);
+    if (fleet === null || fleet.leadShip === null || !isAiControlled(fleet.leadShip)) return false;
+    if (!shipGroupCheckFleetTargetWithinFuelRangeAndRefuel(galaxy, fleet, base.xpos, base.ypos, 0.1)) return false;
+    return shipGroupAssignMission(galaxy, fleet, BuiltObjectMissionType.Patrol, base, null, BuiltObjectMissionPriority.Normal, true);
+}
+
+/** One review of one work by one AI empire. Returns the plan taken. */
+export function aiReview(galaxy: Galaxy, work: GreatWorkRecord, e: Empire): AiAction {
+    const now = galaxyStarDate(galaxy);
+    const action = aiChoice(galaxy, work, e);
+    const prev = work.aiPlan[e.empireId];
+    if (action === 'none') {
+        if (prev !== undefined && prev.action !== 'none') work.aiPlan[e.empireId] = { action: 'none', since: now };
+        return action;
+    }
+    let ok = false;
+    if (action === 'destroy') ok = sendStrike(galaxy, work, e);
+    else if (action === 'sabotage') {
+        const lastSpy = prev !== undefined && prev.action === 'sabotage' ? prev.since : -1;
+        if (lastSpy < 0 || now - lastSpy >= YEAR_LENGTH) ok = sendSpy(galaxy, work, e, expectedMenace(galaxy, work, e));
+        else ok = true;
+    } else ok = sendPatrol(galaxy, work, e);
+    if (ok && (prev === undefined || prev.action !== action || action === 'sabotage')) {
+        if (prev === undefined || prev.action !== action) logGw(galaxy, now, `${e.name} chooses to ${action} work ${work.id}`);
+        work.aiPlan[e.empireId] = { action, since: prev !== undefined && prev.action === action && action !== 'sabotage' ? prev.since : now };
+    }
+    return ok ? action : 'none';
+}
+
+/** Periodic: every AI empire that suspects the work reviews it on its own schedule. */
+export function aiStep(galaxy: Galaxy): void {
+    if (!scenarioFlag(galaxy, SMARTER_AI_FLAG)) return;
+    const now = galaxyStarDate(galaxy);
+    const every = gwParam(galaxy, 'giantworksAiDecideDays') * GAME_DAY_LENGTH;
+    for (const w of greatWorks(galaxy)) {
+        const live = w.phase === 'building' || (w.phase === 'complete' && w.hostile);
+        if (!live || w.base === null) continue;
+        for (const e of ordinaryEmpires(galaxy)) {
+            if (isHumanEmpire(galaxy, e) || !isSmarterAIStrategist(galaxy, e)) continue;
+            if (w.phase === 'building' && workLevel(w, e) < KNOWLEDGE_SUSPECTED) continue;
+            const next = w.aiNext[e.empireId];
+            if (next !== undefined && next > now) continue;
+            w.aiNext[e.empireId] = now + every + (e.empireId % 7) * GAME_DAY_LENGTH;
+            aiReview(galaxy, w, e);
+        }
+    }
+}

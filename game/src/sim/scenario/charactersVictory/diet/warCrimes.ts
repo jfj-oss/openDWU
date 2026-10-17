@@ -8,7 +8,8 @@
 //   delegate     — attacking a Diet delegate's VIP shuttle (Characters & Victory trips; once per ship)
 //   enslave      — making a penal colony of conquered peoples (Slavery add-on, `colonyEnslaved`), and every year a
 //                  penal colony holds enslaved workers
-//   independents — attacking an independent colony (`habitatAttacked`; once per colony and year)
+//   independents — attacking an independent colony (`habitatAttacked`; once per colony and year) or a Great Work convoy (Giantworks)
+//   greatWork    — destroying (or seizing) a peaceful Great Work without the Diet's leave (Giantworks; weight half a planet's)
 // Each adds its weight × WAR_CRIME_WEIGHTS to the offender's RECORD, which fades by warCrimesDecayPerYear a year (3%: a
 // record halves in about 23 years — generations). Each crime also costs attitude: every other major empire's toward
 // the offender −weight × warCrimesReputation, the victim's twice that (reputation/ledger.ts applyReputation: the
@@ -46,7 +47,7 @@ export const WAR_CRIMES_FLAG = 'warCrimes';
 const KEY = 'warCrimes';
 const TRIBUNAL = 'warCrimesTribunal';
 
-export type WarCrimeKind = 'bombard' | 'destroyPlanet' | 'scorch' | 'refugees' | 'delegate' | 'enslave' | 'independents';
+export type WarCrimeKind = 'bombard' | 'destroyPlanet' | 'scorch' | 'refugees' | 'delegate' | 'enslave' | 'independents' | 'greatWork';
 
 /** Record points per crime. */
 export const WAR_CRIME_WEIGHTS: Readonly<Record<WarCrimeKind, number>> = {
@@ -57,6 +58,7 @@ export const WAR_CRIME_WEIGHTS: Readonly<Record<WarCrimeKind, number>> = {
     delegate: 10,
     enslave: 8,
     independents: 2,
+    greatWork: 15,
 };
 
 export const WAR_CRIME_LABELS: Readonly<Record<WarCrimeKind, string>> = {
@@ -67,6 +69,7 @@ export const WAR_CRIME_LABELS: Readonly<Record<WarCrimeKind, string>> = {
     delegate: 'attacks on Diet delegates',
     enslave: 'enslaving conquered peoples',
     independents: 'attacks on independent worlds',
+    greatWork: 'destroying or seizing a peaceful Great Work',
 };
 
 export interface WarCrimesRecord {

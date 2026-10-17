@@ -41,7 +41,7 @@ export interface CrisisEntry {
 }
 
 /** The hostile threat factions that hold an empire in their state's `faction` field. */
-export const CRISIS_ENTRIES: readonly CrisisEntry[] = [
+export const CRISIS_ENTRIES: CrisisEntry[] = [
     { key: 'purifier', flag: 'threatPurifier', label: 'Purifier' },
     { key: 'cult', flag: 'cult', label: 'Cult' },
     { key: 'hive', flag: 'hive', label: 'Hive' },
@@ -53,6 +53,14 @@ export const CRISIS_ENTRIES: readonly CrisisEntry[] = [
     { key: 'hollowFleet', flag: 'threatHollowFleet', label: 'Hollow Fleet' },
     { key: 'probeSwarm', flag: 'threatProbeSwarm', label: 'Probe Swarm' },
 ];
+
+// A crisis may name more helpers than the treaty rule finds (Giantworks: the empires that protected the Great Work that turned hostile).
+const helperProviders = new Map<string, (galaxy: Galaxy, faction: Empire) => Empire[]>();
+
+/** A threat names extra helpers of its crisis faction (crisisHelpers adds them to the treaty partners). */
+export function registerCrisisHelpers(key: string, provider: (galaxy: Galaxy, faction: Empire) => Empire[]): void {
+    helperProviders.set(key, provider);
+}
 
 /** The crisis's faction while it is loose (exists, active); null before it wakes / after it falls. Pure. */
 export function crisisFaction(galaxy: Galaxy, entry: CrisisEntry): Empire | null {
@@ -80,6 +88,7 @@ export function activeCrises(galaxy: Galaxy): { entry: CrisisEntry; faction: Emp
  */
 export function crisisHelpers(galaxy: Galaxy, entry: CrisisEntry, faction: Empire): Empire[] {
     const out: Empire[] = [];
+    for (const e of helperProviders.get(entry.key)?.(galaxy, faction) ?? []) if (e.active && e !== faction && !out.includes(e)) out.push(e);
     if (entry.key === 'purifier') {
         const st = peekThreatState<{ exposed?: boolean; waker?: Empire | null }>(galaxy, 'purifier');
         const w = st?.waker ?? null;
@@ -367,18 +376,30 @@ export function crisisYearly(galaxy: Galaxy, entry: CrisisEntry): void {
 // Registration: one handler set per crisis flag (each only looks at its own faction)
 // ---------------------------------------------------------------------------------------------------------------
 
+/**
+ * Adds a crisis after load (a hostile Giantworks wonder: the Beacon's Reclaimers, an awakened Ultramind): its handler set is
+ * registered at once. Idempotent by key.
+ */
+export function addCrisisEntry(entry: CrisisEntry): void {
+    if (CRISIS_ENTRIES.some((x) => x.key === entry.key)) return;
+    CRISIS_ENTRIES.push(entry);
+    registerCrisisEntry(entry);
+}
+
+function registerCrisisEntry(entry: CrisisEntry): void {
+    const id = `crisis.${entry.key}`;
+    registerScenarioEvent({ id: `${id}.warDeclared`, flag: entry.flag, order: 30, event: 'warDeclared', run: (g, e) => onWarDeclared(g, entry, e.empire, e.target) });
+    registerScenarioEvent({ id: `${id}.owner`, flag: entry.flag, order: 30, event: 'colonyOwnerChanged', run: (g, e) => onColonyOwnerChanged(g, entry, e.colony, e.from, e.to) });
+    registerScenarioEvent({ id: `${id}.damage`, flag: entry.flag, order: 30, event: 'warDamageInflicted', run: (g, e) => onWarDamage(g, entry, e.inflictor, e.victim, e.habitat) });
+    registerScenarioEvent({ id: `${id}.destroyed`, flag: entry.flag, order: 30, event: 'habitatDestroyed', run: (g, e) => onHabitatDestroyed(g, entry, e.habitat, e.destroyer) });
+    registerScenarioEvent({ id: `${id}.killed`, flag: entry.flag, order: 30, event: 'builtObjectKilledBy', run: (g, e) => onKilledBy(g, entry, e.builtObject, e.destroyer) });
+    registerScenarioEvent({ id: `${id}.attacked`, flag: entry.flag, order: 30, event: 'builtObjectAttacked', run: (g, e) => onAttackedFaction(g, entry, ownerOf(e.builtObject), e.attackingEmpire) });
+    registerScenarioEvent({ id: `${id}.habitatAttacked`, flag: entry.flag, order: 30, event: 'habitatAttacked', run: (g, e) => onAttackedFaction(g, entry, e.habitat.empire, e.attackingEmpire) });
+    registerScenarioYearly({ id: `${id}.yearly`, flag: entry.flag, order: 30, run: (g) => crisisYearly(g, entry) });
+}
+
 export function registerCrisisInteractions(): void {
-    for (const entry of CRISIS_ENTRIES) {
-        const id = `crisis.${entry.key}`;
-        registerScenarioEvent({ id: `${id}.warDeclared`, flag: entry.flag, order: 30, event: 'warDeclared', run: (g, e) => onWarDeclared(g, entry, e.empire, e.target) });
-        registerScenarioEvent({ id: `${id}.owner`, flag: entry.flag, order: 30, event: 'colonyOwnerChanged', run: (g, e) => onColonyOwnerChanged(g, entry, e.colony, e.from, e.to) });
-        registerScenarioEvent({ id: `${id}.damage`, flag: entry.flag, order: 30, event: 'warDamageInflicted', run: (g, e) => onWarDamage(g, entry, e.inflictor, e.victim, e.habitat) });
-        registerScenarioEvent({ id: `${id}.destroyed`, flag: entry.flag, order: 30, event: 'habitatDestroyed', run: (g, e) => onHabitatDestroyed(g, entry, e.habitat, e.destroyer) });
-        registerScenarioEvent({ id: `${id}.killed`, flag: entry.flag, order: 30, event: 'builtObjectKilledBy', run: (g, e) => onKilledBy(g, entry, e.builtObject, e.destroyer) });
-        registerScenarioEvent({ id: `${id}.attacked`, flag: entry.flag, order: 30, event: 'builtObjectAttacked', run: (g, e) => onAttackedFaction(g, entry, ownerOf(e.builtObject), e.attackingEmpire) });
-        registerScenarioEvent({ id: `${id}.habitatAttacked`, flag: entry.flag, order: 30, event: 'habitatAttacked', run: (g, e) => onAttackedFaction(g, entry, e.habitat.empire, e.attackingEmpire) });
-        registerScenarioYearly({ id: `${id}.yearly`, flag: entry.flag, order: 30, run: (g) => crisisYearly(g, entry) });
-    }
+    for (const entry of CRISIS_ENTRIES) registerCrisisEntry(entry);
 }
 
 registerCrisisInteractions();

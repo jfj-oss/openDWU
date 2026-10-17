@@ -26,6 +26,24 @@ export const THREAT_INVESTIGATIONS_KEY = 'threatInvestigations';
 /** Concealment of a framework site in the resolution roll (the counter-intelligence scale, 25–100: a mid value). */
 export const THREAT_SITE_CONCEALMENT = 60;
 
+/**
+ * A threat that resolves its own investigations (Giantworks: an investigation yields one more cargo hint, never a proof).
+ * Without one the default applies: a success confirms the site.
+ */
+export interface ThreatInvestigationHandler {
+    /** A reason the site cannot be investigated now (null: it can). Pure. */
+    blocked?: (galaxy: Galaxy, empire: Empire, target: Habitat | BuiltObject) => string | null;
+    /** Resolves a due investigation (`success` = the roll came up); returns the message to send. */
+    resolve: (galaxy: Galaxy, empire: Empire, target: Habitat | BuiltObject, agent: Character, success: boolean) => { title: string; text: string; good: boolean };
+}
+
+// eslint-disable-next-line no-var
+var investigationHandlersStore: Map<string, ThreatInvestigationHandler> | undefined;
+
+export function registerThreatInvestigation(threat: string, handler: ThreatInvestigationHandler): void {
+    (investigationHandlersStore ??= new Map()).set(threat, handler);
+}
+
 export interface ThreatInvestigation {
     threat: string;
     target: Habitat | BuiltObject;
@@ -69,7 +87,7 @@ export function threatInvestigateBlocked(galaxy: Galaxy, empire: Empire, threat:
     if (threatInvestigationOf(galaxy, empire, threat, target) !== null) return 'Already under investigation';
     if (agent === null) return 'No agent';
     if (!threatInvestigators(galaxy, empire).includes(agent)) return 'Agent unavailable';
-    return null;
+    return investigationHandlersStore?.get(threat)?.blocked?.(galaxy, empire, site.target) ?? null;
 }
 
 /** Assigns `agent` to the site: the agent is put on (or stays on) counter-intelligence while the investigation runs. */
@@ -103,6 +121,12 @@ export function reviewThreatInvestigations(galaxy: Galaxy): void {
         // RND(threat investigation): the resolution roll
         const confirmed = galaxy.rnd.nextDouble() < chance;
         const where = (inv.target as { name?: string }).name ?? '?';
+        const own = investigationHandlersStore?.get(inv.threat);
+        if (own !== undefined) {
+            const r = own.resolve(galaxy, inv.empire, inv.target, inv.agent, confirmed);
+            scenarioMessage(galaxy, inv.empire, r.title, r.text, { type: r.good ? EmpireMessageType.GeneralGoodEvent : EmpireMessageType.GeneralNeutralEvent, subject: inv.target });
+            continue;
+        }
         if (confirmed) revealTo(galaxy, site.site!, inv.empire, KNOWLEDGE_CONFIRMED);
         scenarioMessage(
             galaxy,

@@ -319,6 +319,7 @@ export const PACKAGE_DEFAULTS: readonly { prefix: string; source: string; catego
     { prefix: 'GenShips ', source: 'generation-ships', category: 'threat' },
     { prefix: 'ArchiveCore ', source: 'archive-cores', category: 'threat' },
     { prefix: 'ProbeSwarm ', source: 'probe-swarm', category: 'threat' },
+    { prefix: 'Giantworks ', source: 'giantworks', category: 'threat' },
     { prefix: 'VoidWhale ', source: 'void-whale', category: 'threat' },
     { prefix: 'HollowFleet ', source: 'hollow-fleet', category: 'threat' },
     { prefix: 'Purifier ', source: 'purifier', category: 'threat' },

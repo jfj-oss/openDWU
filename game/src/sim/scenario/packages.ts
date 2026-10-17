@@ -33,6 +33,7 @@ import './threats/greyTide';
 import './threats/hive';
 import './threats/archiveCores';
 import './threats/generationShips';
+import './threats/giantworks/framework';
 import './threats/probeSwarm';
 import './threats/voidWhale';
 import './threats/hollowFleet';

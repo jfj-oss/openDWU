@@ -69,6 +69,7 @@ export const ADDON_STATUS: Readonly<Record<string, string>> = {
     'purifier': 'recommended',
     'archive-cores': 'recommended',
     'probe-swarm': 'recommended',
+    giantworks: 'recommended',
     'slavery': 'recommended',
     'scorched-earth': 'work in progress',
     'orbital-superiority': 'new',
@@ -117,6 +118,7 @@ const GROUP_OF: Readonly<Record<string, AddonGroup>> = {
     'generation-ships': 'Hidden threats',
     'archive-cores': 'Hidden threats',
     'probe-swarm': 'Hidden threats',
+    giantworks: 'Hidden threats',
     'void-whale': 'Hidden threats',
     'hollow-fleet': 'Hidden threats',
     purifier: 'Hidden threats',
@@ -665,7 +667,7 @@ export const EXPANSIONS: readonly Expansion[] = [
     { id: 'the-rim', name: 'The Rim', description: 'The frontier beyond the core: rim trade, frontier settlement, wild fauna and herders, the rim atmosphere, and the Voidbloom War.', members: ['rimTrade', 'rim-frontier', 'rim-fauna', 'rim-herders', 'rim-atmosphere', 'new-fauna', 'voidbloom'] },
     { id: 'politics-characters', name: 'Politics & Characters', description: 'Governors, VIPs and the Galactic Council, internal security, reputation, espionage fallout, frontier autonomy, refugees, war crimes remembered and bounty hunters.', members: ['characters-victory', 'internal-security', 'reputation', 'espionage-consequences', 'frontier-autonomy', 'refugees-demographics', 'war-crimes', 'bounty-hunters'] },
     { id: 'economy', name: 'Economy', description: 'Colony economy, the exchange, chartered companies, corporate coups, privateers and wreckage salvage.', members: ['colony-economy', 'exchange', 'chartered-companies', 'corporatecoup', 'privateers', 'wreckage-salvage'] },
-    { id: 'galactic-threats', name: 'Galactic Threats', description: 'The hidden end-game threats (cult, hive, silence, greytide, ghost armada, robot mutiny, time bomb, doppelgangers, dark farms) and the early ones: generation ships, a dead probe swarm, the archive cores they leave and the Void Whale, plus the mid-game Purifier: an ancient planet destroyer you can hunt.', members: ['threat-framework', 'generation-ships', 'probe-swarm', 'hollow-fleet', 'archive-cores', 'void-whale', 'purifier', 'cult', 'hive', 'silence', 'greytide', 'ghostarmada', 'robotmutiny', 'timebomb', 'doppelgangers', 'darkfarms'] },
+    { id: 'galactic-threats', name: 'Galactic Threats', description: 'The hidden end-game threats (cult, hive, silence, greytide, ghost armada, robot mutiny, time bomb, doppelgangers, dark farms) and the early ones: generation ships, a dead probe swarm, the archive cores they leave and the Void Whale, plus the mid-game Purifier: an ancient planet destroyer you can hunt, and Giantworks: the independents\' Great Work, built in secret and never known for certain until it is finished.', members: ['threat-framework', 'generation-ships', 'probe-swarm', 'hollow-fleet', 'archive-cores', 'void-whale', 'purifier', 'giantworks', 'cult', 'hive', 'silence', 'greytide', 'ghostarmada', 'robotmutiny', 'timebomb', 'doppelgangers', 'darkfarms'] },
     { id: 'living-galaxy', name: 'Living Galaxy', description: 'A galaxy that moves on its own: lively events and active independents.', members: ['lively-galaxy', 'independents-active'] },
 ];
 

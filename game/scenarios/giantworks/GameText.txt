@@ -1,0 +1,78 @@
+'Giantworks: message texts (scenarioText tags). {n} items are filled by the scenario code. Wonder modules add their own "Giantworks Kind <id>", "Giantworks Hint <tag>" and optional "Giantworks Complete <id>" lines.
+Giantworks Faction Name;The Founders' Compact
+Giantworks Scaffold Name;Great Work: {0}
+Giantworks Scaffold Design;Great Work Scaffold
+Giantworks Stage 0;Foundations
+Giantworks Stage 1;Frame
+Giantworks Stage 2;Superstructure
+Giantworks Stage 3;Fitting
+Giantworks Stage 4;Complete
+Giantworks And;and
+Giantworks Rumour Title;A secret among the independents
+Giantworks Rumour;Our agents report that the independent worlds of {0} have been meeting in secret. They are said to call themselves the Founders' Compact. Nobody knows what they intend.
+Giantworks Gather Title;Independent freighters on the move
+Giantworks Gather;The Founders' Compact has begun to send convoys of freighters across the galaxy. They leave {0} and the other founding worlds heavily loaded. Something is being built, and nobody has said where.
+Giantworks Seen Title;A construction site
+Giantworks Seen;Our ships have found a huge construction site at {0}. The Founders' Compact flies its convoys here.
+Giantworks Hint Title;Cargo manifest
+Giantworks Hint;Our observers at {1} have read a convoy's manifest: {0}
+Giantworks Hint Unknown;Unusual cargo ({0}).
+Giantworks Suspected Title;A Great Work
+Giantworks Suspected;The cargoes leave little doubt: the Founders' Compact is raising a Great Work at {0}. It could be: {1}. We cannot be certain of anything until it is finished.
+Giantworks Stage Title;The Great Work grows
+Giantworks Stage Reached;The Great Work at {0} has reached its {1} stage.
+Giantworks Label Building;Great Work, {0}%. {1}
+Giantworks Purpose Unknown;Purpose unknown.
+Giantworks Purpose One;Probably: {0} (not proven).
+Giantworks Purpose Some;One of: {0}.
+Giantworks Label Complete;Great Work: {0}
+Giantworks Status Building;{0}, {1}%. {2}
+Giantworks Status Complete;Finished: {0}
+Giantworks Complete News;The Great Work at {1} is finished: {0}.
+Giantworks Investigation Title;Great Work investigation
+Giantworks Investigation Found;{0} has learned something at {1}: {2}
+Giantworks Investigation Nothing;{0} found nothing new at {1}.
+Giantworks Convoy Attacked Title;Attack on the Compact's convoy
+Giantworks Convoy Attacked;The ships we attacked belong to the Founders' Compact and sail for the independent worlds. The galaxy counts an attack on its convoys as an attack on the independents, and the Compact will not forget it.
+Giantworks Protected Title;The Compact remembers
+Giantworks Protected;Our warships have stood watch over the Great Work at {0} for a year. The Founders' Compact has noted it.
+Giantworks Sabotage Caught News;{0} was caught sabotaging the Great Work at {1}.
+Giantworks Destroyed News;{1} has destroyed the Great Work at {0}.
+Giantworks Destroyed News Unknown;The Great Work at {0} has been destroyed.
+Giantworks Wreckage Title;What the wreckage showed
+Giantworks Wreckage;Analysts have sifted the wreckage of the Great Work at {0}: it was to be {1}.
+Giantworks Seized News;{0} has seized {1}.
+Giantworks Diet Inspect;Inspect the Great Work
+Giantworks Diet Inspect News;The Interstellar Diet's inspectors have reported on the Great Work. The members now agree on fewer possibilities, but not on the truth.
+Giantworks Diet Protect;Protect the Great Work
+Giantworks Diet Protect News;The Interstellar Diet has placed the Great Work and its convoys under its protection.
+Giantworks Diet Demolish;Authorise the demolition of the Great Work
+Giantworks Diet Demolish News;The Interstellar Diet has authorised the demolition of the Great Work. Whoever destroys it will not be called a criminal; the Founders' Compact will still be angry.
+Giantworks Diet Intl;Internationalise the Great Work
+Giantworks Diet Intl News;The Interstellar Diet has internationalised the Great Work: its benefits will be shared among the members.
+Giantworks Map Founder;Founder (Compact)
+Giantworks Map Site;Great Work {0}%
+Giantworks Map Complete;{0}
+Giantworks Kind casino;The Gilded Orbit
+Giantworks Kind ultramind;The Ultramind
+Giantworks Kind sanctuary;The Leviathan Sanctuary
+Giantworks Kind beacon;The Beacon
+Giantworks Kind riftgate;The Rift Gate
+Giantworks Kind ark;The Ark Engine
+Giantworks Hint glass-ice;Huge shipments of reinforced glass and water ice.
+Giantworks Hint luxury;Rare luxury goods and exotic food.
+Giantworks Hint neon;Neon tubing, gaming tables and chandeliers by the crate.
+Giantworks Hint plankton;Tanks of nutrient plankton and pressure-rated hull plating.
+Giantworks Hint superconductors;Superconductors and coolant in vast quantities.
+Giantworks Hint cores;Processor cores and quantum lattices by the thousand.
+Giantworks Hint beacons;Navigation beacons aligned toward the galaxy's rim.
+Giantworks Hint dark-alloys;Black alloys and cloaking mesh of no known make.
+Giantworks Hint engines;Heavy engines and walker-grade actuators.
+Giantworks Hint containment;Containment fields rated for something large and alive.
+Giantworks Hint cooling;Cryogenic plant big enough to chill a moon.
+Giantworks Hint stasis;Stasis cradles, empty and in rows.
+Reputation Cause giantworks.attack;You attacked the Compact's convoys
+Reputation Cause giantworks.sabotage;You were caught sabotaging the Great Work
+Reputation Cause giantworks.saboteur;Caught sabotaging the Great Work
+Reputation Cause giantworks.destroy;You destroyed the Great Work
+Reputation Cause giantworks.protect;You stood watch over the Great Work
