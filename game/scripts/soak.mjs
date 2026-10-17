@@ -206,6 +206,45 @@ const CONFIGS = [
     SCN('independents-active', { name: 'long-independents-15y', set: 'long', seed: 83, years: 15 }),
 ];
 
+// `--set regress` (scripts/regress-soak-hook.mjs; the 2026-10-17 regression / balance campaign of the Cult / Hive / Generation Ships /
+// Purifier / crisis interactions / Coordinated landings / Game Editor spawns / Smarter AI landings): add-ons are picked the way the
+// new-game wizard does (cfg.addons: ids or 'recommended'; Smarter AI + Coordinated landings by default), start types match what is
+// tested (cfg.late = { age, tech }: the unit tests' mid-game start; wizard sliders for the old-galaxy ones).
+//   rg-<what>-<start>-s<seed>: start = norm (standard start) | late (age 4-6 empires, tech 3-5)
+const RG_W = (extra = {}) => ({ starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 }, ...extra });
+const RG_ALL = { threatExistChancePct: 100, threatMinYear: 0 };
+const RG_CORE = ['characters-victory', 'reputation', 'internal-security'];
+const rg = (name, o) => ({ set: 'regress', seed: 1, years: 5, wizard: RG_W(), hook: {}, ...o, name });
+const RG_CULT = { cultExistChancePct: 100, cultMinYear: 0, cultSeedYear: 0, cultSpreadPct: 30, cultAmbassadorPct: 30 };
+const RG_HIVE = { hiveExistChancePct: 100, hiveMinYear: 0, hiveThresholdPct: 5, hiveMinNodes: 1 };
+const RG_PUR = { purifierExistChancePct: 100, purifierMinYear: 0, purifierYear: 1, purifierWakeYears: 1 };
+const RG_GEN = { generationShipsExistChancePct: 100, generationShipsMinYear: 0 };
+const LATE4 = { age: 4, tech: 3 };
+const LATE6 = { age: 6, tech: 5 };
+const CONFIGS_REGRESS = [
+    // Short (4-6 years): each threat forced at its natural stage, a late start for the late-game ones.
+    ...[1, 2].map((seed) => rg(`rg-cult-late-s${seed}`, { seed, years: 5, late: LATE4, addons: ['cult', ...RG_CORE], params: { ...RG_ALL, ...RG_CULT } })),
+    ...[1, 2].map((seed) => rg(`rg-hive-late-s${seed}`, { seed, years: 5, late: LATE4, addons: ['hive', ...RG_CORE], params: { ...RG_ALL, ...RG_HIVE } })),
+    ...[1, 2].map((seed) => rg(`rg-purifier-late-s${seed}`, { seed, years: 5, late: LATE4, addons: ['purifier', ...RG_CORE], params: { ...RG_ALL, ...RG_PUR } })),
+    rg('rg-purifier-late6-s3', { seed: 3, years: 5, late: LATE6, addons: ['purifier', ...RG_CORE, 'refugees-demographics'], params: { ...RG_ALL, ...RG_PUR } }),
+    rg('rg-purifier-fr-late-s1', { seed: 1, years: 5, late: LATE4, addons: ['purifier', ...RG_CORE], gameplay: ['fighting-retreats'], params: { ...RG_ALL, ...RG_PUR } }),
+    ...[1, 2].map((seed) => rg(`rg-genships-norm-s${seed}`, { seed, years: 8, addons: ['generation-ships', 'archive-cores', ...RG_CORE], params: { ...RG_ALL, ...RG_GEN, genShipsEarliestYear: 2, genShipsLatestYear: 3 } })),
+    rg('rg-genships-age3-s3', { seed: 3, years: 6, late: { age: 3, tech: 3 }, addons: ['generation-ships', 'archive-cores', ...RG_CORE], params: { ...RG_ALL, ...RG_GEN, genShipsEarliestYear: 0, genShipsLatestYear: 1 } }),
+    // Game Editor spawns into a game that started with no add-ons (save check reloads the bare threat-framework scenario) and into one with some.
+    rg('rg-editor-bare-late-s1', { seed: 1, years: 4, late: LATE4, hook: { spawn: [{ key: 'cult', day: 60 }, { key: 'purifier', day: 90 }, { key: 'hive', day: 120 }, { key: 'generationShips', day: 150 }] }, params: {} }),
+    rg('rg-editor-addons-late-s2', { seed: 2, years: 4, late: LATE4, addons: ['characters-victory', 'reputation'], hook: { spawn: [{ key: 'cult', day: 60 }, { key: 'purifier', day: 90 }, { key: 'hive', day: 120 }, { key: 'generationShips', day: 150 }] }, params: {} }),
+    // Medium (12-15 years): several threats together, the crisis interactions (reputation, the council through the Diet, refugees) on.
+    ...[1, 2].map((seed) => rg(`rg-multi-late-s${seed}`, { seed, years: 12, late: LATE4, addons: ['cult', 'hive', 'purifier', 'generation-ships', 'archive-cores', ...RG_CORE, 'refugees-demographics'], params: { ...RG_ALL, ...RG_CULT, ...RG_HIVE, ...RG_PUR, ...RG_GEN, genShipsEarliestYear: 1, genShipsLatestYear: 3, purifierYear: 2, cultSeedYear: 1 }, hook: { timing: true } })),
+    rg('rg-multi-norm-s3', { seed: 3, years: 15, addons: ['cult', 'hive', 'purifier', 'generation-ships', 'archive-cores', ...RG_CORE, 'refugees-demographics'], params: { ...RG_ALL, hiveThresholdPct: 20, hiveMinNodes: 3, cultSeedYear: 5, cultSpreadPct: 15, cultAmbassadorPct: 20, purifierYear: 6, purifierWakeYears: 3, genShipsEarliestYear: 3, genShipsLatestYear: 5 }, hook: { timing: true } }),
+    // Long (25-40 years): all the recommended add-ons (+ Smarter AI and Coordinated landings), threats at their natural settings but sure to exist.
+    ...[1, 2, 3].map((seed) => rg(`rg-long-norm-s${seed}`, { seed, years: 30, addons: 'recommended', params: { ...RG_ALL, threatMinYear: 6, cultSeedYear: 10, purifierYear: 10, purifierWakeYears: 6 }, hook: { timing: true, sampleDays: 60 } })),
+    ...[1, 2].map((seed) => rg(`rg-long-late-s${seed}`, { seed: seed + 10, years: 25, late: LATE4, wizard: RG_W({ otherEmpires: { empireCount: 11 } }), addons: 'recommended', params: { ...RG_ALL, cultSeedYear: 2, purifierYear: 2, purifierWakeYears: 2 }, hook: { timing: true, sampleDays: 60 } })),
+    rg('rg-long-defaults-s4', { seed: 4, years: 40, addons: 'recommended', params: {}, hook: { timing: true, sampleDays: 60 } }),
+    // Coordinated landings on vs off on a war-heavy seed (the os-war galaxy: aggressive AI, older galaxy, 700 stars, 7 empires), Smarter AI default.
+    ...[true, false].map((on) => rg(`rg-cl-${on ? 'on' : 'off'}-s1`, { seed: 1, years: 25, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, addons: [], hook: { clFlag: on, sampleDays: 60 } })),
+];
+CONFIGS.push(...CONFIGS_REGRESS);
+
 /** Negative amounts the C# has too. */
 const FAITHFUL_NEGATIVE = new Set([
     // BuiltObject.2.cs 350 FinalizeContractsNotPresentAtLoad: `cargo.Reserved -= num` with no floor (Cargo.cs 21 a plain int).
@@ -248,7 +287,15 @@ const MODULES = { game: '/src/sim/game.ts', sgo: '/src/sim/startGameOptions.ts',
     harness: '/src/sim/tick/harness.ts', save: '/src/sim/save/gameSave.ts', galaxySave: '/src/sim/save/galaxySave.ts', digest: '/src/sim/tick/digest.ts',
     scenario: '/test/helpers/scenarioGame.ts', time: '/src/sim/galaxyTime.ts',
     // docs/DARK_THEMES.md: scripts/dark-themes-hook.mjs reads these (same module instances as the sim: preserveModules).
-    slavery: '/src/sim/slavery.ts', slaveryReview: '/src/sim/slaveryReview.ts' };
+    slavery: '/src/sim/slavery.ts', slaveryReview: '/src/sim/slaveryReview.ts',
+    // The add-on picker's resolution (cfg.addons) and what scripts/regress-soak-hook.mjs reads (same module instances as the sim).
+    addons: '/src/sim/scenario/addons.ts', scnHooks: '/src/sim/scenario/hooks.ts', scnState: '/src/sim/scenario/state.ts', overlay: '/src/sim/scenario/overlay.ts',
+    playerCommands: '/src/sim/player/playerCommands.ts', humans: '/src/sim/humanEmpires.ts',
+    thFramework: '/src/sim/scenario/threats/framework.ts', thCult: '/src/sim/scenario/threats/cult.ts', thHive: '/src/sim/scenario/threats/hive.ts',
+    thPurifier: '/src/sim/scenario/threats/purifier.ts', thGenShips: '/src/sim/scenario/threats/generationShips.ts', thNavy: '/src/sim/scenario/threats/factionNavy.ts',
+    thCrisis: '/src/sim/scenario/threats/crisis.ts', thRobot: '/src/sim/scenario/threats/robotMutiny.ts', thProbe: '/src/sim/scenario/threats/probeSwarm.ts', thWhale: '/src/sim/scenario/threats/voidWhale.ts',
+    council: '/src/sim/scenario/emergent/council.ts', ledger: '/src/sim/scenario/reputation/ledger.ts', eventLog: '/src/sim/scenario/eventLog/log.ts', chronicle: '/src/sim/scenario/eventLog/chronicle.ts',
+    diplomacyTick: '/src/sim/diplomacyTick.ts', boTypes: '/src/sim/builtObjectTypes.ts', simTime: '/src/sim/tick/simTime.ts', designSpecs: '/src/sim/data/designSpecifications.ts', characters: '/src/sim/characters.ts', governors: '/src/sim/scenario/governors.ts', coordLand: '/src/sim/scenario/coordinatedLandings/coordinatedLandings.ts' };
 
 async function bundle() {
     const dir = mkdtempSync(resolve(tmpdir(), 'dwu-soak-'));
@@ -369,7 +416,33 @@ async function runOne(name) {
         const playable = gameData.races.filter((r) => r.playable).sort((a, b) => a.name.localeCompare(b.name));
         so.raceName = playable.length > 0 ? playable[cfg.seed % playable.length].name : defaultRaceName(gameData.races);
         applyEmpireDefaults(so, gameData.races.findIndex((r) => r.name === so.raceName));
-        if (cfg.scenario) {
+        if (cfg.addons) {
+            // The add-on picker's resolution, as the new-game wizard does it (newGameWizard.ts addonChoiceFor): base add-ons, the
+            // ticked ones (cfg.addons: ids or 'recommended'), Smarter AI (defaults, unless cfg.smarterAI === false) and Coordinated
+            // landings (follows Smarter AI unless cfg.coordinatedLandings is set), the master flags forced on, cfg.flags / cfg.params
+            // as the per-add-on panels' overrides.
+            const A = await load('addons');
+            const S = await load('scenario');
+            const cat = A.addonCatalog(S.scenarioIndexFs());
+            const ids = cfg.addons === 'recommended' ? Object.keys(A.ADDON_STATUS).filter((k) => A.ADDON_STATUS[k] === 'recommended') : cfg.addons;
+            const smart = cfg.smarterAI === false ? null : A.defaultSmarterAIChoice();
+            const w1 = A.withSmarterAI([...A.BASE_ADDONS, ...ids], { flags: { ...(cfg.flags ?? {}) }, params: { ...(cfg.params ?? {}) } }, smart);
+            // cfg.gameplay: the other "Gameplay changes" checkboxes by add-on id.
+            const gp = { 'orbital-superiority': A.withOrbitalSuperiority, 'longer-ground-combat': A.withLongerGroundCombat, 'jump-interdiction': A.withJumpInterdiction, 'blockades-bite': A.withBlockadesBite,
+                mothballing: A.withMothballing, 'slow-hyperdrive': A.withSlowHyperdrive, 'fighting-retreats': A.withFightingRetreats, veterans: A.withVeterans };
+            let wg = w1;
+            for (const id of cfg.gameplay ?? []) wg = gp[id](wg.picked, wg.overrides, true);
+            const w2 = A.withCoordinatedLandings(wg.picked, wg.overrides, cfg.coordinatedLandings ?? A.coordinatedLandingsChoice(undefined, smart));
+            const picked = A.withFlagAddons(cat, w2.picked, w2.overrides);
+            const plan = A.planAddonStart(cat, picked);
+            const sw = A.resolveAddonSwitches(cat, picked, w2.overrides);
+            const overlay = A.addonStartOverlay(cat, picked, S.scenarioOverlaysFs());
+            gameData = S.scenarioGameData(gameData, overlay);
+            so.scenario = { id: plan.id, flags: sw.flags, params: sw.params, addons: A.canonicalAddons(cat, picked) };
+            report.flags = sw.flags;
+            report.params = Object.fromEntries(Object.entries(cfg.params ?? {}));
+            report.addons = so.scenario.addons;
+        } else if (cfg.scenario) {
             // An array: a test-bed composite of those packages (test/helpers/scenarioGame.ts comboOverlayFs).
             const { comboOverlayFs } = await load('scenario');
             gameData = scenarioGameData(gameData, Array.isArray(cfg.scenario) ? comboOverlayFs(cfg.scenario) : cfg.scenario);
@@ -386,6 +459,12 @@ async function runOne(name) {
         const starCount = cfg.stars ?? 0;
         const opts = toCreateGameOptions(so, gameData, Array.from({ length: Math.max(3000, starCount) }, (_, i) => `S${i}`));
         if (cfg.stars) opts.starCount = cfg.stars;
+        // cfg.late = { age, tech }: the mid-game start of the unit tests (createGame galaxyAge / player and AI empire age + tech level), beyond the wizard's sliders.
+        if (cfg.late) {
+            opts.galaxyAge = cfg.late.age;
+            opts.player = { ...opts.player, age: cfg.late.age, techLevel: cfg.late.tech };
+            opts.aiEmpires = opts.aiEmpires.map((e) => ({ ...e, age: cfg.late.age, techLevel: cfg.late.tech }));
+        }
         let t = performance.now();
         const game = createGame(opts);
         report.createMs = performance.now() - t;
@@ -394,8 +473,9 @@ async function runOne(name) {
         // --hook file.mjs: a debug module; its start(ctx) runs after createGame, chunk(ctx) after every chunk (return
         // 'stop' from either to end the run), frame(ctx, wallMs, galaxy) after every sim frame (synchronous, e.g.
         // scripts/soak-timing-hook.mjs). ctx.chunkSeconds is the --chunk length.
-        const hook = arg('hook', null) === null ? null : await import(resolve(String(arg('hook'))));
-        const hookCtx = { game, g, gameData, so, load, report, chunkSeconds: chunk };
+        const hookFile = arg('hook', null) ?? (cfg.hook ? 'scripts/regress-soak-hook.mjs' : null);
+        const hook = hookFile === null ? null : await import(resolve(root, String(hookFile)));
+        const hookCtx = { game, g, gameData, so, load, report, chunkSeconds: chunk, cfg, outDir, name };
         const hookFrame = typeof hook?.frame === 'function' ? hook.frame : null;
         console.log(`config ${name}: seed ${cfg.seed}, ${g.starCount} stars, ${g.empires.length} empires, ${g.pirateEmpires.length} pirates, create ${report.createMs.toFixed(0)} ms, digest ${stateDigest(g)}`);
 
@@ -493,7 +573,7 @@ async function runOne(name) {
             if (day() - lastScanDay >= scanDays) { lastScanDay = day(); await overhead(() => doScan('periodic')); }
             if (saveAtS.has(s + chunk)) await overhead(() => {
                 try {
-                    report.saveCheck = saveCheck(game, so, gameData, saveRun, { serializeGame, deserializeGame, galaxyToJSON, stateDigest, runGameSeconds, GalaxyTime });
+                    report.saveCheck = saveCheck(game, so, hookCtx.gameData, saveRun, { serializeGame, deserializeGame, galaxyToJSON, stateDigest, runGameSeconds, GalaxyTime });
                     const sc = report.saveCheck;
                     (report.saveChecks ??= []).push(sc);
                     console.log(`${sc.digestEqual && sc.textEqual && sc.roundTripEqual ? '=' : '!'} save check d${sc.day}: ${sc.saveMB.toFixed(1)}MB, roundTrip ${sc.roundTripEqual}, digest ${sc.digestEqual} text ${sc.textEqual}${sc.firstDiff ? ' first diff ' + sc.firstDiff : ''}${sc.error ? ' ERROR ' + sc.error.split('\n')[0] : ''}`);
