@@ -150,6 +150,7 @@ function sample(ctx) {
         for (const e of normals) { col += e.colonies.length; mil += M.diplomacyTick.militaryPotency(e); pop += e.totalPopulation; const c = shipCounts(e); war += c.war; trans += c.trans; }
         return { emp: normals.length, col, war, trans, milK: Math.round(mil / 1000), popB: r2(pop / 1e9), avgMilK: normals.length ? Math.round(mil / normals.length / 1000) : 0, maxMilK: Math.round(Math.max(0, ...normals.map((e) => M.diplomacyTick.militaryPotency(e))) / 1000) };
     });
+    row.me = safe('player', () => (g.playerEmpire ? facSnap(g, g.playerEmpire) : null));
     row.pir = safe('pirates', () => ({ fac: g.pirateEmpires.filter((p) => p.active).length, ships: g.pirateEmpires.reduce((n, p) => n + p.builtObjects.length, 0) }));
     // Cult
     row.cult = safe('cult', () => {
