@@ -24,6 +24,12 @@
 //   instead of their race's art; the Purifier itself (its planet destroyer) a crescent: the stock sphere solid on the
 //   left, its right side a hollow, half-built skeleton opening to space (planetdestroyer.png). Picked by subRole
 //   (purifierArtUrl), render only: the sim's pictureRef is untouched.
+// - The Beacon (Giantworks add-on): the Reclaimers' warships, the two Watchers and the finished Beacon draw our bundled
+//   black-glass frames (public/art/beacon/, scripts/beacon-ships.py: grown three-way-symmetric hulls, ribbed and
+//   speckled, with stained-glass windows onto beating organs and veins), picked by subRole (beaconArtUrl); the
+//   Watchers and the Beacon are drawn at least a set size (minimumSizeScale). Their hearts beat, the
+//   organs' light swells through the panes and pulses run out along the veins, and a sighted Watcher's plates swing open
+//   (beaconFx.ts BeaconFxLayer). Who is who comes from the Beacon sim's state bag (BeaconArtState, read only).
 
 import { Container, type Texture } from 'pixi.js';
 import type { Galaxy } from '../sim/galaxy';
@@ -40,6 +46,7 @@ import { useMinifyingFilter } from './assets';
 import { loadShipArt } from './shipArt';
 import { SpritePool } from './fxCommon';
 import { GEN_SHIPS_LIGHTS } from './genShipsLights';
+import { peekThreatState } from '../sim/scenario/threats/framework';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Who is who (once per frame)
@@ -53,9 +60,55 @@ export interface ThreatLooks {
     /** The Purifier's faction (its escorts / guards / station wear the bundled art) and its repair station. */
     purifierFaction: Empire | null;
     purifierDock: BuiltObject | null;
+    /** The Beacon (Giantworks): the Reclaimers' faction, the two Watchers, the Watchers seen uncloaked now (null: the sim
+     * does not say, a Watcher opens while it sits still) and the finished Beacon. Optional: absent = none. */
+    reclaimers?: Empire | null;
+    watchers?: BuiltObject[];
+    watchersSighted?: BuiltObject[] | null;
+    beacon?: BuiltObject | null;
 }
 
-const looks: ThreatLooks = { genFactions: [], worldShips: [], swarmFaction: null, mothercore: null, purifierFaction: null, purifierDock: null };
+const looks: ThreatLooks = {
+    genFactions: [],
+    worldShips: [],
+    swarmFaction: null,
+    mothercore: null,
+    purifierFaction: null,
+    purifierDock: null,
+    reclaimers: null,
+    watchers: [],
+    watchersSighted: null,
+    beacon: null,
+};
+
+/**
+ * The render contract with the Beacon's sim (Giantworks add-on, the 'beacon' wonder; sim/scenario/threats/giantworks,
+ * beaconState.ts BEACON_KEY): these fields of its scenario state bag under BEACON_STATE_KEY (read here through
+ * peekThreatState, never created). All optional, so the art works with whatever part of the sim exists:
+ * - faction: the machine faction (the Watchers, then the Reclaimers). Every ship it owns draws its Reclaimer frame by
+ *   subRole (beaconFileForSubRole; a planet destroyer the capital ship's); its bases keep their stock frames.
+ * - watchers: the two Watchers (whoever owns them), as ships or as the sim's records ({ ship, mode }): the seed pod, drawn
+ *   at least WATCHER_VISUAL_SCALE × a WATCHER_REF_SIZE hull. A record's Watcher unfolds while its mode is 'sighting'
+ *   (seen uncloaked, parked over a colony) or 'fight' (it was attacked), and folds again in any other mode.
+ * - sighted: (ships given without records) the Watchers seen uncloaked right now, which unfold. With neither records'
+ *   modes nor this list, a Watcher unfolds while it sits still (currentSpeed under 1) and folds when it moves.
+ * - beacon: the finished Beacon (the Great Work's station once complete): the relay tower, drawn at least
+ *   BEACON_VISUAL_SCALE × a BEACON_REF_SIZE station (the framework's scaffold stages may want the same floor).
+ */
+export const BEACON_STATE_KEY = 'beacon';
+export interface BeaconWatcherRecord {
+    ship: BuiltObject | null;
+    mode?: string;
+}
+export interface BeaconArtState {
+    faction?: Empire | null;
+    watchers?: readonly (BuiltObject | BeaconWatcherRecord | null)[];
+    sighted?: readonly BuiltObject[];
+    beacon?: BuiltObject | null;
+}
+/** A Watcher record's modes in which it shows itself open. */
+const WATCHER_OPEN_MODES: ReadonlySet<string> = new Set(['sighting', 'fight']);
+const sightedScratch: BuiltObject[] = [];
 
 /** The threat factions / flagships this frame (a shared record, refreshed in place). */
 export function threatLooks(galaxy: Galaxy): ThreatLooks {
@@ -63,7 +116,31 @@ export function threatLooks(galaxy: Galaxy): ThreatLooks {
     looks.worldShips.length = 0;
     looks.swarmFaction = looks.mothercore = null;
     looks.purifierFaction = looks.purifierDock = null;
+    looks.reclaimers = null;
+    looks.watchers!.length = 0;
+    looks.watchersSighted = null;
+    looks.beacon = null;
     if (galaxy.scenario === null) return looks;
+    const b = peekThreatState<BeaconArtState>(galaxy, BEACON_STATE_KEY);
+    if (b !== null) {
+        looks.reclaimers = b.faction ?? null;
+        sightedScratch.length = 0;
+        let modes = false;
+        for (const w of b.watchers ?? []) {
+            if (w === null) continue;
+            const rec = 'ship' in w ? w : null;
+            const ship = rec !== null ? rec.ship : (w as BuiltObject);
+            if (ship === null || ship.hasBeenDestroyed) continue;
+            looks.watchers!.push(ship);
+            if (rec !== null && rec.mode !== undefined) {
+                modes = true;
+                if (WATCHER_OPEN_MODES.has(rec.mode)) sightedScratch.push(ship);
+            }
+        }
+        if (b.sighted !== undefined) for (const w of b.sighted) if (!sightedScratch.includes(w)) sightedScratch.push(w);
+        looks.watchersSighted = modes || b.sighted !== undefined ? sightedScratch : null;
+        looks.beacon = b.beacon !== undefined && b.beacon !== null && !b.beacon.hasBeenDestroyed ? b.beacon : null;
+    }
     for (const g of genShipsStates(galaxy)) {
         if (g.faction !== null) looks.genFactions.push(g.faction);
         if (g.pirate !== null) looks.genFactions.push(g.pirate);
@@ -125,11 +202,29 @@ export const MOTHERCORE_VISUAL_SCALE = 1.9;
  * its fleet next to its long escorts (render only). */
 export const PURIFIER_VISUAL_SCALE = 1.5;
 
-/** Visual size multiplier of an object (1 for everything but the world ship, the Mothercore and the Purifier). */
+/**
+ * The Watchers are drawn at least as large as a WATCHER_REF_SIZE hull drawn WATCHER_VISUAL_SCALE × (whatever size the
+ * sim gives them: the closed pod is about two capital ships across, and open its plates reach about 2.1 × further); the
+ * finished Beacon at least as large as a BEACON_REF_SIZE station drawn BEACON_VISUAL_SCALE ×. A larger hull keeps its
+ * own size.
+ */
+export const WATCHER_VISUAL_SCALE = 2.6;
+export const WATCHER_REF_SIZE = 900;
+export const BEACON_VISUAL_SCALE = 1.3;
+export const BEACON_REF_SIZE = 2500;
+
+/** The draw scale that shows a hull of `size` at least as large as a `refSize` one drawn `k` × (never below 1). Pure. */
+export function minimumSizeScale(size: number, refSize: number, k: number): number {
+    return Math.max(1, k * Math.sqrt(refSize / Math.max(1, size)));
+}
+
+/** Visual size multiplier of an object (1 for everything but the world ship, the Mothercore, the Purifier, the Watchers and the Beacon). */
 export function threatDrawScale(l: ThreatLooks, bo: BuiltObject): number {
     if (l.worldShips.includes(bo)) return WORLD_SHIP_VISUAL_SCALE;
     if (bo === l.mothercore) return MOTHERCORE_VISUAL_SCALE;
     if (bo.isPlanetDestroyer && l.purifierFaction !== null && bo.actualEmpire === l.purifierFaction) return PURIFIER_VISUAL_SCALE;
+    if (l.watchers !== undefined && l.watchers.length > 0 && l.watchers.includes(bo)) return minimumSizeScale(bo.size, WATCHER_REF_SIZE, WATCHER_VISUAL_SCALE);
+    if (l.beacon !== undefined && l.beacon !== null && bo === l.beacon) return minimumSizeScale(bo.size, BEACON_REF_SIZE, BEACON_VISUAL_SCALE);
     return 1;
 }
 
@@ -245,10 +340,89 @@ export function genShipsArtUrl(bo: BuiltObject, l: ThreatLooks = looks): string 
     return f === null ? null : `${GEN_SHIPS_ART_DIR}${f}.png`;
 }
 
-/** The bundled threat art of an object (the generation ships', the Purifier's or the probe swarm's), or null for its stock frame. */
+// ---------------------------------------------------------------------------------------------------------------
+// The Beacon's art (Giantworks)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The bundled Beacon frames (public/art/beacon/<file>.png, scripts/beacon-ships.py). */
+export const BEACON_ART_DIR = '/art/beacon/';
+
+/** The Reclaimer frame of a subRole (null: stock art). Pure. */
+export function beaconFileForSubRole(subRole: BuiltObjectSubRole): string | null {
+    switch (subRole) {
+        case BuiltObjectSubRole.Escort:
+        case BuiltObjectSubRole.ExplorationShip:
+            return 'escort';
+        case BuiltObjectSubRole.Frigate:
+            return 'frigate';
+        case BuiltObjectSubRole.Destroyer:
+            return 'destroyer';
+        case BuiltObjectSubRole.Cruiser:
+            return 'cruiser';
+        case BuiltObjectSubRole.CapitalShip:
+            return 'capitalship';
+        case BuiltObjectSubRole.Carrier:
+            return 'carrier';
+        case BuiltObjectSubRole.TroopTransport:
+        case BuiltObjectSubRole.PassengerShip:
+            return 'trooptransport';
+        case BuiltObjectSubRole.ConstructionShip:
+        case BuiltObjectSubRole.SmallFreighter:
+        case BuiltObjectSubRole.MediumFreighter:
+        case BuiltObjectSubRole.LargeFreighter:
+        case BuiltObjectSubRole.ResupplyShip:
+        case BuiltObjectSubRole.MiningShip:
+        case BuiltObjectSubRole.GasMiningShip:
+        case BuiltObjectSubRole.ColonyShip:
+            return 'construction';
+        default:
+            return null;
+    }
+}
+
+/** A Reclaimer hull: a ship of the Reclaimers' faction (its bases excepted). */
+export function isReclaimerHull(bo: BuiltObject, l: ThreatLooks = looks): boolean {
+    return l.reclaimers !== undefined && l.reclaimers !== null && bo.actualEmpire === l.reclaimers && bo.role !== BuiltObjectRole.Base;
+}
+
+/** One of the two Watchers. */
+export function isWatcher(bo: BuiltObject, l: ThreatLooks = looks): boolean {
+    return l.watchers !== undefined && l.watchers.length > 0 && l.watchers.includes(bo);
+}
+
+/** The Beacon frame of an object ('watcher', 'beacon' or a Reclaimer frame), or null (not the Beacon's / stock art). */
+export function beaconArtFile(bo: BuiltObject, l: ThreatLooks = looks): string | null {
+    if (l.beacon !== undefined && l.beacon !== null && bo === l.beacon) return 'beacon';
+    if (isWatcher(bo, l)) return 'watcher';
+    if (!isReclaimerHull(bo, l)) return null;
+    if (bo.isPlanetDestroyer) return 'capitalship';
+    return beaconFileForSubRole(bo.subRole);
+}
+
+/** The art URL of a Reclaimer hull, a Watcher (its closed pod) or the Beacon (null: stock art). `l` defaults to the
+ * record of the last threatLooks call, as purifierArtUrl. */
+export function beaconArtUrl(bo: BuiltObject, l: ThreatLooks = looks): string | null {
+    const f = beaconArtFile(bo, l);
+    return f === null ? null : `${BEACON_ART_DIR}${f}.png`;
+}
+
+/** Whether a Watcher should be open: sighted uncloaked now (the sim's list), or, without a list, sitting still. */
+export function watcherOpenTarget(bo: BuiltObject, l: ThreatLooks = looks): boolean {
+    if (l.watchersSighted !== undefined && l.watchersSighted !== null) return l.watchersSighted.includes(bo);
+    return bo.currentSpeed < 1;
+}
+
+/** Any Beacon art in play (the per-object lookups are skipped without). */
+export function beaconLooksActive(l: ThreatLooks): boolean {
+    return (l.reclaimers !== undefined && l.reclaimers !== null) || (l.watchers !== undefined && l.watchers.length > 0) || (l.beacon !== undefined && l.beacon !== null);
+}
+
+/** The bundled threat art of an object (the generation ships', the Purifier's, the probe swarm's or the Beacon's), or
+ * null for its stock frame. */
 export function threatArtUrl(bo: BuiltObject, l: ThreatLooks = looks): string | null {
-    if (l.purifierFaction === null && l.swarmFaction === null && l.genFactions.length === 0 && l.worldShips.length === 0) return null;
-    return genShipsArtUrl(bo, l) ?? purifierArtUrl(bo, l) ?? swarmArtUrl(bo, l);
+    const beacon = beaconLooksActive(l);
+    if (l.purifierFaction === null && l.swarmFaction === null && l.genFactions.length === 0 && l.worldShips.length === 0 && !beacon) return null;
+    return (beacon ? beaconArtUrl(bo, l) : null) ?? genShipsArtUrl(bo, l) ?? purifierArtUrl(bo, l) ?? swarmArtUrl(bo, l);
 }
 
 /** Blink period (s) of the generation ships' red positional lights, and the flash length. */

@@ -29,7 +29,8 @@ import { CONCORD_LIMBS_MIN_PX, ConcordFxLayer, concordArtEmpire, concordShipArt,
 import { ConstructionOverlays, DamageOverlays, shipConstructionSubject, shipDamageSubject } from './shipOverlays';
 import { artBundleFlag } from './artBundleFlags';
 import { LiveryOverlays } from './liveryLayer';
-import { ANCIENT_TINT, ANCIENT_WEAR, GenShipsFxLayer, SwarmFxLayer, genShipsArtFile, isAncientHull, threatArtUrl, threatDrawScale, threatLooks } from './threatArt';
+import { ANCIENT_TINT, ANCIENT_WEAR, GenShipsFxLayer, SwarmFxLayer, beaconArtFile, beaconLooksActive, genShipsArtFile, isAncientHull, threatArtUrl, threatDrawScale, threatLooks, watcherOpenTarget } from './threatArt';
+import { BeaconFxLayer } from './beaconFx';
 import { fogOf } from './fog';
 import { Galaxy } from '../sim/galaxy';
 import type { BuiltObject } from '../sim/builtObject';
@@ -540,6 +541,8 @@ export class BuiltObjectLayer {
     private swarmFx = new SwarmFxLayer();
     /** threatArt.ts: the generation ships' blinking red positional lights (pooled; above the ships). */
     private genFx = new GenShipsFxLayer();
+    /** beaconFx.ts: the Beacon's hearts, organs and veins pulsing, the Watchers' plates (pooled; above the ships). */
+    private beaconFx = new BeaconFxLayer();
     /** Render interpolation between sim steps (renderInterp.ts; set by MainView). Null: draw the sim positions. */
     motion: MotionInterpolator | null = null;
     /** The ship the follow camera is centred on this frame (set by MainView before update; null when not following). Its
@@ -562,6 +565,7 @@ export class BuiltObjectLayer {
         world.addChild(this.concordFx.root); // [concordArt]
         world.addChild(this.swarmFx.root);
         world.addChild(this.genFx.root);
+        world.addChild(this.beaconFx.root);
         this.root.addChild(this.ships);
         this.liveries = new LiveryOverlays(this.root, galaxy);
         this.damage = new DamageOverlays<BuiltObject>(this.root);
@@ -607,6 +611,7 @@ export class BuiltObjectLayer {
         this.concordFx.root.visible = this.root.visible; // [concordArt]
         this.swarmFx.root.visible = this.root.visible;
         this.genFx.root.visible = this.root.visible;
+        this.beaconFx.root.visible = this.root.visible;
         if (!this.root.visible) return;
         // [concordArt] begin — null with the scenario / flag off: every object keeps its stock art.
         const concord = concordArtEmpire(this.galaxy);
@@ -633,6 +638,8 @@ export class BuiltObjectLayer {
         if (liveryPass) this.liveries.begin();
         this.swarmFx.begin();
         this.genFx.begin();
+        this.beaconFx.begin();
+        const beaconOn = beaconLooksActive(looks);
         const sec = nowMs / 1000;
         // Camera.worldToScreen, inlined (no allocation per ship per frame).
         const camX = cam.x;
@@ -804,6 +811,14 @@ export class BuiltObjectLayer {
             // [concordArt] end
             if (genFile !== null && revealTex === null) this.genFx.draw(genFile, bo.builtObjectID, x, y, sprite.rotation, sprite.scale.x, sprite.anchor.x, sprite.anchor.y, texture.width, texture.height, px, sec);
             if (bo === looks.mothercore && revealTex === null) this.swarmFx.draw(x, y, sprite.rotation, sprite.scale.x, sprite.anchor.x, sprite.anchor.y, texture.width, texture.height, px, sec);
+            if (beaconOn && revealTex === null) {
+                const bFile = beaconArtFile(bo, looks);
+                if (bFile !== null) {
+                    // A Watcher opening draws its open body here (the same canvas as its pod) under the plates the layer swings.
+                    const body = this.beaconFx.draw(bFile, bo, bFile === 'watcher' && watcherOpenTarget(bo, looks), x, y, sprite.rotation, sprite.scale.x, sprite.anchor.x, sprite.anchor.y, texture.width, texture.height, px, sec);
+                    if (body !== null) sprite.texture = body;
+                }
+            }
             if (ancient && !this.liveries.forced.has(bo)) this.liveries.forced.set(bo, ANCIENT_WEAR);
             if ((liveries || ancient) && shipArtRecord !== null) this.liveries.draw(bo, shipArtRecord, px, z, sprite.alpha, x, y, heading);
             // 19r: MainView.cs 3253 method_73 → Main.Part12.cs 4988 method_106 while DamagedComponentCount > 0.
@@ -815,6 +830,7 @@ export class BuiltObjectLayer {
         this.concordFx.end(); // [concordArt]
         this.swarmFx.end();
         this.genFx.end();
+        this.beaconFx.end();
         this.damage.end();
         this.construction.end();
         if (liveryPass) this.liveries.end();

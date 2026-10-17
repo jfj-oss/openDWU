@@ -16,6 +16,33 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { GEN_LIGHT_FLASH, GEN_LIGHT_PERIOD, GEN_SHIPS_ART_DIR, genShipsArtFile, genShipsFileForSubRole, genShipsLightAlpha, genShipsLightPhase, PURIFIER_VISUAL_SCALE, purifierArtUrl, threatArtUrl, threatDrawScale, type ThreatLooks } from '../src/render/threatArt';
 import { GEN_SHIPS_LIGHTS } from '../src/render/genShipsLights';
+import {
+    BEACON_ART_DIR,
+    WATCHER_REF_SIZE,
+    WATCHER_VISUAL_SCALE,
+    beaconArtFile,
+    beaconFileForSubRole,
+    BEACON_STATE_KEY,
+    beaconLooksActive,
+    isReclaimerHull,
+    isWatcher,
+    minimumSizeScale,
+    threatLooks,
+    watcherOpenTarget,
+} from '../src/render/threatArt';
+import { BEACON_FRAMES, WATCHER_ART } from '../src/render/beaconArtData';
+import {
+    WATCHER_CLOSE_S,
+    WATCHER_OPEN_S,
+    beaconBeat,
+    beaconFrameArt,
+    beaconPhase,
+    veinBandAlpha,
+    watcherPlateLift,
+    watcherPlateSwing,
+    watcherUnfoldStep,
+} from '../src/render/beaconFx';
+import type { Galaxy } from '../src/sim/galaxy';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import type { BuiltObject } from '../src/sim/builtObject';
@@ -244,5 +271,203 @@ describe('purifier art', () => {
             }
         }
         expect(parts).toBe(1);
+    });
+});
+
+// threatArt.ts / beaconFx.ts: the Beacon's bundled art (Giantworks; public/art/beacon/, scripts/beacon-ships.py).
+describe('the Beacon art', () => {
+    const png = (f: string): string => resolve(__dirname, '../public', `${BEACON_ART_DIR.slice(1)}${f}.png`);
+    const reclaimers = {} as Empire;
+    const other = {} as Empire;
+    const ship = (subRole: BuiltObjectSubRole, empire: Empire | null, role = BuiltObjectRole.Military, size = 500, currentSpeed = 0): BuiltObject =>
+        ({ subRole, role, actualEmpire: empire, isPlanetDestroyer: false, size, currentSpeed, builtObjectID: 7, hasBeenDestroyed: false }) as unknown as BuiltObject;
+    const watcher = ship(BuiltObjectSubRole.CapitalShip, other, BuiltObjectRole.Military, 800);
+    const beacon = ship(BuiltObjectSubRole.LargeSpacePort, null, BuiltObjectRole.Base, 3000);
+    const l: ThreatLooks = { genFactions: [], worldShips: [], swarmFaction: null, mothercore: null, purifierFaction: null, purifierDock: null, reclaimers, watchers: [watcher], watchersSighted: null, beacon };
+
+    it('a frame for every Reclaimer role (warships, the Thrall carriers, the utility ship); bases keep stock art', () => {
+        const want: [BuiltObjectSubRole, string][] = [
+            [BuiltObjectSubRole.Escort, 'escort'],
+            [BuiltObjectSubRole.Frigate, 'frigate'],
+            [BuiltObjectSubRole.Destroyer, 'destroyer'],
+            [BuiltObjectSubRole.Cruiser, 'cruiser'],
+            [BuiltObjectSubRole.CapitalShip, 'capitalship'],
+            [BuiltObjectSubRole.Carrier, 'carrier'],
+            [BuiltObjectSubRole.TroopTransport, 'trooptransport'],
+            [BuiltObjectSubRole.ConstructionShip, 'construction'],
+        ];
+        for (const [sr, f] of want) {
+            expect(beaconFileForSubRole(sr)).toBe(f);
+            expect(BEACON_FRAMES[f], f).toBeDefined();
+        }
+        expect(beaconFileForSubRole(BuiltObjectSubRole.MediumSpacePort)).toBeNull();
+        expect(beaconArtFile(ship(BuiltObjectSubRole.Cruiser, reclaimers), l)).toBe('cruiser');
+        expect(beaconArtFile(ship(BuiltObjectSubRole.SmallSpacePort, reclaimers, BuiltObjectRole.Base), l)).toBeNull();
+        expect(beaconArtFile(ship(BuiltObjectSubRole.Cruiser, other), l)).toBeNull();
+        expect(beaconArtFile(watcher, l)).toBe('watcher');
+        expect(beaconArtFile(beacon, l)).toBe('beacon');
+        expect(isReclaimerHull(ship(BuiltObjectSubRole.Frigate, reclaimers), l)).toBe(true);
+        expect(isWatcher(watcher, l)).toBe(true);
+        expect(threatArtUrl(ship(BuiltObjectSubRole.Carrier, reclaimers), l)).toBe(`${BEACON_ART_DIR}carrier.png`);
+        expect(threatArtUrl(watcher, l)).toBe(`${BEACON_ART_DIR}watcher.png`);
+        const none: ThreatLooks = { genFactions: [], worldShips: [], swarmFaction: null, mothercore: null, purifierFaction: null, purifierDock: null };
+        expect(beaconLooksActive(none)).toBe(false);
+        expect(threatArtUrl(ship(BuiltObjectSubRole.Cruiser, reclaimers), none)).toBeNull();
+        for (const f of Object.keys(BEACON_FRAMES)) expect(f in {}).toBe(false);
+    });
+
+    it('the Watchers and the Beacon are drawn at least a set size; a bigger hull keeps its own', () => {
+        expect(threatDrawScale(l, watcher)).toBeCloseTo(minimumSizeScale(800, WATCHER_REF_SIZE, WATCHER_VISUAL_SCALE), 9);
+        expect(threatDrawScale(l, watcher)).toBeGreaterThan(2);
+        expect(threatDrawScale(l, beacon)).toBeGreaterThanOrEqual(1);
+        expect(threatDrawScale(l, ship(BuiltObjectSubRole.Cruiser, reclaimers))).toBe(1);
+        expect(minimumSizeScale(1e7, WATCHER_REF_SIZE, WATCHER_VISUAL_SCALE)).toBe(1);
+        // the drawn size (∝ sqrt(size) × scale) is the same for any hull below the floor
+        const drawn = (size: number): number => Math.sqrt(size) * minimumSizeScale(size, WATCHER_REF_SIZE, WATCHER_VISUAL_SCALE);
+        expect(drawn(300)).toBeCloseTo(drawn(1200), 6);
+        expect(watcherOpenTarget(watcher, l)).toBe(true); // no sighted list: open while it sits still
+        expect(watcherOpenTarget(ship(BuiltObjectSubRole.CapitalShip, other, BuiltObjectRole.Military, 800, 30), { ...l, watchersSighted: null })).toBe(false);
+        expect(watcherOpenTarget(watcher, { ...l, watchersSighted: [] })).toBe(false);
+        expect(watcherOpenTarget(watcher, { ...l, watchersSighted: [watcher] })).toBe(true);
+    });
+
+    it('frames: square, the heart at the centre of the content box, pulse layers inside their atlas, no markers, no opaque black', () => {
+        for (const [f, art] of [...Object.entries(BEACON_FRAMES), ['watcher', WATCHER_ART] as const]) {
+            const img = decodePng(png(f));
+            expect(img.width, f).toBe(art.size);
+            expect(img.height, f).toBe(art.size);
+            let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+            for (let y = 0; y < img.height; y++) {
+                for (let x = 0; x < img.width; x++) {
+                    const i = (y * img.width + x) * 4;
+                    const [r, g, b, a] = img.data.subarray(i, i + 4);
+                    if (a === 0) continue;
+                    x0 = Math.min(x0, x);
+                    x1 = Math.max(x1, x);
+                    y0 = Math.min(y0, y);
+                    y1 = Math.max(y1, y);
+                    expect(r === 0 && g === 0 && b === 255, `${f} blue`).toBe(false);
+                    expect(r === 255 && g === 255 && b === 0, `${f} yellow`).toBe(false);
+                    expect(a === 255 && r === 0 && g === 0 && b === 0, `${f} black`).toBe(false);
+                }
+            }
+            // the content box centred on the heart (the game turns a frame about its content box's centre), off the edges
+            expect(Math.abs((x0 + x1) / 2 - art.core[0]), f).toBeLessThanOrEqual(1);
+            expect(Math.abs((y0 + y1) / 2 - art.core[1]), f).toBeLessThanOrEqual(1);
+            expect(Math.min(x0, y0, img.width - 1 - x1, img.height - 1 - y1), f).toBeGreaterThanOrEqual(4);
+            // the heart is red and bright
+            const ci = (Math.round(art.core[1]) * img.width + Math.round(art.core[0])) * 4;
+            expect(img.data[ci], f).toBeGreaterThan(200);
+            expect(img.data[ci], f).toBeGreaterThan(img.data[ci + 2]);
+            const fx = decodePng(png(`${f}-fx`));
+            const rects = [art.organs, ...art.veins, ...(f === 'watcher' ? [WATCHER_ART.seams, ...WATCHER_ART.plates.map((p) => p.glow)] : [])];
+            for (const r of rects) {
+                expect(r.x + r.w, f).toBeLessThanOrEqual(fx.width);
+                expect(r.y + r.h, f).toBeLessThanOrEqual(fx.height);
+                expect(r.dx + r.w, f).toBeLessThanOrEqual(art.size);
+                expect(r.dy + r.h, f).toBeLessThanOrEqual(art.size);
+            }
+            // the vein bands run outward: the outermost band reaches further than the innermost
+            expect(art.veins[2].w * art.veins[2].h, f).toBeGreaterThan(art.veins[0].w * art.veins[0].h);
+        }
+    });
+
+    it('the Watcher: its open body and plates on the pod\'s canvas; open, the plates stay on the canvas', () => {
+        const body = decodePng(png('watcher-body'));
+        expect(body.width).toBe(WATCHER_ART.size);
+        WATCHER_ART.plates.forEach((p, k) => {
+            const img = decodePng(png(`watcher-plate-${k}`));
+            expect(img.width).toBe(p.w);
+            expect(img.height).toBe(p.h);
+            for (const t of [0, 0.5, 1]) {
+                const a = WATCHER_ART.swing * t;
+                for (const [cx, cy] of [[p.dx, p.dy], [p.dx + p.w, p.dy], [p.dx, p.dy + p.h], [p.dx + p.w, p.dy + p.h]]) {
+                    const x = p.hinge[0] + (cx - p.hinge[0]) * Math.cos(a) - (cy - p.hinge[1]) * Math.sin(a);
+                    const y = p.hinge[1] + (cx - p.hinge[0]) * Math.sin(a) + (cy - p.hinge[1]) * Math.cos(a);
+                    // a corner of the plate's box (the plate itself is inside it) reaches at most a little off the canvas
+                    expect(Math.hypot(x - WATCHER_ART.size / 2, y - WATCHER_ART.size / 2)).toBeLessThan(WATCHER_ART.size * 0.62);
+                }
+            }
+        });
+    });
+
+    it('reads the Beacon sim\'s state bag: the faction, the Watchers (records with modes, or ships), the Beacon', () => {
+        const w1 = ship(BuiltObjectSubRole.CapitalShip, reclaimers, BuiltObjectRole.Military, 800, 30);
+        const w2 = ship(BuiltObjectSubRole.CapitalShip, reclaimers, BuiltObjectRole.Military, 800, 0);
+        const g = (state: Record<string, unknown>): Galaxy => ({ scenario: { state } }) as unknown as Galaxy;
+        let lk = threatLooks(g({ [BEACON_STATE_KEY]: { faction: reclaimers, watchers: [{ ship: w1, mode: 'travel' }, { ship: w2, mode: 'sighting' }, { ship: null, mode: 'dead' }], beacon } }));
+        expect(lk.reclaimers).toBe(reclaimers);
+        expect(lk.watchers).toEqual([w1, w2]);
+        expect(lk.beacon).toBe(beacon);
+        expect(beaconArtFile(w1, lk)).toBe('watcher'); // a Watcher before its faction's ship role
+        expect(watcherOpenTarget(w1, lk)).toBe(false);
+        expect(watcherOpenTarget(w2, lk)).toBe(true);
+        lk = threatLooks(g({ [BEACON_STATE_KEY]: { faction: reclaimers, watchers: [{ ship: w1, mode: 'fight' }, { ship: w2, mode: 'parked' }] } }));
+        expect(watcherOpenTarget(w1, lk)).toBe(true);
+        expect(watcherOpenTarget(w2, lk)).toBe(false);
+        lk = threatLooks(g({ [BEACON_STATE_KEY]: { watchers: [w1, w2] } }));
+        expect(lk.watchersSighted).toBeNull();
+        expect(watcherOpenTarget(w1, lk)).toBe(false); // moving
+        expect(watcherOpenTarget(w2, lk)).toBe(true); // sitting still
+        lk = threatLooks(g({ [BEACON_STATE_KEY]: { watchers: [w1, w2], sighted: [w1] } }));
+        expect(watcherOpenTarget(w1, lk)).toBe(true);
+        expect(watcherOpenTarget(w2, lk)).toBe(false);
+        lk = threatLooks(g({}));
+        expect(beaconLooksActive(lk)).toBe(false);
+        expect(lk.watchers).toEqual([]);
+    });
+
+    it('the heartbeat: a strong beat then a weaker one, quiet in between, each hull on its own phase', () => {
+        const P = 2;
+        let max = 0;
+        for (let i = 0; i < 400; i++) {
+            const b = beaconBeat((i / 400) * P, P);
+            expect(b).toBeGreaterThanOrEqual(0);
+            expect(b).toBeLessThanOrEqual(1);
+            max = Math.max(max, b);
+        }
+        expect(max).toBeCloseTo(1, 5);
+        expect(beaconBeat(0.06 * P, P)).toBeCloseTo(1, 5);
+        expect(beaconBeat(0.26 * P, P)).toBeCloseTo(0.6, 5);
+        expect(beaconBeat(0.8 * P, P)).toBeLessThan(0.05);
+        expect(beaconBeat(0.06 * P + P * 3, P)).toBeCloseTo(1, 5); // periodic
+        expect(beaconPhase(1, P)).not.toBeCloseTo(beaconPhase(2, P), 2);
+        // the pulse runs outward: band k is brightest a little after band k - 1
+        const peak = (k: number): number => {
+            let best = 0, at = 0;
+            for (let i = 0; i < 400; i++) {
+                const t = (i / 400) * P;
+                const v = veinBandAlpha(t, P, 0, k);
+                if (v > best) [best, at] = [v, t];
+            }
+            return at;
+        };
+        expect(peak(1)).toBeGreaterThan(peak(0));
+        expect(peak(2)).toBeGreaterThan(peak(1));
+    });
+
+    it('the Watcher unfolds: lifts, then swings out plate by plate; opens over 10 s, folds over 7 s', () => {
+        for (let k = 0; k < 3; k++) {
+            expect(watcherPlateSwing(0, k)).toBe(0);
+            expect(watcherPlateLift(0, k)).toBe(0);
+            expect(watcherPlateSwing(1, k)).toBe(1);
+            let last = 0;
+            for (let u = 0; u <= 1.0001; u += 0.05) {
+                const s = watcherPlateSwing(u, k);
+                expect(s).toBeGreaterThanOrEqual(last);
+                last = s;
+            }
+        }
+        expect(watcherPlateLift(0.15, 0)).toBeGreaterThan(watcherPlateSwing(0.15, 0)); // up off the body before it swings
+        expect(watcherPlateSwing(0.5, 0)).toBeGreaterThan(watcherPlateSwing(0.5, 2)); // one after another
+        let u = 0;
+        for (let i = 0; i < 100; i++) u = watcherUnfoldStep(u, true, WATCHER_OPEN_S / 100);
+        expect(u).toBeCloseTo(1, 9);
+        for (let i = 0; i < 50; i++) u = watcherUnfoldStep(u, false, WATCHER_CLOSE_S / 100);
+        expect(u).toBeCloseTo(0.5, 9);
+        expect(WATCHER_OPEN_S).toBe(10);
+        expect(WATCHER_CLOSE_S).toBe(7);
+        expect(beaconFrameArt('watcher')).toBe(WATCHER_ART);
+        expect(beaconFrameArt('nope')).toBeNull();
     });
 });
