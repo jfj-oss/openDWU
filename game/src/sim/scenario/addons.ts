@@ -27,10 +27,10 @@ import { resolveScenarioIncludes, type ScenarioOverlay } from './overlay';
 /** galaxy.scenario.id of a game started with several add-ons (its manifest `include` is the flattened set). */
 export const COMPOSITE_SCENARIO_ID = 'addons';
 
-export type AddonGroup = 'Rim' | 'Hidden threats' | 'Politics & court' | 'Economy & factions' | 'LLM layer' | 'Visuals' | 'Other';
+export type AddonGroup = 'Rim' | 'Hidden threats' | 'Giantworks' | 'Politics & court' | 'Economy & factions' | 'LLM layer' | 'Visuals' | 'Other';
 
 /** Display order of the picker's groups, from the most vanilla-like to the most changes ("Other" collects scenarios this table does not know, e.g. a new mod). */
-export const ADDON_GROUPS: readonly AddonGroup[] = ['Hidden threats', 'Economy & factions', 'Politics & court', 'Rim', 'LLM layer', 'Visuals', 'Other'];
+export const ADDON_GROUPS: readonly AddonGroup[] = ['Hidden threats', 'Giantworks', 'Economy & factions', 'Politics & court', 'Rim', 'LLM layer', 'Visuals', 'Other'];
 
 /**
  * Picker status, ONE table: 'recommended' = top section; any other string = "Work in progress" section, the string being the
@@ -118,7 +118,7 @@ const GROUP_OF: Readonly<Record<string, AddonGroup>> = {
     'generation-ships': 'Hidden threats',
     'archive-cores': 'Hidden threats',
     'probe-swarm': 'Hidden threats',
-    giantworks: 'Hidden threats',
+    giantworks: 'Giantworks',
     'void-whale': 'Hidden threats',
     'hollow-fleet': 'Hidden threats',
     purifier: 'Hidden threats',
@@ -667,7 +667,8 @@ export const EXPANSIONS: readonly Expansion[] = [
     { id: 'the-rim', name: 'The Rim', description: 'The frontier beyond the core: rim trade, frontier settlement, wild fauna and herders, the rim atmosphere, and the Voidbloom War.', members: ['rimTrade', 'rim-frontier', 'rim-fauna', 'rim-herders', 'rim-atmosphere', 'new-fauna', 'voidbloom'] },
     { id: 'politics-characters', name: 'Politics & Characters', description: 'Governors, VIPs and the Galactic Council, internal security, reputation, espionage fallout, frontier autonomy, refugees, war crimes remembered and bounty hunters.', members: ['characters-victory', 'internal-security', 'reputation', 'espionage-consequences', 'frontier-autonomy', 'refugees-demographics', 'war-crimes', 'bounty-hunters'] },
     { id: 'economy', name: 'Economy', description: 'Colony economy, the exchange, chartered companies, corporate coups, privateers and wreckage salvage.', members: ['colony-economy', 'exchange', 'chartered-companies', 'corporatecoup', 'privateers', 'wreckage-salvage'] },
-    { id: 'galactic-threats', name: 'Galactic Threats', description: 'The hidden end-game threats (cult, hive, silence, greytide, ghost armada, robot mutiny, time bomb, doppelgangers, dark farms) and the early ones: generation ships, a dead probe swarm, the archive cores they leave and the Void Whale, plus the mid-game Purifier: an ancient planet destroyer you can hunt, and Giantworks: the independents\' Great Work, built in secret and never known for certain until it is finished.', members: ['threat-framework', 'generation-ships', 'probe-swarm', 'hollow-fleet', 'archive-cores', 'void-whale', 'purifier', 'giantworks', 'cult', 'hive', 'silence', 'greytide', 'ghostarmada', 'robotmutiny', 'timebomb', 'doppelgangers', 'darkfarms'] },
+    { id: 'galactic-threats', name: 'Galactic Threats', description: 'The hidden end-game threats (cult, hive, silence, greytide, ghost armada, robot mutiny, time bomb, doppelgangers, dark farms) and the early ones: generation ships, a dead probe swarm, the archive cores they leave and the Void Whale, plus the mid-game Purifier: an ancient planet destroyer you can hunt.', members: ['threat-framework', 'generation-ships', 'probe-swarm', 'hollow-fleet', 'archive-cores', 'void-whale', 'purifier', 'cult', 'hive', 'silence', 'greytide', 'ghostarmada', 'robotmutiny', 'timebomb', 'doppelgangers', 'darkfarms'] },
+    { id: 'giantworks', name: 'Giantworks', description: 'The independents\' Great Work: worlds in three far-apart regions band together and build a gigantic wonder in secret, never known for certain until it is finished. Each wonder it can turn out to be has its own switch in the add-on\'s settings.', members: ['giantworks'] },
     { id: 'living-galaxy', name: 'Living Galaxy', description: 'A galaxy that moves on its own: lively events and active independents.', members: ['lively-galaxy', 'independents-active'] },
 ];
 

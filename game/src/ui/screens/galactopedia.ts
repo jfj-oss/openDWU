@@ -1135,6 +1135,7 @@ const FIELD_GUIDE: Readonly<Record<string, EncyclopediaCategory>> = {
     economy: EncyclopediaCategory.FieldGuideEconomy,
     'galactic-threats': EncyclopediaCategory.FieldGuideThreats,
     'living-galaxy': EncyclopediaCategory.FieldGuideLiving,
+    giantworks: EncyclopediaCategory.FieldGuideGiantworks,
 };
 const ART_PREFIX = 'article:';
 const articleItemId = (a: ExpansionArticle): string => `${a.exp}-${a.id}`;

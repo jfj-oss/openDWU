@@ -63,11 +63,21 @@ export const EXPANSION_INFO: Readonly<Record<string, ExpansionInfo>> = {
         features: [
             { heading: 'Generation ships', text: 'Early in the game a world ship and its escort arrive at the galaxy edge, scout a populated colony and demand it eighteen months later. Pilgrims, Heirs, the Ark Faith or the silent Quiet Ship: cede, offer another world, or fight.' },
             { heading: 'The dead probe swarm and archive cores', text: 'Self-replicating probes expand mining stations through the asteroid fields and attack any ship in their systems until their mothercore falls. Archive cores from world ships, the mothercore and ruins give research: study them slowly or seal them for one big payoff.' },
-            { heading: 'Giantworks: the independents\' Great Work', text: 'Independent worlds in three far-apart regions band together as the Founders\' Compact. Years later their convoys build a gigantic scaffold in five stages, and nobody knows what it will be. Cargo hints and spies give a shortlist, never proof: protect it, sabotage it or destroy it before it is finished, and live with what it turns out to be.' },
             { heading: 'The Cult and the Time-Bomb', text: 'A creed spreads from governor to governor across borders; ruins hold research with a planet-killing failure mode the cult can trigger.' },
             { heading: 'The Chorus (hive)', text: 'Every independent colony is a node of one hidden mind that declares once enough nodes have been absorbed.' },
             { heading: 'The Silence and the Grey Tide', text: 'A precursor ruin makes hyperdrives fail in a widening radius; a mining swarm eats extractors and founds nests.' },
             { heading: 'Ghosts, mutiny, doppelgangers, dark farms', text: 'Dead empires return as ghost fleets, robot garrisons rise on a broadcast, lost ships return as sleepers, and overdeveloped colonies grow hidden factories.' },
+        ],
+    },
+    giantworks: {
+        about: 'Independent worlds in three far-apart regions band together as the Founders\' Compact. Years later their convoys raise a gigantic scaffold in five stages, and nobody knows what it will be until it is finished: a resort and casino, a planet-sized supercomputer, an aquarium of void whales, or the Beacon that calls an extinction fleet from dark space.',
+        changes: 2,
+        difficulty: 1,
+        difficultyNote: 'Slightly harder: most wonders pay whoever holds them, but one of them can end the galaxy, and you never know which before it is finished.',
+        features: [
+            { heading: 'The Founders\' Compact', text: 'Independent worlds in three far-apart regions band together as the Founders\' Compact. Years later their convoys build a gigantic scaffold in five stages, and nobody knows what it will be. Cargo hints and spies give a shortlist, never proof: protect it, sabotage it or destroy it before it is finished, and live with what it turns out to be.' },
+            { heading: 'The wonders', text: 'The Gilded Orbit (a resort that may be a smugglers\' front), the Ultramind (a supercomputer that can decide it is being abused), the Leviathan Sanctuary (a glass sphere of live void whales that can breach) and the Beacon (a relay that calls the Reclaimers; only in galaxies of six or more empires). Each can be switched off in the add-on\'s settings.' },
+            { heading: 'The Diet', text: 'Destroying the work before it is finished is a war crime unless the Diet authorises demolition. The Diet can also send inspectors, protect the work or internationalise a finished wonder.' },
         ],
     },
     'living-galaxy': {

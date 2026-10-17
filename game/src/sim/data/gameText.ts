@@ -37,6 +37,7 @@ export enum EncyclopediaCategory {
     FieldGuideEconomy,
     FieldGuideThreats,
     FieldGuideLiving,
+    FieldGuideGiantworks,
 }
 
 /** Port of EncyclopediaItem.cs. `relatedItems` keeps insertion order (the
