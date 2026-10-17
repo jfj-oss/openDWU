@@ -23,13 +23,13 @@ Per output frame (bow up, as the stock frames; square canvas with a margin for t
    dropped: thrusters only where open space lies aft), each casting a soft contact shadow on what is below; the
    stock pieces carry their levelled shading, the AncientHelpers ones their native colour, their lights as a glow
    channel and their thruster (pure blue) / light (pure yellow) marker pixels as points, mapped through each
-   placement. The escorts: a frigate of a swept-wing hull aft, a dart forward through it and a slim outrigger hull
-   to port; a destroyer of a broad engine section, a long hull forward and a spine hull on top; a cruiser of twin
-   nacelle hulls aft, a swept-wing hull and a broad command hull; a capital ship of a wide armoured hull aft, a long
-   heavy hull forward, slim sponson hulls on both flanks and a spinal hull along the starboard side; a carrier of
-   three hulls end to end with the angled flight deck (landing lanes, chevrons, landing lights, hangar lifts) fused
-   along its port flank, the whole bent into a banana curve (bend()); a troop transport of a long troop hull with two
-   bulbous pod hulls fused on its flanks. Then masts and the edge dressing: whips and sensor masts (single and in
+   placement. The escorts are long and lean, their hulls meshed end to end: a frigate of a needle bow hull run into
+   a longer main hull; a destroyer of a needle bow, a long main hull and a slim engine hull; a cruiser of a pointed
+   bow hull, a broad main hull and a tapering stern hull; the capital ship, the longest, of a needle bow, two heavy
+   hulls and a wide engine hull with two slim hulls along its midsection as sponsons; a troop transport of a slim
+   bow hull run into the troop hull; and the carrier of three hulls end to end with the angled flight deck (landing
+   lanes, chevrons, landing lights, hangar lifts) fused along its port flank, the whole bent into a banana curve
+   (bend()). Then masts and the edge dressing: whips and sensor masts (single and in
    fanned clusters), short spikes, small dishes on stalks, fins, small turrets, vents and pipes planted round the
    outline pointing outward. Some tips and beads (at most 18 per frame, under the scan cap of 20) are pure-yellow
    nav-light markers, so they blink at runtime as the planet destroyer's own spike lights do. The dock and outpost:
@@ -1305,53 +1305,52 @@ def build(root, name, rng):
         edge_dress(c, (c.A > 0.5).astype(np.float64), n, lights=18, avoid=avoid, k=0.6)
 
     if name == 'frigate':
-        # Three hulls meshed: a swept-wing hull aft, a long dart forward through it, a slim outrigger hull fused on
-        # to port.
-        c = Canvas(160, pad=20, z=1.25)
-        c.put(H('family17', 'frigate'), 80, 104, 0.5, shadow=0)
-        c.put(H('family7', 'frigate'), 54, 102, 0.5, shadow=0.4, gain=0.95)
-        c.put(H('family22', 'frigate'), 82, 82, 0.42, shadow=0.6)
-        mast(c, 82, 30, 20, 4, beads=(0.5,))
-        mast(c, 112, 112, 26, -60)
-        mast(c, 46, 76, 22, 34)
-        dress(c, 18)
+        # Two hulls end to end: a needle bow hull run into a longer main hull, a sleek dart.
+        c = Canvas(190, pad=20, z=1.25)
+        c.put(H('family14', 'frigate'), 95, 120, 0.5, shadow=0)
+        c.put(H('family25', 'frigate'), 95, 52, 0.5, shadow=0.55)
+        mast(c, 95, 14, 18, 0, beads=(0.5,))
+        mast(c, 72, 140, 22, 70)
+        mast(c, 118, 150, 20, -110)
+        dress(c, 10)
         return c
     if name == 'destroyer':
-        # A broad engine section aft with a long hull run forward through it and a narrow spine hull on top.
-        c = Canvas(180, pad=20, z=1.25)
-        c.put(H('family12', 'destroyer'), 90, 122, 0.5, shadow=0)
-        c.put(H('family14', 'destroyer'), 90, 90, 0.5, shadow=0.55)
-        c.put(H('family25', 'destroyer'), 90, 98, 0.42, shadow=0.5, gain=1.05)
-        mast(c, 90, 34, 22, 0, beads=(0.5,))
-        mast(c, 40, 130, 26, 70)
-        mast(c, 140, 130, 26, -70)
-        dress(c, 22)
+        # Three hulls end to end: a needle bow hull, a long main hull, a slim engine hull aft.
+        c = Canvas(260, pad=20, z=1.25)
+        c.put(H('family7', 'destroyer'), 130, 206, 0.5, shadow=0)
+        c.put(H('family24', 'destroyer'), 130, 132, 0.5, shadow=0.5)
+        c.put(H('family25', 'destroyer'), 130, 54, 0.5, shadow=0.55)
+        mast(c, 130, 12, 20, 0, beads=(0.5,))
+        mast(c, 106, 120, 26, 60)
+        mast(c, 154, 170, 24, -120)
+        dress(c, 14)
         return c
     if name == 'cruiser':
-        # Twin hulls aft as engine nacelles, a swept-wing hull fused over them, a broad command hull over its bow.
-        c = Canvas(210, pad=20, z=1.25)
-        c.put(H('family8', 'cruiser'), 80, 138, 0.42, shadow=0)
-        c.put(H('family8', 'cruiser'), 130, 138, 0.42, flipx=True, shadow=0)
-        c.put(H('family4', 'cruiser'), 105, 120, 0.5, shadow=0.4)
-        c.put(H('family21', 'cruiser'), 105, 100, 0.45, shadow=0.6)
-        mast(c, 105, 44, 26, 0, beads=(0.5,))
-        mast(c, 74, 112, 30, 50)
-        mast(c, 136, 112, 30, -50)
-        dress(c, 30)
+        # Three hulls end to end: a long pointed bow hull, a broad main hull amidships, a tapering stern hull.
+        c = Canvas(320, pad=20, z=1.25)
+        c.put(H('family14', 'cruiser'), 160, 250, 0.5, shadow=0)
+        c.put(H('family22', 'cruiser'), 160, 152, 0.5, shadow=0.5)
+        c.put(H('family25', 'cruiser'), 160, 62, 0.5, shadow=0.55)
+        mast(c, 160, 14, 24, 0, beads=(0.5,))
+        mast(c, 124, 150, 30, 64)
+        mast(c, 196, 150, 30, -64)
+        dress(c, 22)
         return c
     if name == 'capitalship':
-        # A wide armoured hull aft, a long heavy hull run forward over it, slim hulls fused along both flanks as
-        # gun sponsons, a long spinal hull laid along the starboard flank as the main gun.
-        c = Canvas(250, pad=20, z=1.25)
-        c.put(H('family9', 'capitalship'), 125, 146, 0.5, shadow=0)
-        c.put(H('family7', 'destroyer'), 82, 156, 0.5, shadow=0.35)
-        c.put(H('family7', 'destroyer'), 168, 156, 0.5, flipx=True, shadow=0.35)
-        c.put(H('family25', 'capitalship'), 158, 116, 0.5, shadow=0.45, gain=0.95)
-        c.put(H('family8', 'capitalship'), 122, 112, 0.5, shadow=0.6)
-        mast(c, 122, 40, 26, 0, beads=(0.5,))
-        mast(c, 60, 150, 34, 64)
-        mast(c, 96, 200, 28, 140)
-        dress(c, 40)
+        # Four hulls end to end, the longest ship: a needle bow hull, two heavy hulls amidships, a wide engine hull aft;
+        # two slim hulls fused along the midsection flanks as heavy sponsons.
+        c = Canvas(380, pad=20, z=1.25)
+        c.put(H('family22', 'capitalship'), 190, 300, 0.5, shadow=0)
+        c.put(H('family7', 'cruiser'), 148, 228, 0.5, shadow=0)
+        c.put(H('family7', 'cruiser'), 232, 228, 0.5, flipx=True, shadow=0)
+        c.put(H('family9', 'capitalship'), 190, 222, 0.5, shadow=0.5)
+        c.put(H('family8', 'capitalship'), 190, 140, 0.5, shadow=0.55)
+        c.put(H('family25', 'capitalship'), 190, 58, 0.5, shadow=0.55)
+        mast(c, 190, 10, 26, 0, beads=(0.5,))
+        mast(c, 124, 224, 34, 66)
+        mast(c, 256, 224, 34, -66)
+        mast(c, 166, 120, 26, 40)
+        dress(c, 30)
         return c
     if name == 'carrier':
         # The banana: one long hull of three stock hulls meshed end to end (a slim bow hull, a broad carrier hull
@@ -1373,15 +1372,14 @@ def build(root, name, rng):
         dress(c, 28, avoid=tuple((60 + ((y - 138) ** 2) / 300, y, 22) for y in range(30, 260, 16)))
         return c
     if name == 'trooptransport':
-        # A long troop hull with two bulbous pod hulls fused along its flanks, a little offset.
-        c = Canvas(160, pad=20, z=1.25)
-        c.put(H('family13', 'trooptransport'), 54, 98, 0.5, shadow=0)
-        c.put(H('family13', 'trooptransport'), 106, 104, 0.5, flipx=True, shadow=0)
-        c.put(H('family21', 'trooptransport'), 80, 88, 0.5, shadow=0.6)
-        mast(c, 80, 32, 20, 0, beads=(0.5,))
-        mast(c, 34, 100, 24, 70)
-        mast(c, 128, 110, 24, -70)
-        dress(c, 18)
+        # Two hulls end to end: a slim pointed bow hull run into the troop hull, its drop bays along the flanks.
+        c = Canvas(210, pad=20, z=1.25)
+        c.put(H('family21', 'trooptransport'), 105, 138, 0.5, shadow=0)
+        c.put(H('family25', 'trooptransport'), 105, 56, 0.5, shadow=0.55)
+        mast(c, 105, 12, 18, 0, beads=(0.5,))
+        mast(c, 78, 140, 22, 70)
+        mast(c, 132, 150, 22, -110)
+        dress(c, 10)
         return c
     if name == 'base_0':
         # A broken outpost: the Shakturi station body inside a half-ring of gantry, one arm snapped, debris adrift.
