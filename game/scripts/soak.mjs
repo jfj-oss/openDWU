@@ -7,7 +7,7 @@
 //   nice -n 15 node scripts/soak.mjs --only std-s1,rim-herders --jobs 2 [--years N] [--out DIR]
 //   nice -n 15 node scripts/soak.mjs --set long             # the many-decade runs
 //   node scripts/soak.mjs --list                             # the config names
-//   nice -n 15 node --expose-gc scripts/soak.mjs --run NAME [--years N] [--seed N] [--flags-off a,b] [--out DIR] [--hook dbg.mjs]   # one config, in process
+//   nice -n 15 node --expose-gc scripts/soak.mjs --run NAME [--years N] [--seed N] [--flags-off a,b] [--out DIR] [--hook dbg.mjs] [--cpuprof FILE]   # one config, in process
 //
 // Per config (a child process per config in the default driver mode):
 // - the game is built the way the app builds it (StartGameOptions → toCreateGameOptions → createGame, the scenario
@@ -241,6 +241,8 @@ const CONFIGS_REGRESS = [
     rg('rg-base-late-s1', { seed: 1, years: 5, late: LATE4, addons: [], smarterAI: false, coordinatedLandings: false, hook: { timing: true, sampleDays: 60 } }),
     rg('rg-smart-late-s1', { seed: 1, years: 5, late: LATE4, addons: [], hook: { timing: true, sampleDays: 60 } }),
     rg('rg-editor-gal-late-s3', { seed: 3, years: 5, late: LATE4, hook: { spawn: ['probeSwarm', 'voidWhale', 'silence', 'doppelgangers', 'darkFarms', 'robotMutiny', 'hollowFleet', 'greyTide', 'exchange', 'corporateCoup', 'timeBomb'].map((key, i) => ({ key, day: 30 + 25 * i })) }, params: {} }),
+    // Smarter AI step-time ablation (the defaults double the late-game step time from year 3): one sub-option off each; --cpuprof on the lane line.
+    ...['designScale', 'designTune', 'weaponFocus', 'designTrim', 'retrofit'].map((k) => rg(`rg-smart-no-${k}-late-s1`, { seed: 1, years: 4, late: LATE4, addons: [], smarterAI: { [k]: false }, hook: { timing: true, sampleDays: 60 } })),
     // Medium (12-15 years): several threats together, the crisis interactions (reputation, the council through the Diet, refugees) on.
     ...[1, 2].map((seed) => rg(`rg-multi-late-s${seed}`, { seed, years: 12, late: LATE4, addons: ['cult', 'hive', 'purifier', 'generation-ships', 'archive-cores', ...RG_CORE, 'refugees-demographics'], params: { ...RG_ALL, ...RG_CULT, ...RG_HIVE, ...RG_PUR, ...RG_GEN, genShipsEarliestYear: 1, genShipsLatestYear: 3, purifierYear: 2, cultSeedYear: 1 }, hook: { timing: true } })),
     rg('rg-multi-norm-s3', { seed: 3, years: 15, addons: ['cult', 'hive', 'purifier', 'generation-ships', 'archive-cores', ...RG_CORE, 'refugees-demographics'], params: { ...RG_ALL, hiveThresholdPct: 20, hiveMinNodes: 3, cultSeedYear: 5, cultSpreadPct: 15, cultAmbassadorPct: 20, purifierYear: 6, purifierWakeYears: 3, genShipsEarliestYear: 3, genShipsLatestYear: 5 }, hook: { timing: true } }),
@@ -433,7 +435,7 @@ async function runOne(name) {
             const S = await load('scenario');
             const cat = A.addonCatalog(S.scenarioIndexFs());
             const ids = cfg.addons === 'recommended' ? Object.keys(A.ADDON_STATUS).filter((k) => A.ADDON_STATUS[k] === 'recommended') : cfg.addons;
-            const smart = cfg.smarterAI === false ? null : A.defaultSmarterAIChoice();
+            const smart = cfg.smarterAI === false ? null : { ...A.defaultSmarterAIChoice(), ...(typeof cfg.smarterAI === 'object' ? cfg.smarterAI : {}) };
             const w1 = A.withSmarterAI([...A.BASE_ADDONS, ...ids], { flags: { ...(cfg.flags ?? {}) }, params: { ...(cfg.params ?? {}) } }, smart);
             // cfg.gameplay: the other "Gameplay changes" checkboxes by add-on id.
             const gp = { 'orbital-superiority': A.withOrbitalSuperiority, 'longer-ground-combat': A.withLongerGroundCombat, 'jump-interdiction': A.withJumpInterdiction, 'blockades-bite': A.withBlockadesBite,
@@ -547,6 +549,16 @@ async function runOne(name) {
         };
         if ((await hook?.start?.(hookCtx)) === 'stop') return;
         doScan('start');
+        // --cpuprof FILE: a V8 CPU profile of the sim run (not createGame), written at the end (scripts/cpuprofile-summary.mjs reads it).
+        let profSession = null;
+        if (arg('cpuprof', null) !== null) {
+            const { Session } = await import('node:inspector');
+            profSession = new Session();
+            profSession.connect();
+            await new Promise((res) => profSession.post('Profiler.enable', () => res()));
+            await new Promise((res) => profSession.post('Profiler.setSamplingInterval', { interval: 1000 }, () => res()));
+            await new Promise((res) => profSession.post('Profiler.start', () => res()));
+        }
         for (let s = 0; s < total; s += chunk) {
             // Frame times exclude the scans / save checks / hooks between chunks.
             lastFrameT = performance.now();
@@ -593,6 +605,10 @@ async function runOne(name) {
                 lastFrameT = performance.now();
                 flush();
             });
+        }
+        if (profSession !== null) {
+            await new Promise((res) => profSession.post('Profiler.stop', (e, r) => { if (!e) writeFileSync(String(arg('cpuprof')), JSON.stringify(r.profile)); res(); }));
+            profSession.disconnect();
         }
         doScan('end');
         report.maxFrameMs = maxFrame;
