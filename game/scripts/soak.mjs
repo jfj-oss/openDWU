@@ -231,6 +231,8 @@ const CONFIGS_REGRESS = [
     rg('rg-purifier-late6-s3', { seed: 3, years: 5, late: LATE6, addons: ['purifier', ...RG_CORE, 'refugees-demographics'], params: { ...RG_ALL, ...RG_PUR } }),
     rg('rg-purifier-fr-late-s1', { seed: 1, years: 5, late: LATE4, addons: ['purifier', ...RG_CORE], gameplay: ['fighting-retreats'], params: { ...RG_ALL, ...RG_PUR } }),
     ...[1, 2].map((seed) => rg(`rg-genships-norm-s${seed}`, { seed, years: 8, addons: ['generation-ships', 'archive-cores', ...RG_CORE], params: { ...RG_ALL, ...RG_GEN, genShipsEarliestYear: 2, genShipsLatestYear: 3 } })),
+    // The AI cedes in the natural settings (its navy never matches the escort); with genShipsAiFightRatioPct 0 it always fights: the assault margin, learning, retarget, pirate remnants.
+    ...[[1, 1], [2, 2], [3, 3], [4, 0]].map(([seed, fl]) => rg(`rg-genships-war${fl}-s${seed}`, { seed, years: 8, addons: ['generation-ships', 'archive-cores', ...RG_CORE], params: { ...RG_ALL, ...RG_GEN, genShipsEarliestYear: 1, genShipsLatestYear: 2, genShipsFlavour: fl, genShipsAiFightRatioPct: 0 } })),
     rg('rg-genships-age3-s3', { seed: 3, years: 6, late: { age: 3, tech: 3 }, addons: ['generation-ships', 'archive-cores', ...RG_CORE], params: { ...RG_ALL, ...RG_GEN, genShipsEarliestYear: 0, genShipsLatestYear: 1 } }),
     // Game Editor spawns into a game that started with no add-ons (save check reloads the bare threat-framework scenario) and into one with some.
     rg('rg-editor-bare-late-s1', { seed: 1, years: 4, late: LATE4, hook: { spawn: [{ key: 'cult', day: 60 }, { key: 'purifier', day: 90 }, { key: 'hive', day: 120 }, { key: 'generationShips', day: 150 }] }, params: {} }),
