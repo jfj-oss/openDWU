@@ -200,6 +200,15 @@ function sample(ctx) {
         if (wh) o.whale = { phase: wh.phase, mode: wh.mode, creature: wh.creature ? 1 : 0 };
         return Object.keys(o).length ? o : null;
     });
+    row.facs = safe('facs', () => {
+        // Every crisis faction (all the hostile threat factions) while it exists: size and navy, so a snowball shows whichever threat it is.
+        const o = {};
+        for (const entry of M.thCrisis.CRISIS_ENTRIES) {
+            const f = M.thCrisis.crisisFaction(g, entry);
+            if (f !== null) o[entry.key] = facSnap(g, f);
+        }
+        return Object.keys(o).length ? o : null;
+    });
     row.crisis = safe('crisis', () => {
         const s = g.scenario;
         if (s === null || !('crisis' in s.state)) return null;
