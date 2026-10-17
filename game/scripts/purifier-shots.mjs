@@ -2,7 +2,8 @@
 // Boots `?autostart=1&scenario=threat-framework,purifier&simWorker=0&reveal=1`, pauses the clock, opens the anchorage
 // and wakes the Purifier directly (purifierWake, as the threat test forces it), adds one escort of every subRole the
 // group lacks (frigate, carrier, troop transport), then lines the fleet up (heading up) for close / play-zoom shots of
-// the live ship layer: the escort lineup, the planet destroyer among its escorts, and the dock (its repair station).
+// the live ship layer: the escort lineup, the Purifier (its planet destroyer) close up and among its escorts, and the
+// dock (its repair station).
 // Headless Chromium on the GPU (ANGLE / Vulkan), never SwiftShader.
 import { chromium } from 'playwright-core';
 const [base = 'http://localhost:5173/', outDir = 'shots', prefix = ''] = process.argv.slice(2);
@@ -122,6 +123,7 @@ const at = async ([z, dx, dy]) => {
 await shot('lineup-close.png', at, [1, 0, -260]);
 await shot('lineup-mid.png', at, [1 / 2, 0, -40]);
 await shot('lineup-play.png', at, [1 / 4, 0, 0]);
+await shot('purifier-close.png', at, [1, 0, 300]);
 await shot('destroyer-escorts.png', at, [1 / 2, 0, 300]);
 await shot('destroyer-escorts-play.png', at, [1 / 4, 0, 200]);
 await shot('dock-close.png', atDock, [1, 0, 0]);

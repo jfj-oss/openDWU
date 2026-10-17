@@ -14,7 +14,7 @@ import {
 import { threatFrameworkPresent, threatMarkerRadius } from '../src/render/artBundleLayer';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { GEN_LIGHT_FLASH, GEN_LIGHT_PERIOD, GEN_SHIPS_ART_DIR, genShipsArtFile, genShipsFileForSubRole, genShipsLightAlpha, genShipsLightPhase, purifierArtUrl, threatArtUrl, type ThreatLooks } from '../src/render/threatArt';
+import { GEN_LIGHT_FLASH, GEN_LIGHT_PERIOD, GEN_SHIPS_ART_DIR, genShipsArtFile, genShipsFileForSubRole, genShipsLightAlpha, genShipsLightPhase, PURIFIER_VISUAL_SCALE, purifierArtUrl, threatArtUrl, threatDrawScale, type ThreatLooks } from '../src/render/threatArt';
 import { GEN_SHIPS_LIGHTS } from '../src/render/genShipsLights';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
@@ -152,7 +152,7 @@ describe('generation ships art', () => {
 });
 
 // The Purifier's escorts and dock (scripts/purifier-ships.py: meshed stock hulls in the planet destroyer's silver /
-// champagne / copper with lit antennas, a half-ruined shipyard); the planet destroyer itself keeps its stock frame.
+// champagne / copper with lit antennas, a half-ruined shipyard); the Purifier's planet destroyer a half-built crescent.
 describe('purifier art', () => {
     const png = (f: string): string => resolve(__dirname, '../public/art/purifier', `${f}.png`);
     const faction = {} as Empire;
@@ -160,7 +160,7 @@ describe('purifier art', () => {
     const bo = (subRole: BuiltObjectSubRole, empire: Empire | null, role = BuiltObjectRole.Military, isPlanetDestroyer = false): BuiltObject =>
         ({ subRole, role, actualEmpire: empire, isPlanetDestroyer }) as unknown as BuiltObject;
     const ESCORTS = ['frigate', 'destroyer', 'cruiser', 'capitalship', 'carrier', 'trooptransport'];
-    it('picked by subRole for the faction (the dock base_1, other bases base_0), never for the planet destroyer', () => {
+    it('picked by subRole for the faction (the dock base_1, other bases base_0, its planet destroyer the crescent)', () => {
         const dock = bo(BuiltObjectSubRole.GenericBase, faction, BuiltObjectRole.Base);
         const l: ThreatLooks = { genFactions: [], worldShips: [], swarmFaction: null, mothercore: null, purifierFaction: faction, purifierDock: dock };
         const want: [BuiltObjectSubRole, string][] = [
@@ -175,12 +175,15 @@ describe('purifier art', () => {
         for (const [sr, f] of want) expect(purifierArtUrl(bo(sr, faction), l)).toBe(`/art/purifier/${f}.png`);
         expect(purifierArtUrl(dock, l)).toBe('/art/purifier/base_1.png');
         expect(purifierArtUrl(bo(BuiltObjectSubRole.SmallSpacePort, faction, BuiltObjectRole.Base), l)).toBe('/art/purifier/base_0.png');
-        expect(purifierArtUrl(bo(BuiltObjectSubRole.CapitalShip, faction, BuiltObjectRole.Military, true), l)).toBeNull();
+        expect(purifierArtUrl(bo(BuiltObjectSubRole.CapitalShip, faction, BuiltObjectRole.Military, true), l)).toBe('/art/purifier/planetdestroyer.png');
+        expect(purifierArtUrl(bo(BuiltObjectSubRole.CapitalShip, other, BuiltObjectRole.Military, true), l)).toBeNull(); // other planet destroyers: stock
+        expect(threatDrawScale(l, bo(BuiltObjectSubRole.CapitalShip, faction, BuiltObjectRole.Military, true))).toBe(PURIFIER_VISUAL_SCALE);
+        expect(threatDrawScale(l, bo(BuiltObjectSubRole.CapitalShip, faction))).toBe(1);
         expect(purifierArtUrl(bo(BuiltObjectSubRole.Cruiser, other), l)).toBeNull();
         expect(purifierArtUrl(bo(BuiltObjectSubRole.ExplorationShip, faction), l)).toBeNull();
     });
     it('frames: square, warm metal, thruster marks on every escort, antenna lights, no opaque black; the dock berth is empty space', () => {
-        for (const f of [...ESCORTS, 'base_0', 'base_1']) {
+        for (const f of [...ESCORTS, 'base_0', 'base_1', 'planetdestroyer']) {
             const img = decodePng(png(f));
             expect(img.width).toBe(img.height);
             let blue = 0;
@@ -203,7 +206,7 @@ describe('purifier art', () => {
                     b0 += b;
                 }
             }
-            if (ESCORTS.includes(f)) expect(blue, f).toBeGreaterThan(0);
+            if (ESCORTS.includes(f) || f === 'planetdestroyer') expect(blue, f).toBeGreaterThan(0);
             // the antenna tip lights: nav-light markers (blinking like the planet destroyer's), within the scan cap of 20
             expect(yellow, f).toBeGreaterThan(0);
             expect(yellow, f).toBeLessThanOrEqual(20);
@@ -212,5 +215,34 @@ describe('purifier art', () => {
         const dock = decodePng(png('base_1'));
         const c = (Math.round(dock.height * 0.44) * dock.width + Math.round(dock.width / 2)) * 4;
         expect(dock.data[c + 3]).toBe(0); // where the Purifier slept
+        // the Purifier moves: its half-built frame is one connected structure (no loose pieces), alpha > 76, 8-connected
+        const pd = decodePng(png('planetdestroyer'));
+        const W = pd.width;
+        const seen = new Uint8Array(W * pd.height);
+        let parts = 0;
+        for (let s = 0; s < seen.length; s++) {
+            if (seen[s] || pd.data[s * 4 + 3] <= 76) continue;
+            parts++;
+            const stack = [s];
+            seen[s] = 1;
+            while (stack.length > 0) {
+                const p = stack.pop() as number;
+                const x = p % W;
+                const y = (p - x) / W;
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        const nx = x + dx;
+                        const ny = y + dy;
+                        if (nx < 0 || ny < 0 || nx >= W || ny >= pd.height) continue;
+                        const q = ny * W + nx;
+                        if (!seen[q] && pd.data[q * 4 + 3] > 76) {
+                            seen[q] = 1;
+                            stack.push(q);
+                        }
+                    }
+                }
+            }
+        }
+        expect(parts).toBe(1);
     });
 });

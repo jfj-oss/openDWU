@@ -21,7 +21,8 @@
 // - The Purifier: its escorts, guards and repair station draw our bundled battle-worn war-forged frames in
 //   the planet destroyer's own metal (stock hulls meshed into new ships, antennas whose tip lights are stock
 //   nav-light markers), the dock (base_1) a half-ruined shipyard (public/art/purifier/, scripts/purifier-ships.py)
-//   instead of their race's art; the planet destroyer keeps the stock other/planetdestroyer.png. Picked by subRole
+//   instead of their race's art; the Purifier itself (its planet destroyer) a crescent: the stock sphere solid on the
+//   left, its right side a hollow, half-built skeleton opening to space (planetdestroyer.png). Picked by subRole
 //   (purifierArtUrl), render only: the sim's pictureRef is untouched.
 
 import { Container, type Texture } from 'pixi.js';
@@ -84,6 +85,7 @@ export function threatLooks(galaxy: Galaxy): ThreatLooks {
 /** The bundled Purifier frames (public/art/purifier/<file>.png, scripts/purifier-ships.py) by subRole. */
 const PURIFIER_ART_DIR = '/art/purifier/';
 function purifierFile(bo: BuiltObject, dock: BuiltObject | null): string | null {
+    if (bo.isPlanetDestroyer) return 'planetdestroyer';
     if (bo === dock) return 'base_1';
     if (bo.role === BuiltObjectRole.Base) return 'base_0';
     switch (bo.subRole) {
@@ -106,23 +108,28 @@ function purifierFile(bo: BuiltObject, dock: BuiltObject | null): string | null 
 }
 
 /**
- * The art URL of a Purifier escort / guard / station (null for everything else, and for the planet destroyer, which keeps
- * the stock planetdestroyer.png). `l` defaults to the record of the last threatLooks call (the ship layer refreshes it
- * every frame), so UI pictures without the galaxy at hand agree with the map.
+ * The art URL of a Purifier escort / guard / station, or of the Purifier itself (its planet destroyer: the half-built
+ * crescent); null for everything else (other planet destroyers keep the stock planetdestroyer.png). `l` defaults to the
+ * record of the last threatLooks call (the ship layer refreshes it every frame), so UI pictures without the galaxy at
+ * hand agree with the map.
  */
 export function purifierArtUrl(bo: BuiltObject, l: ThreatLooks = looks): string | null {
-    if (l.purifierFaction === null || bo.isPlanetDestroyer || bo.actualEmpire !== l.purifierFaction) return null;
+    if (l.purifierFaction === null || bo.actualEmpire !== l.purifierFaction) return null;
     const f = purifierFile(bo, l.purifierDock);
     return f === null ? null : `${PURIFIER_ART_DIR}${f}.png`;
 }
 
 export const WORLD_SHIP_VISUAL_SCALE = 2.5;
 export const MOTHERCORE_VISUAL_SCALE = 1.9;
+/** The Purifier (its planet destroyer) drawn larger than its size alone gives, so it stays the most imposing ship of
+ * its fleet next to its long escorts (render only). */
+export const PURIFIER_VISUAL_SCALE = 1.5;
 
-/** Visual size multiplier of an object (1 for everything but the world ship / the Mothercore). */
+/** Visual size multiplier of an object (1 for everything but the world ship, the Mothercore and the Purifier). */
 export function threatDrawScale(l: ThreatLooks, bo: BuiltObject): number {
     if (l.worldShips.includes(bo)) return WORLD_SHIP_VISUAL_SCALE;
     if (bo === l.mothercore) return MOTHERCORE_VISUAL_SCALE;
+    if (bo.isPlanetDestroyer && l.purifierFaction !== null && bo.actualEmpire === l.purifierFaction) return PURIFIER_VISUAL_SCALE;
     return 1;
 }
 

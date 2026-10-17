@@ -8,8 +8,13 @@ inside, gouges, craters, scorch, melted edges, gunmetal / steel patches welded o
 antennas, whips, small dishes, spikes and fins poke out all round, as the destroyer's spikes.
 Offline build step; the outputs are our derived art, committed under public/art/purifier/ (src/render/threatArt.ts
 purifierArtUrl draws them for the Purifier faction's escorts and guards by subRole, base_1 for its dock - the repair
-station - and base_0 for any other base of the faction). The planet destroyer itself keeps the stock
-other/planetdestroyer.png: the one unbroken weapon, the only one with a glowing core.
+station - and base_0 for any other base of the faction, planetdestroyer for the Purifier itself). The Purifier (its
+planet destroyer) is a crescent: the stock other/planetdestroyer.png sphere kept exact and solid as a thin crescent
+hugging its left edge and curving round top and bottom (its colours, spikes, markers), the glowing core plate at the
+crescent's inner edge; right of it a half-built construction whose density falls off across the ship - a dense
+scaffold next to the plating (stock plating and machinery still on in panels, girders packed tight, partial ribs),
+sparser toward the right, the last girder ends reaching into empty space - all one connected structure, as the ship
+moves (build_purifier); threatArt.ts draws it 1.5x (PURIFIER_VISUAL_SCALE).
 
     python3 -I scripts/purifier-ships.py [--dwu <DW:U install>] [--out public/art/purifier] [--preview <dir>]
         [--only frigate,base_1]
@@ -66,7 +71,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 GAME = os.path.dirname(HERE)
 LUM = np.array([0.299, 0.587, 0.114])
 SS = 2  # the frames are assembled at SS x and downsampled at the end (Lanczos + a light unsharp mask)
-FILES = ['frigate', 'destroyer', 'cruiser', 'capitalship', 'carrier', 'trooptransport', 'base_0', 'base_1']
+FILES = ['frigate', 'destroyer', 'cruiser', 'capitalship', 'carrier', 'trooptransport', 'base_0', 'base_1', 'planetdestroyer']
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -1619,6 +1624,197 @@ def finish(name, c, xs, cols, rng):
     return Image.fromarray(res, 'RGBA')
 
 
+# ---------------------------------------------------------------------------------------------------------------
+# 5. The Purifier itself: a half-built crescent
+# ---------------------------------------------------------------------------------------------------------------
+
+PD_SIZE = 600            # output frame (square)
+PD_OFF = (24, 54)        # where the stock 492 px frame sits in it
+PD_C, PD_R = (236.0, 245.0), 178.0     # the sphere (stock px)
+PD_IC, PD_IR = (306.0, 245.0), 162.0   # the hollow (stock px): what is cut out of the sphere, leaving a crescent
+PD_CORE = (258.0, 302.0)               # the core plate's centre (stock px)
+
+
+def connected_to(seed, mask):
+    """The part of `mask` 8-connected to `seed` (iterative constrained dilation)."""
+    cur = seed & mask
+    while True:
+        nxt = dilate(cur, 1) & mask
+        if nxt.sum() == cur.sum():
+            return nxt
+        cur = nxt
+
+
+def build_purifier(root, xs, cols, rng):
+    """The Purifier's planet destroyer: the stock sphere kept exact and solid as a crescent hugging its left edge and
+    curving round top and bottom (its colours, spikes and markers), the glowing core plate at the crescent's inner
+    edge; right of it a construction whose density falls off across the ship - right next to the plating a dense
+    scaffold (most of the stock hull's plating and machinery still there in panels, girders packed tight, partial
+    ribs), sparser and sparser toward the right, the last girder ends reaching into empty space at the far right.
+    Everything is one connected structure (no loose pieces: it moves): any part not joined to the main body is
+    dropped. The core's glow shows through the framework; lit nav lights on some girder tips."""
+    src = np.asarray(Image.open(os.path.join(root, 'planetdestroyer.png')).convert('RGBA')).astype(np.float64) / 255
+    H0, W0 = src.shape[:2]
+    yy, xx = np.mgrid[0:H0, 0:W0].astype(np.float64) + 0.5
+    cx, cy = PD_C
+    icx, icy = PD_IC
+    ang_i = np.degrees(np.arctan2(yy - icy, xx - icx))
+    step = rng.uniform(-16, 10, 40)
+    ir = PD_IR + step[((ang_i + 180) // 9).astype(int) % 40]
+    hollow = np.hypot(xx - icx, yy - icy) < ir
+    rr = np.hypot(xx - cx, yy - cy)
+    # density across the construction: 1 at the plating's inner edge, 0 at the sphere's right edge
+    xin = icx - np.sqrt(np.clip(PD_IR ** 2 - (yy - icy) ** 2, 0, None))
+    xr = cx + np.sqrt(np.clip(PD_R ** 2 - (yy - cy) ** 2, 0, None))
+    u = np.clip((xx - xin) / np.maximum(xr - xin, 1), 0, 1)
+    dens = (1 - u) ** 0.75
+    # partial plating: the stock hull left on in panels (12 px cells, jittered rows), dense near the plating
+    cell = 12
+    cj = ((yy // cell).astype(int) * 7) % cell
+    cid = ((yy // cell).astype(int) * 997 + ((xx + cj) // cell).astype(int)) % 4096
+    ch = rng.random(4096)
+    panels = hollow & (rr < PD_R) & (ch[cid] < dens * 1.02 - 0.06)
+    # partial ribs: bare frames (projected meridians) part of their length, thinner toward the right
+    ribs = np.zeros((H0, W0), bool)
+    dy = np.clip((yy - cy) / PD_R, -1, 1)
+    for lon, t, frac in ((26, 6, 0.95), (38, 5, 0.85), (50, 5, 0.7), (62, 4, 0.55), (74, 3, 0.4), (84, 2.5, 0.25)):
+        xm = cx + PD_R * math.sin(math.radians(lon + rng.uniform(-3, 3))) * np.sqrt(1 - dy ** 2)
+        span = (dy < -1 + 2 * frac) if rng.random() < 0.5 else (dy > 1 - 2 * frac)
+        ribs |= (np.abs(xx - xm) < t / 2) & (rr < PD_R) & span
+    ribs &= hollow & ~panels
+    core = (np.abs(xx - PD_CORE[0]) < 44) & (yy > 200) & (yy < 405)
+    ux, uy = (xx - cx) / np.maximum(rr, 1), (yy - cy) / np.maximum(rr, 1)
+    rx, ry = cx + ux * PD_R * 0.97, cy + uy * PD_R * 0.97
+    root_hollow = np.hypot(rx - icx, ry - icy) < PD_IR - 6
+    outside = rr > PD_R
+    keep = (~hollow & ~(outside & root_hollow)) | core | ribs | panels
+    keep &= ~(outside & (xx > cx + 20) & root_hollow)
+    a = src[..., 3] * keep
+    rgb = src[..., :3].copy()
+    # panel edges crisp: lit top / left rims, dark bottom / right, the panels a little darker than the plating
+    pm = panels & (src[..., 3] > 0.5)
+    rgb[pm] *= 0.86
+    pl = pm & ~(shift(pm, 1, 0) & shift(pm, 0, 1))
+    rgb[pl] = np.clip(rgb[pl] * 1.35 + 0.04, 0, 1)
+    pd_ = pm & ~(shift(pm, -1, 0) & shift(pm, 0, -1))
+    rgb[pd_] *= 0.45
+    # the cut plating edge: dark toward the construction, a lit raw lip just inside it
+    cutm = keep & ~ribs & ~core & ~panels
+    lip = cutm & ~(shift(cutm, -1, 0) & shift(cutm, 0, -1) & shift(cutm, 1, 0) & shift(cutm, 0, 1))
+    near_h = lip & (shift(hollow, 0, -2) | shift(hollow, -2, 0) | shift(hollow, 2, 0) | shift(hollow, 0, 2))
+    rgb[near_h] = np.clip(rgb[near_h] * 0.45, 0, 1)
+    # the ribs in the plating's own metal (the mirrored left side's colour), a little darker: bare frames
+    mx_ = np.clip((2 * cx - xx).astype(int), 0, W0 - 1)
+    mir = src[yy.astype(int), mx_, :3]
+    rgb[ribs] = np.clip(mir[ribs] * 0.78 + 0.03, 0, 1)
+    a = np.where(ribs, 1.0, a)
+    redge = ribs & ~(shift(ribs, 1, 0) & shift(ribs, 0, 1))
+    rgb[redge] = np.clip(rgb[redge] * 1.3 + 0.04, 0, 1)
+    raw = (src[..., :3] * 255).round().astype(int)
+    blue = (raw[..., 0] == 0) & (raw[..., 1] == 0) & (raw[..., 2] == 255) & (src[..., 3] > 0)
+    yel = (raw[..., 0] == 255) & (raw[..., 1] == 255) & (raw[..., 2] == 0) & (src[..., 3] > 0)
+    yl = [tuple(p) for p in np.argwhere(yel & keep)]
+    for (y_, x_) in yl[14:]:
+        rgb[y_, x_] = (rgb[max(0, y_ - 1), x_] + rgb[min(H0 - 1, y_ + 1), x_]) / 2
+    S_ = PD_SIZE
+    ox, oy = PD_OFF
+    # the girders (painted in the destroyer's metal, toned down): each starts on the structure there, packed tight
+    # near the plating and fewer, longer and more broken toward the right, the last reaching past the edge
+    c = Canvas(S_, pad=0)
+    tips = []
+    base = (a > 0.5) & hollow
+    ys_b, xs_b = np.nonzero(base)
+    for k in range(170):
+        i_ = int(rng.integers(len(ys_b)))
+        y0, x0 = ys_b[i_], xs_b[i_]
+        d0 = dens[y0, x0]
+        uu = u[y0, x0]
+        if rng.random() > 0.35 + 0.65 * d0 and uu < 0.8:
+            continue
+        # scaffolding, not a heap: mostly level and upright members, some braces at 45 deg
+        r_ = rng.random()
+        if r_ < 0.45:
+            phi = float(rng.uniform(-8, 8) + (180 if rng.random() < 0.3 else 0))
+        elif r_ < 0.8:
+            phi = float(rng.uniform(82, 98) * (1 if rng.random() < 0.5 else -1))
+        else:
+            phi = float(rng.choice([45, -45, 135, -135]) + rng.uniform(-6, 6))
+        if uu > 0.6:
+            phi = float(rng.uniform(-12, 12))  # the far ones reach out to the right
+        ln = rng.uniform(16, 34) + 36 * uu
+        wd = max(4.0, rng.uniform(5, 8) * (1 - 0.35 * uu))
+        th = math.radians(phi)
+        gx0, gy0 = x0 + ox, y0 + oy
+        ex, ey = gx0 + math.cos(th) * ln, gy0 + math.sin(th) * ln
+        cut_ = (int(ln * 0.7), int(ln * 0.7) + 4) if rng.random() < 0.15 + 0.4 * uu else None
+        c.put(truss(int(wd), int(ln), rail=2, bay=int(wd) + 2, cut=cut_), (gx0 + ex) / 2, (gy0 + ey) / 2, rot=90 - phi,
+              shadow=0.3, marks=False, mat='thin', gain=0.85)
+        if uu > 0.5 and cut_ is None:
+            tips.append((ex, ey))
+    L, A, _, T, M = c.result()
+    sc, _ = paint(L, A, T, M, xs, cols, SS)
+    A = np.clip(down(A, S_, S_), 0, 1)
+    sc = np.stack([np.clip(down(sc[..., k] * c.A, S_, S_), 0, None) for k in range(3)], axis=2) / np.maximum(A, 1e-3)[..., None]
+    sc = np.clip(sc * np.array([0.84, 0.8, 0.74]), 0, 1)  # toned down, warmer: less busy than bright silver
+    out = np.zeros((S_, S_, 3))
+    al = np.zeros((S_, S_))
+    sl = (slice(oy, oy + H0), slice(ox, ox + W0))
+    out[sl] = rgb * a[..., None]
+    al[sl] = a
+    out = sc * A[..., None] + out * (1 - A[..., None])
+    al = A + al * (1 - A)
+    # one structure: drop everything not joined to the main body (seeded at the core)
+    body = connected_to(np.zeros((S_, S_), bool) | _seed(S_, int(PD_CORE[0] + ox), int(PD_CORE[1] + oy)), al > 0.12)
+    body_aa = dilate(body, 1)
+    al = np.where(body_aa, al, 0)
+    out = np.where(body_aa[..., None], out, 0)
+    out = np.clip(out / np.maximum(al, 1e-6)[..., None] * (al > 0)[..., None], 0, 1)
+    # the core's glow through the framework: a soft warm-white halo where there is no hull
+    gy, gx = np.mgrid[0:S_, 0:S_].astype(np.float64)
+    d = np.hypot(gx - (PD_CORE[0] + ox), (gy - (PD_CORE[1] + oy)) * 0.7)
+    halo = np.clip(1 - d / 150, 0, 1) ** 2 * 0.45 * np.clip((gx - (PD_CORE[0] + ox - 20)) / 50, 0, 1)
+    gl = halo * (1 - al)
+    out = (out * al[..., None] + np.array([1.0, 0.94, 0.78]) * gl[..., None])
+    al = al + gl
+    out = np.clip(out / np.maximum(al, 1e-6)[..., None] * (al > 0)[..., None], 0, 1)
+    # work lights on the framework
+    fr = body & (gx > PD_CORE[0] + ox)
+    for (ly, lx) in pick_points(rng, fr, 8, 30):
+        dd = np.hypot(gx - lx, gy - ly)
+        gw = np.clip(1 - dd / 6, 0, 1) ** 2 * 0.6 * (al > 0.5)
+        out = out * (1 - gw[..., None]) + np.array([1.0, 0.9, 0.65]) * gw[..., None]
+        out[ly, lx] = (1.0, 0.98, 0.9)
+    solid = al > 0.5
+    ring_ = dilate(solid, 1) & ~solid & (al < 0.3)
+    out[ring_] = np.array([0.025, 0.02, 0.016])
+    al[ring_] = np.maximum(al[ring_], 0.6)
+    res = np.zeros((S_, S_, 4), np.uint8)
+    res[..., :3] = np.round(out * 255)
+    res[..., 3] = np.round(np.clip(al, 0, 1) * 255)
+    blk = (res[..., 3] == 255) & (res[..., :3].max(2) == 0)
+    res[blk, :3] = 2
+    acc = (res[..., 3] > 0) & (((res[..., 0] == 0) & (res[..., 1] == 0) & (res[..., 2] == 255)) | ((res[..., 0] == 255) & (res[..., 1] == 255) & (res[..., 2] == 0)))
+    res[acc, 2] = np.where(res[acc, 2] > 0, res[acc, 2] - 1, 1)
+    for (y_, x_) in np.argwhere(blue & keep):
+        if body[y_ + oy, x_ + ox]:
+            res[y_ + oy, x_ + ox] = (0, 0, 255, 255)
+    n_l = 0
+    for (y_, x_) in yl[:14]:
+        if body[y_ + oy, x_ + ox]:
+            res[y_ + oy, x_ + ox] = (255, 255, 0, 255)
+            n_l += 1
+    tips = [t_ for t_ in sorted(tips) if 0 <= int(t_[1]) < S_ and 0 <= int(t_[0]) < S_ and body[int(t_[1]), int(t_[0])]]
+    for (tx, ty) in [tips[int(i)] for i in np.linspace(0, len(tips) - 1, min(19 - n_l, len(tips)))] if tips else []:
+        res[int(ty), int(tx)] = (255, 255, 0, 255)
+    return Image.fromarray(res, 'RGBA')
+
+
+def _seed(S_, x, y):
+    m = np.zeros((S_, S_), bool)
+    m[y - 3:y + 4, x - 3:x + 4] = True
+    return m
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--dwu', default=os.path.join(GAME, 'public', 'assets', 'dwu'))
@@ -1639,8 +1835,11 @@ def main():
     names = FILES if args.only is None else [n for n in FILES if n in args.only.split(',')]
     for name in names:
         rng = np.random.default_rng(zlib.crc32(('purifier2:' + name).encode()))
-        c = build(root, name, rng)
-        img = finish(name, c, xs, cols, rng)
+        if name == 'planetdestroyer':
+            img = build_purifier(root, xs, cols, rng)
+        else:
+            c = build(root, name, rng)
+            img = finish(name, c, xs, cols, rng)
         img.save(os.path.join(args.out, name + '.png'), optimize=True)
         a = np.asarray(img)
         nb = int(((a[..., 0] == 0) & (a[..., 1] == 0) & (a[..., 2] == 255) & (a[..., 3] > 0)).sum())
@@ -1693,7 +1892,8 @@ def contact_sheet(out_dir, made, dest):
         x += i.width + 16
     for zoom, py in ((1.0, top), (0.25, top + 230)):
         x = 16
-        for name, i in [(n, f) for (n, _), f in zip(made, full)] + [('planetdestroyer', dest.convert('RGBA'))]:
+        extra = [] if any(n == 'planetdestroyer' for n, _ in made) else [('planetdestroyer', dest.convert('RGBA'))]
+        for name, i in [(n, f) for (n, _), f in zip(made, full)] + extra:
             crop, ratio = crop_square(i)
             s = max(3, int(math.sqrt(SIZES[name] * ratio * 8) * zoom))
             sheet.alpha_composite(crop.resize((s, s), Image.LANCZOS), (x, py))
