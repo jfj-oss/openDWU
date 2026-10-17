@@ -1,8 +1,9 @@
-// Threat looks (render only): the Generation Ships' centuries-old fleets, the Dead Probe Swarm's and the Purifier's art.
+// Threat looks (render only): the Generation Ships' centuries-old fleets, the Dead Probe Swarm's and the Purifier's art,
+// and Giantworks' Great Work (its scaffold stages and finished wonders: see the Giantworks section at the end).
 //
-// The three draw bundled frames of our own (derived from stock pieces by offline scripts). Factions are found through
-// the threats' scenario state (genShipsStates / peekProbeSwarmState / peekPurifierState: read only, never created),
-// never by name.
+// They draw bundled frames of our own (derived from stock pieces by offline scripts). Factions and sites are found
+// through the threats' scenario state (genShipsStates / peekProbeSwarmState / peekPurifierState / greatWorkSites: read
+// only, never created), never by name.
 //
 // - Generation ships ("the old colony fleet"): the world ship (whoever holds it) and the factions' warships, troop
 //   transports, scouts, colony, construction and civilian ships — including the big slow ships a settled faction
@@ -31,10 +32,12 @@
 //   organs' light swells through the panes and pulses run out along the veins, and a sighted Watcher's plates swing open
 //   (beaconFx.ts BeaconFxLayer). Who is who comes from the Beacon sim's state bag (BeaconArtState, read only).
 
-import { Container, type Texture } from 'pixi.js';
+import { Container, Graphics, Sprite, type Texture } from 'pixi.js';
 import type { Galaxy } from '../sim/galaxy';
 import type { BuiltObject } from '../sim/builtObject';
 import type { Empire } from '../sim/empire';
+import type { Habitat } from '../sim/types';
+import { peekThreatState } from '../sim/scenario/threats/framework';
 import { genShipsStates } from '../sim/scenario/threats/generationShips';
 import { peekProbeSwarmState } from '../sim/scenario/threats/probeSwarm';
 import { peekPurifierState } from '../sim/scenario/threats/purifier';
@@ -46,7 +49,9 @@ import { useMinifyingFilter } from './assets';
 import { loadShipArt } from './shipArt';
 import { SpritePool } from './fxCommon';
 import { GEN_SHIPS_LIGHTS } from './genShipsLights';
-import { peekThreatState } from '../sim/scenario/threats/framework';
+import { GW_LIGHTS, GW_LIGHT_KINDS, GW_SANCTUARY_GLASS_R } from './giantworksLights';
+import { LeviathanRig, leviathanTextures, type LeviathanTextures } from './leviathanRig';
+import { loadLeviathanImages } from './faunaArt';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Who is who (once per frame)
@@ -66,6 +71,10 @@ export interface ThreatLooks {
     watchers?: BuiltObject[];
     watchersSighted?: BuiltObject[] | null;
     beacon?: BuiltObject | null;
+    /** Giantworks: the Great Work sites by their base (scaffold or finished wonder art), and the finished Ultraminds by
+     * the planet they wrap (mainView.ts draws the machine shell over it). Optional: absent = none. */
+    greatWorks?: Map<BuiltObject, GreatWorkArtSite>;
+    ultramindPlanets?: Map<Habitat, GreatWorkArtSite>;
 }
 
 const looks: ThreatLooks = {
@@ -79,6 +88,8 @@ const looks: ThreatLooks = {
     watchers: [],
     watchersSighted: null,
     beacon: null,
+    greatWorks: new Map(),
+    ultramindPlanets: new Map(),
 };
 
 /**
@@ -120,7 +131,16 @@ export function threatLooks(galaxy: Galaxy): ThreatLooks {
     looks.watchers!.length = 0;
     looks.watchersSighted = null;
     looks.beacon = null;
+    const gws = looks.greatWorks!;
+    const ums = looks.ultramindPlanets!;
+    if (gws.size > 0) gws.clear();
+    if (ums.size > 0) ums.clear();
     if (galaxy.scenario === null) return looks;
+    for (const site of greatWorkSites(galaxy)) {
+        if (site.base === null || site.base.hasBeenDestroyed) continue;
+        gws.set(site.base, site);
+        if (site.stage >= 4 && site.wonder === 'ultramind' && site.habitat !== null) ums.set(site.habitat, site);
+    }
     const b = peekThreatState<BeaconArtState>(galaxy, BEACON_STATE_KEY);
     if (b !== null) {
         looks.reclaimers = b.faction ?? null;
@@ -140,6 +160,11 @@ export function threatLooks(galaxy: Galaxy): ThreatLooks {
         if (b.sighted !== undefined) for (const w of b.sighted) if (!sightedScratch.includes(w)) sightedScratch.push(w);
         looks.watchersSighted = modes || b.sighted !== undefined ? sightedScratch : null;
         looks.beacon = b.beacon !== undefined && b.beacon !== null && !b.beacon.hasBeenDestroyed ? b.beacon : null;
+    }
+    // Giantworks: a finished Great Work whose wonder is the Beacon is the Beacon (its art, size floor and life), unless
+    // the Beacon's sim names one itself.
+    if (looks.beacon === null) {
+        for (const site of gws.values()) if (site.stage >= 4 && site.wonder === 'beacon') looks.beacon = site.base;
     }
     for (const g of genShipsStates(galaxy)) {
         if (g.faction !== null) looks.genFactions.push(g.faction);
@@ -417,12 +442,13 @@ export function beaconLooksActive(l: ThreatLooks): boolean {
     return (l.reclaimers !== undefined && l.reclaimers !== null) || (l.watchers !== undefined && l.watchers.length > 0) || (l.beacon !== undefined && l.beacon !== null);
 }
 
-/** The bundled threat art of an object (the generation ships', the Purifier's, the probe swarm's or the Beacon's), or
- * null for its stock frame. */
+/** The bundled threat art of an object (a Great Work's, the Beacon's, the generation ships', the Purifier's or the probe
+ * swarm's), or null for its stock frame. */
 export function threatArtUrl(bo: BuiltObject, l: ThreatLooks = looks): string | null {
     const beacon = beaconLooksActive(l);
-    if (l.purifierFaction === null && l.swarmFaction === null && l.genFactions.length === 0 && l.worldShips.length === 0 && !beacon) return null;
-    return (beacon ? beaconArtUrl(bo, l) : null) ?? genShipsArtUrl(bo, l) ?? purifierArtUrl(bo, l) ?? swarmArtUrl(bo, l);
+    const gw = l.greatWorks !== undefined && l.greatWorks.size > 0;
+    if (l.purifierFaction === null && l.swarmFaction === null && l.genFactions.length === 0 && l.worldShips.length === 0 && !beacon && !gw) return null;
+    return (gw ? greatWorkArtUrl(bo, l) : null) ?? (beacon ? beaconArtUrl(bo, l) : null) ?? genShipsArtUrl(bo, l) ?? purifierArtUrl(bo, l) ?? swarmArtUrl(bo, l);
 }
 
 /** Blink period (s) of the generation ships' red positional lights, and the flash length. */
@@ -610,4 +636,508 @@ export class GenShipsFxLayer {
     end(): void {
         this.pool.end();
     }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Giantworks: the Great Work (render only)
+// ---------------------------------------------------------------------------------------------------------------
+//
+// A Great Work site's base draws our bundled frames (public/art/giantworks/, scripts/giantworks-art.py): while it is
+// built, one of four shared scaffold stages (scaffold_0 Foundations .. scaffold_3 Fitting: the same frames whatever
+// the wonder will be, so the silhouette gives nothing away); once complete, its wonder's frame (the Gilded Orbit
+// casino, the Ultramind, the Leviathan Sanctuary). Every frame is drawn at one fixed world size (the crop square is
+// the whole texture), so the structure grows in place stage by stage. GreatWorkFxLayer lights them: blinking nav
+// lights and strobes, flickering work lamps and welding sparks, the casino's chasing neon and marquee bulbs, the
+// Ultramind's data lights and slow cyan pulse, and the Sanctuary's void whales swimming inside its glass (the
+// Leviathan rig, small, clipped to the sphere) under the front struts. A finished Ultramind built round a planet also
+// wraps that planet in its machine shell (syncUltramindShell, from mainView.ts's planet / moon pass), its base then a
+// smaller uplink node.
+
+/**
+ * The Giantworks add-on's scenario-state key: its framework keeps its sites in galaxy.scenario.state.giantworks as
+ * `{ sites: GreatWorkSite[] }` (sim/scenario/threats/giantworks). The render only reads it (peekThreatState, never
+ * created).
+ */
+export const GIANTWORKS_STATE_KEY = 'giantworks';
+
+/**
+ * What the art reads of a Great Work site: giantworks/types.ts GreatWorkSite's base / stage / wonder / habitat (a
+ * structural subset, so the render needs no import of the add-on), plus two optional extras a wonder module may keep
+ * on its site: `whales` (the Sanctuary's whale count, default 4) and `awakened` (the Ultramind turned on its
+ * partners: its lights go red).
+ */
+export interface GreatWorkArtSite {
+    base: BuiltObject | null;
+    stage: number;
+    /** 0..1 (the map glyph's stage arcs fill with it). */
+    progress?: number;
+    wonder: string;
+    habitat: Habitat | null;
+    whales?: number;
+    awakened?: boolean;
+}
+
+const NO_SITES: readonly GreatWorkArtSite[] = [];
+
+/** The Great Work sites (the add-on's state), or none. Read only. */
+export function greatWorkSites(galaxy: Galaxy): readonly GreatWorkArtSite[] {
+    const st = peekThreatState<{ sites?: GreatWorkArtSite[] }>(galaxy, GIANTWORKS_STATE_KEY);
+    return st !== null && Array.isArray(st.sites) ? st.sites : NO_SITES;
+}
+
+/** The bundled Giantworks frames (public/art/giantworks/<frame>.png, scripts/giantworks-art.py). */
+export const GW_ART_DIR = '/art/giantworks/';
+
+/**
+ * The frame a site's base draws: the scaffold of its stage (0..3, shared by every wonder), or once complete (stage 4)
+ * its wonder's (the Ultramind's uplink node when it wraps a planet). A finished wonder without art of its own yet
+ * keeps the finished scaffold. Pure.
+ */
+export function greatWorkFrame(site: Pick<GreatWorkArtSite, 'stage' | 'wonder' | 'habitat'>): string {
+    if (!(site.stage >= 4)) return `scaffold_${Math.max(0, Math.min(3, Math.trunc(site.stage) || 0))}`;
+    switch (site.wonder) {
+        case 'casino':
+            return 'casino';
+        case 'ultramind':
+            return site.habitat !== null ? 'ultramind-node' : 'ultramind';
+        case 'sanctuary':
+            return 'sanctuary';
+        case 'beacon':
+            return 'beacon'; // the Beacon's own art (public/art/beacon/beacon.png), drawn by the Beacon's paths
+        default:
+            return 'scaffold_3';
+    }
+}
+
+/** The frame the Great Work path draws itself (fixed world size and orientation, GreatWorkFxLayer), or null when another
+ * look takes over (a finished Beacon: beaconArtUrl, its BEACON_VISUAL_SCALE / BEACON_REF_SIZE floor, BeaconFxLayer). */
+export function greatWorkDrawnFrame(site: Pick<GreatWorkArtSite, 'stage' | 'wonder' | 'habitat'>): string | null {
+    const f = greatWorkFrame(site);
+    return f === 'beacon' ? null : f;
+}
+
+/** World units the whole frame spans at zoom factor 1 (about a large planet). */
+export const GREAT_WORK_WORLD_SIZE = 560;
+/** Frames drawn smaller than the rest (the Ultramind's uplink node beside the planet it wraps). */
+const GW_FRAME_SCALE: Readonly<Record<string, number>> = { 'ultramind-node': 0.5 };
+
+/** The drawn side (px) of a Great Work frame at zoom factor f: a fixed world size, whatever its base's size. Pure. */
+export function greatWorkDrawPx(frame: string, f: number): number {
+    const k = Object.hasOwn(GW_FRAME_SCALE, frame) ? GW_FRAME_SCALE[frame] : 1;
+    return Math.trunc((GREAT_WORK_WORLD_SIZE * k) / f);
+}
+
+/** The Great Work site whose base `bo` is (null for anything else). */
+export function greatWorkSiteOf(bo: BuiltObject, l: ThreatLooks = looks): GreatWorkArtSite | null {
+    return l.greatWorks === undefined || l.greatWorks.size === 0 ? null : (l.greatWorks.get(bo) ?? null);
+}
+
+/** The Great Work whose base or planet `target` is (a threat-site row's target; the last threatLooks record), or null. */
+export function greatWorkAt(target: object, l: ThreatLooks = looks): GreatWorkArtSite | null {
+    if (l.greatWorks === undefined || l.greatWorks.size === 0) return null;
+    for (const [base, site] of l.greatWorks) if (base === target || site.habitat === target) return site;
+    return null;
+}
+
+/** The art URL of a Great Work's base (null for everything else). */
+export function greatWorkArtUrl(bo: BuiltObject, l: ThreatLooks = looks): string | null {
+    const site = greatWorkSiteOf(bo, l);
+    if (site === null) return null;
+    const f = greatWorkFrame(site);
+    return f === 'beacon' ? `${BEACON_ART_DIR}beacon.png` : `${GW_ART_DIR}${f}.png`;
+}
+
+// --- lights ---
+
+/** The light kinds of giantworksLights.ts, by index. */
+const GW_NAV = GW_LIGHT_KINDS.indexOf('nav');
+const GW_WHITE = GW_LIGHT_KINDS.indexOf('white');
+const GW_WORK = GW_LIGHT_KINDS.indexOf('work');
+const GW_WELD = GW_LIGHT_KINDS.indexOf('weld');
+const GW_RUN = GW_LIGHT_KINDS.indexOf('run');
+const GW_NEON_A = GW_LIGHT_KINDS.indexOf('neonA');
+const GW_NEON_B = GW_LIGHT_KINDS.indexOf('neonB');
+const GW_DATA = GW_LIGHT_KINDS.indexOf('data');
+const GW_GOLD = GW_LIGHT_KINDS.indexOf('gold');
+
+/** A 0..1 hash of two integers (sparkles, data blinks). Pure. */
+function hash01(a: number, b: number): number {
+    let h = Math.imul(a ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(b + 0x632be5ab, 0xc2b2ae35);
+    h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);
+    h ^= h >>> 12;
+    return (h >>> 0) / 4294967296;
+}
+
+/** A flash of length `on` s every `period` s (quick rise, slower fade), at phase `ph` s. Pure. */
+function flash(sec: number, period: number, on: number, ph: number): number {
+    const t = ((((sec + ph) % period) + period) % period);
+    if (t >= on) return 0;
+    const rise = Math.min(0.05, on / 4);
+    return t < rise ? t / rise : 1 - (t - rise) / (on - rise);
+}
+
+/** Casino neon: the two interleaved sets (A / B) take turns, 0.55 s each, with a soft hand-over. Pure. */
+export function gwNeonAlpha(sec: number, setB: boolean): number {
+    const w = 0.5 + 0.5 * Math.sin((2 * Math.PI * sec) / 1.1 + (setB ? Math.PI : 0));
+    return 0.35 + 0.65 * Math.min(1, w * 1.6);
+}
+
+/**
+ * Alpha of light `k` (of `n` in its frame) of kind `kind` (GW_LIGHT_KINDS index) at `sec`: nav lights flash red every
+ * 2.4 s each on its own phase; strobes a short white blink; work lamps a steady flicker; welding sparks crackle at
+ * random; running lights chase round the rings; casino neon takes turns set by set and the marquee bulbs chase in
+ * threes; data lights blink at random. Pure.
+ */
+export function gwLightAlpha(kind: number, sec: number, k: number, n: number): number {
+    switch (kind) {
+        case GW_NAV:
+            return flash(sec, 2.4, 0.5, k * 0.61);
+        case GW_WHITE:
+            return flash(sec, 1.7, 0.14, k * 0.43);
+        case GW_WORK:
+            return 0.72 + 0.18 * Math.sin(sec * 7.3 + k * 1.9) * Math.sin(sec * 3.1 + k);
+        case GW_WELD: {
+            const b = Math.floor(sec * 14);
+            return hash01(b, k * 7 + 3) > 0.62 ? 0.55 + 0.45 * hash01(b, k) : 0;
+        }
+        case GW_RUN: {
+            const t = (((k / Math.max(1, n)) - sec / 3.2) % 1 + 1) % 1;
+            return 0.2 + 0.8 * Math.max(0, 1 - t * 6);
+        }
+        case GW_NEON_A:
+            return gwNeonAlpha(sec, false);
+        case GW_NEON_B:
+            return gwNeonAlpha(sec, true);
+        case GW_GOLD:
+            return (k + Math.floor(sec * 5)) % 3 === 0 ? 1 : 0.18;
+        case GW_DATA: {
+            const b = Math.floor(sec * 3 + k * 0.37);
+            return hash01(b, k) > 0.5 ? 0.7 : 0.08;
+        }
+        default:
+            return 0;
+    }
+}
+
+const GW_LAMP_COLOURS: readonly (readonly [number, number, number])[] = [
+    [1.0, 0.12, 0.08], // nav
+    [1.0, 1.0, 1.0], // white
+    [1.0, 0.74, 0.4], // work
+    [0.78, 0.9, 1.0], // weld
+    [0.45, 0.75, 1.0], // run
+    [1.0, 0.22, 0.82], // neonA
+    [0.22, 0.95, 1.0], // neonB
+    [0.3, 0.92, 1.0], // data
+    [1.0, 0.8, 0.32], // gold
+];
+/** The lamp core radius (frame px) per kind, before the on-screen minimum. */
+const GW_LAMP_FRAME_R = [3.2, 2.4, 5.0, 1.8, 2.2, 2.2, 2.2, 1.5, 2.2];
+const GW_RED_DATA: readonly [number, number, number] = [1.0, 0.16, 0.12];
+
+/** The additive glow layer of a frame (its lit windows / neon / data seams, pulsed), or null. */
+function gwGlowFiles(frame: string): readonly string[] {
+    switch (frame) {
+        case 'casino':
+            return ['casino-neon-a', 'casino-neon-b'];
+        case 'ultramind':
+            return ['ultramind-glow'];
+        case 'ultramind-node':
+            return ['ultramind-node-glow'];
+        default:
+            return [];
+    }
+}
+
+/** The Ultramind's slow breathing glow (never off). Pure. */
+export function gwUltramindPulse(sec: number): number {
+    return 0.35 + 0.3 * (0.5 + 0.5 * Math.sin((2 * Math.PI * sec) / 4.2));
+}
+
+const gwTex = new Map<string, Texture | null>();
+const gwLoading = new Set<string>();
+/** A bundled Giantworks overlay texture (loaded once, on first use; null until then or if it failed). */
+function gwTexture(name: string): Texture | null {
+    const got = gwTex.get(name);
+    if (got !== undefined) return got;
+    if (!gwLoading.has(name)) {
+        gwLoading.add(name);
+        void loadShipArt(`${GW_ART_DIR}${name}.png`, false).then(
+            (a) => gwTex.set(name, a?.texture ?? null),
+            () => gwTex.set(name, null),
+        );
+    }
+    return null;
+}
+
+// --- the Sanctuary's whales ---
+
+/** One whale's swim inside the glass (units of the glass radius): an ellipse round (cx, cy), a lap every `period` s. */
+interface WhaleSwim {
+    len: number;
+    cx: number;
+    cy: number;
+    rx: number;
+    ry: number;
+    period: number;
+    dir: 1 | -1;
+    phase: number;
+}
+
+/** The whales, largest first; a site shows the first `whales` of them (default 4, at most all). */
+export const SANCTUARY_WHALES: readonly WhaleSwim[] = [
+    { len: 0.62, cx: 0.0, cy: 0.05, rx: 0.45, ry: 0.35, period: 80, dir: 1, phase: 0.3 },
+    { len: 0.46, cx: -0.05, cy: -0.05, rx: 0.55, ry: 0.45, period: 64, dir: -1, phase: 2.6 },
+    { len: 0.36, cx: 0.08, cy: 0.0, rx: 0.4, ry: 0.62, period: 52, dir: 1, phase: 4.4 },
+    { len: 0.28, cx: -0.1, cy: 0.1, rx: 0.6, ry: 0.35, period: 44, dir: -1, phase: 1.2 },
+    { len: 0.22, cx: 0.15, cy: -0.15, rx: 0.4, ry: 0.45, period: 37, dir: 1, phase: 5.6 },
+    { len: 0.18, cx: -0.2, cy: 0.2, rx: 0.35, ry: 0.3, period: 31, dir: -1, phase: 3.3 },
+    { len: 0.15, cx: 0.2, cy: 0.2, rx: 0.3, ry: 0.35, period: 27, dir: 1, phase: 0.9 },
+];
+
+/** Where whale `w` is at `sec` (units of the glass radius) and its heading (rad). Pure. */
+export function sanctuaryWhalePose(w: WhaleSwim, sec: number): { x: number; y: number; heading: number } {
+    const th = w.phase + (w.dir * 2 * Math.PI * sec) / w.period;
+    const x = w.cx + w.rx * Math.cos(th);
+    const y = w.cy + w.ry * Math.sin(th);
+    const vx = -w.dir * w.rx * Math.sin(th);
+    const vy = w.dir * w.ry * Math.cos(th);
+    return { x, y, heading: Math.atan2(vy, vx) };
+}
+
+/** How many whales a site shows (its `whales`, default 4, 1..all). Pure. */
+export function sanctuaryWhaleCount(site: Pick<GreatWorkArtSite, 'whales'>): number {
+    const n = site.whales ?? 4;
+    return Math.max(1, Math.min(SANCTUARY_WHALES.length, Math.trunc(Number.isFinite(n) ? n : 4)));
+}
+
+let whaleTex: LeviathanTextures | null = null;
+let whaleTexLoading = false;
+/** The Leviathan's part textures without its harpoons (these whales were raised here, never hunted). */
+function sanctuaryWhaleTextures(): LeviathanTextures | null {
+    if (whaleTex === null && !whaleTexLoading) {
+        whaleTexLoading = true;
+        void loadLeviathanImages().then((imgs) => {
+            const t = leviathanTextures(imgs);
+            for (const h of t.harpoons) {
+                h.shaft.destroy(true);
+                h.line?.destroy(true);
+            }
+            whaleTex = { ...t, harpoons: [] };
+        });
+    }
+    return whaleTex;
+}
+
+/** One Sanctuary's whales: a container in frame px (centred on the frame), masked to the glass. */
+class SanctuaryView {
+    readonly root = new Container();
+    private readonly mask = new Graphics();
+    private readonly rigs: LeviathanRig[] = [];
+    seen = false;
+
+    constructor(tex: LeviathanTextures, count: number) {
+        this.root.eventMode = 'none';
+        this.mask.circle(0, 0, GW_SANCTUARY_GLASS_R - 1).fill(0xffffff);
+        this.root.addChild(this.mask);
+        this.root.mask = this.mask;
+        // Deepest (smallest) first, so the big ones swim over them.
+        for (let i = count - 1; i >= 0; i--) {
+            const rig = new LeviathanRig(tex, i * 1.37);
+            const w = SANCTUARY_WHALES[i];
+            // The smaller ones swim deeper: fainter and bluer through more water.
+            const deep = 1 - w.len / SANCTUARY_WHALES[0].len; // 0 the largest .. ~0.8 the smallest
+            rig.root.tint = deep > 0.3 ? 0x9cbcdc : 0xffffff;
+            rig.root.alpha = 1 - 0.5 * deep;
+            this.rigs[i] = rig;
+            this.root.addChild(rig.root);
+        }
+    }
+
+    get count(): number {
+        return this.rigs.length;
+    }
+
+    pose(sec: number): void {
+        const R = GW_SANCTUARY_GLASS_R;
+        for (let i = 0; i < this.rigs.length; i++) {
+            const w = SANCTUARY_WHALES[i];
+            const p = sanctuaryWhalePose(w, sec);
+            const rig = this.rigs[i];
+            rig.root.position.set(p.x * R, p.y * R);
+            rig.root.rotation = p.heading;
+            rig.root.scale.set((w.len * R) / rig.length);
+            rig.pose(sec + i * 3.1, 0.55);
+        }
+    }
+
+    destroy(): void {
+        this.root.destroy({ children: true });
+    }
+}
+
+/** The Great Work's overlays are skipped below this drawn size (px); the whales below SANCTUARY_WHALES_MIN_PX. */
+export const GW_FX_MIN_PX = 28;
+export const SANCTUARY_WHALES_MIN_PX = 60;
+
+/**
+ * The Great Work's overlays (pooled; nothing allocated per frame but a Sanctuary's view, once): the Sanctuary's
+ * whales and its front struts / glass over them, the additive glow layers, then the lamps.
+ */
+export class GreatWorkFxLayer {
+    readonly root = new Container();
+    private readonly whales = new Container();
+    private readonly fronts = new Container();
+    private readonly glows = new Container();
+    private readonly lamps = new Container();
+    private frontPool = new SpritePool(this.fronts);
+    private glowPool = new SpritePool(this.glows);
+    private lampPool = new SpritePool(this.lamps);
+    private views = new Map<BuiltObject, SanctuaryView>();
+
+    constructor() {
+        this.root.eventMode = 'none';
+        this.root.addChild(this.whales, this.fronts, this.glows, this.lamps);
+    }
+
+    begin(): void {
+        this.frontPool.begin();
+        this.glowPool.begin();
+        this.lampPool.begin();
+        for (const v of this.views.values()) v.seen = false;
+    }
+
+    /** The overlays of a Great Work base sprite drawing `frame` (its transform; `tw` × `th` its texture size). */
+    draw(site: GreatWorkArtSite, frame: string, bo: BuiltObject, x: number, y: number, rotation: number, scale: number, ax: number, ay: number, tw: number, th: number, drawnPx: number, sec: number): void {
+        if (drawnPx < GW_FX_MIN_PX) return;
+        const cos = Math.cos(rotation);
+        const sin = Math.sin(rotation);
+        // The frame centre (the whales' origin) in world space.
+        const ox = (0.5 - ax) * tw * scale;
+        const oy = (0.5 - ay) * th * scale;
+        const cx = x + ox * cos - oy * sin;
+        const cy = y + ox * sin + oy * cos;
+        if (frame === 'sanctuary') {
+            const tex = drawnPx >= SANCTUARY_WHALES_MIN_PX ? sanctuaryWhaleTextures() : null;
+            if (tex !== null) {
+                const n = sanctuaryWhaleCount(site);
+                let v = this.views.get(bo);
+                if (v !== undefined && v.count !== n) {
+                    v.destroy();
+                    this.views.delete(bo);
+                    v = undefined;
+                }
+                if (v === undefined) {
+                    v = new SanctuaryView(tex, n);
+                    this.views.set(bo, v);
+                    this.whales.addChild(v.root);
+                }
+                v.seen = true;
+                v.root.visible = true;
+                v.root.position.set(cx, cy);
+                v.root.rotation = rotation;
+                v.root.scale.set(scale);
+                v.pose(sec);
+            }
+            const front = gwTexture('sanctuary-front');
+            if (front !== null) {
+                const s = this.frontPool.acquire(front);
+                s.anchor.set(ax, ay);
+                s.position.set(x, y);
+                s.rotation = rotation;
+                s.scale.set(scale);
+            }
+        }
+        const glows = gwGlowFiles(frame);
+        for (let i = 0; i < glows.length; i++) {
+            const t = gwTexture(glows[i]);
+            if (t === null) continue;
+            const s = this.glowPool.acquire(t);
+            s.blendMode = 'add';
+            s.anchor.set(ax, ay);
+            s.position.set(x, y);
+            s.rotation = rotation;
+            s.scale.set(scale);
+            s.alpha = frame === 'casino' ? gwNeonAlpha(sec, i === 1) : gwUltramindPulse(sec);
+            s.tint = site.awakened === true ? 0xff3a2a : 0xffffff;
+        }
+        if (!Object.hasOwn(GW_LIGHTS, frame.replace('-', '_'))) return;
+        const pts = GW_LIGHTS[frame.replace('-', '_')];
+        const k = drawnPx / Math.max(tw, th); // screen px per frame px
+        const red = site.awakened === true;
+        for (let i = 0; i < pts.length; i++) {
+            const kind = pts[i][2];
+            const a = gwLightAlpha(kind, sec, i, pts.length);
+            if (a <= 0.02) continue;
+            const rScreen = Math.max(kind === GW_DATA ? 0.9 : 1.3, Math.min(4.5, GW_LAMP_FRAME_R[kind] * k));
+            const lampScale = ((rScreen * scale) / k) / LAMP_CORE_PX;
+            const lx = (pts[i][0] + 0.5 - ax * tw) * scale;
+            const ly = (pts[i][1] + 0.5 - ay * th) * scale;
+            const s = this.lampPool.acquire(lampTexture(red && kind === GW_DATA ? GW_RED_DATA : GW_LAMP_COLOURS[kind]));
+            s.blendMode = 'add';
+            s.position.set(x + lx * cos - ly * sin, y + lx * sin + ly * cos);
+            s.scale.set(lampScale);
+            s.alpha = a;
+        }
+    }
+
+    end(): void {
+        this.frontPool.end();
+        this.glowPool.end();
+        this.lampPool.end();
+        for (const [bo, v] of this.views) {
+            if (v.seen) continue;
+            if (bo.hasBeenDestroyed || looks.greatWorks?.has(bo) !== true) {
+                v.destroy();
+                this.views.delete(bo);
+            } else v.root.visible = false;
+        }
+    }
+}
+
+// --- the Ultramind's shell over its planet ---
+
+/** The shell texture spans this many times the planet picture's width (scripts/giantworks-art.py SHELL_SCALE). */
+export const ULTRAMIND_SHELL_SCALE = 1.4;
+
+/** The machine shell (and its pulsing data glow) over one planet / moon picture, made on first use. */
+export interface UltramindShellHolder {
+    gwShell: { shell: Sprite; glow: Sprite } | null;
+}
+
+/**
+ * The Ultramind's shell over a planet or moon picture `body` of habitat `h` (mainView.ts updateBodies, after the body
+ * is placed): shown while `h` is a finished Ultramind's planet (the last threatLooks record) and the body is drawn,
+ * the sprites inserted right above the body in `parent`.
+ */
+export function syncUltramindShell(parent: Container, holder: UltramindShellHolder, body: Sprite, h: Habitat, sec: number): void {
+    const ums = looks.ultramindPlanets;
+    const site = ums === undefined || ums.size === 0 ? undefined : ums.get(h);
+    const shellTex = site !== undefined && body.visible ? gwTexture('ultramind-shell') : null;
+    const glowTex = shellTex !== null ? gwTexture('ultramind-shell-glow') : null;
+    if (site === undefined || shellTex === null || glowTex === null) {
+        if (holder.gwShell !== null) holder.gwShell.shell.visible = holder.gwShell.glow.visible = false;
+        return;
+    }
+    if (holder.gwShell === null) {
+        const shell = new Sprite(shellTex);
+        const glow = new Sprite(glowTex);
+        shell.anchor.set(0.5);
+        glow.anchor.set(0.5);
+        glow.blendMode = 'add';
+        shell.eventMode = glow.eventMode = 'none';
+        const at = parent.getChildIndex(body) + 1;
+        parent.addChildAt(shell, at);
+        parent.addChildAt(glow, at + 1);
+        holder.gwShell = { shell, glow };
+    }
+    const { shell, glow } = holder.gwShell;
+    const side = body.scale.x * body.texture.width * ULTRAMIND_SHELL_SCALE;
+    for (const s of [shell, glow]) {
+        s.visible = true;
+        s.position.copyFrom(body.position);
+        s.scale.set(side / s.texture.width);
+        s.alpha = body.alpha;
+    }
+    glow.alpha = body.alpha * gwUltramindPulse(sec);
+    glow.tint = site.awakened === true ? 0xff3a2a : 0xffffff;
 }

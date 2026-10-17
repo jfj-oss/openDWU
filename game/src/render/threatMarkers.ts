@@ -5,15 +5,24 @@
 //   silence    pulsing dead-signal circle          doppelgangers  mirrored double outline (sleeper ship)
 //   hive       hex lattice tint (Hive world)        darkFarms   red pulse (Dark Farm)
 //   exchange   ledger-and-scales icon (Exchange station)
+//   giantworks         the Great Work's site: four stage arcs filling with its progress, a crane over it (a star
+//                      once complete) — the structure itself is no secret, so it is drawn solid from the rumour on
+//   giantworksCompact  the Founders' Compact emblem over a founding world: three linked rings in a seal (faint and
+//                      uncertain at rumour level)
 // Unknown threat keys fall back to the framework's ring (colony) / diamond (ship). Pure selection + geometry here;
 // drawThreatMarker issues the Pixi Graphics calls.
 
 import type { Graphics } from 'pixi.js';
 
+export const KNOWLEDGE_RUMOUR = 1;
 export const KNOWLEDGE_SUSPECTED = 2;
 export const KNOWLEDGE_CONFIRMED = 3;
 
-export type ThreatMarkerKind = 'ash' | 'cultRing' | 'deadSignal' | 'mirror' | 'hex' | 'redPulse' | 'ledger' | 'ring' | 'diamond';
+export type ThreatMarkerKind = 'ash' | 'cultRing' | 'deadSignal' | 'mirror' | 'hex' | 'redPulse' | 'ledger' | 'greatWork' | 'compact' | 'ring' | 'diamond';
+
+/** Giantworks' site rows (threatKnownSites): the Great Work itself, and each founding world of the Compact. */
+export const GW_SITE_THREAT = 'giantworks';
+export const GW_COMPACT_THREAT = 'giantworksCompact';
 
 /** The seven threat looks by threat key (the 19f modules' *_KEY constants). */
 export const THREAT_MARKER_KINDS: Readonly<Record<string, ThreatMarkerKind>> = {
@@ -24,6 +33,8 @@ export const THREAT_MARKER_KINDS: Readonly<Record<string, ThreatMarkerKind>> = {
     hive: 'hex',
     darkFarms: 'redPulse',
     exchange: 'ledger',
+    [GW_SITE_THREAT]: 'greatWork',
+    [GW_COMPACT_THREAT]: 'compact',
 };
 
 export const THREAT_MARKER_COLOURS: Readonly<Record<ThreatMarkerKind, number>> = {
@@ -34,6 +45,8 @@ export const THREAT_MARKER_COLOURS: Readonly<Record<ThreatMarkerKind, number>> =
     hex: 0xe0c020,
     redPulse: 0xff3030,
     ledger: 0x40d890,
+    greatWork: 0xffc04a,
+    compact: 0xe6d08c,
     ring: 0xffa020,
     diamond: 0xffa020,
 };
@@ -47,6 +60,9 @@ export interface ThreatMarkerStyle {
     alpha: number;
     /** Dash pattern for strokes: 0 = continuous, else segments per circle. */
     dashes: number;
+    /** greatWork: the site's stage (0..4) and progress (0..1), set by the layer from the site each frame. */
+    stage?: number;
+    progress?: number;
 }
 
 /**
@@ -54,8 +70,15 @@ export interface ThreatMarkerStyle {
  * ('colony' | 'ship') for the fallback shape.
  */
 export function threatMarkerStyle(threat: string, level: number, kind: 'colony' | 'ship'): ThreatMarkerStyle | null {
+    const k = (Object.hasOwn(THREAT_MARKER_KINDS, threat) ? THREAT_MARKER_KINDS[threat] : undefined) ?? (kind === 'ship' ? 'diamond' : 'ring');
+    // Giantworks: the site and the Compact's founders are marked from the rumour on (the site always solid).
+    if (k === 'greatWork') return level >= KNOWLEDGE_RUMOUR ? { kind: k, colour: THREAT_MARKER_COLOURS[k], solid: true, alpha: 1, dashes: 0 } : null;
+    if (k === 'compact') {
+        if (!(level >= KNOWLEDGE_RUMOUR)) return null;
+        const sure = level >= KNOWLEDGE_SUSPECTED;
+        return { kind: k, colour: THREAT_MARKER_COLOURS[k], solid: sure, alpha: sure ? 0.9 : 0.55, dashes: sure ? 0 : 18 };
+    }
     if (!(level >= KNOWLEDGE_SUSPECTED)) return null;
-    const k = THREAT_MARKER_KINDS[threat] ?? (kind === 'ship' ? 'diamond' : 'ring');
     const solid = level >= KNOWLEDGE_CONFIRMED;
     let colour = THREAT_MARKER_COLOURS[k];
     if ((k === 'ring' || k === 'diamond') && solid) colour = 0xff3030;
@@ -218,6 +241,48 @@ export function drawThreatMarker(g: Graphics, st: ThreatMarkerStyle, x: number, 
             g.moveTo(bx, by + s * 0.3).lineTo(bx, by + s * 0.85).stroke({ width: w * 0.6, color: 0x0a1a10, alpha: a });
             break;
         }
+        case 'greatWork': {
+            // Four stage arcs round the site (Foundations, Frame, Superstructure, Fitting), filled with the progress.
+            const prog = Math.max(0, Math.min(1, st.progress ?? (st.stage ?? 0) / 4));
+            const gap = 0.12;
+            g.circle(x, y, r).stroke({ width: w * 0.6, color: c, alpha: 0.25 * a });
+            for (let q = 0; q < 4; q++) {
+                const fill = greatWorkArcFill(prog, q);
+                if (fill <= 0) continue;
+                const a0 = -Math.PI / 2 + (q * Math.PI) / 2 + gap;
+                const a1 = a0 + (Math.PI / 2 - 2 * gap) * fill;
+                g.moveTo(x + Math.cos(a0) * r, y + Math.sin(a0) * r).arc(x, y, r, a0, a1).stroke({ width: w * 1.6, color: c, alpha: a });
+            }
+            const s = Math.min(16 * px, Math.max(7 * px, r * 0.3));
+            const gx = x;
+            const gy = y - r - s * 0.9;
+            if ((st.stage ?? 0) >= 4) {
+                // complete: a four-point star
+                g.moveTo(gx, gy - s).lineTo(gx + s * 0.25, gy - s * 0.25).lineTo(gx + s, gy).lineTo(gx + s * 0.25, gy + s * 0.25).lineTo(gx, gy + s).lineTo(gx - s * 0.25, gy + s * 0.25).lineTo(gx - s, gy).lineTo(gx - s * 0.25, gy - s * 0.25).closePath().fill({ color: c, alpha: a });
+            } else {
+                // a construction crane: mast, jib, counter-jib, the hook line
+                g.moveTo(gx - s * 0.2, gy + s * 0.7).lineTo(gx - s * 0.2, gy - s * 0.6).stroke({ width: w, color: c, alpha: a });
+                g.moveTo(gx - s * 0.75, gy - s * 0.6).lineTo(gx + s * 0.95, gy - s * 0.6).stroke({ width: w, color: c, alpha: a });
+                g.moveTo(gx - s * 0.2, gy - s * 0.95).lineTo(gx + s * 0.95, gy - s * 0.6).stroke({ width: w * 0.6, color: c, alpha: a });
+                g.moveTo(gx + s * 0.7, gy - s * 0.6).lineTo(gx + s * 0.7, gy + s * 0.05).stroke({ width: w * 0.6, color: c, alpha: a });
+                g.rect(gx - s * 0.75, gy - s * 0.66, s * 0.25, s * 0.22).fill({ color: c, alpha: a });
+            }
+            break;
+        }
+        case 'compact': {
+            // The Founders' Compact: three linked rings (the three founding circles) in a seal.
+            strokeCircle(g, x, y, r, w, c, a, dashes, t * 0.15);
+            const s = Math.max(9 * px, r * 0.5);
+            const cx = x + r * 0.72;
+            const cy = y - r * 0.72;
+            g.circle(cx, cy, s * 1.05).fill({ color: 0x0c0a06, alpha: 0.55 * a });
+            for (let k = 0; k < 3; k++) {
+                const ang = -Math.PI / 2 + (k * 2 * Math.PI) / 3;
+                g.circle(cx + Math.cos(ang) * s * 0.36, cy + Math.sin(ang) * s * 0.36, s * 0.42).stroke({ width: w * 0.8, color: c, alpha: a });
+            }
+            g.circle(cx, cy, s * 1.05).stroke({ width: w * 0.6, color: c, alpha: 0.8 * a });
+            break;
+        }
         case 'diamond': {
             g.moveTo(x, y - r).lineTo(x + r, y).lineTo(x, y + r).lineTo(x - r, y).closePath().stroke({ width: w, color: c, alpha: a });
             break;
@@ -227,5 +292,11 @@ export function drawThreatMarker(g: Graphics, st: ThreatMarkerStyle, x: number, 
             strokeCircle(g, x, y, r + 5 * px, w * 0.5, c, 0.6 * a, dashes);
         }
     }
-    if (!st.solid) questionMark(g, x + r * 0.95, y - r * 0.95, Math.max(7 * px, r * 0.18), c, a, w * 0.8);
+    // (The Compact's seal sits where the others put the "?": its "?" goes top left.)
+    if (!st.solid) questionMark(g, x + (st.kind === 'compact' ? -r : r) * 0.95, y - r * 0.95, Math.max(7 * px, r * 0.18), c, a, w * 0.8);
+}
+
+/** How full stage arc `q` (0..3) of a Great Work's glyph is at `progress` (0..1). Pure. */
+export function greatWorkArcFill(progress: number, q: number): number {
+    return Math.max(0, Math.min(1, progress * 4 - q));
 }

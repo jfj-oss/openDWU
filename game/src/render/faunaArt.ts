@@ -35,8 +35,8 @@ function loadImage(url: string): Promise<HTMLImageElement> {
 }
 
 /** The Leviathan's part pictures and harpoon atlas (our bundled art, public/art/leviathan/), decoded; null if any fails
- * to load. */
-function loadLeviathanImages(): Promise<LeviathanImages | null> {
+ * to load. (Also the Leviathan Sanctuary's whales: threatArt.ts.) */
+export function loadLeviathanImages(): Promise<LeviathanImages | null> {
     const urls = [LEV_BODY_URL, LEV_PARTS.finL.url, LEV_PARTS.finR.url, LEV_PARTS.fluke.url, LEV_HARPOON_URL];
     return Promise.all(urls.map((u) => loadImage(u).then(pixelsOf)))
         .then(([body, finL, finR, fluke, harpoons]) => ({ body, finL, finR, fluke, harpoons }))

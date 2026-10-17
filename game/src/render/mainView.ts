@@ -110,6 +110,7 @@ import type { Creature } from '../sim/creature';
 import { createMapOverlayState, type MapOverlayState } from '../ui/mapOverlays';
 import { getSettings, showRegionLabels, showSystemNames } from '../ui/settings';
 import { VOLCANIC_GLOW_SCALE, VolcanicGlowTextures, volcanicGlowIndex } from './volcanicGlow';
+import { syncUltramindShell, type UltramindShellHolder } from './threatArt';
 import { galaxyViewGates } from './cleanGalaxyView';
 import { edgeScrollPixels, nebulaDetailScale, wheelNotches, wheelZoom, wheelZoomAnchor } from './viewInput'; // [gameoptions]
 import { hideMapTooltip, showMapTooltip, tooltipText } from '../ui/mapTooltip';
@@ -462,12 +463,14 @@ function syncVolcanicGlow(body: Sprite, glow: Sprite | null): void {
 
 // ---------------------------------------------------------------------------
 
-class PlanetView {
+class PlanetView implements UltramindShellHolder {
     habitat: Habitat;
     dot: Sprite;
     sprite: Sprite;
     /** The volcanic glow over `sprite` (MainView.cs method_50, volcanicGlow.ts), once loaded. */
     glow: Sprite | null = null;
+    /** threatArt.ts: the Ultramind's machine shell over this planet (Giantworks), made on first use. */
+    gwShell: UltramindShellHolder['gwShell'] = null;
     label: Text;
     /** The colony plate at zoom < 2 (colonyPlate.ts, method_89), made on first use. */
     plate: Sprite | null = null;
@@ -501,11 +504,13 @@ class PlanetView {
     }
 }
 
-class MoonView {
+class MoonView implements UltramindShellHolder {
     habitat: Habitat;
     dot: Sprite;
     /** The volcanic glow over `dot` (MainView.cs method_50, volcanicGlow.ts), once loaded. */
     glow: Sprite | null = null;
+    /** threatArt.ts: the Ultramind's machine shell over this moon (Giantworks), made on first use. */
+    gwShell: UltramindShellHolder['gwShell'] = null;
     label: Text;
     /** The colony plate at zoom < 2 (colonyPlate.ts), made on first use. */
     plate: Sprite | null = null;
@@ -1040,6 +1045,8 @@ export class SystemView {
         // renderNowMs: galaxy.nowMs plus the elapsed part of the next sim step (renderInterp.ts), so the angles also
         // advance between steps.
         const nowMs = this.view.renderTime.renderNowMs;
+        // threatArt.ts: the Ultramind's shell pulses on the wall clock, as the Great Work's other lights.
+        const wallSec = Date.now() / 1000;
         for (let pi = 0; pi < this.planets.length; pi++) {
             const planet = this.planets[pi];
             const p = planet.habitat;
@@ -1054,11 +1061,13 @@ export class SystemView {
                 if (planet.plate !== null) planet.plate.visible = false;
                 mg.visible = false;
                 syncVolcanicGlow(planet.sprite, planet.glow);
+                if (planet.gwShell !== null) syncUltramindShell(this.bodies, planet, planet.sprite, p, wallSec);
                 for (const moon of planet.moons) {
                     moon.dot.visible = false;
                     moon.label.visible = false;
                     if (moon.plate !== null) moon.plate.visible = false;
                     syncVolcanicGlow(moon.dot, moon.glow);
+                    if (moon.gwShell !== null) syncUltramindShell(this.bodies, moon, moon.dot, moon.habitat, wallSec);
                 }
                 continue;
             }
@@ -1074,6 +1083,7 @@ export class SystemView {
             planet.sprite.position.set(px, py);
             planet.sprite.scale.set(sprPx / (planet.sprite.texture.width * z));
             syncVolcanicGlow(planet.sprite, planet.glow);
+            syncUltramindShell(this.bodies, planet, planet.sprite, p, wallSec);
             // Label centred on the drawn rect's right edge (method_84),
             // vertically centred on the body.
             const populated = p.owner !== null && p.population.items.length > 0;
@@ -1102,6 +1112,7 @@ export class SystemView {
                     moon.label.visible = false;
                     if (moon.plate !== null) moon.plate.visible = false;
                     syncVolcanicGlow(moon.dot, moon.glow);
+                    if (moon.gwShell !== null) syncUltramindShell(this.bodies, moon, moon.dot, moon.habitat, wallSec);
                     continue;
                 }
                 const m = moon.habitat;
@@ -1114,6 +1125,7 @@ export class SystemView {
                 moon.dot.position.set(mx, my);
                 moon.dot.scale.set(mPx / (moon.dot.texture.width * z));
                 syncVolcanicGlow(moon.dot, moon.glow);
+                syncUltramindShell(this.bodies, moon, moon.dot, m, wallSec);
                 const mPopulated = m.owner !== null && m.population.items.length > 0;
                 const mPlate = labels && mPopulated && f < COLONY_PLATE_MAX_F;
                 this.syncPlate(moon, m, mx + (mPx / 2) / z, my, z, mPlate);

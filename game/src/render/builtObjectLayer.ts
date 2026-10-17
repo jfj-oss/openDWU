@@ -29,7 +29,7 @@ import { CONCORD_LIMBS_MIN_PX, ConcordFxLayer, concordArtEmpire, concordShipArt,
 import { ConstructionOverlays, DamageOverlays, shipConstructionSubject, shipDamageSubject } from './shipOverlays';
 import { artBundleFlag } from './artBundleFlags';
 import { LiveryOverlays } from './liveryLayer';
-import { ANCIENT_TINT, ANCIENT_WEAR, GenShipsFxLayer, SwarmFxLayer, beaconArtFile, beaconLooksActive, genShipsArtFile, isAncientHull, threatArtUrl, threatDrawScale, threatLooks, watcherOpenTarget } from './threatArt';
+import { ANCIENT_TINT, ANCIENT_WEAR, GenShipsFxLayer, GreatWorkFxLayer, SwarmFxLayer, beaconArtFile, beaconLooksActive, genShipsArtFile, greatWorkDrawPx, greatWorkDrawnFrame, isAncientHull, threatArtUrl, threatDrawScale, threatLooks, watcherOpenTarget } from './threatArt';
 import { BeaconFxLayer } from './beaconFx';
 import { fogOf } from './fog';
 import { Galaxy } from '../sim/galaxy';
@@ -543,6 +543,8 @@ export class BuiltObjectLayer {
     private genFx = new GenShipsFxLayer();
     /** beaconFx.ts: the Beacon's hearts, organs and veins pulsing, the Watchers' plates (pooled; above the ships). */
     private beaconFx = new BeaconFxLayer();
+    /** threatArt.ts: a Great Work's lights, glows and the Sanctuary's whales (above the ships). */
+    private gwFx = new GreatWorkFxLayer();
     /** Render interpolation between sim steps (renderInterp.ts; set by MainView). Null: draw the sim positions. */
     motion: MotionInterpolator | null = null;
     /** The ship the follow camera is centred on this frame (set by MainView before update; null when not following). Its
@@ -566,6 +568,7 @@ export class BuiltObjectLayer {
         world.addChild(this.swarmFx.root);
         world.addChild(this.genFx.root);
         world.addChild(this.beaconFx.root);
+        world.addChild(this.gwFx.root);
         this.root.addChild(this.ships);
         this.liveries = new LiveryOverlays(this.root, galaxy);
         this.damage = new DamageOverlays<BuiltObject>(this.root);
@@ -612,6 +615,7 @@ export class BuiltObjectLayer {
         this.swarmFx.root.visible = this.root.visible;
         this.genFx.root.visible = this.root.visible;
         this.beaconFx.root.visible = this.root.visible;
+        this.gwFx.root.visible = this.root.visible;
         if (!this.root.visible) return;
         // [concordArt] begin — null with the scenario / flag off: every object keeps its stock art.
         const concord = concordArtEmpire(this.galaxy);
@@ -640,6 +644,7 @@ export class BuiltObjectLayer {
         this.genFx.begin();
         this.beaconFx.begin();
         const beaconOn = beaconLooksActive(looks);
+        this.gwFx.begin();
         const sec = nowMs / 1000;
         // Camera.worldToScreen, inlined (no allocation per ship per frame).
         const camX = cam.x;
@@ -748,14 +753,22 @@ export class BuiltObjectLayer {
                 this.ships.addChild(sprite);
                 this.sprites.set(bo, sprite);
             }
-            // threatArt.ts: the world ship / the Mothercore draw larger (the drawn size also drives picking and rings).
+            // threatArt.ts: the world ship / the Mothercore draw larger (the drawn size also drives picking and rings); a Great
+            // Work's frames are drawn at one fixed world size whatever its base's size (each stage grows in place).
             const tScale = threatDrawScale(looks, bo);
+            const gwSite = looks.greatWorks !== undefined && looks.greatWorks.size > 0 ? looks.greatWorks.get(bo) : undefined;
+            const gwFrame = gwSite !== undefined ? greatWorkDrawnFrame(gwSite) : null;
             const px =
-                builtObjectSizePx(bo.size, metrics.areaRatio, f, bo.design?.imageScalingType ?? DesignImageScalingMode.None, bo.design?.imageScalingFactor ?? 1) * tScale;
+                gwFrame !== null
+                    ? greatWorkDrawPx(gwFrame, f)
+                    : builtObjectSizePx(bo.size, metrics.areaRatio, f, bo.design?.imageScalingType ?? DesignImageScalingMode.None, bo.design?.imageScalingFactor ?? 1) * tScale;
             this.drawnPx.set(bo, px);
             if (bars) {
                 // PrepareBuiltObjectImageNEW(..., 1.0): the image at zoom factor 1 (DetermineBuiltObjectSizeNEW).
-                const unitPx = builtObjectSizePx(bo.size, metrics.areaRatio, 1, bo.design?.imageScalingType ?? DesignImageScalingMode.None, bo.design?.imageScalingFactor ?? 1) * tScale;
+                const unitPx =
+                    gwFrame !== null
+                        ? greatWorkDrawPx(gwFrame, 1)
+                        : builtObjectSizePx(bo.size, metrics.areaRatio, 1, bo.design?.imageScalingType ?? DesignImageScalingMode.None, bo.design?.imageScalingFactor ?? 1) * tScale;
                 const n = this.battleBarShips.length;
                 let rec = this.barPool[n];
                 if (rec === undefined) {
@@ -780,7 +793,8 @@ export class BuiltObjectLayer {
             // MainView.cs:3259 method_73 → Main.Part11.cs method_115 while UnbuiltComponentCount > 0: the ship/base
             // sprite reveals from the left as it's built (a baked texture of the crop square, eroded at the zoom-1 size
             // the C# erodes its cached image at — shipOverlays.ts ConstructionOverlays).
-            const constructionSubject = shipArtRecord !== null ? shipConstructionSubject(bo) : null;
+            // (A Great Work shows its build as its scaffold stages instead.)
+            const constructionSubject = shipArtRecord !== null && gwFrame === null ? shipConstructionSubject(bo) : null;
             const revealTex =
                 constructionSubject !== null && shipArtRecord !== null
                     ? this.construction.texture(bo, constructionSubject, shipArtRecord, builtObjectSizePx(bo.size, metrics.areaRatio, 1, bo.design?.imageScalingType ?? DesignImageScalingMode.None, bo.design?.imageScalingFactor ?? 1))
@@ -795,6 +809,9 @@ export class BuiltObjectLayer {
             sprite.position.set(x, y);
             if (revealTex !== null) sprite.anchor.set(0.5);
             else sprite.anchor.set(metrics.cropCenterX / texture.width, metrics.cropCenterY / texture.height);
+            // threatArt.ts: a Great Work keeps its frame's own orientation (its light from the upper left, every stage
+            // in register), whatever its base's heading.
+            if (gwFrame !== null) heading = -Math.PI / 2;
             sprite.rotation = heading + Math.PI / 2;
             sprite.scale.set(px / metrics.cropSide / z);
             sprite.alpha = this.overlays.fadeCivilianShips && bo.owner === null ? 144 / 255 : 1;
@@ -819,6 +836,7 @@ export class BuiltObjectLayer {
                     if (body !== null) sprite.texture = body;
                 }
             }
+            if (gwSite !== undefined && gwFrame !== null) this.gwFx.draw(gwSite, gwFrame, bo, x, y, sprite.rotation, sprite.scale.x, sprite.anchor.x, sprite.anchor.y, texture.width, texture.height, px, sec);
             if (ancient && !this.liveries.forced.has(bo)) this.liveries.forced.set(bo, ANCIENT_WEAR);
             if ((liveries || ancient) && shipArtRecord !== null) this.liveries.draw(bo, shipArtRecord, px, z, sprite.alpha, x, y, heading);
             // 19r: MainView.cs 3253 method_73 → Main.Part12.cs 4988 method_106 while DamagedComponentCount > 0.
@@ -831,6 +849,7 @@ export class BuiltObjectLayer {
         this.swarmFx.end();
         this.genFx.end();
         this.beaconFx.end();
+        this.gwFx.end();
         this.damage.end();
         this.construction.end();
         if (liveryPass) this.liveries.end();

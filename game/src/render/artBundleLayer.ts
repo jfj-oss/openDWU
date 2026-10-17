@@ -12,7 +12,8 @@ import type { Empire } from '../sim/empire';
 import type { BuiltObject } from '../sim/builtObject';
 import { HabitatCategoryType, type Habitat } from '../sim/types';
 import { moonDotPx, planetSpritePx, starSpritePx } from './mainView';
-import { drawThreatMarker, threatMarkerStyle, type ThreatMarkerStyle } from './threatMarkers';
+import { KNOWLEDGE_RUMOUR, drawThreatMarker, threatMarkerStyle, type ThreatMarkerStyle } from './threatMarkers';
+import { greatWorkAt, greatWorkDrawPx, greatWorkFrame } from './threatArt';
 import { Texture } from 'pixi.js';
 import { SpritePool } from './fxCommon';
 import { circleAtScreenRes } from './screenCircle';
@@ -451,7 +452,9 @@ export class ArtBundleLayer {
         const g = this.threats;
         if (this.frame % 30 === 1) {
             const player = localViewerEmpire(this.galaxy);
-            const list = threatSitesSource === null ? [] : threatSitesSource(this.galaxy, player);
+            // From the rumour level on: Giantworks marks its site and the Compact's founders then (threatMarkerStyle
+            // still drops every other threat's rumours).
+            const list = threatSitesSource === null ? [] : threatSitesSource(this.galaxy, player, KNOWLEDGE_RUMOUR);
             this.sites = [];
             let k = 0;
             for (const site of list) {
@@ -473,9 +476,16 @@ export class ArtBundleLayer {
         const halfW = cam.width / 2 / z;
         const halfH = cam.height / 2 / z;
         for (const s of this.sites) {
-            const r = threatMarkerRadius(s.site, z);
+            let r = threatMarkerRadius(s.site, z);
             const x = s.site.target.xpos;
             const y = s.site.target.ypos;
+            if (s.style.kind === 'greatWork') {
+                // threatArt.ts: the site's stage and progress, live; the ring round the whole structure as drawn.
+                const gw = greatWorkAt(s.site.target);
+                s.style.stage = gw?.stage ?? 0;
+                s.style.progress = gw?.progress;
+                if (gw !== null) r = Math.max(r, (greatWorkDrawPx(greatWorkFrame(gw), 1 / z) * 0.5 + 12) / z);
+            }
             if (Math.abs(x - cam.x) > halfW + r * 3 || Math.abs(y - cam.y) > halfH + r * 3) continue;
             drawThreatMarker(g, s.style, x, y, r, z, t, s.seed);
         }

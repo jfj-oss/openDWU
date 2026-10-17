@@ -2,10 +2,14 @@
 // confirmed, the fallback shapes, and the geometry helpers; the 19f framework is absent on this branch (presence check).
 import { describe, expect, it } from 'vitest';
 import {
+    GW_COMPACT_THREAT,
+    GW_SITE_THREAT,
     KNOWLEDGE_CONFIRMED,
+    KNOWLEDGE_RUMOUR,
     KNOWLEDGE_SUSPECTED,
     THREAT_MARKER_KINDS,
     ashPuffs,
+    greatWorkArcFill,
     hexLatticeCentres,
     pulsePhase,
     threatMarkerStyle,
@@ -43,14 +47,35 @@ import {
     watcherUnfoldStep,
 } from '../src/render/beaconFx';
 import type { Galaxy } from '../src/sim/galaxy';
+import {
+    GIANTWORKS_STATE_KEY,
+    GREAT_WORK_WORLD_SIZE,
+    GW_ART_DIR,
+    SANCTUARY_WHALES,
+    greatWorkArtUrl,
+    greatWorkAt,
+    greatWorkDrawPx,
+    greatWorkDrawnFrame,
+    greatWorkFrame,
+    greatWorkSites,
+    gwLightAlpha,
+    gwNeonAlpha,
+    sanctuaryWhaleCount,
+    sanctuaryWhalePose,
+    type GreatWorkArtSite,
+} from '../src/render/threatArt';
+import { GW_LIGHTS, GW_LIGHT_KINDS, GW_SANCTUARY_GLASS_R } from '../src/render/giantworksLights';
+import type { Habitat } from '../src/sim/types';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import type { BuiltObject } from '../src/sim/builtObject';
 import type { Empire } from '../src/sim/empire';
 import { decodePng } from './helpers/pngDecode';
 
+const SEVEN = ['greyTide', 'cult', 'silence', 'doppelgangers', 'hive', 'darkFarms', 'exchange'];
+
 describe('19r threat marker selection', () => {
-    it('the seven looks', () => {
+    it('the seven looks, and Giantworks\' site and Compact', () => {
         expect(THREAT_MARKER_KINDS).toEqual({
             greyTide: 'ash',
             cult: 'cultRing',
@@ -59,10 +84,14 @@ describe('19r threat marker selection', () => {
             hive: 'hex',
             darkFarms: 'redPulse',
             exchange: 'ledger',
+            giantworks: 'greatWork',
+            giantworksCompact: 'compact',
         });
+        expect(GW_SITE_THREAT).toBe('giantworks');
+        expect(GW_COMPACT_THREAT).toBe('giantworksCompact');
     });
     it('rumours are not drawn; suspected is uncertain, confirmed solid', () => {
-        for (const key of Object.keys(THREAT_MARKER_KINDS)) {
+        for (const key of SEVEN) {
             expect(threatMarkerStyle(key, 1, 'colony')).toBeNull();
             const s = threatMarkerStyle(key, KNOWLEDGE_SUSPECTED, 'colony')!;
             const c = threatMarkerStyle(key, KNOWLEDGE_CONFIRMED, 'colony')!;
@@ -337,20 +366,25 @@ describe('the Beacon art', () => {
             expect(img.width, f).toBe(art.size);
             expect(img.height, f).toBe(art.size);
             let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+            let blue = 0, yellow = 0, black = 0;
+            const d = img.data;
             for (let y = 0; y < img.height; y++) {
                 for (let x = 0; x < img.width; x++) {
                     const i = (y * img.width + x) * 4;
-                    const [r, g, b, a] = img.data.subarray(i, i + 4);
+                    const r = d[i], g = d[i + 1], b = d[i + 2], a = d[i + 3];
                     if (a === 0) continue;
-                    x0 = Math.min(x0, x);
-                    x1 = Math.max(x1, x);
-                    y0 = Math.min(y0, y);
-                    y1 = Math.max(y1, y);
-                    expect(r === 0 && g === 0 && b === 255, `${f} blue`).toBe(false);
-                    expect(r === 255 && g === 255 && b === 0, `${f} yellow`).toBe(false);
-                    expect(a === 255 && r === 0 && g === 0 && b === 0, `${f} black`).toBe(false);
+                    if (x < x0) x0 = x;
+                    if (x > x1) x1 = x;
+                    if (y < y0) y0 = y;
+                    if (y > y1) y1 = y;
+                    if (r === 0 && g === 0 && b === 255) blue++;
+                    if (r === 255 && g === 255 && b === 0) yellow++;
+                    if (a === 255 && r === 0 && g === 0 && b === 0) black++;
                 }
             }
+            expect(blue, `${f} blue`).toBe(0);
+            expect(yellow, `${f} yellow`).toBe(0);
+            expect(black, `${f} black`).toBe(0);
             // the content box centred on the heart (the game turns a frame about its content box's centre), off the edges
             expect(Math.abs((x0 + x1) / 2 - art.core[0]), f).toBeLessThanOrEqual(1);
             expect(Math.abs((y0 + y1) / 2 - art.core[1]), f).toBeLessThanOrEqual(1);
@@ -469,5 +503,189 @@ describe('the Beacon art', () => {
         expect(WATCHER_CLOSE_S).toBe(7);
         expect(beaconFrameArt('watcher')).toBe(WATCHER_ART);
         expect(beaconFrameArt('nope')).toBeNull();
+    });
+});
+
+// threatArt.ts: Giantworks — the Great Work's scaffold stages and finished wonders (public/art/giantworks/,
+// scripts/giantworks-art.py), its lights, the Sanctuary's whales, and the map glyphs (threatMarkers.ts).
+describe('giantworks art', () => {
+    const png = (f: string): string => resolve(__dirname, '../public', `${GW_ART_DIR.slice(1)}${f}.png`);
+    const FRAMES = ['scaffold_0', 'scaffold_1', 'scaffold_2', 'scaffold_3', 'casino', 'ultramind', 'ultramind-node', 'sanctuary'];
+    const site = (stage: number, wonder: string, habitat: Habitat | null = null): GreatWorkArtSite => ({ base: null, stage, wonder, habitat });
+    it('the scaffold of each stage is shared by every wonder; complete, the wonder\'s own frame', () => {
+        for (const w of ['casino', 'ultramind', 'sanctuary', 'beacon', 'riftGate']) {
+            for (let s = 0; s < 4; s++) expect(greatWorkFrame(site(s, w))).toBe(`scaffold_${s}`);
+        }
+        expect(greatWorkFrame(site(4, 'casino'))).toBe('casino');
+        expect(greatWorkFrame(site(4, 'ultramind'))).toBe('ultramind');
+        expect(greatWorkFrame(site(4, 'ultramind', {} as Habitat))).toBe('ultramind-node');
+        expect(greatWorkFrame(site(4, 'sanctuary'))).toBe('sanctuary');
+        expect(greatWorkFrame(site(4, 'riftGate'))).toBe('scaffold_3'); // no art of its own yet
+        // a finished Beacon is drawn by the Beacon's own art and paths, not the Great Work's
+        expect(greatWorkFrame(site(4, 'beacon'))).toBe('beacon');
+        expect(greatWorkDrawnFrame(site(4, 'beacon'))).toBeNull();
+        expect(greatWorkDrawnFrame(site(4, 'casino'))).toBe('casino');
+        expect(greatWorkDrawnFrame(site(2, 'beacon'))).toBe('scaffold_2');
+        expect(greatWorkFrame(site(-1, 'casino'))).toBe('scaffold_0');
+        expect(greatWorkFrame(site(Number.NaN, 'casino'))).toBe('scaffold_0');
+    });
+    it('one fixed world size per frame (the node half), whatever the base', () => {
+        expect(greatWorkDrawPx('scaffold_2', 1)).toBe(GREAT_WORK_WORLD_SIZE);
+        expect(greatWorkDrawPx('casino', 4)).toBe(GREAT_WORK_WORLD_SIZE / 4);
+        expect(greatWorkDrawPx('ultramind-node', 1)).toBe(GREAT_WORK_WORLD_SIZE / 2);
+        expect(greatWorkDrawPx('toString', 1)).toBe(GREAT_WORK_WORLD_SIZE); // no prototype key taken for a scale
+    });
+    it('frames: square, the crop square is the whole frame, no opaque black or marker colours, one connected body', () => {
+        const files = [...FRAMES, 'sanctuary-front', 'ultramind-shell', 'casino-neon-a', 'casino-neon-b', 'ultramind-glow', 'ultramind-node-glow', 'ultramind-shell-glow'];
+        for (const f of files) {
+            expect(existsSync(png(f)), f).toBe(true);
+            const img = decodePng(png(f));
+            expect(img.width).toBe(img.height);
+            const W = img.width;
+            const a = (x: number, y: number): number => img.data[(y * W + x) * 4 + 3];
+            if (FRAMES.includes(f)) {
+                // registration pixels: shipImageMetrics' crop is the whole texture, so every frame shares one centre
+                expect(a(4, 4), f).toBeGreaterThan(0);
+                expect(a(W - 5, W - 5), f).toBeGreaterThan(0);
+            }
+            let bad = 0;
+            const d = img.data;
+            for (let i = 0; i < d.length; i += 4) {
+                if (d[i + 3] === 0) continue;
+                if ((d[i] === 255 && d[i + 1] === 255 && d[i + 2] === 0) || (d[i] === 0 && d[i + 1] === 0 && d[i + 2] === 255)) bad++;
+                else if (d[i + 3] === 255 && d[i] === 0 && d[i + 1] === 0 && d[i + 2] === 0) bad++;
+            }
+            expect(bad, f).toBe(0);
+            if (!FRAMES.includes(f)) continue;
+            // no loose pieces: every solid pixel reachable from the centre through the structure
+            const seen = new Uint8Array(W * W);
+            const stack = [((W >> 1) * W + (W >> 1))];
+            seen[stack[0]] = 1;
+            while (stack.length > 0) {
+                const p = stack.pop()!;
+                const x = p % W;
+                const y = (p - x) / W;
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        const nx = x + dx;
+                        const ny = y + dy;
+                        if (nx < 0 || ny < 0 || nx >= W || ny >= W) continue;
+                        const q = ny * W + nx;
+                        if (seen[q] === 0 && a(nx, ny) > 20) {
+                            seen[q] = 1;
+                            stack.push(q);
+                        }
+                    }
+                }
+            }
+            let loose = 0;
+            for (let p = 0; p < W * W; p++) if (seen[p] === 0 && img.data[p * 4 + 3] > 128) loose++;
+            expect(loose, f).toBeLessThan(12);
+        }
+    });
+    it('lights: on the structure, known kinds; every frame lit', () => {
+        for (const f of FRAMES) {
+            const pts = GW_LIGHTS[f.replace('-', '_')];
+            expect(pts?.length ?? 0, f).toBeGreaterThanOrEqual(6);
+            const img = decodePng(png(f));
+            for (const [x, y, k] of pts) {
+                expect(img.data[(y * img.width + x) * 4 + 3], `${f} ${x},${y}`).toBeGreaterThan(120);
+                expect(k).toBeGreaterThanOrEqual(0);
+                expect(k).toBeLessThan(GW_LIGHT_KINDS.length);
+            }
+        }
+        // the stages grow: more lights as the work goes on
+        expect(GW_LIGHTS.scaffold_3.length).toBeGreaterThan(GW_LIGHTS.scaffold_0.length);
+        for (const f of Object.keys(GW_LIGHTS)) expect(f in {}).toBe(false);
+    });
+    it('light patterns stay in 0..1; nav lights flash; the neon sets take turns', () => {
+        for (let kind = 0; kind < GW_LIGHT_KINDS.length; kind++) {
+            for (let t = 0; t < 12; t += 0.07) {
+                const v = gwLightAlpha(kind, t, 3, 20);
+                expect(v).toBeGreaterThanOrEqual(0);
+                expect(v).toBeLessThanOrEqual(1);
+            }
+        }
+        const nav = GW_LIGHT_KINDS.indexOf('nav');
+        let on = 0;
+        for (let i = 0; i < 480; i++) if (gwLightAlpha(nav, (i / 480) * 2.4, 0, 1) > 0) on++;
+        expect(on / 480).toBeGreaterThan(0.1);
+        expect(on / 480).toBeLessThan(0.3);
+        // A and B in counter-phase: when one is at its brightest the other is dim
+        const ts = [0.275, 0.825];
+        expect(gwNeonAlpha(ts[0], false)).toBeGreaterThan(gwNeonAlpha(ts[0], true));
+        expect(gwNeonAlpha(ts[1], true)).toBeGreaterThan(gwNeonAlpha(ts[1], false));
+    });
+    it('the Sanctuary\'s whales swim inside the glass, and move', () => {
+        expect(GW_SANCTUARY_GLASS_R).toBeGreaterThan(100);
+        for (const w of SANCTUARY_WHALES) {
+            let moved = 0;
+            let prev = sanctuaryWhalePose(w, 0);
+            for (let t = 0.5; t < 120; t += 0.5) {
+                const p = sanctuaryWhalePose(w, t);
+                // its centre well inside, its body (half its length) at most grazing the rim (the mask clips it there)
+                expect(Math.hypot(p.x, p.y) + w.len * 0.3).toBeLessThan(1.02);
+                moved += Math.hypot(p.x - prev.x, p.y - prev.y);
+                // swimming head first: the heading follows the path
+                const ahead = sanctuaryWhalePose(w, t + 0.05);
+                const dir = Math.atan2(ahead.y - p.y, ahead.x - p.x);
+                expect(Math.abs(Math.atan2(Math.sin(dir - p.heading), Math.cos(dir - p.heading)))).toBeLessThan(0.1);
+                prev = p;
+            }
+            expect(moved).toBeGreaterThan(1);
+        }
+        // a few whales of different sizes; the count follows the site (default 4)
+        expect(new Set(SANCTUARY_WHALES.map((w) => w.len)).size).toBe(SANCTUARY_WHALES.length);
+        expect(sanctuaryWhaleCount({})).toBe(4);
+        expect(sanctuaryWhaleCount({ whales: 0 })).toBe(1);
+        expect(sanctuaryWhaleCount({ whales: 99 })).toBe(SANCTUARY_WHALES.length);
+    });
+    it('sites are read from the add-on\'s state by their base; the Ultramind\'s planet once complete', () => {
+        const base = { hasBeenDestroyed: false } as unknown as BuiltObject;
+        const gone = { hasBeenDestroyed: true } as unknown as BuiltObject;
+        const planet = { xpos: 1, ypos: 2 } as unknown as Habitat;
+        const sites: GreatWorkArtSite[] = [
+            { base, stage: 4, wonder: 'ultramind', habitat: planet, progress: 1 },
+            { base: gone, stage: 2, wonder: 'casino', habitat: null },
+        ];
+        const galaxy = { scenario: { state: { [GIANTWORKS_STATE_KEY]: { sites } } } } as unknown as Galaxy;
+        expect(greatWorkSites(galaxy)).toBe(sites);
+        expect(greatWorkSites({ scenario: null } as unknown as Galaxy)).toEqual([]);
+        expect(greatWorkSites({ scenario: { state: {} } } as unknown as Galaxy)).toEqual([]);
+        const l = threatLooks(galaxy);
+        expect(l.greatWorks!.get(base)).toBe(sites[0]);
+        expect(l.greatWorks!.has(gone)).toBe(false);
+        expect(l.ultramindPlanets!.get(planet)).toBe(sites[0]);
+        expect(greatWorkArtUrl(base, l)).toBe(`${GW_ART_DIR}ultramind-node.png`);
+        expect(threatArtUrl(base, l)).toBe(`${GW_ART_DIR}ultramind-node.png`);
+        expect(greatWorkAt(planet, l)).toBe(sites[0]);
+        expect(greatWorkAt(base, l)).toBe(sites[0]);
+        sites[0].stage = 3;
+        const l2 = threatLooks(galaxy);
+        expect(l2.ultramindPlanets!.size).toBe(0); // not wrapped before it is finished
+        expect(threatArtUrl(base, l2)).toBe(`${GW_ART_DIR}scaffold_3.png`);
+        // a finished Beacon wonder is the Beacon (its art and size floor) when the Beacon's sim names none
+        sites[0].stage = 4;
+        sites[0].wonder = 'beacon';
+        const l3 = threatLooks(galaxy);
+        expect(l3.beacon).toBe(base);
+        expect(beaconLooksActive(l3)).toBe(true);
+        expect(threatArtUrl(base, l3)).toBe(`${BEACON_ART_DIR}beacon.png`);
+        threatLooks({ scenario: null } as unknown as Galaxy);
+    });
+    it('map glyphs: the site from the rumour on (always solid), the Compact faint at rumour, sure from suspected', () => {
+        expect(threatMarkerStyle(GW_SITE_THREAT, 0, 'ship')).toBeNull();
+        expect(threatMarkerStyle(GW_SITE_THREAT, KNOWLEDGE_RUMOUR, 'ship')).toMatchObject({ kind: 'greatWork', solid: true, dashes: 0 });
+        expect(threatMarkerStyle(GW_COMPACT_THREAT, 0, 'colony')).toBeNull();
+        const faint = threatMarkerStyle(GW_COMPACT_THREAT, KNOWLEDGE_RUMOUR, 'colony')!;
+        const sure = threatMarkerStyle(GW_COMPACT_THREAT, KNOWLEDGE_SUSPECTED, 'colony')!;
+        expect(faint).toMatchObject({ kind: 'compact', solid: false });
+        expect(faint.alpha).toBeLessThan(sure.alpha);
+        expect(sure).toMatchObject({ kind: 'compact', solid: true, dashes: 0 });
+        // the four stage arcs fill in order with the progress
+        expect([0, 1, 2, 3].map((q) => greatWorkArcFill(0, q))).toEqual([0, 0, 0, 0]);
+        expect([0, 1, 2, 3].map((q) => greatWorkArcFill(0.375, q))).toEqual([1, 0.5, 0, 0]);
+        expect([0, 1, 2, 3].map((q) => greatWorkArcFill(1, q))).toEqual([1, 1, 1, 1]);
+        expect(threatMarkerStyle('toString', 2, 'colony')).toMatchObject({ kind: 'ring' });
     });
 });
