@@ -19,10 +19,15 @@ symlink npm run import-assets makes). Python 3 with numpy and Pillow only. Deter
 - The Watchers are the mod's carrier.png exactly: its own pixels, at its native scale, centred on a padded canvas; the
   only pixels touched are the ones the frame rules demand (none of opaque black or a marker colour in that sprite; the
   four balance pixels). For their opening (when sighted) the reference is cut into its body, its two horns, its six
-  legs and three flank plates a side (watcher-parts.png); under the flank plates the open body (watcher-body.png)
-  shows a ribbed cavity lit from inside, painted in the reference's own palette; closed, the frame is the reference.
+  legs and two flank plates a side (watcher-parts.png); under the flank plates the open body (watcher-body.png)
+  shows a ribbed cavity lit red-orange from inside; as it opens its cyan lines heat to red-orange (watcher-hot.png: the
+  lines recoloured, the body's and each part's on that part's own box, beaconFx.ts blends them in); closed, the frame
+  is the reference.
 - The warships and the Beacon are composites: pieces cut from the set's frames (cut edges bevelled), transformed,
-  mirrored and meshed into new ships, each with a contact shadow on what is below; every piece but the reference's is
+  mirrored and meshed into new ships, each with a contact shadow on what is below. The warships are long and slim:
+  every piece's legs and side spines are cut away (body_mask: a morphological opening of its alpha) and the bodies
+  drawn out lengthwise; the escort, frigate, troop transport and utility ship have no legs, the destroyer and cruiser
+  carry a pair laid back along their flanks, the capital ship its side spines swept back. Every piece but the reference's is
   graded to the reference's palette (its hull luminance matched to the carrier's, its colour to the carrier's neutral
   gunmetal per luminance band, a trace of its own hue kept), its cyan lights to the carrier's cyan.
 - The light: each frame bakes its lines at rest; <file>-fx.png holds their swell (beaconFx.ts breathes it) and a soft
@@ -46,6 +51,27 @@ MOD_DIRS = [
     os.path.join('Customization', 'Mass Effect 4 Mod', 'images', 'units', 'ships', 'family15'),
     os.path.join('Customization', 'MassEffect mod 1.00', 'shipImages', 'family20'),
 ]
+# The Watcher's light when it opens: its lines and cavity turn from the reference's cyan to a red-orange heat
+# (value -> colour: deep red, red-orange, orange, a pale-orange core).
+WARM_X = np.array([0.0, 0.35, 0.6, 0.85, 1.0], F32)
+WARM_C = np.array([[0.10, 0.01, 0.0], [0.62, 0.07, 0.02], [0.95, 0.30, 0.06], [1.0, 0.56, 0.16], [1.0, 0.82, 0.52]], F32)
+
+
+def warm(v):
+    out = np.empty(np.shape(v) + (3,), F32)
+    for c in range(3):
+        out[..., c] = np.interp(v, WARM_X, WARM_C[:, c])
+    return out
+
+
+class WarmPalette:
+    """The light_layer interface in the opening's red-orange."""
+
+    @staticmethod
+    def light(v):
+        return warm(v)
+
+
 BREATH = {'escort': 5.0, 'frigate': 5.4, 'destroyer': 5.8, 'cruiser': 6.4, 'capitalship': 7.4, 'carrier': 7.0,
           'trooptransport': 6.0, 'construction': 5.6, 'beacon': 9.0, 'watcher': 8.5}
 
@@ -262,7 +288,7 @@ class Kit:
         return Piece(rgba, glow)
 
 
-def transform(p, scale=1.0, rot=0.0, flip=False):
+def transform(p, scale=1.0, rot=0.0, flip=False, sy=1.0):
     """Premultiplied (rgb·a, a, glow·a) planes of a piece, flipped, scaled and rotated (deg, counter-clockwise on
     screen) about its centre; exact (no resampling) when scale is 1 and rot 0."""
     rgba, g = p.rgba, p.glow
@@ -270,13 +296,13 @@ def transform(p, scale=1.0, rot=0.0, flip=False):
         rgba, g = rgba[:, ::-1], g[:, ::-1]
     a = rgba[..., 3]
     planes = [rgba[..., 0] * a, rgba[..., 1] * a, rgba[..., 2] * a, a, g * a]
-    if scale == 1.0 and rot % 360 == 0:
+    if scale == 1.0 and sy == 1.0 and rot % 360 == 0:
         return [np.ascontiguousarray(q) for q in planes]
     out = []
-    nw, nh = max(1, int(round(p.w * scale))), max(1, int(round(p.h * scale)))
+    nw, nh = max(1, int(round(p.w * scale))), max(1, int(round(p.h * scale * sy)))
     for q in planes:
         im = Image.fromarray(q.astype(F32), 'F')
-        if scale != 1.0:
+        if scale != 1.0 or sy != 1.0:
             im = im.resize((nw, nh), Image.LANCZOS if scale < 1 else Image.BICUBIC)
         if rot % 360:
             im = im.rotate(rot, resample=Image.BICUBIC, expand=True)
@@ -296,14 +322,14 @@ class Canvas:
         self.a = np.zeros((S, S), F32)
         self.g = np.zeros((S, S), F32)
 
-    def place(self, p, cx, cy, scale=1.0, rot=0.0, flip=False, shadow=0.45, under=False, mirror=False, anchor=None):
+    def place(self, p, cx, cy, scale=1.0, rot=0.0, flip=False, shadow=0.45, under=False, mirror=False, anchor=None, sy=1.0):
         """Lay piece `p` with its centre (or `anchor`, piece px) at (cx, cy); `mirror`: also flipped at -cx (rot
         mirrored); `under`: beneath what is there; a soft contact shadow toward the lower right."""
         for m in ([False, True] if mirror else [False]):
             fl = flip != m
             x = -cx if m else cx
             r = -rot if m else rot
-            planes = transform(p, scale, r, fl)
+            planes = transform(p, scale, r, fl, sy)
             ph, pw = planes[3].shape
             if anchor is None:
                 ax, ay = pw / 2, ph / 2
@@ -312,7 +338,7 @@ class Canvas:
                 if fl:
                     axp = p.w - axp
                 # the anchor through the transform (about the piece centre)
-                dx, dy = (axp - p.w / 2) * scale, (ayp - p.h / 2) * scale
+                dx, dy = (axp - p.w / 2) * scale, (ayp - p.h / 2) * scale * sy
                 th = math.radians(r)
                 ax = pw / 2 + dx * math.cos(th) + dy * math.sin(th)
                 ay = ph / 2 - dx * math.sin(th) + dy * math.cos(th)
@@ -608,6 +634,7 @@ def build_watcher(kit):
     body_rgba = ref.copy()
     body_rgba[..., 3] = np.where(moving & ~flank, 0, body_rgba[..., 3])
     cav = cavity(kit.pal, ref, flank, X, Yr, half)
+    print('watcher: cavity in the opening\'s red-orange', flush=True)
     body_rgba[..., :3] = np.where(flank[..., None], cav[..., :3], body_rgba[..., :3])
     body_img = to_u8(canvas_of(body_rgba)[..., :3], canvas_of(body_rgba)[..., 3])
     fix_markers(body_img)
@@ -633,9 +660,18 @@ def build_watcher(kit):
             hx, hy = p['hinge'][0] + S / 2, p['hinge'][1] + S / 2
             sock = np.maximum(sock, np.exp(-((Xc - hx) ** 2 + (Yc - hy) ** 2) / 16.0) * 0.8)
     cg = canvas_of(np.concatenate([np.zeros((h0, w0, 3), F32), cav_glow[..., None]], -1))[..., 3]
-    open_fx = kit.pal.light(np.full((S, S), 0.8, F32)) * np.clip(np.maximum(sock, cg * 0.7), 0, 1)[..., None]
+    open_fx = warm(np.full((S, S), 0.8, F32)) * np.clip(np.maximum(sock, cg * 0.7), 0, 1)[..., None]
+    # the heat: the lines recoloured red-orange (normal-blended over the cyan as the Watcher opens), on the body and on
+    # each part; its swell in the same colours
+    v = ref[..., :3].max(-1)
+    hot_rgb = warm(np.clip(0.15 + 0.72 * v, 0, 1))
+    g_hot = g_pulse * ref[..., 3]
+    hot = lambda m: canvas_of(np.concatenate([hot_rgb, (g_hot * m)[..., None]], -1))
+    hot_body = hot((~moving) * 1.0)
+    hot_parts = [hot(p['mask'] * 1.0) for p in parts]
+    warm_fx = light_layer(closed.astype(F32) / 255, g_c, WarmPalette)
     return dict(S=S, closed=closed, body=body_img, parts=[(im, p['hinge'], p['swing'], p['delay']) for im, p in zip(part_imgs, parts)],
-                fx=fx, open_fx=open_fx.astype(F32))
+                fx=fx, open_fx=open_fx.astype(F32), hot_body=hot_body, hot_parts=hot_parts, warm_fx=warm_fx)
 
 
 def cavity(pal, ref, flank, X, Yr, half):
@@ -647,25 +683,40 @@ def cavity(pal, ref, flank, X, Yr, half):
     L = (0.035 + 0.11 * rib) * (0.55 + 0.45 * depth)
     col = pal.hull(L.astype(F32))
     light = np.clip(1 - rib * 1.7, 0, 1) * depth
-    col = col * (1 - light[..., None]) + pal.light(np.full((h, w), 0.7, F32)) * light[..., None] * 0.8
+    col = col * (1 - light[..., None]) + warm(np.full((h, w), 0.72, F32)) * light[..., None] * 0.85
     return np.concatenate([col, light[..., None]], -1).astype(F32)
 
 
+def watcher_heat(t):
+    """The opening's heat 0..1 at unfold t (beaconFx.ts watcherHeat): it ramps up as the Watcher opens."""
+    return float(smoothstep(0.04, 0.55, t))
+
+
 def watcher_pose(w, t):
-    """The Watcher at opening t (0 closed .. 1 open), on transparent (RGBA uint8), with the opened light."""
+    """The Watcher at opening t (0 closed .. 1 open), on transparent (RGBA uint8), with the opened light and heat."""
     S = w['S']
     if t <= 0:
         return Image.fromarray(w['closed'], 'RGBA')
-    canvas = Image.fromarray(w['body'], 'RGBA').copy()
-    arr = np.asarray(canvas).astype(F32) / 255
+    heat = watcher_heat(t)
     rise = float(smoothstep(0, 0.6, t))
-    arr[..., :3] = np.clip(arr[..., :3] + w['open_fx'] * rise * 0.6 * (arr[..., 3:4] > 0), 0, 1)
+
+    def hot_over(img, hot):
+        im = Image.fromarray(img, 'RGBA').copy()
+        if hot is not None and heat > 0:
+            h = hot.copy()
+            h[..., 3] *= heat
+            im.alpha_composite(Image.fromarray(np.round(np.clip(h, 0, 1) * 255).astype(np.uint8), 'RGBA'))
+        return im
+    canvas = hot_over(w['body'], w.get('hot_body'))
+    arr = np.asarray(canvas).astype(F32) / 255
+    add = w['open_fx'] * rise * 0.6 + w.get('warm_fx', 0) * heat * 0.5
+    arr[..., :3] = np.clip(arr[..., :3] + add * (arr[..., 3:4] > 0), 0, 1)
     canvas = Image.fromarray(np.round(arr * 255).astype(np.uint8), 'RGBA')
-    for (img, hinge, swing, delay) in w['parts']:
+    for k, (img, hinge, swing, delay) in enumerate(w['parts']):
         u = float(np.clip((t - delay) / max(1 - delay, 1e-3), 0, 1))
         u = u * u * (3 - 2 * u)
-        im = Image.fromarray(img, 'RGBA').rotate(-math.degrees(swing * u), resample=Image.BICUBIC,
-                                                center=(hinge[0] + S / 2, hinge[1] + S / 2))
+        hp = w['hot_parts'][k] if 'hot_parts' in w else None
+        im = hot_over(img, hp).rotate(-math.degrees(swing * u), resample=Image.BICUBIC, center=(hinge[0] + S / 2, hinge[1] + S / 2))
         canvas.alpha_composite(im)
     return canvas
 
@@ -674,111 +725,163 @@ def watcher_pose(w, t):
 # The warships: composites of the set's pieces (bow up; canvas coords, origin at the frame centre)
 # ---------------------------------------------------------------------------------------------------------------
 
+def body_mask(a, rows=None, keep_top=0, thick=15, keep_rows=None):
+    """The body of a frame without what sticks out of it (legs, side spines, antennae: anything thinner than `thick`
+    px), by a morphological opening of its alpha, the body's own edge kept crisp; rows above `keep_top` kept whole
+    (horns, antennae: they point forward); outside `rows` cut."""
+    h, w = a.shape
+    m8 = Image.fromarray(((a > 0.5) * 255).astype(np.uint8))
+    op = m8.filter(ImageFilter.MinFilter(thick)).filter(ImageFilter.MaxFilter(thick))
+    op = op.filter(ImageFilter.MaxFilter(3))
+    m = (np.asarray(op).astype(F32) / 255)
+    m = np.clip(gblur(m, 0.6) * 1.6, 0, 1) * (m > 0)
+    Y = np.arange(h)[:, None] * np.ones((1, w))
+    if keep_top > 0:
+        m = np.where(Y < keep_top, 1.0, m)
+    if keep_rows is not None:
+        m = np.where((Y >= keep_rows[0]) & (Y < keep_rows[1]), 1.0, m)
+    if rows is not None:
+        m = m * ((Y >= rows[0]) & (Y < rows[1]))
+    return m.astype(F32)
+
+
+def body_only(kit, name, rows=None, keep_top=0, thick=15, deeye=False, keep_rows=None):
+    a = kit.frame(name).rgba[..., 3]
+    m = body_mask(a, rows, keep_top, thick, keep_rows)
+    p = kit.cut(name, keep=lambda X, Y: m)
+    if deeye:
+        p = no_eyes(p)
+    return p
+
+
+def col(kit, name):
+    """The centre column of a frame's content (frame px)."""
+    ys, xs = np.nonzero(kit.frame(name).rgba[..., 3] > 0.5)
+    return (xs.min() + xs.max() + 1) / 2
+
+
+def no_eyes(p):
+    """Small bright spots (the set's white lamps, which read as eyes) graded into the hull round them."""
+    rgba = p.rgba.copy()
+    L = rgba[..., :3] @ LUM
+    bright = ((L > 0.62) & (rgba[..., 3] > 0.5)).astype(F32)
+    small = (gblur(bright, 0.8) > 0.25) & (gblur(bright, 4.0) < 0.22)
+    spot = gblur(small.astype(F32), 1.0)
+    keep = (1 - np.clip(spot * 3, 0, 1))
+    around = gblur(rgba[..., :3] * (keep * rgba[..., 3])[..., None], 3.0) / np.maximum(gblur(keep * rgba[..., 3], 3.0), 1e-3)[..., None]
+    k = np.clip(spot * 3, 0, 1)[..., None]
+    rgba[..., :3] = rgba[..., :3] * (1 - k) + around * k
+    return Piece(rgba, p.glow * (1 - k[..., 0]))
+
+
 def design_escort(kit):
-    """The escort: the passenger ship's slim body (its cyan chevrons) carrying the escort's great claws."""
-    cv = Canvas(330)
-    body = kit.cut('passengership', box=(108, 52, 200, 300), keep=lambda X, Y: smoothstep(56, 64, Y))
-    cv.place(body, 0, 22)
-    claws = kit.cut('escort', box=(88, 0, 210, 140), keep=lambda X, Y: 1 - smoothstep(118, 136, Y) * (np.abs(X - 149) < 34))
-    cv.place(claws, 0, -86, scale=0.82, under=True)
-    cv.line(kit.pal, [(0, -40), (0, 120)], dash=(6, 3))
+    """The escort (the smallest, no legs): the passenger ship's slim body alone, its antennae forward."""
+    cv = Canvas(400)
+    body = body_only(kit, 'passengership', keep_top=58)
+    cv.place(body, 0, 0, anchor=(col(kit, 'passengership'), 150), sy=1.1)
+    cv.line(kit.pal, [(0, -60), (0, 130)], dash=(6, 3))
     return cv
 
 
 def design_frigate(kit):
-    """The frigate: the frigate's horned front and legs run into the large freighter's split twin tail."""
-    cv = Canvas(360)
-    front = kit.cut('frigate', box=(100, 0, 208, 170), keep=lambda X, Y: 1 - smoothstep(150, 168, Y))
-    tail = kit.cut('largefreighter', box=(98, 120, 210, 300), keep=lambda X, Y: smoothstep(126, 140, Y))
-    cv.place(tail, 0, 62, scale=1.05)
-    cv.place(front, 0, -78)
-    cv.line(kit.pal, [(-40, -18), (0, 0), (40, -18)])
-    cv.line(kit.pal, [(0, -100), (0, 70)], dash=(6, 3))
-    cv.line(kit.pal, [(-14, 30), (-34, 66)], mirror=True)
+    """The frigate (no legs): the frigate's horned head and long tapering body, its legs gone, drawn out long."""
+    cv = Canvas(460)
+    body = body_only(kit, 'frigate', keep_top=64)
+    cv.place(body, 0, 0, anchor=(col(kit, 'frigate'), 150), sy=1.35)
+    cv.line(kit.pal, [(-24, -78), (0, -66), (24, -78)])
+    cv.line(kit.pal, [(0, -120), (0, 150)], dash=(6, 3))
     return cv
 
 
+def leg_piece(kit, name, box, body_x):
+    """A leg cut from the left side of frame `name`: the box, the body (x >= body_x) cut away; the piece keeps the
+    frame's coordinates (anchors are frame px)."""
+    return kit.cut(name, keep=lambda X, Y: ((X >= box[0]) & (X < min(box[2], body_x)) & (Y >= box[1]) & (Y < box[3])).astype(F32), bevel=False)
+
+
 def design_destroyer(kit):
-    """The destroyer: the destroyer's four great arms and core on the cruiser's long abdomen."""
-    cv = Canvas(420)
-    abdomen = kit.cut('cruiser', box=(160, 180, 336, 494), keep=lambda X, Y: smoothstep(186, 200, Y))
-    cv.place(abdomen, 0, 50, scale=0.86)
-    arms = kit.cut('destroyer', box=(28, 0, 272, 220), keep=lambda X, Y: 1 - smoothstep(196, 214, Y))
-    cv.place(arms, 0, -100)
-    cv.line(kit.pal, [(-46, -12), (0, 8), (46, -12)])
-    cv.line(kit.pal, [(0, -40), (0, 150)], dash=(6, 3))
-    cv.line(kit.pal, [(-10, 60), (-36, 92)], mirror=True)
+    """The destroyer: the cruiser's horned head and thorax on the capital ship's long silver body column, one leg a
+    side laid back along its flanks."""
+    cv = Canvas(600)
+    c_cap, c_cr = col(kit, 'capitalship'), col(kit, 'cruiser')
+    body = body_only(kit, 'capitalship', rows=(176, 500))
+    cv.place(body, 0, -40, anchor=(c_cap, 176), scale=0.8, sy=1.15)
+    legs = leg_piece(kit, 'cruiser', (150, 146, 216, 180), 206)
+    cv.place(legs, -30, -44, anchor=(206, 162), scale=0.8, rot=72, mirror=True, under=True)
+    head = body_only(kit, 'cruiser', rows=(0, 208), keep_top=96, deeye=True)
+    cv.place(head, 0, -36, anchor=(c_cr, 208), scale=0.8)
+    cv.line(kit.pal, [(-30, -96), (0, -80), (30, -96)])
+    cv.line(kit.pal, [(0, -70), (0, 250)], dash=(7, 3))
+    cv.line(kit.pal, [(-10, 150), (-30, 186)], mirror=True)
     return cv
 
 
 def design_cruiser(kit):
-    """The cruiser: the cruiser's horned head and thorax, the colony ship's spined rear, the capital ship's flank spines."""
-    cv = Canvas(560)
-    rear = kit.cut('colonyship', box=(140, 230, 366, 500), keep=lambda X, Y: smoothstep(236, 256, Y))
-    cv.place(rear, 0, 120, scale=0.86)
-    spines = kit.cut('capitalship', box=(143, 160, 214, 280), keep=lambda X, Y: smoothstep(196, 206, X) * 0 + (X < 205))
-    cv.place(spines, -78, 30, mirror=True, under=True)
-    front = kit.cut('cruiser', box=(160, 0, 336, 330), keep=lambda X, Y: 1 - smoothstep(300, 328, Y))
-    cv.place(front, 0, -110)
-    cv.line(kit.pal, [(-62, 22), (0, 46), (62, 22)])
-    cv.line(kit.pal, [(0, -130), (0, 190)], dash=(7, 3))
-    cv.line(kit.pal, [(-44, -96), (0, -82), (44, -96)])
-    cv.line(kit.pal, [(-14, 100), (-46, 140)], mirror=True)
+    """The cruiser: the cruiser's horned head and body drawn out long, its two legs a side laid back along its flanks."""
+    cv = Canvas(680)
+    c_cr = col(kit, 'cruiser')
+    legs = leg_piece(kit, 'cruiser', (150, 146, 216, 208), 208)
+    cv.place(legs, -34, -86, anchor=(206, 162), scale=0.95, rot=70, mirror=True, under=True)
+    body = body_only(kit, 'cruiser', keep_top=96, deeye=True)
+    cv.place(body, 0, 0, anchor=(c_cr, 250), scale=0.95, sy=1.3)
+    cv.line(kit.pal, [(-44, -60), (0, -40), (44, -60)])
+    cv.line(kit.pal, [(0, -170), (0, 270)], dash=(7, 3))
+    cv.line(kit.pal, [(-12, 120), (-40, 160)], mirror=True)
     return cv
 
 
 def design_capitalship(kit):
-    """The capital ship (the longest): the capital ship's silver-spined front, the troop transport's great arms at
-    its shoulders, the colony ship's spined body behind."""
-    cv = Canvas(660)
-    rear = kit.cut('colonyship', box=(128, 180, 378, 500), keep=lambda X, Y: smoothstep(186, 206, Y))
-    cv.place(rear, 0, 150)
-    arms = kit.cut('trooptransport', box=(111, 0, 200, 175), keep=lambda X, Y: (X < 196))
-    cv.place(arms, -78, -150, mirror=True, under=True)
-    front = kit.cut('capitalship', box=(140, 0, 362, 330), keep=lambda X, Y: 1 - smoothstep(300, 328, Y))
-    cv.place(front, 0, -150)
-    cv.line(kit.pal, [(-70, -12), (0, 14), (70, -12)])
-    cv.line(kit.pal, [(0, -230), (0, 250)], dash=(8, 3))
-    cv.line(kit.pal, [(-52, -150), (0, -128), (52, -150)])
-    cv.line(kit.pal, [(-16, 110), (-56, 160)], mirror=True)
+    """The capital ship (the longest): the capital ship's spiked silver front and body, its side spines swept back
+    along its flanks, the colony ship's rear behind (its spines gone)."""
+    cv = Canvas(840)
+    c_cap, c_col = col(kit, 'capitalship'), col(kit, 'colonyship')
+    rear = body_only(kit, 'colonyship', rows=(300, 500), thick=21)
+    cv.place(rear, 0, 62, anchor=(c_col, 300), scale=0.95, sy=1.2)
+    spines = leg_piece(kit, 'capitalship', (140, 162, 214, 296), 206)
+    cv.place(spines, -40, -86, anchor=(206, 170), scale=0.95, rot=36, mirror=True, under=True, sy=1.1)
+    front = body_only(kit, 'capitalship', rows=(0, 420), keep_top=150)
+    cv.place(front, 0, 100, anchor=(c_cap, 420), scale=0.95, sy=1.15)
+    cv.line(kit.pal, [(-56, -170), (0, -146), (56, -170)])
+    cv.line(kit.pal, [(0, -300), (0, 360)], dash=(8, 3))
+    cv.line(kit.pal, [(-14, 190), (-46, 240)], mirror=True)
     return cv
 
 
 def design_carrier(kit):
-    """The carrier: the troop transport's broad armed front over the supply ship's wide dark launch wings, their bays lit."""
-    cv = Canvas(600)
-    wings = kit.cut('resupplyship', box=(100, 180, 406, 500), keep=lambda X, Y: smoothstep(188, 210, Y))
-    cv.place(wings, 0, 112)
-    front = kit.cut('trooptransport', box=(108, 0, 394, 330), keep=lambda X, Y: 1 - smoothstep(300, 328, Y))
-    cv.place(front, 0, -118)
-    cv.line(kit.pal, [(-74, 18), (0, 44), (74, 18)])
-    cv.line(kit.pal, [(0, -150), (0, 230)], dash=(8, 3))
-    cv.line(kit.pal, [(-60, 70), (-130, 160)], mirror=True)
+    """The carrier: the troop transport's horned head (its great arms gone) over the supply ship's dark launch wings,
+    their tips clipped, and its long tail."""
+    cv = Canvas(720)
+    c_tt, c_rs = col(kit, 'trooptransport'), col(kit, 'resupplyship')
+    wings = kit.cut('resupplyship', keep=lambda X, Y: smoothstep(186, 206, Y) * (np.abs(X - c_rs) < 96))
+    cv.place(wings, 0, -60, anchor=(c_rs, 196), scale=0.95, sy=1.2)
+    head = body_only(kit, 'trooptransport', rows=(0, 340), thick=35, deeye=True)
+    cv.place(head, 0, -40, anchor=(c_tt, 340), scale=0.95)
+    cv.line(kit.pal, [(-50, -150), (0, -126), (50, -150)])
+    cv.line(kit.pal, [(0, -260), (0, 300)], dash=(8, 3))
+    cv.line(kit.pal, [(-30, 80), (-74, 150)], mirror=True)
     return cv
 
 
 def design_trooptransport(kit):
-    """The troop transport: the gas miner's double hull (its pods), the passenger ship's head, the frigate's tail."""
-    cv = Canvas(480)
-    tail = kit.cut('frigate', box=(100, 160, 208, 300), keep=lambda X, Y: smoothstep(166, 182, Y))
-    cv.place(tail, 0, 150, scale=1.1)
-    body = kit.cut('gasminingship', box=(18, 0, 284, 296))
-    cv.place(body, 0, 0)
-    head = kit.cut('passengership', box=(108, 0, 200, 110), keep=lambda X, Y: 1 - smoothstep(92, 108, Y))
-    cv.place(head, 0, -150, under=True)
-    cv.line(kit.pal, [(-60, -20), (0, 6), (60, -20)])
-    cv.line(kit.pal, [(0, -110), (0, 200)], dash=(6, 3))
+    """The troop transport (no legs): the colony ship's long podded body alone, its spines and arms gone."""
+    cv = Canvas(620)
+    body = body_only(kit, 'colonyship', keep_top=0, thick=23, deeye=True)
+    cv.place(body, 0, 0, anchor=(col(kit, 'colonyship'), 250), scale=0.9, sy=1.15)
+    cv.line(kit.pal, [(-34, -110), (0, -90), (34, -110)])
+    cv.line(kit.pal, [(0, -200), (0, 230)], dash=(7, 3))
     return cv
 
 
 def design_construction(kit):
-    """The utility ship: the supply ship's many work arms round the large freighter's twin-tailed hull."""
-    cv = Canvas(440)
-    hull = kit.cut('largefreighter', box=(98, 0, 210, 300))
-    cv.place(hull, 0, 24, scale=1.15)
-    arms = kit.cut('resupplyship', box=(100, 0, 406, 240), keep=lambda X, Y: 1 - smoothstep(214, 236, Y))
-    cv.place(arms, 0, -92, scale=0.72, under=True)
-    cv.line(kit.pal, [(0, -40), (0, 160)], dash=(6, 3))
+    """The utility ship (no legs): the large freighter's twin-lobed hull, its arms gone, the escort's great pincers
+    forward."""
+    cv = Canvas(520)
+    c_lf, c_es = col(kit, 'largefreighter'), col(kit, 'escort')
+    hull = body_only(kit, 'largefreighter', rows=(56, 300), keep_rows=(196, 300))
+    cv.place(hull, 0, -60, anchor=(c_lf, 56), scale=1.05, sy=1.25)
+    claws = kit.cut('escort', keep=lambda X, Y: (Y < 150) * (1 - smoothstep(128, 146, Y) * (np.abs(X - c_es) < 34)))
+    cv.place(claws, 0, -40, anchor=(c_es, 140), scale=0.8, under=True)
+    cv.line(kit.pal, [(0, 0), (0, 230)], dash=(6, 3))
     return cv
 
 
@@ -878,12 +981,39 @@ def write_watcher(w, out):
     save(w['body'], os.path.join(out, 'watcher-body.png'))
     atlas, prs = pack([p[0] for p in w['parts']])
     save(atlas, os.path.join(out, 'watcher-parts.png'))
-    fxa, rects = pack([layer_rgba(w['fx']), layer_rgba(w['open_fx'])], float_rgba=True)
+    fxa, rects = pack([layer_rgba(w['fx']), layer_rgba(w['open_fx']), layer_rgba(w['warm_fx'])], float_rgba=True)
     save(fxa, os.path.join(out, 'watcher-fx.png'))
-    parts = [dict(rect=r, hinge=(hinge[0] + S / 2, hinge[1] + S / 2), swing=swing, delay=delay)
-             for (img, hinge, swing, delay), r in zip(w['parts'], prs)]
-    return dict(size=S, breath=BREATH['watcher'], glow=rects[0],
-                sockets=rects[1], parts=parts)
+    # the heat overlays: the body's, then each part's cropped to that part's own box (so it turns with the part)
+    boxes = [None] + [(r[4], r[5], r[4] + r[2], r[5] + r[3]) for r in prs]
+    hot_atlas, hrs = pack_boxes([w['hot_body']] + w['hot_parts'], boxes)
+    save(hot_atlas, os.path.join(out, 'watcher-hot.png'))
+    parts = []
+    for k, ((img, hinge, swing, delay), r) in enumerate(zip(w['parts'], prs)):
+        has = bool((w['hot_parts'][k][..., 3] > 2 / 255).any())
+        parts.append(dict(rect=r, hinge=(hinge[0] + S / 2, hinge[1] + S / 2), swing=swing, delay=delay, hot=hrs[k + 1] if has else None))
+    return dict(size=S, breath=BREATH['watcher'], glow=rects[0], sockets=rects[1], warm=rects[2], hot=hrs[0], parts=parts)
+
+
+def pack_boxes(images, boxes):
+    """As pack (float straight-alpha RGBA), each image cropped to its box (x0, y0, x1, y1), or to its content (None)."""
+    crops = []
+    for im, b in zip(images, boxes):
+        x0, y0, x1, y1 = b if b is not None else crop_box(im[..., 3])
+        crops.append((im[y0:y1, x0:x1], int(x0), int(y0)))
+    W = max(c[0].shape[1] for c in crops)
+    Hh = sum(c[0].shape[0] + 2 for c in crops)
+    atlas = np.zeros((Hh, W, 4), F32)
+    rects = []
+    y = 0
+    for (c, dx, dy) in crops:
+        h, w = c.shape[:2]
+        atlas[y:y + h, 0:w] = c
+        rects.append((0, y, w, h, dx, dy))
+        y += h + 2
+    a8 = np.round(np.clip(atlas, 0, 1) * 255).astype(np.uint8)
+    a8[a8[..., 3] == 0] = 0
+    fix_markers(a8)
+    return a8, rects
 
 
 def ts_rect(r):
@@ -933,11 +1063,17 @@ def write_data(path, frames, watcher):
             '    readonly swing: number;',
             '    /** When it starts to move (a fraction of the opening). */',
             '    readonly delay: number;',
+            "    /** Its lines in the opening's red-orange (in watcher-hot.png, the part's own box), or null (no lines). */",
+            '    readonly hot: BeaconFxRect | null;',
             '}',
             '',
             'export interface WatcherArt extends BeaconFrameArt {',
             '    /** The light in the cavity and the sockets the parts uncover as they swing out (in watcher-fx.png). */',
             '    readonly sockets: BeaconFxRect;',
+            "    /** The lights' swell in the opening's red-orange (in watcher-fx.png). */",
+            '    readonly warm: BeaconFxRect;',
+            "    /** The body's lines in the opening's red-orange (in watcher-hot.png), drawn over the cyan as it opens. */",
+            '    readonly hot: BeaconFxRect;',
             '    readonly parts: readonly WatcherPartArt[];',
             '}',
             '']
@@ -947,9 +1083,12 @@ def write_data(path, frames, watcher):
     out.append('    breath: %.2f,' % w['breath'])
     out.append('    glow: %s,' % ts_rect(w['glow']))
     out.append('    sockets: %s,' % ts_rect(w['sockets']))
+    out.append('    warm: %s,' % ts_rect(w['warm']))
+    out.append('    hot: %s,' % ts_rect(w['hot']))
     out.append('    parts: [')
     for p in w['parts']:
-        out.append('        { rect: %s, hinge: [%.1f, %.1f], swing: %.4f, delay: %.3f },' % (ts_rect(p['rect']), p['hinge'][0], p['hinge'][1], p['swing'], p['delay']))
+        hot = 'null' if p['hot'] is None else ts_rect(p['hot'])
+        out.append('        { rect: %s, hinge: [%.1f, %.1f], swing: %.4f, delay: %.3f, hot: %s },' % (ts_rect(p['rect']), p['hinge'][0], p['hinge'][1], p['swing'], p['delay'], hot))
     out.append('    ],')
     out.append('};')
     out.append('')
@@ -1004,6 +1143,16 @@ def fleet_sheet(out_dir, frames, watcher):
             bg.alpha_composite(im)
             bg.save(os.path.join(out_dir, 'beacon-preview.png'))
     if watcher is not None:
+        strip = [watcher_pose(watcher, t) for t in (0.0, 0.1, 0.2, 0.35, 0.5, 0.7, 1.0)]
+        bb = strip[-1].getbbox()
+        bb = (min(bb[0], strip[0].getbbox()[0]) - 6, 0, max(bb[2], strip[0].getbbox()[2]) + 6, watcher['S'])
+        ww = bb[2] - bb[0]
+        sh = starfield(ww * len(strip) + 10 * (len(strip) + 1), watcher['S'])
+        dd = ImageDraw.Draw(sh)
+        for i, p in enumerate(strip):
+            sh.alpha_composite(p.crop(bb), (10 + i * (ww + 10), 0))
+            dd.text((14 + i * (ww + 10), 6), 'open %d%%' % round([0, 10, 20, 35, 50, 70, 100][i]), fill=(220, 225, 240, 255))
+        sh.save(os.path.join(out_dir, 'watcher-opening-strip.png'))
         poses = [watcher_pose(watcher, t) for t in (0.0, 0.5, 1.0)]
         bb = poses[2].getbbox()
         bb = (min(bb[0], poses[0].getbbox()[0]), 0, max(bb[2], poses[0].getbbox()[2]), watcher['S'])

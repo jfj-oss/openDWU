@@ -15,6 +15,10 @@ const page = await browser.newPage({ viewport: { width: 1600, height: 1000 }, de
 const logs = [];
 page.on('console', (m) => logs.push(`[${m.type()}] ${m.text()}`));
 page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`));
+// The Watcher's horn (src/audio/beaconHorn.ts): its file is fetched on the first opening heard.
+page.on('requestfinished', (r) => {
+    if (r.url().includes('/audio/beacon/')) console.log('horn fetched', r.url());
+});
 await page.goto(`${base}?autostart=1&scenario=threat-framework&simWorker=0&reveal=1&stars=300&seed=3`);
 await page.waitForFunction(() => window.__dwu?.game?.playerEmpire !== undefined, null, { timeout: 240000 });
 await page.waitForTimeout(3000);
@@ -104,6 +108,7 @@ await page.evaluate(() => {
     window.__dwu.galaxy.scenario.state.beacon.watchers[1].mode = 'sighting';
 });
 await shot('watcher-opening.png', at, [1, 1400, 1600], 4200);
+await shot('watcher-opening-hot.png', at, [1, 1400, 1600], 2000);
 await shot('watcher-open.png', at, [1, 1400, 1600], 8500);
 await shot('watchers-play.png', at, [1 / 3, 0, 1600]);
 await shot('beacon-close.png', at, [1, 0, 4200], 3000);

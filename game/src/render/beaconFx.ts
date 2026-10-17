@@ -12,6 +12,10 @@
 // cavity lit from inside under its flank plates) and the moving parts (watcher-parts.png: the horns, the six legs, the
 // flank plates) are drawn here, each lifting a little off the hull (a shadow under it) and swinging about its hinge,
 // one after another; the light in the cavity and the leg sockets rises; they fold back when it is no longer sighted.
+// As it opens its light lines heat from the reference's cyan to red-orange (watcher-hot.png, normal-blended over them
+// on the body and on each moving part; its swell turns red-orange too), and cool back as it closes; closed it is the
+// reference. A Watcher that starts opening while drawn leaves a cue for its horn (takeWatcherHornCues; the sound is
+// src/audio/beaconHorn.ts).
 
 import { Container, Rectangle, Texture, type Sprite } from 'pixi.js';
 import type { BuiltObject } from '../sim/builtObject';
@@ -67,14 +71,38 @@ export function watcherUnfoldStep(u: number, open: boolean, dt: number): number 
 /** The light layers of a frame (sub-textures of its <file>-fx.png). */
 interface FxSet {
     glow: Texture;
-    /** The Watcher's: the light in its cavity and leg sockets. */
+    /** The Watcher's: the light in its cavity and leg sockets, and its swell in red-orange. */
     sockets?: Texture;
+    warm?: Texture;
 }
 
-/** The Watcher's body and its moving parts (sub-textures of watcher-parts.png). */
+/** The Watcher's body, its moving parts (sub-textures of watcher-parts.png) and their red-orange lines (watcher-hot.png). */
 interface WatcherTextures {
     body: Texture;
     parts: Texture[];
+    hot: Texture;
+    hotParts: (Texture | null)[];
+}
+
+/** The heat of a Watcher's lines 0..1 at unfold u (0 closed .. 1 open): red-orange as it opens (scripts/beacon-ships.py
+ * watcher_heat). Pure. */
+export function watcherHeat(u: number): number {
+    return smoothstep(0.04, 0.55, u);
+}
+
+/** Watchers that started opening while drawn, for the horn (taken once per frame by the audio side). */
+const hornCues: BuiltObject[] = [];
+const HORN_CUES_MAX = 8;
+
+/** Moves the pending horn cues (Watchers that started opening since the last call) into `out`. */
+export function takeWatcherHornCues(out: BuiltObject[]): void {
+    for (const bo of hornCues) out.push(bo);
+    hornCues.length = 0;
+}
+
+/** A Watcher started opening (its unfold left 0 toward open); `prev`, `next`: its unfold before and after. Pure. */
+export function watcherStartedOpening(prev: number, next: number, open: boolean): boolean {
+    return open && prev <= 0.001 && next > 0.001;
 }
 
 function sub(base: Texture, r: BeaconFxRect): Texture {
@@ -137,7 +165,10 @@ export class BeaconFxLayer {
                         return;
                     }
                     const set: FxSet = { glow: sub(a.texture, art.glow) };
-                    if (file === 'watcher') set.sockets = sub(a.texture, WATCHER_ART.sockets);
+                    if (file === 'watcher') {
+                        set.sockets = sub(a.texture, WATCHER_ART.sockets);
+                        set.warm = sub(a.texture, WATCHER_ART.warm);
+                    }
                     this.fx.set(file, set);
                 },
                 () => this.fx.set(file, null),
@@ -150,10 +181,19 @@ export class BeaconFxLayer {
     private watcherTextures(): WatcherTextures | null {
         if (this.watcherTex === null && !this.watcherLoading) {
             this.watcherLoading = true;
-            void Promise.all([loadShipArt(`${BEACON_ART_DIR}watcher-body.png`, false), loadShipArt(`${BEACON_ART_DIR}watcher-parts.png`, false)]).then(
-                ([body, parts]) => {
-                    if (body === null || parts === null) return;
-                    this.watcherTex = { body: body.texture, parts: WATCHER_ART.parts.map((p) => sub(parts.texture, p.rect)) };
+            void Promise.all([
+                loadShipArt(`${BEACON_ART_DIR}watcher-body.png`, false),
+                loadShipArt(`${BEACON_ART_DIR}watcher-parts.png`, false),
+                loadShipArt(`${BEACON_ART_DIR}watcher-hot.png`, false),
+            ]).then(
+                ([body, parts, hot]) => {
+                    if (body === null || parts === null || hot === null) return;
+                    this.watcherTex = {
+                        body: body.texture,
+                        parts: WATCHER_ART.parts.map((p) => sub(parts.texture, p.rect)),
+                        hot: sub(hot.texture, WATCHER_ART.hot),
+                        hotParts: WATCHER_ART.parts.map((p) => (p.hot === null ? null : sub(hot.texture, p.hot))),
+                    };
                 },
                 () => undefined,
             );
@@ -169,6 +209,14 @@ export class BeaconFxLayer {
         s.anchor.set(axf, ayf);
         s.rotation = this.rot + extraRot;
         s.scale.set(this.sc * extraScale);
+    }
+
+    /** A normal-blended layer at its place on the frame (the heat over the lines). */
+    private overlay(t: Texture, r: BeaconFxRect, alpha: number): void {
+        const s = this.pool.acquire(t);
+        s.blendMode = 'normal';
+        this.put(s, r.dx, r.dy);
+        s.alpha = Math.min(1, alpha);
     }
 
     private additive(t: Texture, r: BeaconFxRect, alpha: number): void {
@@ -194,9 +242,11 @@ export class BeaconFxLayer {
                 st = { u: 0, t: sec };
                 this.unfold.set(bo, st);
             }
+            const prev = st.u;
             st.u = watcherUnfoldStep(st.u, open, Math.max(0, Math.min(0.25, sec - st.t)));
             st.t = sec;
             u = st.u;
+            if (watcherStartedOpening(prev, u, open) && hornCues.length < HORN_CUES_MAX) hornCues.push(bo);
         }
         if (px < BEACON_FX_MIN_PX) return null;
         this.x = x;
@@ -217,10 +267,14 @@ export class BeaconFxLayer {
     private drawWatcher(fx: FxSet | null, u: number, sec: number, breath: number): Texture | null {
         const W = WATCHER_ART;
         const tex = u > 0.001 ? this.watcherTextures() : null;
-        // Open, the light inside rises a little.
+        // Open, the light inside rises a little and heats from cyan to red-orange.
         const rise = smoothstep(0, 0.6, u);
-        if (fx !== null) this.additive(fx.glow, W.glow, (0.12 + 0.88 * breath) * (1 + 0.15 * rise));
+        const heat = tex === null ? 0 : watcherHeat(u);
+        const swell = (0.12 + 0.88 * breath) * (1 + 0.15 * rise);
+        if (fx !== null) this.additive(fx.glow, W.glow, swell * (1 - heat));
         if (tex === null) return null;
+        if (heat > 0.01) this.overlay(tex.hot, W.hot, heat);
+        if (fx?.warm !== undefined) this.additive(fx.warm, W.warm, swell * heat);
         if (fx?.sockets !== undefined) this.additive(fx.sockets, W.sockets, rise * (0.4 + 0.4 * breath));
         for (let k = 0; k < W.parts.length; k++) {
             const p = W.parts[k];
@@ -241,6 +295,14 @@ export class BeaconFxLayer {
             const s = this.pool.acquire(tex.parts[k]);
             s.blendMode = 'normal';
             this.put(s, p.hinge[0], p.hinge[1], axf, ayf, a, grow);
+            const hp = tex.hotParts[k];
+            if (hp !== null && heat > 0.01) {
+                // the part's red-orange lines: the part's own box, so the same anchor and turn
+                const h = this.pool.acquire(hp);
+                h.blendMode = 'normal';
+                this.put(h, p.hinge[0], p.hinge[1], axf, ayf, a, grow);
+                h.alpha = heat;
+            }
         }
         return tex.body;
     }

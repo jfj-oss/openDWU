@@ -23,44 +23,44 @@ export interface BeaconFrameArt {
 
 export const BEACON_FRAMES: Readonly<Record<string, BeaconFrameArt>> = {
     escort: {
-        size: 310,
+        size: 348,
         breath: 5.00,
-        glow: { x: 0, y: 0, w: 87, h: 221, dx: 111, dy: 56 },
+        glow: { x: 0, y: 0, w: 72, h: 236, dx: 138, dy: 70 },
     },
     frigate: {
-        size: 338,
+        size: 334,
         breath: 5.40,
-        glow: { x: 0, y: 0, w: 84, h: 170, dx: 128, dy: 68 },
+        glow: { x: 0, y: 0, w: 58, h: 232, dx: 139, dy: 93 },
     },
     destroyer: {
-        size: 412,
+        size: 408,
         breath: 5.80,
-        glow: { x: 0, y: 0, w: 96, h: 148, dx: 157, dy: 152 },
+        glow: { x: 0, y: 0, w: 103, h: 283, dx: 152, dy: 98 },
     },
     cruiser: {
-        size: 532,
+        size: 564,
         breath: 6.40,
-        glow: { x: 0, y: 0, w: 199, h: 311, dx: 166, dy: 121 },
+        glow: { x: 0, y: 0, w: 96, h: 322, dx: 234, dy: 144 },
     },
     capitalship: {
-        size: 644,
+        size: 586,
         breath: 7.40,
-        glow: { x: 0, y: 0, w: 208, h: 487, dx: 217, dy: 41 },
+        glow: { x: 0, y: 0, w: 138, h: 531, dx: 224, dy: 46 },
     },
     carrier: {
-        size: 572,
+        size: 580,
         breath: 7.00,
-        glow: { x: 0, y: 0, w: 188, h: 374, dx: 192, dy: 134 },
+        glow: { x: 0, y: 0, w: 112, h: 491, dx: 234, dy: 17 },
     },
     trooptransport: {
-        size: 450,
+        size: 392,
         breath: 6.00,
-        glow: { x: 0, y: 0, w: 127, h: 355, dx: 160, dy: 64 },
+        glow: { x: 0, y: 0, w: 126, h: 345, dx: 132, dy: 8 },
     },
     construction: {
-        size: 396,
+        size: 432,
         breath: 5.60,
-        glow: { x: 0, y: 0, w: 100, h: 159, dx: 146, dy: 123 },
+        glow: { x: 0, y: 0, w: 86, h: 220, dx: 173, dy: 85 },
     },
     beacon: {
         size: 876,
@@ -78,11 +78,17 @@ export interface WatcherPartArt {
     readonly swing: number;
     /** When it starts to move (a fraction of the opening). */
     readonly delay: number;
+    /** Its lines in the opening's red-orange (in watcher-hot.png, the part's own box), or null (no lines). */
+    readonly hot: BeaconFxRect | null;
 }
 
 export interface WatcherArt extends BeaconFrameArt {
     /** The light in the cavity and the sockets the parts uncover as they swing out (in watcher-fx.png). */
     readonly sockets: BeaconFxRect;
+    /** The lights' swell in the opening's red-orange (in watcher-fx.png). */
+    readonly warm: BeaconFxRect;
+    /** The body's lines in the opening's red-orange (in watcher-hot.png), drawn over the cyan as it opens. */
+    readonly hot: BeaconFxRect;
     readonly parts: readonly WatcherPartArt[];
 }
 
@@ -91,18 +97,20 @@ export const WATCHER_ART: WatcherArt = {
     breath: 8.50,
     glow: { x: 0, y: 0, w: 99, h: 258, dx: 220, dy: 79 },
     sockets: { x: 0, y: 260, w: 116, h: 281, dx: 214, dy: 74 },
+    warm: { x: 0, y: 543, w: 99, h: 259, dx: 220, dy: 79 },
+    hot: { x: 0, y: 0, w: 85, h: 243, dx: 229, dy: 83 },
     parts: [
-        { rect: { x: 0, y: 0, w: 41, h: 48, dx: 230, dy: 21 }, hinge: [246.2, 67.5], swing: -0.2000, delay: 0.000 },
-        { rect: { x: 0, y: 50, w: 43, h: 48, dx: 191, dy: 73 }, hinge: [228.5, 83.5], swing: 0.2800, delay: 0.088 },
-        { rect: { x: 0, y: 100, w: 45, h: 38, dx: 193, dy: 119 }, hinge: [231.5, 123.5], swing: 0.2800, delay: 0.173 },
-        { rect: { x: 0, y: 140, w: 34, h: 46, dx: 202, dy: 155 }, hinge: [232.5, 160.5], swing: 0.2800, delay: 0.262 },
-        { rect: { x: 0, y: 188, w: 40, h: 48, dx: 269, dy: 21 }, hinge: [293.0, 67.5], swing: 0.2000, delay: 0.000 },
-        { rect: { x: 0, y: 238, w: 43, h: 37, dx: 305, dy: 78 }, hinge: [309.5, 85.5], swing: -0.2800, delay: 0.083 },
-        { rect: { x: 0, y: 277, w: 47, h: 49, dx: 300, dy: 113 }, hinge: [308.5, 119.5], swing: -0.2800, delay: 0.172 },
-        { rect: { x: 0, y: 328, w: 33, h: 50, dx: 304, dy: 160 }, hinge: [308.5, 166.5], swing: -0.2800, delay: 0.266 },
-        { rect: { x: 0, y: 380, w: 28, h: 98, dx: 214, dy: 211 }, hinge: [237.5, 212.5], swing: 0.1600, delay: 0.350 },
-        { rect: { x: 0, y: 480, w: 29, h: 50, dx: 214, dy: 307 }, hinge: [237.5, 308.5], swing: 0.1600, delay: 0.600 },
-        { rect: { x: 0, y: 532, w: 29, h: 98, dx: 301, dy: 211 }, hinge: [306.5, 212.5], swing: -0.1600, delay: 0.350 },
-        { rect: { x: 0, y: 632, w: 31, h: 50, dx: 296, dy: 307 }, hinge: [302.5, 308.5], swing: -0.1600, delay: 0.600 },
+        { rect: { x: 0, y: 0, w: 41, h: 48, dx: 230, dy: 21 }, hinge: [246.2, 67.5], swing: -0.2000, delay: 0.000, hot: null },
+        { rect: { x: 0, y: 50, w: 43, h: 48, dx: 191, dy: 73 }, hinge: [228.5, 83.5], swing: 0.2800, delay: 0.088, hot: null },
+        { rect: { x: 0, y: 100, w: 45, h: 38, dx: 193, dy: 119 }, hinge: [231.5, 123.5], swing: 0.2800, delay: 0.173, hot: null },
+        { rect: { x: 0, y: 140, w: 34, h: 46, dx: 202, dy: 155 }, hinge: [232.5, 160.5], swing: 0.2800, delay: 0.262, hot: null },
+        { rect: { x: 0, y: 188, w: 40, h: 48, dx: 269, dy: 21 }, hinge: [293.0, 67.5], swing: 0.2000, delay: 0.000, hot: null },
+        { rect: { x: 0, y: 238, w: 43, h: 37, dx: 305, dy: 78 }, hinge: [309.5, 85.5], swing: -0.2800, delay: 0.083, hot: null },
+        { rect: { x: 0, y: 277, w: 47, h: 49, dx: 300, dy: 113 }, hinge: [308.5, 119.5], swing: -0.2800, delay: 0.172, hot: null },
+        { rect: { x: 0, y: 328, w: 33, h: 50, dx: 304, dy: 160 }, hinge: [308.5, 166.5], swing: -0.2800, delay: 0.266, hot: null },
+        { rect: { x: 0, y: 380, w: 28, h: 98, dx: 214, dy: 211 }, hinge: [237.5, 212.5], swing: 0.1600, delay: 0.350, hot: null },
+        { rect: { x: 0, y: 480, w: 29, h: 50, dx: 214, dy: 307 }, hinge: [237.5, 308.5], swing: 0.1600, delay: 0.600, hot: { x: 0, y: 725, w: 29, h: 50, dx: 214, dy: 307 } },
+        { rect: { x: 0, y: 532, w: 29, h: 98, dx: 301, dy: 211 }, hinge: [306.5, 212.5], swing: -0.1600, delay: 0.350, hot: null },
+        { rect: { x: 0, y: 632, w: 31, h: 50, dx: 296, dy: 307 }, hinge: [302.5, 308.5], swing: -0.1600, delay: 0.600, hot: { x: 0, y: 877, w: 31, h: 50, dx: 296, dy: 307 } },
     ],
 };

@@ -42,10 +42,14 @@ import {
     beaconBreath,
     beaconFrameArt,
     beaconPhase,
+    watcherHeat,
     watcherPartLift,
     watcherPartSwing,
+    watcherStartedOpening,
     watcherUnfoldStep,
 } from '../src/render/beaconFx';
+import { HORN_COOLDOWN_S, HORN_SAME_WATCHER_S, HORN_URL, hornAllowed, hornLevel } from '../src/audio/beaconHorn';
+import { readFileSync } from 'node:fs';
 import type { Galaxy } from '../src/sim/galaxy';
 import {
     CASINO_BAD,
@@ -537,6 +541,69 @@ describe('the Beacon art', () => {
         expect(WATCHER_CLOSE_S).toBe(7);
         expect(beaconFrameArt('watcher')).toBe(WATCHER_ART);
         expect(beaconFrameArt('nope')).toBeNull();
+    });
+
+    it('the Watcher heats as it opens: its lines red-orange over the cyan, on the body and on each part\'s own box', () => {
+        expect(watcherHeat(0)).toBe(0);
+        expect(watcherHeat(1)).toBe(1);
+        let last = 0;
+        for (let u = 0; u <= 1.0001; u += 0.05) {
+            expect(watcherHeat(u)).toBeGreaterThanOrEqual(last);
+            last = watcherHeat(u);
+        }
+        const hot = decodePng(png('watcher-hot'));
+        const fx = decodePng(png('watcher-fx'));
+        for (const r of [WATCHER_ART.hot]) {
+            expect(r.x + r.w).toBeLessThanOrEqual(hot.width);
+            expect(r.y + r.h).toBeLessThanOrEqual(hot.height);
+        }
+        expect(WATCHER_ART.warm.y + WATCHER_ART.warm.h).toBeLessThanOrEqual(fx.height);
+        let partsWithLines = 0;
+        for (const p of WATCHER_ART.parts) {
+            if (p.hot === null) continue;
+            partsWithLines++;
+            expect(p.hot.y + p.hot.h).toBeLessThanOrEqual(hot.height);
+            // the same box as the part, so it turns with it
+            expect([p.hot.w, p.hot.h, p.hot.dx, p.hot.dy]).toEqual([p.rect.w, p.rect.h, p.rect.dx, p.rect.dy]);
+        }
+        expect(partsWithLines).toBeGreaterThan(0);
+        // the overlay is red-orange (red over blue) wherever it shows
+        let warmPx = 0, coldPx = 0;
+        const r0 = WATCHER_ART.hot;
+        for (let y = r0.y; y < r0.y + r0.h; y++) {
+            for (let x = r0.x; x < r0.x + r0.w; x++) {
+                const i = (y * hot.width + x) * 4;
+                if (hot.data[i + 3] < 128) continue;
+                if (hot.data[i] > hot.data[i + 2] + 60) warmPx++;
+                else coldPx++;
+            }
+        }
+        expect(warmPx).toBeGreaterThan(20);
+        expect(coldPx).toBe(0);
+    });
+
+    it('the Watcher\'s horn: cued once as it starts opening, by distance and zoom, with cooldowns; our own sound file', () => {
+        expect(watcherStartedOpening(0, 0.01, true)).toBe(true);
+        expect(watcherStartedOpening(0.2, 0.21, true)).toBe(false); // already opening
+        expect(watcherStartedOpening(0, 0, true)).toBe(false);
+        expect(watcherStartedOpening(0.01, 0, false)).toBe(false); // closing
+        const view = { x: 0, y: 0, zoom: 1 / 20, width: 1600, height: 1000 };
+        const centre = hornLevel(0, 0, view);
+        expect(centre.level).toBeCloseTo(1, 6);
+        expect(centre.pan).toBeCloseTo(0, 6);
+        const edge = hornLevel(800 * 20, 0, view); // the right edge of the screen
+        expect(edge.level).toBeGreaterThan(0.2);
+        expect(edge.level).toBeLessThan(centre.level);
+        expect(edge.pan).toBeGreaterThan(0.5);
+        expect(hornLevel(800 * 20 * 3, 0, view).level).toBe(0); // well off screen
+        expect(hornLevel(0, 0, { ...view, zoom: 1 / 2000 }).level).toBe(0); // the galaxy view
+        expect(hornAllowed(100, -Infinity, undefined)).toBe(true);
+        expect(hornAllowed(100, 100 - HORN_COOLDOWN_S + 1, undefined)).toBe(false); // the global cooldown
+        expect(hornAllowed(100, -Infinity, 100 - HORN_SAME_WATCHER_S + 1)).toBe(false); // the same Watcher again
+        expect(hornAllowed(100, 100 - HORN_COOLDOWN_S, 100 - HORN_SAME_WATCHER_S)).toBe(true);
+        const ogg = readFileSync(resolve(__dirname, '../public', HORN_URL.slice(1)));
+        expect(ogg.subarray(0, 4).toString('latin1')).toBe('OggS');
+        expect(ogg.length).toBeGreaterThan(20000);
     });
 });
 

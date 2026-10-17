@@ -31,6 +31,7 @@ import { RIM_MOOD_TRACKS, RimAmbientBed, playRimVoiceStaticBurst, rimMoodProbabi
 // [rimatmo-wiring] end
 import type { BuiltObject } from '../sim/builtObject';
 import { ProbeChatter } from './probeChatter';
+import { BeaconHorn } from './beaconHorn'; // Giantworks, the Beacon: a Watcher's horn as it opens
 import { RimCreatureAudio } from './rimCreatureAudio'; // [rimatmo-audio] 19i audio addendum
 import { DEEP_BED_WEIGHT, DeepSpaceEvents, deepEventGain } from './deepSpaceMood'; // [musicmood]
 import { DEFAULT_SETTINGS, getSettings } from '../ui/settings'; // [musicmood] UI settings only
@@ -340,6 +341,7 @@ export function installGameAudio(deps: GameAudioDeps): GameAudio {
     });
     const deepEvents = new DeepSpaceEvents(rimContext); // [musicmood] Deep Space calls + creaks (the bed is rimAmbient)
     const probeChatter = new ProbeChatter(rimContext); // Dead Probe Swarm radio chatter near its ships
+    const beaconHorn = new BeaconHorn(rimContext); // a Watcher's horn as it starts to open (cued by the render side)
     // [rimatmo-wiring] end
     return {
         frame(): void {
@@ -383,6 +385,11 @@ export function installGameAudio(deps: GameAudioDeps): GameAudio {
             } catch {
                 // no audio
             }
+            try {
+                beaconHorn.update(camera, session.player.volume, performance.now() / 1000);
+            } catch {
+                // no audio
+            }
             if (r.ambientPlaying === null) return;
             try {
                 const m = musicPlayer();
@@ -406,6 +413,7 @@ export function installGameAudio(deps: GameAudioDeps): GameAudio {
             rimCreatures.dispose();
             deepEvents.dispose(); // [musicmood]
             probeChatter.dispose();
+            beaconHorn.dispose();
             if (rimCtx !== null) void rimCtx.close().catch(() => undefined);
             rimCtx = null;
         },
