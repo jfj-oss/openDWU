@@ -230,6 +230,8 @@ const CONFIGS_REGRESS = [
     ...[1, 2].map((seed) => rg(`rg-cult-force-late-s${seed}`, { seed, years: 8, late: LATE4, addons: ['cult', ...RG_CORE], params: { ...RG_ALL, ...RG_CULT, cultSpreadPct: 8, cultAmbassadorPct: 15, cultSecedeColonies: 1, cultSecedeMinColonies: 1, cultAgentDetectPct: 0 } })),
     // The Hive at its natural settings (40% of the nodes, 5 nodes at least, a 20% chance each year once met): late starts and a normal one.
     ...[1, 2, 3].map((seed) => rg(`rg-hive-nat-late-s${seed}`, { seed, years: 9, late: LATE4, addons: ['hive', ...RG_CORE], params: { ...RG_ALL, hiveExistChancePct: 100, hiveMinYear: 0 } })),
+    // The same with the absorbed nodes' risings sized to the colonies' defence (hiveRisingOverkill 6, up to 3M each).
+    ...[1, 2].map((seed) => rg(`rg-hive-big-late-s${seed}`, { seed, years: 9, late: LATE4, addons: ['hive', ...RG_CORE], params: { ...RG_ALL, hiveExistChancePct: 100, hiveMinYear: 0, hiveRisingOverkill: 6 } })),
     rg('rg-hive-nat-norm-s1', { seed: 1, years: 15, addons: ['hive', ...RG_CORE], params: { ...RG_ALL, hiveExistChancePct: 100, hiveMinYear: 4 } }),
     ...[1, 2].map((seed) => rg(`rg-hive-late-s${seed}`, { seed, years: 5, late: LATE4, addons: ['hive', ...RG_CORE], params: { ...RG_ALL, ...RG_HIVE } })),
     ...[1, 2].map((seed) => rg(`rg-purifier-late-s${seed}`, { seed, years: 5, late: LATE4, addons: ['purifier', ...RG_CORE], params: { ...RG_ALL, ...RG_PUR } })),
