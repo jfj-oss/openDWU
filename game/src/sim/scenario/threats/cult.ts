@@ -20,10 +20,11 @@ import { spawnGovernorFor } from '../governors';
 import { CharacterRole, CharacterTraitType, type Character, type IntelligenceMission, getEmpireCharacters } from '../../characters';
 import { EmpireMessageType } from '../../messages';
 import { GameEndOutcome } from '../../victory';
-import { gameYear, registerScenarioEvent, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly } from '../hooks';
+import { GAME_DAY_LENGTH, gameYear, registerScenarioEvent, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly } from '../hooks';
 import { militaryPotency } from '../../diplomacyTick';
 import { scenarioParam } from '../state';
 import { scenarioText } from '../messages';
+import { galaxyStarDate } from '../../tick/simTime';
 import { startStarDateForAge } from '../../galaxyTime';
 import { registerHiddenThing, retireHiddenTarget } from '../security/registry';
 import {
@@ -50,7 +51,7 @@ import {
     type ThreatKnowledge,
     forcedThreatVictim,
 } from './framework';
-import { topUpPorts, applyIncomeFloor, foundMiningStations, pumpNavy, directFleets, ensureConstructionShips, givePortAt, makeTroopOfStrength, navyRise, topUpGarrisons, newNavyState, spawnPendingNavy, syncFactionTech, takeMiningStationsNear, type NavyState } from './factionNavy';
+import { coloniesUnderAttack, topUpPorts, applyIncomeFloor, foundMiningStations, pumpNavy, directFleets, ensureConstructionShips, givePortAt, makeTroopOfStrength, navyRise, topUpGarrisons, newNavyState, spawnPendingNavy, syncFactionTech, takeMiningStationsNear, type NavyState } from './factionNavy';
 
 export const CULT_KEY = 'cult';
 export const CULT_FLAG = 'cult';
@@ -106,6 +107,9 @@ const P = {
     secedeColonies: (g: Galaxy) => p(g, 'cultSecedeColonies', 4),
     secedeMinColonies: (g: Galaxy) => p(g, 'cultSecedeMinColonies', 2),
     agentDetectPct: (g: Galaxy) => p(g, 'cultAgentDetectPct', 15),
+    /** Secure-home opening phase: ends when no enemy warship/troops threaten a held world for this many days, or after the timeout. */
+    secureClearDays: (g: Galaxy) => p(g, 'cultSecureHomeClearDays', 60),
+    secureMaxDays: (g: Galaxy) => p(g, 'cultSecureHomeMaxDays', 360),
     /** Total strength (the Ground Report measure) of the force that rises inside each cult-held colony. */
     risingStrength: (g: Galaxy) => p(g, 'cultRisingStrength', 800000),
 };
@@ -403,7 +407,24 @@ export function cultFleets(galaxy: Galaxy): void {
     const faction = st?.faction ?? null;
     if (st === null || faction === null || !faction.active || st.ended) return;
     st.navy ??= newNavyState();
-    directFleets(galaxy, 'cult', faction, st.navy);
+    const navy = st.navy;
+    // Opening phase: the starting fleet secures its home worlds before going on the offensive.
+    const now = galaxyStarDate(galaxy);
+    if (navy.secure === undefined && navy.shipsSpawned > 0) navy.secure = { start: now, clearSince: -1 };
+    const sec = navy.secure;
+    let hold = false;
+    if (sec !== undefined && sec.ended === undefined) {
+        if (coloniesUnderAttack(galaxy, 'cult', faction).size > 0) sec.clearSince = -1;
+        else if (sec.clearSince < 0) sec.clearSince = now;
+        if (sec.clearSince >= 0 && now - sec.clearSince >= P.secureClearDays(galaxy) * GAME_DAY_LENGTH) {
+            sec.ended = now;
+            sec.reason = 'clear';
+        } else if (now - sec.start >= P.secureMaxDays(galaxy) * GAME_DAY_LENGTH) {
+            sec.ended = now;
+            sec.reason = 'timeout';
+        } else hold = true;
+    }
+    directFleets(galaxy, 'cult', faction, navy, hold);
 }
 
 /** Yearly: research re-synced to the galaxy average (never above), designs refreshed. */

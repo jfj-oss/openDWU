@@ -9,7 +9,7 @@ import type { Game, CreateGameOptions } from '../src/sim/game';
 import type { Galaxy } from '../src/sim/galaxy';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import { stateDigest } from '../src/sim/tick/digest';
-import { registerScenarioEvent, registerScenarioPeriodic, registerScenarioYearly } from '../src/sim/scenario/hooks';
+import { GAME_DAY_LENGTH, registerScenarioEvent, registerScenarioPeriodic, registerScenarioYearly } from '../src/sim/scenario/hooks';
 import {
     CULT_CODE_CONTAINED,
     CULT_HANDLER_IDS,
@@ -186,7 +186,7 @@ describe('Cult: economy and navy', () => {
         expect(empireTechLevel(faction)).toBeGreaterThanOrEqual(averageTechLevel(g, faction));
         expect(faction.stateMoney).toBeGreaterThanOrEqual(1000000);
         expect(faction.privateMoney).toBeGreaterThanOrEqual(10000000);
-        expect(st.navy!.pendingStrength).toBeCloseTo(hostPotency * 0.3, 3);
+        expect(st.navy!.pendingStrength).toBeCloseTo(hostPotency * 0.5, 3);
         // Smarter AI treats it like any AI empire.
         expect(faction.pirateEmpireBaseHabitat).toBeNull();
         expect(faction.dominantRace).not.toBeNull();
@@ -275,7 +275,8 @@ describe('Cult: garrisons and fleets', () => {
         cultNavyMonthly(g);
         expect(colony.troops!.totalDefendStrength).toBeLessThan(500000);
         g.scenario!.params.cultGarrison = 2000000;
-        // Fleets: nothing in range, so they are on the offensive.
+        // Fleets: the secure-home phase is over here (it has its own test); nothing in range, so they are on the offensive.
+        st.navy!.secure = { start: 0, clearSince: -1, ended: 1, reason: 'clear' };
         for (const sg of empireShipGroups(faction)) if (sg !== null) sg.posture = FleetPosture.Defend;
         const fleets = empireShipGroups(faction).filter((sg) => sg !== null && sg.ships.length > 0 && sg.leadShip !== null);
         expect(fleets.length).toBeGreaterThan(0);
@@ -301,6 +302,72 @@ describe('Cult: garrisons and fleets', () => {
         colony.invadingTroops.add(t);
         cultFleets(g);
         expect(fleets.every((sg) => sg!.posture === FleetPosture.Defend)).toBe(true);
+    }, 1200000);
+});
+
+describe('Cult: secure home first', () => {
+    it('the starting fleet holds its world (no offensive) until it is clear of enemies for a while, or a timeout', () => {
+        const { game } = ctGame();
+        const g = game.galaxy;
+        g.scenario!.params.cultPumpPct = 0;
+        g.scenario!.params.cultStationsPerMonth = 0;
+        const st = cultState(g);
+        const host = normalEmpires(g).find((e) => e.colonies.some((c) => c !== e.capital && c.population.totalAmount > 0) && e.builtObjects.some((b) => b.role === BuiltObjectRole.Military))!;
+        const colony = host.colonies.find((c) => c !== host.capital && c.population.totalAmount > 0)!;
+        const governor = generateNewCharacter(g, host, CharacterRole.ColonyGovernor, colony).character;
+        convert(g, st, governor!);
+        cultCheckTrigger(g);
+        const faction = st.faction!;
+        takeOwnershipOfColonyFull(g, host, colony, faction, false, false);
+        cultNavyMonthly(g);
+        const fleets = empireShipGroups(faction).filter((sg) => sg !== null && sg.ships.length > 0 && sg.leadShip !== null);
+        expect(fleets.length).toBeGreaterThan(0);
+        for (const e of g.empires) if (e !== faction) for (const b of e.builtObjects) if (b.role === BuiltObjectRole.Military) { b.xpos = colony.xpos + 90000; b.ypos = colony.ypos + 90000; }
+        const step = (days: number) => { g.nowMs += days * GAME_DAY_LENGTH; cultFleets(g); };
+        // Nothing around, but the phase holds: defend posture at the world, not Attack.
+        cultFleets(g);
+        expect(st.navy!.secure!.ended).toBeUndefined();
+        expect(fleets.every((sg) => sg!.posture === FleetPosture.Defend && sg!.gatherPoint === colony)).toBe(true);
+        step(30);
+        expect(st.navy!.secure!.ended).toBeUndefined();
+        // An enemy shows up: the 60-day clock restarts.
+        const enemy = host.builtObjects.find((b) => b.role === BuiltObjectRole.Military && !b.hasBeenDestroyed)!;
+        enemy.xpos = colony.xpos + 500;
+        enemy.ypos = colony.ypos;
+        step(30);
+        expect(st.navy!.secure!.clearSince).toBe(-1);
+        enemy.xpos = colony.xpos + 90000;
+        enemy.ypos = colony.ypos + 90000;
+        step(5);
+        step(40);
+        expect(st.navy!.secure!.ended).toBeUndefined();
+        step(30);
+        expect(st.navy!.secure!.ended).toBeDefined();
+        expect(st.navy!.secure!.reason).toBe('clear');
+        // Released: the fleets go on the offensive.
+        cultFleets(g);
+        expect(fleets.every((sg) => sg!.posture === FleetPosture.Attack)).toBe(true);
+    }, 1200000);
+
+    it('ends on the timeout even if enemies stay', () => {
+        const { game } = ctGame();
+        const g = game.galaxy;
+        g.scenario!.params.cultPumpPct = 0;
+        g.scenario!.params.cultStationsPerMonth = 0;
+        const st = cultState(g);
+        const host = normalEmpires(g).find((e) => e.colonies.some((c) => c !== e.capital && c.population.totalAmount > 0) && e.builtObjects.some((b) => b.role === BuiltObjectRole.Military))!;
+        const colony = host.colonies.find((c) => c !== host.capital && c.population.totalAmount > 0)!;
+        convert(g, st, generateNewCharacter(g, host, CharacterRole.ColonyGovernor, colony).character!);
+        cultCheckTrigger(g);
+        takeOwnershipOfColonyFull(g, host, colony, st.faction!, false, false);
+        cultNavyMonthly(g);
+        const enemy = host.builtObjects.find((b) => b.role === BuiltObjectRole.Military && !b.hasBeenDestroyed)!;
+        enemy.xpos = colony.xpos + 500;
+        enemy.ypos = colony.ypos;
+        cultFleets(g);
+        g.nowMs += 361 * GAME_DAY_LENGTH;
+        cultFleets(g);
+        expect(st.navy!.secure!.reason).toBe('timeout');
     }, 1200000);
 });
 

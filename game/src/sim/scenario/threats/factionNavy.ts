@@ -67,6 +67,8 @@ export interface NavyState {
     pumpBought?: number;
     /** Warships bought but not yet spawned: held back while every home is threatened, released together as one fleet (saved). */
     pumpBank?: number;
+    /** The Cult's "secure home" opening phase (cult.ts): start / first-clear dates (star date; -1 none), set when it ended and why. Saved. */
+    secure?: { start: number; clearSince: number; ended?: number; reason?: 'clear' | 'timeout' };
     /** Mean strength of the ships the pump last spawned (estimates a batch before it is bought). */
     pumpShipStrength?: number;
     /** Debug counters: months a purchase was banked, banked batches released. */
@@ -88,7 +90,7 @@ const P = {
     stateMoney: (g: Galaxy, k: NavyPrefix) => scenarioParam(g, `${k}StateMoney`, 1000000),
     privateMoney: (g: Galaxy, k: NavyPrefix) => scenarioParam(g, `${k}PrivateMoney`, 10000000),
     incomeFloor: (g: Galaxy, k: NavyPrefix) => scenarioParam(g, `${k}IncomeFloor`, 50000),
-    navyPct: (g: Galaxy, k: NavyPrefix) => scenarioParam(g, `${k}NavyPct`, k === 'cult' ? 30 : 100),
+    navyPct: (g: Galaxy, k: NavyPrefix) => scenarioParam(g, `${k}NavyPct`, k === 'cult' ? 50 : 100),
     smallPorts: (g: Galaxy, k: NavyPrefix) => Math.max(0, Math.trunc(scenarioParam(g, `${k}SmallPorts`, 3))),
     constructionShips: (g: Galaxy, k: NavyPrefix) => Math.max(0, Math.trunc(scenarioParam(g, `${k}ConstructionShips`, 2))),
     /** Ground defence strength (troops' total defend strength, the Ground Report measure: natural strength x 100 readiness) kept at every held colony. */
@@ -700,11 +702,33 @@ export interface FleetDirection {
  * Move). Nothing under attack: fleets still on a defend order are released and put on posture Attack, and the stock military
  * AI (identifyMilitaryObjectives / taskShipGroups, every tick) sends them at the enemy's nearby targets.
  */
-export function directFleets(galaxy: Galaxy, k: NavyPrefix, faction: Empire, navy: NavyState): FleetDirection {
+export function directFleets(galaxy: Galaxy, k: NavyPrefix, faction: Empire, navy: NavyState, hold = false): FleetDirection {
     regroupStragglers(galaxy, faction);
     const threats = coloniesUnderAttack(galaxy, k, faction);
     const fleets = factionFleets(faction);
     const res: FleetDirection = { threatened: threats.size, defending: 0, attacking: 0 };
+    if (threats.size === 0 && hold) {
+        // Securing home: fleets stay on defend posture at their nearest own world (no offensive).
+        const homes = faction.colonies.filter((c) => !c.hasBeenDestroyed);
+        for (const f of fleets) {
+            let home: Habitat | null = null;
+            let bd = Infinity;
+            for (const c of homes) {
+                const d = galaxy.calculateDistance(f.leadShip!.xpos, f.leadShip!.ypos, c.xpos, c.ypos);
+                if (d < bd) { bd = d; home = c; }
+            }
+            if (home === null) continue;
+            res.defending++;
+            const m = f.mission;
+            const already = (m !== null && m.type === BuiltObjectMissionType.Move && m.targetHabitat === home) || bd < 1000;
+            if (f.posture === FleetPosture.Defend && f.gatherPoint === home && already) continue;
+            f.posture = FleetPosture.Defend;
+            f.gatherPoint = home;
+            f.postureRangeSquared = 250000000000.0;
+            if (!already) shipGroupAssignMission(galaxy, f, BuiltObjectMissionType.Move, home, null, BuiltObjectMissionPriority.High, false);
+        }
+        return res;
+    }
     if (threats.size === 0) {
         for (const f of fleets) {
             if (isDefendOrder(f, faction)) shipGroupCompleteMissionWith(galaxy, f, true);
