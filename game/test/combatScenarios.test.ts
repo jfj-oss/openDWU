@@ -1400,6 +1400,17 @@ describe('Coordinated landings add-on', () => {
         expect(coordinatedLandingHolds(g, c, colony)).toBe(true);
         d.hasBeenDestroyed = true;
         expect(coordinatedLandingHolds(g, c, colony)).toBe(false);
+        // A hold left on a ship that was re-tasked years ago (stale clTarget / clSince) is not a hold: it neither shortens the
+        // group's wait nor releases the others at once.
+        reset();
+        const sa = mk('SA');
+        const sb = mk('SB');
+        sb.clTarget = colony;
+        sb.clSince = galaxyStarDate(g) - 400 * GAME_DAY_LENGTH;
+        expect(coordinatedLandingHolds(g, sa, colony)).toBe(true); // SB is not here (its old fields are stale)
+        expect(sb.clSince).toBeLessThan(sa.clSince!);
+        expect(coordinatedLandingHolds(g, sb, colony)).toBe(false); // SB arrives: its hold starts now, SA is here: released
+        expect(sb.clTarget).toBeUndefined();
         // Pirate raider troops: never held.
         reset();
         const e = mk('E');

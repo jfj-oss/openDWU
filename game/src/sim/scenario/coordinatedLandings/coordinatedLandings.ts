@@ -79,6 +79,14 @@ function inGroup(bo: BuiltObject, colony: Habitat): boolean {
 }
 
 /**
+ * Whether `s` is holding over `colony` right now: its hold began no longer ago than a hold can last (the timeout plus the two days a
+ * released ship has to land). Older fields are left on a ship that was re-tasked while holding; they are not a hold.
+ */
+function holdingAt(s: BuiltObject, colony: Habitat, now: number, timeout: number): boolean {
+    return s.clTarget === colony && s.clSince !== undefined && now - s.clSince <= timeout + (RELEASE_DAYS + 1) * GAME_DAY_LENGTH;
+}
+
+/**
  * True = this transport (in landing range of `colony`, troops aboard) must hold in orbit instead of landing now.
  * False = it lands (flag off, pirates, nobody to wait for, everyone arrived, timed out, or the group was released).
  */
@@ -87,11 +95,12 @@ export function coordinatedLandingHolds(galaxy: Galaxy, bo: BuiltObject, colony:
     const empire = bo.empire;
     if (empire === null || isPirateEmpire(galaxy, empire) || !hasTroops(bo) || carriesPirateTroops(bo)) return false;
     const now = galaxyStarDate(galaxy);
+    const timeout = scenarioParam(galaxy, 'clTimeoutDays', CL_DEFAULT_TIMEOUT_DAYS) * GAME_DAY_LENGTH;
     if (bo.clTarget === colony && bo.clGoUntil !== undefined && now <= bo.clGoUntil) {
         dropOut(bo);
         return false;
     }
-    if (bo.clTarget !== colony) {
+    if (!holdingAt(bo, colony, now, timeout)) {
         dropOut(bo);
         bo.clTarget = colony;
         bo.clSince = now;
@@ -107,14 +116,13 @@ export function coordinatedLandingHolds(galaxy: Galaxy, bo: BuiltObject, colony:
     let allHere = true;
     let first = bo.clSince ?? now;
     for (const s of group) {
-        if (s.clTarget === colony && s.clSince !== undefined) first = Math.min(first, s.clSince);
+        if (holdingAt(s, colony, now, timeout)) first = Math.min(first, s.clSince!);
         else allHere = false;
     }
-    const timeout = scenarioParam(galaxy, 'clTimeoutDays', CL_DEFAULT_TIMEOUT_DAYS) * GAME_DAY_LENGTH;
     if (!allHere && now - first < timeout) return true;
     // Release the whole group: the holders land at their next check, this ship now.
     const until = now + RELEASE_DAYS * GAME_DAY_LENGTH;
-    for (const s of group) if (s.clTarget === colony) s.clGoUntil = until;
+    for (const s of group) if (holdingAt(s, colony, now, timeout)) s.clGoUntil = until;
     dropOut(bo);
     return false;
 }
