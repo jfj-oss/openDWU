@@ -30,7 +30,7 @@ import { Population } from '../src/sim/population';
 import { FleetPosture } from '../src/sim/diplomacyTick';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { empireTechLevel } from '../src/sim/scenario/threats/robotMutiny';
-import { averageTechLevel, pumpShipCap } from '../src/sim/scenario/threats/factionNavy';
+import { averageTechLevel, makeTroopsOfStrength, pumpShipCap } from '../src/sim/scenario/threats/factionNavy';
 import { hiveNavyMonthly, hiveFleets } from '../src/sim/scenario/threats/hive';
 import { makeFactionTroop, normalEmpires } from '../src/sim/scenario/threats/framework';
 import { empireShipGroups } from '../src/sim/fleets/shipGroup';
@@ -232,6 +232,28 @@ describe('Hive: the fleet of an empire it wipes out', () => {
         const [a, b] = normalEmpires(g, st.faction);
         expect(scenarioQuery(g, 'conquestWarshipLimit', Number.POSITIVE_INFINITY, { conqueror: st.faction!, empire: a })).toBe(7);
         expect(scenarioQuery(g, 'conquestWarshipLimit', Number.POSITIVE_INFINITY, { conqueror: b, empire: a })).toBe(Number.POSITIVE_INFINITY);
+    }, 1200000);
+});
+
+describe('Hive: hiveRisingOverkill', () => {
+    it('off by default (the militia alone); on, an absorbed node rises with troops sized to its colony\'s defence', () => {
+        const rising = (overkill: number): number => {
+            const { game } = hvGame({ hiveRisingOverkill: overkill }, {}, false);
+            const g = game.galaxy;
+            const st = hiveState(g);
+            const owner = g.empires.find((e) => e !== null && e.active && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null)!;
+            const node = st.nodes.find((n) => n.habitat.empire === g.independentEmpire)!.habitat;
+            takeOwnershipOfColonyFull(g, g.independentEmpire!, node, owner, false, false);
+            for (const t of makeTroopsOfStrength(g, owner, 2000000, 'Garrison', owner.dominantRace)) {
+                t.colony = node;
+                node.troops!.add(t);
+            }
+            expect(hiveTrigger(g, st)).toBe(true);
+            return node.invadingTroops?.totalAttackStrength ?? 0;
+        };
+        const militia = rising(0);
+        expect(militia).toBeGreaterThan(0);
+        expect(rising(6)).toBeGreaterThan(militia * 5);
     }, 1200000);
 });
 

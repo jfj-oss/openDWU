@@ -355,7 +355,7 @@ export function cultCheckTrigger(galaxy: Galaxy): void {
  * for the stock ground war to be won: cultRisingOverkill times the defence (defenders and the population's own strength,
  * with the modifiers), capped at cultRisingMaxStrength in all. 0 when the force already suffices. No Rnd.
  */
-export function risingShortfall(galaxy: Galaxy, h: Habitat, host: Empire, faction: Empire): number {
+export function risingShortfall(galaxy: Galaxy, h: Habitat, host: Empire, faction: Empire, overkill: number = P.risingOverkill(galaxy), maxStrength: number = P.risingMaxStrength(galaxy)): number {
     const inv = h.invadingTroops;
     if (inv === null || h.troops === null) return 0;
     const { attackingStrength, defendingStrength } = calculateForceStrengths(galaxy, h, host, faction, h.troops, null, inv, null);
@@ -363,7 +363,7 @@ export function risingShortfall(galaxy: Galaxy, h: Habitat, host: Empire, factio
     const have = inv.totalAttackStrength;
     if (!(attackingStrength > 0) || !(have > 0)) return 0;
     const modifier = attackingStrength / have; // the attack modifiers (stock ground war)
-    const wanted = Math.min(P.risingMaxStrength(galaxy), (P.risingOverkill(galaxy) * defence) / modifier);
+    const wanted = Math.min(maxStrength, (overkill * defence) / modifier);
     return Math.max(0, wanted - have);
 }
 

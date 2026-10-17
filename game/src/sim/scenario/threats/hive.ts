@@ -47,7 +47,8 @@ import {
     type SentStages,
     type ThreatKnowledge,
 } from './framework';
-import { applyIncomeFloor, capturedFleetLimit, foundMiningStations, pumpNavy, directFleets, topUpGarrisons, ensureConstructionShips, averageMilitary, navyRise, newNavyState, spawnPendingNavy, syncFactionTech, takeMiningStationsNear, topUpPorts, type NavyState } from './factionNavy';
+import { risingShortfall } from './cult';
+import { applyIncomeFloor, capturedFleetLimit, foundMiningStations, pumpNavy, directFleets, topUpGarrisons, ensureConstructionShips, averageMilitary, makeTroopsOfStrength, navyRise, newNavyState, spawnPendingNavy, syncFactionTech, takeMiningStationsNear, topUpPorts, type NavyState } from './factionNavy';
 
 export const HIVE_KEY = 'hive';
 export const HIVE_FLAG = 'hive';
@@ -107,6 +108,9 @@ const P = {
     detectPct: (g: Galaxy) => p(g, 'hiveDetectPct', 15),
     maxNodesSeized: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'hiveMaxNodesSeized', 30))),
     /** Once the threshold is met (and the year floor passed) the Chorus rises with this chance each game year (100: at the first check). */
+    /** 0 (default): the absorbed nodes rise with the militia alone. Otherwise each gets more troops, this many times its colony's defence, up to hiveRisingMaxStrength. */
+    risingOverkill: (g: Galaxy) => Math.max(0, p(g, 'hiveRisingOverkill', 0)),
+    risingMaxStrength: (g: Galaxy) => Math.max(0, p(g, 'hiveRisingMaxStrength', 3000000)),
     riseChancePct: (g: Galaxy) => Math.max(0, Math.min(100, p(g, 'hiveRiseChancePct', 20))),
 };
 
@@ -295,7 +299,12 @@ export function hiveTrigger(galaxy: Galaxy, st: HiveState, near: Habitat | null 
             const strength = Math.trunc((nodeRace?.troopStrength ?? 60) * P.militiaFactor(galaxy));
             const troop = makeFactionTroop(galaxy, faction, strength, scenarioText(`${TAG} Militia Name`), nodeRace);
             takeMiningStationsNear(galaxy, 'hive', faction, st.navy, h.empire, h); // the host's stations nearest the node change hands
+            const host = h.empire;
             invadeFromInside(galaxy, h, faction, [troop]);
+            if (P.risingOverkill(galaxy) > 0) {
+                const extra = risingShortfall(galaxy, h, host, faction, P.risingOverkill(galaxy), P.risingMaxStrength(galaxy));
+                if (extra > 0) invadeFromInside(galaxy, h, faction, makeTroopsOfStrength(galaxy, faction, extra, scenarioText(`${TAG} Militia Name`), nodeRace));
+            }
         }
     }
     topUpPorts(galaxy, 'hive', faction, st.navy);
