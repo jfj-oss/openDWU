@@ -239,6 +239,7 @@ function sample(ctx) {
 
 function refreshTroopShips(g) {
     const prev = new Map(troopRecs.map((r) => [r.bo, r.c]));
+    const prevRec = new Map(troopRecs.map((r) => [r.bo, r]));
     const next = [];
     const seen = new Set();
     const lists = [...g.empires, ...g.pirateEmpires];
@@ -251,7 +252,7 @@ function refreshTroopShips(g) {
                 const c = bo.troops ? bo.troops.count : 0;
                 if (c <= 0) continue;
                 seen.add(bo);
-                next.push({ bo, c: prev.get(bo) ?? c, e, pirate: isPirate });
+                next.push({ bo, c: prev.get(bo) ?? c, e, pirate: isPirate, tgt: prevRec.get(bo)?.tgt ?? null });
             }
         }
     }
@@ -264,6 +265,9 @@ function frameTroops(ctx, g) {
     for (const rec of troopRecs) {
         const bo = rec.bo;
         const c = bo.troops ? bo.troops.count : 0;
+        // The landing branch clears colonyToAttack in the same call that unloads, so the target is remembered each frame.
+        const tgt = bo.colonyToAttack ?? bo.mission?.targetHabitat ?? null;
+        if (tgt !== null && tgt !== undefined) rec.tgt = tgt;
         if (c < rec.c) {
             if (bo.hasBeenDestroyed) landingEvents.lostWithTroops++;
             else if (rec.pirate) landingEvents.pirate++;
@@ -275,8 +279,8 @@ function frameTroops(ctx, g) {
 
 function landing(g, now, rec, bo, dropped) {
     landingEvents.total++;
-    const tgt = bo.colonyToAttack ?? null;
-    if (tgt === null) return;
+    const tgt = rec.tgt ?? null;
+    if (tgt === null) { landingEvents.noTarget = (landingEvents.noTarget ?? 0) + 1; return; }
     const key = `${rec.e.empireId}|${tgt.name}`;
     let w = openWaves.get(key);
     if (w === undefined || now - w.last > 4 * DAY_MS) {
