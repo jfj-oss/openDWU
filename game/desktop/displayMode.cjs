@@ -11,6 +11,13 @@
 // is preferred (force_high_performance_gpu: a hybrid PC otherwise may draw on its Intel iGPU) unless DWU_LOW_POWER_GPU=1.
 'use strict';
 
+/** Windows: the title bar's Maximize button (or a double-click / snap to the top) puts the game in fullscreen instead of
+ *  a maximized window (the user's request); macOS's green button is fullscreen already, Linux keeps its window manager's
+ *  maximize. Leaving fullscreen goes back to a normal window, so Maximize works again. */
+function maximizeMeansFullscreen(platform) {
+    return platform === 'win32';
+}
+
 /** True when the before-input-event `input` is a fullscreen toggle (keyDown of F11, Alt+Enter, Ctrl/Cmd+F). */
 function isFullscreenToggle(input, platform) {
     if (!input || input.type !== 'keyDown' || input.isAutoRepeat) return false;
@@ -52,4 +59,4 @@ function gpuInfoLine(info) {
     return `[gpu] adapters ${list || '?'}; GL ${aux.glRenderer ?? info.glRenderer ?? '?'} (${aux.glImplementationParts ?? aux.glImplementation ?? '?'})`;
 }
 
-module.exports = { isFullscreenToggle, gpuSwitches, gpuLogLine, gpuInfoLine };
+module.exports = { isFullscreenToggle, maximizeMeansFullscreen, gpuSwitches, gpuLogLine, gpuInfoLine };

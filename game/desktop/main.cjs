@@ -943,6 +943,16 @@ function createWindow() {
     };
     win.on('enter-full-screen', onFullscreenChange);
     win.on('leave-full-screen', onFullscreenChange);
+    if (displayMode.maximizeMeansFullscreen(process.platform)) {
+        // The title bar's Maximize goes straight to fullscreen; leaving it gives the normal window back (not a maximized
+        // one, whose button would then read Restore and never fire 'maximize' again).
+        win.on('maximize', () => {
+            if (!win.isFullScreen()) setFullscreen(win, true);
+        });
+        win.on('leave-full-screen', () => {
+            if (win.isMaximized()) win.unmaximize();
+        });
+    }
     win.on('closed', () => {
         if (mainWin === win) mainWin = null;
     });

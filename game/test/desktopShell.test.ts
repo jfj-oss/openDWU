@@ -508,6 +508,7 @@ describe('user music folder', () => {
 describe('desktop/displayMode.cjs (fullscreen keys, GPU switches)', () => {
     const dm = require('../desktop/displayMode.cjs') as {
         isFullscreenToggle(input: Record<string, unknown>, platform: string): boolean;
+        maximizeMeansFullscreen(platform: string): boolean;
         gpuSwitches(platform: string, env?: Record<string, string>): string[][];
         gpuLogLine(status: Record<string, string> | null, page: Record<string, string> | null): string;
         gpuInfoLine(info: unknown): string;
@@ -523,6 +524,11 @@ describe('desktop/displayMode.cjs (fullscreen keys, GPU switches)', () => {
         expect(dm.isFullscreenToggle({ ...key('F11'), type: 'keyUp' }, 'win32')).toBe(false);
         expect(dm.isFullscreenToggle(key('F11', { shift: true }), 'linux')).toBe(false);
         expect(dm.isFullscreenToggle(key('Enter'), 'linux')).toBe(false);
+    });
+    it('Maximize means fullscreen on Windows only', () => {
+        expect(dm.maximizeMeansFullscreen('win32')).toBe(true);
+        expect(dm.maximizeMeansFullscreen('darwin')).toBe(false);
+        expect(dm.maximizeMeansFullscreen('linux')).toBe(false);
     });
     it('Windows ignores the GPU blocklist and uses ANGLE D3D11 unless told otherwise; other platforms add nothing', () => {
         const hp = ['force_high_performance_gpu'];

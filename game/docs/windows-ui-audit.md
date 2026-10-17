@@ -125,7 +125,7 @@ ship the file's values as defaults:
 | hyperJumpThreshhold | 12000 | 4000 |
 | baseHyperJumpAccuracy | 3000 | 666 |
 | troopGarrisonMinimumPerColony | null | 20 |
-| useStarGravityWells | true | false |
+| useStarGravityWells | true (ours: false since 2026-10-17, off unless the file turns it on) | false |
 | sublightFuelBurnDivisor | 1 | 20 |
 | fighterRangeMultiple | 1 | 30 |
 | ammoExhaustChanceMissile | 0.20000000298023224 | 0.25 |

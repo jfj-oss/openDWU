@@ -95,8 +95,8 @@ export const baconMovementSettings = {
     hyperJumpThreshhold: 12000,
     /** Galaxy.3.cs 4972 BaseHyperJumpAccuracy. */
     baseHyperJumpAccuracy: 3000.0,
-    /** BaconBuiltObject.cs 49 useStarGravityWells. */
-    useStarGravityWells: true,
+    /** BaconBuiltObject.cs 49 useStarGravityWells (not C#: off by default, the C# default is true; data/baconSettings.ts). */
+    useStarGravityWells: false,
     /** BaconBuiltObject.cs 50 smallShipsJumpSooner. */
     smallShipsJumpSooner: false,
     /** BaconBuiltObject.cs 52-54 noFuel*SpeedMultiplier (float 0.33f). */

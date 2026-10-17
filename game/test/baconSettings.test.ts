@@ -67,6 +67,7 @@ describe('parseBaconSettings (BaconMain.cs 605-1062)', () => {
         expect(d.tradeEverything).toBe(false);
         expect(d.shipMarkupFactor).toBe(5.0);
         expect(d.troopGarrisonMinimumPerColony).toBeNull();
+        expect(d.useStarGravityWells).toBe(false); // not C# (true there): off unless the file turns it on
     });
 
     it('int keys use int.TryParse: sign and surrounding white space ok, anything else keeps the default', () => {
@@ -88,8 +89,9 @@ describe('parseBaconSettings (BaconMain.cs 605-1062)', () => {
     it('bool keys: `Trim() == "true" || == "false"` gate, then bool.TryParse', () => {
         expect(parseBaconSettings('tradeEverything=true ').tradeEverything).toBe(true);
         expect(parseBaconSettings('tradeEverything=True').tradeEverything).toBe(false);
+        expect(parseBaconSettings('useStarGravityWells=true').useStarGravityWells).toBe(true);
+        expect(parseBaconSettings('useStarGravityWells= true').useStarGravityWells).toBe(true); // the gate trims only the "true" test
         expect(parseBaconSettings('useStarGravityWells=false').useStarGravityWells).toBe(false);
-        expect(parseBaconSettings('useStarGravityWells= false').useStarGravityWells).toBe(true);
     });
 
     it('applies the C# clamps', () => {

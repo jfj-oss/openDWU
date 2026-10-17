@@ -95,6 +95,8 @@ describe('bug 16: BaconSettings.txt overrides (BaconMain.cs 551 BaconInitialize)
 
     it('the stock file turns the star gravity wells off and sets the hyperjump / fuel statics', () => {
         resetBaconSettings();
+        expect(baconMovementSettings.useStarGravityWells).toBe(false); // ours: off unless a file turns it on (C#: true)
+        baconInitializeSettings(null, parseBaconSettings('useStarGravityWells=true'));
         expect(baconMovementSettings.useStarGravityWells).toBe(true);
         baconInitializeSettings(null, parseBaconSettings(settingsText(STOCK_BACON_SETTINGS)));
         expect(baconMovementSettings.useStarGravityWells).toBe(false); // BaconSettings.txt useStarGravityWells=false
@@ -109,7 +111,7 @@ describe('bug 16: BaconSettings.txt overrides (BaconMain.cs 551 BaconInitialize)
         resetBaconSettings();
         baconInitializeSettings(null, parseBaconSettings('noFuelCruiseSpeedMultiplier=0.8\nnoFuelTopSpeedMultiplier=0.05\nuseStarGravityWells=TRUE'));
         expect(baconMovementSettings.noFuelTopSpeedMultiplier).toBe(Math.fround(0.8));
-        expect(baconMovementSettings.useStarGravityWells).toBe(true); // "TRUE" fails `value.Trim() == "true"`
+        expect(baconMovementSettings.useStarGravityWells).toBe(false); // "TRUE" fails `value.Trim() == "true"`: the default (off) stays
         resetBaconSettings();
         expect({ ...baconMovementSettings }).toEqual({ ...BACON_MOVEMENT_SETTINGS_DEFAULTS });
     });

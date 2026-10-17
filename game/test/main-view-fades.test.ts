@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { backdropAlpha, fadeIn, orbitRingAlpha, regionLabelFont, starfieldAlpha } from '../src/render/mainView';
+import { backdropAlpha, fadeIn, MOON_RING_FADE_PX, moonRingAlpha, orbitRingAlpha, regionLabelFont, starfieldAlpha } from '../src/render/mainView';
 import { galaxyBackdropSaveExtras, GALAXY_BACKDROP_OPTIONS, parseGalaxyBackdrop, setGalaxyBackdrop } from '../src/render/galaxyBackdropChoice';
 import { DEEP_RECIPES, deepTone, isDeepKind } from '../src/render/deepBackdrop';
 import { DEEP_ANIM_DUST_SHARE, DEEP_ANIM_SPEED } from '../src/render/deepBackdropAnim';
@@ -40,6 +40,18 @@ describe('mid-zoom layer crossfades', () => {
         expect(orbitRingAlpha(0.008, 10_000)).toBeCloseTo(0.5, 6);
         expect(orbitRingAlpha(1, 10_000)).toBeCloseTo(0.5, 6);
         expect(orbitRingAlpha(1, 0)).toBe(0);
+    });
+
+    it('moon orbit rings fade gradually by their on-screen radius, not at a fixed zoom', () => {
+        const [lo, hi] = MOON_RING_FADE_PX;
+        // A 600-unit moon orbit: gone at 10 px (z = 1/60), fully drawn from 32 px (z = 0.053), and still drawn well
+        // below the old cut at z = 0.25.
+        expect(moonRingAlpha(600, lo / 600)).toBe(0);
+        expect(moonRingAlpha(600, hi / 600)).toBe(1);
+        expect(moonRingAlpha(600, 0.03)).toBeGreaterThan(0.2);
+        expect(moonRingAlpha(600, 0.03)).toBeLessThan(0.8);
+        expect(moonRingAlpha(600, 0.2)).toBe(1);
+        expect(moonRingAlpha(600, 0.01)).toBe(0);
     });
 });
 

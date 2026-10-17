@@ -208,6 +208,16 @@ export function orbitRingAlpha(z: number, maxOrbitDistance: number): number {
     return 0.5 * fadeIn(z, zMin, zMin * 2);
 }
 
+/** On-screen radius (px) below which a moon's orbit ring is gone / above which it is fully drawn. */
+export const MOON_RING_FADE_PX: readonly [number, number] = [10, 32];
+
+// A moon's orbit ring fades by its own size on screen (the planet rings' fade is per system): fully drawn from
+// MOON_RING_FADE_PX[1] px across its radius, gone at MOON_RING_FADE_PX[0] px, so zooming out thins it gradually
+// instead of the old cut at z = 0.25.
+export function moonRingAlpha(orbitDistance: number, z: number): number {
+    return fadeIn(orbitDistance * z, MOON_RING_FADE_PX[0], MOON_RING_FADE_PX[1]);
+}
+
 // renderOrbitAngle / habitatTouchClampSeconds (render-only orbit interpolation) live in renderInterp.ts with the
 // rest of the between-steps interpolation; re-exported here for existing callers.
 export { renderOrbitAngle, habitatTouchClampSeconds } from './renderInterp';
@@ -1181,11 +1191,12 @@ export class SystemView {
             // to the planet's drawn position every frame.
             const mg = this.moonRings[i];
             mg.clear();
-            if (z > 0.25) {
-                for (let mk = 0; mk < planet.moons.length; mk++) {
-                    if (!this.moonIsDrawn(i, mk)) continue;
-                    circleAtScreenRes(mg, 0, 0, planet.moons[mk].habitat.orbitDistance, z).stroke({ width: 1.2 / z, color: 0x4c4ca0, alpha: 0.65 });
-                }
+            for (let mk = 0; mk < planet.moons.length; mk++) {
+                if (!this.moonIsDrawn(i, mk)) continue;
+                const r = planet.moons[mk].habitat.orbitDistance;
+                const a = moonRingAlpha(r, z);
+                if (a <= 0.01) continue;
+                circleAtScreenRes(mg, 0, 0, r, z).stroke({ width: 1.2 / z, color: 0x4c4ca0, alpha: 0.65 * a });
             }
         }
     }

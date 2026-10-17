@@ -8,6 +8,7 @@ import { toggleAdvisorPanel } from './advisorPanel';
 import { empireFlagUrl } from './selectionInfoView';
 import { threatKnownSites } from '../sim/scenario/threats/framework';
 import { getSettings, onSettingsChange, uiScaleFactor } from './settings';
+import { stubListMaxHeightPx } from './messageStubs';
 import { destroyHudListeners, hudInterval, hudSignal, onHudDestroyed } from './hudLifetime';
 export { destroyHudListeners } from './hudLifetime';
 import { bindAutoPauseClock } from './autoPause';
@@ -303,6 +304,32 @@ export function applyHudScale(refs: HudRefs): void {
     }
     anchorOptionsAboveSystemMap(refs, s, mapScale);
     placeTopStrip(refs);
+    fitOptionsBelowStubs(refs, s);
+}
+
+/** Gap kept between the open "View" list and the message stub list above it (CSS px at UI scale 1). */
+const OPTIONS_BELOW_STUBS_GAP = 8;
+/** The "View" button's height plus the popup's gap above it (hud.css .hud-options-toggle, .hud-options-pop). */
+const OPTIONS_TOGGLE_H = 24 + 4;
+
+/** The open "View" list never reaches the message stub list (messageStubList.ts: right under the money block, the same
+ *  right-hand column): its height is capped so its top stays OPTIONS_BELOW_STUBS_GAP below the stub list at its tallest
+ *  (every visible row plus the "N more" line), however many stubs arrive while it is open; past the cap it scrolls. */
+function fitOptionsBelowStubs(refs: HudRefs, s: number): void {
+    const opts = refs.elements.get('pnlOptionsList');
+    const list = opts?.querySelector<HTMLElement>('.hud-options-menu');
+    const money = refs.elements.get('pnlMoney');
+    if (opts === undefined || list === null || list === undefined || money === undefined) return;
+    const moneyRect = money.getBoundingClientRect();
+    const popupBottom = opts.getBoundingClientRect().bottom;
+    if (moneyRect.height <= 0 || popupBottom <= 0) {
+        list.style.maxHeight = ''; // not laid out yet (hidden HUD): hud.css's fallback until the next fit
+        return;
+    }
+    const stubsTop = moneyRect.bottom + 4 * s; // messageStubList.ts place()
+    const stubsBottom = stubsTop + stubListMaxHeightPx(getSettings().messageStubsVisible) * s;
+    const room = (popupBottom - stubsBottom) / s - OPTIONS_BELOW_STUBS_GAP - OPTIONS_TOGGLE_H;
+    list.style.maxHeight = `${Math.max(0, Math.floor(room))}px`;
 }
 
 /** The "View" popup sits right above the system mini-map's top-right corner: its bottom is the map's scaled top (the
@@ -689,6 +716,7 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
             }
             case 'pnlOptionsList':
                 el = buildOptionsPopup(buildOptionsList({ ...wiring, overlays }));
+                el.addEventListener('options-open', () => fitOptionsBelowStubs(refs, uiScaleFactor()));
                 break;
             case 'pnlSystemMap':
                 // The original's bottom-right system mini-map (hudSystemMap.ts); needs the galaxy and the camera.
@@ -2385,6 +2413,7 @@ function buildOptionsPopup(list: HTMLElement): HTMLElement {
     btn.title = 'View and map overlays';
     const setOpen = (open: boolean): void => {
         wrap.classList.toggle('open', open);
+        if (open) wrap.dispatchEvent(new Event('options-open')); // hud.ts fitOptionsBelowStubs: re-fit as it opens
         btn.textContent = open ? 'View ▾' : 'View ▴';
         btn.setAttribute('aria-expanded', String(open));
         try {

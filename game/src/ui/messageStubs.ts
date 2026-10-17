@@ -55,6 +55,11 @@ export const CONVERSATION_LIFETIME = 250 * REAL_SECONDS_IN_GALACTIC_YEAR;
 /** Controls/ScrollingLinkList.cs: double_0 = 20 px per second, 18 px rows (LinkLabel.Height = 18). */
 export const SCROLL_PX_PER_SECOND = 20;
 export const TICKER_ROW_PX = 18;
+/** The stub list's tallest height (unscaled CSS px, messageStubList.css): border 2 + padding 4, `visibleRows` rows and
+ *  the 12 px "N more" line. The HUD keeps the "View" list clear of it (hud.ts fitOptionsBelowStubs). */
+export function stubListMaxHeightPx(visibleRows: number): number {
+    return 2 + 4 + Math.max(0, visibleRows) * TICKER_ROW_PX + 12;
+}
 /** Time the list holds on a row before moving on (not in the C#, whose ticker only moves while it has a backlog). */
 export const STUB_DWELL_MS = 3000;
 

@@ -193,7 +193,8 @@ export function defaultBaconSettings(): BaconSettings {
         hyperJumpThreshhold: 12000,
         baseHyperJumpAccuracy: 3000.0,
         troopGarrisonMinimumPerColony: null,
-        useStarGravityWells: true,
+        // Not C# (BaconBuiltObject.cs 49 defaults it to true): star gravity wells stay off unless BaconSettings.txt turns them on.
+        useStarGravityWells: false,
         smallShipsJumpSooner: false,
         priceReductionFactor: 1,
         sublightFuelBurnDivisor: f(1),
