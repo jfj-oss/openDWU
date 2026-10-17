@@ -17,6 +17,8 @@ import {
     cultCheckTrigger,
     cultDiscovery,
     cultEndCheck,
+    cultGuardiansWar,
+    cultSeedCandidates,
     cultHeldColonies,
     cultSecedeThreshold,
     cultKnownSites,
@@ -33,6 +35,7 @@ import { colonyGovernor } from '../src/sim/scenario/governors';
 import { normalEmpires, teardownIfDead } from '../src/sim/scenario/threats/framework';
 import { CharacterRole, CharacterTraitType, IntelligenceMission, generateNewCharacter, getEmpireCharacters } from '../src/sim/characters';
 import { GameEndOutcome, setGameEndHandler, type GameEndEventArgs } from '../src/sim/victory';
+import { DiplomaticRelationType } from '../src/sim/diplomacy';
 import { builtObjectCompleteTeardown } from '../src/sim/combat/teardown';
 import { empireCompleteTeardown } from '../src/sim/events';
 import { takeOwnershipOfColonyFull } from '../src/sim/combat/ownership';
@@ -204,6 +207,41 @@ describe('Cult: the fleet of an empire it wipes out', () => {
         const conqueror = normalEmpires(g, faction).find((e) => e !== victim2)!;
         empireCompleteTeardown(g, victim2, conqueror);
         for (const b of ships2) expect(b.actualEmpire).toBe(conqueror);
+    }, 900000);
+});
+
+describe('Cult: the Ancient Guardians are beyond the creed', () => {
+    it('their characters are never converted, their colonies are out of reach of the spread and never rise, and no war is fought with the theocracy', () => {
+        const { game } = ctGame();
+        const g = game.galaxy;
+        const st = cultState(g);
+        const mech = g.races.find((r) => r.name.toLowerCase() === 'mechanoid')!;
+        expect(mech).toBeDefined();
+        const [host, guardians] = normalEmpires(g).filter((e) => e !== g.playerEmpire);
+        guardians.dominantRace = mech; // the story empire, as identifyMechanoidEmpire finds it
+        const colony = guardians.colonies.find((c) => c !== guardians.capital && c.population.totalAmount > 0) ?? guardians.capital!;
+        const governor = generateNewCharacter(g, guardians, CharacterRole.ColonyGovernor, colony).character;
+        convert(g, st, governor);
+        expect(st.converted.some((r) => r.character === governor)).toBe(false);
+        expect(cultSeedCandidates(g, st).some((c) => c.empire === guardians)).toBe(false);
+        // A host's cult-held colony makes the theocracy rise; the Guardians are not made its enemy and their colonies are out of reach.
+        const hostColony = host.colonies.find((c) => c !== host.capital && c.population.totalAmount > 0)!;
+        convert(g, st, generateNewCharacter(g, host, CharacterRole.ColonyGovernor, hostColony).character);
+        cultCheckTrigger(g);
+        const faction = st.faction!;
+        expect(faction).not.toBeNull();
+        expect(faction.diplomaticRelations.byEmpire(guardians)?.locked ?? false).toBe(false);
+        expect(faction.diplomaticRelations.byEmpire(guardians)?.type).not.toBe(DiplomaticRelationType.War);
+        expect(cultGuardiansWar(g, faction, guardians)).toBe(true);
+        expect(cultGuardiansWar(g, guardians, faction)).toBe(true);
+        expect(cultGuardiansWar(g, faction, host)).toBe(false);
+        for (const source of cultSourceWorlds(g, st)) {
+            for (const h of cultReachableColonies(g, st, source, 1e12)) expect(h.empire).not.toBe(guardians);
+        }
+        for (let i = 0; i < 10; i++) cultWorldSpread(g, st);
+        expect(st.converted.some((r) => r.character.empire === guardians)).toBe(false);
+        // Held colonies of the Guardians do not count (even a governor placed there by hand).
+        expect(cultHeldColonies(g, st).some((h) => h.empire === guardians)).toBe(false);
     }, 900000);
 });
 

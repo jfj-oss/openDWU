@@ -108,8 +108,8 @@ const P = {
     detectPct: (g: Galaxy) => p(g, 'hiveDetectPct', 15),
     maxNodesSeized: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'hiveMaxNodesSeized', 30))),
     /** Once the threshold is met (and the year floor passed) the Chorus rises with this chance each game year (100: at the first check). */
-    /** 0 (default): the absorbed nodes rise with the militia alone. Otherwise each gets more troops, this many times its colony's defence, up to hiveRisingMaxStrength. */
-    risingOverkill: (g: Galaxy) => Math.max(0, p(g, 'hiveRisingOverkill', 0)),
+    /** Each absorbed node rises with troops this many times its colony's defence on top of the militia (up to hiveRisingMaxStrength); 0: the militia alone. */
+    risingOverkill: (g: Galaxy) => Math.max(0, p(g, 'hiveRisingOverkill', 6)),
     risingMaxStrength: (g: Galaxy) => Math.max(0, p(g, 'hiveRisingMaxStrength', 3000000)),
     riseChancePct: (g: Galaxy) => Math.max(0, Math.min(100, p(g, 'hiveRiseChancePct', 20))),
 };

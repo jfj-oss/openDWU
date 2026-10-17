@@ -236,9 +236,9 @@ describe('Hive: the fleet of an empire it wipes out', () => {
 });
 
 describe('Hive: hiveRisingOverkill', () => {
-    it('off by default (the militia alone); on, an absorbed node rises with troops sized to its colony\'s defence', () => {
-        const rising = (overkill: number): number => {
-            const { game } = hvGame({ hiveRisingOverkill: overkill }, {}, false);
+    it('an absorbed node rises with troops sized to its colony\'s defence (6 times by default); 0 is the militia alone', () => {
+        const rising = (overkill: number | undefined): number => {
+            const { game } = hvGame(overkill === undefined ? {} : { hiveRisingOverkill: overkill }, {}, false);
             const g = game.galaxy;
             const st = hiveState(g);
             const owner = g.empires.find((e) => e !== null && e.active && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null)!;
@@ -254,6 +254,7 @@ describe('Hive: hiveRisingOverkill', () => {
         const militia = rising(0);
         expect(militia).toBeGreaterThan(0);
         expect(rising(6)).toBeGreaterThan(militia * 5);
+        expect(rising(undefined)).toBe(rising(6)); // the default
     }, 1200000);
 });
 

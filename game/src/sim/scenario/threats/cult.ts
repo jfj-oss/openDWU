@@ -26,6 +26,7 @@ import { EmpireMessageType } from '../../messages';
 import { GameEndOutcome } from '../../victory';
 import { GAME_DAY_LENGTH, gameYear, registerScenarioEvent, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly } from '../hooks';
 import { militaryPotency } from '../../diplomacyTick';
+import { identifyMechanoidEmpire } from '../../fleets/militaryAI';
 import { scenarioParam } from '../state';
 import { scenarioText } from '../messages';
 import { calculateForceStrengths, calculatePopulationStrength } from '../../combat/invasion';
@@ -136,6 +137,20 @@ const P = {
     newGovernors: (g: Galaxy) => p(g, 'cultWorldSpreadNewGovernors', 1),
 };
 
+/**
+ * The Ancient Guardians (the Mechanoid story empire) are beyond the creed: the Cult never converts their characters, spreads to or
+ * rises in their colonies, or takes them (no war with them, none declared either way). User 2026-10-17.
+ */
+function guardiansOf(galaxy: Galaxy): Empire | null {
+    return identifyMechanoidEmpire(galaxy);
+}
+
+/** The empires the creed can reach: the normal empires but the Ancient Guardians. */
+function creedEmpires(galaxy: Galaxy, faction: Empire | null): Empire[] {
+    const guardians = guardiansOf(galaxy);
+    return normalEmpires(galaxy, faction).filter((e) => e !== guardians);
+}
+
 function recordOf(st: CultState, c: Character): ConvertRecord | undefined {
     return st.converted.find((r) => r.character === c);
 }
@@ -151,7 +166,7 @@ function isConverted(st: CultState, c: Character): boolean {
 /** Candidates: active, Spiritual-trait characters of a normal empire, not already converted, in empire/list order. */
 export function cultSeedCandidates(galaxy: Galaxy, st: CultState, only: Empire | null = null): Character[] {
     const out: Character[] = [];
-    for (const e of normalEmpires(galaxy, st.faction)) {
+    for (const e of creedEmpires(galaxy, st.faction)) {
         if (only !== null && e !== only) continue;
         for (const c of getEmpireCharacters(e)) {
             if (!c.active || !c.traits.includes(CharacterTraitType.Spiritual) || isConverted(st, c)) continue;
@@ -180,6 +195,7 @@ export function cultYearly(galaxy: Galaxy, year: number): void {
 /** Also used by tests to force a conversion. */
 export function convert(galaxy: Galaxy, st: CultState, c: Character): void {
     if (isConverted(st, c)) return;
+    if (c.empire !== null && c.empire === guardiansOf(galaxy)) return; // the Ancient Guardians' people are never converted
     const record: ConvertRecord = { character: c, knowledge: [] };
     st.converted.push(record);
     st.hadConverts = true;
@@ -234,7 +250,7 @@ export function cultSpread(galaxy: Galaxy, st: CultState): void {
         const base = c.role === CharacterRole.Ambassador ? ambassadorPct : basePct;
         if (base <= 0) continue;
         for (const other of allCharactersAtLocation(galaxy, c.location, st.faction)) {
-            if (other === c || isConverted(st, other) || (st.faction !== null && other.empire === st.faction)) continue; // the theocracy's own people are not converts
+            if (other === c || isConverted(st, other) || (st.faction !== null && other.empire === st.faction) || (other.empire !== null && other.empire === guardiansOf(galaxy))) continue; // the theocracy's own people are not converts
             const pct = base * spreadFactor(other);
             if (galaxy.rnd.nextDouble() * 100 < pct) convert(galaxy, st, other);
         }
@@ -256,7 +272,7 @@ export function cultSourceWorlds(galaxy: Galaxy, st: CultState): Habitat[] {
  */
 export function cultReachableColonies(galaxy: Galaxy, st: CultState, source: Habitat, range: number): Habitat[] {
     const found: { h: Habitat; d: number }[] = [];
-    for (const e of normalEmpires(galaxy, st.faction)) {
+    for (const e of creedEmpires(galaxy, st.faction)) {
         for (const h of e.colonies) {
             if (h === source || h.hasBeenDestroyed || h.population.totalAmount <= 0) continue;
             const d = galaxy.calculateDistance(source.xpos, source.ypos, h.xpos, h.ypos);
@@ -315,7 +331,7 @@ export function onCharacterCreated(galaxy: Galaxy, character: unknown, empire: E
 /** A colony is cult-held when its governor (present, ColonyGovernor role) is converted. */
 export function cultHeldColonies(galaxy: Galaxy, st: CultState): Habitat[] {
     const out: Habitat[] = [];
-    for (const e of normalEmpires(galaxy, st.faction)) {
+    for (const e of creedEmpires(galaxy, st.faction)) {
         for (const colony of e.colonies) {
             const governor = getEmpireCharacters(e).find((c) => c.active && c.role === CharacterRole.ColonyGovernor && c.location === colony);
             if (governor !== undefined && isConverted(st, governor)) out.push(colony);
@@ -344,7 +360,7 @@ export function cultCheckTrigger(galaxy: Galaxy): void {
     const st = cultState(galaxy);
     // Once the theocracy exists, every further cult-held colony rises on its own (no threshold).
     const risen = st.faction !== null && st.faction.active;
-    for (const e of normalEmpires(galaxy, st.faction)) {
+    for (const e of creedEmpires(galaxy, st.faction)) {
         const held = cultHeldColoniesOf(galaxy, st, e);
         if (held.length > 0 && (risen || held.length >= cultSecedeThreshold(galaxy, e))) cultTrigger(galaxy, st, e, held);
     }
@@ -376,7 +392,7 @@ export function cultTrigger(galaxy: Galaxy, st: CultState, host: Empire, held: H
             race: host.dominantRace ?? 'Human',
             name: scenarioText(`${TAG} Faction Name`),
             governmentId: WAY_OF_DARKNESS_GOVERNMENT,
-            enemies: normalEmpires(galaxy),
+            enemies: creedEmpires(galaxy, null),
         });
         if (faction === null) return false;
         st.faction = faction;
@@ -416,7 +432,7 @@ function agentIsCounterIntel(c: Character): boolean {
 export function cultDiscovery(galaxy: Galaxy, st: CultState): void {
     const pct = P.agentDetectPct(galaxy) / 1000;
     if (pct <= 0) return;
-    for (const e of normalEmpires(galaxy, st.faction)) {
+    for (const e of creedEmpires(galaxy, st.faction)) {
         const agents = getEmpireCharacters(e).filter(agentIsCounterIntel);
         if (agents.length === 0) continue;
         for (const r of st.converted) {
@@ -587,7 +603,15 @@ export function cultSpawnNow(galaxy: Galaxy, victim: Empire): boolean {
     return true;
 }
 
-export const CULT_HANDLER_IDS = ['cult.yearly', 'cult.periodic', 'cult.characterCreated', 'cult.navy', 'cult.navyYearly', 'cult.navyColony', 'cult.navyTroops', 'cult.conquestFleet', 'cult.fleets'] as const;
+/** True for a war declaration between the Cult's theocracy and the Ancient Guardians (either way): blocked. */
+export function cultGuardiansWar(galaxy: Galaxy, empire: Empire, target: Empire): boolean {
+    const faction = peekCultState(galaxy)?.faction ?? null;
+    if (faction === null) return false;
+    const guardians = guardiansOf(galaxy);
+    return guardians !== null && ((empire === faction && target === guardians) || (empire === guardians && target === faction));
+}
+
+export const CULT_HANDLER_IDS = ['cult.yearly', 'cult.periodic', 'cult.characterCreated', 'cult.navy', 'cult.navyYearly', 'cult.navyColony', 'cult.navyTroops', 'cult.conquestFleet', 'cult.guardiansPeace', 'cult.fleets'] as const;
 
 export function registerCult(): void {
     registerThreatExistence(CULT_KEY, CULT_FLAG);
@@ -600,6 +624,7 @@ export function registerCult(): void {
     registerScenarioPeriodic({ id: 'cult.fleets', flag: CULT_FLAG, order: 12, periodDays: 5, run: (g) => cultFleets(g) });
     registerScenarioEvent({ id: 'cult.navyColony', flag: CULT_FLAG, order: 20, event: 'colonyOwnerChanged', run: (g, e) => cultNavyColony(g, e.colony, e.from, e.to) });
     registerScenarioQuery({ id: 'cult.navyTroops', flag: CULT_FLAG, query: 'troopMaintenanceFactor', run: (g, v, a) => (peekCultState(g)?.faction === a.empire ? 0 : v) });
+    registerScenarioQuery({ id: 'cult.guardiansPeace', flag: CULT_FLAG, query: 'declareWarBlocked', run: (g, v, a) => v || cultGuardiansWar(g, a.empire, a.target) });
     registerScenarioQuery({ id: 'cult.conquestFleet', flag: CULT_FLAG, query: 'conquestWarshipLimit', run: (g, v, a) => capturedFleetLimit(g, 'cult', a.conqueror, peekCultState(g)?.faction ?? null, v) });
     registerThreatKnownSites(CULT_KEY, cultKnownSites);
 }

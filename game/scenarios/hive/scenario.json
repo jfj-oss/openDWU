@@ -1,7 +1,7 @@
 {
   "id": "hive",
   "name": "The Hive",
-  "description": "End-game hidden threat. Every colony that was independent is a node of one hidden mind (the independent colonies at game start, and those an older start had already settled into an empire). A node absorbed by an empire stays a node; at a threshold of absorption, and then with a chance each year, The Chorus declares, taking every still-independent node outright and rising from inside every absorbed one.",
+  "description": "End-game hidden threat. Every colony that was independent is a node of one hidden mind (the independent colonies at game start, and those an older start had already settled into an empire). A node absorbed by an empire stays a node; at a threshold of absorption, and then with a chance each year, The Chorus declares, taking every still-independent node outright and rising from inside every absorbed one with troops sized to its colony's defence.",
   "include": ["threat-framework"],
   "flags": [
     { "name": "hive", "label": "The Hive", "description": "Independent colonies are secretly one mind that rises when enough are absorbed.", "default": false }
@@ -10,7 +10,7 @@
     { "name": "hiveThresholdPct", "label": "Percent of nodes absorbed that triggers the Hive", "default": 40, "min": 1, "max": 100 },
     { "name": "hiveMilitiaFactor", "label": "Militia strength factor on rising", "default": 1.5, "min": 0.1, "max": 10 },
     { "name": "hiveRiseChancePct", "label": "Chance per year that the Hive rises once the threshold is met (%; 100 = at once)", "default": 20, "min": 0, "max": 100 },
-    { "name": "hiveRisingOverkill", "label": "Absorbed nodes rise with troops this many times their colony's defence (0 = the militia only)", "default": 0, "min": 0, "max": 100 },
+    { "name": "hiveRisingOverkill", "label": "Absorbed nodes rise with troops this many times their colony's defence (0 = the militia only)", "default": 6, "min": 0, "max": 100 },
     { "name": "hiveRisingMaxStrength", "label": "Most troops one absorbed node rises with (ground-report strength)", "default": 3000000, "min": 0, "max": 100000000 },
     { "name": "hiveMinNodes", "label": "Minimum independent colonies for the Hive to seed", "default": 5, "min": 1, "max": 50 },
     { "name": "hiveDetectPct", "label": "Node confirmation chance per period (%)", "default": 15, "min": 0, "max": 100 },
