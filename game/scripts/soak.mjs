@@ -420,6 +420,7 @@ async function runOne(name) {
         const { stateDigest, stateCounts } = await load('digest');
         const { scenarioGameData } = await load('scenario');
         const { GalaxyTime } = await load('time');
+        const { eventLogEntries } = await load('eventLog');
 
         let gameData = await loadGameDataFs();
         const so = defaultStartGameOptions();
@@ -596,7 +597,7 @@ async function runOne(name) {
             if (day() - lastScanDay >= scanDays) { lastScanDay = day(); await overhead(() => doScan('periodic')); }
             if (saveAtS.has(s + chunk)) await overhead(() => {
                 try {
-                    report.saveCheck = saveCheck(game, so, hookCtx.gameData, saveRun, { serializeGame, deserializeGame, galaxyToJSON, stateDigest, runGameSeconds, GalaxyTime });
+                    report.saveCheck = saveCheck(game, so, hookCtx.gameData, saveRun, { serializeGame, deserializeGame, galaxyToJSON, stateDigest, runGameSeconds, GalaxyTime, eventLogEntries });
                     const sc = report.saveCheck;
                     (report.saveChecks ??= []).push(sc);
                     console.log(`${sc.digestEqual && sc.textEqual && sc.roundTripEqual ? '=' : '!'} save check d${sc.day}: ${sc.saveMB.toFixed(1)}MB, roundTrip ${sc.roundTripEqual}, digest ${sc.digestEqual} text ${sc.textEqual}${sc.firstDiff ? ' first diff ' + sc.firstDiff : ''}${sc.error ? ' ERROR ' + sc.error.split('\n')[0] : ''}`);
@@ -661,7 +662,21 @@ function saveCheck(game, so, gameData, seconds, m) {
     r.digestEqual = r.digestA === r.digestB;
     const tA = m.serializeGame(game, time, so), tB = m.serializeGame(loaded.game, time, so);
     r.textEqual = tA === tB;
-    if (!r.textEqual) { const d = firstJsonDiff(treeText(m, game), treeText(m, loaded.game)); r.firstDiff = d.path; r.diffs = d.all; }
+    if (!r.textEqual) {
+        const d = firstJsonDiff(treeText(m, game), treeText(m, loaded.game));
+        r.firstDiff = d.path;
+        r.diffs = d.all;
+        // An event-log-only difference: the entries one copy logged that the other did not (by text and date), so the cause can be found.
+        if (m.eventLogEntries) {
+            const key = (e) => `${e.starDate}|${e.category}|${e.source}|${e.textKey}|${JSON.stringify(e.args)}`;
+            const ea = m.eventLogEntries(game.galaxy), eb = m.eventLogEntries(loaded.game.galaxy);
+            const count = (list) => list.reduce((mm, e) => mm.set(key(e), (mm.get(key(e)) ?? 0) + 1), new Map());
+            const ca = count(ea), cb = count(eb);
+            const only = (a, b) => [...a].filter(([k, n]) => n > (b.get(k) ?? 0)).slice(0, 12).map(([k, n]) => `${n - (b.get(k) ?? 0)}x ${k.slice(0, 300)}`);
+            r.eventLogOnlyOriginal = only(ca, cb);
+            r.eventLogOnlyLoaded = only(cb, ca);
+        }
+    }
     return r;
 }
 
