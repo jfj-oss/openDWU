@@ -186,6 +186,17 @@ function sample(ctx) {
         }
         return { total, armed, target, moving, grouped, comps };
     });
+    // Consistency probe (the soak's scan names it only 120 days later): an owned habitat that its empire does not list as a colony, with what is known about it.
+    safe('orphans', () => {
+        const seen = (ctx0.report.regress.orphans ??= []);
+        for (const h of g.habitats) {
+            const e = h.empire;
+            if (e == null || e === g.independentEmpire || !e.active || e.colonies.includes(h) || g.pirateEmpires.includes(e) || e.pirateEmpireBaseHabitat != null) continue;
+            if (seen.length >= 30 || seen.some((o) => o.habitat === h.name && o.empire === e.name)) continue;
+            const oc = ownerChanges.get(h);
+            seen.push({ y: year(g), habitat: h.name, index: h.habitatIndex, empire: e.name, owner: h.owner?.name ?? null, destroyed: !!h.hasBeenDestroyed, doingRemove: !!h.doingRemove, explosion: h.explosion != null, pop: Math.round((h.population?.totalAmount ?? 0) / 1e6), category: h.category, lastOwnerChange: oc ? { to: oc.to, from: oc.from, ago: Math.round((g.nowMs - oc.t) / DAY_MS) } : null, inGalaxyList: true });
+        }
+    });
     row.me = safe('player', () => (g.playerEmpire ? facSnap(g, g.playerEmpire) : null));
     row.pir = safe('pirates', () => ({ fac: g.pirateEmpires.filter((p) => p.active).length, ships: g.pirateEmpires.reduce((n, p) => n + p.builtObjects.length, 0) }));
     // Cult
