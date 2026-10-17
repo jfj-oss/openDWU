@@ -34,8 +34,8 @@ export function unregisterGreatWork(id: string): void {
  * extinction fleet) and the common-lore value (0 useless .. 1 a fortune). The AI weighs the shortlist's mean, never the
  * secret answer. Unknown ids (a later wonder) get the middle values.
  */
-export const KIND_MENACE: Readonly<Record<string, number>> = { beacon: 0.9, ultramind: 0.45, casino: 0.25, sanctuary: 0.15, riftgate: 0.5, ark: 0.4 };
-export const KIND_VALUE: Readonly<Record<string, number>> = { beacon: 0.05, ultramind: 0.7, casino: 0.8, sanctuary: 0.6, riftgate: 0.5, ark: 0.3 };
+export const KIND_MENACE: Record<string, number> = { beacon: 0.9, ultramind: 0.45, casino: 0.25, sanctuary: 0.15, riftgate: 0.5, ark: 0.4 };
+export const KIND_VALUE: Record<string, number> = { beacon: 0.05, ultramind: 0.7, casino: 0.8, sanctuary: 0.6, riftgate: 0.5, ark: 0.3 };
 
 export function kindMenace(id: string): number {
     return KIND_MENACE[id] ?? 0.4;

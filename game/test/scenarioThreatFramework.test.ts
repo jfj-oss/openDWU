@@ -1,5 +1,5 @@
 // 19b §5.A threat framework (src/sim/scenario/threats/framework.ts): the generic parts the 19f threats reuse.
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { cachedTickGame } from './helpers/gameCache';
 import type { GameData } from '../src/sim/data/gameData';
@@ -105,6 +105,42 @@ import { demographicsStateOf } from '../src/sim/scenario/emergent/demographics';
 import { declareWar } from '../src/sim/diplomacyTick';
 import { spawnThreatNow } from '../src/sim/scenario/threats/framework';
 import { cultCheckTrigger } from '../src/sim/scenario/threats/cult';
+import {
+    registerGreatWork,
+    unregisterGreatWork,
+    peekGwState,
+    greatWorks,
+    giantworksPeriodic,
+    greatWorkStageOf,
+    greatWorkScaffolds,
+    greatWorkShares,
+    greatWorkPay,
+    markGreatWorkHostile,
+    shortlist,
+    learnTag,
+    grantTrueHint,
+    kindName,
+    workLevel,
+    compactFaction,
+    ordinaryEmpires,
+    addProgress,
+    aiChoice,
+    spawnGreatWork,
+    giantworksMapFeatures,
+    LAW_DEMOLISH,
+    LAW_PROTECT,
+    type GreatWorkRecord,
+} from '../src/sim/scenario/threats/giantworks/framework';
+import { KIND_MENACE, KIND_VALUE } from '../src/sim/scenario/threats/giantworks/registry';
+import { stepWork } from '../src/sim/scenario/threats/giantworks/lifecycle';
+import { protectStep, resolveBaseLoss, stationedEmpires } from '../src/sim/scenario/threats/giantworks/actions';
+import { updateKnowledge } from '../src/sim/scenario/threats/giantworks/knowledge';
+import { dietState, registeredDietKinds } from '../src/sim/scenario/charactersVictory/diet/dietState';
+import { recordWarCrime, warCrimesRecord } from '../src/sim/scenario/charactersVictory/diet/warCrimes';
+import { IntelligenceMissionType, newIntelligenceMissionAgainstBuiltObject } from '../src/sim/espionage';
+import { AutomationLevel } from '../src/sim/empire';
+import type { BuiltObject } from '../src/sim/builtObject';
+import { rebuildIndexes } from '../src/sim/indexRebuild';
 
 
 let base: GameData;
@@ -1323,12 +1359,12 @@ describe('Game Editor: spawn a threat (editorSpawnThreat)', () => {
         const p = game.playerEmpire;
         expect(g.scenario).toBeNull();
         const notes = Object.fromEntries(spawnableThreats(g).map((t) => [t.key, t.note]));
-        expect(Object.keys(notes).sort()).toEqual(['corporateCoup', 'cult', 'darkFarms', 'doppelgangers', 'exchange', 'generationShips', 'greyTide', 'hive', 'hollowFleet', 'probeSwarm', 'purifier', 'robotMutiny', 'silence', 'timeBomb', 'voidWhale']);
+        expect(Object.keys(notes).sort()).toEqual(['corporateCoup', 'cult', 'darkFarms', 'doppelgangers', 'exchange', 'generationShips', 'giantworks', 'greyTide', 'hive', 'hollowFleet', 'probeSwarm', 'purifier', 'robotMutiny', 'silence', 'timeBomb', 'voidWhale'].concat(Object.keys(notes).filter((k) => k.startsWith('giantworks:'))).sort());
         expect(notes.darkFarms).toMatch(/add-on on at game start/);
         expect(notes.robotMutiny).toMatch(/add-on on at game start/);
         expect(notes.timeBomb).toMatch(/add-on on at game start/);
         expect(notes.corporateCoup).toMatch(/chartered company/);
-        const keys = Object.keys(notes).filter((k) => notes[k] === null);
+        const keys = Object.keys(notes).filter((k) => notes[k] === null && !k.startsWith('giantworks')); // Giantworks has its own tests
         expect(keys).toHaveLength(11);
         for (const key of keys) expect(spawn(g, p, key), key).toBe(true);
         expect(peekPurifierState(g)!.waker).toBe(p);
@@ -1524,5 +1560,426 @@ describe('crisis interactions', () => {
         crisisJointWar(g);
         const warring = ms.filter((x) => x !== g.playerEmpire && x.diplomaticRelations.byEmpire(faction!)?.type === DiplomaticRelationType.War);
         expect(warring.length).toBeGreaterThan(0);
+    }, 900000);
+});
+
+
+// Giantworks (src/sim/scenario/threats/giantworks): the independents' Great Work. The wonders are throw-away kinds registered here.
+describe('giantworks', () => {
+    const ids = ['threat-framework', 'smarter-ai', 'war-crimes', 'giantworks'];
+    const age3 = (o: CreateGameOptions): CreateGameOptions => ({ ...o, galaxyAge: 3, player: { ...o.player, age: 3 }, aiEmpires: o.aiEmpires.map((e) => ({ ...e, age: 3 })) });
+    const completed: string[] = [];
+    const destroyed: string[] = [];
+    let periodicCalls = 0;
+    beforeAll(() => {
+        const mk = (id: string, flag: string, tags: string[]) =>
+            registerGreatWork({
+                id,
+                flag,
+                weight: 10,
+                hintTags: tags,
+                onComplete: (_g, site) => void completed.push(`${id}:${site.id}`),
+                onDestroyed: (_g, site, by) => void destroyed.push(`${id}:${site.id}:${by?.name ?? '-'}`),
+                periodic: () => void periodicCalls++,
+            });
+        mk('gwtest-a', 'gwCasino', ['glass-ice', 'luxury', 'neon']);
+        mk('gwtest-b', 'gwUltramind', ['glass-ice', 'luxury', 'plankton']);
+        mk('gwtest-c', 'gwSanctuary', ['superconductors', 'cores', 'cooling']);
+        KIND_MENACE['gwtest-a'] = 0.1;
+        KIND_MENACE['gwtest-b'] = 0.1;
+        KIND_MENACE['gwtest-c'] = 0.95;
+        KIND_VALUE['gwtest-a'] = 0.9;
+        KIND_VALUE['gwtest-b'] = 0.9;
+        KIND_VALUE['gwtest-c'] = 0.1;
+    });
+    afterAll(() => {
+        for (const id of ['gwtest-a', 'gwtest-b', 'gwtest-c']) {
+            unregisterGreatWork(id);
+            delete KIND_MENACE[id];
+            delete KIND_VALUE[id];
+        }
+    });
+    function gwFull(flags: Record<string, boolean> = {}, params: Record<string, number> = {}, scenario: string[] = ids): { game: Game; gameData: GameData } {
+        return createScenarioGame(base, { scenario: comboOverlayFs(scenario), flags: { threatGiantworks: true, ...flags }, params, options: age3 });
+    }
+    function gw(flags: Record<string, boolean> = {}, params: Record<string, number> = {}, scenario: string[] = ids): Galaxy {
+        return gwFull(flags, params, scenario).game.galaxy;
+    }
+    /** A game whose Great Work is already building (the Gathering done). */
+    function building(params: Record<string, number> = {}, flags: Record<string, boolean> = {}, forceKind?: string): { g: Galaxy; w: GreatWorkRecord; game: Game; gameData: GameData } {
+        const { game, gameData } = gwFull(flags, params);
+        const g = game.galaxy;
+        const w = greatWorks(g)[0];
+        if (forceKind !== undefined) w.wonder = forceKind;
+        w.gatherDate = 0;
+        giantworksPeriodic(g);
+        expect(w.phase).toBe('building');
+        return { g, w, game, gameData };
+    }
+    const actors = (g: Galaxy): Empire[] => ordinaryEmpires(g);
+
+    it('add-on off: no state, no faction, nothing changes', () => {
+        const g = gw({ threatGiantworks: false });
+        const n = g.empires.length;
+        giantworksPeriodic(g);
+        expect(peekGwState(g)).toBeNull();
+        expect(g.empires.length).toBe(n);
+    }, 300000);
+
+    it('existence: a chance of 0 means no Great Work; 100 means one, with its founders and an empty site', () => {
+        expect(greatWorks(gw({}, { giantworksExistChancePct: 0 }))).toHaveLength(0);
+        const g = gw();
+        const w = greatWorks(g)[0];
+        expect(w.phase).toBe('seeded');
+        expect(w.circles.length).toBeGreaterThanOrEqual(2);
+        expect(w.circles.length).toBeLessThanOrEqual(3);
+        for (const c of w.circles) {
+            expect(c.length).toBeGreaterThanOrEqual(1);
+            expect(c.length).toBeLessThanOrEqual(3);
+            for (const h of c) expect(h.empire).toBe(g.independentEmpire);
+        }
+        expect(w.founders).toEqual(w.circles.flat());
+        expect(['gwtest-a', 'gwtest-b', 'gwtest-c']).toContain(w.wonder);
+        // The site is a star system with nothing in it, and the work has not started: no base, no Compact.
+        for (const h of g.systemHabitatsOf(w.system.systemStar.systemIndex)) {
+            expect(h.empire).toBeNull();
+            expect(h.population?.totalAmount ?? 0).toBe(0);
+        }
+        expect(w.base).toBeNull();
+        expect(compactFaction(g)).toBeNull();
+        // The rumour comes at year 5 to 10, the Gathering at year 15 to 30.
+        const y0 = galaxyStarDate(g);
+        expect((w.rumourDate - y0) / YEAR_LENGTH).toBeGreaterThanOrEqual(5);
+        expect((w.rumourDate - y0) / YEAR_LENGTH).toBeLessThanOrEqual(10);
+        expect((w.gatherDate - y0) / YEAR_LENGTH).toBeGreaterThanOrEqual(15);
+        expect((w.gatherDate - y0) / YEAR_LENGTH).toBeLessThanOrEqual(30);
+        // Same seed, same Great Work (its own random stream).
+        const w2 = greatWorks(gw())[0];
+        expect(w2.wonder).toBe(w.wonder);
+        expect(w2.system.systemStar.name).toBe(w.system.systemStar.name);
+        expect(w2.founders.map((h) => h.name)).toEqual(w.founders.map((h) => h.name));
+    }, 600000);
+
+    it('the number of Great Works: the option, distinct founders; 1 by default', () => {
+        expect(greatWorks(gw())).toHaveLength(1);
+        const g = gw({}, { giantworksCount: 2 });
+        const ws = greatWorks(g);
+        expect(ws.length).toBeGreaterThanOrEqual(1);
+        if (ws.length === 2) for (const h of ws[0].founders) expect(ws[1].founders).not.toContain(h);
+    }, 600000);
+
+    it('the Gathering: the Compact (stock AI off, no war, no colonising), a scaffold at stage 0, convoys of stock freighters', () => {
+        const { g, w } = building();
+        const compact = compactFaction(g)!;
+        expect(compact.name).toBe("The Founders' Compact");
+        expect(compact.controlColonization).toBe(AutomationLevel.Undefined);
+        expect(compact.initiateConstruction).toBe(false);
+        expect(scenarioQuery(g, 'declareWarBlocked', false, { empire: compact, target: actors(g)[0] })).toBe(true);
+        expect(scenarioQuery(g, 'declareWarBlocked', false, { empire: actors(g)[0], target: compact })).toBe(true);
+        const fake = { actualEmpire: compact } as unknown as BuiltObject;
+        expect(scenarioQuery(g, 'assignMissionAllowed', true, { builtObject: fake, missionType: BuiltObjectMissionType.Colonize, target: null, x: 0, y: 0 })).toBe(false);
+        expect(scenarioQuery(g, 'assignMissionAllowed', true, { builtObject: fake, missionType: BuiltObjectMissionType.Move, target: null, x: 0, y: 0 })).toBe(true);
+        expect(w.base!.actualEmpire).toBe(compact);
+        expect(w.base!.role).toBe(BuiltObjectRole.Base);
+        expect(w.stage).toBe(0);
+        expect(greatWorkStageOf(g, w.base!)).toBe(0);
+        expect(w.base!.name).toContain('Foundations');
+        expect(w.suppliers.length).toBeGreaterThan(0);
+        expect(w.perShip).toBeGreaterThan(0);
+        // The first convoys leave: freighters of the Compact bound for the scaffold, each convoy carrying one hint tag.
+        for (const k of Object.keys(w.nextDeparture)) w.nextDeparture[k] = 0;
+        giantworksPeriodic(g);
+        expect(w.convoys.length).toBe(w.suppliers.length);
+        for (const c of w.convoys) {
+            expect(c.ships.length).toBeGreaterThanOrEqual(3);
+            expect(c.ships.length).toBeLessThanOrEqual(6);
+            expect(c.escorts.length).toBe(1);
+            expect(c.ships.every((b) => b.actualEmpire === compact && b.role === BuiltObjectRole.Freight)).toBe(true);
+            expect(c.ships.every((b) => builtObjectMission(b.mission)?.type === BuiltObjectMissionType.Move && builtObjectMission(b.mission)?.targetBuiltObject === w.base)).toBe(true);
+            expect(typeof c.tag).toBe('string');
+        }
+        expect(greatWorkScaffolds(g)).toHaveLength(1);
+        expect(greatWorkScaffolds(g)[0].wonder).toBeNull(); // the scaffold never gives the answer away
+    }, 900000);
+
+    it('deliveries build it: stages, setbacks, completion makes the wonder public, never before', () => {
+        const { g, w } = building();
+        for (const k of Object.keys(w.nextDeparture)) w.nextDeparture[k] = 0;
+        giantworksPeriodic(g);
+        const n = w.convoys.reduce((a, c) => a + c.ships.length, 0);
+        for (const c of w.convoys) for (const b of c.ships) { b.xpos = w.base!.xpos; b.ypos = w.base!.ypos; }
+        giantworksPeriodic(g);
+        expect(w.delivered).toBe(n);
+        expect(w.progress).toBeCloseTo(n * w.perShip, 6);
+        expect(w.convoys.every((c) => c.ships.length === 0)).toBe(true);
+        // Stages follow progress; a setback can lower them.
+        addProgress(g, w, 0.3 - w.progress);
+        expect(w.stage).toBe(1);
+        expect(w.base!.name).toContain('Frame');
+        addProgress(g, w, 0.45);
+        expect(w.stage).toBe(3);
+        expect(greatWorkStageOf(g, w.base!)).toBe(3);
+        addProgress(g, w, -0.2);
+        expect(w.stage).toBe(2);
+        // Nobody can have it confirmed before it is finished.
+        for (const e of actors(g)) {
+            learnTag(g, w, e, 'glass-ice');
+            learnTag(g, w, e, 'luxury');
+            while (grantTrueHint(g, w, e) !== null);
+            expect(workLevel(w, e)).toBeLessThan(3);
+        }
+        expect(completed).not.toContain(`${w.wonder}:${w.id}`);
+        addProgress(g, w, 1);
+        expect(w.phase).toBe('complete');
+        expect(w.stage).toBe(4);
+        expect(completed).toContain(`${w.wonder}:${w.id}`);
+        for (const e of actors(g)) expect(workLevel(w, e)).toBe(3);
+        expect(w.base!.name).toBe(kindName(w.wonder));
+        expect(greatWorkScaffolds(g)[0].wonder).toBe(w.wonder);
+        const calls = periodicCalls;
+        giantworksPeriodic(g);
+        expect(periodicCalls).toBeGreaterThan(calls); // the wonder's periodic hook runs after completion
+    }, 900000);
+
+    it('a stalled work (no deliveries for years) is abandoned', () => {
+        const { g, w } = building();
+        for (const k of Object.keys(w.nextDeparture)) w.nextDeparture[k] = 1e18;
+        w.startDate -= 9 * YEAR_LENGTH;
+        w.lastDelivery = w.startDate;
+        stepWork(g, w);
+        expect(w.phase).toBe('abandoned');
+    }, 600000);
+
+    it('hints: tags learnt from manifests give a shortlist at suspected, an inspection narrows it, an investigation adds a hint, nothing proves', () => {
+        const { g, w } = building({}, {}, 'gwtest-a');
+        const e = actors(g)[0];
+        expect(shortlist(g, w, e)).toEqual([]);
+        expect(learnTag(g, w, e, 'glass-ice')).toBe(true);
+        expect(learnTag(g, w, e, 'glass-ice')).toBe(false);
+        expect(workLevel(w, e)).toBe(1);
+        learnTag(g, w, e, 'luxury');
+        expect(workLevel(w, e)).toBe(2); // two different hints: suspected
+        expect(shortlist(g, w, e).sort()).toEqual(['gwtest-a', 'gwtest-b']); // the red herring: both wonders carry glass and luxury
+        // The Diet's inspection removes wrong candidates but never the last two.
+        w.narrowed = 1;
+        expect(shortlist(g, w, e)).toHaveLength(2);
+        expect(shortlist(g, w, e)).toContain('gwtest-a');
+        // A third, specific hint tells them apart in the shortlist order but is still no proof.
+        expect(grantTrueHint(g, w, e)).toBe('neon');
+        expect(shortlist(g, w, e)[0]).toBe('gwtest-a');
+        expect(grantTrueHint(g, w, e)).toBeNull();
+        expect(workLevel(w, e)).toBe(2);
+        // The Intelligence screen lists the site with its shortlist; the selection panel text names the candidates.
+        const rows = threatKnownSites(g, e).filter((s) => s.threat === 'giantworks');
+        expect(rows).toHaveLength(1);
+        expect(rows[0].target).toBe(w.base);
+        expect(rows[0].label).toMatch(/Great Work/);
+        expect(rows[0].status).toMatch(/%/);
+        // Another empire that knows nothing sees nothing.
+        expect(threatKnownSites(g, actors(g)[1]).filter((s) => s.threat === 'giantworks')).toHaveLength(0);
+    }, 900000);
+
+    it('Investigate (an agent at the site) yields one more true hint, never a confirmation; refused once every hint is known', () => {
+        const { g, w } = building({}, {}, 'gwtest-a');
+        const player = g.playerEmpire!;
+        learnTag(g, w, player, 'glass-ice');
+        learnTag(g, w, player, 'luxury');
+        expect(workLevel(w, player)).toBe(2);
+        const agent = getEmpireCharacters(player).find((c) => c.role === CharacterRole.IntelligenceAgent && c.active)!;
+        agent.mission = null;
+        const target = w.base!;
+        const st = (): { list: { due: number }[] } => g.scenario!.state[THREAT_INVESTIGATIONS_KEY] as { list: { due: number }[] };
+        expect(runPlayerCommand(g, player, 'threatInvestigate', ['giantworks', target, agent])).toEqual({ ok: true });
+        for (let i = 0; i < 40 && (w.tags[player.empireId] ?? []).length < 3; i++) {
+            if (st().list.length === 0) expect(runPlayerCommand(g, player, 'threatInvestigate', ['giantworks', target, agent])).toEqual({ ok: true });
+            st().list[0].due = galaxyStarDate(g);
+            reviewThreatInvestigations(g);
+        }
+        expect(w.tags[player.empireId]).toEqual(['glass-ice', 'luxury', 'neon']);
+        expect(workLevel(w, player)).toBe(2); // a hint, not a proof
+        expect(empireMessages(player).at(-1)!.title).toBe('Great Work investigation');
+        expect(runPlayerCommand(g, player, 'threatInvestigate', ['giantworks', target, agent])).toEqual({ ok: false, reason: 'Nothing more to learn' });
+    }, 900000);
+
+    it('a convoy seen by an empire teaches it that convoy\'s tag; the Fitting stage makes a watcher suspect', () => {
+        const { g, w } = building({}, {}, 'gwtest-a');
+        for (const k of Object.keys(w.nextDeparture)) w.nextDeparture[k] = 0;
+        giantworksPeriodic(g);
+        const e = actors(g)[1];
+        const c = w.convoys[0];
+        // The empire's own scout flies right beside the convoy.
+        const scout = e.builtObjects.find((b) => !b.hasBeenDestroyed && b.role === BuiltObjectRole.Military && b.topSpeed > 0) ?? e.builtObjects.find((b) => !b.hasBeenDestroyed && b.topSpeed > 0)!;
+        scout.xpos = c.ships[0].xpos;
+        scout.ypos = c.ships[0].ypos;
+        scout.nearestSystemStar = null; // in deep space, where ships' sensors count
+        rebuildIndexes(g);
+        updateKnowledge(g, w);
+        expect(c.seen).toContain(e.empireId);
+        expect(w.tags[e.empireId]).toContain(c.tag);
+        // Stage 3 and the site in view: suspected at once.
+        w.stage = 3;
+        const e2 = actors(g)[2];
+        const s2 = e2.builtObjects.find((b) => !b.hasBeenDestroyed && b.topSpeed > 0)!;
+        s2.xpos = w.base!.xpos;
+        s2.ypos = w.base!.ypos;
+        s2.nearestSystemStar = null;
+        rebuildIndexes(g);
+        updateKnowledge(g, w);
+        expect(w.seenBy).toContain(e2.empireId);
+        expect(workLevel(w, e2)).toBe(2);
+        expect(scenarioMapFeaturesFor(g, e2).some((m) => m.glyph === 'greatWork')).toBe(true);
+    }, 900000);
+
+    function scenarioMapFeaturesFor(g: Galaxy, e: Empire) {
+        return giantworksMapFeatures(g, e)?.markers ?? [];
+    }
+
+    it('convoys: an attack counts once per ship as the independents crime and angers the Compact; protectors earn the Compact\'s regard', () => {
+        const { g, w } = building();
+        for (const k of Object.keys(w.nextDeparture)) w.nextDeparture[k] = 0;
+        giantworksPeriodic(g);
+        const e = actors(g)[0];
+        const ship = w.convoys[0].ships[0];
+        const before = warCrimesRecord(g, e)?.counts.independents ?? 0;
+        scenarioEmit(g, 'builtObjectAttacked', { builtObject: ship, attacker: null, attackingEmpire: e });
+        scenarioEmit(g, 'builtObjectAttacked', { builtObject: ship, attacker: null, attackingEmpire: e });
+        expect(warCrimesRecord(g, e)?.counts.independents).toBe(before + 1);
+        expect(w.anger[e.empireId]).toBeGreaterThan(0);
+        // Protect: warships on station for a year (36 periods of 10 days).
+        const p = actors(g)[1];
+        const warship = p.builtObjects.find((b) => !b.hasBeenDestroyed && b.role === BuiltObjectRole.Military && b.topSpeed > 0)!;
+        warship.xpos = w.base!.xpos;
+        warship.ypos = w.base!.ypos;
+        rebuildIndexes(g);
+        expect(stationedEmpires(g, w)).toContain(p);
+        for (let i = 0; i < 40; i++) protectStep(g, w);
+        expect(w.protectors).toContain(p.empireId);
+        expect(w.protectors).not.toContain(e.empireId);
+    }, 900000);
+
+    it('sabotage: a destroyed section sets it back and is rebuilt; sabotaged construction sets it back a little; neither is a war crime', () => {
+        const { g, w } = building();
+        const e = actors(g)[0];
+        addProgress(g, w, 0.5);
+        const old = w.base!;
+        const now = galaxyStarDate(g);
+        // Destroy Base: the stock effect kills the base, then the mission-completed event follows.
+        old.hasBeenDestroyed = true;
+        scenarioEmit(g, 'builtObjectKilledBy', { builtObject: old, destroyer: null });
+        scenarioEmit(g, 'intelMissionCompleted', { empire: e, mission: newIntelligenceMissionAgainstBuiltObject(e, null, IntelligenceMissionType.DestroyBase, now, old), outcome: null });
+        expect(resolveBaseLoss(g, w)).toBe(true);
+        expect(w.phase).toBe('building');
+        expect(w.base).not.toBe(old);
+        expect(w.base!.hasBeenDestroyed).toBe(false);
+        expect(w.progress).toBeCloseTo(0.3, 6);
+        expect(warCrimesRecord(g, e)?.counts.greatWork ?? 0).toBe(0);
+        expect(peekGwState(g)!.stats.sabotaged).toBe(1);
+        // Sabotage Construction: a small setback at once; caught = the stock exposure event first.
+        scenarioEmit(g, 'intelMissionExposed', { empire: e, blamed: e, target: compactFaction(g)!, missionType: IntelligenceMissionType.SabotageConstruction, outcome: 0 });
+        scenarioEmit(g, 'intelMissionCompleted', { empire: e, mission: newIntelligenceMissionAgainstBuiltObject(e, null, IntelligenceMissionType.SabotageConstruction, galaxyStarDate(g), w.base!), outcome: null });
+        expect(w.progress).toBeCloseTo(0.24, 6);
+        expect(w.anger[e.empireId]).toBeGreaterThan(0); // caught
+    }, 900000);
+
+    it('destroying it: a war crime unless the Diet authorised demolition; sabotage and a hostile wonder are exempt; the Compact is angry', () => {
+        for (const mode of ['crime', 'authorised', 'hostile'] as const) {
+            const { g, w } = building();
+            const e = actors(g)[0];
+            if (mode === 'authorised') dietState(g).laws.push({ id: 1, kind: LAW_DEMOLISH, empire: null, other: null, colony: null, since: 0, until: -1, text: 'x' });
+            if (mode === 'hostile') {
+                addProgress(g, w, 2);
+                markGreatWorkHostile(w);
+            }
+            const base = w.base!;
+            base.hasBeenDestroyed = true;
+            scenarioEmit(g, 'builtObjectKilledBy', { builtObject: base, destroyer: e });
+            expect(resolveBaseLoss(g, w)).toBe(true);
+            expect(w.phase).toBe('destroyed');
+            expect(w.destroyedBy).toBe(e);
+            expect(destroyed.some((d) => d.startsWith(`${w.wonder}:${w.id}:`))).toBe(true);
+            expect(warCrimesRecord(g, e)?.counts.greatWork ?? 0).toBe(mode === 'crime' ? 1 : 0);
+            expect(w.anger[e.empireId]).toBeGreaterThan(0);
+        }
+    }, 1800000);
+
+    it('seizing the finished wonder: the holder changes and takes the main benefit; a crime unless hostile', () => {
+        const { g, w } = building();
+        addProgress(g, w, 2);
+        const e = actors(g)[0];
+        const compact = compactFaction(g)!;
+        // No holder, nobody's territory: the Compact keeps the whole benefit; the Compact's cut is a fifth of an owner's.
+        const shares = greatWorkShares(g, w);
+        expect(shares.reduce((a, s) => a + s.share, 0)).toBeCloseTo(1, 9);
+        w.base!.empire = e;
+        scenarioEmit(g, 'builtObjectOwnerChanged', { builtObject: w.base!, from: compact, to: e });
+        expect(w.holder).toBe(e);
+        expect(warCrimesRecord(g, e)?.counts.greatWork).toBe(1);
+        const held = greatWorkShares(g, w);
+        expect(held).toEqual([{ empire: e, share: 1, role: 'owner' }]);
+        const money = e.stateMoney;
+        expect(greatWorkPay(g, w, 1000)).toBeCloseTo(1000, 6);
+        expect(e.stateMoney).toBeCloseTo(money + 1000, 6);
+        scenarioEmit(g, 'builtObjectOwnerChanged', { builtObject: w.base!, from: e, to: compact });
+        expect(w.holder).toBeNull();
+        void recordWarCrime;
+    }, 900000);
+
+    it('the Diet motions are registered (Inspect, Protect, Authorise demolition, Internationalise) and need the Diet', () => {
+        const kinds = registeredDietKinds().map((k) => k.kind);
+        for (const k of ['gwInspect', LAW_PROTECT, LAW_DEMOLISH, 'gwIntl']) expect(kinds).toContain(k);
+        const g = gw();
+        for (const k of registeredDietKinds().filter((x) => x.kind.startsWith('gw'))) expect(k.proposable?.(g) ?? false).toBe(false);
+    }, 600000);
+
+    it('Smarter AI: menace and value of the shortlist, personality and reach decide', () => {
+        const { g, w } = building({}, {}, 'gwtest-a');
+        const e = actors(g)[0];
+        w.base!.xpos = e.capital!.xpos;
+        w.base!.ypos = e.capital!.ypos;
+        learnTag(g, w, e, 'glass-ice');
+        learnTag(g, w, e, 'luxury'); // fits the (benign, valuable) a and b
+        expect(aiChoice(g, w, e)).not.toBe('destroy');
+        expect(['protect', 'none']).toContain(aiChoice(g, w, e));
+        const f = actors(g)[1];
+        w.base!.xpos = f.capital!.xpos;
+        w.base!.ypos = f.capital!.ypos;
+        learnTag(g, w, f, 'superconductors');
+        learnTag(g, w, f, 'cores'); // fits only the menacing c
+        expect(['destroy', 'sabotage']).toContain(aiChoice(g, w, f));
+    }, 900000);
+
+    it('save and load keep a building work and its Compact', () => {
+        const { g, w, game, gameData } = building();
+        for (const k of Object.keys(w.nextDeparture)) w.nextDeparture[k] = 0;
+        giantworksPeriodic(g);
+        const e = actors(g)[0];
+        learnTag(g, w, e, 'glass-ice');
+        w.anger[e.empireId] = 7;
+        const time = new GalaxyTime();
+        time.bindGalaxy(g);
+        const text = serializeGame(game, time, {} as StartGameOptions);
+        const lg = deserializeGame(text, gameData).game.galaxy;
+        const lw = greatWorks(lg)[0];
+        expect(lw.phase).toBe('building');
+        expect(lw.wonder).toBe(w.wonder);
+        expect(lw.base!.builtObjectID).toBe(w.base!.builtObjectID);
+        expect(lw.convoys.length).toBe(w.convoys.length);
+        expect(lw.convoys[0].ships.map((b) => b.builtObjectID)).toEqual(w.convoys[0].ships.map((b) => b.builtObjectID));
+        expect(compactFaction(lg)!.empireId).toBe(compactFaction(g)!.empireId);
+        expect(lw.tags[e.empireId]).toEqual(['glass-ice']);
+        expect(lw.anger[e.empireId]).toBe(7);
+    }, 1800000);
+
+    it('Game Editor: a Great Work starts now with a forced wonder', () => {
+        const g = gw({ threatGiantworks: false });
+        expect(peekGwState(g)).toBeNull();
+        const spec = spawnableThreats(g).find((t) => t.key === 'giantworks:gwtest-c')!;
+        expect(spec.note).toBeNull();
+        expect(spawnThreatNow(g, g.playerEmpire!, 'giantworks:gwtest-c')).toBe(true);
+        const w = greatWorks(g)[0];
+        expect(w.wonder).toBe('gwtest-c');
+        expect(w.phase).toBe('building');
+        expect(compactFaction(g)).not.toBeNull();
+        void spawnGreatWork;
     }, 900000);
 });

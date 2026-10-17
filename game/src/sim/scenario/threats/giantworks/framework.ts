@@ -24,7 +24,7 @@ import { BuiltObjectMissionType } from '../../../missions/mission';
 import { registerScenarioGameStart, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly } from '../../hooks';
 import { registerScenarioMapFeatures, type ScenarioMapFeatures } from '../../mapFeatures';
 import { scenarioText } from '../../messages';
-import { KNOWLEDGE_SUSPECTED, enableThreat, registerThreatExistence, registerThreatSpawn, threatExists } from '../framework';
+import { KNOWLEDGE_SUSPECTED, enableThreat, registerThreatExistence, registerThreatSpawn, threatExists, unregisterThreatSpawn } from '../framework';
 import { addCrisisEntry, registerCrisisHelpers, type CrisisEntry } from '../crisis';
 import { angerYearly, greatWorkProtectors, protectStep, registerActionEvents, resolveBaseLoss } from './actions';
 import { aiStep } from './ai';
@@ -32,12 +32,12 @@ import './diet';
 import { seedGreatWorks, seedNow } from './founders';
 import { progressPct, workLevel } from './knowledge';
 import { startBuilding, stepWork } from './lifecycle';
-import { greatWorkKinds, registerGreatWork as registerKind } from './registry';
+import { greatWorkKinds, registerGreatWork as registerKind, unregisterGreatWork as unregisterKind } from './registry';
 import { GW_FLAG, GW_KEY, gwState, greatWorks, isCompact, peekGwState, PERIOD_DAYS } from './state';
 import type { GreatWorkKind, GreatWorkStage } from './types';
 
 export type { GreatWorkKind, GreatWorkSite, GreatWorkStage } from './types';
-export { greatWorkKind, greatWorkKinds, kindMenace, kindValue, unregisterGreatWork } from './registry';
+export { greatWorkKind, greatWorkKinds, kindMenace, kindValue } from './registry';
 export { greatWorkBeneficiary, greatWorkHolder, greatWorkIsHostile, greatWorkPay, greatWorkShares, greatWorkTerritoryOwner, internationalised, markGreatWorkHostile, type GreatWorkShare } from './benefits';
 export { compactFaction, greatWorks, gwState, isCompact, ordinaryEmpires, peekGwState, workOfBase, type GreatWorkRecord } from './state';
 export { demolitionAuthorised, greatWorkProtectors, LAW_DEMOLISH, LAW_INTERNATIONALISE, LAW_PROTECT } from './actions';
@@ -61,6 +61,12 @@ export function registerGreatWork(kind: GreatWorkKind): void {
         note: spawnNote,
         spawn: (g) => spawnGreatWork(g, kind.id),
     });
+}
+
+/** Test hook: removes a registered wonder and its Game Editor entry. */
+export function unregisterGreatWork(id: string): void {
+    unregisterKind(id);
+    unregisterThreatSpawn(`${GW_KEY}:${id}`);
 }
 
 /** A hostile wonder's crisis faction joins the crisis interactions; the empires that protected the work are counted its helpers. */
@@ -168,14 +174,11 @@ export function spawnGreatWork(galaxy: Galaxy, forcedKind: string | null): boole
 
 // --- Compact queries ----------------------------------------------------------------------------------------------
 
-const REFUSED = new Set<number>([
-    BuiltObjectMissionType.Colonize,
-    BuiltObjectMissionType.UnloadTroops,
-    BuiltObjectMissionType.Bombard,
-    BuiltObjectMissionType.WaitAndBombard,
-    BuiltObjectMissionType.Capture,
-    BuiltObjectMissionType.Raid,
-]);
+/** The missions the Compact's ships refuse (built lazily: the mission enum may not be initialised when this module loads). */
+function refusedMissions(): readonly number[] {
+    const M = BuiltObjectMissionType;
+    return [M.Colonize, M.UnloadTroops, M.Bombard, M.WaitAndBombard, M.Capture, M.Raid];
+}
 
 export function registerGiantworks(): void {
     registerThreatExistence(GW_KEY, GW_FLAG);
@@ -200,7 +203,7 @@ export function registerGiantworks(): void {
         id: 'giantworks.missions',
         flag: GW_FLAG,
         query: 'assignMissionAllowed',
-        run: (g, v, a) => v && !(REFUSED.has(a.missionType) && isCompact(g, a.builtObject.actualEmpire)),
+        run: (g, v, a) => v && !(isCompact(g, a.builtObject.actualEmpire) && refusedMissions().includes(a.missionType)),
     });
     registerScenarioQuery({ id: 'giantworks.noCapture', flag: GW_FLAG, query: 'combatCaptureAllowed', run: (g, v, a) => v && !isCompact(g, a.capturingEmpire) });
     registerScenarioMapFeatures('giantworks', (g, viewer) => giantworksMapFeatures(g, viewer));

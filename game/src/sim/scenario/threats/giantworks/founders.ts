@@ -95,7 +95,7 @@ function worldRace(h: Habitat): Race | null {
 const PILGRIM_TYPES: ReadonlySet<HabitatType> = new Set([HabitatType.Continental, HabitatType.Ocean, HabitatType.MarshySwamp, HabitatType.Desert]);
 
 /** A small independent colony ("pilgrim colony") for a wedge that has no independents: the habitable world nearest the wedge's middle. */
-function makePilgrimColony(galaxy: Galaxy, wedge: number, offset: number, caps: readonly { x: number; y: number }[], capSectors: number, used: ReadonlySet<Habitat>): Habitat | null {
+function makePilgrimColony(galaxy: Galaxy, wedge: number, offset: number, caps: readonly { x: number; y: number }[], capSectors: number, used: ReadonlySet<Habitat>, make: boolean): Habitat | null {
     const ind = galaxy.independentEmpire;
     if (ind === null) return null;
     const mid = offset + (wedge + 0.5) * (TWO_PI / WEDGES);
@@ -118,6 +118,7 @@ function makePilgrimColony(galaxy: Galaxy, wedge: number, offset: number, caps: 
     if (best === null) return null;
     const race = pilgrimRace(galaxy);
     if (race === null) return null;
+    if (!make) return best;
     makeHabitatIntoColonyRuntime(galaxy, ind, best, ind, race, 5_000_000);
     if (!galaxy.independentColonies.includes(best)) galaxy.independentColonies.push(best);
     return best;
@@ -150,9 +151,8 @@ export interface FoundersPick {
  * `giantworksFounderRangeSectors` of it. A wedge without such a world gets a pilgrim colony (a one-world circle). Worlds in
  * `used` (another Great Work's founders) are skipped. Draws nothing. Pure except for the pilgrim colonies it founds.
  */
-export function pickFounders(galaxy: Galaxy, offset: number, used: ReadonlySet<Habitat>): FoundersPick {
+export function pickFounders(galaxy: Galaxy, offset: number, used: ReadonlySet<Habitat>, capSectors: number = gwParam(galaxy, 'giantworksCapitalSectors'), make = true): FoundersPick {
     const caps = capitals(galaxy);
-    const capSectors = gwParam(galaxy, 'giantworksCapitalSectors');
     const range = gwParam(galaxy, 'giantworksFounderRangeSectors') * galaxy.sectorSize;
     const eligible = (h: Habitat): boolean =>
         isIndependentWorld(galaxy, h) && !used.has(h) && nearestCapital(galaxy, caps, h.xpos, h.ypos) >= capSectors * galaxy.sectorSize && !inForeignTerritory(galaxy, h.xpos, h.ypos);
@@ -166,7 +166,7 @@ export function pickFounders(galaxy: Galaxy, offset: number, used: ReadonlySet<H
         let main: Habitat | null = null;
         for (const h of outer) if (main === null || h.population.totalAmount > main.population.totalAmount || (h.population.totalAmount === main.population.totalAmount && h.habitatIndex < main.habitatIndex)) main = h;
         if (main === null) {
-            const p = makePilgrimColony(galaxy, w, offset, caps, capSectors, taken);
+            const p = makePilgrimColony(galaxy, w, offset, caps, capSectors, taken, make);
             if (p === null) continue;
             pilgrims.push(p);
             taken.add(p);
@@ -294,7 +294,21 @@ export function seedOne(galaxy: Galaxy, st: GreatWorksState, rnd: Random, index:
     const used = new Set<Habitat>();
     for (const w of st.works) for (const h of w.founders) used.add(h);
     const offset = rnd.nextDouble() * (TWO_PI / WEDGES) + index * (Math.PI / 3);
-    const { circles, pilgrims } = pickFounders(galaxy, offset, used);
+    // A small galaxy cannot keep the founders as far from every capital: relax the distance step by step until two circles of real
+    // independent worlds fit (else until two circles fit, pilgrim colonies included).
+    const full = gwParam(galaxy, 'giantworksCapitalSectors');
+    const steps = [...new Set([full, Math.floor(full * 0.75), Math.floor(full / 2), 1, 0])].filter((x) => x <= full);
+    let circles: Habitat[][] = [];
+    let pilgrims: Habitat[] = [];
+    for (const needReal of [true, false]) {
+        for (const capSectors of steps) {
+            const dry = pickFounders(galaxy, offset, used, capSectors, false);
+            if ((needReal ? dry.circles.length - dry.pilgrims.length : dry.circles.length) < 2) continue;
+            ({ circles, pilgrims } = pickFounders(galaxy, offset, used, capSectors, true));
+            break;
+        }
+        if (circles.length >= 2) break;
+    }
     if (circles.length < 2) {
         logGw(galaxy, galaxyStarDate(galaxy), `only ${circles.length} founding circle(s)`);
         return null;

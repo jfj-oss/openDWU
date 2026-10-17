@@ -19,6 +19,7 @@ import { aggressionLevel, cautionLevel, friendlinessLevel, FleetPosture } from '
 import { IntelligenceMissionType, calculateIntelligenceMissionSkill, cascadeTimeLength, characterMission, checkWhetherTargetOfIntelligenceMission, intelligenceMissionDifficulty, newIntelligenceMissionAgainstBuiltObject } from '../../../espionage';
 import { csInt } from '../../../builtObjectComponent';
 import { findNearestAvailableFleet } from '../../../fleets/militaryAI';
+import { empireShipGroups } from '../../../fleets/shipGroup';
 import { determineDestroyOrCaptureTargetForFleet, shipGroupAssignMission, shipGroupCheckFleetTargetWithinFuelRangeAndRefuel } from '../../../fleets/shipGroupTasks';
 import { BuiltObjectMissionPriority, BuiltObjectMissionType } from '../../../missions/mission';
 import { isAiControlled } from '../../../missions/playerOrder';
@@ -39,7 +40,6 @@ export type AiAction = 'destroy' | 'sabotage' | 'protect' | 'none';
 
 /** The AI reaches a site within this many sectors of one of its colonies. */
 const REACH_SECTORS = 14;
-const T = IntelligenceMissionType;
 
 function personality(e: Empire): { aggression: number; caution: number; friendly: number } {
     return { aggression: (aggressionLevel(e) - 100) / 50, caution: (cautionLevel(e) - 100) / 50, friendly: (friendlinessLevel(e) - 100) / 50 };
@@ -91,7 +91,7 @@ function freeAgents(e: Empire): Character[] {
     return getEmpireCharacters(e).filter((c) => {
         if (c === null || !c.active || c.role !== CharacterRole.IntelligenceAgent) return false;
         const m = characterMission(c);
-        return m === null || m.type === T.Undefined || m.type === T.CounterIntelligence;
+        return m === null || m.type === IntelligenceMissionType.Undefined || m.type === IntelligenceMissionType.CounterIntelligence;
     });
 }
 
@@ -100,7 +100,7 @@ function sendSpy(galaxy: Galaxy, work: GreatWorkRecord, e: Empire, menace: numbe
     const base = work.base!;
     const p = e.policy;
     if (compact === null || p == null) return false;
-    const type = menace >= 0.6 && p.intelligenceAllowMissionDestroyBase ? T.DestroyBase : p.intelligenceAllowMissionSabotageConstruction ? T.SabotageConstruction : null;
+    const type = menace >= 0.6 && p.intelligenceAllowMissionDestroyBase ? IntelligenceMissionType.DestroyBase : p.intelligenceAllowMissionSabotageConstruction ? IntelligenceMissionType.SabotageConstruction : null;
     if (type === null || checkWhetherTargetOfIntelligenceMission(e, compact, base, type)) return false;
     const now = galaxyStarDate(galaxy);
     let best: { agent: Character; mission: IntelligenceMission; margin: number } | null = null;
@@ -122,7 +122,14 @@ function sendSpy(galaxy: Galaxy, work: GreatWorkRecord, e: Empire, menace: numbe
 
 function sendPatrol(galaxy: Galaxy, work: GreatWorkRecord, e: Empire): boolean {
     const base = work.base!;
-    const fleet = findNearestAvailableFleet(galaxy, e, base.xpos, base.ypos, BuiltObjectMissionPriority.Low, 0, FleetPosture.Defend, true, 0.1, false, true, false, true);
+    // One patrol fleet per empire, and never the last of its fleets: it keeps its home defence.
+    const groups = empireShipGroups(e).filter((x) => x !== null);
+    if (groups.length < 3) return false;
+    for (const g of groups) {
+        const m = g.mission;
+        if (m !== null && m.type === BuiltObjectMissionType.Patrol && m.targetBuiltObject === base) return true;
+    }
+    const fleet = findNearestAvailableFleet(galaxy, e, base.xpos, base.ypos, BuiltObjectMissionPriority.Low, 0, FleetPosture.Defend, true, 0.1, false, true, false, false);
     if (fleet === null || fleet.leadShip === null || !isAiControlled(fleet.leadShip)) return false;
     if (!shipGroupCheckFleetTargetWithinFuelRangeAndRefuel(galaxy, fleet, base.xpos, base.ypos, 0.1)) return false;
     return shipGroupAssignMission(galaxy, fleet, BuiltObjectMissionType.Patrol, base, null, BuiltObjectMissionPriority.Normal, true);

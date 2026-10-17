@@ -60,6 +60,7 @@ export function greatWorkShares(galaxy: Galaxy, site: GreatWorkSite): GreatWorkS
     const cut = holder !== null ? 0 : Math.min(1, Math.max(0, gwParam(galaxy, 'giantworksCompactCutPct') / 100));
     const rest = 1 - cut;
     const out: GreatWorkShare[] = [];
+    if (owner === null && !internationalised(galaxy)) return [{ empire: compact, share: 1, role: 'compact' }]; // nobody's territory: the Compact keeps it all
     if (cut > 0) out.push({ empire: compact, share: cut, role: 'compact' });
     if (internationalised(galaxy)) {
         const c = dietCouncil(galaxy);

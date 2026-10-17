@@ -267,6 +267,11 @@ export function registerThreatSpawn(spec: ThreatSpawnSpec): void {
     threatSpawns().set(spec.key, spec);
 }
 
+/** Removes a spawn entry (a test's throw-away wonder). */
+export function unregisterThreatSpawn(key: string): void {
+    threatSpawns().delete(key);
+}
+
 /** The threats the Game Editor can spawn, with a disabled-note each (group, then key order). Pure. */
 export function spawnableThreats(galaxy: Galaxy): { key: string; label: string; group: 'empire' | 'galactic'; note: string | null }[] {
     return [...threatSpawns().values()].sort((a, b) => (a.group === b.group ? (a.key < b.key ? -1 : 1) : a.group === 'empire' ? -1 : 1)).map((t) => ({ key: t.key, label: t.label, group: t.group, note: t.note(galaxy) }));
