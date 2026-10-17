@@ -62,11 +62,21 @@ export function registerCrisisHelpers(key: string, provider: (galaxy: Galaxy, fa
     helperProviders.set(key, provider);
 }
 
-/** The crisis's faction while it is loose (exists, active); null before it wakes / after it falls. Pure. */
+/** The crisis's faction while it exists (active); null before it wakes / after it falls. Pure. */
 export function crisisFaction(galaxy: Galaxy, entry: CrisisEntry): Empire | null {
     const st = peekThreatState<{ faction?: Empire | null }>(galaxy, entry.key);
     const f = st?.faction ?? null;
     return f !== null && f.active ? f : null;
+}
+
+/**
+ * True once the threat is over (the Purifier destroyed, the Cult / Hive contained, a Generation Ships arc ended): its faction empire
+ * can outlive that, but it is no longer loose, so the council does not table it and nobody is marked down for sitting it out. The
+ * events of the final blow are still booked (the killer's credit is read at the next yearly check). Pure.
+ */
+export function crisisOver(galaxy: Galaxy, entry: CrisisEntry): boolean {
+    const st = peekThreatState<{ ended?: boolean; phase?: string }>(galaxy, entry.key);
+    return st?.ended === true || st?.phase === 'ended';
 }
 
 /** Every crisis whose faction is loose right now (registry order). Pure. */
@@ -77,7 +87,7 @@ export function activeCrises(galaxy: Galaxy): { entry: CrisisEntry; faction: Emp
     for (const entry of CRISIS_ENTRIES) {
         if (s.flags[entry.flag] !== true) continue;
         const faction = crisisFaction(galaxy, entry);
-        if (faction !== null) out.push({ entry, faction });
+        if (faction !== null && !crisisOver(galaxy, entry)) out.push({ entry, faction });
     }
     return out;
 }
@@ -358,13 +368,19 @@ function regardFor(galaxy: Galaxy, e: Empire, faction: Empire, value: number, ca
 
 export function crisisYearly(galaxy: Galaxy, entry: CrisisEntry): void {
     const faction = crisisFaction(galaxy, entry);
-    if (faction === null) return;
+    if (faction === null) {
+        // The refugees' crowding fades on its own even when the crisis is over.
+        const old = peekThreatState<CrisisState>(galaxy, 'crisis');
+        if (old !== null && old.crowding.length > 0) old.crowding = old.crowding.filter((c) => c.until > galaxyStarDate(galaxy));
+        return;
+    }
     const st = crisisState(galaxy);
     const now = galaxyStarDate(galaxy);
     st.seen[entry.key] ??= now;
     st.crowding = st.crowding.filter((c) => c.until > now);
     if (!reputationOn(galaxy)) return;
     ensureCrisisTexts();
+    const over = crisisOver(galaxy, entry);
     const radius = P.regionSectors(galaxy) * galaxy.sectorSize;
     const seenYears = (now - st.seen[entry.key]) / YEAR_LENGTH;
     for (const e of crisisNormals(galaxy, faction)) {
@@ -378,7 +394,7 @@ export function crisisYearly(galaxy: Galaxy, entry: CrisisEntry): void {
             st.done[dk] = true;
             regardFor(galaxy, e, faction, P.repHelp(galaxy), `crisis.help.${entry.key}`, 'Reputation Cause crisis.help');
             if (isHumanEmpire(galaxy, e)) scenarioMessage(galaxy, e, scenarioText('Crisis Rep Title'), scenarioText('Crisis Rep Helped', entry.label), { type: EmpireMessageType.GeneralGoodEvent, popup: false });
-        } else if (points === 0 && seenYears >= P.sitYears(galaxy) && (st.near[k] ?? 0) >= P.sitYears(galaxy)) {
+        } else if (points === 0 && !over && seenYears >= P.sitYears(galaxy) && (st.near[k] ?? 0) >= P.sitYears(galaxy)) {
             const dk = `crisis.sit.${entry.key}:${e.empireId}`;
             if (st.done[dk]) continue;
             st.done[dk] = true;

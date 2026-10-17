@@ -1491,8 +1491,11 @@ describe('crisis interactions', () => {
             if (r !== null && r.type === DiplomaticRelationType.War) r.type = DiplomaticRelationType.None;
         }
         const crisisRep = (x: Empire, y: Empire): number => reputationCauses(g, x, y).filter((e) => e.cause.startsWith('crisis.')).reduce((n, e) => n + e.value, 0);
-        for (let i = 0; i < 3; i++) scenarioEmit(g, 'builtObjectKilledBy', { builtObject: st.destroyer!, destroyer: b });
+        // (Escorts, not the destroyer: its death ends the Purifier, and an ended crisis marks nobody down for sitting it out.)
+        const escort = st.escorts[0] ?? st.destroyer!;
+        for (let i = 0; i < 3; i++) scenarioEmit(g, 'builtObjectKilledBy', { builtObject: escort, destroyer: b });
         const cs = crisisState(g);
+        expect(st.phase).toBe('awake');
         expect(cs.fight[`purifier:${b.empireId}`].kills).toBe(3);
         crisisYearly(g, PURIFIER);
         const gain = crisisRep(a, b);
@@ -1538,6 +1541,33 @@ describe('crisis interactions', () => {
         const ship = a.builtObjects.find((b) => !b.hasBeenDestroyed)!;
         scenarioEmit(g, 'builtObjectKilledBy', { builtObject: ship, destroyer: st.faction! });
         expect(cs.harmed.purifier).toBe(true);
+    }, 600000);
+
+    it('over: a crisis that has ended (the Purifier destroyed) is no longer loose: no sit-out marks, not tabled, but the killer is still credited', () => {
+        const g = woken();
+        const st = purifierState(g);
+        const [a, b, c] = normals(g);
+        for (const x of [a, b, c]) for (const y of [a, b, c]) if (x !== y) meet(x, y);
+        const cs = crisisState(g);
+        expect(activeCrises(g).map((x) => x.entry.key)).toEqual(['purifier']);
+        // The killing blow ends the Purifier (its own handler), then the crisis books the kill.
+        for (let i = 0; i < 3; i++) scenarioEmit(g, 'builtObjectKilledBy', { builtObject: st.destroyer!, destroyer: a });
+        expect(st.phase).toBe('ended');
+        expect(cs.fight[`purifier:${a.empireId}`].kills).toBe(3);
+        expect(activeCrises(g)).toEqual([]);
+        // Its faction empire lingers next to c's colony for years, after harming someone: c is not marked down for sitting it out.
+        cs.harmed.purifier = true;
+        cs.seen.purifier = galaxyStarDate(g) - 5 * YEAR_LENGTH;
+        const home = c.colonies.find((x) => !x.hasBeenDestroyed)!;
+        st.destroyer!.xpos = home.xpos;
+        st.destroyer!.ypos = home.ypos;
+        crisisYearly(g, PURIFIER);
+        crisisYearly(g, PURIFIER);
+        crisisYearly(g, PURIFIER);
+        const crisisRep = (x: Empire, y: Empire): number => reputationCauses(g, x, y).filter((e) => e.cause.startsWith('crisis.')).reduce((n, e) => n + e.value, 0);
+        expect(crisisRep(b, c)).toBe(0);
+        expect(cs.done['crisis.sit.purifier:' + c.empireId]).toBeUndefined();
+        expect(crisisRep(b, a)).toBeGreaterThan(0); // the killer's credit is still booked
     }, 600000);
 
     it('council: tables a joint defence against the loose Purifier and condemns its exposed waker', () => {
