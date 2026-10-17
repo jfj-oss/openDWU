@@ -11,10 +11,12 @@ purifierArtUrl draws them for the Purifier faction's escorts and guards by subRo
 station - and base_0 for any other base of the faction, planetdestroyer for the Purifier itself). The Purifier (its
 planet destroyer) is a crescent: the stock other/planetdestroyer.png sphere kept exact and solid as a thin crescent
 hugging its left edge and curving round top and bottom (its colours, spikes, markers), the glowing core plate at the
-crescent's inner edge; right of it a half-built construction whose density falls off across the ship - a dense
-scaffold next to the plating (stock plating and machinery still on in panels, girders packed tight, partial ribs),
-sparser toward the right, the last girder ends reaching into empty space - all one connected structure, as the ship
-moves (build_purifier); threatArt.ts draws it 1.5x (PURIFIER_VISUAL_SCALE).
+crescent's inner edge; right of it a yard in mid-construction whose density falls off slowly and evenly across the
+ship - next to the plating dense scaffolding (girders packed tight, gantry frames with cabs, construction cranes with
+panels hanging off their jibs, plating panels in place and others still being fitted, dark interior decks behind,
+work lights), sparser toward the right, only a few girder ends reaching into empty space at the far right - all one
+connected structure, as the ship moves; small enclosed gaps filled with dark metal (build_purifier); threatArt.ts
+draws it 1.5x (PURIFIER_VISUAL_SCALE).
 
     python3 -I scripts/purifier-ships.py [--dwu <DW:U install>] [--out public/art/purifier] [--preview <dir>]
         [--only frigate,base_1]
@@ -1667,13 +1669,21 @@ def build_purifier(root, xs, cols, rng):
     xin = icx - np.sqrt(np.clip(PD_IR ** 2 - (yy - icy) ** 2, 0, None))
     xr = cx + np.sqrt(np.clip(PD_R ** 2 - (yy - cy) ** 2, 0, None))
     u = np.clip((xx - xin) / np.maximum(xr - xin, 1), 0, 1)
-    dens = (1 - u) ** 0.75
+    dens = 1 - u  # a slow, even falloff
     # partial plating: the stock hull left on in panels (12 px cells, jittered rows), dense near the plating
     cell = 12
     cj = ((yy // cell).astype(int) * 7) % cell
     cid = ((yy // cell).astype(int) * 997 + ((xx + cj) // cell).astype(int)) % 4096
     ch = rng.random(4096)
-    panels = hollow & (rr < PD_R) & (ch[cid] < dens * 1.02 - 0.06)
+    panels = hollow & (rr < PD_R) & (ch[cid] < dens * 0.95 - 0.04)
+    # behind the construction, the inside of the hull: decks and bulkheads in dark metal, in larger cells, solid near
+    # the plating and fewer toward the right (so the gaps between panels show dark structure there, space further on)
+    cell2 = 18
+    cid2 = ((yy // cell2).astype(int) * 613 + ((xx + ((yy // cell2).astype(int) * 5) % cell2) // cell2).astype(int)) % 4096
+    ch2 = rng.random(4096)
+    backing = hollow & (rr < PD_R * 0.985) & (ch2[cid2] < (dens - 0.3) / 0.45)
+    # panels being fitted: some near the plating not yet in place (shifted a few px, a shadow under them)
+    fitting = panels & (ch[cid] < dens * 0.25) & (dens > 0.45)
     # partial ribs: bare frames (projected meridians) part of their length, thinner toward the right
     ribs = np.zeros((H0, W0), bool)
     dy = np.clip((yy - cy) / PD_R, -1, 1)
@@ -1687,13 +1697,21 @@ def build_purifier(root, xs, cols, rng):
     rx, ry = cx + ux * PD_R * 0.97, cy + uy * PD_R * 0.97
     root_hollow = np.hypot(rx - icx, ry - icy) < PD_IR - 6
     outside = rr > PD_R
-    keep = (~hollow & ~(outside & root_hollow)) | core | ribs | panels
+    keep = (~hollow & ~(outside & root_hollow)) | core | ribs | panels | backing
     keep &= ~(outside & (xx > cx + 20) & root_hollow)
     a = src[..., 3] * keep
     rgb = src[..., :3].copy()
     # panel edges crisp: lit top / left rims, dark bottom / right, the panels a little darker than the plating
+    bk = backing & ~panels & ~ribs & ~core
+    rgb[bk] = src[..., :3][bk] * 0.42 + 0.03  # dark interior metal
+    a = np.where(bk, 1.0, a)
+    deck = bk & ((yy.astype(int) % 9) == 0)
+    rgb[deck] = rgb[deck] * 1.8 + 0.03
     pm = panels & (src[..., 3] > 0.5)
     rgb[pm] *= 0.86
+    fy_, fx_ = np.nonzero(fitting & (src[..., 3] > 0.5))
+    rgb[np.clip(fy_ + 3, 0, H0 - 1), np.clip(fx_ + 3, 0, W0 - 1)] *= 0.55  # its shadow on what is behind
+    rgb[fy_, fx_] = np.clip(src[np.clip(fy_ - 3, 0, H0 - 1), np.clip(fx_ - 2, 0, W0 - 1), :3] * 0.95 + 0.03, 0, 1)
     pl = pm & ~(shift(pm, 1, 0) & shift(pm, 0, 1))
     rgb[pl] = np.clip(rgb[pl] * 1.35 + 0.04, 0, 1)
     pd_ = pm & ~(shift(pm, -1, 0) & shift(pm, 0, -1))
@@ -1724,12 +1742,12 @@ def build_purifier(root, xs, cols, rng):
     tips = []
     base = (a > 0.5) & hollow
     ys_b, xs_b = np.nonzero(base)
-    for k in range(170):
+    for k in range(230):
         i_ = int(rng.integers(len(ys_b)))
         y0, x0 = ys_b[i_], xs_b[i_]
         d0 = dens[y0, x0]
         uu = u[y0, x0]
-        if rng.random() > 0.35 + 0.65 * d0 and uu < 0.8:
+        if rng.random() > 0.08 + 0.92 * d0:
             continue
         # scaffolding, not a heap: mostly level and upright members, some braces at 45 deg
         r_ = rng.random()
@@ -1739,9 +1757,9 @@ def build_purifier(root, xs, cols, rng):
             phi = float(rng.uniform(82, 98) * (1 if rng.random() < 0.5 else -1))
         else:
             phi = float(rng.choice([45, -45, 135, -135]) + rng.uniform(-6, 6))
-        if uu > 0.6:
-            phi = float(rng.uniform(-12, 12))  # the far ones reach out to the right
-        ln = rng.uniform(16, 34) + 36 * uu
+        if uu > 0.6 and rng.random() < 0.5:
+            phi = float(rng.uniform(-20, 20))  # some of the far ones reach out to the right
+        ln = rng.uniform(12, 28) + 44 * uu
         wd = max(4.0, rng.uniform(5, 8) * (1 - 0.35 * uu))
         th = math.radians(phi)
         gx0, gy0 = x0 + ox, y0 + oy
@@ -1751,6 +1769,36 @@ def build_purifier(root, xs, cols, rng):
               shadow=0.3, marks=False, mat='thin', gain=0.85)
         if uu > 0.5 and cut_ is None:
             tips.append((ex, ey))
+    # the yard's machinery next to the plating: gantry frames straddling the work (two towers and a bridge with its
+    # cab), construction cranes on the plating's inner edge with a panel hanging off each jib
+    def xin_at(y):
+        return icx - math.sqrt(max(0.0, PD_IR ** 2 - (y - icy) ** 2)) + ox
+
+    def beam(x0, y0, phi, ln, wd):
+        th = math.radians(phi)
+        ex, ey = x0 + math.cos(th) * ln, y0 + math.sin(th) * ln
+        c.put(truss(int(wd), int(ln), rail=2, bay=int(wd) + 2), (x0 + ex) / 2, (y0 + ey) / 2, rot=90 - phi, shadow=0.35,
+              marks=False, mat='thin', gain=0.9)
+        return ex, ey
+
+    for (yc_, du, h_) in ((-95, 26, 70), (10, 40, 84), (100, 30, 64)):
+        gy0 = cy + yc_ + oy
+        x1 = xin_at(cy + yc_) + du
+        x2 = x1 + rng.uniform(34, 46)
+        beam(x1, gy0 + h_ / 2, -90, h_, 7)
+        beam(x2, gy0 + h_ / 2, -90, h_ * rng.uniform(0.75, 1.0), 7)
+        beam(x1 - 4, gy0 - h_ / 2 + 4, 0, x2 - x1 + 8, 8)
+        c.put(plate(14, 10, chamfer=0.1, seams=()), (x1 + x2) / 2, gy0 - h_ / 2 + 10, shadow=0.4, marks=False, mat='gun')
+    for (yc_, phi, ln) in ((-130, 16, 92), (-30, -8, 80), (70, 10, 86), (140, -20, 70)):
+        bx = xin_at(cy + yc_) - 4
+        by = cy + yc_ + oy
+        c.put(dome(5.5), bx, by, shadow=0.4, marks=False, mat='gun')
+        ex, ey = beam(bx, by, phi, ln, 9)
+        beam(bx, by, phi + 180, ln * 0.22, 9)
+        c.put(antenna(16, w=2.2, bars=(), rings=(), light=False), ex - 2, ey + 9, shadow=0.2, flipy=True)
+        c.put(plate(16, 12, chamfer=0.15, seams=(0.5,)), ex - 2, ey + 22, rot=float(rng.uniform(-12, 12)), shadow=0.45,
+              marks=False)
+        tips.append((ex, ey))
     L, A, _, T, M = c.result()
     sc, _ = paint(L, A, T, M, xs, cols, SS)
     A = np.clip(down(A, S_, S_), 0, 1)
@@ -1778,16 +1826,25 @@ def build_purifier(root, xs, cols, rng):
     al = al + gl
     out = np.clip(out / np.maximum(al, 1e-6)[..., None] * (al > 0)[..., None], 0, 1)
     # work lights on the framework
-    fr = body & (gx > PD_CORE[0] + ox)
-    for (ly, lx) in pick_points(rng, fr, 8, 30):
+    fr = body & (gx > PD_CORE[0] + ox - 60) & (gx < PD_CORE[0] + ox + 120)
+    for (ly, lx) in pick_points(rng, fr, 14, 22):
         dd = np.hypot(gx - lx, gy - ly)
         gw = np.clip(1 - dd / 6, 0, 1) ** 2 * 0.6 * (al > 0.5)
         out = out * (1 - gw[..., None]) + np.array([1.0, 0.9, 0.65]) * gw[..., None]
         out[ly, lx] = (1.0, 0.98, 0.9)
     solid = al > 0.5
-    ring_ = dilate(solid, 1) & ~solid & (al < 0.3)
+    border = np.zeros((S_, S_), bool)
+    border[0, :] = border[-1, :] = border[:, 0] = border[:, -1] = True
+    exterior = connected_to(border, ~solid)
+    ring_ = dilate(solid, 1) & ~solid & (al < 0.3) & exterior
     out[ring_] = np.array([0.025, 0.02, 0.016])
     al[ring_] = np.maximum(al[ring_], 0.6)
+    # small enclosed gaps in the framework: dark metal, not black holes
+    gaps = ~solid & ~exterior
+    big = dilate(~dilate(~gaps, 3), 4)  # what survives an opening of 3 px: real openings, left to show space / glow
+    gaps &= ~big
+    out[gaps] = out[gaps] * al[gaps][:, None] + np.array([0.09, 0.08, 0.07]) * (1 - al[gaps][:, None])
+    al[gaps] = 1.0
     res = np.zeros((S_, S_, 4), np.uint8)
     res[..., :3] = np.round(out * 255)
     res[..., 3] = np.round(np.clip(al, 0, 1) * 255)
