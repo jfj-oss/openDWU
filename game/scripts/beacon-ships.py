@@ -27,7 +27,8 @@ symlink npm run import-assets makes). Python 3 with numpy and Pillow only. Deter
   mirrored and meshed into new ships, each with a contact shadow on what is below. The warships are long and slim:
   every piece's legs and side spines are cut away (body_mask: a morphological opening of its alpha) and the bodies
   drawn out lengthwise; the escort, frigate, troop transport and utility ship have no legs, the destroyer and cruiser
-  carry a pair laid back along their flanks, the capital ship its side spines swept back. Every piece but the reference's is
+  carry a pair laid back along their flanks, the capital ship (the biggest and heaviest) its side spines swept back
+  and the Watcher's own tapering tail. Every piece but the reference's is
   graded to the reference's palette (its hull luminance matched to the carrier's, its colour to the carrier's neutral
   gunmetal per luminance band, a trace of its own hue kept), its cyan lights to the carrier's cyan.
 - The light: each frame bakes its lines at rest; <file>-fx.png holds their swell (beaconFx.ts breathes it) and a soft
@@ -817,33 +818,37 @@ def design_destroyer(kit):
 
 
 def design_cruiser(kit):
-    """The cruiser: the cruiser's horned head and body drawn out long, its two legs a side laid back along its flanks."""
-    cv = Canvas(680)
+    """The cruiser: the cruiser's horned head and broad body drawn out long, its two legs a side laid back along its
+    flanks."""
+    cv = Canvas(760)
     c_cr = col(kit, 'cruiser')
     legs = leg_piece(kit, 'cruiser', (150, 146, 216, 208), 208)
-    cv.place(legs, -34, -86, anchor=(206, 162), scale=0.95, rot=70, mirror=True, under=True)
+    cv.place(legs, -41, -88, anchor=(206, 162), scale=1.15, rot=70, mirror=True, under=True)
     body = body_only(kit, 'cruiser', keep_top=96, deeye=True)
-    cv.place(body, 0, 0, anchor=(c_cr, 250), scale=0.95, sy=1.3)
-    cv.line(kit.pal, [(-44, -60), (0, -40), (44, -60)])
-    cv.line(kit.pal, [(0, -170), (0, 270)], dash=(7, 3))
-    cv.line(kit.pal, [(-12, 120), (-40, 160)], mirror=True)
+    cv.place(body, 0, 0, anchor=(c_cr, 250), scale=1.15, sy=1.1)
+    cv.line(kit.pal, [(-53, -61), (0, -41), (53, -61)])
+    cv.line(kit.pal, [(0, -174), (0, 276)], dash=(7, 3))
+    cv.line(kit.pal, [(-15, 123), (-48, 164)], mirror=True)
     return cv
 
 
 def design_capitalship(kit):
-    """The capital ship (the longest): the capital ship's spiked silver front and body, its side spines swept back
-    along its flanks, the colony ship's rear behind (its spines gone)."""
-    cv = Canvas(840)
-    c_cap, c_col = col(kit, 'capitalship'), col(kit, 'colonyship')
-    rear = body_only(kit, 'colonyship', rows=(300, 500), thick=21)
-    cv.place(rear, 0, 62, anchor=(c_col, 300), scale=0.95, sy=1.2)
+    """The capital ship (the biggest, heaviest and longest): the capital ship's spiked silver front and broad body,
+    its side spines swept back along its flanks, ending in the Watcher's own tapering tail (its thick middle spike
+    between flat blades)."""
+    cv = Canvas(1000)
+    c_cap, c_car = col(kit, 'capitalship'), col(kit, 'carrier')
+    S, SY = 1.42, 1.02   # the front: broad, long
+    tail = kit.cut('carrier', keep=lambda X, Y: smoothstep(318, 326, Y))
+    cv.place(tail, 0, -14, anchor=(c_car, 318), scale=1.36, sy=1.12)
+    k = S * SY
     spines = leg_piece(kit, 'capitalship', (140, 162, 214, 296), 206)
-    cv.place(spines, -40, -86, anchor=(206, 170), scale=0.95, rot=36, mirror=True, under=True, sy=1.1)
-    front = body_only(kit, 'capitalship', rows=(0, 420), keep_top=150)
-    cv.place(front, 0, 100, anchor=(c_cap, 420), scale=0.95, sy=1.15)
-    cv.line(kit.pal, [(-56, -170), (0, -146), (56, -170)])
-    cv.line(kit.pal, [(0, -300), (0, 360)], dash=(8, 3))
-    cv.line(kit.pal, [(-14, 190), (-46, 240)], mirror=True)
+    cv.place(spines, -57, (170 - 312) * k + 17, scale=S, rot=36, anchor=(206.0, 170.0), mirror=True, under=True, sy=1.0)
+    front = body_only(kit, 'capitalship', rows=(0, 312), keep_top=150)
+    cv.place(front, 0, 17, anchor=(c_cap, 312), scale=S, sy=SY)
+    cv.line(kit.pal, [(-66, (180 - 312) * k), (0, (180 - 312) * k + 26), (66, (180 - 312) * k)])
+    cv.line(kit.pal, [(0, (40 - 312) * k), (0, -20)], dash=(8, 3))
+    cv.line(kit.pal, [(-74, (276 - 312) * k), (0, (276 - 312) * k + 28), (74, (276 - 312) * k)])
     return cv
 
 

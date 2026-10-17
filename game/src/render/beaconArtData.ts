@@ -38,14 +38,14 @@ export const BEACON_FRAMES: Readonly<Record<string, BeaconFrameArt>> = {
         glow: { x: 0, y: 0, w: 103, h: 283, dx: 152, dy: 98 },
     },
     cruiser: {
-        size: 564,
+        size: 574,
         breath: 6.40,
-        glow: { x: 0, y: 0, w: 96, h: 322, dx: 234, dy: 144 },
+        glow: { x: 0, y: 0, w: 116, h: 328, dx: 229, dy: 147 },
     },
     capitalship: {
-        size: 586,
+        size: 716,
         breath: 7.40,
-        glow: { x: 0, y: 0, w: 138, h: 531, dx: 224, dy: 46 },
+        glow: { x: 0, y: 0, w: 198, h: 419, dx: 259, dy: 44 },
     },
     carrier: {
         size: 580,
