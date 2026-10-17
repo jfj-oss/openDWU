@@ -151,8 +151,8 @@ describe('generation ships art', () => {
     });
 });
 
-// The Purifier's escorts and dock (scripts/purifier-ships.py: lopsided war-forged machines in the planet destroyer's
-// silver / champagne / copper with lit antennas, a half-ruined shipyard); the planet destroyer itself keeps its stock frame.
+// The Purifier's escorts and dock (scripts/purifier-ships.py: meshed stock hulls in the planet destroyer's silver /
+// champagne / copper with lit antennas, a half-ruined shipyard); the planet destroyer itself keeps its stock frame.
 describe('purifier art', () => {
     const png = (f: string): string => resolve(__dirname, '../public/art/purifier', `${f}.png`);
     const faction = {} as Empire;
