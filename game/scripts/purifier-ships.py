@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """The Purifier's escort and dock art (Galactic Threats add-on): "war-forged", the planet destroyer's sister ships
-after ages of fighting, broken war machines refitted round one great weapon each. Hulls of our own outline (angled
-armour, wedge prows, stepped shoulders) with stock detail cut up and set into them: parts of the AncientHelpers set
-(the planet destroyer's own family: champagne and silver plates, copper rods) in their own colours, machinery from the
-Shakturi, Freedom Alliance and Phantom Pirates sets painted in the destroyer's metal, so no stock ship is recognisable.
-Battered: missing plates exposing the ribbed frame inside, gouges, craters, scorch, melted edges, gunmetal / steel
-patches welded over old holes, chipped edges.
+after ages of fighting, broken war machines each rebuilt round one main feature. Hulls of our own outline (angled
+armour, wedge prows, stepped shoulders) skinned with real stock hull detail: a mosaic of solid windows cut from the
+warships of every race family and the major sets (the AncientHelpers ones - the planet destroyer's own family - in
+their own colours, the rest painted in the destroyer's metal), pasted 1:1 at the supersampled resolution with hard
+plate edges, so the surface keeps the stock hand-painted detail while no stock ship is recognisable. Battered:
+missing plates exposing the ribbed frame inside, gouges, craters, scorch, melted edges, gunmetal / steel patches
+welded over old holes, chipped edges. A busy, spiky outline: masts, whips, dishes, spikes, fins and small turrets
+all round the edge, as the planet destroyer's spikes.
 Offline build step; the outputs are our derived art, committed under public/art/purifier/ (src/render/threatArt.ts
 purifierArtUrl draws them for the Purifier faction's escorts and guards by subRole, base_1 for its dock - the repair
 station - and base_0 for any other base of the faction). The planet destroyer itself keeps the stock
@@ -14,22 +16,26 @@ other/planetdestroyer.png: the one unbroken weapon, the only one with a glowing 
     python3 -I scripts/purifier-ships.py [--dwu <DW:U install>] [--out public/art/purifier] [--preview <dir>]
         [--only frigate,base_1]
 
-Reads images/units/ships/other/MajorSets/{AncientHelpers,Shakturi,FreedomAlliance,PhantomPirates}/<file>.png and
+Reads images/units/ships/family*/<role>.png, images/units/ships/other/MajorSets/*/<file>.png and
 other/planetdestroyer.png from the install (default public/assets/dwu, the symlink npm run import-assets makes). Needs
 Python 3 with numpy and Pillow only. Deterministic (fixed seeds per output).
 
 Per output frame (bow up, as the stock frames; square canvas with a margin for the masts):
-1. Assembly: a drawn hull per escort (our polygon outline shaded as faceted angled armour either side of a ridge, a
-   creased prow, seams, a spine), stock detail crops from four families re-scaled / rotated / flipped and clipped to
-   that outline, parts cut out of AncientHelpers frames along polygons (a curved leaf of armour, a copper rod rack),
-   the Shakturi station bodies for the dock and outpost, and procedural parts (tapered gun barrels with baffled
-   muzzle brakes and copper rings, turrets with mantlets, armoured gun collars, a sensor dish, a missile launcher,
-   antennas, rounded stepped bridge towers, curved fairings, weapon struts, engine blocks, an angled flight deck,
-   drop pods, see-through lattice trusses, the dock's cradle ring and clamp arms, drifting debris), layered back to
-   front, each casting a soft contact shadow on what is below. The stock pieces carry their shading (levelled
-   luminance), their native colour (AncientHelpers), their lights as a glow channel and their thruster (pure blue) /
-   light (pure yellow) marker pixels as points, mapped through each placement and dropped where a later piece covers
-   them (the drawn engine blocks carry the escorts' thrusters).
+1. Assembly, at SS x the output resolution: a drawn hull base per escort (our polygon), skinned by the plate mosaic
+   (cells between angled cuts and splits, each a solid window of a random stock warship pasted 1:1, flipped at
+   random, clipped to the cell with hard edges; crisp 1-px lit top-left rims, dark bottom-right rims and deep
+   seams; the cells to port of the ridge lit, to starboard in shadow), a volume light and a lit / dark edge band with
+   an inset panel line and rivets; three scales of detail on top: big (raised superstructure blocks: smaller stock
+   windows casting shadows), medium (turrets, collars, sensor domes, hangar doors, armour ribs, engine housings with
+   dim nozzle throats) and small (vents, hatches, small domes, pipe runs, rivet rows), rows of tiny lit windows; the
+   procedural parts (gun barrels, fairings, towers, the launcher, the flight deck) get stock shading multiplied in.
+   Parts cut out of AncientHelpers frames along polygons (a curved leaf of armour, a copper rod rack), the Shakturi
+   station bodies for the dock and outpost, trusses, drop pods, the dock's cradle ring and clamp arms and drifting
+   debris as before. Then the edge is dressed: whips and sensor masts (single and in fanned clusters), short spikes,
+   small dishes on stalks, fins, small turrets, vents and pipes planted round the outline pointing outward. Each
+   piece casts a soft contact shadow; the stock pieces carry their levelled shading, the AncientHelpers ones their
+   native colour, their lights as a glow channel and their thruster (pure blue) / light (pure yellow) marker pixels
+   as points, mapped through each placement and dropped where a later piece covers them.
    Asymmetric by design: one dominant feature on one side, counterweighted by armour / engine mass on the other: a
    small frigate with an offset sensor array (lattice mast, dish, long antennas) on a starboard sponson; a slim
    destroyer with a missile-launcher pod on a boom to port and a counterweight pod to starboard; a cruiser with a
@@ -37,21 +43,23 @@ Per output frame (bow up, as the stock frames; square canvas with a margin for t
    cannon the length of the hull and past the bow (its breech sunk into the hull, armoured collars), armour along the
    port flank and an offset bridge tower; a carrier with an angled flight deck to port (lanes, chevrons, landing
    lights, hangar lifts) and its superstructure to starboard; a troop transport with a drop-pod rack to port and a
-   ram prow. Like the planet destroyer's spikes, thin antennas and masts radiate past every outline (the dock's too),
-   their tips and beads pure-yellow nav-light markers, so they blink at runtime as the Purifier's own lights do.
+   ram prow. Some antenna tips and beads (at most 18 per frame, under the scan cap of 20) are pure-yellow nav-light
+   markers, so they blink at runtime as the planet destroyer's own spike lights do.
 2. Paint: the stock AncientHelpers pieces keep their own colour at the new value (a little toward the destroyer's
    ramp); procedural parts and the other families' pieces are gradient-mapped onto the planet destroyer's metal ramp
    (the median colour of its pixels per luminance band: silver, champagne, warm dark steel, a touch warmed as its
    champagne plates); guns in its dark steel, trims in its copper.
-3. Battle damage (never mirrored): grime, gunmetal / steel / dark champagne patches (seams, rivet rows, some
-   overhanging the hull edge), broad scorch, missing plates (a dark hole with the ribs and stringers inside, a torn lit
+3. Down to the output frame (Lanczos on the premultiplied colour, a light unsharp mask), then battle damage (never
+   mirrored): grime, gunmetal / steel / dark champagne patches (seams, rivet rows, some overhanging the hull edge),
+   broad scorch, missing plates (a dark hole with the ribs and stringers inside, a torn lit
    lip), skeletal breaches at the hull edge (the skin gone, space showing between the ribs, the edge rail of the
    outline left standing), impact craters (lit rim, cracks, soot halo), long gouges, shallow melted edges (slag rim,
    heat tint), small chips and fine pitting: the damage sits inside the silhouette, which keeps its shape. Value
    contrast: recesses darkened, raised detail lifted, lit metal on the outline's upper-left edges and shadow on the
    far ones, then a dark outline (1 px on the ships, 2 px on the stations) so the frames read on bright and red
    nebulae. Sized for the drawn sizes (about 60-130 px at the closest zoom, 15-35 px at play zoom).
-4. Lights: the core lights and lamps become small dim points of the destroyer's pale core light, a third of them dead.
+4. Lights: windows, lamps and nozzle throats become small dim points of the destroyer's pale light, a third dead;
+   sparse bright specular glints on the lit metal.
    The marker pixels are written back exactly ((0,0,255) thruster runs at the engines, (255,255,0) nav-light points),
    no other pixel left in either marker colour (ambientLayer.ts scanShipMarkers) and no opaque black
    (shipImageMetrics).
@@ -67,6 +75,7 @@ from PIL import Image, ImageDraw, ImageFilter
 HERE = os.path.dirname(os.path.abspath(__file__))
 GAME = os.path.dirname(HERE)
 LUM = np.array([0.299, 0.587, 0.114])
+SS = 2  # the frames are assembled at SS x and downsampled at the end (Lanczos + a light unsharp mask)
 FILES = ['frigate', 'destroyer', 'cruiser', 'capitalship', 'carrier', 'trooptransport', 'base_0', 'base_1']
 
 
@@ -189,6 +198,7 @@ class Piece:
         self.G = np.zeros_like(L) if G is None else G
         self.mats = mats or {}
         self.marks = marks or []
+        self.ss = False  # built at the SS resolution (placed 1:1), else scaled up by SS like the stock frames
 
     @classmethod
     def load(cls, root, name, crop=None, lo=0.03, hi=0.97, keep_marks=True, kit='AncientHelpers'):
@@ -198,7 +208,8 @@ class Piece:
         key = (name, crop, lo, hi, keep_marks, kit)
         if key in cls.cache:
             return cls.cache[key]
-        img = Image.open(os.path.join(root, 'MajorSets', kit, name + '.png')).convert('RGBA')
+        path = os.path.join(root, '..', kit, name + '.png') if kit.startswith('family') else os.path.join(root, 'MajorSets', kit, name + '.png')
+        img = Image.open(path).convert('RGBA')
         if crop is not None:
             img = img.crop(crop)
         a = np.asarray(img).astype(np.float64) / 255
@@ -292,11 +303,13 @@ class Piece:
 
 class Canvas:
     def __init__(self, w, h=None, pad=0):
-        """A w x h layout area (the coordinates every put uses), with `pad` px of margin all round for the masts."""
+        """A w x h layout area (the coordinates every put uses), with `pad` px of margin all round for the masts; the
+        pixels are SS x finer (self.w / self.h, the marks in those px), the output frame (w + 2 pad) square."""
         h = w if h is None else h
         self.pad = pad
         self.w0 = w
-        w, h = w + 2 * pad, h + 2 * pad
+        self.out_w, self.out_h = w + 2 * pad, h + 2 * pad
+        w, h = self.out_w * SS, self.out_h * SS
         self.w, self.h = w, h
         self.L = np.zeros((h, w))  # premultiplied
         self.A = np.zeros((h, w))
@@ -306,12 +319,14 @@ class Canvas:
         self.marks = []            # (x, y, kind) canvas px
 
     def put(self, piece, cx, cy, scale=1.0, rot=0, flipx=False, flipy=False, shadow=0.55, gain=1.0, tone=0.0, mirror=False,
-            sx=1.0, sy=1.0, mat=None, marks=True, glow=1.0, clip=None):
-        """Layer a piece over the canvas centred at (cx, cy). `mirror`: also at the mirrored x. `mat`: tag the
-        piece's pixels with a material (MATS). `clip`: a canvas mask the piece is cut to (detail set into a hull)."""
-        cy = cy + self.pad
+            sx=1.0, sy=1.0, mat=None, marks=True, glow=1.0, clip=None, edge=0.0):
+        """Layer a piece over the canvas centred at (cx, cy) (layout px). `mirror`: also at the mirrored x. `mat`: tag
+        the piece's pixels with a material (MATS). `clip`: a canvas mask the piece is cut to (detail set into a hull).
+        `edge`: crisp plate edges (a 1 px lit top-left rim, a dark bottom-right one and a deep seam outside it)."""
+        cy = (cy + self.pad) * SS
+        scale = scale if piece.ss else scale * SS
         for m in ([False, True] if mirror else [False]):
-            x = self.pad + (self.w0 - cx if m else cx)
+            x = (self.pad + (self.w0 - cx if m else cx)) * SS
             r = -rot if m else rot
             ch, pm = piece.transformed(scale, r, flipx != m, flipy, sx, sy)
             ph, pw = ch[1].shape
@@ -344,9 +359,29 @@ class Canvas:
             for k, mname in enumerate(MATS):
                 self.M[mname] = full[3 + k] + self.M[mname] * inv
             self.A = fa + self.A * inv
+            self.last = fa
+            if edge > 0:
+                self.crisp(fa > 0.5, edge)
             if marks:
                 for (mx, my, kind) in pm:
                     self.marks.append((mx + x0, my + y0, kind))
+
+    def crisp(self, inside, k=1.0):
+        """Plate edges, one output px wide (SS here): lit along the top / left rim of `inside`, dark along its bottom /
+        right rim, a deep seam on the surface just outside its bottom / right."""
+        up = np.ones_like(inside)
+        dn = np.ones_like(inside)
+        for d in range(1, SS + 1):
+            up &= shift(inside, d, 0) & shift(inside, 0, d)
+            dn &= shift(inside, -d, 0) & shift(inside, 0, -d)
+        lit = inside & ~up
+        dark = inside & ~dn & ~lit
+        out = dilate(inside, SS) & ~inside & (self.A > 0.5)
+        seam = out & ~(shift(inside, SS, 0) | shift(inside, 0, SS)) & (shift(inside, -SS, 0) | shift(inside, 0, -SS) | shift(inside, -SS, -SS))
+        a = self.A
+        self.L = np.where(lit, np.minimum(a, self.L * (1 + 0.4 * k) + 0.05 * k * a), self.L)
+        self.L = np.where(dark, self.L * (1 - 0.5 * k), self.L)
+        self.L = np.where(seam, self.L * (1 - 0.6 * k), self.L)
 
     def result(self):
         a = np.maximum(self.A, 1e-6)
@@ -385,64 +420,40 @@ def poly_mask(w, h, poly):
     return np.asarray(im.resize((w, h), Image.BOX)).astype(np.float64) / 255
 
 
-def hull(poly, bevel=1, round_=0.3, seams=(), spine=None, keel=None):
-    """A hull of our own outline, bow up: the polygon `poly` (px; corners bevelled `bevel` times) as an armoured
-    volume (shaded from its blurred outline: rounded flanks, a lit upper-left edge band, a dark far one), stock
-    plating ground in, armour seams (`seams`: (y, slope) lines across, angled), an optional raised spine strip
-    (`spine`: (x, y0, y1, width)) and a dark keel groove (`keel`: (x0, y0, x1, y1))."""
+def hull(poly, bevel=1, seams=(), spine=None, keel=None, s=1):
+    """The base of a hull of our own outline, bow up, at `s` px per layout px: the polygon `poly` (px; corners
+    bevelled `bevel` times) as a faceted armoured volume (two planes either side of a ridge, `spine`: (x, y0, y1,
+    width) in layout px, else the midline; a creased prow), stock plating ground in, armour seams (`seams`: (y, slope)
+    lines across), a dark keel groove (`keel`: (x0, y0, x1, y1)). The stock plate mosaic (plates()) covers most of
+    it; hull_light() then lights the planes and the edge band over the whole hull."""
     poly = chaikin(poly, bevel)
     w = int(math.ceil(max(p[0] for p in poly))) + 2
     h = int(math.ceil(max(p[1] for p in poly))) + 2
     A = poly_mask(w, h, poly)
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float64) + 0.5
     solid = A > 0.5
-    span = max(3.0, np.sqrt(solid.sum() / max(1, solid.any(1).sum())) * round_ * 4)
-    b = fblur(A, span * 0.5)
-    gy, gx = np.gradient(b)
-    nx, ny = -gx * span * 1.6, -gy * span * 1.6
-    # angled armour: two facets either side of a ridge (the row's midline, or the spine), a creased prow facet
     rows = solid.any(1)
     lft = np.where(rows, np.argmax(solid, 1), 0).astype(np.float64)
     rgt = np.where(rows, w - 1 - np.argmax(solid[:, ::-1], 1), 0).astype(np.float64)
-    ridge = (lft + rgt) / 2 if spine is None else np.full(h, float(spine[0]))
-    fx = np.tanh((xx - ridge[:, None]) / 1.2) * 0.52
+    ridge = (lft + rgt) / 2 if spine is None else np.full(h, float(spine[0]) * s)
+    nx = np.tanh((xx - ridge[:, None]) / (1.2 * s)) * 0.5
     y_top = np.argmax(rows) if rows.any() else 0
-    prow = yy < y_top + (h - y_top) * 0.2
-    fy = np.where(prow, -0.38, 0.06)
-    nx = np.clip(nx + fx, -1, 1)
-    ny = np.clip(ny + fy, -1, 1)
-    nz = np.sqrt(np.clip(1 - nx ** 2 - ny ** 2, 0.05, 1))
-    L = _shade(nx, ny, nz, amb=0.16, k=0.8)
-    crease = (np.abs(yy - (y_top + (h - y_top) * 0.2)) < 0.8) | (np.abs(xx - ridge[:, None]) < 0.7)
-    L = np.where(crease & solid, np.minimum(1, L * 1.3 + 0.04), L)
-    # a chamfered armour band round the outline (lit where it faces the light, dark on the far side), an inset
-    # panel line following the outline, rivets along it
-    dep = depth_inside(solid, 8)
-    bg = fblur(A, 2.0)
-    oy, ox = np.gradient(bg)
-    on = np.hypot(ox, oy) + 1e-6
-    face = (-(ox / on) * LIGHT[0] - (oy / on) * LIGHT[1])
-    band = solid & (dep <= 3)
-    L = np.where(band, L * np.where(face > 0.15, 1.35, np.where(face < -0.15, 0.55, 0.9)) + np.where(band & (face > 0.15), 0.05, 0), L)
-    L = np.where(solid & (dep == 6), L * 0.5, L)
-    L = np.where(solid & (dep == 7), np.minimum(1, L * 1.2), L)
-    L = np.where(solid & (dep == 4) & (((xx + yy).astype(int) % 6) == 0), L * 0.55, L)
-    L = tex(L, yy * 0.9, xx * 1.1 + 5, 0.34)
+    ny = np.where(yy < y_top + (h - y_top) * 0.2, -0.38, 0.06)
+    L = _shade(nx, ny, np.sqrt(np.clip(1 - nx ** 2 - ny ** 2, 0.05, 1)), amb=0.16, k=0.8)
+    L = tex(L, yy * 0.9 / s, xx * 1.1 / s + 5, 0.45)
     for (y, sl) in seams:
-        line = np.abs(yy - (y + sl * (xx - w / 2))) < 0.7
-        L = np.where(line, L * 0.4, L)
-        L = np.where(np.abs(yy - (y + 1.4 + sl * (xx - w / 2))) < 0.7, np.minimum(1, L * 1.25), L)
+        L = np.where(np.abs(yy - (y * s + sl * (xx - w / 2))) < 0.7 * s, L * 0.4, L)
     gold = np.zeros((h, w))
     if spine is not None:
-        sx_, y0, y1, sw = spine
+        sx_, y0, y1, sw = (q * s for q in spine)
         m = (np.abs(xx - sx_) < sw / 2) & (yy > y0) & (yy < y1)
-        L = np.where(m, np.where(xx < sx_ - sw / 2 + 1.5, np.minimum(1, L * 1.4 + 0.05), np.where(xx > sx_ + sw / 2 - 1.5, L * 0.5, L * 1.12)), L)
-        gold = np.where(m & (np.abs(xx - sx_) < 0.8), 0.7, gold)
+        L = np.where(m, np.where(xx < sx_ - sw / 2 + 1.5 * s, np.minimum(1, L * 1.4 + 0.05), np.where(xx > sx_ + sw / 2 - 1.5 * s, L * 0.5, L * 1.12)), L)
+        gold = np.where(m & (np.abs(xx - sx_) < 0.8 * s), 0.7, gold)
     if keel is not None:
-        x0, y0, x1, y1 = keel
+        x0, y0, x1, y1 = (q * s for q in keel)
         t = np.clip(((xx - x0) * (x1 - x0) + (yy - y0) * (y1 - y0)) / max(1e-6, (x1 - x0) ** 2 + (y1 - y0) ** 2), 0, 1)
         d = np.hypot(xx - (x0 + t * (x1 - x0)), yy - (y0 + t * (y1 - y0)))
-        L = np.where(d < 1.6, L * 0.35, L)
+        L = np.where(d < 1.6 * s, L * 0.35, L)
     return Piece(L, A, None, {'gold': gold * (A > 0.5)})
 
 
@@ -656,7 +667,11 @@ def engine(w, h):
     A = np.where(bell, 1.0, A)
     L = tex(L, yy * 1.1, xx * 1.6 + 21, 0.4)
     marks = [(x + 0.5, h - 1.5, 1) for x in range(int(w / 2 - bw1 / 2 + 2), int(w / 2 + bw1 / 2 - 1))]
-    return Piece(L, A, None, {'gun': np.where(bell, 1.0, 0.0)}, marks)
+    # the nozzle's throat: a dark ring and a dim glow deep inside (the exhaust itself is drawn at runtime)
+    throat = bell & (np.abs(bnx) < 0.55) & (tb > 0.35)
+    L = np.where(throat, 0.08, L)
+    G = np.where(throat & (np.abs(bnx) < 0.3) & (tb > 0.55), 0.45, 0.0)
+    return Piece(L, A, G, {'gun': np.where(bell, 1.0, 0.0)}, marks)
 
 
 def deck(w, h, lean=1):
@@ -754,7 +769,7 @@ def strut(w, length, bevel=2):
     return Piece(L, np.ones((length, w)), None, {'gun': np.full((length, w), 0.6)})
 
 
-def antenna(length, w=2.4, bars=(0.55,), beads=(), rings=(0.3, 0.75)):
+def antenna(length, w=2.4, bars=(0.55,), beads=(), rings=(0.3, 0.75), light=True):
     """A thin mast along y, tip up (the planet destroyer's spikes): tapering from `w` at the root to a hair at the
     tip, lit on its left edge, copper rings, small cross-bars at `bars` fractions, a nav light at the tip and at the
     `beads` fractions: pure-yellow marker points, so they blink at runtime with the stock nav lights as the
@@ -778,6 +793,9 @@ def antenna(length, w=2.4, bars=(0.55,), beads=(), rings=(0.3, 0.75)):
         A = np.where(m, 1.0, A)
         L = np.where(m, 0.6, L)
     G = np.zeros((length, W))
+    if not light:  # a plain whip / spike: no light
+        A[:1] = 0
+        return Piece(L, A, G, {'gold': gold * (A > 0.3)})
     knob = (np.abs(dx) < 1.3) & (yy < 4.5)  # the tip knob that carries the light
     A = np.where(knob, 1.0, A)
     A[:1] = 0
@@ -844,6 +862,132 @@ def collar(r, w):
     L = np.where(np.abs(yy - H / 2) < 0.6, L * 0.5, L)
     gold = ((np.abs(yy - H / 2 + 1.5) < 0.7) & ((xx.astype(int) % 4) == 0)).astype(np.float64)
     return Piece(L, A, None, {'gun': np.ones((H, W)), 'gold': gold})
+
+
+POOL = None  # the Pool of stock windows (main)
+
+
+class Pool:
+    """Fully opaque windows of stock warship frames (every race family and the major sets): the hull plates. A window
+    of w x h native px is a crop where every pixel is solid, so a plate pasted 1:1 at the SS resolution covers its
+    cell with the stock hand-painted detail."""
+
+    ROLES = ('capitalship', 'cruiser', 'carrier', 'destroyer', 'frigate', 'escort', 'trooptransport')
+
+    def __init__(self, root):
+        self.root = root
+        self.frames = []
+        ships = os.path.join(root, '..')
+        for fam in sorted(os.listdir(ships), key=lambda f: (len(f), f)):
+            if fam.startswith('family'):
+                for r in self.ROLES:
+                    if os.path.exists(os.path.join(ships, fam, r + '.png')):
+                        self.frames.append((fam, r))
+        for kit in ('AncientHelpers', 'Shakturi', 'ShakturiAllies', 'FreedomAlliance', 'PhantomPirates'):
+            for r in self.ROLES:
+                if os.path.exists(os.path.join(root, 'MajorSets', kit, r + '.png')):
+                    self.frames.append((kit, r))
+        self.integral = {}
+
+    def _ii(self, f):
+        if f not in self.integral:
+            kit, name = f
+            path = os.path.join(self.root, '..', kit, name + '.png') if kit.startswith('family') else os.path.join(self.root, 'MajorSets', kit, name + '.png')
+            a = np.asarray(Image.open(path).convert('RGBA'))[..., 3] > 230
+            self.integral[f] = np.pad(a.astype(np.int64).cumsum(0).cumsum(1), ((1, 0), (1, 0)))
+        return self.integral[f]
+
+    def window(self, rng, w, h, kits=None):
+        """A (kit, frame, crop) of a solid w x h window, from a random frame (of `kits` if given), or None."""
+        frames = [f for f in self.frames if kits is None or f[0] in kits or (kits == 'family' and f[0].startswith('family'))]
+        for _ in range(60):
+            f = frames[int(rng.integers(len(frames)))]
+            ii = self._ii(f)
+            H, W = ii.shape[0] - 1, ii.shape[1] - 1
+            if w > W or h > H:
+                continue
+            ys, xs = np.mgrid[0:H - h + 1:3, 0:W - w + 1:3]
+            tot = ii[ys + h, xs + w] - ii[ys, xs + w] - ii[ys + h, xs] + ii[ys, xs]
+            ok = np.argwhere(tot >= w * h)
+            if len(ok):
+                y, x = ok[int(rng.integers(len(ok)))]
+                y0, x0 = int(ys[y, x]), int(xs[y, x])
+                return f[0], f[1], (x0, y0, x0 + w, y0 + h)
+        return None
+
+
+def dome(r):
+    """A small sensor dome: a bright specular cap, a dark ring at its foot."""
+    s_ = int(math.ceil(2 * r)) + 2
+    yy, xx = np.mgrid[0:s_, 0:s_].astype(np.float64) + 0.5
+    nx, ny = (xx - s_ / 2) / r, (yy - s_ / 2) / r
+    rr = np.sqrt(nx ** 2 + ny ** 2)
+    A = np.clip((1 - rr) * r * 1.5, 0, 1)
+    L = _shade(nx, ny, np.sqrt(np.clip(1 - rr ** 2, 0, 1)), amb=0.12, k=0.8)
+    L = np.where(rr > 0.82, L * 0.4, L)
+    return Piece(L, A, None, {'gun': np.full((s_, s_), 0.4)})
+
+
+def door(w, h, slats=5):
+    """A hangar door / hatch block: a recessed frame, horizontal slats lit on top, dark between."""
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float64) + 0.5
+    L = np.full((h, w), 0.32)
+    t = (yy / h * slats) % 1
+    L = np.where(t < 0.25, 0.75, np.where(t > 0.8, 0.12, L))
+    fr = (xx < 1.5) | (yy < 1.5) | (xx > w - 1.5) | (yy > h - 1.5)
+    L = np.where(fr, np.where((xx < 1.5) | (yy < 1.5), 0.85, 0.15), L)
+    return Piece(L, np.ones((h, w)), None, {'gun': np.full((h, w), 0.5)})
+
+
+def ribs(w, h, pitch=4):
+    """A run of raised armour ribs across: lit top faces, dark gaps."""
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float64) + 0.5
+    t = yy % pitch
+    L = np.where(t < 1, 0.85, np.where(t < pitch - 1, 0.5, 0.1))
+    L = L * (0.85 + 0.3 * (1 - xx / w))
+    return Piece(L, np.ones((h, w)), None, {})
+
+
+def greeble(kind, k, rng):
+    """One small surface detail at the SS resolution (k px per output px): a vent (slats), a hatch (bevelled square),
+    a small dome, a pipe run (a lit tube along a short path) or a rivet row."""
+    if kind == 'vent':
+        w, h = int(k * rng.integers(4, 8)), int(k * rng.integers(3, 6))
+        yy, xx = np.mgrid[0:h, 0:w].astype(np.float64)
+        L = np.where((yy.astype(int) // k) % 2 == 0, 0.12, 0.6)
+        L[:k] = 0.85
+        L[:, :k] = np.maximum(L[:, :k], 0.7)
+        L[-k:] = 0.15
+        p = Piece(L, np.ones((h, w)))
+    elif kind == 'hatch':
+        n = int(k * rng.integers(3, 6))
+        L = np.full((n, n), 0.42)
+        L[:k] = L[:, :k] = 0.9
+        L[-k:] = 0.12
+        L[:, -k:] = 0.12
+        c_ = n // 2
+        L[c_ - k // 2:c_ + k // 2 + 1, c_ - k // 2:c_ + k // 2 + 1] = 0.15
+        p = Piece(L, np.ones((n, n)))
+    elif kind == 'dome':
+        p = dome(k * rng.uniform(1.4, 2.6))
+    elif kind == 'pipe':
+        ln, th = int(k * rng.integers(6, 14)), max(2, int(k * 1.2))
+        yy, xx = np.mgrid[0:ln, 0:th].astype(np.float64) + 0.5
+        nx = (xx - th / 2) / (th / 2)
+        L = _shade(nx, np.zeros_like(nx), np.sqrt(np.clip(1 - nx ** 2, 0, 1)), amb=0.15, k=0.85)
+        L = np.where((yy.astype(int) % (3 * k)) < k * 0.6, L * 0.5, L)
+        p = Piece(L, np.ones((ln, th)), None, {'gun': np.full((ln, th), 0.5)})
+    else:  # rivets
+        n = int(rng.integers(4, 9))
+        w = n * 2 * k
+        L = np.zeros((k + 1, w))
+        A = np.zeros((k + 1, w))
+        for i in range(n):
+            A[:k, i * 2 * k:i * 2 * k + k] = 1
+            L[:k, i * 2 * k:i * 2 * k + k] = 0.9
+        p = Piece(L, A)
+    p.ss = True
+    return p
 
 
 def ring(R, tb, gaps=(), ribs=36, arms=()):
@@ -960,7 +1104,7 @@ EMBER = np.array([1.0, 0.96, 0.78])  # the destroyer's core light, only ever sma
 GOLD = np.array([0.62, 0.42, 0.25])
 
 
-def paint(L, A, T, M, xs, cols):
+def paint(L, A, T, M, xs, cols, s=1):
     """The destroyer's metal. The stock AncientHelpers pieces keep their own colour (champagne and silver plates,
     copper rods, dark steel machinery: the destroyer's family) at the new value; everything procedural is painted from
     the destroyer's ramp (silver / champagne by value); guns and mounts in its dark steel, trims in its copper gold;
@@ -968,7 +1112,7 @@ def paint(L, A, T, M, xs, cols):
     v = np.clip(L * 1.0 * (1 + T), 0, 1)
     v = np.where(v > 0.72, 0.72 + (v - 0.72) * 0.85, v)  # worn: the highlights only a little dulled
     # value contrast: darker recesses, brighter raised edges (so the hulls do not blur together at play zoom)
-    v = np.clip(v + (v - fblur(v * (A > 0.5), 2.5) / np.maximum(fblur((A > 0.5).astype(np.float64), 2.5), 1e-3)) * 0.8, 0, 1)
+    v = np.clip(v + (v - fblur(v * (A > 0.5), 2.5 * s) / np.maximum(fblur((A > 0.5).astype(np.float64), 2.5 * s), 1e-3)) * 1.1, 0, 1)
     ramp = np.clip(ramp_lookup(xs, cols, v) * np.array([1.02, 1.0, 0.97]), 0, 1)  # the destroyer's champagne plates
     nat = M['nat']
     c = np.stack([M['cr'], M['cg'], M['cb']], axis=2) / np.maximum(nat, 1e-3)[..., None]
@@ -1332,35 +1476,203 @@ def build(root, name, rng):
     LEAF = Piece.cut(root, 'cruiser', [(58, 112), (46, 150), (46, 210), (62, 262), (92, 298), (112, 300), (108, 262),
                                        (94, 210), (86, 160), (80, 120)])
     RODS = Piece.cut(root, 'capitalship', [(40, 6), (76, 6), (126, 165), (124, 215), (92, 215), (56, 120)])
-    # detail crops: (kit, frame, crop box)
-    DETAIL = {
-        'ahspine': ('AncientHelpers', 'capitalship', (150, 50, 230, 200)),
-        'ahmach': ('AncientHelpers', 'carrier', (100, 270, 250, 345)),
-        'ahflank': ('AncientHelpers', 'carrier', (60, 40, 140, 200)),
-        'famach': ('FreedomAlliance', 'capitalship', (70, 130, 170, 220)),
-        'ppplate': ('PhantomPirates', 'capitalship', (110, 60, 190, 160)),
-        'ppeng': ('PhantomPirates', 'capitalship', (100, 240, 200, 300)),
-        'shmid': ('Shakturi', 'capitalship', (80, 130, 190, 210)),
-    }
 
     def hull_at(c, poly, **k):
-        """Our hull outline (canvas px), placed where its polygon says; returns its mask for the detail insets."""
-        hp = hull([(x - min(q[0] for q in poly) + 1, y - min(q[1] for q in poly) + 1) for (x, y) in poly], **k)
+        """Our hull outline (layout px), drawn at the SS resolution where its polygon says; returns its canvas mask."""
+        x0, y0 = min(q[0] for q in poly) - 1, min(q[1] for q in poly) - 1
+        hp = hull([((x - x0) * SS, (y - y0) * SS) for (x, y) in poly], s=SS, **k)
+        hp.ss = True
         h_, w_ = hp.A.shape
-        c.put(hp, min(q[0] for q in poly) - 1 + w_ / 2, min(q[1] for q in poly) - 1 + h_ / 2, shadow=0.5, marks=False)
-        m = np.zeros((c.h, c.w))
-        m[:] = poly_mask(c.w, c.h, [(x + c.pad, y + c.pad) for (x, y) in chaikin(poly, k.get('bevel', 1))])
-        return fblur(m, 1.0) * (m > 0.5)
+        c.put(hp, x0 + w_ / SS / 2, y0 + h_ / SS / 2, shadow=0.5, marks=False)
+        return poly_mask(c.w, c.h, [((x + c.pad) * SS, (y + c.pad) * SS) for (x, y) in chaikin(poly, k.get('bevel', 1))])
 
-    def inset(c, key, x, y, scale, clipm, rot=0, flipx=False, flipy=False, sx=1.0, sy=1.0, gain=1.0):
-        kit, f, crop = DETAIL[key]
-        src = P(f, crop, kit=kit, keep_marks=False)
-        h_, w_ = src.A.shape
-        yy, xx = np.mgrid[0:h_, 0:w_].astype(np.float64) + 0.5
-        feather = np.clip(np.minimum(np.minimum(xx, w_ - xx), np.minimum(yy, h_ - yy)) / 6.0, 0, 1)  # no hard crop edges
-        part = Piece(src.L, src.A * feather, src.G, src.mats)
-        c.put(part, x, y, scale, rot=rot, flipx=flipx, flipy=flipy, sx=sx, sy=sy, shadow=0.3, gain=gain, clip=clipm,
-              marks=False)
+    def plates(c, hm, cuts, cols, ridge, gains=(1.14, 0.8)):
+        """The hull's skin: cells between the angled `cuts` ((y, slope) across, layout px) and the `cols` (x splits),
+        each filled 1:1 at the SS resolution with a solid window of a random stock warship (flipped / turned at
+        random), clipped to the cell with hard edges and crisp lit / dark plate rims and seams; cells to port of the
+        `ridge` lit, to starboard in shadow (the angled armour planes)."""
+        yy, xx = np.mgrid[0:c.h, 0:c.w].astype(np.float64)
+        X = lambda x: (x + c.pad) * SS  # noqa: E731
+        bounds = [np.full((c.h, c.w), -1e9)] + [(yy - (X(y) + sl * (xx - X(ridge)))) for (y, sl) in cuts]
+        inside = hm > 0.5
+        xsplit = [-1e9] + [X(x) for x in sorted(cols)] + [1e9]
+        for b in range(len(bounds)):
+            band = (bounds[b] >= 0) & ((bounds[b + 1] < 0) if b + 1 < len(bounds) else True)
+            for k in range(len(xsplit) - 1):
+                cell = inside & band & (xx >= xsplit[k]) & (xx < xsplit[k + 1])
+                if cell.sum() < 20 * SS * SS:
+                    continue
+                cy_, cx_ = np.nonzero(cell)
+                y0, y1, x0, x1 = cy_.min(), cy_.max() + 1, cx_.min(), cx_.max() + 1
+                gain = gains[0] if (x0 + x1) / 2 < X(ridge) else gains[1]
+                parts = [(y0, y1)]
+                win = POOL.window(rng, x1 - x0 + 2, y1 - y0 + 2)
+                if win is None:  # too big for one solid window: two plates
+                    ym = (y0 + y1) // 2
+                    parts = [(y0, ym), (ym, y1)]
+                for (a, b_) in parts:
+                    sub = cell & (yy >= a) & (yy < b_)
+                    if not sub.any():
+                        continue
+                    win = POOL.window(rng, x1 - x0 + 2, b_ - a + 2) if len(parts) > 1 else win
+                    if win is None:
+                        continue
+                    kit, f, crop = win
+                    c.put(P(f, crop, kit=kit, keep_marks=False), (x0 + x1) / 2 / SS - c.pad, (a + b_) / 2 / SS - c.pad, 1.0 / SS,
+                          flipx=bool(rng.random() < 0.5), flipy=bool(rng.random() < 0.3), shadow=0, gain=gain, clip=sub.astype(np.float64),
+                          edge=1.0, marks=False)
+
+    def hull_light(c, hm):
+        """The armour's edge band over the whole hull, one output px crisp: lit where the outline faces the light
+        (top-left), dark on the far side; an inset panel line following the outline, rivets along it."""
+        solid = hm > 0.5
+        # the volume: light falling off across the hull from its lit (port) edge to the far one, the prow brighter
+        rows = solid.any(1)
+        lft = np.where(rows, np.argmax(solid, 1), 0).astype(np.float64)[:, None]
+        rgt = np.where(rows, c.w - 1 - np.argmax(solid[:, ::-1], 1), 0).astype(np.float64)[:, None]
+        yy, xx = np.mgrid[0:c.h, 0:c.w].astype(np.float64)
+        t = np.clip((xx - lft) / np.maximum(rgt - lft, 1), 0, 1)
+        top = np.argmax(rows)
+        bot = c.h - 1 - np.argmax(rows[::-1])
+        ty = np.clip((yy - top) / max(1, bot - top), 0, 1)
+        form = 1.18 - 0.42 * t ** 1.2 + 0.12 * np.clip(0.3 - ty, 0, 1) / 0.3 - 0.1 * ty
+        c.L = np.where(solid, np.minimum(c.A, c.L * form), c.L)
+        dep = depth_inside(solid, 7 * SS)
+        bg = fblur(hm, 2.0 * SS)
+        oy, ox = np.gradient(bg)
+        on = np.hypot(ox, oy) + 1e-9
+        face = -(ox / on) * LIGHT[0] - (oy / on) * LIGHT[1]
+        band = solid & (dep <= 2 * SS)
+        f = np.where(face > 0.15, 1.38, np.where(face < -0.15, 0.5, 0.92))
+        a = c.A
+        c.L = np.where(band, np.minimum(a, c.L * f + np.where(face > 0.15, 0.04, 0) * a), c.L)
+        line = solid & (dep > 4 * SS) & (dep <= 5 * SS)
+        c.L = np.where(line, c.L * 0.45, c.L)
+        lit = solid & (dep > 5 * SS) & (dep <= 6 * SS)
+        c.L = np.where(lit, np.minimum(a, c.L * 1.25), c.L)
+        yy, xx = yy.astype(int), xx.astype(int)
+        riv = solid & (dep > 2 * SS) & (dep <= 3 * SS) & ((((xx + yy) // SS) % 5) == 0)
+        c.L = np.where(riv, c.L * 0.4, c.L)
+
+    def detail_over(c, k=0.8, mask=None):
+        """Stock surface detail over the procedural part just placed (or `mask`): a solid stock window's shading
+        multiplied in 1:1 at the SS resolution, so the part keeps its form but gains the hand-painted plating."""
+        m = (c.last if mask is None else mask) > 0.5
+        if not m.any():
+            return
+        ys, xs = np.nonzero(m)
+        y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
+        win = POOL.window(rng, x1 - x0, y1 - y0)
+        if win is None:
+            for part in ((y0, (y0 + y1) // 2), ((y0 + y1) // 2, y1)):
+                sub = m.copy()
+                sub[:part[0]] = False
+                sub[part[1]:] = False
+                if sub.any() and part[1] - part[0] < y1 - y0:
+                    detail_over(c, k, sub.astype(np.float64))
+            return
+        kit, f, crop = win
+        wl = P(f, crop, kit=kit, keep_marks=False).L
+        wl = wl[:y1 - y0, :x1 - x0]
+        if rng.random() < 0.5:
+            wl = wl[:, ::-1]
+        sub = m[y0:y1, x0:x1]
+        mod = (1 - k) + k * (0.35 + 1.3 * wl)
+        reg = c.L[y0:y1, x0:x1]
+        c.L[y0:y1, x0:x1] = np.where(sub, np.minimum(c.A[y0:y1, x0:x1], reg * mod), reg)
+
+    def edge_dress(c, hm, n, lights=6, avoid=()):
+        """Break the outline up: walk the hull edge and plant, pointing outward (jittered), whips and sensor masts
+        (some in fanned clusters, a few lit), short spikes, small dishes on stalks, small fins, turrets, vents and
+        pipes poking out past the edge; none over the engines' thruster marks or within `avoid` (x, y, r layout)."""
+        solid = hm > 0.5
+        edge = solid & ~(shift(solid, SS, 0) & shift(solid, -SS, 0) & shift(solid, 0, SS) & shift(solid, 0, -SS))
+        thr = [(mx, my) for (mx, my, k_) in c.marks if k_ == 1]
+        ys, xs = np.nonzero(edge)
+        keep = np.ones(len(ys), bool)
+        for (mx, my) in thr:
+            keep &= (xs - mx) ** 2 + (ys - my) ** 2 > (20 * SS) ** 2
+        for (ax, ay, ar) in avoid:
+            keep &= (xs - (ax + c.pad) * SS) ** 2 + (ys - (ay + c.pad) * SS) ** 2 > (ar * SS) ** 2
+        cand = np.zeros_like(solid)
+        cand[ys[keep], xs[keep]] = True
+        pts = pick_points(rng, cand, n, 7 * SS)
+        b = fblur(hm, 3.0 * SS)
+        gy, gx = np.gradient(b)
+        lit = lights - sum(1 for (_, _, k_) in c.marks if k_ == 2)
+        for (py, px) in pts:
+            nx_, ny_ = -gx[py, px], -gy[py, px]
+            nn = math.hypot(nx_, ny_) + 1e-9
+            nx_, ny_ = nx_ / nn, ny_ / nn
+            ang = math.degrees(math.atan2(-nx_, -ny_)) + rng.uniform(-28, 28)
+            x, y = px / SS - c.pad, py / SS - c.pad
+            kind = rng.choice(['whip', 'whip', 'whip', 'cluster', 'spike', 'spike', 'dish', 'fin', 'turret', 'vent', 'pipe'])
+
+            def plant(piece, out, a, **k):
+                th = math.radians(a)
+                c.put(piece, x - math.sin(th) * out, y - math.cos(th) * out, rot=a, shadow=0.25, **k)
+
+            if kind in ('whip', 'cluster'):
+                for j in range(1 if kind == 'whip' else int(rng.integers(2, 4))):
+                    a = ang + (j - 1) * rng.uniform(10, 22) if kind == 'cluster' else ang
+                    ln = int(rng.uniform(10, 34) if kind == 'whip' else rng.uniform(8, 26))
+                    on = lit > 0 and rng.random() < 0.35
+                    lit -= int(on)
+                    plant(antenna(ln, w=rng.uniform(1.4, 2.2), bars=(rng.uniform(0.3, 0.7),) if ln > 18 else (),
+                                  rings=(0.6,), light=on), ln / 2 - 1, a)
+            elif kind == 'spike':
+                ln = int(rng.uniform(6, 14))
+                plant(antenna(ln, w=3.2, bars=(), rings=(0.5,), light=False), ln / 2 - 1, ang)
+            elif kind == 'dish':
+                ln = int(rng.uniform(6, 12))
+                plant(antenna(ln, w=2.0, bars=(), rings=(), light=False), ln / 2, ang)
+                plant(dish(rng.uniform(3.5, 5.5)), ln, ang, marks=False)
+            elif kind == 'fin':
+                plant(plate(int(rng.uniform(4, 7)), int(rng.uniform(9, 16)), chamfer=0.6, taper=0.6, seams=()), 3, ang,
+                      edge=0.8)
+            elif kind == 'turret':
+                plant(turret(rng.uniform(3.5, 5.5)), 1.5, ang, marks=False, edge=0.6)
+            else:
+                g = greeble('vent' if kind == 'vent' else 'pipe', SS, rng)
+                plant(g, 2, ang + 90 if kind == 'pipe' else ang, marks=False, edge=0.8)
+
+    def blocks(c, hm, spots):
+        """Raised superstructure blocks (big detail): solid stock windows `spots` (x, y, w, h layout px) set on the
+        hull, casting a shadow, with crisp rims."""
+        for (x, y, w_, h_) in spots:
+            win = POOL.window(rng, int(w_ * SS), int(h_ * SS))
+            if win is None:
+                continue
+            kit, f, crop = win
+            c.put(P(f, crop, kit=kit, keep_marks=False), x, y, 1.0 / SS, flipx=bool(rng.random() < 0.5), shadow=0.7,
+                  gain=1.06, clip=hm, edge=1.3, marks=False)
+
+    def greebles(c, hm, n, avoid=None):
+        """Small detail scattered over the hull (vents, hatches, small domes, pipe runs, rivet rows), crisp."""
+        solid = hm > 0.5
+        dep = depth_inside(solid, 5 * SS)
+        ok = solid & (dep >= 4 * SS)
+        if avoid is not None:
+            ok &= avoid < 0.5
+        pts = pick_points(rng, ok, int(n * 1.6), 4 * SS)
+        kinds = ['vent', 'hatch', 'dome', 'pipe', 'rivets', 'vent', 'hatch', 'pipe']
+        for (py, px) in pts:
+            g = greeble(kinds[int(rng.integers(len(kinds)))], SS, rng)
+            c.put(g, px / SS - c.pad, py / SS - c.pad, 1.0, rot=int(rng.choice([0, 90, 180, 270])), shadow=0.4, clip=hm,
+                  edge=0.8, marks=False)
+
+    def windows(c, segs, step=3.0):
+        """Rows of tiny lit windows (one output px each, a dark frame round it) along the segments (layout px)."""
+        for ((x0, y0), (x1, y1)) in segs:
+            n = int(math.hypot(x1 - x0, y1 - y0) / step) + 1
+            for t in np.linspace(0, 1, n):
+                x = int(round((x0 + (x1 - x0) * t + c.pad) * SS))
+                y = int(round((y0 + (y1 - y0) * t + c.pad) * SS))
+                if not (SS <= x < c.w - 2 * SS and SS <= y < c.h - 2 * SS) or c.A[y, x] < 0.9:
+                    continue
+                c.L[y - SS // 2:y + SS + SS // 2, x - SS // 2:x + SS + SS // 2] *= 0.3
+                c.L[y:y + SS, x:x + SS] = 0.15 * c.A[y:y + SS, x:x + SS]
+                c.G[y:y + SS, x:x + SS] = 0.8 * c.A[y:y + SS, x:x + SS]
 
     def mast(c, x, y, length, ang, **k):
         """An antenna rooted at (x, y), `ang` degrees from straight ahead (positive: to port; past 90: swept back)."""
@@ -1368,22 +1680,33 @@ def build(root, name, rng):
         length = int(length * 1.3)
         c.put(antenna(length, **k), x - math.sin(th) * length / 2, y - math.cos(th) * length / 2, rot=ang, shadow=0.25)
 
+    def skin(c, poly, cuts, cols, ridge, spots, n_greebles, wins, **k):
+        """A whole hull: the drawn base, the stock plate mosaic, the lit edge band, raised blocks, small greebles and
+        rows of lit windows; returns the hull mask."""
+        hm = hull_at(c, bevel=0, poly=poly, **k)
+        plates(c, hm, cuts, cols, ridge)
+        hull_light(c, hm)
+        blocks(c, hm, spots)
+        greebles(c, hm, n_greebles)
+        windows(c, wins)
+        return hm
+
     if name == 'frigate':
         # A small hull with an offset sensor array: a lattice mast, a dish and a sheaf of long antennas on a
         # starboard sponson (a leaf of armour), counterweighted by the hull's port bulge and its extra engine.
         c = Canvas(200, pad=24)
         c.put(engine(16, 26), 74, 180, shadow=0)
         c.put(engine(14, 24), 104, 180, shadow=0)
-        hm = hull_at(c, bevel=0, poly=[
-            (98, 30), (108, 58), (116, 92), (113, 104), (120, 140), (116, 170), (110, 182), (66, 182), (58, 172), (46, 150),
-            (50, 124), (62, 112), (66, 98), (78, 64)], seams=((96, -0.25), (142, 0.2)), spine=(44, 26, 140, 7))
-        inset(c, 'ahspine', 90, 84, 0.42, hm, sx=0.8)
-        inset(c, 'famach', 86, 136, 0.42, hm, rot=8)
-        inset(c, 'ppeng', 88, 172, 0.42, hm, sx=1.2)
-        inset(c, 'shmid', 64, 140, 0.32, hm, rot=90)
+        hm = skin(c, [(98, 30), (108, 58), (116, 92), (113, 104), (120, 140), (116, 170), (110, 182), (66, 182), (58, 172),
+                      (46, 150), (50, 124), (62, 112), (66, 98), (78, 64)],
+                  cuts=((62, -0.3), (94, 0.25), (124, -0.2), (154, 0.25)), cols=(92,), ridge=92,
+                  spots=((92, 82, 16, 24), (84, 134, 22, 18), (92, 166, 26, 12)), n_greebles=18,
+                  wins=(((58, 128), (58, 158)), ((104, 70), (110, 92))), seams=(), spine=(46, 26, 140, 6))
+        c.put(ribs(10, 18), 56, 150, shadow=0.3, clip=hm, edge=0.8, marks=False)
         c.put(truss(8, 72, rail=2, bay=8), 134, 84, shadow=0.3, marks=False)
-        c.put(LEAF, 130, 146, 0.44, flipx=True, shadow=0.55)
-        c.put(dish(13), 134, 128, shadow=0.5, marks=False)
+        c.put(LEAF, 130, 146, 0.44, flipx=True, shadow=0.55, edge=0.8)
+        c.put(dish(13), 134, 128, shadow=0.5, marks=False, edge=0.6)
+        c.put(dome(4), 134, 160, shadow=0.4, marks=False)
         mast(c, 134, 50, 44, 6, beads=(0.5,))
         mast(c, 138, 76, 40, -28)
         mast(c, 146, 134, 34, -62)
@@ -1391,27 +1714,28 @@ def build(root, name, rng):
         mast(c, 98, 32, 22, 0)
         mast(c, 48, 136, 30, 68)
         mast(c, 62, 176, 24, 148)
+        edge_dress(c, hm, 22, lights=18, avoid=((126, 140, 16),))
         return c
     if name == 'destroyer':
         # Slim, with a missile boom: a long arm swung out to port carrying a launcher pod (a block of launch tubes)
         # well forward; a counterweight pod with its own engine slung to starboard, further aft.
         c = Canvas(240, pad=24)
-        c.put(strut(12, 62), 84, 140, rot=-62, shadow=0, marks=False)
-        c.put(strut(10, 40), 158, 158, rot=90, shadow=0, marks=False)
+        c.put(strut(12, 62), 84, 140, rot=-62, shadow=0, marks=False, edge=0.8)
+        c.put(strut(10, 40), 158, 158, rot=90, shadow=0, marks=False, edge=0.8)
         c.put(engine(22, 34), 186, 200, shadow=0)
-        c.put(LEAF, 184, 156, 0.5, flipx=True, shadow=0.4)
+        c.put(LEAF, 184, 156, 0.5, flipx=True, shadow=0.4, edge=0.8)
         c.put(engine(16, 28), 110, 214, shadow=0)
         c.put(engine(16, 28), 130, 214, shadow=0)
-        hm = hull_at(c, bevel=0, poly=[
-            (122, 14), (132, 40), (138, 80), (146, 96), (140, 108), (142, 170), (150, 194), (136, 212), (106, 212), (94, 194),
-            (100, 170), (100, 104), (94, 90), (104, 80), (110, 40)], seams=((80, 0.3), (130, -0.2), (176, 0.25)),
-            spine=(19, 30, 190, 6))
-        inset(c, 'ahspine', 120, 88, 0.5, hm, sx=0.7)
-        inset(c, 'shmid', 120, 150, 0.5, hm, sx=0.8)
-        inset(c, 'famach', 120, 196, 0.42, hm, flipy=True)
-        inset(c, 'ppplate', 120, 118, 0.36, hm, sx=0.7)
+        hm = skin(c, [(122, 14), (132, 40), (138, 80), (146, 96), (140, 108), (142, 170), (150, 194), (136, 212), (106, 212),
+                      (94, 194), (100, 170), (100, 104), (94, 90), (104, 80), (110, 40)],
+                  cuts=((44, 0.3), (78, -0.3), (110, 0.25), (144, -0.25), (178, 0.3)), cols=(120,), ridge=120,
+                  spots=((120, 66, 14, 22), (112, 104, 10, 16), (120, 128, 18, 26), (128, 160, 10, 14), (120, 186, 22, 14)),
+                  n_greebles=30,
+                  wins=(((104, 110), (104, 160)), ((136, 112), (136, 150))), spine=(26, 30, 190, 5))
+        c.put(door(10, 14), 128, 160, shadow=0.4, clip=hm, edge=1.0, marks=False)
         c.put(engine(14, 22), 50, 176, shadow=0)
-        c.put(launcher(30, 90, rows=5, cols=2), 50, 128, shadow=0.5)
+        c.put(launcher(30, 90, rows=5, cols=2), 50, 128, shadow=0.5, edge=0.8)
+        detail_over(c, 0.5)
         mast(c, 122, 16, 24, 0, beads=(0.55,))
         mast(c, 46, 86, 30, 18)
         mast(c, 96, 92, 32, 42)
@@ -1419,34 +1743,35 @@ def build(root, name, rng):
         mast(c, 192, 124, 30, -14)
         mast(c, 144, 204, 28, -158)
         mast(c, 98, 204, 28, 158)
+        edge_dress(c, hm, 26, lights=18, avoid=((98, 142, 14), (142, 158, 12)))
         return c
     if name == 'cruiser':
         # A modest offset turret pair on an angled hull: two staggered gun turrets on an armoured sponson off the
         # broad port shoulder; a leaf of armour swept out aft to starboard to balance them.
         c = Canvas(280, pad=24)
-        c.put(LEAF, 212, 196, 0.66, rot=-24, flipx=True, shadow=0, tone=-0.04)
+        c.put(LEAF, 212, 196, 0.66, rot=-24, flipx=True, shadow=0, tone=-0.04, edge=0.8)
         for x in (128, 150, 172):
             c.put(engine(18, 28), x, 250, shadow=0)
-        hm = hull_at(c, bevel=0, poly=[
-            (150, 22), (164, 44), (184, 84), (196, 96), (198, 150), (206, 176), (196, 214), (178, 244), (118, 244), (100, 220),
-            (86, 186), (84, 150), (88, 112), (110, 92), (126, 52), (138, 34)], seams=((100, 0.35), (160, -0.3), (208, 0.2)),
-            spine=(62, 30, 210, 8))
-        inset(c, 'ahflank', 172, 120, 0.5, hm, rot=-6)
-        inset(c, 'famach', 140, 172, 0.55, hm)
-        inset(c, 'ppplate', 128, 92, 0.45, hm, rot=180)
-        inset(c, 'ahmach', 146, 226, 0.5, hm)
-        inset(c, 'shmid', 168, 196, 0.4, hm, rot=90)
-        c.put(LEAF, 90, 158, 0.6, shadow=0.55)
+        hm = skin(c, [(150, 22), (164, 44), (184, 84), (196, 96), (198, 150), (206, 176), (196, 214), (178, 244), (118, 244),
+                      (100, 220), (86, 186), (84, 150), (88, 112), (110, 92), (126, 52), (138, 34)],
+                  cuts=((56, 0.35), (92, -0.3), (128, 0.3), (164, -0.25), (200, 0.3)), cols=(118, 148, 176), ridge=148,
+                  spots=((150, 70, 16, 26), (166, 126, 22, 30), (140, 182, 34, 22), (180, 200, 16, 20)), n_greebles=30,
+                  wins=(((176, 96), (192, 140)), ((106, 196), (120, 226)), ((160, 160), (190, 168))), spine=(64, 30, 210, 6))
+        c.put(ribs(18, 12), 182, 168, rot=-20, shadow=0.3, clip=hm, edge=0.8, marks=False)
+        c.put(door(12, 16), 134, 128, shadow=0.4, clip=hm, edge=1.0, marks=False)
+        c.put(dome(5), 176, 108, shadow=0.4, marks=False)
+        c.put(LEAF, 90, 158, 0.6, shadow=0.55, edge=0.8)
         for (x, y, ln) in ((100, 112, 66), (90, 158, 58)):
-            c.put(barrel(9, ln, bands=(0.4,)), x, y - ln / 2 + 4, shadow=0.45, marks=False)
-            c.put(collar(12, 10), x, y - 4, shadow=0.3, marks=False)
-            c.put(turret(14), x, y + 6, shadow=0.55, marks=False)
+            c.put(barrel(9, ln, bands=(0.4,)), x, y - ln / 2 + 4, shadow=0.45, marks=False, edge=0.6)
+            c.put(collar(12, 10), x, y - 4, shadow=0.3, marks=False, edge=0.6)
+            c.put(turret(14), x, y + 6, shadow=0.55, marks=False, edge=0.6)
         mast(c, 150, 24, 34, 0, beads=(0.5,))
         mast(c, 196, 104, 44, -30)
         mast(c, 206, 176, 38, -58, beads=(0.6,))
         mast(c, 86, 196, 32, 52)
         mast(c, 178, 240, 28, -162)
         mast(c, 118, 240, 26, 162)
+        edge_dress(c, hm, 34, lights=18, avoid=((92, 120, 22), (90, 160, 22), (200, 196, 16)))
         return c
     if name == 'capitalship':
         # The one with the great gun: a massive siege cannon running off-centre the whole length of the hull and far
@@ -1457,25 +1782,34 @@ def build(root, name, rng):
         for x in (130, 160, 190):
             c.put(engine(20, 30), x, 336, shadow=0)
         c.put(engine(30, 40), 240, 334, shadow=0)
-        hm = hull_at(c, bevel=0, poly=[
-            (170, 26), (184, 48), (204, 90), (214, 96), (222, 140), (226, 182), (258, 200), (262, 300), (250, 326),
-            (212, 330), (110, 330), (92, 318), (62, 300), (56, 250), (70, 238), (64, 186), (80, 170), (86, 130), (104, 112),
-            (116, 76), (150, 40)], seams=((110, 0.3), (180, -0.25), (250, 0.3), (300, -0.2)), spine=(90, 60, 290, 10),
-            keel=(58, 140, 48, 280))
-        inset(c, 'ahspine', 162, 110, 0.6, hm)
-        inset(c, 'shmid', 166, 196, 0.62, hm, sx=0.9)
-        inset(c, 'famach', 154, 268, 0.6, hm, rot=180)
-        inset(c, 'ahmach', 162, 316, 0.55, hm)
-        inset(c, 'ppplate', 104, 190, 0.5, hm, rot=90)
-        inset(c, 'ppeng', 196, 150, 0.5, hm, rot=-90)
+        hm = skin(c, [(170, 26), (184, 48), (204, 90), (214, 96), (222, 140), (226, 182), (258, 200), (262, 300), (250, 326),
+                      (212, 330), (110, 330), (92, 318), (62, 300), (56, 250), (70, 238), (64, 186), (80, 170), (86, 130),
+                      (104, 112), (116, 76), (150, 40)],
+                  cuts=((62, 0.3), (98, -0.3), (134, 0.25), (170, -0.25), (206, 0.3), (242, -0.25), (278, 0.3)),
+                  cols=(104, 150, 196, 228), ridge=150,
+                  spots=((162, 92, 22, 30), (170, 168, 34, 30), (150, 252, 40, 28), (100, 280, 26, 22), (190, 300, 26, 18)),
+                  n_greebles=60,
+                  wins=(((78, 190), (78, 236)), ((96, 136), (110, 112)), ((70, 254), (74, 296)), ((206, 120), (214, 170)),
+                        ((140, 316), (196, 316))), spine=(94, 60, 290, 8), keel=(58, 140, 48, 280))
         for (x, y, w_, h_, sk) in ((76, 270, 30, 74, -0.2), (84, 190, 26, 62, -0.12)):
-            c.put(plate(w_, h_, chamfer=0.6, taper=0.3, skew=sk, seams=(0.5,)), x, y, shadow=0.4, tone=-0.04)
-        c.put(tower(50, 64, tiers=3), 126, 230, shadow=0.6)
-        c.put(strut(10, 26), 222, 140, rot=90, shadow=0.4, marks=False)
-        c.put(barrel(28, 300, jacket=0.2, bands=(0.22, 0.42, 0.6)), 240, 160, shadow=0.45, marks=False)
-        c.put(fairing(54, 138, nose=0.3, tail=0.18, bolts=3), 240, 262, shadow=0.55, mat='gun')
-        c.put(collar(19, 12), 240, 194, shadow=0.4, marks=False)
-        c.put(collar(16, 10), 240, 140, shadow=0.4, marks=False)
+            c.put(plate(w_, h_, chamfer=0.6, taper=0.3, skew=sk, seams=(0.5,)), x, y, shadow=0.4, tone=-0.04, edge=1.0)
+            detail_over(c)
+        for (x, y) in ((76, 252), (76, 284), (84, 178), (84, 206)):
+            c.put(ribs(14, 10), x, y, shadow=0.3, edge=0.8, marks=False)
+        c.put(door(14, 20), 128, 300, shadow=0.4, clip=hm, edge=1.0, marks=False)
+        c.put(tower(50, 64, tiers=3), 126, 230, shadow=0.6, edge=0.8)
+        detail_over(c, 0.6)
+        c.put(dome(5), 120, 196, shadow=0.4, marks=False)
+        c.put(dome(4), 196, 214, shadow=0.4, marks=False)
+        c.put(strut(10, 26), 222, 140, rot=90, shadow=0.4, marks=False, edge=0.8)
+        c.put(barrel(28, 300, jacket=0.2, bands=(0.22, 0.42, 0.6)), 240, 160, shadow=0.45, marks=False, edge=0.6)
+        detail_over(c, 0.45)
+        c.put(fairing(54, 138, nose=0.3, tail=0.18, bolts=3), 240, 262, shadow=0.55, mat='gun', edge=0.8)
+        detail_over(c, 0.7)
+        for y in (226, 254, 282):
+            c.put(ribs(30, 8, pitch=3), 240, y, shadow=0.3, edge=0.6, marks=False, mat='gun')
+        c.put(collar(19, 12), 240, 194, shadow=0.4, marks=False, edge=0.8)
+        c.put(collar(16, 10), 240, 140, shadow=0.4, marks=False, edge=0.8)
         mast(c, 170, 28, 32, 6, beads=(0.5,))
         mast(c, 60, 252, 44, 72)
         mast(c, 66, 192, 50, 44, beads=(0.55,))
@@ -1484,6 +1818,7 @@ def build(root, name, rng):
         mast(c, 104, 326, 34, 150)
         mast(c, 262, 246, 32, -72)
         mast(c, 254, 318, 30, -148)
+        edge_dress(c, hm, 46, lights=18, avoid=tuple((240, y, 30) for y in range(130, 340, 26)) + ((76, 270, 20), (84, 190, 18)))
         return c
     if name == 'carrier':
         # Lopsided: a long angled flight deck to port (landing lanes, landing lights, hangar openings), a heavy
@@ -1491,27 +1826,28 @@ def build(root, name, rng):
         # point-defence guns).
         c = Canvas(320, pad=24)
         for y in (130, 196, 254):
-            c.put(strut(10, 30), 158, y, rot=90, shadow=0, marks=False)
+            c.put(strut(10, 30), 158, y, rot=90, shadow=0, marks=False, edge=0.8)
         c.put(engine(20, 30), 126, 296, shadow=0)
-        c.put(deck(62, 252), 128, 170, rot=-5, shadow=0.3, tone=-0.04)
+        c.put(deck(62, 252), 128, 170, rot=-5, shadow=0.3, tone=-0.04, edge=1.0)
+        detail_over(c, 0.35)
         for x in (190, 214, 238):
             c.put(engine(18, 28), x, 300, shadow=0)
-        hm = hull_at(c, bevel=0, poly=[
-            (214, 36), (226, 56), (248, 100), (262, 110), (268, 190), (262, 250), (252, 280), (240, 298), (180, 298), (166, 274),
-            (160, 180), (166, 120), (178, 92), (200, 52)], seams=((110, 0.3), (170, -0.2), (240, 0.25)),
-            spine=(50, 26, 240, 8))
-        inset(c, 'famach', 206, 108, 0.45, hm)
-        inset(c, 'shmid', 212, 210, 0.55, hm, rot=180)
-        inset(c, 'ahmach', 212, 284, 0.45, hm)
-        inset(c, 'ppplate', 190, 160, 0.45, hm, rot=90)
+        hm = skin(c, [(214, 36), (226, 56), (248, 100), (262, 110), (268, 190), (262, 250), (252, 280), (240, 298), (180, 298),
+                      (166, 274), (160, 180), (166, 120), (178, 92), (200, 52)],
+                  cuts=((66, 0.3), (102, -0.3), (138, 0.25), (174, -0.25), (210, 0.3), (246, -0.25)), cols=(188, 214, 240),
+                  ridge=214, spots=((206, 104, 22, 26), (212, 214, 30, 26), (196, 264, 26, 18)), n_greebles=36,
+                  wins=(((170, 130), (170, 200)), ((256, 130), (262, 180)), ((186, 238), (240, 238))), spine=(56, 26, 240, 6))
         c.put(RODS, 266, 100, 0.5, rot=-20, flipx=True, shadow=0.4)
-        c.put(LEAF, 256, 190, 0.6, flipx=True, shadow=0.5)
-        c.put(tower(42, 64, tiers=3), 220, 160, shadow=0.6)
+        c.put(LEAF, 256, 190, 0.6, flipx=True, shadow=0.5, edge=0.8)
+        c.put(tower(42, 64, tiers=3), 220, 160, shadow=0.6, edge=0.8)
+        detail_over(c, 0.6)
+        c.put(dome(4), 190, 186, shadow=0.4, marks=False)
         mast(c, 220, 134, 50, -8, beads=(0.5,))
         mast(c, 214, 38, 28, 0)
         mast(c, 268, 196, 40, -62)
         mast(c, 256, 276, 32, -140)
         mast(c, 164, 286, 26, 150)
+        edge_dress(c, hm, 30, lights=18, avoid=tuple((162, y, 12) for y in range(80, 300, 20)) + ((262, 110, 16), (256, 190, 18)))
         return c
     if name == 'trooptransport':
         # An armoured drop-pod rack hung off the port side (a curved armour leaf with the pods nested along its outer
@@ -1521,29 +1857,30 @@ def build(root, name, rng):
         pd = pod(18, 30, bands=(0.35, 0.7))
         c.put(engine(18, 28), 92, 196, shadow=0)
         for y in (96, 168):
-            c.put(strut(8, 24), 98, y, rot=90, shadow=0, marks=False)
-        c.put(LEAF, 84, 138, 0.62, shadow=0.45)
+            c.put(strut(8, 24), 98, y, rot=90, shadow=0, marks=False, edge=0.8)
+        c.put(LEAF, 84, 138, 0.62, shadow=0.45, edge=0.8)
         for (x, y, r) in ((74, 80, 12), (66, 112, 8), (63, 146, 3), (66, 180, -4)):
-            c.put(pd, x, y, rot=r, shadow=0.4, mat='gun')
+            c.put(pd, x, y, rot=r, shadow=0.4, mat='gun', edge=0.8)
         c.put(clamp_arm(16, 26), 80, 106, rot=8, shadow=0, marks=False)
         c.put(engine(16, 28), 176, 180, shadow=0)
-        c.put(LEAF, 174, 146, 0.4, flipx=True, shadow=0.4)
+        c.put(LEAF, 174, 146, 0.4, flipx=True, shadow=0.4, edge=0.8)
         for x in (124, 148):
             c.put(engine(16, 26), x, 214, shadow=0)
-        hm = hull_at(c, bevel=0, poly=[
-            (136, 6), (142, 30), (152, 58), (164, 72), (166, 120), (160, 150), (166, 186), (156, 212), (116, 212), (106, 186),
-            (110, 150), (106, 120), (110, 72), (122, 58), (130, 30)], seams=((110, 0.25), (170, -0.2)), spine=(31, 70, 196, 6))
-        inset(c, 'famach', 136, 110, 0.45, hm)
-        inset(c, 'ahspine', 136, 160, 0.45, hm, sx=0.8, flipy=True)
-        inset(c, 'ppeng', 136, 202, 0.4, hm)
-        inset(c, 'shmid', 136, 70, 0.34, hm, sx=0.7)
-        c.put(fairing(36, 62, nose=0.85, tail=0.08, bolts=1), 136, 42, shadow=0.5, mat='gun')
+        hm = skin(c, [(136, 6), (142, 30), (152, 58), (164, 72), (166, 120), (160, 150), (166, 186), (156, 212), (116, 212),
+                      (106, 186), (110, 150), (106, 120), (110, 72), (122, 58), (130, 30)],
+                  cuts=((42, 0.3), (74, -0.3), (106, 0.25), (140, -0.25), (174, 0.3)), cols=(136,), ridge=136,
+                  spots=((136, 96, 18, 22), (126, 124, 10, 14), (136, 150, 22, 26), (148, 176, 10, 14), (136, 196, 26, 12)),
+                  n_greebles=32,
+                  wins=(((114, 120), (114, 180)), ((158, 86), (160, 140))), spine=(31, 70, 196, 5))
+        c.put(fairing(36, 62, nose=0.85, tail=0.08, bolts=1), 136, 42, shadow=0.5, mat='gun', edge=0.8)
+        detail_over(c, 0.6)
         mast(c, 164, 74, 36, -36, beads=(0.6,))
         mast(c, 80, 72, 30, 30)
         mast(c, 178, 122, 30, -18)
         mast(c, 158, 208, 26, -160)
         mast(c, 114, 208, 24, 160)
         mast(c, 56, 190, 24, 120)
+        edge_dress(c, hm, 24, lights=18, avoid=tuple((106, y, 12) for y in range(60, 200, 18)) + ((166, 146, 12), (136, 40, 14)))
         return c
     if name == 'base_0':
         # A broken outpost: the Shakturi station body inside a half-ring of gantry, one arm snapped, debris adrift.
@@ -1593,15 +1930,28 @@ def build(root, name, rng):
     raise KeyError(name)
 
 
+def down(v, w, h, f=Image.LANCZOS):
+    return np.asarray(Image.fromarray(v.astype(np.float32), 'F').resize((w, h), f)).astype(np.float64)
+
+
 def finish(name, c, xs, cols, rng):
     L, A, G, T, M = c.result()
-    h, w = A.shape
-    out, v = paint(L, A, T, M, xs, cols)
+    out, v = paint(L, A, T, M, xs, cols, SS)
+    # down to the output frame: Lanczos on the premultiplied colour, a light unsharp mask; masks box-filtered
+    w, h = c.out_w, c.out_h
+    A = np.clip(down(A, w, h), 0, 1)
+    out = np.stack([np.clip(down(out[..., k] * c.A, w, h), 0, None) for k in range(3)], axis=2) / np.maximum(A, 1e-3)[..., None]
+    out = np.clip(out, 0, 1)
+    usm = Image.fromarray((out * 255).astype(np.uint8)).filter(ImageFilter.UnsharpMask(radius=1.0, percent=70, threshold=2))
+    out = np.where((A > 0.05)[..., None], np.asarray(usm).astype(np.float64) / 255, out)
+    v = np.clip(down(v, w, h), 0, 1)
+    G = np.clip(down(G, w, h, Image.BOX), 0, 1)
+    M = {k: np.clip(down(m, w, h, Image.BOX), 0, 1) for k, m in M.items()}
     alpha = A.copy()
     # marker points (deduped, kept only where the hull is there)
     marks = {}
     for (mx, my, kind) in c.marks:
-        x, y = int(mx), int(my)
+        x, y = int(mx / SS), int(my / SS)
         if 0 <= x < w and 0 <= y < h and A[y, x] > 0.5:
             marks[(x, y)] = kind
     # thruster runs: fill short gaps along each row
@@ -1643,6 +1993,13 @@ def finish(name, c, xs, cols, rng):
     out[off] = np.array([0.12, 0.11, 0.09]) * (0.6 + g[off])[:, None]
     if name.startswith('base'):
         out = out * 1.12  # the stations sit in nebulae and gas clouds: a little lift so the ruin still reads there
+    # small bright specular glints: the brightest local maxima of the lit metal, sparse
+    lum = out @ LUM
+    sol = alpha > 0.9
+    mx_ = np.maximum.reduce([shift(lum, dy, dx) for dy in (-1, 0, 1) for dx in (-1, 0, 1) if dy or dx])
+    cand = sol & (lum >= mx_) & (lum > np.quantile(lum[sol], 0.985)) & ~protect
+    keep = rng.random(lum.shape) < 0.5
+    out[cand & keep] = np.array([1.0, 0.97, 0.9])
     # the silhouette: lit metal on the edges facing the light (upper left), shadowed on the far side
     solid = alpha > 0.5
     d = depth_inside(solid, 3)
@@ -1687,6 +2044,8 @@ def main():
     root = os.path.join(args.dwu, 'images', 'units', 'ships', 'other')
     dest = Image.open(os.path.join(root, 'planetdestroyer.png'))
     xs, cols = metal_ramp(dest)
+    global POOL
+    POOL = Pool(root)
     GOLD[:] = gold_accent(dest)
     strip = Piece.load(root, 'capitalship', (100, 60, 170, 200), kit='Shakturi')
     _TEX.append(strip)
