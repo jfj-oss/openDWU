@@ -32,6 +32,7 @@ const setup = await page.evaluate(async () => {
     const ev = await import('/src/sim/empireEvents.ts');
     const own = await import('/src/sim/combat/ownership.ts');
     const abl = await import('/src/render/artBundleLayer.ts');
+    const types = await import('/src/sim/types.ts');
     return roq.withSimWrites(() => {
         const emp = game.playerEmpire;
         const design = emp.designs.find((d) => d.role === 8) ?? galaxy.empires.flatMap((e) => e.designs).find((d) => d.role === 8);
@@ -49,6 +50,7 @@ const setup = await page.evaluate(async () => {
             { stage: 4, wonder: 'sanctuary', progress: 1, whales: 5 },
             { stage: 4, wonder: 'casino', progress: 1, den: true },
             { stage: 4, wonder: 'sanctuary', progress: 1, whales: 2, breached: true },
+            { stage: 4, wonder: 'ultramind', progress: 1, awakened: true },
         ];
         const sites = [];
         const spots = [];
@@ -66,17 +68,29 @@ const setup = await page.evaluate(async () => {
             }
             // knowledge / seenBy: the add-on's known-site readers (overlay rows) walk them
             sites.push({ id: i, base: bo, habitat: null, knowledge: [], seenBy: [], ...l });
-            spots.push({ x, y, name: l.stage < 4 ? `scaffold-${l.stage}` : l.den === true ? 'casino-pirate' : l.breached === true ? 'sanctuary-breached' : l.wonder });
+            spots.push({ x, y, name: l.stage < 4 ? `scaffold-${l.stage}` : l.den === true ? 'casino-pirate' : l.breached === true ? 'sanctuary-breached' : l.awakened === true ? `${l.wonder}-awake` : l.wonder });
         });
-        // An Ultramind round a planet of the home system (its uplink node beside it).
-        const planet = galaxy.habitats.find((h) => h.parent === home.parent && h !== home && h.category === 1 && h.diameter > 150) ?? galaxy.habitats.find((h) => h.category === 1 && h !== home && h.diameter > 150);
-        let planetSpot = null;
-        if (planet !== undefined) {
-            const bo = ev.generateNewBuiltObject(galaxy, emp, design, null, planet.xpos + 420, planet.ypos - 260);
+        // Ultraminds caging planets, placed as the sim places them (giantworks/lifecycle.ts placeObject: the base parked at
+        // its planet's centre, no offset, which is where the cage's near corner lands): a gas giant calm, another awakened,
+        // and a rocky world.
+        const HT = types.HabitatType;
+        const gas = galaxy.habitats.filter((h) => h.category === 1 && h !== home && (h.type === HT.GasGiant || h.type === HT.FrozenGasGiant));
+        const rocky = galaxy.habitats.find((h) => h.category === 1 && h !== home && h.diameter > 150 && (h.type === HT.Continental || h.type === HT.BarrenRock || h.type === HT.Ocean || h.type === HT.MarshySwamp));
+        const planetSpots = [];
+        [[gas[0], false, 'gas'], [gas[1], true, 'gas-awake'], [rocky, false, 'rocky']].forEach(([h, awake, nm], k) => {
+            if (h === undefined) return;
+            const bo = ev.generateNewBuiltObject(galaxy, emp, design, null, h.xpos, h.ypos);
             own.takeOwnershipOfBuiltObject(galaxy, emp, bo, emp, false);
-            sites.push({ id: 9, base: bo, habitat: planet, stage: 4, wonder: 'ultramind', progress: 1, knowledge: [], seenBy: [] });
-            planetSpot = { x: planet.xpos, y: planet.ypos, d: planet.diameter, name: planet.name };
-        }
+            bo.parentHabitat = h;
+            bo.parentOffsetX = 0;
+            bo.parentOffsetY = 0;
+            bo.xpos = h.xpos;
+            bo.ypos = h.ypos;
+            bo.unbuiltComponentCount = 0;
+            bo.doingConstruction = false;
+            sites.push({ id: 20 + k, base: bo, habitat: h, knowledge: [], seenBy: [], stage: 4, wonder: 'ultramind', progress: 1, awakened: awake });
+            planetSpots.push({ x: h.xpos, y: h.ypos, d: h.diameter, name: nm, type: h.type });
+        });
         galaxy.scenario.state.giantworks = { sites };
         // The last casino is a pirate den: its smugglers' front is out (the casino sim's record, render-only here).
         const den = sites.find((s) => s.den === true);
@@ -87,8 +101,8 @@ const setup = await page.evaluate(async () => {
             ...sites.slice(0, 4).map((s) => ({ threat: 'giantworks', kind: 'ship', target: s.base, level: 1, label: '' })),
             ...founders.map((h, k) => ({ threat: 'giantworksCompact', kind: 'colony', target: h, level: k === 0 ? 1 : 2, label: '' })),
         ]);
-        window.__gw = { spots, planetSpot, founders: founders.map((h) => ({ x: h.xpos, y: h.ypos })) };
-        return { design: design.name, spots, planetSpot };
+        window.__gw = { spots, planetSpots, founders: founders.map((h) => ({ x: h.xpos, y: h.ypos })) };
+        return { design: design.name, spots, planetSpots };
     });
 });
 console.log('setup', JSON.stringify(setup));
@@ -155,10 +169,31 @@ await shot('sanctuary-whales-a.png', 1, sanct.x, sanct.y, 3000, { x: 500, y: 200
 await page.waitForTimeout(4000);
 await page.screenshot({ path: `${outDir}/${prefix}sanctuary-whales-b.png`, clip: { x: 500, y: 200, width: 600, height: 600 } });
 console.log(`saved ${outDir}/${prefix}sanctuary-whales-b.png`);
-const ps = await page.evaluate(() => window.__gw.planetSpot);
-if (ps !== null) {
-    await shot('ultramind-planet-close.png', 1, ps.x + 200, ps.y - 100, 3500);
-    await shot('ultramind-planet-play.png', 1 / 4, ps.x + 200, ps.y - 100, 2000);
+const pss = await page.evaluate(() => window.__gw.planetSpots);
+for (const ps of pss) {
+    // close: the cage filling the view (a gas giant's is far bigger), and play zoom
+    const zc = Math.min(1, 560 / (ps.d * 1.5));
+    await shot(`ultramind-planet-${ps.name}-close.png`, zc, ps.x, ps.y, 3500);
+    await shot(`ultramind-planet-${ps.name}-play.png`, 1 / 4, ps.x, ps.y, 2000);
+}
+// The cage's rack lights and pulses: a burst on the first gas giant.
+if (pss.length > 0) {
+    const ps = pss[0];
+    await shot('ultramind-planet-burst-0.png', Math.min(1, 560 / (ps.d * 1.5)) * 2, ps.x, ps.y, 2500, { x: 450, y: 150, width: 700, height: 700 });
+    for (let i = 1; i < 6; i++) {
+        await page.waitForTimeout(150);
+        await page.screenshot({ path: `${outDir}/${prefix}ultramind-planet-burst-${i}.png`, clip: { x: 450, y: 150, width: 700, height: 700 } });
+    }
+}
+// The Ultramind's lights: a burst of frames, calm and awakened (rack patterns, trace pulses, the data pulse).
+for (const nm of ['ultramind', 'ultramind-awake']) {
+    const um = spots.find((s) => s.name === nm);
+    await shot(`${nm}-burst-0.png`, 1, um.x, um.y, 2500, { x: 450, y: 150, width: 700, height: 700 });
+    for (let i = 1; i < 8; i++) {
+        await page.waitForTimeout(150);
+        await page.screenshot({ path: `${outDir}/${prefix}${nm}-burst-${i}.png`, clip: { x: 450, y: 150, width: 700, height: 700 } });
+    }
+    console.log(`saved ${outDir}/${prefix}${nm}-burst-0..7.png`);
 }
 // The map glyphs: the site's stage arcs, the Compact's seal over its founders.
 await shot('glyphs-site.png', 1 / 40, spots[1].x, spots[1].y, 2500);

@@ -49,7 +49,7 @@ import { useMinifyingFilter } from './assets';
 import { loadShipArt } from './shipArt';
 import { SpritePool } from './fxCommon';
 import { GEN_SHIPS_LIGHTS } from './genShipsLights';
-import { GW_CASINO_LOOKS, GW_CASINO_SPR, GW_LIGHTS, GW_LIGHT_KINDS, GW_SANCTUARY_GLASS_R, type GwCasinoLook } from './giantworksLights';
+import { GW_CASINO_LOOKS, GW_CASINO_SPR, GW_LIGHTS, GW_LIGHT_KINDS, GW_SANCTUARY_GLASS_R, GW_UM_RACKS, GW_UM_TRACES, type GwCasinoLook } from './giantworksLights';
 import { LeviathanRig, leviathanTextures, type LeviathanTextures } from './leviathanRig';
 import { loadLeviathanImages } from './faunaArt';
 
@@ -727,16 +727,18 @@ export const GW_ART_DIR = '/art/giantworks/';
 
 /**
  * The frame a site's base draws: the scaffold of its stage (0..3, shared by every wonder), or once complete (stage 4)
- * its wonder's (the Ultramind's uplink node when it wraps a planet; a casino that is a pirate den now, by `l`'s
- * casinoDens (the last threatLooks record by default), the den). A finished wonder without art of its own yet keeps
- * the finished scaffold. Pure but for that record.
+ * its wonder's (the Ultramind's uplink node when it wraps a planet, its `-awake` frames once it has turned on its
+ * partners; a casino that is a pirate den now, by `l`'s casinoDens (the last threatLooks record by default), the
+ * den). A finished wonder without art of its own yet keeps the finished scaffold. Pure but for that record.
  */
-export function greatWorkFrame(site: Pick<GreatWorkArtSite, 'stage' | 'wonder' | 'habitat'>, l: ThreatLooks = looks): string {
+export function greatWorkFrame(site: Pick<GreatWorkArtSite, 'stage' | 'wonder' | 'habitat'> & Partial<Pick<GreatWorkArtSite, 'awakened'>>, l: ThreatLooks = looks): string {
     if (!(site.stage >= 4)) return `scaffold_${Math.max(0, Math.min(3, Math.trunc(site.stage) || 0))}`;
     switch (site.wonder) {
         case 'casino':
             return l.casinoDens !== undefined && l.casinoDens.has(site) ? 'casino-pirate' : 'casino';
         case 'ultramind':
+            // `awakened` is set by the Ultramind's own module (render only: read defensively)
+            if (site.awakened === true) return site.habitat !== null ? 'ultramind-node-awake' : 'ultramind-awake';
             return site.habitat !== null ? 'ultramind-node' : 'ultramind';
         case 'sanctuary':
             return 'sanctuary';
@@ -749,7 +751,7 @@ export function greatWorkFrame(site: Pick<GreatWorkArtSite, 'stage' | 'wonder' |
 
 /** The frame the Great Work path draws itself (fixed world size and orientation, GreatWorkFxLayer), or null when another
  * look takes over (a finished Beacon: beaconArtUrl, its BEACON_VISUAL_SCALE / BEACON_REF_SIZE floor, BeaconFxLayer). */
-export function greatWorkDrawnFrame(site: Pick<GreatWorkArtSite, 'stage' | 'wonder' | 'habitat'>, l: ThreatLooks = looks): string | null {
+export function greatWorkDrawnFrame(site: Pick<GreatWorkArtSite, 'stage' | 'wonder' | 'habitat'> & Partial<Pick<GreatWorkArtSite, 'awakened'>>, l: ThreatLooks = looks): string | null {
     const f = greatWorkFrame(site, l);
     return f === 'beacon' ? null : f;
 }
@@ -757,7 +759,7 @@ export function greatWorkDrawnFrame(site: Pick<GreatWorkArtSite, 'stage' | 'wond
 /** World units the whole frame spans at zoom factor 1 (about a large planet). */
 export const GREAT_WORK_WORLD_SIZE = 560;
 /** Frames drawn smaller than the rest (the Ultramind's uplink node beside the planet it wraps). */
-const GW_FRAME_SCALE: Readonly<Record<string, number>> = { 'ultramind-node': 0.5 };
+const GW_FRAME_SCALE: Readonly<Record<string, number>> = { 'ultramind-node': 0.5, 'ultramind-node-awake': 0.5 };
 
 /** The drawn side (px) of a Great Work frame at zoom factor f: a fixed world size, whatever its base's size. Pure. */
 export function greatWorkDrawPx(frame: string, f: number): number {
@@ -1036,18 +1038,119 @@ const GW_RED_DATA: readonly [number, number, number] = [1.0, 0.16, 0.12];
 function gwGlowFiles(frame: string): readonly string[] {
     switch (frame) {
         case 'ultramind':
-            return ['ultramind-glow'];
+            return UM_GLOW;
+        case 'ultramind-awake':
+            return UM_AWAKE_GLOW;
         case 'ultramind-node':
-            return ['ultramind-node-glow'];
+            return UM_NODE_GLOW;
+        case 'ultramind-node-awake':
+            return UM_NODE_AWAKE_GLOW;
         default:
             return [];
     }
 }
+const UM_GLOW = ['ultramind-glow'];
+const UM_AWAKE_GLOW = ['ultramind-awake-glow'];
+const UM_NODE_GLOW = ['ultramind-node-glow'];
+const UM_NODE_AWAKE_GLOW = ['ultramind-node-awake-glow'];
 
-/** The Ultramind's slow breathing glow (never off). Pure. */
-export function gwUltramindPulse(sec: number): number {
+const gwKeys = new Map<string, string>();
+/** A frame's key in the generated tables (giantworksLights.ts: every '-' an '_'), cached (no per-frame strings). */
+function gwKey(frame: string): string {
+    let k = gwKeys.get(frame);
+    if (k === undefined) {
+        k = frame.split('-').join('_');
+        gwKeys.set(frame, k);
+    }
+    return k;
+}
+
+/** The Ultramind's slow breathing glow (never off); awakened, a faster, harder throb. Pure. */
+export function gwUltramindPulse(sec: number, awake = false): number {
+    if (awake) return 0.4 + 0.45 * Math.pow(0.5 + 0.5 * Math.sin((2 * Math.PI * sec) / 1.3), 2);
     return 0.35 + 0.3 * (0.5 + 0.5 * Math.sin((2 * Math.PI * sec) / 4.2));
 }
+
+/**
+ * Alpha (0..1) of a server-rack status light of the Ultramind (row `row`, column `col` in its server unit): each unit
+ * runs one of four patterns (by a hash of its row): a light chasing along the row, disk-activity flicker, a
+ * heartbeat, a binary count. Awakened, the same patterns run three times as fast, most lights stay lit and the whole
+ * cube stutters in angry bursts. Pure.
+ */
+export function gwRackAlpha(sec: number, row: number, col: number, awake: boolean): number {
+    const t = awake ? sec * 3.2 : sec;
+    let a: number;
+    switch (Math.floor(hash01(row, 17) * 4)) {
+        case 0: {
+            const n = 3 + Math.floor(hash01(row, 5) * 4);
+            a = Math.floor(t * 4 + hash01(row, 9) * 16) % n === col % n ? 1 : 0.06;
+            break;
+        }
+        case 1:
+            a = hash01(Math.floor(t * 9 + hash01(row, 2) * 50), row * 31 + col) > 0.55 ? 0.95 : 0.05;
+            break;
+        case 2:
+            a = 0.2 + 0.8 * flash(t, 1.6 + hash01(row, 3), 0.4, col * 0.08 + hash01(row, 4) * 3);
+            break;
+        default:
+            a = (Math.floor(t * 2 + hash01(row, 7) * 64) >> col % 6) & 1 ? 0.9 : 0.05;
+    }
+    if (awake) {
+        const burst = flash(sec, 1.15, 0.3, 0) > 0 && Math.floor(sec * 22) % 2 === 0;
+        a = burst ? 1 : Math.max(a, 0.5 * hash01(Math.floor(sec * 14), row * 7 + col));
+    }
+    return a;
+}
+
+/**
+ * Where the data pulse on trace `i` (`len` frame px long) is at `sec`: its distance along the trace, or -1 between
+ * pulses. Calm: one pulse at 60 px/s, then a pause of 1.5-4.5 s; awakened: 190 px/s, almost back to back. Pure.
+ */
+export function gwTracePulse(sec: number, i: number, len: number, awake: boolean): number {
+    const speed = awake ? 190 : 60;
+    const period = len / speed + (awake ? 0.12 : 1.5 + 3 * hash01(i, 11));
+    const t = (((sec + hash01(i, 13) * period) % period) + period) % period;
+    const d = t * speed;
+    return d <= len ? d : -1;
+}
+
+/** The trace polylines of a frame with their cumulative lengths (built once per frame). */
+interface TraceTable {
+    pts: readonly (readonly number[])[];
+    cum: Float64Array[];
+}
+const traceTables = new Map<string, TraceTable | null>();
+function traceTable(key: string): TraceTable | null {
+    let t = traceTables.get(key);
+    if (t !== undefined) return t;
+    t = null;
+    if (Object.hasOwn(GW_UM_TRACES, key)) {
+        const pts = GW_UM_TRACES[key];
+        const cum = pts.map((pl) => {
+            const c = new Float64Array(pl.length >> 1);
+            for (let j = 1; j < c.length; j++) c[j] = c[j - 1] + Math.hypot(pl[2 * j] - pl[2 * j - 2], pl[2 * j + 1] - pl[2 * j - 1]);
+            return c;
+        });
+        t = { pts, cum };
+    }
+    traceTables.set(key, t);
+    return t;
+}
+/** Scratch point (no per-frame allocation). */
+const tracePt = { x: 0, y: 0 };
+/** The point `d` frame px along polyline `pl` (cumulative lengths `cum`) into tracePt. */
+function traceAt(pl: readonly number[], cum: Float64Array, d: number): void {
+    let j = 1;
+    while (j < cum.length - 1 && cum[j] < d) j++;
+    const seg = cum[j] - cum[j - 1];
+    const f = seg > 1e-6 ? Math.max(0, Math.min(1, (d - cum[j - 1]) / seg)) : 0;
+    tracePt.x = pl[2 * j - 2] + (pl[2 * j] - pl[2 * j - 2]) * f;
+    tracePt.y = pl[2 * j - 1] + (pl[2 * j + 1] - pl[2 * j - 1]) * f;
+}
+
+const UM_PULSE: readonly [number, number, number] = [0.55, 0.95, 1.0];
+const UM_PULSE_RED: readonly [number, number, number] = [1.0, 0.25, 0.12];
+const UM_PULSE_TRAIL = [0.85, 0.5, 0.28, 0.12];
 
 const gwTex = new Map<string, Texture | null>();
 const gwLoading = new Set<string>();
@@ -1239,6 +1342,11 @@ function casinoNeonTextures(look: GwCasinoLook): readonly Texture[] | null {
     return t;
 }
 
+/** The Ultramind's rack lights are drawn from this drawn frame size (px; below it a light is under a pixel), its trace
+ * pulses from UM_PULSES_MIN_PX. */
+export const UM_RACKS_MIN_PX = 300;
+export const UM_PULSES_MIN_PX = 110;
+
 /**
  * The Great Work's overlays (pooled; nothing allocated per frame but a Sanctuary's view, once): the Sanctuary's
  * whales and its front struts / glass over them, the casino's turning sprites, the additive glow layers and neon
@@ -1258,11 +1366,14 @@ export class GreatWorkFxLayer {
     private readonly pt = { x: 0, y: 0, a: 0 };
     private glowPool = new SpritePool(this.glows);
     private lampPool = new SpritePool(this.lamps);
+    private readonly racks = new Container();
+    /** The Ultramind's rack lights (skewed into their face's plane: nothing else uses this pool). */
+    private rackPool = new SpritePool(this.racks);
     private views = new Map<BuiltObject, SanctuaryView>();
 
     constructor() {
         this.root.eventMode = 'none';
-        this.root.addChild(this.whales, this.fronts, this.turns, this.glows, this.lamps);
+        this.root.addChild(this.whales, this.fronts, this.turns, this.glows, this.racks, this.lamps);
     }
 
     begin(): void {
@@ -1270,6 +1381,7 @@ export class GreatWorkFxLayer {
         this.turnPool.begin();
         this.glowPool.begin();
         this.lampPool.begin();
+        this.rackPool.begin();
         for (const v of this.views.values()) v.seen = false;
     }
 
@@ -1325,12 +1437,13 @@ export class GreatWorkFxLayer {
             s.position.set(x, y);
             s.rotation = rotation;
             s.scale.set(scale);
-            s.alpha = gwUltramindPulse(sec);
-            s.tint = site.awakened === true ? 0xff3a2a : 0xffffff;
+            s.alpha = gwUltramindPulse(sec, frame.endsWith('-awake'));
         }
-        if (!Object.hasOwn(GW_LIGHTS, frame.replace('-', '_'))) return;
-        const pts = GW_LIGHTS[frame.replace('-', '_')];
+        const key = gwKey(frame);
         const k = drawnPx / Math.max(tw, th); // screen px per frame px
+        if (Object.hasOwn(GW_UM_RACKS, key)) drawUltramindFx(this.rackPool, this.lampPool, key, frame.endsWith('-awake'), x, y, rotation, scale, ax, ay, tw, th, k, drawnPx, sec);
+        if (!Object.hasOwn(GW_LIGHTS, key)) return;
+        const pts = GW_LIGHTS[key];
         const red = site.awakened === true;
         // the casino's dense marquee and arena bulbs merge into blobs when small: they fade out as the casino shrinks
         const bulbFade = Math.max(0, Math.min(1, (k - 0.22) / 0.3));
@@ -1508,6 +1621,7 @@ export class GreatWorkFxLayer {
         this.turnPool.end();
         this.glowPool.end();
         this.lampPool.end();
+        this.rackPool.end();
         for (const [bo, v] of this.views) {
             if (v.seen) continue;
             if (bo.hasBeenDestroyed || looks.greatWorks?.has(bo) !== true) {
@@ -1518,50 +1632,144 @@ export class GreatWorkFxLayer {
     }
 }
 
-// --- the Ultramind's shell over its planet ---
-
-/** The shell texture spans this many times the planet picture's width (scripts/giantworks-art.py SHELL_SCALE). */
-export const ULTRAMIND_SHELL_SCALE = 1.4;
-
-/** The machine shell (and its pulsing data glow) over one planet / moon picture, made on first use. */
-export interface UltramindShellHolder {
-    gwShell: { shell: Sprite; glow: Sprite } | null;
+/**
+ * The Ultramind's rack lights blinking in their patterns (from UM_RACKS_MIN_PX) and the data pulses running along its
+ * circuit traces (from UM_PULSES_MIN_PX), over a frame `key` (GW_UM_RACKS / GW_UM_TRACES) drawn at (x, y) with its
+ * anchor (ax, ay), `rotation` and `scale`; `k` screen px per frame px. Pooled: the cube's (GreatWorkFxLayer) and the
+ * planet cage's (syncUltramindShell) sprites.
+ */
+export function drawUltramindFx(rackPool: SpritePool, lampPool: SpritePool, key: string, awake: boolean, x: number, y: number, rotation: number, scale: number, ax: number, ay: number, tw: number, th: number, k: number, drawnPx: number, sec: number): void {
+    if (!Object.hasOwn(GW_UM_RACKS, key)) return;
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+    if (drawnPx >= UM_RACKS_MIN_PX) {
+        const r = GW_UM_RACKS[key];
+        const white = Texture.WHITE;
+        const sx = scale / white.width;
+        const sy = scale / white.height;
+        for (let i = 0; i + 7 < r.length; i += 8) {
+            const a = gwRackAlpha(sec, r[i + 5], r[i + 6], awake);
+            if (a <= 0.08) continue;
+            const s = rackPool.acquire(white);
+            s.blendMode = 'add';
+            const lx = (r[i] - ax * tw) * scale;
+            const ly = (r[i + 1] - ay * th) * scale;
+            s.position.set(x + lx * cos - ly * sin, y + lx * sin + ly * cos);
+            s.rotation = rotation;
+            s.skew.set(0, (r[i + 4] * Math.PI) / 6);
+            s.scale.set(r[i + 2] * sx, r[i + 3] * sy);
+            s.tint = awake ? (r[i + 7] === 1 ? 0xff9a6a : 0xff2a14) : r[i + 7] === 1 ? 0xd8f8ff : 0x4ce4ff;
+            s.alpha = a * 0.75;
+        }
+    }
+    if (drawnPx < UM_PULSES_MIN_PX) return;
+    const tt = traceTable(key);
+    if (tt === null) return;
+    const lamp = lampTexture(awake ? UM_PULSE_RED : UM_PULSE);
+    const rScreen = Math.max(0.7, Math.min(1.5, 1.2 * k));
+    const lampScale = ((rScreen * scale) / k) / LAMP_CORE_PX;
+    const spacing = (awake ? 3.6 : 2.4) / Math.max(0.35, k);
+    for (let i = 0; i < tt.pts.length; i++) {
+        const pl = tt.pts[i];
+        const cum = tt.cum[i];
+        const len = cum[cum.length - 1];
+        const d = gwTracePulse(sec, i, len, awake);
+        if (d < 0) continue;
+        for (let j = 0; j < UM_PULSE_TRAIL.length; j++) {
+            const dd = d - j * spacing;
+            if (dd < 0) break;
+            traceAt(pl, cum, dd);
+            const lx = (tracePt.x - ax * tw) * scale;
+            const ly = (tracePt.y - ay * th) * scale;
+            const s = lampPool.acquire(lamp);
+            s.blendMode = 'add';
+            s.position.set(x + lx * cos - ly * sin, y + lx * sin + ly * cos);
+            s.scale.set(lampScale * (1 - j * 0.15));
+            s.alpha = UM_PULSE_TRAIL[j];
+        }
+    }
 }
 
+// --- the Ultramind's shell over its planet ---
+
+/** The shell textures span this many times the planet picture's width (scripts/giantworks-art.py SHELL_FRAME /
+ * (2 * SHELL_R)): the cube cage round the planet, its antennas out past the cube's corners. */
+export const ULTRAMIND_SHELL_SCALE = 480 / 320;
+
+/** The Ultramind's cube cage round one planet / moon picture (its back half under the body, the front half and its
+ * pulsing data glow over it), made on first use. */
+export interface UltramindShellHolder {
+    gwShell: { back: Sprite; shell: Sprite; glow: Sprite; fx: Container; racks: SpritePool; lamps: SpritePool } | null;
+}
+
+/** Show `s` centred on `body`, `side` px wide, at its alpha. */
+function placeOver(s: Sprite, body: Sprite, side: number): void {
+    s.visible = true;
+    s.position.copyFrom(body.position);
+    s.scale.set(side / s.texture.width);
+    s.alpha = body.alpha;
+}
+
+/** The shell's textures (calm / awakened), by name. */
+const UM_SHELL = { back: 'ultramind-shell-back', front: 'ultramind-shell', glow: 'ultramind-shell-glow', key: 'ultramind_shell' } as const;
+const UM_SHELL_AWAKE = { back: 'ultramind-shell-back-awake', front: 'ultramind-shell-awake', glow: 'ultramind-shell-awake-glow', key: 'ultramind_shell_awake' } as const;
+
 /**
- * The Ultramind's shell over a planet or moon picture `body` of habitat `h` (mainView.ts updateBodies, after the body
- * is placed): shown while `h` is a finished Ultramind's planet (the last threatLooks record) and the body is drawn,
- * the sprites inserted right above the body in `parent`.
+ * The Ultramind's cage over a planet or moon picture `body` of habitat `h` (mainView.ts updateBodies, after the body
+ * is placed): shown while `h` is a finished Ultramind's planet (the last threatLooks record) and the body is drawn;
+ * the back half inserted right under the body in `parent`, the front half and the glow right above it. Its awakened
+ * textures once the site is `awakened` (read defensively).
  */
 export function syncUltramindShell(parent: Container, holder: UltramindShellHolder, body: Sprite, h: Habitat, sec: number): void {
     const ums = looks.ultramindPlanets;
     const site = ums === undefined || ums.size === 0 ? undefined : ums.get(h);
-    const shellTex = site !== undefined && body.visible ? gwTexture('ultramind-shell') : null;
-    const glowTex = shellTex !== null ? gwTexture('ultramind-shell-glow') : null;
-    if (site === undefined || shellTex === null || glowTex === null) {
-        if (holder.gwShell !== null) holder.gwShell.shell.visible = holder.gwShell.glow.visible = false;
+    const names = site?.awakened === true ? UM_SHELL_AWAKE : UM_SHELL;
+    const shellTex = site !== undefined && body.visible ? gwTexture(names.front) : null;
+    const backTex = shellTex !== null ? gwTexture(names.back) : null;
+    const glowTex = backTex !== null ? gwTexture(names.glow) : null;
+    if (site === undefined || shellTex === null || backTex === null || glowTex === null) {
+        if (holder.gwShell !== null) holder.gwShell.back.visible = holder.gwShell.shell.visible = holder.gwShell.glow.visible = holder.gwShell.fx.visible = false;
         return;
     }
     if (holder.gwShell === null) {
+        const back = new Sprite(backTex);
         const shell = new Sprite(shellTex);
         const glow = new Sprite(glowTex);
-        shell.anchor.set(0.5);
-        glow.anchor.set(0.5);
+        for (const s of [back, shell, glow]) {
+            s.anchor.set(0.5);
+            s.eventMode = 'none';
+        }
         glow.blendMode = 'add';
-        shell.eventMode = glow.eventMode = 'none';
-        const at = parent.getChildIndex(body) + 1;
-        parent.addChildAt(shell, at);
-        parent.addChildAt(glow, at + 1);
-        holder.gwShell = { shell, glow };
+        const fx = new Container();
+        fx.eventMode = 'none';
+        const rackLayer = new Container();
+        const lampLayer = new Container();
+        fx.addChild(rackLayer, lampLayer);
+        const at = parent.getChildIndex(body);
+        parent.addChildAt(back, at);
+        parent.addChildAt(shell, at + 2);
+        parent.addChildAt(glow, at + 3);
+        parent.addChildAt(fx, at + 4);
+        holder.gwShell = { back, shell, glow, fx, racks: new SpritePool(rackLayer), lamps: new SpritePool(lampLayer) };
     }
-    const { shell, glow } = holder.gwShell;
+    const { back, shell, glow, fx, racks, lamps } = holder.gwShell;
+    back.texture = backTex;
+    shell.texture = shellTex;
+    glow.texture = glowTex;
     const side = body.scale.x * body.texture.width * ULTRAMIND_SHELL_SCALE;
-    for (const s of [shell, glow]) {
-        s.visible = true;
-        s.position.copyFrom(body.position);
-        s.scale.set(side / s.texture.width);
-        s.alpha = body.alpha;
-    }
-    glow.alpha = body.alpha * gwUltramindPulse(sec);
-    glow.tint = site.awakened === true ? 0xff3a2a : 0xffffff;
+    placeOver(back, body, side);
+    placeOver(shell, body, side);
+    placeOver(glow, body, side);
+    glow.alpha = body.alpha * gwUltramindPulse(sec, site.awakened === true);
+    // its rack lights and data pulses (the front half's, frame px of the shell texture)
+    fx.visible = true;
+    fx.alpha = body.alpha;
+    racks.begin();
+    lamps.begin();
+    // `side` is in the bodies container's units (world): its screen size for the gates and the lamp sizes
+    const z = Math.abs(parent.worldTransform.a) || 1;
+    const scale = side / shellTex.width;
+    drawUltramindFx(racks, lamps, names.key, site.awakened === true, body.position.x, body.position.y, 0, scale, 0.5, 0.5, shellTex.width, shellTex.height, scale * z, side * z, sec);
+    racks.end();
+    lamps.end();
 }

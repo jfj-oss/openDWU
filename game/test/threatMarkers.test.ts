@@ -78,11 +78,14 @@ import {
     sanctuaryBreached,
     sanctuaryEmergencyAlpha,
     sanctuarySpillPuff,
+    gwRackAlpha,
+    gwTracePulse,
+    gwUltramindPulse,
     sanctuaryWhaleCount,
     sanctuaryWhalePose,
     type GreatWorkArtSite,
 } from '../src/render/threatArt';
-import { GW_CASINO_LOOKS, GW_LIGHTS, GW_LIGHT_KINDS, GW_SANCTUARY_GLASS_R } from '../src/render/giantworksLights';
+import { GW_CASINO_LOOKS, GW_LIGHTS, GW_LIGHT_KINDS, GW_SANCTUARY_GLASS_R, GW_UM_RACKS, GW_UM_TRACES } from '../src/render/giantworksLights';
 import type { Habitat } from '../src/sim/types';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
@@ -528,7 +531,8 @@ describe('the Beacon art', () => {
 // scripts/giantworks-art.py), its lights, the Sanctuary's whales, and the map glyphs (threatMarkers.ts).
 describe('giantworks art', () => {
     const png = (f: string): string => resolve(__dirname, '../public', `${GW_ART_DIR.slice(1)}${f}.png`);
-    const FRAMES = ['scaffold_0', 'scaffold_1', 'scaffold_2', 'scaffold_3', 'casino', 'casino-pirate', 'ultramind', 'ultramind-node', 'sanctuary'];
+    const FRAMES = ['scaffold_0', 'scaffold_1', 'scaffold_2', 'scaffold_3', 'casino', 'casino-pirate', 'ultramind', 'ultramind-awake', 'ultramind-node', 'ultramind-node-awake', 'sanctuary'];
+    const UM_FRAMES = ['ultramind', 'ultramind-awake', 'ultramind-node', 'ultramind-node-awake'];
     const site = (stage: number, wonder: string, habitat: Habitat | null = null): GreatWorkArtSite => ({ base: null, stage, wonder, habitat });
     it('the scaffold of each stage is shared by every wonder; complete, the wonder\'s own frame', () => {
         for (const w of ['casino', 'ultramind', 'sanctuary', 'beacon', 'riftGate']) {
@@ -537,6 +541,11 @@ describe('giantworks art', () => {
         expect(greatWorkFrame(site(4, 'casino'))).toBe('casino');
         expect(greatWorkFrame(site(4, 'ultramind'))).toBe('ultramind');
         expect(greatWorkFrame(site(4, 'ultramind', {} as Habitat))).toBe('ultramind-node');
+        // the Ultramind turned on its partners (its own module sets `awakened`): the red, split-open frames
+        expect(greatWorkFrame({ ...site(4, 'ultramind'), awakened: true })).toBe('ultramind-awake');
+        expect(greatWorkFrame({ ...site(4, 'ultramind', {} as Habitat), awakened: true })).toBe('ultramind-node-awake');
+        expect(greatWorkFrame({ ...site(4, 'ultramind'), awakened: false })).toBe('ultramind');
+        expect(greatWorkFrame({ ...site(2, 'ultramind'), awakened: true })).toBe('scaffold_2');
         expect(greatWorkFrame(site(4, 'sanctuary'))).toBe('sanctuary');
         expect(greatWorkFrame(site(4, 'riftGate'))).toBe('scaffold_3'); // no art of its own yet
         // a finished Beacon is drawn by the Beacon's own art and paths, not the Great Work's
@@ -551,10 +560,12 @@ describe('giantworks art', () => {
         expect(greatWorkDrawPx('scaffold_2', 1)).toBe(GREAT_WORK_WORLD_SIZE);
         expect(greatWorkDrawPx('casino', 4)).toBe(GREAT_WORK_WORLD_SIZE / 4);
         expect(greatWorkDrawPx('ultramind-node', 1)).toBe(GREAT_WORK_WORLD_SIZE / 2);
+        expect(greatWorkDrawPx('ultramind-node-awake', 1)).toBe(GREAT_WORK_WORLD_SIZE / 2);
         expect(greatWorkDrawPx('toString', 1)).toBe(GREAT_WORK_WORLD_SIZE); // no prototype key taken for a scale
     });
     it('frames: square, the crop square is the whole frame, no opaque black or marker colours, one connected body', () => {
-        const files = [...FRAMES, 'sanctuary-front', 'ultramind-shell', 'casino-neon', 'casino-rotor-main', 'casino-rotor-night', 'casino-wheel', 'casino-pirate-neon', 'casino-pirate-rotor-main', 'ultramind-glow', 'ultramind-node-glow', 'ultramind-shell-glow'];
+        const shells = ['ultramind-shell', 'ultramind-shell-back', 'ultramind-shell-awake', 'ultramind-shell-back-awake'];
+        const files = [...FRAMES, 'sanctuary-front', 'casino-neon', 'casino-rotor-main', 'casino-rotor-night', 'casino-wheel', 'casino-pirate-neon', 'casino-pirate-rotor-main', ...shells, ...UM_FRAMES.map((f) => `${f}-glow`), 'ultramind-shell-glow', 'ultramind-shell-awake-glow'];
         for (const f of files) {
             expect(existsSync(png(f)), f).toBe(true);
             const img = decodePng(png(f));
@@ -603,7 +614,7 @@ describe('giantworks art', () => {
     });
     it('lights: on the structure, known kinds; every frame lit', () => {
         for (const f of FRAMES) {
-            const pts = GW_LIGHTS[f.replace('-', '_')];
+            const pts = GW_LIGHTS[f.split('-').join('_')];
             expect(pts?.length ?? 0, f).toBeGreaterThanOrEqual(6);
             const img = decodePng(png(f));
             for (const [x, y, k] of pts) {
@@ -767,6 +778,97 @@ describe('giantworks art', () => {
         expect(greatWorkDrawPx('casino-pirate', 2)).toBe(greatWorkDrawPx('casino', 2));
         threatLooks({ scenario: null } as unknown as Galaxy);
         expect(greatWorkFrame(casinoSite)).toBe('casino');
+    });
+    it('the Ultramind: rack lights on its racks, traces on the cube, patterns in 0..1, the awakened ones faster', () => {
+        // the cube, its node, and the planet cage's front half (its rack lights and pulses too)
+        for (const f of [...UM_FRAMES, 'ultramind-shell', 'ultramind-shell-awake']) {
+            const key = f.split('-').join('_');
+            const r = GW_UM_RACKS[key];
+            const tr = GW_UM_TRACES[key];
+            expect(r.length % 8, f).toBe(0);
+            expect(r.length / 8, f).toBeGreaterThan(100);
+            expect(tr.length, f).toBeGreaterThan(f.includes('shell') ? 10 : 20);
+            const img = decodePng(png(f));
+            const W = img.width;
+            for (let i = 0; i < r.length; i += 8) {
+                const [x, y, w, h, face] = r.slice(i, i + 5);
+                expect(img.data[(Math.round(y) * W + Math.round(x)) * 4 + 3], `${f} rack ${x},${y}`).toBeGreaterThan(200);
+                expect(w).toBeGreaterThan(1);
+                expect(h).toBeGreaterThan(0.8);
+                expect(Math.abs(face)).toBe(1);
+            }
+            for (const pl of tr) {
+                expect(pl.length % 2).toBe(0);
+                for (let j = 0; j < pl.length; j += 2) expect(img.data[(Math.round(pl[j + 1]) * W + Math.round(pl[j])) * 4 + 3], `${f} trace`).toBeGreaterThan(120);
+            }
+        }
+        // read as a browser does (a premultiplied 8-bit canvas): no pixel comes back in a light-marker colour
+        const shells = ['ultramind-shell', 'ultramind-shell-back', 'ultramind-shell-awake', 'ultramind-shell-back-awake', 'ultramind-shell-glow', 'ultramind-shell-awake-glow'];
+        for (const f of [...UM_FRAMES, ...UM_FRAMES.map((g) => `${g}-glow`), ...shells]) {
+            const d = decodePng(png(f)).data;
+            let bad = 0;
+            for (let i = 0; i < d.length; i += 4) {
+                const a = d[i + 3];
+                if (a === 0) continue;
+                const back = (v: number): number => Math.min(255, Math.round((Math.round((v * a) / 255) * 255) / a));
+                const r = back(d[i]);
+                const g = back(d[i + 1]);
+                const b = back(d[i + 2]);
+                if ((r === 255 && g === 255 && b === 0) || (r === 0 && g === 0 && b === 255)) bad++;
+            }
+            expect(bad, f).toBe(0);
+        }
+        // the light patterns: in 0..1, every unit blinking (lit and dark moments), the awakened cube lit more and faster
+        let calmOn = 0;
+        let angryOn = 0;
+        let calmFlips = 0;
+        let angryFlips = 0;
+        for (let row = 0; row < 40; row++) {
+            for (let col = 0; col < 4; col++) {
+                let pc = -1;
+                let pa = -1;
+                for (let t = 0; t < 10; t += 0.05) {
+                    const c = gwRackAlpha(t, row, col, false);
+                    const a = gwRackAlpha(t, row, col, true);
+                    for (const v of [c, a]) {
+                        expect(v).toBeGreaterThanOrEqual(0);
+                        expect(v).toBeLessThanOrEqual(1);
+                    }
+                    calmOn += c;
+                    angryOn += a;
+                    if (pc >= 0 && Math.abs(c - pc) > 0.3) calmFlips++;
+                    if (pa >= 0 && Math.abs(a - pa) > 0.3) angryFlips++;
+                    pc = c;
+                    pa = a;
+                }
+            }
+        }
+        expect(calmFlips).toBeGreaterThan(400);
+        expect(angryFlips).toBeGreaterThan(calmFlips * 1.5);
+        expect(angryOn).toBeGreaterThan(calmOn * 1.2);
+        // the data pulses run the trace's length and pause (calm), all but back to back awakened
+        let seen = 0;
+        let prev = -1;
+        let moved = 0;
+        for (let t = 0; t < 20; t += 0.02) {
+            const d = gwTracePulse(t, 3, 120, false);
+            expect(d).toBeLessThanOrEqual(120);
+            if (d >= 0) {
+                seen++;
+                if (prev >= 0 && d > prev) moved++;
+            }
+            prev = d;
+        }
+        expect(seen).toBeGreaterThan(50);
+        expect(seen).toBeLessThan(1000);
+        expect(moved).toBeGreaterThan(40);
+        let angry = 0;
+        for (let t = 0; t < 20; t += 0.02) if (gwTracePulse(t, 3, 120, true) >= 0) angry++;
+        expect(angry).toBeGreaterThan(seen);
+        for (let t = 0; t < 10; t += 0.1) {
+            expect(gwUltramindPulse(t)).toBeGreaterThan(0.3);
+            expect(gwUltramindPulse(t, true)).toBeLessThanOrEqual(1);
+        }
     });
     it('the Sanctuary\'s whales swim inside the glass, and move', () => {
         expect(GW_SANCTUARY_GLASS_R).toBeGreaterThan(100);

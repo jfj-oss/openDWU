@@ -62,11 +62,22 @@ The frames:
   haze; the signs mostly dark (DEN_FATES: most tubes dead and cracked, a few failing, half lit or dying: CAS NO,
   J CKP T), most bulbs dead, one roulette rotor grinding round in fits, the other and the observation wheel stopped
   (laid in the frame, cabins missing), a thin trickle of ships.
-- ultramind (+ ultramind-glow): the Ultramind standing alone, a dark planetoid wrapped in a machine shell: server
-  blocks and lattice, white radiator fins, cyan data lights. ultramind-shell (+ ultramind-shell-glow) is the same
-  shell as an overlay for the planet the site sits at (mainView.ts draws it over the planet's own picture, which shows
-  through the gaps); ultramind-node (+ ultramind-node-glow) is the site's station then (a machine hub with
-  radiators, drawn at half the size).
+- ultramind (+ ultramind-glow): the Ultramind standing alone, a giant cube in three-quarter view (a corner at the
+  viewer, the outline a hexagon; top face lightest, the side faces darker, lit from the upper left, a fine light
+  catching its edges), its mass kitbashed from many stock station, base and capital-ship frames cut up and packed
+  into the faces in worn cold steel and gunmetal; over it fine circuit traces of cyan light in bundles between raised
+  chips (stock plating lids, heat sinks), server-rack strata of thin units with rows of small square and short bar
+  status lights, a few stout masts (collars, footings) and dish clusters on mount blocks. The rack lights and the
+  traces are also written to giantworksLights.ts (GW_UM_RACKS, GW_UM_TRACES) for the runtime's blinking patterns and
+  data pulses. ultramind-awake: the same cube turned hostile: its light red, the plating split open in fine fractures
+  along the circuits, racks torn in two over a red-lit cavity, the front edge rifted (a glimpse of the core), some
+  masts bent or knocked outward. ultramind-shell / ultramind-shell-back (+ -awake, + ultramind-shell[-awake]-glow):
+  the Ultramind round a planet (most often a gas giant): the planet enclosed in a cube cage of the same build, as
+  overlays mainView.ts draws over (front half) and under (back half) the planet's own picture, which shows through
+  every wall's dense machine grid (girders, a fine mesh, some bays plated with racks and boards); the front half's
+  rack lights and traces blink and pulse too. ultramind-node (+ -awake): the site's station then, which the sim parks
+  at the planet's centre (the cage's near corner): a compact cube of the same build under a dish cluster, the cage's
+  corner junction, drawn at half size.
 - sanctuary + sanctuary-front: the Leviathan Sanctuary, a glass sphere in a cage of struts seen from straight above
   (like its ring): the base frame holds the support ring and its docks with the dome's shadow across it, the deep
   water inside and the far struts seen through it; the front frame (drawn over the runtime whales) holds the glass
@@ -3409,138 +3420,913 @@ def casino_lights(lights, res):
 
 
 # ---------------------------------------------------------------------------------------------------------------
-# The Ultramind (a planet wrapped in a machine)
+# The Ultramind (a giant cube kitbashed from stock hulls, laid over with server racks and circuits of light)
 # ---------------------------------------------------------------------------------------------------------------
+#
+# Three-quarter view (true isometric, a corner at the viewer): the outline a hexagon, the top face lightest, the left
+# face darker, the right face darkest (the stock light from the upper left). Each face is a flat texture built at the
+# canvas resolution and laid on through its affine map (warp_put): first the kitbashed mass (stock hull plating crops
+# packed edge to edge in a BSP of panels, whole stock hulls laid over them and cut by the face edges), then the
+# circuit traces of light in the streets between the panels; then raised parts as true iso boxes (the top face's
+# chips, the side faces' server racks with their rows of square and rectangular status lights, structural pillars),
+# drawn back to front; then the antenna masts and dish clusters bristling from the edges and corners. The awakened
+# Ultramind is the same build with its light gone red, the panels split open along the main circuits (a red glow in
+# the cracks, a glimpse of the core at the front edge) and some masts bent or knocked outward.
 
-MACHINE_SRC = [('family14/largespaceport.png', 50), ('family14/capitalship.png', 40), ('family14/resupplyship.png', 44),
-               ('family0/largespaceport.png', 46), ('family9/largespaceport.png', 44), ('family14/largefreighter.png', 36)]
-CYAN = (0.3, 0.95, 1.0)
-TILT = math.radians(28)
+COS30 = math.sqrt(3) / 2
 
 
-def sphere_coords(S, Rs, tilt=TILT):
-    """Per pixel of an S x S canvas (build px) round its centre: inside-disc mask, view normal (nx, ny, nz) and the
-    planet-frame longitude / latitude (the axis tipped `tilt` toward the viewer, north up)."""
+# cold steel (the cube): cleaner and a touch bluer than 'steel'
+RAMPS['cold'] = np.array([[.02, .026, .036], [.1, .112, .13], [.24, .26, .29], [.4, .42, .45], [.56, .585, .615], [.71, .73, .76], [.87, .89, .91]])
+MATS = tuple(RAMPS.keys()) + ('nat',)
+
+UM_DATA = (0.32, 0.88, 1.0)     # cyan data light
+UM_WHITE = (0.82, 0.97, 1.0)    # white status light
+UM_RED = (0.95, 0.15, 0.07)     # the awakened Ultramind's light
+UM_RED_HOT = (1.0, 0.52, 0.3)
+CYAN = UM_DATA
+
+# plating crops (stock px side) and whole hulls kitbashed into the faces: station, base and capital-ship frames of
+# many race families (repainted in cold steel / gunmetal, their own lights put out)
+UM_CROPS = [('family6/largespaceport.png', 44), ('family9/largespaceport.png', 50), ('family12/largespaceport.png', 42),
+            ('family14/largespaceport.png', 50), ('family22/largespaceport.png', 46), ('family23/largespaceport.png', 50),
+            ('family24/largespaceport.png', 40), ('family25/largespaceport.png', 42), ('family0/largespaceport.png', 46),
+            ('family7/largespaceport.png', 46), ('family26/largespaceport.png', 40), ('family6/capitalship.png', 36),
+            ('family23/capitalship.png', 40), ('family24/capitalship.png', 40), ('family22/carrier.png', 40),
+            ('family25/resupplyship.png', 40), ('family3/genericbase.png', 40), ('family11/capitalship.png', 36),
+            ('family9/capitalship.png', 40), ('family14/resupplyship.png', 40), ('family12/capitalship.png', 40),
+            ('family17/largespaceport.png', 44), ('family15/largespaceport.png', 44), ('family8/genericbase.png', 40)]
+UM_HULLS = ['family6/largespaceport.png', 'family6/resupplyship.png', 'family9/genericbase.png', 'family14/largespaceport.png',
+            'family22/carrier.png', 'family22/genericbase.png', 'family23/genericbase.png', 'family23/capitalship.png',
+            'family24/largespaceport.png', 'family24/carrier.png', 'family25/resupplyship.png', 'family25/genericbase.png',
+            'family12/capitalship.png', 'family7/resupplyship.png', 'family0/genericbase.png', 'family26/gasminingstation.png',
+            'family3/miningstation.png', 'family17/gasminingstation.png', 'family8/genericbase.png', 'family9/capitalship.png',
+            'family12/genericbase.png', 'family24/resupplyship.png', 'family22/resupplyship.png', 'family6/carrier.png']
+
+# face value separation (the stock light from the upper left): gain on the shading, and a tone
+FACE_GAIN = {'top': (1.3, 0.24), 'left': (0.98, 0.04), 'right': (0.52, -0.12)}
+
+
+class Iso:
+    """The cube's projection: 3D (x, y, z) in projected-edge units (a unit along x, y or z draws 1 layout px long) to
+    layout px; x runs down-right, y down-left, z up; the near top corner (E, E, E) and the far bottom corner (0, 0, 0)
+    both sit at (cx, cy). A face is (origin, u axis, v axis) in layout px: its texture's (u, v) lands at
+    origin + u * U + v * V."""
+
+    A_ = (COS30, 0.5)
+    B_ = (-COS30, 0.5)
+    DN = (0.0, 1.0)
+
+    def __init__(self, cx, cy, E):
+        self.cx, self.cy, self.E = cx, cy, E
+
+    def p(self, x, y, z):
+        return self.cx + (x - y) * COS30, self.cy + 0.5 * (x + y) - z
+
+    def top(self, x0, y0, z):
+        return self.p(x0, y0, z), self.A_, self.B_
+
+    def left(self, x0, y, z1):      # a face y = const (facing down-left), u along +x, v down
+        return self.p(x0, y, z1), self.A_, self.DN
+
+    def right(self, x, y1, z1):     # a face x = const (facing down-right), u along -y, v down
+        return self.p(x, y1, z1), (COS30, -0.5), self.DN
+
+
+def face_pt(face, u, v):
+    (ox, oy), U, V = face
+    return ox + u * U[0] + v * V[0], oy + u * U[1] + v * V[1]
+
+
+def warp_put(c, piece, face, **kw):
+    """Lay a procedural piece (a face texture, piece px = canvas px) on the canvas through the face's affine map."""
+    (ox, oy), U, V = face
+    H, W = piece.A.shape
+    M = np.array([[U[0], V[0]], [U[1], V[1]]], np.float64)
+    Mi = np.linalg.inv(M)
+    ox, oy = ox * SS, oy * SS
+    cs = [(ox + M[0, 0] * u + M[0, 1] * v, oy + M[1, 0] * u + M[1, 1] * v) for u in (0, W) for v in (0, H)]
+    X0, Y0 = int(math.floor(min(p[0] for p in cs))) - 2, int(math.floor(min(p[1] for p in cs))) - 2
+    X1, Y1 = int(math.ceil(max(p[0] for p in cs))) + 2, int(math.ceil(max(p[1] for p in cs))) + 2
+    w, h = X1 - X0, Y1 - Y0
+    dx, dy = X0 - ox, Y0 - oy
+    data = (Mi[0, 0], Mi[0, 1], Mi[0, 0] * dx + Mi[0, 1] * dy, Mi[1, 0], Mi[1, 1], Mi[1, 0] * dx + Mi[1, 1] * dy)
+    names, chans = piece.chans()
+    res = {}
+    for nm, ch in zip(names, chans):
+        im = Image.fromarray(np.ascontiguousarray(ch, np.float32), 'F').transform((w, h), Image.AFFINE, data, resample=Image.BICUBIC)
+        res[nm] = np.asarray(im).astype(np.float64)
+    A = np.clip(res['A'], 0, 1)
+    inv = np.where(A > 1e-4, 1 / np.maximum(res['A'], 1e-4), 0)
+    L = np.clip(res['L'] * inv, 0, 1)
+    n = np.clip(np.stack([res['n%d' % k] * inv for k in range(3)], -1), 0, 1) if 'n0' in res else None
+    e = np.clip(np.stack([res['e%d' % k] * inv for k in range(3)], -1), 0, None) if 'e0' in res else None
+    mats = {nm[4:]: np.clip(res[nm] * inv, 0, 1) for nm in res if nm.startswith('mat:')}
+    return c.put(Piece(A, L, n, e, mats), (X0 + w / 2) / SS, (Y0 + h / 2) / SS, **kw)
+
+
+def poly_piece(pts, L=0.3, mat='machine', pad=2):
+    """A solid polygon (layout px points) as a procedural piece, anti-aliased; returns (piece, centre)."""
+    xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+    x0, y0 = math.floor(min(xs)) - pad, math.floor(min(ys)) - pad
+    x1, y1 = math.ceil(max(xs)) + pad, math.ceil(max(ys)) + pad
+    k = SS * 4
+    im = Image.new('L', (int((x1 - x0) * k), int((y1 - y0) * k)), 0)
+    ImageDraw.Draw(im).polygon([((x - x0) * k, (y - y0) * k) for (x, y) in pts], fill=255)
+    im = im.resize((int((x1 - x0) * SS), int((y1 - y0) * SS)), Image.BOX)
+    A = np.asarray(im).astype(np.float64) / 255
+    return Piece(A, np.full(A.shape, L), None, None, {mat: np.ones(A.shape)}), ((x0 + x1) / 2, (y0 + y1) / 2)
+
+
+def um_crops(root, rng, n_each=3):
+    """Square crops lying wholly on the opaque hull of the stock frames (their plating detail), lights put out."""
+    out = []
+    for (rel, size) in UM_CROPS:
+        img = Image.open(os.path.join(root, 'images', 'units', 'ships', rel)).convert('RGBA')
+        a = np.asarray(img)[..., 3] > 240
+        ii = np.pad(np.cumsum(np.cumsum(a.astype(np.int64), 0), 1), ((1, 0), (1, 0)))
+        s = int(size)
+        tot = ii[s:, s:] - ii[:-s, s:] - ii[s:, :-s] + ii[:-s, :-s]
+        ys, xs = np.nonzero(tot >= s * s)
+        for _ in range(n_each if len(ys) else 0):
+            i = int(rng.integers(len(ys)))
+            out.append(stock(root, rel, crop=(int(xs[i]), int(ys[i]), int(xs[i]) + s, int(ys[i]) + s), lights='kill'))
+    return out
+
+
+def bsp(rng, x, y, w, h, mn, mx, out, splits=None, depth=0):
+    """Recursive split of a rectangle into panels (sides mn..mx, roughly); `splits` collects the split lines (the
+    streets between the panels) as ((x0, y0), (x1, y1))."""
+    if (w <= mx and h <= mx and (rng.random() < 0.45 or max(w, h) < 2 * mn)) or max(w, h) < 2 * mn:
+        out.append((x, y, w, h))
+        return
+    vert = w > h if abs(w - h) > 0.25 * max(w, h) else rng.random() < 0.5
+    if vert and w < 2 * mn:
+        vert = False
+    if not vert and h < 2 * mn:
+        vert = True
+    if vert:
+        s = float(rng.uniform(mn, w - mn))
+        if splits is not None:
+            splits.append(((x + s, y), (x + s, y + h)))
+        bsp(rng, x, y, s, h, mn, mx, out, splits, depth + 1)
+        bsp(rng, x + s, y, w - s, h, mn, mx, out, splits, depth + 1)
+    else:
+        s = float(rng.uniform(mn, h - mn))
+        if splits is not None:
+            splits.append(((x, y + s), (x + w, y + s)))
+        bsp(rng, x, y, w, s, mn, mx, out, splits, depth + 1)
+        bsp(rng, x, y + s, w, h - s, mn, mx, out, splits, depth + 1)
+
+
+def crop_fill(fc, kit, rng, x, y, w, h, mats=('cold', 'machine'), tone=0.0, contrast=0.75, edge=0.9, shadow=0.0, clip=None):
+    """A plating crop stretched over a panel (turned / flipped at random), contrast eased, crisp seams."""
+    pc = kit[int(rng.integers(len(kit)))]
+    rot = int(rng.integers(4))
+    s = max(w, h)
+    sx, sy = (w / s, h / s) if rot % 2 == 0 else (h / s, w / s)
+    fc.put(pc, x + w / 2, y + h / 2, scale=s / pc.A.shape[0] * 1.03, rot=90 * rot, sx=sx, sy=sy, flipx=bool(rng.random() < 0.5),
+           mat=mats[int(rng.integers(len(mats)))], nat=0.08, tone=tone + float(rng.uniform(-0.08, 0.08)), shadow=shadow,
+           edge=edge, contrast=contrast, clip=clip)
+
+
+def face_mass(fc, rng, kit, hulls, mn=9, mx=40, n_hulls=5, hull_k=(0.22, 0.5)):
+    """The kitbashed mass of a face: crops packed edge to edge in a BSP of panels, whole stock hulls laid over them
+    (turned, mirrored, cut by the face edges), each casting a shadow on what is below."""
+    rects = []
+    bsp(rng, 0, 0, fc.lw, fc.lh, mn, mx, rects)
+    for (x, y, w, h) in rects:
+        crop_fill(fc, kit, rng, x, y, w + 0.3, h + 0.3, tone=-0.04)
+    E = max(fc.lw, fc.lh)
+    for _ in range(n_hulls):
+        pc = hulls[int(rng.integers(len(hulls)))]
+        sc = float(rng.uniform(*hull_k)) * E / max(pc.A.shape)
+        fc.put(pc, float(rng.uniform(0, fc.lw)), float(rng.uniform(0, fc.lh)), scale=sc, rot=90 * int(rng.integers(4)),
+               flipx=bool(rng.random() < 0.5), mat='machine' if rng.random() < 0.5 else 'cold', nat=0.06,
+               tone=float(rng.uniform(-0.06, 0.1)), shadow=0.7, edge=0.7, contrast=0.85)
+
+
+# --- circuits: random walks along a network of streets, bundles of parallel traces, 45-degree corners ---
+
+class Net:
+    """A street network of axis-aligned segments (face px): nodes at their ends and crossings."""
+
+    def __init__(self, segs):
+        pts = set()
+        for (a, b) in segs:
+            pts.add((round(a[0], 2), round(a[1], 2)))
+            pts.add((round(b[0], 2), round(b[1], 2)))
+        # crossings of horizontal with vertical segments
+        hs = [s for s in segs if abs(s[0][1] - s[1][1]) < 1e-6]
+        vs = [s for s in segs if abs(s[0][0] - s[1][0]) < 1e-6]
+        for (a, b) in hs:
+            for (c_, d) in vs:
+                x, y = c_[0], a[1]
+                if min(a[0], b[0]) - 1e-6 <= x <= max(a[0], b[0]) + 1e-6 and min(c_[1], d[1]) - 1e-6 <= y <= max(c_[1], d[1]) + 1e-6:
+                    pts.add((round(x, 2), round(y, 2)))
+        self.adj = {}
+        for (a, b) in segs:
+            horiz = abs(a[1] - b[1]) < 1e-6
+            if horiz:
+                on = sorted(p for p in pts if abs(p[1] - a[1]) < 0.02 and min(a[0], b[0]) - 0.02 <= p[0] <= max(a[0], b[0]) + 0.02)
+            else:
+                on = sorted(p for p in pts if abs(p[0] - a[0]) < 0.02 and min(a[1], b[1]) - 0.02 <= p[1] <= max(a[1], b[1]) + 0.02)
+            for p, q in zip(on, on[1:]):
+                if p != q:
+                    self.adj.setdefault(p, set()).add(q)
+                    self.adj.setdefault(q, set()).add(p)
+        self.nodes = sorted(self.adj)
+
+    def walk(self, rng, start, n, used, straight=0.62, first=None):
+        path = [start]
+        prev = None
+        cur = start
+        for i in range(n):
+            nb = [q for q in sorted(self.adj.get(cur, ())) if q != prev and (min(cur, q), max(cur, q)) not in used]
+            if not nb:
+                break
+            if i == 0 and first is not None:
+                nb2 = [q for q in nb if (q[0] - cur[0]) * first[0] + (q[1] - cur[1]) * first[1] > 0]
+                nb = nb2 or nb
+            if prev is not None and rng.random() < straight:
+                d0 = (cur[0] - prev[0], cur[1] - prev[1])
+                st = [q for q in nb if abs((q[0] - cur[0]) * d0[1] - (q[1] - cur[1]) * d0[0]) < 1e-3]
+                if st:
+                    nb = st
+            q = nb[int(rng.integers(len(nb)))]
+            used.add((min(cur, q), max(cur, q)))
+            path.append(q)
+            prev, cur = cur, q
+        return path
+
+
+def chamfer(path, r):
+    """Cut every corner of a polyline at 45 degrees (r px back along each leg)."""
+    if len(path) < 3:
+        return list(path)
+    out = [path[0]]
+    for i in range(1, len(path) - 1):
+        p0, p1, p2 = np.array(path[i - 1]), np.array(path[i]), np.array(path[i + 1])
+        d0, d1 = p1 - p0, p2 - p1
+        l0, l1 = np.hypot(*d0), np.hypot(*d1)
+        if abs(d0[0] * d1[1] - d0[1] * d1[0]) < 1e-6 * l0 * l1:
+            out.append(tuple(p1))
+            continue
+        k = min(r, l0 * 0.45, l1 * 0.45)
+        out.append(tuple(p1 - d0 / l0 * k))
+        out.append(tuple(p1 + d1 / l1 * k))
+    out.append(path[-1])
+    return out
+
+
+def offset_line(path, off):
+    """A polyline offset sideways by `off` px (mitred joins)."""
+    P = np.array(path, np.float64)
+    if len(P) < 2:
+        return [tuple(p) for p in P]
+    out = []
+    for i in range(len(P)):
+        ns = []
+        if i > 0:
+            d = P[i] - P[i - 1]
+            ns.append(np.array([-d[1], d[0]]) / max(1e-6, np.hypot(*d)))
+        if i < len(P) - 1:
+            d = P[i + 1] - P[i]
+            ns.append(np.array([-d[1], d[0]]) / max(1e-6, np.hypot(*d)))
+        n = ns[0] + ns[-1]
+        n = n / max(1e-6, np.hypot(*n))
+        cosh = max(0.3, float(np.dot(n, ns[0])))
+        out.append(tuple(P[i] + n * off / cosh))
+    return out
+
+
+class Traces:
+    """The circuit layer of one face: fine polylines (face px), each a hairline of light in a shallow groove, small
+    pads at the ends; the FX table takes the centre line of each bundle."""
+
+    def __init__(self, w, h):
+        self.w, self.h = w, h
+        self.lines = []    # (polyline, width)
+        self.pads = []     # (x, y, r)
+        self.fx = []       # polylines the pulses run along
+        self.glow = 0.55
+
+    def bundle(self, path, n=3, pitch=1.6, width=0.62, chamf=3.0, pads=True):
+        path = chamfer(path, chamf)
+        offs = [(k - (n - 1) / 2) * pitch for k in range(n)]
+        for o in offs:
+            pl = offset_line(path, o)
+            self.lines.append((pl, width))
+            if pads:
+                for p in (pl[0], pl[-1]):
+                    self.pads.append((p[0], p[1], width * 0.9))
+        self.fx.append(offset_line(path, offs[len(offs) // 2]))
+        return path
+
+    def piece(self, glow=None, col=UM_DATA):
+        glow = self.glow if glow is None else glow
+        k = SS * 3
+        W, H = int(round(self.w * k)), int(round(self.h * k))
+        groove = Image.new('L', (W, H), 0)
+        lit = Image.new('L', (W, H), 0)
+        gd, ld = ImageDraw.Draw(groove), ImageDraw.Draw(lit)
+        for (pl, w) in self.lines:
+            pts = [(x * k, y * k) for (x, y) in pl]
+            gd.line(pts, fill=255, width=max(1, int(round((w + 0.7) * k))), joint='curve')
+            ld.line(pts, fill=255, width=max(1, int(round(w * k))), joint='curve')
+        for (x, y, r) in self.pads:
+            gd.rectangle(((x - r - 0.4) * k, (y - r - 0.4) * k, (x + r + 0.4) * k, (y + r + 0.4) * k), fill=255)
+            ld.rectangle(((x - r) * k, (y - r) * k, (x + r) * k, (y + r) * k), fill=255)
+        Wc, Hc = int(round(self.w * SS)), int(round(self.h * SS))
+        g = np.asarray(groove.resize((Wc, Hc), Image.BOX)).astype(np.float64) / 255
+        t = np.asarray(lit.resize((Wc, Hc), Image.BOX)).astype(np.float64) / 255
+        # a shallow dark groove (half covering the plating), the copper-dark trace in it, its light
+        A = np.maximum(g * 0.55, t)
+        L = np.where(t > 0.05, 0.42, 0.1)
+        e = (t * glow)[..., None] * np.array(col)[None, None, :]
+        return Piece(A, L, None, e, {'machine': np.ones_like(g)})
+
+
+# --- raised parts: iso boxes ---
+
+def weather(fc, rng, k=0.2, cell=26, grad=(0.0, 0.0)):
+    """Grime and wear over a face canvas: a broad mottling of the shading (k), a light falloff across it (grad: the
+    shading's change across u and v, as fractions), so no face reads as one flat fill."""
+    H, W = fc.h, fc.w
+    n = fbm(rng, H, W, max(2, int(cell * SS)), 3)
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float64)
+    g = 1 + grad[0] * (0.5 - xx / W) * 2 + grad[1] * (0.5 - yy / H) * 2
+    f = ((1 - k / 2 + k * n) * g).astype(F32)
+    fc.ch['L'] *= f
+
+
+def box_face(w, h, rng, kit, contrast=0.55, tone=0.0):
+    """A raised part's side: stock plating squeezed onto it, contrast eased, worn."""
+    w, h = max(1.0, w), max(1.0, h)
+    fc = Canvas(w, h)
+    if kit is None or w * h < 6:
+        fc.put(plate_panel(w, h, rng, bevel=0.6, seams=0), w / 2, h / 2, mat='cold', shadow=0.0)
+    elif max(w, h) > 2.2 * min(w, h):
+        # a long girder: plating panels tiled along it
+        rects = []
+        bsp(rng, 0, 0, w, h, max(2.5, min(w, h) * 0.5), max(4.0, min(w, h) * 1.6), rects)
+        for (x, y, a, b) in rects:
+            crop_fill(fc, kit, rng, x, y, a + 0.2, b + 0.2, tone=tone, contrast=contrast, edge=0.8)
+        weather(fc, rng, 0.2, 14)
+    else:
+        crop_fill(fc, kit, rng, 0, 0, w + 0.2, h + 0.2, tone=tone, contrast=contrast, edge=0.6)
+    return fc.as_piece()
+
+
+def iso_box(c, iso, box, rng, tex=None, mat='cold', shadow=0.55, tones=(0.0, 0.0, 0.0), edge=0.8, kit=None):
+    """A box [x0, x1] x [y0, y1] x [z0, z1] (projected-edge units): its top, its y1 face (down-left) and its x1 face
+    (down-right) laid on with the faces' value separation. tex: optional {'top' | 'left' | 'right': piece} textures
+    (a face's u x v px: top x-by-y, left x-by-z, right y-by-z); the others are stock plating from `kit`."""
+    (x0, x1), (y0, y1), (z0, z1) = box
+    tex = tex or {}
+    W, D, H = x1 - x0, y1 - y0, z1 - z0
+    for k, (nm, face, size) in enumerate((('left', iso.left(x0, y1, z1), (W, H)), ('right', iso.right(x1, y1, z1), (D, H)),
+                                         ('top', iso.top(x0, y0, z1), (W, D)))):
+        if min(size) <= 0.05:
+            continue
+        pc = tex.get(nm)
+        if pc is None:
+            pc = box_face(size[0], size[1], rng, kit)
+        g, t = FACE_GAIN[nm]
+        warp_put(c, pc, face, mat=mat, gain=g, tone=t + tones[k], shadow=shadow if nm != 'top' else shadow * 0.5, edge=edge)
+
+
+# --- antennas and dishes (screen space) ---
+
+def mast(c, pts, w0, w1, mat='cold', bars=(), shadow=0.45, gain=1.0, tone=0.0, collars=()):
+    """A tapering mast along a polyline of layout px (root first): rod shading lit from the left with a specular
+    streak, cross bars at `bars` (fraction, half width), collars (wider dark-edged bands) at `collars` fractions."""
+    P = np.array(pts, np.float64)
+    seg = np.hypot(*(P[1:] - P[:-1]).T)
+    cum = np.concatenate([[0], np.cumsum(seg)])
+    tot = cum[-1]
+    pad = max(w0, max([hw for (f, hw) in bars], default=0)) + 8
+    x0, y0 = P[:, 0].min() - pad, P[:, 1].min() - pad
+    x1, y1 = P[:, 0].max() + pad, P[:, 1].max() + pad
+    Wp, Hp = int((x1 - x0) * SS), int((y1 - y0) * SS)
+    yy, xx = np.mgrid[0:Hp, 0:Wp].astype(np.float64) + 0.5
+    X, Y = xx / SS + x0, yy / SS + y0
+    A = np.zeros((Hp, Wp))
+    L = np.zeros((Hp, Wp))
+    for i in range(len(P) - 1):
+        a, b = P[i], P[i + 1]
+        d = b - a
+        ln = max(1e-6, seg[i])
+        t = np.clip(((X - a[0]) * d[0] + (Y - a[1]) * d[1]) / ln ** 2, 0, 1)
+        px, py = a[0] + t * d[0], a[1] + t * d[1]
+        sgn = ((X - a[0]) * d[1] - (Y - a[1]) * d[0]) / ln     # signed side
+        dist = np.hypot(X - px, Y - py)
+        f = (cum[i] + t * ln) / tot
+        r = (w0 + (w1 - w0) * f) / 2
+        for cf in collars:
+            r = np.where(np.abs(f - cf) * tot < 1.6, r * 1.45 + 0.4, r)
+        a_ = np.clip((r - dist) * SS + 0.5, 0, 1)
+        nx = np.clip(sgn / np.maximum(r, 0.3), -1, 1)
+        nrm = np.array([d[1], -d[0]]) / ln
+        Ls = shade(nx * nrm[0], nx * nrm[1], np.sqrt(np.clip(1 - nx * nx, 0, 1)), amb=0.2, k=0.72, spec=0.35)
+        for cf in collars:
+            Ls = np.where(np.abs(np.abs(f - cf) * tot - 1.4) < 0.35, Ls * 0.55, Ls)
+        m = a_ > A
+        L = np.where(m, Ls, L)
+        A = np.maximum(A, a_)
+    for (f, hw) in bars:
+        s = f * tot
+        i = int(np.searchsorted(cum, s, side='right') - 1)
+        i = min(max(i, 0), len(P) - 2)
+        tt = (s - cum[i]) / max(1e-6, seg[i])
+        q = P[i] + (P[i + 1] - P[i]) * tt
+        d = (P[i + 1] - P[i]) / max(1e-6, seg[i])
+        nrm = np.array([-d[1], d[0]])
+        u = (X - q[0]) * d[0] + (Y - q[1]) * d[1]
+        v = (X - q[0]) * nrm[0] + (Y - q[1]) * nrm[1]
+        bm = np.clip((1.0 - np.abs(u)) * SS, 0, 1) * np.clip((hw - np.abs(v)) * SS, 0, 1)
+        L = np.where(bm > A, 0.55 - 0.25 * (u > 0), L)
+        A = np.maximum(A, bm)
+    pc = Piece(A, np.clip(L, 0, 1), None, None, {mat: np.ones_like(A)})
+    c.put(pc, (x0 + x1) / 2, (y0 + y1) / 2, shadow=shadow, gain=gain, tone=tone)
+    return tuple(P[-1])
+
+
+def dish_tex(r, rng):
+    """A dish seen face on (a face texture, 2r px square): a deep bowl (its far, lower-right inner wall lit), panel
+    rings and gores, a thick rim, a feed horn on four struts with a faint light."""
+    s = 2 * r
+    S = int(math.ceil(s * SS))
     yy, xx = np.mgrid[0:S, 0:S].astype(np.float64) + 0.5
-    x = (xx - S / 2) / (Rs * SS)
-    y = (yy - S / 2) / (Rs * SS)
-    d2 = x * x + y * y
-    inside = d2 < 1
-    z = np.sqrt(np.clip(1 - d2, 0, 1))
-    # rotate the view vector about the x axis: planet Y (north) leans toward the viewer
-    Y = -y * math.cos(tilt) + z * math.sin(tilt)
-    Z = y * math.sin(tilt) + z * math.cos(tilt)
-    lon = np.arctan2(x, Z)
-    lat = np.arcsin(np.clip(Y, -1, 1))
-    return inside, x, y, z, lon, lat, np.sqrt(d2)
+    nx, ny = (xx - S / 2) / (r * SS), (yy - S / 2) / (r * SS)
+    rr = np.hypot(nx, ny)
+    A = np.clip((1 - rr) * r * SS + 0.5, 0, 1)
+    L = shade(-nx * 0.8, -ny * 0.8, np.sqrt(np.clip(1 - (rr * 0.8) ** 2, 0, 1)), amb=0.22, k=0.7, spec=0.12)
+    rim = rr > 0.88
+    L = np.where(rim, shade(nx, ny, np.full_like(nx, 0.45), amb=0.25, k=0.75, spec=0.3), L)
+    ang = np.arctan2(ny, nx)
+    gore = np.abs(((ang / (2 * math.pi) * 16) % 1) - 0.5) > 0.47
+    ring = np.abs(((rr * 5) % 1) - 0.5) > 0.46
+    L = np.where((gore | ring) & ~rim & (rr > 0.2), L * 0.8, L)
+    st = (np.abs(((ang + math.pi / 4) % (math.pi / 2)) - math.pi / 4) < 0.05 + 0.6 / max(4.0, r * SS)) & (rr < 0.88) & (rr > 0.12)
+    L = np.where(st, 0.68, L)
+    L = np.where(rr < 0.12, 0.5 + 0.3 * (-nx - ny > 0), L)
+    L *= 0.84 + 0.26 * value_noise(rng, S, S, max(2, int(r * SS / 4)))
+    e = (np.clip(1 - rr / 0.06, 0, 1) ** 0.8)[..., None] * np.array(UM_DATA)[None, None, :] * 0.6
+    return Piece(A, np.clip(L, 0, 1), None, e, {'white': np.ones_like(A) * 0.55, 'cold': np.ones_like(A) * 0.45})
 
 
-def sphere_wrap(strip, Rs, S=None, tilt=TILT, keep=None):
-    """A strip piece (x along the longitude, 0..2pi; y down the latitude, north at 0) mapped onto the visible face of a
-    sphere of radius Rs (layout px): a procedural piece (S build px square), sphere-shaded. keep: a mask (S x S) of the
-    pixels kept."""
-    S = S or int(math.ceil(2 * Rs * SS)) + 4
-    inside, x, y, z, lon, lat, d = sphere_coords(S, Rs, tilt)
-    sh, sw = strip.A.shape
-    u = (lon + math.pi) / (2 * math.pi) * (sw - 1)
-    v = (math.pi / 2 - lat) / math.pi * (sh - 1)
-    u0 = np.clip(np.floor(u).astype(int), 0, sw - 1)
-    v0 = np.clip(np.floor(v).astype(int), 0, sh - 1)
-    u1 = np.clip(u0 + 1, 0, sw - 1)
-    v1 = np.clip(v0 + 1, 0, sh - 1)
-    fu, fv = u - np.floor(u), v - np.floor(v)
-    m = inside if keep is None else inside & keep
-
-    def samp(a):
-        if a.ndim == 3:
-            return np.stack([samp(a[..., k]) for k in range(a.shape[2])], -1)
-        o = a[v0, u0] * (1 - fu) * (1 - fv) + a[v0, u1] * fu * (1 - fv) + a[v1, u0] * (1 - fu) * fv + a[v1, u1] * fu * fv
-        return np.where(m, o, 0)
-
-    edge = np.clip((1 - d) * Rs * SS + 0.5, 0, 1)
-    A = samp(strip.A) * edge
-    sph = shade(x, y, z, amb=0.18, k=0.85, spec=0.18)
-    L = samp(strip.L) * (0.35 + 0.85 * sph)
-    n = None if strip.n is None else samp(strip.n)
-    e = None if strip.e is None else samp(strip.e)
-    mats = {k: samp(v) for k, v in strip.mats.items()}
-    return Piece(A, np.clip(L, 0, 1), n, e, mats)
+def dish_on(c, iso, rng, at, r, plane, stalk=0.0, w=4.2):
+    """A dish of radius r on a stout stalk at 3D point `at`, facing out of `plane` ('top' up, 'left' / 'right'
+    outward)."""
+    x, y, z = at
+    root = iso.p(x, y, z)
+    if plane == 'top':
+        tip = iso.p(x, y, z + stalk)
+        face = (iso.p(x - r, y - r, z + stalk), Iso.A_, Iso.B_)
+    elif plane == 'left':
+        tip = iso.p(x, y + stalk, z)
+        face = (iso.p(x - r, y + stalk, z + r), Iso.A_, Iso.DN)
+    else:
+        tip = iso.p(x + stalk, y, z)
+        face = (iso.p(x + stalk, y + r, z + r), (COS30, -0.5), Iso.DN)
+    if stalk > 0:
+        mast(c, [root, tip], w, w * 0.8, shadow=0.45, collars=(0.5,))
+    g, t = FACE_GAIN[plane]
+    warp_put(c, dish_tex(r, rng), face, gain=0.55 + 0.3 * g, tone=t * 0.5, shadow=0.55)
 
 
-def machine_strip(root, rng, Rs, emit=True):
-    """The Ultramind's server plating unrolled (longitude x latitude): machine-grey stock crops and smooth plates in
-    rows, cyan status-light rows; the whole sphere (only the visible face is sampled)."""
-    kit = plate_kit(root, rng, 6, MACHINE_SRC, light_col=(0.55, 0.92, 1.0))
-    W = 2 * math.pi * Rs
-    H = math.pi * Rs
-    c = deck_strip(rng, kit, W, H, 22, int(H / 20), period=8, smooth=0.25, contrast=0.75, mat='machine', smooth_mat='machine', nat=0.15)
-    for k in range(int(H / 20)):
-        c.put(window_row(W, 2.4, 3.4, rng, lit=0.35 if emit else 0.0, col=(0.35, 0.7, 0.8)), W / 2, (k + 0.5) * H / int(H / 20), mat='dark', shadow=0.2)
-    return c.as_piece()
+# --- the faces ---
+
+SLOT = 3.2   # one server unit (face px)
 
 
-def lattice_mask(S, Rs, step_deg=15, w=2.2, tilt=TILT):
-    """The geodesic frame over the sphere: meridians and parallels every step_deg, `w` layout px wide (thinning toward
-    the limb as they turn away)."""
-    inside, x, y, z, lon, lat, d = sphere_coords(S, Rs, tilt)
-    st = math.radians(step_deg)
-    dl = np.abs(((lat + st / 2) % st) - st / 2) * Rs
-    dm = np.abs(((lon + st / 2) % st) - st / 2) * Rs * np.cos(lat)
-    k = np.sqrt(np.clip(z, 0.05, 1))
-    m = np.clip(w / 2 * k + 0.5 - np.minimum(dl, dm) * k, 0, 1)
-    m = np.where(np.abs(lat) > math.radians(82), 0, m)
-    return m * inside, lon, lat, inside, x, y, z
+def rack_tex(w, h, slots, rng, lights, row0, kit=None):
+    """A server rack's front (face px w x h): a dark frame, `slots` thin server units of worn plating, each with its
+    status lights (small squares and short bars, cyan and some white) at one end or in a row, vent slots, a handle.
+    lights collects (u, v, w, h, row, col, white) of each light (face px of the rack front)."""
+    fc = Canvas(w, h)
+    fc.put(box_module(w, h, seams=0, vents=False, bevel=0.7), w / 2, h / 2, mat='machine', tone=-0.3, shadow=0.0, edge=0.8)
+    inset = 1.0
+    iw, ih = w - 2 * inset, h - 2 * inset
+    if kit is not None:
+        crop_fill(fc, kit, rng, inset, inset, iw, ih, mats=('machine',), tone=-0.28, contrast=0.4, edge=0.0)
+    else:
+        fc.put(plate_panel(iw, ih, rng, bevel=0.3, seams=0), w / 2, h / 2, mat='machine', tone=-0.3, shadow=0.0)
+    sh = ih / slots
+    for k in range(slots):
+        y0 = inset + k * sh
+        y = y0 + sh / 2
+        # the unit's seam (a dark hairline) and its lit lip
+        sep = np.full((max(1, int(0.45 * SS)), int(iw * SS)), 0.04)
+        fc.put(Piece(np.ones_like(sep), sep), w / 2, y0 + 0.2, mat='machine', shadow=0.0)
+        lip = np.full((max(1, int(0.3 * SS)), int(iw * SS)), 0.55)
+        fc.put(Piece(np.ones_like(lip) * 0.6, lip), w / 2, y0 + 0.55, mat='cold', shadow=0.0)
+        x = inset + 1.3
+        hh = min(1.5, sh - 1.1)
+        bw = max(hh, 1.3)
+        kind = int(rng.integers(5))
+        if kind == 0:      # a status cluster: squares then a bar
+            lt = [(x, bw, hh), (x + 2.4, bw, hh), (x + 4.8, 3.6, hh * 0.7)]
+        elif kind == 1:    # a row of squares across
+            n = int((iw - 4) // 2.5)
+            lt = [(x + 2.5 * i, bw, hh) for i in range(min(n, 16))]
+        elif kind == 2:    # a bar and a square
+            lt = [(x, bw, hh), (x + 2.6, min(9.0, iw * 0.3), hh * 0.65)]
+        elif kind == 3:    # a pair at each end
+            lt = [(x, bw, hh), (x + 2.4, bw, hh), (w - inset - 1.3 - bw, bw, hh), (w - inset - 1.3 - bw - 2.4, bw, hh)]
+        else:              # a drive bay: a column of tiny lights in pairs
+            n = int((iw - 4) // 3.4)
+            lt = [(x + 3.4 * i, bw * 0.8, hh * 0.8) for i in range(min(n, 12))]
+        right = max(lx + lw for (lx, lw, lh) in lt) + 1.2
+        vw = (w - inset - 1.2) - right - (5.2 if kind == 3 else 0)
+        if vw > 3 and kind not in (1, 4):
+            gy = np.mgrid[0:max(1, int(sh * 0.45 * SS)), 0:int(vw * SS)]
+            V = np.where((gy[1] // max(1, SS // 2 + 1)) % 2 == 0, 0.05, 0.2)
+            fc.put(Piece(np.ones_like(V), V), right + vw / 2, y, mat='machine', shadow=0.0)
+        for i, (lx, lw, lh) in enumerate(lt):
+            white = rng.random() < 0.14
+            col = np.array(UM_WHITE if white else UM_DATA)
+            Wl, Hl = max(1, int(round(lw * SS))), max(1, int(round(lh * SS)))
+            e = np.ones((Hl, Wl, 3)) * col * float(rng.uniform(0.22, 0.5))
+            fc.put(Piece(np.ones((Hl, Wl)), np.full((Hl, Wl), 0.3), None, e, {'machine': np.ones((Hl, Wl))}), lx + lw / 2, y, shadow=0.0)
+            lights.append((lx + lw / 2, y, lw, lh, row0 + k, i, white))
+    weather(fc, rng, 0.14, 10)
+    return fc.as_piece()
 
 
-def radiator(length, w0, w1, rng):
-    """A radiator wing seen from above (along y, root at the bottom): a tapering array of pale heat-exchanger panels
-    in rows (tones varying, dark gaps), a coolant manifold pipe down the middle with branch pipes, lattice edge rails,
-    pump blocks at the root."""
-    c = Canvas(max(w0, w1) + 6, length + 2)
-    cx = c.lw / 2
-    rows = int(length / 7)
-    for i in range(rows):
-        t = (i + 0.5) / rows               # 0 tip .. 1 root (y down)
-        w = w1 + (w0 - w1) * t
-        y = 1 + (i + 0.5) * length / rows
-        for sd in (-1, 1):
-            pw = w / 2 - 3
-            c.put(plate_panel(pw, length / rows - 0.9, rng, bevel=0.7, seams=0), cx + sd * (pw / 2 + 2.2), y, mat='white',
-                  tone=float(rng.uniform(0.05, 0.25)), shadow=0.0, edge=0.7)
-            if rng.random() < 0.18:
-                c.put(box_module(pw * 0.4, length / rows - 2, seams=0, vents=False), cx + sd * (pw * 0.6 + 2), y, mat='machine', shadow=0.3)
-    for sd in (-1, 1):
-        x0 = cx + sd * (w0 / 2 - 1.2)
-        x1 = cx + sd * (w1 / 2 - 1.2)
-        girder(c, x0, length, x1, 1, 3.2, rail=0.9, bay=4, mat='machine', shadow=0.4)
-    c.put(cylinder(4.4, length, caps=False, bands=tuple(np.linspace(0.05, 0.95, 9))), cx, length / 2 + 1, mat='machine', shadow=0.5)
-    for i in range(0, rows, 3):
-        y = 1 + (i + 0.5) * length / rows
-        c.put(cylinder(1.8, (w1 + (w0 - w1) * i / rows) * 0.8, caps=False), cx, y, rot=90, mat='steel', shadow=0.3, gain=0.8)
-    c.put(box_module(w0 * 0.7, 9, seams=1), cx, length - 3, mat='machine', shadow=0.5, edge=0.8)
-    return c.as_piece()
+class CubeArt:
+    """The registry the cube builder fills: rack lights and trace pulses (frame px) for the runtime FX."""
+
+    def __init__(self):
+        self.racks = []    # (x, y, w, h, face (+1 left / -1 right), row, col, white)
+        self.traces = []   # polylines (frame px)
 
 
-def ultramind_eye(r, rng):
-    """The processing core on the visible pole: concentric rings of circuitry round a glowing iris (cyan emission)."""
+def top_face(root, rng, kit, hulls, E, tr, exits):
+    """The top face's texture (E x E): the mass, a street network between the board's chip sites, fine circuits in
+    bundles along the streets, flat sockets with pin rows."""
+    fc = Canvas(E, E)
+    face_mass(fc, rng, kit, hulls, mn=8, mx=40, n_hulls=7)
+    rects, splits = [], []
+    bsp(rng, 0, 0, E, E, 14, 52, rects, splits)
+    segs = list(splits) + [((0, 0), (E, 0)), ((0, 0), (0, E)), ((E, 0), (E, E)), ((0, E), (E, E))]
+    net = Net(segs)
+    used = set()
+    for _ in range(64):
+        st = net.nodes[int(rng.integers(len(net.nodes)))]
+        pth = net.walk(rng, st, int(rng.integers(3, 10)), used)
+        if len(pth) >= 2:
+            tr.bundle(pth, n=int(rng.integers(2, 6)), pitch=1.45)
+    chips = []
+    for (x, y, w, h) in rects:
+        r = rng.random()
+        g = 3.6
+        if w < 2 * g + 5 or h < 2 * g + 5:
+            continue
+        if r < 0.55:
+            chips.append((x, y, w, h))
+        elif r < 0.75:
+            # a socket: a flat plate with fine pin rows round it
+            crop_fill(fc, kit, rng, x + g, y + g, w - 2 * g, h - 2 * g, tone=0.14, contrast=0.45, edge=1.0, shadow=0.35)
+            for (px, py, pw, ph) in ((x + g, y + g - 1.0, w - 2 * g, 0.7), (x + g, y + h - g + 0.3, w - 2 * g, 0.7),
+                                     (x + g - 1.0, y + g, 0.7, h - 2 * g), (x + w - g + 0.3, y + g, 0.7, h - 2 * g)):
+                Wp, Hp = max(1, int(pw * SS)), max(1, int(ph * SS))
+                yy, xx = np.mgrid[0:Hp, 0:Wp]
+                pin = (((xx + yy) // max(1, SS // 2 + 1)) % 2 == 0).astype(np.float64)
+                fc.put(Piece(pin * 0.9, np.full(pin.shape, 0.72)), px + pw / 2, py + ph / 2, mat='cold', shadow=0.0)
+    return fc, chips, net
+
+
+def edge_light(c, iso, E, front_only=False):
+    """The light catching the cube's edges: a fine bright bevel along the two top front edges and the top back
+    edges, a softer one down the near vertical edge (the stock light from the upper left)."""
+    P0, Lu, Ru, T, Bt = iso.p(E, E, E), iso.p(0, E, E), iso.p(E, 0, E), iso.p(0, 0, E), iso.p(E, E, 0)
+    for (a, b, w, g) in ((Lu, P0, 1.3, 1.9), (P0, Ru, 1.3, 1.55), (T, Lu, 1.0, 1.7), (T, Ru, 1.0, 1.35), (P0, Bt, 1.0, 1.25)):
+        if front_only and (a == T):
+            continue
+        mast(c, [a, b], w, w, shadow=0.0, gain=g, tone=0.1)
+
+
+def build_cube(c, root, rng, E, cx, cy, awake=False, dish=None):
+    """The cube (edge E, projected) with its near top corner at (cx, cy): the faces, the raised parts, the masts and
+    dishes; awake: the awakened look. Fills c.um (CubeArt) for the runtime FX."""
+    art = CubeArt()
+    iso = Iso(cx, cy, E)
+    kit = um_crops(root, rng, 3)
+    hulls = [stock(root, rel, lights='kill') for rel in UM_HULLS]
+    um_antennas(c, iso, rng, E, True, awake, kit=kit)
+    # the solid core (no see-through seams between the faces)
+    hexp = [iso.p(0, 0, E), iso.p(E, 0, E), iso.p(E, 0, 0), iso.p(E, E, 0), iso.p(0, E, 0), iso.p(0, E, E)]
+    pc, ctr = poly_piece(hexp, L=0.12, mat='machine')
+    c.put(pc, *ctr, shadow=0.0)
+    crack_rng = np.random.default_rng(4242)
+    # --- base faces ---
+    faces = {'top': iso.top(0, 0, E), 'left': iso.left(0, E, E), 'right': iso.right(E, E, E)}
+    tex = {}
+    trs = {}
+    trs['top'] = Traces(E, E)
+    tfc, chips, _ = top_face(root, rng, kit, hulls, E, trs['top'], None)
+    tex['top'] = tfc
+    # sides: pillars and strata
+    side_layout = {}
+    for nm in ('left', 'right'):
+        fc = Canvas(E, E)
+        face_mass(fc, rng, kit, hulls, mn=8, mx=34, n_hulls=6)
+        tr = Traces(E, E)
+        xs = [0.0]
+        while xs[-1] < E - 36:
+            xs.append(xs[-1] + float(rng.uniform(30, 50)))
+        xs[-1] = E
+        bands = []
+        v = float(rng.uniform(4, 8))
+        while True:
+            slots = int(rng.integers(4, 9))
+            hr = slots * SLOT + 2.0
+            if v + hr > E - 4:
+                break
+            bands.append((v, v + hr, slots))
+            v += hr + float(rng.uniform(8, 20))
+        gaps = [bands[0][0] / 2] + [(bands[i][1] + bands[i + 1][0]) / 2 for i in range(len(bands) - 1)] + [(bands[-1][1] + E) / 2]
+        segs = [((0, g), (E, g)) for g in gaps] + [((x, 0), (x, E)) for x in xs]
+        net = Net(segs)
+        used = set()
+        for _ in range(26):
+            st = net.nodes[int(rng.integers(len(net.nodes)))]
+            pth = net.walk(rng, st, int(rng.integers(3, 8)), used, straight=0.7)
+            if len(pth) >= 2:
+                tr.bundle(pth, n=int(rng.integers(2, 5)), pitch=1.4, width=0.55)
+        tr.glow = 0.45
+        # the pillars between the rack bays (steel the vertical circuits run down)
+        for x in xs[1:-1]:
+            crop_fill(fc, kit, rng, x - 3.6, 0, 7.2, E, tone=0.14, contrast=0.45, edge=1.0, shadow=0.45)
+        trs[nm] = tr
+        tex[nm] = fc
+        side_layout[nm] = (xs, bands)
+    grads = {'top': (0.08, 0.08), 'left': (0.05, 0.1), 'right': (0.1, 0.08)}
+    for nm in ('top', 'left', 'right'):
+        fc = tex[nm]
+        weather(fc, np.random.default_rng(len(nm) * 7 + 3), 0.22, 30, grads[nm])
+        fc.put(trs[nm].piece(), E / 2, E / 2, shadow=0.0)
+        # the awakened Ultramind splits open along its longest circuits
+        lines = sorted(trs[nm].fx, key=lambda pl: -sum(math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(pl, pl[1:])))[:7]
+        crk = crack_piece(E, E, lines, crack_rng)
+        if awake:
+            fc.put(crk, E / 2, E / 2, shadow=0.0)
+        g, t = FACE_GAIN[nm]
+        warp_put(c, fc.as_piece(), faces[nm], mat='cold', gain=g, tone=t, shadow=0.0)
+        for pl in trs[nm].fx:
+            q = lambda w: min(E - 2.5, max(2.5, w))
+            art.traces.append([face_pt(faces[nm], q(u), q(v)) for (u, v) in pl])
+    # --- raised parts, back to front ---
+    boxes = []   # (depth, kind, box, extra)
+    for (x, y, w, h) in chips:
+        g = 3.6
+        ht = float(rng.uniform(1.4, 4.2))
+        boxes.append((x + y + w + h + E - g * 2 + ht / 2, 'chip', ((x + g, x + w - g), (y + g, y + h - g), (E, E + ht)), int(rng.integers(1 << 30))))
+    for nm in ('left', 'right'):
+        xs, bands = side_layout[nm]
+        for (v0, v1, slots) in bands:
+            for i in range(len(xs) - 1):
+                if rng.random() < 0.2:
+                    continue
+                u0, u1 = xs[i] + 4.0, xs[i + 1] - 4.0
+                d = float(rng.uniform(2.0, 4.0))
+                if nm == 'left':
+                    box = ((u0, u1), (E, E + d), (E - v1, E - v0))
+                else:
+                    box = ((E, E + d), (E - u1, E - u0), (E - v1, E - v0))
+                boxes.append((sum(sum(b) for b in box) / 2, 'rack:' + nm, box, (slots, int(rng.integers(1 << 30)))))
+    split_rng = np.random.default_rng(4343)
+    boxes.sort(key=lambda b: b[0])
+    row = 0
+    for (dep, kind, box, extra) in boxes:
+        (x0, x1), (y0, y1), (z0, z1) = box
+        if kind == 'chip':
+            r2 = np.random.default_rng(extra)
+            w, d = x1 - x0, y1 - y0
+            lid = Canvas(w, d)
+            crop_fill(lid, kit, r2, 0, 0, w, d, tone=0.06, contrast=0.7)
+            if r2.random() < 0.25:
+                # a heat sink: fins across the lid
+                n = int(w / 1.8)
+                yy, xx = np.mgrid[0:int(d * SS), 0:int(w * SS)]
+                fin = np.where((xx // max(1, int(0.9 * SS))) % 2 == 0, 0.62, 0.22)
+                lid.put(Piece(np.ones_like(fin) * 0.85, fin), w / 2, d / 2, mat='cold', shadow=0.0)
+            if r2.random() < 0.35:
+                # status lights on the chip's lid
+                for i in range(int(r2.integers(2, 7))):
+                    lx, ly = 2.0 + i * 2.4, 2.0
+                    if lx > w - 2:
+                        break
+                    e = np.ones((int(1.3 * SS), int(1.3 * SS), 3)) * np.array(UM_DATA) * 0.45
+                    lid.put(Piece(np.ones(e.shape[:2]), np.full(e.shape[:2], 0.3), None, e), lx, ly, mat='machine', shadow=0.0)
+            weather(lid, r2, 0.16, 12)
+            iso_box(c, iso, box, r2, tex={'top': lid.as_piece()}, shadow=0.6, kit=kit)
+        else:
+            nm = kind.split(':')[1]
+            slots, sd = extra
+            r2 = np.random.default_rng(sd)
+            w = (x1 - x0) if nm == 'left' else (y1 - y0)
+            h = z1 - z0
+            lights = []
+            front = rack_tex(w, h, slots, r2, lights, row, kit)
+            row += slots
+            sgn = 1 if nm == 'left' else -1
+            u0 = x0 if nm == 'left' else E - y1
+            dpt = (y1 - E) if nm == 'left' else (x1 - E)
+
+            def rbox(ua, ub, dd, dz=0.0):
+                # a rack box spanning face u ua..ub, standing dd out of the face, dz lower
+                if nm == 'left':
+                    return ((ua, ub), (E, E + dd), (z0 - dz, z1 - dz))
+                return ((E, E + dd), (E - ub, E - ua), (z0 - dz, z1 - dz))
+
+            def rface(b):
+                (bx0, bx1), (by0, by1), (bz0, bz1) = b
+                return iso.left(bx0, by1, bz1) if nm == 'left' else iso.right(bx1, by1, bz1)
+            if awake and split_rng.random() < 0.24:
+                # split open: the rack torn in two along its middle and pushed apart, the red-lit cavity behind it
+                um = u0 + w / 2
+                cav = cavity_tex(w, h)
+                warp_put(c, cav, rface(rbox(u0, u0 + w, 0.0)), shadow=0.0)
+                g = float(split_rng.uniform(1.4, 2.6))
+                halves = [(0.0, w / 2, rbox(u0 - 1.0, um - g, dpt + 2.0, 0.0)), (w / 2, w, rbox(um + g, u0 + w + 1.0, dpt + 0.9, float(split_rng.uniform(0.5, 1.6))))]
+                for (f0, f1, hb) in halves:
+                    iso_box(c, iso, hb, r2, tex={nm: piece_cols(front, f0 / w, f1 / w)}, shadow=0.6, kit=kit)
+                    fce = rface(hb)
+                    for (u, v, lw, lh, rw, col, white) in lights:
+                        if f0 <= u < f1:
+                            art.racks.append((*face_pt(fce, u - f0, v), lw, lh, sgn, rw, col, white))
+            else:
+                iso_box(c, iso, box, r2, tex={nm: front}, shadow=0.55, kit=kit)
+                face = rface(box)
+                for (u, v, lw, lh, rw, col, white) in lights:
+                    x, y = face_pt(face, u, v)
+                    art.racks.append((x, y, lw, lh, sgn, rw, col, white))
+    edge_light(c, iso, E)
+    if awake:
+        um_split(c, iso, E, crack_rng)
+    um_antennas(c, iso, rng, E, False, awake, kit=kit)
+    if dish is not None:
+        um_dish_cluster(c, iso, rng, kit, (dish[0] * E, dish[1] * E, E), 'top', dish[2])
+    if awake:
+        um_recolor(c)
+    c.um = art
+    return iso, art
+
+
+def um_split(c, iso, E, rng):
+    """The awakened Ultramind's front edge split open from top to bottom: a jagged rift along the near vertical edge,
+    dark, the core's red light glowing up from its depth (a glimpse only)."""
+    top, bot = iso.p(E, E, E * 0.86), iso.p(E, E, E * 0.12)
+    n = 26
+    lft, rgt = [], []
+    for i in range(n + 1):
+        t = i / n
+        x = top[0] + (bot[0] - top[0]) * t
+        y = top[1] + (bot[1] - top[1]) * t
+        wd = 1.5 + 9.0 * math.sin(math.pi * t) ** 1.2
+        j = float(rng.uniform(-1.2, 1.2))
+        lft.append((x - wd * float(rng.uniform(0.6, 1.0)) + j, y + float(rng.uniform(-1, 1))))
+        rgt.append((x + wd * float(rng.uniform(0.6, 1.0)) + j, y + float(rng.uniform(-1, 1))))
+    poly = lft + rgt[::-1]
+    pc, ctr = poly_piece(poly, L=0.03, mat='machine', pad=3)
+    H, W = pc.A.shape
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float64) + 0.5
+    X = xx / SS + ctr[0] - W / SS / 2
+    Y = yy / SS + ctr[1] - H / SS / 2
+    mid = (top[1] + bot[1]) / 2
+    t = np.clip(1 - np.abs(Y - mid) / (abs(bot[1] - top[1]) / 2), 0, 1)
+    dx = np.abs(X - (top[0] + bot[0]) / 2) / np.maximum(1.0 + 5.5 * t, 1)
+    glow = np.clip(1 - dx, 0, 1) ** 1.5 * t ** 0.6
+    e = glow[..., None] * np.array(UM_RED_HOT)[None, None, :] * 1.1 + (glow ** 0.4 * 0.5)[..., None] * np.array(UM_RED)[None, None, :]
+    c.put(Piece(pc.A, pc.L, None, e, {'machine': np.ones_like(pc.A)}), *ctr, shadow=0.5)
+    # lit lips on the left rim (the light from the upper left), shadow on the right
+    for (side, Lv) in ((lft, 0.62), (rgt, 0.2)):
+        m = mast(c, side, 1.0, 1.0, shadow=0.0, gain=Lv / 0.5)
+
+
+def um_masts(E, lk=1.0):
+    """The masts, few and stout (3D roots as fractions of the cube, directions, lengths in cube edges, widths in px,
+    collars, cross bars, behind = drawn before the faces): a tall tower at the back corner with two companions, one
+    at each side corner, one out of each side face, two hanging from the bottom edges."""
+    up, outl, outr, down = (0, 0, 1), (0, 1, 0), (1, 0, 0), (0, 0, -1)
+    return [((0.06, 0.06, 1), up, 0.55, 8.0, (0.2, 0.45, 0.7), ((0.32, 9.0), (0.62, 7.0)), False),
+            ((0.17, 0.05, 1), up, 0.34, 5.6, (0.3, 0.62), ((0.5, 6.0),), False),
+            ((0.05, 0.17, 1), up, 0.28, 5.2, (0.35, 0.7), (), False),
+            ((0.95, 0.06, 1), up, 0.2, 5.0, (0.45,), ((0.6, 5.0),), False),
+            ((0.06, 0.95, 1), up, 0.24, 5.0, (0.4,), ((0.65, 5.5),), False),
+            ((0.03, 1, 0.8), outl, 0.13, 4.6, (0.5,), (), False),
+            ((1, 0.03, 0.72), outr, 0.12, 4.6, (0.5,), (), False),
+            ((0.5, 0.98, 0), down, 0.13, 4.6, (0.45,), (), True),
+            ((0.98, 0.62, 0), down, 0.11, 4.4, (0.45,), (), True)]
+
+
+def um_dishes(E):
+    """Dish clusters (3D centre as fractions of the cube, plane, [(du, dv, radius, stalk) in cube edges]): two on the
+    top face by its back edges, one on each side face."""
+    return [((0.42, 0.1, 1), 'top', [(0, 0, 0.07, 0.035), (0.09, 0.02, 0.045, 0.02), (0.04, 0.08, 0.035, 0.015)]),
+            ((0.1, 0.5, 1), 'top', [(0, 0, 0.06, 0.03), (0.02, 0.09, 0.04, 0.015)]),
+            ((0.2, 1, 0.26), 'left', [(0, 0, 0.055, 0.025), (0.08, -0.03, 0.035, 0.012)]),
+            ((1, 0.22, 0.3), 'right', [(0, 0, 0.05, 0.025), (-0.07, -0.04, 0.032, 0.012)])]
+
+
+def bent(pts, ang, frac=0.35):
+    """A mast bent over from `frac` of its length by `ang` rad in total (a curl), its polyline resampled."""
+    P = np.array(pts, np.float64)
+    a, b = P[0], P[-1]
+    ln = float(np.hypot(*(b - a)))
+    d = (b - a) / max(ln, 1e-6)
+    out = [tuple(a)]
+    cur = a + d * ln * frac
+    out.append(tuple(cur))
+    n = 8
+    th = math.atan2(d[1], d[0])
+    step = ln * (1 - frac) / n
+    for i in range(n):
+        th += ang / n
+        cur = cur + step * np.array([math.cos(th), math.sin(th)])
+        out.append(tuple(cur))
+    return out
+
+
+def um_dish_cluster(c, iso, rng, kit, at, plane, r, extra=()):
+    """One dish (radius r) on a mount block at 3D point `at`, with its smaller companions `extra` (du, dv, r, stalk)."""
+    x, y, z = at
+    m = r * 0.45
+    if plane == 'top':
+        iso_box(c, iso, ((x - m, x + m), (y - m, y + m), (z, z + m * 0.5)), rng, kit=kit, shadow=0.55)
+        dish_on(c, iso, rng, (x, y, z + m * 0.5), r, 'top', r * 0.4, w=max(3.0, r * 0.22))
+    elif plane == 'left':
+        iso_box(c, iso, ((x - m, x + m), (y, y + m * 0.5), (z - m, z + m)), rng, kit=kit, shadow=0.55)
+        dish_on(c, iso, rng, (x, y + m * 0.5, z), r, 'left', r * 0.4, w=max(3.0, r * 0.22))
+    else:
+        iso_box(c, iso, ((x, x + m * 0.5), (y - m, y + m), (z - m, z + m)), rng, kit=kit, shadow=0.55)
+        dish_on(c, iso, rng, (x + m * 0.5, y, z), r, 'right', r * 0.4, w=max(3.0, r * 0.22))
+    for (du, dv, rr, st) in extra:
+        if plane == 'top':
+            p = (x + du, y + dv, z)
+        elif plane == 'left':
+            p = (x + du, y, z + dv)
+        else:
+            p = (x, y + du, z + dv)
+        dish_on(c, iso, rng, p, rr, plane, st, w=max(2.6, rr * 0.25))
+
+
+def um_antennas(c, iso, rng, E, behind, awake, lk=1.0, kit=None):
+    """The masts (behind: those drawn before the faces) and, in front, the dish clusters; nav / data lights at the
+    tips. Awakened: some masts bent over, some knocked outward (the same masts, the same lights)."""
+    masts = um_masts(E, lk)
+    br = np.random.default_rng(32)
+    fate = br.random(len(masts))
+    turn = br.uniform(-1, 1, len(masts))
+    # px widths are for the standalone cube (UM_E): smaller cubes thin them, never below a solid 2.4 px
+    wk = max(0.55, E / UM_E)
+    for i, (p, d, ln, w, collars, bars, bh) in enumerate(masts):
+        if bh != behind:
+            continue
+        p = (p[0] * E, p[1] * E, p[2] * E)
+        ln = ln * E * lk
+        w = max(2.4, w * wk)
+        q = (p[0] + d[0] * ln, p[1] + d[1] * ln, p[2] + d[2] * ln)
+        pts = [iso.p(*p), iso.p(*q)]
+        if awake and fate[i] < 0.3:
+            pts = bent(pts, math.copysign(math.radians(55 + 50 * abs(turn[i])), turn[i]))
+        elif awake and fate[i] < 0.5:
+            # knocked outward: turned about the root, its tip away from the cube's centre
+            (rx, ry), (tx, ty) = pts
+            a0 = math.atan2(ty - ry, tx - rx)
+            th = math.radians(26 + 20 * abs(turn[i]))
+            ml = math.hypot(tx - rx, ty - ry)
+            cand = [(rx + math.cos(a0 + sg * th) * ml, ry + math.sin(a0 + sg * th) * ml) for sg in (-1, 1)]
+            far = max(cand, key=lambda q_: abs(q_[0] - iso.cx))
+            pts = [(rx, ry), far]
+        if not bh and d == (0, 0, 1) and kit is not None:
+            # a footing block where it stands on the roof
+            fm = w * 0.9
+            iso_box(c, iso, ((p[0] - fm, p[0] + fm), (p[1] - fm, p[1] + fm), (p[2], p[2] + fm * 0.7)), rng, kit=kit, shadow=0.5)
+        mast(c, pts, w, max(1.6, w * 0.42), bars=[(f, hw * wk) for (f, hw) in bars], collars=collars, shadow=0.45 if not bh else 0.0, tone=0.05)
+        P = np.array(pts[-2:])
+        kx, ky = P[1] - (P[1] - P[0]) / max(1e-6, np.hypot(*(P[1] - P[0]))) * 1.4
+        c.put(Piece(*_knob(max(1.6, w * 0.32))), kx, ky, mat='cold', shadow=0.0)
+        c.light(kx, ky, 'nav' if ln > 0.3 * E else 'data')
+    if behind:
+        return
+    for (p, plane, ds) in um_dishes(E):
+        at = (p[0] * E, p[1] * E, p[2] * E)
+        (du, dv, r, st) = ds[0]
+        um_dish_cluster(c, iso, rng, kit, at, plane, r * E, [(a * E, b * E, rr * E, s * E) for (a, b, rr, s) in ds[1:]])
+
+
+def _knob(r):
     S = int(math.ceil(2 * r * SS)) + 2
     yy, xx = np.mgrid[0:S, 0:S].astype(np.float64) + 0.5
-    dx, dy = (xx - S / 2) / (r * SS), (yy - S / 2) / (r * SS)
-    d = np.hypot(dx, dy)
-    ang = np.arctan2(dy, dx)
-    A = np.clip((1 - d) * r * SS + 0.5, 0, 1)
-    L = 0.4 + 0.2 * np.cos(d * 40) * (d > 0.3)
-    rings = (np.abs(((d * 7) % 1) - 0.5) > 0.38) & (d > 0.28)
-    L = np.where(rings, 0.7, L)
-    seg = np.abs(((ang / (2 * math.pi) * 24) % 1) - 0.5) > 0.42
-    L = np.where(seg & (d > 0.45), L * 0.5, L)
-    e = np.zeros((S, S, 3))
-    iris = np.clip(1 - d / 0.3, 0, 1)
-    trace = rings & ~seg & (d > 0.3)
-    glow = iris ** 0.7 + 0.45 * trace
-    e += glow[..., None] * np.array(CYAN)
-    mats = {'machine': np.ones((S, S))}
-    return Piece(A, np.clip(L, 0, 1), None, e, mats)
+    nx, ny = (xx - S / 2) / (r * SS), (yy - S / 2) / (r * SS)
+    rr = np.hypot(nx, ny)
+    A = np.clip((1 - rr) * r * SS + 0.5, 0, 1)
+    L = shade(nx, ny, np.sqrt(np.clip(1 - rr * rr, 0, 1)), amb=0.25, k=0.8, spec=0.3)
+    return A, np.clip(L, 0, 1)
 
 
 def glow_from(c, kinds=None, boost=1.0, blur=1.8, size=None):
@@ -3561,113 +4347,347 @@ def glow_from(c, kinds=None, boost=1.0, blur=1.8, size=None):
     return res
 
 
-def wrap_machine(c, root, rng, Rs, cover, cx, cy, fins=8, fin_len=110, planet=None):
-    """The machine shell round a sphere of radius Rs at (cx, cy): radiator fins behind it, the planet (a piece, or
-    None: the gaps stay open), server plating on the `cover` share of the lattice cells, the geodesic frame, the polar
-    eye, status lights."""
-    S = int(math.ceil(2 * Rs * SS)) + 4
-    # radiator fins (under everything), each on a short truss root
-    for k in range(fins):
-        a = math.radians(22.5 + 360 / fins * k)
-        x0, y0 = polar(Rs - 30, a, cx, cy)
-        x1, y1 = polar(Rs + fin_len, a, cx, cy)
-        ln = math.hypot(x1 - x0, y1 - y0)
-        c.put(radiator(ln, 30, 46, rng), (x0 + x1) / 2, (y0 + y1) / 2, rot=-math.degrees(a) - 90, shadow=0.6, edge=0.6)
-        girder(c, *polar(Rs - 20, a, cx, cy), *polar(Rs + 18, a, cx, cy), 12, rail=2.2, bay=7, mat='machine', shadow=0.6)
-        c.light(*polar(Rs + fin_len - 2, a, cx, cy), 'nav')
-    c.put(arc_beam(Rs + 6, 7, ticks=8.0, mat='machine'), cx, cy, shadow=0.6)
-    if planet is not None:
-        c.put(planet, cx, cy, shadow=0.0, gain=0.72)
-    # the plating: lattice cells chosen at random (denser on the visible pole and the equator band)
-    lat_m, lon, lat, inside, x, y, z = lattice_mask(S, Rs, 15, 3.4)
-    st = math.radians(15)
-    ci = np.floor(lon / st).astype(int) + 100
-    cj = np.floor(lat / st).astype(int) + 100
-    rv = rng.random((300, 300))
-    cov = rv[cj, ci] < cover
-    strip = machine_strip(root, rng, Rs)
-    plating = sphere_wrap(strip, Rs, S, keep=cov)
-    c.put(plating, cx, cy, shadow=0.55, edge=1.0)
-    # the frame
-    sph = shade(x, y, z, amb=0.25, k=0.8, spec=0.3)
-    fr = Piece(lat_m, np.clip(0.3 + 0.6 * sph, 0, 1), None, None, {'machine': np.ones((S, S))})
-    c.put(fr, cx, cy, shadow=0.45)
-    # data seams: a few parallels and meridians glowing
-    seam = np.zeros((S, S))
-    for la in (0.0, math.radians(30), math.radians(-30)):
-        seam = np.maximum(seam, np.clip(1.2 - np.abs(lat - la) * Rs * np.sqrt(np.clip(z, 0.05, 1)) * 1.4, 0, 1))
-    for lo in np.arange(-math.pi, math.pi, math.radians(45)):
-        seam = np.maximum(seam, np.clip(1.2 - np.abs(lon - lo) * Rs * np.cos(lat) * np.sqrt(np.clip(z, 0.05, 1)) * 1.4, 0, 1) * (np.abs(lat) < math.radians(70)))
-    seam *= inside
-    sp = Piece(seam * 0.8, np.full((S, S), 0.3), None, seam[..., None] * np.array(CYAN)[None, None, :] * 0.45, {'machine': np.ones((S, S))})
-    c.put(sp, cx, cy, shadow=0.0)
-    # the eye on the visible pole
-    py = -math.sin(TILT) * 0 - Rs * math.cos(TILT)
-    ex, ey = cx, cy - Rs * math.cos(TILT)
-    c.put(ultramind_eye(Rs * 0.2, rng), ex, ey, sy=math.sin(TILT) * 1.6, shadow=0.5)
-    # status lights on the plating
-    ys, xs = np.nonzero(cov & inside & (z > 0.3))
-    for i in rng.choice(len(ys), size=min(40, len(ys)), replace=False):
-        c.light(cx + (xs[i] / SS - S / SS / 2), cy + (ys[i] / SS - S / SS / 2), 'data')
+def premul_markers(res):
+    """Pixels a browser's premultiplied 8-bit read brings back in either light-marker colour (scanShipMarkers)."""
+    a = res[..., 3].astype(np.int64)
+    rgb = res[..., :3].astype(np.int64)
+    pm = np.round(rgb * a[..., None] / 255)
+    back = np.clip(np.round(pm * 255 / np.maximum(a, 1)[..., None]), 0, 255).astype(np.int64)
+    yel = (back[..., 0] == 255) & (back[..., 1] == 255) & (back[..., 2] == 0)
+    blu = (back[..., 0] == 0) & (back[..., 1] == 0) & (back[..., 2] == 255)
+    return (a > 0) & yel, (a > 0) & blu
 
 
-R_UM = 200.0
+def um_premul_safe(res):
+    """No pixel that a premultiplied read turns into a marker colour: faint ones cleared, the rest nudged off it."""
+    res = res.copy()
+    for _ in range(4):
+        yel, blu = premul_markers(res)
+        if not (yel.any() or blu.any()):
+            break
+        a = res[..., 3].astype(np.int64)
+        step = 255 // np.maximum(a, 1) + 1
+        faint = (yel | blu) & (a < 24)
+        res[faint] = 0
+        y2, b2 = yel & ~faint, blu & ~faint
+        res[..., 1] = np.where(y2, np.clip(res[..., 1].astype(np.int64) - step, 0, 255), res[..., 1])
+        res[..., 0] = np.where(b2, np.clip(res[..., 0].astype(np.int64) + step, 0, 255), res[..., 0])
+    yel, blu = premul_markers(res)
+    assert not (yel.any() or blu.any())
+    return res
 
 
-def build_ultramind(root):
-    """The Ultramind standing alone: a dark rocky planetoid wrapped in its machine shell, eight radiator fins out."""
+def um_recolor(c):
+    """The awakened Ultramind's light: every emission red (white-hot where it was white)."""
+    e = np.stack([c.ch['e0'], c.ch['e1'], c.ch['e2']], -1)
+    mx = e.max(-1)
+    mn = e.min(-1)
+    sat = np.where(mx > 1e-5, (mx - mn) / np.maximum(mx, 1e-5), 0)
+    hot = np.clip(1 - sat * 1.4, 0, 1)[..., None]
+    col = np.array(UM_RED)[None, None, :] * (1 - hot) + np.array(UM_RED_HOT)[None, None, :] * hot
+    out = mx[..., None] * col * 1.15
+    for q in range(3):
+        c.ch['e%d' % q] = out[..., q].astype(F32)
+
+
+def piece_cols(pc, f0, f1):
+    """The columns f0..f1 (fractions of its width) of a procedural piece."""
+    W = pc.A.shape[1]
+    a, b = int(round(f0 * W)), int(round(f1 * W))
+    sl = (slice(None), slice(a, b))
+    return Piece(pc.A[sl], pc.L[sl], None if pc.n is None else pc.n[sl], None if pc.e is None else pc.e[sl], {k: v[sl] for k, v in pc.mats.items()})
+
+
+def cavity_tex(w, h):
+    """The cavity behind a torn-open panel (face px w x h): dark machinery deep inside, the core's red light welling
+    up the middle."""
+    W, H = max(2, int(round(w * SS))), max(2, int(round(h * SS)))
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float64) + 0.5
+    u = np.abs(xx / W - 0.5) * 2
+    L = 0.04 + 0.05 * ((yy // (2 * SS)) % 2)
+    g = np.clip(1 - u * 1.25, 0, 1) ** 1.6
+    e = g[..., None] * np.array(UM_RED_HOT)[None, None, :] * 0.9 + (g ** 0.5 * 0.55)[..., None] * np.array(UM_RED)[None, None, :]
+    return Piece(np.ones((H, W)), L, None, e, {'machine': np.ones((H, W))})
+
+
+def crack_piece(w, h, lines, rng, width=(1.2, 2.6)):
+    """Fractures along polylines (face px): the plating split open in a jagged zig-zag that wanders off the circuit
+    and branches, dark-rimmed, the red glow deep in it, a lit lip on its upper-left side; a procedural piece of the
+    face's size."""
+    k = SS * 2
+    W, H = int(round(w * k)), int(round(h * k))
+    gap = Image.new('L', (W, H), 0)
+    core = Image.new('L', (W, H), 0)
+    lip = Image.new('L', (W, H), 0)
+    gd, cd, ld = ImageDraw.Draw(gap), ImageDraw.Draw(core), ImageDraw.Draw(lip)
+
+    def jag(P, amp, step):
+        pts = []
+        for i in range(len(P) - 1):
+            a, b = np.array(P[i]), np.array(P[i + 1])
+            ln = float(np.hypot(*(b - a)))
+            n = max(1, int(ln / step))
+            d = (b - a) / max(ln, 1e-6)
+            nrm = np.array([-d[1], d[0]])
+            for j in range(n):
+                pts.append(tuple(a + (b - a) * j / n + nrm * float(rng.uniform(-amp, amp))))
+        pts.append(tuple(P[-1]))
+        return pts
+
+    def stroke(pts, wd, hot=1.0):
+        Q = [(x * k, y * k) for (x, y) in pts]
+        ld.line([(x - 0.9 * k, y - 0.9 * k) for (x, y) in Q], fill=255, width=max(1, int((wd + 0.8) * k)))
+        gd.line(Q, fill=255, width=max(1, int(wd * k)), joint='curve')
+        cd.line(Q, fill=int(255 * hot), width=max(1, int(wd * 0.34 * k)))
+    for pl in lines:
+        pts = jag(pl, 1.4, 3.2)
+        wd = float(rng.uniform(*width))
+        stroke(pts, wd)
+        # branches running off the circuit, tapering
+        for _ in range(max(1, int(len(pts) / 5))):
+            q = pts[int(rng.integers(len(pts)))]
+            a = float(rng.uniform(0, 2 * math.pi))
+            ln = float(rng.uniform(5, 16))
+            br = jag([q, (q[0] + math.cos(a) * ln, q[1] + math.sin(a) * ln)], 1.4, 3.0)
+            stroke(br[:len(br) // 2 + 1], wd * 0.55, 0.7)
+            stroke(br[len(br) // 2:], wd * 0.3, 0.4)
+    Wc, Hc = int(round(w * SS)), int(round(h * SS))
+    g = np.asarray(gap.resize((Wc, Hc), Image.BOX)).astype(np.float64) / 255
+    cr = np.asarray(core.resize((Wc, Hc), Image.BOX)).astype(np.float64) / 255
+    lp = np.asarray(lip.resize((Wc, Hc), Image.BOX)).astype(np.float64) / 255
+    A = np.maximum(g, lp * 0.55)
+    L = np.where(g > 0.3, 0.015, 0.62)
+    e = (cr * 0.75)[..., None] * np.array(UM_RED)[None, None, :] + (cr ** 3 * 0.45)[..., None] * np.array(UM_RED_HOT)[None, None, :]
+    return Piece(A, L, None, e, {'machine': np.ones_like(A)})
+
+
+UM_E = 228.0
+UM_FX = {}   # frame -> CubeArt (the rack lights and trace pulses written to giantworksLights.ts)
+
+
+def build_ultramind(root, awake=False):
+    """The Ultramind standing alone: the cube, antennas and dishes bristling from its edges and corners."""
     rng = seeded('ultramind')
     c = Canvas(FRAME)
-    core = rock(np.random.default_rng(77), R_UM / 1.02, lumpy=0.0)
-    wrap_machine(c, root, rng, R_UM, 0.74, C0, C0, planet=core)
+    build_cube(c, root, rng, UM_E, C0, C0 + 34, awake)
     return c
 
 
-SHELL_FRAME = 644
-SHELL_R = 230.0
+def um_fx_lines(path=None):
+    """giantworksLights.ts: the Ultramind's server-rack status lights and circuit traces per frame (UM_FX). A partial
+    build (--only) keeps the rows of the frames it did not build from the file at `path`."""
+    f1 = lambda v: ('%.1f' % v).rstrip('0').rstrip('.')
+    old = {'racks': {}, 'traces': {}}
+    if path is not None and os.path.exists(path):
+        at = None
+        with open(path) as f:
+            for ln in f.read().split('\n'):
+                if ln.startswith('export const GW_UM_RACKS'):
+                    at = 'racks'
+                elif ln.startswith('export const GW_UM_TRACES'):
+                    at = 'traces'
+                elif ln.startswith('};'):
+                    at = None
+                elif at is not None and ln.startswith('    '):
+                    old[at][ln.strip().split(':')[0]] = ln
+    racks, traces = dict(old['racks']), dict(old['traces'])
+    for name in UM_FX:
+        key = name.replace('-', '_')
+        v = []
+        for (x, y, w, h, fc, row, col, white) in UM_FX[name].racks:
+            v += [f1(x), f1(y), f1(w), f1(h), str(fc), str(row), str(col), '1' if white else '0']
+        racks[key] = '    %s: [%s],' % (key, ', '.join(v))
+        tr = ['[%s]' % ', '.join('%s, %s' % (f1(x), f1(y)) for (x, y) in pl) for pl in UM_FX[name].traces if len(pl) >= 2]
+        traces[key] = '    %s: [%s],' % (key, ', '.join(tr))
+    out = ['/** The Ultramind\'s server-rack status lights (frame px), 8 numbers each: centre x, y, w, h (along the face / down),',
+           ' * face (1 the left face: its rows run 30 deg down to the right; -1 the right face: up to the right), row, column',
+           ' * in the row, white (1) or cyan (0). */',
+           'export const GW_UM_RACKS: Readonly<Record<string, readonly number[]>> = {']
+    out += [racks[k] for k in sorted(racks)]
+    out.append('};')
+    out.append('/** The Ultramind\'s circuit traces the data pulses run along: polylines, frame px x0, y0, x1, y1, ... */')
+    out.append('export const GW_UM_TRACES: Readonly<Record<string, readonly (readonly number[])[]>> = {')
+    out += [traces[k] for k in sorted(traces)]
+    out.append('};')
+    return out
 
 
-def build_ultramind_shell(root):
-    """The same shell as an overlay for the planet the site wraps (mainView.ts draws it over the planet picture, which
-    shows through the open cells): SHELL_FRAME px, the planet disc SHELL_R px (ULTRAMIND_SHELL_SCALE 1.4)."""
+def build_ultramind_node(root, awake=False):
+    """The uplink node: the site's station when the Ultramind cages a planet. The sim parks it at the planet's centre,
+    which is where the cage's near corner lands, so it is the cage's corner junction: a compact cube of the same
+    build (its near top corner at the frame centre) under an uplink dish cluster, drawn at half size."""
+    rng = seeded('ultramind-node')
+    c = Canvas(FRAME)
+    E = 150.0
+    build_cube(c, root, rng, E, C0, C0, awake, dish=(0.55, 0.5, 26.0))
+    return c
+
+
+SHELL_FRAME = 480
+SHELL_R = 160.0                                       # the planet disc in the shell frame (ULTRAMIND_SHELL_SCALE 480 / 320)
+SHELL_E = 1.2 * SHELL_R   # a tight cage: the disc just inside the hexagon (the front faces drawn over the planet, the back under it)
+
+
+def grid_face(root, rng, kit, hulls, E, front, plates, art_racks, tr, row0, n1=8, n2=3):
+    """One wall of the cage (E x E face texture): a dense machine grid the planet shows through - main girders every
+    E / n1 (kitbashed plating, lit rims), each bay crossed by a finer mesh of n2 x n2 struts - with some bays plated
+    (server racks on the walls, circuit boards on the roof / floor; `plates` the bay share). art_racks collects the
+    racks' lights (face px), tr gets circuits along the girders."""
+    base = Canvas(E, E)
+    face_mass(base, rng, kit, hulls, mn=5, mx=22, n_hulls=4, hull_k=(0.25, 0.5))
+    weather(base, rng, 0.25, 24)
+    bp = base.as_piece()
+    S = int(round(E * SS))
+    yy, xx = np.mgrid[0:S, 0:S].astype(np.float64) + 0.5
+    u, v = xx / SS, yy / SS
+    cell = E / n1
+    du = np.abs(((u + cell / 2) % cell) - cell / 2)
+    dv = np.abs(((v + cell / 2) % cell) - cell / 2)
+    wm = 3.0
+    main = np.clip(wm / 2 - np.minimum(du, dv) + 0.5 / SS, 0, 1) * SS
+    main = np.clip(main, 0, 1)
+    fine_c = cell / n2
+    fu = np.abs(((u + fine_c / 2) % fine_c) - fine_c / 2)
+    fv = np.abs(((v + fine_c / 2) % fine_c) - fine_c / 2)
+    fine = np.clip((0.42 - np.minimum(fu, fv)) * SS + 0.5, 0, 1) * 0.85
+    mask = np.maximum(main, fine)
+    # the grid piece: the girders keep the kitbash mass, the fine mesh plain steel struts
+    Lg = np.where(main > 0.5, bp.L, 0.3)
+    # lit top-left rims, dark bottom-right on the girders (they stand proud)
+    lit = (main > 0.5) & (np.roll(main, SS, 0) < 0.5) | (main > 0.5) & (np.roll(main, SS, 1) < 0.5)
+    drk = (main > 0.5) & (np.roll(main, -SS, 0) < 0.5) | (main > 0.5) & (np.roll(main, -SS, 1) < 0.5)
+    Lg = np.where(lit, np.minimum(1, Lg * 1.35 + 0.08), np.where(drk, Lg * 0.55, Lg))
+    mats = {k: np.where(main > 0.5, m_, 0.0) for k, m_ in bp.mats.items() if k != 'nat'}
+    natw = bp.mats.get('nat', 0.0)
+    mats['cold'] = np.where(main > 0.5, mats.get('cold', 0.0) + natw, 1.0)
+    grid = Piece(mask, np.clip(Lg, 0, 1), None, None, mats)
+    fc = Canvas(E, E)
+    # plated bays (under the grid: the girders frame them)
+    prng = np.random.default_rng(int(rng.integers(1 << 30)))
+    for i in range(n1):
+        for j in range(n1):
+            if prng.random() >= plates:
+                continue
+            x0, y0 = i * cell + wm / 2, j * cell + wm / 2
+            w = h = cell - wm
+            sub = np.random.default_rng(int(prng.integers(1 << 30)))
+            if front != 'top' and sub.random() < 0.7:
+                lights = []
+                slots = max(3, int((h - 2) / SLOT))
+                fc.put(rack_tex(w, h, slots, sub, lights, row0[0], kit), x0 + w / 2, y0 + h / 2, shadow=0.0)
+                row0[0] += slots
+                for (lu, lv, lw, lh, rw, col, white) in lights:
+                    art_racks.append((x0 + lu, y0 + lv, lw, lh, rw, col, white))
+            else:
+                bc = Canvas(w, h)
+                crop_fill(bc, kit, sub, 0, 0, w, h, tone=-0.05, contrast=0.6)
+                t2 = Traces(w, h)
+                for k in range(int(sub.integers(2, 5))):
+                    yk = float(sub.uniform(2, h - 2))
+                    xk = float(sub.uniform(2, w - 2))
+                    t2.bundle([(0.5, yk), (xk, yk), (xk, h - 0.5)] if sub.random() < 0.5 else [(xk, 0.5), (xk, yk), (w - 0.5, yk)], n=int(sub.integers(2, 4)), pitch=1.3, width=0.5)
+                bc.put(t2.piece(0.45), w / 2, h / 2, shadow=0.0)
+                fc.put(bc.as_piece(), x0 + w / 2, y0 + h / 2, shadow=0.0)
+    fc.put(grid, E / 2, E / 2, shadow=0.5, edge=0.0)
+    # circuits along the girders
+    # (the inner girders only: the walls' borders lie under the edge girders)
+    segs = [((cell, k * cell), (E - cell, k * cell)) for k in range(1, n1)] + [((k * cell, cell), (k * cell, E - cell)) for k in range(1, n1)]
+    net = Net(segs)
+    used = set()
+    for _ in range(14):
+        st = net.nodes[int(rng.integers(len(net.nodes)))]
+        pth = net.walk(rng, st, int(rng.integers(3, 8)), used, straight=0.65)
+        if len(pth) >= 2:
+            tr.bundle(pth, n=2, pitch=1.1, width=0.45, chamf=2.0, pads=False)
+    tr.glow = 0.5
+    fc.put(tr.piece(), E / 2, E / 2, shadow=0.0)
+    return fc
+
+
+def build_cage(root, part, awake=False):
+    """The Ultramind round a planet (most often a gas giant): the planet enclosed in a cube cage of the same build
+    (mainView.ts draws the back half under the planet picture, the front half over it): every wall a dense machine
+    grid the planet shows through (grid_face), some bays plated with server racks and circuit boards (more on the
+    back walls, seen only round the planet), heavy kitbashed edge girders with corner blocks, a few stout masts and
+    dish clusters. The front half's rack lights and circuits go to the FX tables (c.um)."""
     rng = seeded('ultramind-shell')
     c = Canvas(SHELL_FRAME)
     cc = SHELL_FRAME / 2
-    wrap_machine(c, root, rng, SHELL_R, 0.5, cc, cc, fin_len=88)
+    E = SHELL_E
+    iso = Iso(cc, cc, E)
+    kit = um_crops(root, rng, 2)
+    hulls = [stock(root, rel, lights='kill') for rel in UM_HULLS]
+    art = CubeArt()
+    front = part == 'front'
+    crack_rng = np.random.default_rng(4242)
+    split_rng = np.random.default_rng(4343)
+    # the walls: (name, face map, texture slot (value separation), front?)
+    walls = [('floor', (iso.p(0, 0, 0), Iso.A_, Iso.B_), 'top', False),
+             ('backleft', (iso.p(0, E, E), (COS30, -0.5), Iso.DN), 'right', False),
+             ('backright', (iso.p(0, 0, E), Iso.A_, Iso.DN), 'left', False),
+             ('top', iso.top(0, 0, E), 'top', True),
+             ('left', iso.left(0, E, E), 'left', True),
+             ('right', iso.right(E, E, E), 'right', True)]
+    row0 = [0]
+    if not front:
+        um_antennas(c, iso, rng, E, True, awake, lk=0.8, kit=kit)
+    for (nm, face, slot, fr) in walls:
+        if fr != front:
+            continue
+        racks = []
+        tr = Traces(E, E)
+        fc = grid_face(root, np.random.default_rng(zlib.crc32(nm.encode())), kit, hulls, E, slot, 0.16 if fr else 0.42, racks, tr, row0)
+        if awake and fr:
+            lines = sorted(tr.fx, key=lambda pl: -sum(math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(pl, pl[1:])))[:4]
+            fc.put(crack_piece(E, E, lines, crack_rng, width=(1.0, 2.0)), E / 2, E / 2, shadow=0.0)
+        g, t = FACE_GAIN[slot]
+        if not fr:
+            g, t = g * 0.62, t - 0.12   # the far walls, inside the cage, in its shade
+        warp_put(c, fc.as_piece(), face, mat='cold', gain=g, tone=t, shadow=0.35 if fr else 0.0)
+        if fr:
+            sgn = 1 if slot == 'left' else -1 if slot == 'right' else 0
+            for (u, v, lw, lh, rw, col, white) in racks:
+                if sgn != 0:
+                    art.racks.append((*face_pt(face, u, v), lw, lh, sgn, rw, col, white))
+            for pl in tr.fx:
+                q = lambda w: min(E - 2.0, max(2.0, w))
+                art.traces.append([face_pt(face, q(a), q(b)) for (a, b) in pl])
+    # the edge girders and corner blocks (back to front): the three at the far corner go with the back half
+    WE = 9.0
+    lo = lambda val: (0.0, WE) if val == 0 else (E - WE, E)
+    parts = []
+    for (Y, Z) in ((0, 0), (0, E), (E, 0), (E, E)):
+        parts.append((((0.0, E), lo(Y), lo(Z)), not (Y == 0 and Z == 0)))
+    for (X, Z) in ((0, 0), (0, E), (E, 0), (E, E)):
+        parts.append(((lo(X), (0.0, E), lo(Z)), not (X == 0 and Z == 0)))
+    for (X, Y) in ((0, 0), (0, E), (E, 0), (E, E)):
+        parts.append(((lo(X), lo(Y), (0.0, E)), not (X == 0 and Y == 0)))
+    K = WE + 4.0
+    for (X, Y, Z) in ((0, 0, E), (E, 0, E), (0, E, E), (E, E, E), (E, 0, 0), (0, E, 0), (E, E, 0)):
+        b = tuple(((-2.0, K - 2.0) if q == 0 else (E - K + 2.0, E + 2.0)) for q in (X, Y, Z))
+        parts.append((b, True))
+    parts.sort(key=lambda q: sum(sum(b) for b in q[0]))
+    for (box, fr) in parts:
+        if fr != front:
+            continue
+        iso_box(c, iso, box, np.random.default_rng(int(sum(sum(b) for b in box) * 100) % (1 << 30)), kit=kit,
+                shadow=0.55 if front else 0.3, tones=(0.0, 0.0, 0.0) if front else (-0.2, -0.2, -0.2))
+    if front:
+        edge_light(c, iso, E)
+        if awake:
+            um_split(c, iso, E, crack_rng)
+        um_antennas(c, iso, rng, E, False, awake, lk=0.8, kit=kit)
+        c.um = art
+    if awake:
+        um_recolor(c)
     return c
 
 
-def build_ultramind_node(root):
-    """The uplink node (the site's station beside the planet it wraps): a machine core with four radiators, a ring of
-    processor blocks and uplink dishes, cyan lights."""
-    rng = seeded('ultramind-node')
-    c = Canvas(FRAME)
-    for k in range(4):
-        a = math.radians(45 + 90 * k)
-        x0, y0 = polar(120, a)
-        x1, y1 = polar(330, a)
-        c.put(radiator(math.hypot(x1 - x0, y1 - y0), 48, 70, rng), (x0 + x1) / 2, (y0 + y1) / 2, rot=-math.degrees(a) - 90, shadow=0.6, edge=0.6)
-        girder(c, *polar(100, a), *polar(170, a), 22, rail=3, bay=10, mat='machine', shadow=0.6)
-        c.light(*polar(326, a), 'nav')
-    kit = plate_kit(root, rng, 6, MACHINE_SRC, light_col=(0.55, 0.92, 1.0))
-    W = 2 * math.pi * 150
-    st = deck_strip(rng, kit, W, 70, 24, 3, period=8, smooth=0.2, contrast=0.75, mat='machine', smooth_mat='machine', nat=0.15)
-    for wv in (0.2, 0.5, 0.8):
-        st.put(window_row(W, 3.0, 3.6, rng, lit=0.4, col=(0.35, 0.7, 0.8)), W / 2, wv * 70, mat='dark', shadow=0.2)
-    c.put(polar_wrap(st.as_piece(), 115, 185, shade_k=0.5), C0, C0, shadow=0.65, edge=1.0)
-    c.put(arc_beam(185, 8, ticks=8.0, mat='machine'), C0, C0, shadow=0.5)
-    c.put(arc_beam(115, 8, ticks=8.0, mat='machine'), C0, C0, shadow=0.5)
-    hub = stock(root, 'family14/largespaceport.png', light_col=CYAN)
-    c.put(hub, C0, C0, scale=0.8, mat='machine', nat=0.2, shadow=0.7, edge=0.7)
-    dish = stock(root, 'family13/gasminingstation.png', lights='kill')
-    for k in range(4):
-        a = math.radians(90 * k)
-        c.put(dish, *polar(205, a), scale=0.3, rot=-math.degrees(a) - 90, mat='white', nat=0.3, shadow=0.6, edge=0.6)
-        girder(c, *polar(180, a), *polar(200, a), 10, rail=2, mat='machine', shadow=0.5)
-    c.put(ultramind_eye(42, rng), C0, C0, shadow=0.6)
-    for k in range(40):
-        c.light(*polar(150 + 22 * ((k % 3) - 1), k * 2 * math.pi / 40 + 0.04), 'data')
-    return c
+UM_BUILDS = [('ultramind', build_ultramind, {}), ('ultramind-awake', build_ultramind, {'awake': True}),
+             ('ultramind-node', build_ultramind_node, {}), ('ultramind-node-awake', build_ultramind_node, {'awake': True}),
+             ('ultramind-shell', build_cage, {'part': 'front'}), ('ultramind-shell-back', build_cage, {'part': 'back'}),
+             ('ultramind-shell-awake', build_cage, {'part': 'front', 'awake': True}),
+             ('ultramind-shell-back-awake', build_cage, {'part': 'back', 'awake': True})]
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -4357,6 +5377,7 @@ def write_lights(path, table, casino=None):
     ]
     lines += [looks[k] for k in sorted(looks)]
     lines.append('};')
+    lines += um_fx_lines(path)
     with open(path, 'w') as f:
         f.write('\n'.join(lines) + '\n')
 
@@ -4405,15 +5426,18 @@ def build_all(root, only):
         tables[look] = dict(extra['tables'], files=files)
         set_look('casino')
         print(look, round(time.time() - t0, 1), 's', flush=True)
-    for name, fn, frame in (('ultramind', build_ultramind, None), ('ultramind-shell', build_ultramind_shell, None), ('ultramind-node', build_ultramind_node, None)):
+    for name, fn, kw in UM_BUILDS:
         if not want(name):
             continue
         t0 = time.time()
-        c = fn(root)
-        res = sanitize(finish(c, one_body=name != 'ultramind-shell', outline=name != 'ultramind-shell'))
+        c = fn(root, **kw)
+        res = um_premul_safe(sanitize(no_faint(finish(c, one_body='shell' not in name, outline=False), 6)))
         made[name] = res
         lights[name] = lights_of(c, res)
-        made[name + '-glow'] = glow_from(c, boost=0.7)
+        if 'shell-back' not in name:   # the cage's back half has no glow layer of its own
+            made[name + '-glow'] = um_premul_safe(no_faint(glow_from(c, boost=0.2, blur=1.2), 6))
+        if getattr(c, 'um', None) is not None:
+            UM_FX[name] = c.um
         print(name, round(time.time() - t0, 1), 's', flush=True)
     if want('sanctuary'):
         t0 = time.time()
