@@ -4,6 +4,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **Giantworks: protecting a Great Work takes the promised year** (warships on station were credited 10 days per check while the check runs about every 36 days, so it took about 3.6 years).
 - **Giantworks: the Great Work is built round a gas giant when its system has one** (else the largest barren, then rocky or icy, planet or moon), so a finished Ultramind usually cages a gas giant.
 - **Windows: Maximize goes fullscreen:** the window's Maximize button (and double-clicking the title bar) now puts the game in fullscreen directly, instead of a maximized window; leaving fullscreen (F11, Alt+Enter or Game Options → Fullscreen) gives the normal window back.
 - **Moon orbit rings fade out gradually:** they used to vanish all at once below a fixed zoom while still large on screen; each ring now fades by its own size on screen, so they stay visible further out and thin away smoothly.

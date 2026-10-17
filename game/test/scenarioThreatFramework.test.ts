@@ -1963,15 +1963,20 @@ describe('giantworks', () => {
         scenarioEmit(g, 'builtObjectAttacked', { builtObject: ship, attacker: null, attackingEmpire: e });
         expect(warCrimesRecord(g, e)?.counts.independents).toBe(before + 1);
         expect(w.anger[e.empireId]).toBeGreaterThan(0);
-        // Protect: warships on station for a year (36 periods of 10 days).
+        // Protect: warships on station for a year (credited by elapsed time: 40 steps 10 days apart).
         const p = actors(g)[1];
         const warship = p.builtObjects.find((b) => !b.hasBeenDestroyed && b.role === BuiltObjectRole.Military && b.topSpeed > 0)!;
         warship.xpos = w.base!.xpos;
         warship.ypos = w.base!.ypos;
         rebuildIndexes(g);
         expect(stationedEmpires(g, w)).toContain(p);
-        for (let i = 0; i < 40; i++) protectStep(g, w);
+        for (let i = 0; i < 40; i++) {
+            w.protectAt = galaxyStarDate(g) - 10 * GAME_DAY_LENGTH;
+            protectStep(g, w);
+        }
         expect(w.protectors).toContain(p.empireId);
+        // Credit is the time since the last step: 36 steps 10 days apart = 360 days, the need.
+        expect(w.protectDays[p.empireId]).toBeGreaterThanOrEqual(360);
         expect(w.protectors).not.toContain(e.empireId);
     }, 900000);
 

@@ -314,13 +314,21 @@ export function stationedEmpires(galaxy: Galaxy, work: GreatWorkRecord): Empire[
     return galaxy.empires.filter((e): e is Empire => e !== null && present.has(e));
 }
 
+/** At most this many days of protection credit per step (a gap longer than ~1.5 long blocks is not presence). */
+const PROTECT_MAX_STEP_DAYS = 60;
+
 /** Warships on station earn protect days; enough of them and the Compact remembers. */
 export function protectStep(galaxy: Galaxy, work: GreatWorkRecord): void {
     if (work.phase !== 'building') return;
     const need = gwParam(galaxy, 'giantworksProtectDays');
+    // The time since the last step (the framework periodic runs once per long block, ~36 days, not every PERIOD_DAYS),
+    // capped so a long gap is not credited as presence; the first step counts one period.
+    const now = galaxyStarDate(galaxy);
+    const credit = work.protectAt === undefined ? PERIOD_DAYS : Math.min(PROTECT_MAX_STEP_DAYS, Math.max(0, (now - work.protectAt) / GAME_DAY_LENGTH));
+    work.protectAt = now;
     for (const e of stationedEmpires(galaxy, work)) {
         if (angerOf(work, e) >= 5 || work.protectors.includes(e.empireId)) continue;
-        const days = (work.protectDays[e.empireId] ?? 0) + PERIOD_DAYS;
+        const days = (work.protectDays[e.empireId] ?? 0) + credit;
         work.protectDays[e.empireId] = days;
         if (days < need) continue;
         work.protectors.push(e.empireId);

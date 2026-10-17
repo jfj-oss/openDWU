@@ -87,6 +87,8 @@ export interface GreatWorkRecord extends GreatWorkSite, ThreatSite {
     /** empire id → days of warships on station; ids already thanked. */
     protectDays: Record<string, number>;
     protectors: number[];
+    /** Star date of the last protection step (the credit is the time since it; the periodic runs per long block, not every PERIOD_DAYS). */
+    protectAt?: number;
     /** The empire that holds the finished wonder after seizing it (null: the Compact). */
     holder: Empire | null;
     /** The finished wonder turned hostile (its module says so): destroying or seizing it is no crime. */
