@@ -242,7 +242,8 @@ const CONFIGS_REGRESS = [
     rg('rg-smart-late-s1', { seed: 1, years: 5, late: LATE4, addons: [], hook: { timing: true, sampleDays: 60 } }),
     rg('rg-editor-gal-late-s3', { seed: 3, years: 5, late: LATE4, hook: { spawn: ['probeSwarm', 'voidWhale', 'silence', 'doppelgangers', 'darkFarms', 'robotMutiny', 'hollowFleet', 'greyTide', 'exchange', 'corporateCoup', 'timeBomb'].map((key, i) => ({ key, day: 30 + 25 * i })) }, params: {} }),
     // Smarter AI step-time ablation (the defaults double the late-game step time from year 3): one sub-option off each; --cpuprof on the lane line.
-    ...['designScale', 'designTune', 'weaponFocus', 'designTrim', 'retrofit'].map((k) => rg(`rg-smart-no-${k}-late-s1`, { seed: 1, years: 4, late: LATE4, addons: [], smarterAI: { [k]: false }, hook: { timing: true, sampleDays: 60 } })),
+    ...['designScale', 'designTune', 'weaponFocus', 'designTrim', 'retrofit', 'pirates', 'defence', 'budget', 'colonies', 'independents'].map((k) => rg(`rg-smart-no-${k}-late-s1`, { seed: 1, years: 4, late: LATE4, addons: [], smarterAI: { [k]: false }, hook: { timing: true, sampleDays: 60 } })),
+    rg('rg-cl-only-late-s1', { seed: 1, years: 4, late: LATE4, addons: [], smarterAI: false, coordinatedLandings: true, hook: { timing: true, sampleDays: 60 } }),
     rg('rg-prof-base-late-s1', { seed: 1, years: 4, late: LATE4, addons: [], smarterAI: false, coordinatedLandings: false }),
     rg('rg-prof-smart-late-s1', { seed: 1, years: 4, late: LATE4, addons: [] }),
     // Medium (12-15 years): several threats together, the crisis interactions (reputation, the council through the Diet, refugees) on.
