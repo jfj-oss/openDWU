@@ -41,6 +41,8 @@ import type { BuiltObject } from '../sim/builtObject';
 import type { Empire } from '../sim/empire';
 import type { Habitat } from '../sim/types';
 import { peekThreatState } from '../sim/scenario/threats/framework';
+import { galaxyStarDate } from '../sim/tick/simTime';
+import { GAME_DAY_LENGTH } from '../sim/scenario/hooks';
 import { genShipsStates } from '../sim/scenario/threats/generationShips';
 import { peekProbeSwarmState } from '../sim/scenario/threats/probeSwarm';
 import { peekPurifierState } from '../sim/scenario/threats/purifier';
@@ -80,6 +82,8 @@ export interface ThreatLooks {
      * the planet they wrap (mainView.ts draws the machine shell over it). Optional: absent = none. */
     greatWorks?: Map<BuiltObject, GreatWorkArtSite>;
     ultramindPlanets?: Map<Habitat, GreatWorkArtSite>;
+    /** Giantworks: the look of each finished Ultramind built round a planet, decided when its system's bodies are built (ultramindLookFor). Absent = the caged planet. */
+    ultramindLook?: Map<Habitat, UltramindLook>;
     /** Giantworks: the casinos that are a pirate den now (their sites; casinoDenOf). Optional: absent = none. */
     casinoDens?: Set<object>;
     /** Giantworks: the Ark Engines afloat, by ship, with their sim records (ARK_STATE_KEY, read only). Optional. */
@@ -99,9 +103,34 @@ const looks: ThreatLooks = {
     beacon: null,
     greatWorks: new Map(),
     ultramindPlanets: new Map(),
+    ultramindLook: new Map(),
     casinoDens: new Set(),
     arks: new Map(),
 };
+
+/** The two looks of an Ultramind built round a planet: the dense grid cage round the planet, or the solid machine cube drawn over it. */
+export type UltramindLook = 'cage' | 'cube';
+/** The look changes about monthly (30 game days). */
+const ULTRAMIND_LOOK_DAYS = 30;
+
+/**
+ * The look of the Ultramind of site `siteId` at star date `starDate`: a hash of the site and the 30-day bucket of the date, so every client
+ * (and every replay) that loads it into view at the same game date sees the same one, with nothing sent or saved. Pure.
+ */
+export function ultramindLookFor(siteId: number, starDate: number): UltramindLook {
+    const bucket = Math.floor(starDate / (ULTRAMIND_LOOK_DAYS * GAME_DAY_LENGTH));
+    let h = Math.imul((siteId | 0) * 2654435761 + bucket * 40503 + 7, 0x85ebca6b);
+    h = Math.imul(h ^ (h >>> 15), 0xc2b2ae35);
+    h ^= h >>> 13;
+    return (h >>> 0) % 2 === 0 ? 'cage' : 'cube';
+}
+
+/** A system's bodies are built or released: its Ultramind (if any) decides its look afresh the next time it is drawn (threatLooks). */
+export function forgetUltramindLooks(habitats: readonly Habitat[]): void {
+    const l = looks.ultramindLook!;
+    if (l.size === 0) return;
+    for (const h of habitats) l.delete(h);
+}
 
 /**
  * The render contract with the Beacon's sim (Giantworks add-on, the 'beacon' wonder; sim/scenario/threats/giantworks,
@@ -154,7 +183,11 @@ export function threatLooks(galaxy: Galaxy): ThreatLooks {
     for (const site of greatWorkSites(galaxy)) {
         if (site.base === null || site.base.hasBeenDestroyed) continue;
         gws.set(site.base, site);
-        if (site.stage >= 4 && site.wonder === 'ultramind' && site.habitat !== null) ums.set(site.habitat, site);
+        if (site.stage >= 4 && site.wonder === 'ultramind' && site.habitat !== null) {
+            ums.set(site.habitat, site);
+            // a look not decided yet (its system's bodies were just built, or it is seen before they are): decided now, kept until they are released
+            if (!looks.ultramindLook!.has(site.habitat)) looks.ultramindLook!.set(site.habitat, ultramindLookFor(site.id ?? site.habitat.habitatIndex, galaxyStarDate(galaxy)));
+        }
     }
     if (gws.size > 0) {
         const ak = peekThreatState<ArkArtState | null | undefined>(galaxy, ARK_STATE_KEY);
@@ -787,8 +820,10 @@ export function greatWorkFrame(site: Pick<GreatWorkArtSite, 'stage' | 'wonder' |
             return l.casinoDens !== undefined && l.casinoDens.has(site) ? 'casino-pirate' : 'casino';
         case 'ultramind':
             // `awakened` is set by the Ultramind's own module (render only: read defensively)
-            if (site.awakened === true) return site.habitat !== null ? 'ultramind-node-awake' : 'ultramind-awake';
-            return site.habitat !== null ? 'ultramind-node' : 'ultramind';
+            // Round a planet: the cage look keeps the half-size uplink node at the planet's centre (the cage is drawn over the planet by
+            // syncUltramindShell), the cube look the whole standalone cube drawn over the planet, covering it (ultramindLookFor).
+            if (site.awakened === true) return site.habitat !== null && l.ultramindLook?.get(site.habitat) !== 'cube' ? 'ultramind-node-awake' : 'ultramind-awake';
+            return site.habitat !== null && l.ultramindLook?.get(site.habitat) !== 'cube' ? 'ultramind-node' : 'ultramind';
         case 'sanctuary':
             return 'sanctuary';
         case 'beacon':
@@ -1775,7 +1810,9 @@ export function syncUltramindShell(parent: Container, holder: UltramindShellHold
     const ums = looks.ultramindPlanets;
     const site = ums === undefined || ums.size === 0 ? undefined : ums.get(h);
     const names = site?.awakened === true ? UM_SHELL_AWAKE : UM_SHELL;
-    const shellTex = site !== undefined && body.visible ? gwTexture(names.front) : null;
+    // the cube look covers the planet with the whole cube instead (the base's own frame, greatWorkFrame): no cage
+    const cube = site !== undefined && looks.ultramindLook?.get(h) === 'cube';
+    const shellTex = site !== undefined && !cube && body.visible ? gwTexture(names.front) : null;
     const backTex = shellTex !== null ? gwTexture(names.back) : null;
     const glowTex = backTex !== null ? gwTexture(names.glow) : null;
     if (site === undefined || shellTex === null || backTex === null || glowTex === null) {

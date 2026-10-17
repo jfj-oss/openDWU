@@ -128,6 +128,24 @@ export function grantResearchPoints(galaxy: Galaxy, empire: Empire, points: numb
     return used;
 }
 
+/**
+ * Completes the current project of one industry (0 Energy, 1 High Tech, 2 Weapons) outright, as a breakthrough without research
+ * events (Giantworks: the Ultramind's Research directive). Returns the points it was worth (0: nothing queued).
+ */
+export function finishCurrentProject(galaxy: Galaxy, empire: Empire, industryIndex: number): number {
+    if (empire.research == null) return 0;
+    const industry = [IndustryType.Energy, IndustryType.HighTech, IndustryType.Weapon][industryIndex % 3];
+    const projects = queueOf(empire, industry);
+    if (projects === null) return 0;
+    if (projects.length <= 0) selectNextResearchProject(galaxy, empire, industry, projects);
+    if (projects.length <= 0) return 0;
+    const node = projects[0];
+    const need = Math.max(0, node.cost - node.progress);
+    doResearchBreakthrough(galaxy, empire, node, true, true);
+    empire.research.update(empire.dominantRace);
+    return need;
+}
+
 /** One boost of `pct` % of a year of the empire's research (at least archiveMinPoints). Pure. */
 export function boostPoints(galaxy: Galaxy, empire: Empire, pct: number): number {
     return Math.max(P.minPoints(galaxy), Math.round((annualResearchPotential(empire) * pct) / 100));

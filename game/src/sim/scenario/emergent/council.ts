@@ -743,7 +743,7 @@ export function tallyMotion(galaxy: Galaxy, c: Council, m: Motion): void {
 // ---------------------------------------------------------------------------------------------------------------
 
 /** Trade sanctions of `m` on `t`: StartTradeSanctions for an AI, the TRADESANCTIONS_IMPOSE change for the player. */
-function imposeSanctions(galaxy: Galaxy, m: Empire, t: Empire): void {
+export function imposeSanctions(galaxy: Galaxy, m: Empire, t: Empire): void {
     if (m === t || !hasMet(m, t)) return;
     const rt = relType(m, t);
     if (rt === DiplomaticRelationType.TradeSanctions || rt === DiplomaticRelationType.War || rt === DiplomaticRelationType.SubjugatedDominion) return;

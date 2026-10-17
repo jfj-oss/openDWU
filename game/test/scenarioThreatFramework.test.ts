@@ -173,19 +173,40 @@ import { peekRimFaunaState } from '../src/sim/scenario/rimFauna/common';
 import type { Habitat } from '../src/sim/types';
 import {
     aiAnswer,
+    aiDirectiveScores,
+    aiWouldWithdraw,
     awaken,
     bombCost,
+    catchSpy,
     deployLogicBomb,
+    detectThreats,
+    directiveEffect,
+    directiveView,
+    dirNow,
+    driftPerYear,
+    fleetCandidates,
+    freeIntelOn,
     hackOdds,
     mindOfSite,
     moonCandidate,
+    MOTION_SANCTION,
     peekUltramindState,
     philosopherCandidate,
+    pickPartners,
     raiseRequest,
+    researchDirectiveShare,
+    researchPctOf,
     researchPerYear,
+    sanctionTarget,
+    setDirective,
     ultramindPeriodic,
     ultramindState,
+    type UltraMind,
 } from '../src/sim/scenario/threats/giantworks/ultramind';
+import { dietMotionKindDef, type DietMotion, type DietState } from '../src/sim/scenario/charactersVictory/diet/dietState';
+import type { CaptainBonuses } from '../src/sim/characters';
+import { HIVE_KEY } from '../src/sim/scenario/threats/hive';
+import { newIntelligenceMissionAgainstEmpire } from '../src/sim/espionage';
 import { addStress, breachChancePerYear, breachSanctuary, growthBonusAt, rageStep, rageTarget, sanctuaryPeriodic, sanctumOfSite, unleashedScale } from '../src/sim/scenario/threats/giantworks/sanctuary';
 import { rebuildIndexes } from '../src/sim/indexRebuild';
 import { SystemVisibilityStatus } from '../src/sim/visibility';
@@ -2518,30 +2539,55 @@ describe('giantworks', () => {
         expect(greatWorks(g)[0].wonder).toBe('ultramind');
     }, 900000);
 
-    it('the Ultramind: contracts (the territory owner first, at most three), +25% research, partners pay the owner, the mood is in its name', () => {
+    // --- helpers for the Ultramind tests ---
+    const sidOf = (e: Empire): string => String(e.empireId);
+    /** No requests and no AI directive review during the step under test. */
+    const quiet = (m: UltraMind): void => {
+        for (const e of m.partners) m.nextRequest[sidOf(e)] = Number.MAX_VALUE;
+        m.nextDirectiveReview = Number.MAX_VALUE;
+    };
+    const yearOn = (g: Galaxy, w: GreatWorkRecord, m: UltraMind): void => {
+        m.lastTick -= YEAR_LENGTH;
+        ultramindPeriodic(g, w);
+    };
+    /** The partners' warships beside the site (the machine hacks those near it). */
+    const gather = (m: UltraMind, star: Habitat, who: Empire[]): void => {
+        for (const p of who) warships(p).slice(0, 3).forEach((b, i) => { b.xpos = star.xpos + 800 * i; b.ypos = star.ypos + 400; });
+    };
+    const captain = (): CaptainBonuses => ({ targeting: 100, countermeasures: 100, shipManeuvering: 100, fighters: 100, shipEnergyUsage: 100, weaponsDamage: 100, weaponsRange: 100, shieldRechargeRate: 100, damageControl: 100, repair: 100, hyperjumpSpeed: 100 });
+
+    it('the Ultramind: contracts (the territory owner first, at most three), +100% for the holder and +50% for the partners, a standing for each, the mood and the directive in its name', () => {
         const { g, w, e } = wonder('ultramind', {}, 'ai');
         const m = mindOfSite(g, w)!;
         expect(m.partners[0]).toBe(e);
+        expect(m.holder).toBe(e);
         expect(m.partners.length).toBeGreaterThanOrEqual(1);
         expect(m.partners.length).toBeLessThanOrEqual(3);
         expect(new Set(m.partners).size).toBe(m.partners.length);
+        for (const p of m.partners) expect(m.standing[sidOf(p)]).toBe(60);
         expect(m.contentment).toBe(60);
-        expect(w.base!.name).toBe('The Ultramind (content)');
+        expect(m.directive).toBe('research');
+        expect(w.base!.name).toBe('The Ultramind (content, Research)');
         expect(w.awakened).toBe(false);
-        // A year on: a quarter of a year's output in research points for each partner, the others' fees to the owner, boredom takes 4 points.
-        const expected = m.partners.reduce((a, x) => a + 0.25 * researchPerYear(g, x), 0);
+        // A year on: the holder gets a whole year's output in research points, the others half of one; the others' fees go to the owner.
+        const expected = m.partners.reduce((a, x) => a + (x === e ? 1 : 0.5) * researchPerYear(g, x), 0);
         expect(expected).toBeGreaterThan(0);
         const money = e!.stateMoney;
-        m.lastTick -= YEAR_LENGTH;
-        m.nextRequest = Number.MAX_VALUE;
-        ultramindPeriodic(g, w);
+        quiet(m);
+        yearOn(g, w, m);
         expect(m.stats.researchGranted).toBeGreaterThan(0.3 * expected);
         expect(m.stats.researchGranted).toBeLessThanOrEqual(expected * 1.001 + 1);
-        expect(m.contentment).toBeCloseTo(56, 0);
+        // The drift is per partner: the holder's is 1.5 times as fast.
+        expect(m.standing[sidOf(e!)]).toBeCloseTo(60 - 6, 0);
+        for (const p of m.partners) if (p !== e) expect(m.standing[sidOf(p)]).toBeCloseTo(56, 0);
+        expect(m.contentment).toBeCloseTo(54, 0); // the lowest standing: the holder's
         if (m.partners.length > 1) {
             expect(m.stats.feesPaid).toBeGreaterThan(0);
             expect(e!.stateMoney - money).toBeCloseTo(m.stats.feesPaid, 3); // the holder takes the whole of it
         }
+        // Under another directive the research bonus is a third.
+        m.directive = 'economy';
+        expect(researchDirectiveShare(g, m, galaxyStarDate(g))).toBeCloseTo(0.33, 9);
         // A partner's stolen technology is worth a little more; a stranger's is not.
         const stranger = actors(g).find((x) => !m.partners.includes(x));
         const before = m.stats.researchGranted;
@@ -2555,62 +2601,95 @@ describe('giantworks', () => {
         expect(m.stats.researchGranted).toBeGreaterThan(before);
     }, 900000);
 
-    it('the Ultramind: abuse lowers the mood (attacks once in 20 days, sabotage, being seized); the mood shows in the name', () => {
+    it('the Ultramind: every abuse costs only the empire that did it (attacks once in 20 days each, sabotage, a war costs the aggressor, not the victim); the mood is the lowest standing', () => {
         const { g, w, e } = wonder('ultramind', {}, 'ai');
         const m = mindOfSite(g, w)!;
-        const hit = () => scenarioEmit(g, 'builtObjectAttacked', { builtObject: w.base!, attacker: null, attackingEmpire: e });
-        hit();
-        expect(m.contentment).toBeCloseTo(58.5, 5);
-        hit(); // the same spell
-        expect(m.contentment).toBeCloseTo(58.5, 5);
+        quiet(m);
+        const others = m.partners.filter((p) => p !== e);
+        const hit = (who: Empire) => scenarioEmit(g, 'builtObjectAttacked', { builtObject: w.base!, attacker: null, attackingEmpire: who });
+        hit(e!);
+        expect(m.standing[sidOf(e!)]).toBeCloseTo(58.5, 5);
+        hit(e!); // the same spell
+        expect(m.standing[sidOf(e!)]).toBeCloseTo(58.5, 5);
+        for (const p of others) expect(m.standing[sidOf(p)]).toBe(60); // nobody else is held to account
+        if (others.length > 0) {
+            hit(others[0]);
+            expect(m.standing[sidOf(others[0])]).toBeCloseTo(58.5, 5);
+            expect(m.standing[sidOf(e!)]).toBeCloseTo(58.5, 5);
+        }
         const sab = newIntelligenceMissionAgainstBuiltObject(e!, null, IntelligenceMissionType.SabotageConstruction, galaxyStarDate(g), w.base!);
         scenarioEmit(g, 'intelMissionCompleted', { empire: e!, mission: sab, outcome: null });
-        expect(m.contentment).toBeCloseTo(50.5, 5);
-        expect(w.base!.name).toBe('The Ultramind (content)');
+        expect(m.standing[sidOf(e!)]).toBeCloseTo(50.5, 5);
+        expect(w.base!.name).toBe('The Ultramind (content, Research)');
         scenarioEmit(g, 'intelMissionCompleted', { empire: e!, mission: sab, outcome: null });
+        expect(m.standing[sidOf(e!)]).toBeCloseTo(42.5, 5);
         expect(m.contentment).toBeCloseTo(42.5, 5);
-        expect(w.base!.name).toBe('The Ultramind (restless)');
-        // Wars between its partners wear on it.
-        if (m.partners.length >= 2) {
-            declareWar(g, m.partners[0], m.partners[1], null, false);
-            const c = m.contentment;
+        expect(w.base!.name).toBe('The Ultramind (restless, Research)');
+        expect(m.lost[sidOf(e!)].sabotage).toBeCloseTo(16, 5);
+        // A war between two partners: the one that declared it pays, the victim nothing; the answer of the victim's ally is no offence.
+        if (others.length >= 2) {
+            const [a, b] = others;
+            const sa = m.standing[sidOf(a)];
+            const sb = m.standing[sidOf(b)];
+            declareWar(g, a, b, null, false);
+            expect(m.standing[sidOf(a)]).toBeCloseTo(sa - 10, 5);
+            expect(m.standing[sidOf(b)]).toBe(sb);
+            expect(m.wars).toHaveLength(1);
+            expect(m.wars[0].aggressor).toBe(a);
             m.lastTick -= YEAR_LENGTH;
-            m.nextRequest = Number.MAX_VALUE;
             ultramindPeriodic(g, w);
-            expect(c - m.contentment).toBeCloseTo(4 + 3, 0);
+            expect(sa - 10 - m.standing[sidOf(a)]).toBeCloseTo(4 + 3, 0); // drift and the war it began
+            expect(sb - m.standing[sidOf(b)]).toBeCloseTo(4, 0); // only the drift
+            // b's ally c (the holder) declaring on a later is the answer to the aggressor: nothing.
+            const eBefore = m.standing[sidOf(e!)];
+            scenarioEmit(g, 'warDeclared', { empire: e!, target: a });
+            expect(m.standing[sidOf(e!)]).toBe(eBefore);
         }
     }, 900000);
 
-    it('the Ultramind: a request is a scenario decision (grant raises the mood, refuse lowers it more, silence refuses); each kind costs what it says', () => {
+    it('the Ultramind: a request is a scenario decision to each partner (grant raises its standing, refuse lowers it more and the holder then drifts faster, silence refuses); each kind costs what it says', () => {
         const { g, w } = wonder('ultramind', {}, 'player');
         const p = g.playerEmpire!;
         const m = mindOfSite(g, w)!;
         const now = galaxyStarDate(g);
+        expect(m.holder).toBe(p);
         // Power: a share of the yearly income, paid out.
         raiseRequest(g, m, now, 'power');
         let d = pendingScenarioDecisions(g, p)[0];
         expect(d.kind).toBe('gwUltramind.request');
         expect(d.options.map((o) => o.id)).toEqual(['grant', 'refuse']);
         expect(d.defaultOption).toBe('refuse');
-        expect(m.request?.kind).toBe('power');
+        expect(m.requests[sidOf(p)]?.kind).toBe('power');
         const money = p.stateMoney;
-        const cost = m.request!.cost;
+        const cost = m.requests[sidOf(p)].cost;
         expect(cost).toBeGreaterThanOrEqual(100000);
-        const c0 = m.contentment;
+        const c0 = m.standing[sidOf(p)];
         expect(answerScenarioDecision(g, d.id, 'grant')).toBe(true);
         expect(p.stateMoney).toBeCloseTo(money - cost, 3);
-        expect(m.contentment).toBe(c0 + 14);
-        expect(m.request).toBeNull();
-        expect(m.nextRequest - now).toBeGreaterThanOrEqual(YEAR_LENGTH * 0.999);
-        expect(m.nextRequest - now).toBeLessThanOrEqual(YEAR_LENGTH * 2.001);
-        // Refusing costs more than granting gave.
+        expect(m.standing[sidOf(p)]).toBe(c0 + 14);
+        expect(m.requests[sidOf(p)]).toBeUndefined();
+        expect(m.nextRequest[sidOf(p)] - now).toBeGreaterThanOrEqual(YEAR_LENGTH * 0.999);
+        expect(m.nextRequest[sidOf(p)] - now).toBeLessThanOrEqual(YEAR_LENGTH * 2.001);
+        // Refusing costs more than granting gave, and the holder that refuses drifts away faster.
         raiseRequest(g, m, now, 'network');
         d = pendingScenarioDecisions(g, p)[0];
-        const c1 = m.contentment;
+        const c1 = m.standing[sidOf(p)];
         answerScenarioDecision(g, d.id, 'refuse');
-        expect(m.contentment).toBe(c1 - 16);
+        expect(m.standing[sidOf(p)]).toBe(c1 - 16);
+        expect(m.ignored[sidOf(p)]).toBe(1);
         expect(m.stats).toMatchObject({ asked: 2, granted: 1, refused: 1 });
+        expect(driftPerYear(g, m, p)).toBeCloseTo(4 * 1.5 + 2, 9);
+        // The other partners are asked too (less often): their own standing is what moves.
+        const other = m.partners.find((x) => x !== p);
+        if (other !== undefined && other !== p) {
+            const s0 = m.standing[sidOf(other)];
+            raiseRequest(g, m, now, 'power', other); // an AI answers at once
+            expect(m.standing[sidOf(other)]).not.toBe(s0);
+            expect(m.standing[sidOf(p)]).toBe(c1 - 16); // the holder's is untouched
+            expect(driftPerYear(g, m, other)).toBe(4);
+        }
         // Network access: counter-intelligence weakens for two years.
+        m.directive = 'economy';
         expect(scenarioQuery(g, 'counterIntelligenceProportion', 1, { empire: p })).toBe(1);
         raiseRequest(g, m, now, 'network');
         answerScenarioDecision(g, pendingScenarioDecisions(g, p)[0].id, 'grant');
@@ -2631,6 +2710,14 @@ describe('giantworks', () => {
             answerScenarioDecision(g, pendingScenarioDecisions(g, p)[0].id, 'grant');
             expect(phil.active).toBe(false);
         }
+        // A warfleet to study: the smallest warships are taken apart.
+        const fleet = fleetCandidates(g, p);
+        if (fleet.length > 0) {
+            raiseRequest(g, m, now, 'fleet');
+            answerScenarioDecision(g, pendingScenarioDecisions(g, p)[0].id, 'grant');
+            expect(fleet.every((b) => b.hasBeenDestroyed)).toBe(true);
+            expect(m.stats.fleetsStudied).toBe(3);
+        }
         // An unanswered request expires into a refusal.
         const refused = m.stats.refused;
         raiseRequest(g, m, now, 'power');
@@ -2639,9 +2726,20 @@ describe('giantworks', () => {
         expireScenarioDecisions(g);
         expect(m.stats.refused).toBe(refused + 1);
         expect(d.answeredBy).toBe('expired');
+        // The request that matches the directive is the likelier one.
+        m.directive = 'intelligence';
+        const asked = new Set<string>();
+        for (let i = 0; i < 40; i++) {
+            m.askedKinds = [];
+            m.standing[sidOf(p)] = 100;
+            raiseRequest(g, m, now);
+            asked.add(m.requests[sidOf(p)].kind);
+            for (const dec of pendingScenarioDecisions(g, p)) answerScenarioDecision(g, dec.id, 'refuse');
+        }
+        expect(asked.has('network')).toBe(true);
     }, 900000);
 
-    it('the Ultramind: an AI answers at once, by personality, mood and means', () => {
+    it('the Ultramind: an AI answers at once, by personality, its own standing and means', () => {
         const { g, w, e } = wonder('ultramind', {}, 'ai');
         const m = mindOfSite(g, w)!;
         const now = galaxyStarDate(g);
@@ -2651,39 +2749,33 @@ describe('giantworks', () => {
             const before = { ...m.stats };
             raiseRequest(g, m, now, kind);
             expect(pendingScenarioDecisions(g, e!)).toHaveLength(0);
-            expect(m.request).toBeNull();
+            expect(m.requests[sidOf(e!)]).toBeUndefined();
             expect(m.stats.granted - before.granted).toBe(want === 'grant' ? 1 : 0);
             expect(m.stats.refused - before.refused).toBe(want === 'refuse' ? 1 : 0);
         }
         // The unhappier it is, the likelier any empire is to give in; the same empire and request.
-        for (const kind of ['power', 'network', 'moon', 'philosopher'] as const) {
-            m.contentment = 100;
+        for (const kind of ['power', 'network', 'moon', 'philosopher', 'fleet'] as const) {
+            m.standing[sidOf(e!)] = 100;
             const calm = aiAnswer(g, m, e!, kind, 7);
-            m.contentment = 5;
+            m.standing[sidOf(e!)] = 5;
             const desperate = aiAnswer(g, m, e!, kind, 7);
             if (calm === 'grant') expect(desperate).toBe('grant');
         }
     }, 900000);
 
-    it('the Ultramind awakens at nothing: a machine faction at war with its partners, hacked warships, dark ports, no freight, drones; no crime', () => {
+    it('the Ultramind awakens when a partner reaches nothing: war ONLY on the partners whose standing collapsed, the rest stay neutral and get a deal; hacks and dark ports only for those at war with it', () => {
         const { g, w, e } = wonder('ultramind', { ultramindHackPct: 100 }, 'ai');
         const m = mindOfSite(g, w)!;
         const star = siteOf(w);
-        // The partners' warships near the site are the ones at risk.
-        const near = new Map<Empire, BuiltObject[]>();
-        for (const p of m.partners) {
-            const ships = warships(p).slice(0, 3);
-            ships.forEach((b, i) => {
-                b.xpos = star.xpos + 800 * i;
-                b.ypos = star.ypos + 400;
-            });
-            near.set(p, ships);
-        }
-        const nearCount = [...near.values()].reduce((a, l) => a + l.length, 0);
+        quiet(m);
+        gather(m, star, m.partners);
+        const offender = e!;
+        const rest = m.partners.filter((p) => p !== offender);
+        // A lonely holder is not enough for this test.
+        if (rest.length === 0) return;
+        const nearCount = warships(offender).slice(0, 3).length;
         expect(nearCount).toBeGreaterThan(0);
-        const aiBefore = e!.builtObjects.length;
-        m.contentment = 1;
-        m.nextRequest = Number.MAX_VALUE;
+        m.standing[sidOf(offender)] = 1;
         m.lastTick -= YEAR_LENGTH;
         ultramindPeriodic(g, w);
         expect(m.awakened).toBe(true);
@@ -2692,52 +2784,68 @@ describe('giantworks', () => {
         const f = ultramindState(g).faction!;
         expect(f.active).toBe(true);
         expect(f.name).toBe('The Awakened Ultramind');
-        expect(f.dominantRace?.name).toBe('Harvester'); // the machine race of Robot Mutiny
+        expect(f.dominantRace?.name).toBe('Harvester');
         expect(isCrisisFaction(g, f)).toBe(true);
-        expect(activeCrises(g).some((c) => c.faction === f)).toBe(true);
-        expect(w.base!.actualEmpire).toBe(f); // the machine took the base
+        expect(w.base!.actualEmpire).toBe(f);
         expect(w.base!.name).toBe('The Ultramind (AWAKE)');
         expect(warCrimesRecord(g, f)?.counts.greatWork ?? 0).toBe(0);
-        for (const p of m.partners) expect(f.diplomaticRelations.byEmpire(p)?.type).toBe(DiplomaticRelationType.War);
-        // Hacked: the ships next to the site (certain with the odds at 100), nothing from a stranger.
-        expect(m.hacked.length).toBe(Math.min(nearCount, 8));
+        expect(m.offenders).toEqual([offender]);
+        expect(f.diplomaticRelations.byEmpire(offender)?.type).toBe(DiplomaticRelationType.War);
+        for (const p of rest) expect(f.diplomaticRelations.byEmpire(p)?.type).not.toBe(DiplomaticRelationType.War);
+        // The deal: every spared partner either keeps its contract (and sanctions the offender) or left it.
+        for (const p of rest) {
+            const k = sidOf(p);
+            if (m.partners.includes(p)) expect(m.deals[k]).toBe('accepted');
+            else expect(m.withdrawn[k].why).toBe('declined');
+        }
+        expect(m.stats.dealsAccepted + m.stats.dealsDeclined).toBe(rest.length);
+        // Hacked: the offender's ships next to the site (certain with the odds at 100), nothing from the others.
+        expect(m.hacked.length).toBeGreaterThanOrEqual(Math.min(nearCount, 8));
+        expect(m.hacked.length).toBeLessThanOrEqual(8);
         for (const h of m.hacked) {
             expect(h.ship.actualEmpire).toBe(f);
-            expect(m.partners).toContain(h.from);
+            expect(h.from).toBe(offender);
         }
-        expect(e!.builtObjects.length).toBeLessThanOrEqual(aiBefore);
-        // Drones: warships of its own, beyond the hacked ones.
         const drones = warships(f).filter((b) => !m.hacked.some((h) => h.ship === b));
         expect(drones.length).toBeGreaterThan(0);
         expect(drones.length).toBeLessThanOrEqual(12);
-        // The ports within five sectors are dark for 30 to 90 days; not beyond.
+        // The ports within five sectors are dark for 30 to 90 days, for the empires at war with it only.
         const now = galaxyStarDate(g);
         expect(m.portsUntil - now).toBeGreaterThanOrEqual(30 * GAME_DAY_LENGTH - 1);
         expect(m.portsUntil - now).toBeLessThanOrEqual(90 * GAME_DAY_LENGTH + 1);
-        const colonyNear = { xpos: star.xpos + 100, ypos: star.ypos, empire: e } as unknown as Habitat;
-        const colonyFar = { xpos: star.xpos + 6 * g.sectorSize, ypos: star.ypos, empire: e } as unknown as Habitat;
-        expect(scenarioQuery(g, 'constructionQueuePaused', false, { habitat: colonyNear, builtObject: null })).toBe(true);
-        expect(scenarioQuery(g, 'constructionQueuePaused', false, { habitat: colonyFar, builtObject: null })).toBe(false);
-        const portNear = { xpos: star.xpos + 100, ypos: star.ypos, actualEmpire: e, empire: e } as unknown as BuiltObject;
-        expect(scenarioQuery(g, 'portTradeIncomeFactor', 1, { port: portNear, amount: 1000 })).toBe(0);
+        const colony = (empire: Empire, dx: number) => ({ xpos: star.xpos + dx, ypos: star.ypos, empire }) as unknown as Habitat;
+        expect(scenarioQuery(g, 'constructionQueuePaused', false, { habitat: colony(offender, 100), builtObject: null })).toBe(true);
+        expect(scenarioQuery(g, 'constructionQueuePaused', false, { habitat: colony(offender, 6 * g.sectorSize), builtObject: null })).toBe(false);
+        for (const p of rest) expect(scenarioQuery(g, 'constructionQueuePaused', false, { habitat: colony(p, 100), builtObject: null })).toBe(false);
+        const port = (empire: Empire) => ({ xpos: star.xpos + 100, ypos: star.ypos, actualEmpire: empire, empire }) as unknown as BuiltObject;
+        expect(scenarioQuery(g, 'portTradeIncomeFactor', 1, { port: port(offender), amount: 1000 })).toBe(0);
+        for (const p of rest) expect(scenarioQuery(g, 'portTradeIncomeFactor', 1, { port: port(p), amount: 1000 })).toBe(1);
         m.portsUntil = now - 1;
-        expect(scenarioQuery(g, 'constructionQueuePaused', false, { habitat: colonyNear, builtObject: null })).toBe(false); // lit again
-        // Private freight within five sectors stops; warships and distant freighters are not touched.
-        const freighter = (dx: number, role = BuiltObjectRole.Freight, sub = BuiltObjectSubRole.SmallFreighter) => ({ role, subRole: sub, xpos: star.xpos + dx, ypos: star.ypos }) as unknown as BuiltObject;
+        expect(scenarioQuery(g, 'constructionQueuePaused', false, { habitat: colony(offender, 100), builtObject: null })).toBe(false); // lit again
+        // Private freight of the offender within five sectors stops; the others', warships and distant freighters are not touched.
+        const freighter = (owner: Empire, dx: number, role = BuiltObjectRole.Freight, sub = BuiltObjectSubRole.SmallFreighter) => ({ role, subRole: sub, xpos: star.xpos + dx, ypos: star.ypos, actualEmpire: owner }) as unknown as BuiltObject;
         const ask = (b: BuiltObject) => scenarioQuery(g, 'assignMissionAllowed', true, { builtObject: b, missionType: BuiltObjectMissionType.Move, target: null, x: 0, y: 0 });
-        expect(ask(freighter(500))).toBe(false);
-        expect(ask(freighter(6 * g.sectorSize))).toBe(true);
-        expect(ask(freighter(500, BuiltObjectRole.Military, BuiltObjectSubRole.Cruiser))).toBe(true);
-        // Whoever strikes the base is at war with the machine; a stranger was not before.
-        const stranger = actors(g).find((x) => !m.partners.includes(x));
+        expect(ask(freighter(offender, 500))).toBe(false);
+        expect(ask(freighter(offender, 6 * g.sectorSize))).toBe(true);
+        expect(ask(freighter(offender, 500, BuiltObjectRole.Military, BuiltObjectSubRole.Cruiser))).toBe(true);
+        for (const p of rest) expect(ask(freighter(p, 500))).toBe(true);
+        // Whoever strikes the base is at war with it; a spared partner that does loses its deal.
+        const stranger = actors(g).find((x) => !m.partners.includes(x) && x !== offender);
         if (stranger !== undefined) {
             expect(f.diplomaticRelations.byEmpire(stranger)?.type).not.toBe(DiplomaticRelationType.War);
             scenarioEmit(g, 'builtObjectAttacked', { builtObject: w.base!, attacker: null, attackingEmpire: stranger });
             expect(f.diplomaticRelations.byEmpire(stranger)?.type).toBe(DiplomaticRelationType.War);
         }
+        const dealer = m.partners.find((p) => m.deals[sidOf(p)] === 'accepted');
+        if (dealer !== undefined) {
+            scenarioEmit(g, 'builtObjectAttacked', { builtObject: w.base!, attacker: null, attackingEmpire: dealer });
+            expect(f.diplomaticRelations.byEmpire(dealer)?.type).toBe(DiplomaticRelationType.War);
+            expect(m.partners).not.toContain(dealer);
+            expect(m.deals[sidOf(dealer)]).toBeUndefined();
+        }
         // Destroying it is no crime and sets the hacked ships free; the drones go silent.
         const alive = m.hacked.filter((h) => !h.ship.hasBeenDestroyed);
-        const attacker = stranger ?? e!;
+        const attacker = stranger ?? offender;
         w.base!.hasBeenDestroyed = true;
         w.attackedBy = { empire: attacker, date: galaxyStarDate(g) };
         expect(resolveBaseLoss(g, w)).toBe(true);
@@ -2750,7 +2858,81 @@ describe('giantworks', () => {
         expect(m.stats.hacksReleased).toBe(alive.length);
     }, 1800000);
 
-    it('the Ultramind: a Logic Bomb cuts the hacking odds; the threat action charges for it; AI partners prepare when it turns restless', () => {
+    it('the Ultramind: a spared partner that took the deal keeps half the bonus; the deal is a pop-up for a player (declined by default), an AI answers by personality', () => {
+        const { g, w } = wonder('ultramind', {}, 'player');
+        const m = mindOfSite(g, w)!;
+        const p = g.playerEmpire!;
+        quiet(m);
+        if (!m.partners.includes(p) || m.partners.length < 2) return;
+        const offender = m.partners.find((x) => x !== p)!;
+        m.standing[sidOf(offender)] = 0;
+        awaken(g, m, galaxyStarDate(g));
+        expect(m.offenders).toContain(offender);
+        expect(m.deals[sidOf(p)]).toBe('pending');
+        const d = pendingScenarioDecisions(g, p).find((x) => x.kind === 'gwUltramind.deal')!;
+        expect(d.options.map((o) => o.id)).toEqual(['contain', 'decline']);
+        expect(d.defaultOption).toBe('decline');
+        // Accepting: the bonus continues at half (a holder +50%, a partner +25%), sanctions on the offender.
+        expect(answerScenarioDecision(g, d.id, 'contain')).toBe(true);
+        expect(m.deals[sidOf(p)]).toBe('accepted');
+        expect(m.partners).toContain(p);
+        const cap = m.partners.reduce((t, x) => t + (m.deals[sidOf(x)] === 'accepted' ? researchPctOf(g, m, x) * 0.5 * researchPerYear(g, x) / 100 : 0), 0);
+        const granted = m.stats.researchGranted;
+        m.lastTick -= YEAR_LENGTH;
+        ultramindPeriodic(g, w);
+        expect(m.stats.researchGranted - granted).toBeLessThanOrEqual(cap * 1.001 + 1);
+        expect(m.stats.researchGranted).toBeGreaterThan(granted);
+        // Declining, or letting it lapse, ends the contract; the player is then not at war with it.
+        const { g: g2, w: w2 } = wonder('ultramind', {}, 'player');
+        const m2 = mindOfSite(g2, w2)!;
+        const p2 = g2.playerEmpire!;
+        quiet(m2);
+        if (!m2.partners.includes(p2) || m2.partners.length < 2) return;
+        m2.standing[sidOf(m2.partners.find((x) => x !== p2)!)] = 0;
+        awaken(g2, m2, galaxyStarDate(g2));
+        const d2 = pendingScenarioDecisions(g2, p2).find((x) => x.kind === 'gwUltramind.deal')!;
+        d2.expiresStarDate = 1;
+        expireScenarioDecisions(g2);
+        expect(m2.partners).not.toContain(p2);
+        expect(m2.withdrawn[sidOf(p2)].why).toBe('declined');
+        expect(ultramindState(g2).faction!.diplomaticRelations.byEmpire(p2)?.type).not.toBe(DiplomaticRelationType.War);
+    }, 1800000);
+
+    it('the Ultramind: withdrawing (a threat action) ends the bonus and the standing; a withdrawn empire is not at war with it on awakening unless it attacks, and is not drawn again', () => {
+        const { g, w } = wonder('ultramind', {}, 'player');
+        const m = mindOfSite(g, w)!;
+        const p = g.playerEmpire!;
+        quiet(m);
+        const kinds = (e: Empire) => availableThreatActions(g, e, w.base).map((a) => a.kind);
+        expect(kinds(p)).toContain('giantworks.ultramindWithdraw');
+        const stranger = actors(g).find((x) => !m.partners.includes(x));
+        if (stranger !== undefined) expect(kinds(stranger)).not.toContain('giantworks.ultramindWithdraw');
+        expect(runThreatAction(g, p, 'giantworks.ultramindWithdraw', w.base)).toBe(true);
+        expect(m.partners).not.toContain(p);
+        expect(m.standing[sidOf(p)]).toBeUndefined();
+        expect(m.withdrawn[sidOf(p)].why).toBe('withdrew');
+        expect(m.stats.withdrawals).toBe(1);
+        expect(kinds(p)).not.toContain('giantworks.ultramindWithdraw');
+        expect(pickPartners(g, m)).not.toContain(p);
+        const granted = m.stats.researchGranted;
+        m.lastTick -= YEAR_LENGTH;
+        ultramindPeriodic(g, w);
+        expect(m.partners).not.toContain(p);
+        expect(m.standing[sidOf(p)]).toBeUndefined();
+        void granted;
+        // It wakes on someone else's account: the withdrawn empire is not a target.
+        const victim = m.partners[0];
+        if (victim === undefined) return;
+        m.standing[sidOf(victim)] = 0;
+        awaken(g, m, galaxyStarDate(g));
+        const f = ultramindState(g).faction!;
+        expect(f.diplomaticRelations.byEmpire(victim)?.type).toBe(DiplomaticRelationType.War);
+        expect(f.diplomaticRelations.byEmpire(p)?.type).not.toBe(DiplomaticRelationType.War);
+        scenarioEmit(g, 'builtObjectAttacked', { builtObject: w.base!, attacker: null, attackingEmpire: p });
+        expect(f.diplomaticRelations.byEmpire(p)?.type).toBe(DiplomaticRelationType.War);
+    }, 1800000);
+
+    it('the Ultramind: an AI partner in danger deploys a Logic Bomb (standing 30 or less) and may withdraw (15 or less), by personality; the Logic Bomb cuts the hacking odds', () => {
         const { g, w, e } = wonder('ultramind', {}, 'ai');
         const m = mindOfSite(g, w)!;
         const p = g.playerEmpire!;
@@ -2769,20 +2951,191 @@ describe('giantworks', () => {
         expect(availableThreatActions(g, p, w.base).map((a) => a.kind)).not.toContain('giantworks.logicBomb'); // once
         expect(deployLogicBomb(g, p, m)).toBe(false);
         expect(hackOdds(g, m, e!, 0)).toBeCloseTo(open, 9); // the others are as exposed as before
-        // A restless Ultramind: an AI partner with the money prepares by itself.
+        // A restless Ultramind (towards one partner): that AI partner, with the money, prepares by itself; the others do not.
         e!.stateMoney = 10_000_000;
-        m.contentment = 20;
+        m.standing[sidOf(e!)] = 20;
+        quiet(m);
         m.lastTick -= 100 * GAME_DAY_LENGTH;
-        m.nextRequest = Number.MAX_VALUE;
         ultramindPeriodic(g, w);
         expect(m.bombs[String(e!.empireId)]).toBeDefined();
+        for (const x of m.partners) if (x !== e && x !== g.playerEmpire && m.standing[sidOf(x)] > 30) expect(m.bombs[sidOf(x)]).toBeUndefined();
+        // Nearly gone: it withdraws if its character says so (the holder is loath to).
+        const s = aiWouldWithdraw(g, m, e!);
+        m.standing[sidOf(e!)] = 10;
+        m.lastTick -= 10 * GAME_DAY_LENGTH;
+        ultramindPeriodic(g, w);
+        expect(m.partners.includes(e!)).toBe(!s);
+        if (s) expect(m.withdrawn[sidOf(e!)].why).toBe('withdrew');
     }, 900000);
 
-    it('the Ultramind: boarded while awake it falls back to a sullen calm under its captor, the hacked ships free; boarded while content it is hurt', () => {
+    it('the Ultramind: the Diet motion to sanction the empire upsetting it (target the lowest partner at or below 35); a passed motion ends its contract for good', () => {
+        const { g, w, e } = wonder('ultramind', {}, 'ai');
+        const m = mindOfSite(g, w)!;
+        quiet(m);
+        const def = dietMotionKindDef(MOTION_SANCTION)!;
+        expect(def.needs).toBe('empire');
+        expect(def.proposable!(g)).toBe(false); // the Diet is not running in this test game, and nobody is upset
+        expect(sanctionTarget(g)).toBeNull();
+        m.standing[sidOf(e!)] = 10;
+        expect(sanctionTarget(g)?.empire).toBe(e);
+        m.standing[sidOf(e!)] = 40;
+        for (const x of m.partners) m.standing[sidOf(x)] = Math.max(40, m.standing[sidOf(x)]);
+        expect(sanctionTarget(g)).toBeNull();
+        m.standing[sidOf(e!)] = 10;
+        const motion = { id: 1, kind: MOTION_SANCTION, proposer: m.partners[1] ?? e!, target: e!, other: null, colony: null, resourceId: -1, text: '', votes: [], status: 'voting', yes: 0, no: 0 } as DietMotion;
+        expect(def.voteScore(g, {} as DietState, e!, motion)).toBe(-100);
+        const voters = m.partners.filter((x) => x !== e);
+        for (const v of voters) if (v !== motion.proposer) expect(def.voteScore(g, {} as DietState, v, motion)).toBeGreaterThan(0);
+        const innocent = { ...motion, target: voters[0] ?? null } as DietMotion;
+        if (voters.length > 0) expect(def.voteScore(g, {} as DietState, e!, { ...innocent, proposer: e! })).toBe(100);
+        // Passed: the contract is over, and it cannot be taken up again.
+        def.apply(g, {} as DietState, motion, (() => ({})) as never);
+        expect(m.partners).not.toContain(e);
+        expect(m.withdrawn[sidOf(e!)].why).toBe('sanctioned');
+        expect(m.stats.sanctions).toBe(1);
+        expect(pickPartners(g, m)).not.toContain(e);
+        // Without the offender the others are safe: the lowest standing is now someone else's.
+        expect(m.contentment).toBeGreaterThan(40);
+    }, 900000);
+
+    it('the Ultramind: directives (the holder sets one; switching takes 60 days with none working; partners get half; its name shows it; threat actions mark the current one)', () => {
+        const { g, w, e } = wonder('ultramind', {}, 'ai');
+        const m = mindOfSite(g, w)!;
+        quiet(m);
+        const now = galaxyStarDate(g);
+        expect(dirNow(m, now)).toBe('research');
+        const view = directiveView(g, w.base, e!)!;
+        expect(view.canChange).toBe(true);
+        expect(view.options.map((o) => o.state)).toEqual(['current', 'choice', 'choice', 'choice']);
+        expect(directiveView(g, w.base, null)!.canChange).toBe(false);
+        const other = m.partners.find((x) => x !== e);
+        if (other !== undefined) {
+            expect(directiveView(g, w.base, other)!.canChange).toBe(false);
+            expect(setDirective(g, m, other, 'war')).toBe(false); // only the holder
+        }
+        expect(setDirective(g, m, e!, 'research')).toBe(false); // it is the current one
+        expect(setDirective(g, m, e!, 'war')).toBe(true);
+        expect(m.switchTo).toBe('war');
+        expect(setDirective(g, m, e!, 'war')).toBe(false);
+        expect(dirNow(m, now + 30 * GAME_DAY_LENGTH)).toBeNull();
+        expect(directiveEffect(g, e!)).toBeNull(); // nothing works while it is being switched
+        expect(w.base!.name).toBe('The Ultramind (content, switching to War)');
+        expect(directiveView(g, w.base, e!)!.daysLeft).toBe(60);
+        expect(directiveView(g, w.base, e!)!.options.map((o) => o.state)).toEqual(['choice', 'switching', 'choice', 'choice']);
+        expect(dirNow(m, now + 61 * GAME_DAY_LENGTH)).toBe('war');
+        m.switchUntil = now - 1;
+        m.lastTick -= 10 * GAME_DAY_LENGTH;
+        ultramindPeriodic(g, w);
+        expect(m.directive).toBe('war');
+        expect(m.switchTo).toBeNull();
+        expect(w.base!.name).toBe('The Ultramind (content, War)');
+        expect(directiveEffect(g, e!)).toMatchObject({ dir: 'war', k: 1 });
+        if (other !== undefined) expect(directiveEffect(g, other)).toMatchObject({ dir: 'war', k: 0.5 });
+        const stranger = actors(g).find((x) => !m.partners.includes(x));
+        if (stranger !== undefined) expect(directiveEffect(g, stranger)).toBeNull();
+        // The order menu: one action per directive, the current one marked, for the holder only.
+        const labels = (who: Empire) => availableThreatActions(g, who, w.base).filter((a) => a.kind.startsWith('giantworks.umDirective')).map((a) => a.label);
+        expect(labels(e!)).toEqual(['Directive: Research', 'Directive: War (current)', 'Directive: Economy', 'Directive: Intelligence']);
+        if (other !== undefined) expect(labels(other)).toEqual([]);
+        expect(runThreatAction(g, e!, 'giantworks.umDirective.2.economy.set', w.base)).toBe(true);
+        expect(runThreatAction(g, e!, 'giantworks.umDirective.1.war.current', w.base)).toBe(false);
+        expect(labels(e!)).toEqual(['Directive: Research', 'Directive: War', 'Directive: Economy (switching)', 'Directive: Intelligence']);
+        // The AI holder reviews by situation: a war raises War and lowers Research.
+        const s0 = aiDirectiveScores(g, m, e!);
+        const foe = actors(g).find((x) => x !== e)!;
+        declareWar(g, e!, foe, null, false);
+        const s1 = aiDirectiveScores(g, m, e!);
+        expect(s1.war - s0.war).toBeCloseTo(0.9, 9);
+        expect(s1.research - s0.research).toBeCloseTo(-0.3, 9);
+    }, 900000);
+
+    it('the Ultramind: the Research directive completes a project outright now and then; War gives battle bonuses and early warning; Economy gives income, building, price and upkeep; Intelligence tells of hidden threats, catches spies and reads rivals for free', () => {
+        const { g, w, e } = wonder('ultramind', {}, 'ai');
+        const m = mindOfSite(g, w)!;
+        quiet(m);
+        const star = siteOf(w);
+        const other = m.partners.find((x) => x !== e);
+        const now0 = galaxyStarDate(g);
+        // Research: a breakthrough when the clock says so.
+        m.nextBreak[sidOf(e!)] = now0 - 1;
+        m.lastTick -= 10 * GAME_DAY_LENGTH;
+        ultramindPeriodic(g, w);
+        expect(m.stats.breakthroughs).toBeGreaterThanOrEqual(1);
+        expect(m.stats.breakthroughPoints).toBeGreaterThan(0);
+        expect(m.nextBreak[sidOf(e!)]).toBeGreaterThan(now0);
+        // War.
+        m.directive = 'war';
+        const mine = warships(e!)[0];
+        mine.xpos = star.xpos + 500;
+        mine.ypos = star.ypos;
+        expect(scenarioQuery(g, 'captainBonuses', captain(), { builtObject: mine, empire: e! })).toMatchObject({ targeting: 125, countermeasures: 125, repair: 100 });
+        mine.xpos = star.xpos + 20 * g.sectorSize;
+        expect(scenarioQuery(g, 'captainBonuses', captain(), { builtObject: mine, empire: e! }).targeting).toBe(100); // out of range
+        if (other !== undefined) {
+            const theirs = warships(other)[0];
+            theirs.xpos = star.xpos;
+            theirs.ypos = star.ypos + 300;
+            expect(scenarioQuery(g, 'captainBonuses', captain(), { builtObject: theirs, empire: other }).targeting).toBeCloseTo(112.5, 9);
+        }
+        const foe = actors(g).find((x) => x !== e && x !== other) ?? actors(g).find((x) => x !== e)!;
+        declareWar(g, e!, foe, null, false);
+        const raider = warships(foe)[0];
+        raider.xpos = star.xpos + 3 * g.sectorSize;
+        raider.ypos = star.ypos;
+        expect(scenarioQuery(g, 'objectVisibleToAll', false, { empire: e!, object: raider })).toBe(true);
+        raider.xpos = star.xpos + 60 * g.sectorSize;
+        expect(scenarioQuery(g, 'objectVisibleToAll', false, { empire: e!, object: raider })).toBe(false);
+        raider.xpos = star.xpos + 3 * g.sectorSize;
+        m.directive = 'research';
+        expect(scenarioQuery(g, 'objectVisibleToAll', false, { empire: e!, object: raider })).toBe(false);
+        // Economy.
+        m.directive = 'economy';
+        const hab = e!.capital as Habitat;
+        expect(scenarioQuery(g, 'designPriceFactor', 1, { empire: e! })).toBeCloseTo(0.92, 9);
+        expect(scenarioQuery(g, 'colonyTaxRevenue', 100, { habitat: hab, empire: e! })).toBeCloseTo(108, 9);
+        expect(scenarioQuery(g, 'colonyConstructionFactor', 1, { habitat: hab, kind: 'yard' })).toBeCloseTo(1.15, 9);
+        expect(scenarioQuery(g, 'shipMaintenanceFactor', 1, { builtObject: mine })).toBeCloseTo(0.92, 9);
+        const port = { xpos: star.xpos, ypos: star.ypos, actualEmpire: e, empire: e } as unknown as BuiltObject;
+        expect(scenarioQuery(g, 'portTradeIncomeFactor', 1, { port, amount: 100 })).toBeCloseTo(1.1, 9);
+        if (other !== undefined) expect(scenarioQuery(g, 'designPriceFactor', 1, { empire: other })).toBeCloseTo(0.96, 9);
+        const outsider = actors(g).find((x) => !m.partners.includes(x));
+        if (outsider !== undefined) expect(scenarioQuery(g, 'designPriceFactor', 1, { empire: outsider })).toBe(1);
+        m.directive = 'research';
+        expect(scenarioQuery(g, 'designPriceFactor', 1, { empire: e! })).toBe(1);
+        // Intelligence: a stronger counter-intelligence share, hidden threats named, a free map, a spy caught.
+        m.directive = 'intelligence';
+        expect(scenarioQuery(g, 'counterIntelligenceProportion', 0.5, { empire: e! })).toBeCloseTo(0.8, 9);
+        if (other !== undefined) expect(scenarioQuery(g, 'counterIntelligenceProportion', 0.5, { empire: other })).toBeCloseTo(0.65, 9);
+        const node = { habitat: e!.capital as Habitat, knowledge: [] as { empireId: number; level: number; date: number }[] };
+        threatState(g, HIVE_KEY, () => ({ nodes: [node], absorbed: [], faction: null }));
+        expect(detectThreats(g, m, e!, 0)).toBe(1);
+        expect(node.knowledge).toEqual([expect.objectContaining({ empireId: e!.empireId, level: KNOWLEDGE_CONFIRMED })]);
+        expect(detectThreats(g, m, e!, 0)).toBe(0); // already told
+        expect(freeIntelOn(g, m, e!)).not.toBeNull();
+        expect(m.stats.freeIntel).toBe(1);
+        const spyOwner = actors(g).find((x) => x !== e)!;
+        const agent = getEmpireCharacters(spyOwner).find((c) => c.active && c.role === CharacterRole.IntelligenceAgent);
+        if (agent !== undefined) {
+            agent.mission = newIntelligenceMissionAgainstEmpire(spyOwner, agent, IntelligenceMissionType.StealTerritoryMap, galaxyStarDate(g), e!);
+            expect(catchSpy(g, m, e!)).toBe(spyOwner);
+            expect(agent.active).toBe(false);
+            expect(m.stats.spiesCaught).toBe(1);
+        } else expect(catchSpy(g, m, e!)).toBeNull();
+        // The periodic round does all three on its clock.
+        m.nextIntel[sidOf(e!)] = galaxyStarDate(g) - 1;
+        const before = { ...m.stats };
+        m.lastTick -= 10 * GAME_DAY_LENGTH;
+        ultramindPeriodic(g, w);
+        expect(m.nextIntel[sidOf(e!)]).toBeGreaterThan(galaxyStarDate(g));
+        void before;
+    }, 900000);
+
+    it('the Ultramind: boarded while awake it falls back to a sullen calm under its captor (everyone starts afresh), the hacked ships free; boarded while content only the boarder pays', () => {
         const { g, w, e } = wonder('ultramind', { ultramindHackPct: 100 }, 'ai');
         const m = mindOfSite(g, w)!;
         const star = siteOf(w);
-        for (const x of m.partners) warships(x).slice(0, 2).forEach((b) => { b.xpos = star.xpos; b.ypos = star.ypos + 300; });
+        gather(m, star, m.partners);
+        m.standing[sidOf(e!)] = 0;
         awaken(g, m, galaxyStarDate(g));
         const f = ultramindState(g).faction!;
         expect(m.awakened).toBe(true);
@@ -2795,25 +3148,41 @@ describe('giantworks', () => {
         expect(w.awakened).toBe(false);
         expect(greatWorkIsHostile(w)).toBe(false);
         expect(m.contentment).toBe(30);
+        expect(m.offenders).toHaveLength(0);
+        expect(Object.keys(m.withdrawn)).toHaveLength(0);
         expect(warCrimesRecord(g, captor)?.counts.greatWork ?? 0).toBe(0);
         for (const h of hacked) if (!h.ship.hasBeenDestroyed) expect(h.ship.actualEmpire).toBe(h.from);
-        expect(w.base!.name).toBe('The Ultramind (restless)');
-        // Content, then seized: a blow to the mood and the contracts are drawn anew.
+        expect(w.base!.name).toBe('The Ultramind (restless, Research)');
+        // The new contracts start at 30 for everyone.
+        m.lastTick -= 10 * GAME_DAY_LENGTH;
+        quiet(m);
+        ultramindPeriodic(g, w);
+        for (const p of m.partners) expect(m.standing[sidOf(p)]).toBeCloseTo(30, 0);
+        // Content, then seized: the boarder pays when it joins the contracts, the others nothing.
         const { g: g2, w: w2, e: e2 } = wonder('ultramind', {}, 'ai');
         const m2 = mindOfSite(g2, w2)!;
         const boarder = actors(g2).find((x) => x !== e2)!;
         takeOwnershipOfBuiltObject(g2, compactFaction(g2)!, w2.base!, boarder, false, true);
-        expect(m2.contentment).toBeCloseTo(45, 5);
         expect(m2.awakened).toBe(false);
+        m2.lastTick -= 10 * GAME_DAY_LENGTH;
+        quiet(m2);
+        ultramindPeriodic(g2, w2);
+        expect(m2.holder).toBe(boarder);
+        expect(m2.standing[sidOf(boarder)]).toBeCloseTo(45, 0);
+        for (const p of m2.partners) if (p !== boarder) expect(m2.standing[sidOf(p)]).toBeGreaterThan(55);
     }, 1800000);
 
-    it('the Ultramind: save and load keep the contracts, the awakened faction, the hacked ships and the mood', () => {
+    it('the Ultramind: save and load keep the contracts, the standings, the directive, the withdrawn, the deals, the awakened faction and the hacked ships', () => {
         const { g, w, game, gameData } = wonder('ultramind', { ultramindHackPct: 100 }, 'ai');
         const m = mindOfSite(g, w)!;
         const star = siteOf(w);
         for (const x of m.partners) warships(x).slice(0, 2).forEach((b) => { b.xpos = star.xpos; b.ypos = star.ypos + 300; });
         m.bombs[String(m.partners[0].empireId)] = 5;
         m.exposedUntil[String(m.partners[0].empireId)] = galaxyStarDate(g) + YEAR_LENGTH;
+        m.directive = 'intelligence';
+        m.switchTo = 'war';
+        m.switchUntil = galaxyStarDate(g) + 30 * GAME_DAY_LENGTH;
+        m.standing[sidOf(m.partners[0])] = 0;
         awaken(g, m, galaxyStarDate(g));
         const time = new GalaxyTime();
         time.bindGalaxy(g);
@@ -2823,6 +3192,15 @@ describe('giantworks', () => {
         expect(lm.site).toBe(greatWorks(lg)[0]);
         expect(lm.awakened).toBe(true);
         expect(lm.partners.map((x) => x.empireId)).toEqual(m.partners.map((x) => x.empireId));
+        expect(lm.offenders.map((x) => x.empireId)).toEqual(m.offenders.map((x) => x.empireId));
+        expect(lm.holder?.empireId).toBe(m.holder?.empireId);
+        expect(lm.standing).toEqual(m.standing);
+        expect(lm.deals).toEqual(m.deals);
+        expect(lm.withdrawn).toEqual(m.withdrawn);
+        expect(lm.directive).toBe('intelligence');
+        expect(lm.switchTo).toBe('war');
+        expect(lm.switchUntil).toBe(m.switchUntil);
+        expect(lm.lost).toEqual(m.lost);
         expect(lm.hacked.map((h) => h.ship.builtObjectID)).toEqual(m.hacked.map((h) => h.ship.builtObjectID));
         expect(lm.hacked.every((h) => h.ship.actualEmpire === peekUltramindState(lg)!.faction)).toBe(true);
         expect(peekUltramindState(lg)!.faction!.empireId).toBe(ultramindState(g).faction!.empireId);

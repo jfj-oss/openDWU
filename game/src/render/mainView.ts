@@ -110,7 +110,7 @@ import type { Creature } from '../sim/creature';
 import { createMapOverlayState, type MapOverlayState } from '../ui/mapOverlays';
 import { getSettings, showRegionLabels, showSystemNames } from '../ui/settings';
 import { VOLCANIC_GLOW_SCALE, VolcanicGlowTextures, volcanicGlowIndex } from './volcanicGlow';
-import { syncUltramindShell, type UltramindShellHolder } from './threatArt';
+import { forgetUltramindLooks, syncUltramindShell, type UltramindShellHolder } from './threatArt';
 import { galaxyViewGates } from './cleanGalaxyView';
 import { edgeScrollPixels, nebulaDetailScale, wheelNotches, wheelZoom, wheelZoomAnchor } from './viewInput'; // [gameoptions]
 import { hideMapTooltip, showMapTooltip, tooltipText } from '../ui/mapTooltip';
@@ -764,6 +764,7 @@ export class SystemView {
         this.lastRingZoom = -1;
         this.rocksShown = null;
         view.bodiesBuilt.add(this);
+        forgetUltramindLooks(this.system.habitats); // threatArt.ts: a Giantworks Ultramind here picks its look afresh as it comes into view
     }
 
     /** Destroy the bodies' display objects (not drawn for a while: MainView.releaseIdleBodies); ensureBodies rebuilds
@@ -780,6 +781,7 @@ export class SystemView {
         this.ring.clear();
         this.lastRingZoom = -1;
         this.view.bodiesBuilt.delete(this);
+        forgetUltramindLooks(this.system.habitats);
     }
 
     /**

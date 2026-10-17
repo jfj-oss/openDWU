@@ -1,5 +1,6 @@
 // 19r item 4: threat site markers by reveal level (src/render/threatMarkers.ts) — the look per threat, suspected vs
 // confirmed, the fallback shapes, and the geometry helpers; the 19f framework is absent on this branch (presence check).
+import { GAME_DAY_LENGTH } from '../src/sim/scenario/hooks';
 import { describe, expect, it } from 'vitest';
 import {
     GW_COMPACT_THREAT,
@@ -81,6 +82,7 @@ import {
     gwRackAlpha,
     gwTracePulse,
     gwUltramindPulse,
+    ultramindLookFor,
     sanctuaryWhaleCount,
     sanctuaryWhalePose,
     type GreatWorkArtSite,
@@ -560,6 +562,28 @@ describe('giantworks art', () => {
         expect(greatWorkDrawnFrame(site(2, 'beacon'))).toBe('scaffold_2');
         expect(greatWorkFrame(site(-1, 'casino'))).toBe('scaffold_0');
         expect(greatWorkFrame(site(Number.NaN, 'casino'))).toBe('scaffold_0');
+    });
+    it('an Ultramind round a planet wears the caged-planet look or the solid cube, by a hash of its site and the 30-day bucket of the date (deterministic, no state)', () => {
+        const DAY = GAME_DAY_LENGTH;
+        // the same site and bucket always give the same look; across a year both looks turn up
+        for (const id of [1, 2, 7]) {
+            for (let b = 0; b < 12; b++) expect(ultramindLookFor(id, b * 30 * DAY + 1)).toBe(ultramindLookFor(id, b * 30 * DAY + 29 * DAY));
+        }
+        const seen = new Set<string>();
+        for (let b = 0; b < 24; b++) seen.add(ultramindLookFor(3, b * 30 * DAY));
+        expect([...seen].sort()).toEqual(['cage', 'cube']);
+        const planet = {} as Habitat;
+        const l = { genFactions: [], worldShips: [], swarmFaction: null, mothercore: null, purifierFaction: null, purifierDock: null, ultramindLook: new Map<Habitat, 'cage' | 'cube'>() };
+        // the cage look keeps the uplink node (and the cage over the planet); the cube look draws the whole cube over the planet; the awakened state follows the look
+        expect(greatWorkFrame(site(4, 'ultramind', planet), l)).toBe('ultramind-node');
+        l.ultramindLook.set(planet, 'cage');
+        expect(greatWorkFrame({ ...site(4, 'ultramind', planet), awakened: true }, l)).toBe('ultramind-node-awake');
+        l.ultramindLook.set(planet, 'cube');
+        expect(greatWorkFrame(site(4, 'ultramind', planet), l)).toBe('ultramind');
+        expect(greatWorkFrame({ ...site(4, 'ultramind', planet), awakened: true }, l)).toBe('ultramind-awake');
+        expect(greatWorkDrawPx('ultramind', 1)).toBe(GREAT_WORK_WORLD_SIZE);
+        // without a planet it stays the solid cube
+        expect(greatWorkFrame(site(4, 'ultramind'), l)).toBe('ultramind');
     });
     it('one fixed world size per frame (the node half), whatever the base', () => {
         expect(greatWorkDrawPx('scaffold_2', 1)).toBe(GREAT_WORK_WORLD_SIZE);
