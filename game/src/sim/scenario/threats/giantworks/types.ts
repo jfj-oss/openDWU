@@ -35,5 +35,6 @@ export interface GreatWorkKind {
     onComplete(g: Galaxy, site: GreatWorkSite): void; // the wonder activates
     onDestroyed?(g: Galaxy, site: GreatWorkSite, by: Empire | null): void;
     periodic?(g: Galaxy, site: GreatWorkSite): void; // after completion
+    aiStrike?(g: Galaxy, site: GreatWorkSite): { target: BuiltObject; defenders: BuiltObject[]; marginPct?: number } | null; // a hostile wonder with a garrison of its own (the casino's smugglers): what the AI strikes and what stands in its way (null: the wonder's own base)
 }
 // export function registerGreatWork(kind: GreatWorkKind): void;  // in framework.ts

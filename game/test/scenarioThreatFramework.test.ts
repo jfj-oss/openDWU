@@ -138,6 +138,27 @@ import { updateKnowledge } from '../src/sim/scenario/threats/giantworks/knowledg
 import { dietState, registeredDietKinds } from '../src/sim/scenario/charactersVictory/diet/dietState';
 import { recordWarCrime, warCrimesRecord } from '../src/sim/scenario/charactersVictory/diet/warCrimes';
 import { IntelligenceMissionType, newIntelligenceMissionAgainstBuiltObject } from '../src/sim/espionage';
+import {
+    CASINO_KEY,
+    basesBroken,
+    casinoAnnualIncome,
+    casinoLocalBenefit,
+    casinoPiratesPeriodic,
+    casinoRecOf,
+    peekCasinoState,
+    reveal,
+    topTechLevel,
+    type CasinoRec,
+} from '../src/sim/scenario/threats/giantworks/casino';
+import { calculateMigrationFactor } from '../src/sim/colonyTick';
+import { calculateScenicFactorIncludingRuinsWonders } from '../src/sim/civilianAI';
+import { habitatAnnualRevenue, habitatCorruption } from '../src/sim/forceStructure';
+import { facilitiesCountCompletedByType } from '../src/sim/construction/facilities';
+import { PlanetaryFacilityType } from '../src/sim/researchSystem';
+import { PirateRelationType, changePirateRelation, obtainPirateRelation } from '../src/sim/pirateRelations';
+import { calculateOverallStrengthFactor } from '../src/sim/combat/threats';
+import { greatWorkBeneficiary } from '../src/sim/scenario/threats/giantworks/framework';
+import { strikeTarget } from '../src/sim/scenario/threats/giantworks/ai';
 import { AutomationLevel } from '../src/sim/empire';
 import type { BuiltObject } from '../src/sim/builtObject';
 import { rebuildIndexes } from '../src/sim/indexRebuild';
@@ -1593,9 +1614,9 @@ describe('giantworks', () => {
                 onDestroyed: (_g, site, by) => void destroyed.push(`${id}:${site.id}:${by?.name ?? '-'}`),
                 periodic: () => void periodicCalls++,
             });
-        mk('gwtest-a', 'gwCasino', ['glass-ice', 'luxury', 'neon']);
-        mk('gwtest-b', 'gwUltramind', ['glass-ice', 'luxury', 'plankton']);
-        mk('gwtest-c', 'gwSanctuary', ['superconductors', 'cores', 'cooling']);
+        mk('gwtest-a', 'gwTestA', ['glass-ice', 'luxury', 'neon']);
+        mk('gwtest-b', 'gwTestB', ['glass-ice', 'luxury', 'plankton']);
+        mk('gwtest-c', 'gwTestC', ['superconductors', 'cores', 'cooling']);
         KIND_MENACE['gwtest-a'] = 0.1;
         KIND_MENACE['gwtest-b'] = 0.1;
         KIND_MENACE['gwtest-c'] = 0.95;
@@ -1611,7 +1632,8 @@ describe('giantworks', () => {
         }
     });
     function gwFull(flags: Record<string, boolean> = {}, params: Record<string, number> = {}, scenario: string[] = ids): { game: Game; gameData: GameData } {
-        return createScenarioGame(base, { scenario: comboOverlayFs(scenario), flags: { threatGiantworks: true, ...flags }, params, options: age3 });
+        // The real wonders (casino.ts ...) are switched off here: these tests use the throw-away kinds above (flags undefined = on).
+        return createScenarioGame(base, { scenario: comboOverlayFs(scenario), flags: { threatGiantworks: true, gwCasino: false, gwUltramind: false, gwSanctuary: false, gwBeacon: false, ...flags }, params, options: age3 });
     }
     function gw(flags: Record<string, boolean> = {}, params: Record<string, number> = {}, scenario: string[] = ids): Galaxy {
         return gwFull(flags, params, scenario).game.galaxy;
@@ -1997,6 +2019,375 @@ describe('giantworks', () => {
         expect(compactFaction(g)).not.toBeNull();
         void spawnGreatWork;
     }, 900000);
+    // ---------------------------------------------------------------------------------------------------------------
+    // The Gilded Orbit (giantworks/casino.ts): the real wonder, forced onto the work (the throw-away kinds stay out of the roll).
+    // ---------------------------------------------------------------------------------------------------------------
+
+    /** A finished, open casino. `holdBy` >= 0: that ordinary empire seized it and its colonies lie round it (the site's star is moved to its capital). */
+    function casinoOpen(params: Record<string, number> = {}, holdBy = 0): { g: Galaxy; w: GreatWorkRecord; rec: CasinoRec; e: Empire; game: Game; gameData: GameData } {
+        const { g, w, game, gameData } = building({ gwCasinoFrontPct: 0, ...params }, { gwCasino: true }, 'casino');
+        addProgress(g, w, 2);
+        expect(w.phase).toBe('complete');
+        const rec = casinoRecOf(g, w.id)!;
+        const e = actors(g)[Math.max(0, holdBy)];
+        if (holdBy >= 0) {
+            w.holder = e;
+            rec.star = e.capital!;
+        }
+        return { g, w, rec, e, game, gameData };
+    }
+    /** Pretend the last payment was `days` ago (the casino pays by the clock). */
+    const owed = (g: Galaxy, rec: CasinoRec, days = 10): void => {
+        rec.lastPay = galaxyStarDate(g) - days * GAME_DAY_LENGTH;
+    };
+    const sectors = (g: Galaxy, a: { xpos: number; ypos: number }, b: { xpos: number; ypos: number }): number => g.calculateDistance(a.xpos, a.ypos, b.xpos, b.ypos) / g.sectorSize;
+
+    it('casino: registered with the most general hint first, a lore guess and its texts', () => {
+        const kind = greatWorkKind('casino')!;
+        expect(kind.flag).toBe('gwCasino');
+        expect(kind.weight).toBe(20);
+        expect(kind.hintTags[0]).toBe('luxury'); // shared with the aquarium: the general one first
+        expect(kind.hintTags).toEqual(['luxury', 'glass-ice', 'neon']);
+        expect(KIND_MENACE.casino).toBeGreaterThan(0);
+        expect(KIND_VALUE.casino).toBeGreaterThan(KIND_MENACE.casino);
+        const { g } = casinoOpen({}, -1);
+        for (const tag of ['Giantworks Kind casino', 'Giantworks Complete casino', 'Giantworks Hint luxury', 'Giantworks Hint neon', 'Giantworks Casino Front News', 'Giantworks Casino Purged News']) expect(tryGetText(tag)).not.toBeNull();
+        expect(spawnableThreats(g).some((t) => t.key === 'giantworks:casino')).toBe(true); // the Game Editor entry
+    }, 900000);
+
+    it('casino: the twist is rolled once at completion from the add-on own stream, the reveal a year or three later', () => {
+        const yes = casinoOpen({ gwCasinoFrontPct: 100 }, -1);
+        expect(yes.rec.front).toBe(true);
+        const dt = (yes.rec.revealAt - yes.w.completeDate!) / YEAR_LENGTH;
+        expect(dt).toBeGreaterThanOrEqual(1);
+        expect(dt).toBeLessThanOrEqual(3);
+        expect(casinoOpen({ gwCasinoFrontPct: 0 }, -1).rec.front).toBe(false);
+        // The same seed and work give the same roll and date (it never draws galaxy.rnd).
+        const a = casinoOpen({ gwCasinoFrontPct: 40 }, -1);
+        const b = casinoOpen({ gwCasinoFrontPct: 40 }, -1);
+        expect(b.rec.front).toBe(a.rec.front);
+        expect(b.rec.revealAt - b.w.completeDate!).toBeCloseTo(a.rec.revealAt - a.w.completeDate!, 6);
+    }, 1800000);
+
+    it('casino: an open Gilded Orbit pays its holder the stock resort income and lifts the colonies round it; without a holder the Compact keeps it', () => {
+        // Nobody holds it: the territory owner (if any) or the Compact is paid; the empires' own books stay untouched otherwise.
+        const none = casinoOpen({}, -1);
+        const compact = compactFaction(none.g)!;
+        const c0 = compact.stateMoney;
+        const owner = greatWorkBeneficiary(none.g, none.w);
+        owed(none.g, none.rec);
+        giantworksPeriodic(none.g);
+        expect(none.rec.beneficiary).toBe(owner);
+        if (owner === null) {
+            expect(none.rec.paid).toBe(0);
+            expect(compact.stateMoney).toBeGreaterThan(c0);
+        }
+        // Held by an empire (seized): it takes the whole benefit.
+        const { g, w, rec, e } = casinoOpen();
+        expect(rec.phase).toBe('open');
+        expect(rec.benefit).toBe(1);
+        const per = (casinoAnnualIncome(g) * 10) / 360;
+        expect(per).toBeGreaterThan(0);
+        const money = e.stateMoney;
+        const tour = e.counters.tourismIncome;
+        owed(g, rec);
+        giantworksPeriodic(g);
+        expect(rec.beneficiary).toBe(e);
+        expect(e.stateMoney - money).toBeCloseTo(per, 3);
+        expect(e.counters.tourismIncome - tour).toBeCloseTo(per, 3);
+        expect(e.thisYearsResortIncomeValue).toBeGreaterThanOrEqual(per - 0.001);
+        expect(rec.paid).toBeCloseTo(per, 3);
+        // The colonies of the holder: approval within 2 sectors, tourists within 2 (scenic), immigrants within 4; nobody else's.
+        const h = e.capital!;
+        const approval = (k: number): number => {
+            rec.benefit = k;
+            return scenarioQuery(g, 'empireApprovalRating', 10, { habitat: h, empire: e });
+        };
+        expect(approval(1) - approval(0)).toBeCloseTo(8, 6);
+        expect(approval(0.8) - approval(0)).toBeCloseTo(6.4, 6);
+        rec.benefit = 1;
+        const migration = (k: number): number => {
+            rec.benefit = k;
+            calculateMigrationFactor(g, h);
+            return h.migrationFactor;
+        };
+        expect(h.population.totalAmount).toBeGreaterThan(1e9);
+        expect(migration(1) - migration(0)).toBeCloseTo(0.25 + 0.08, 3); // the pull, plus the approval bonus (approval / 100 is part of the factor)
+        rec.benefit = 0;
+        const scenic0 = calculateScenicFactorIncludingRuinsWonders(h, g);
+        rec.benefit = 1;
+        expect(calculateScenicFactorIncludingRuinsWonders(h, g)).toBeGreaterThanOrEqual(Math.max(scenic0, 0.5));
+        const other = actors(g).find((x) => x !== e)!;
+        expect(casinoLocalBenefit(g, other.capital!, 99)).toBe(0);
+        const outside = e.colonies.find((c) => c.empire === e && sectors(g, c, rec.star) > 2);
+        if (outside !== undefined) expect(casinoLocalBenefit(g, outside, 2)).toBe(0);
+        rec.star = { xpos: -1e9, ypos: -1e9 } as typeof rec.star; // far away: no bonus anywhere
+        expect(casinoLocalBenefit(g, h, 4)).toBe(0);
+        expect(w.phase).toBe('complete');
+    }, 1800000);
+
+    it('casino: the front surfaces as a stock pirate faction with three huge bases and a high-tier fleet, and the resort turns hostile', () => {
+        const { g, w, rec, e } = casinoOpen({ gwCasinoFrontPct: 100 });
+        const compact = compactFaction(g)!;
+        const money = e.stateMoney;
+        const strongest = Math.max(...actors(g).map((x) => militaryPotency(x)));
+        rec.revealAt = 0; // due
+        giantworksPeriodic(g);
+        expect(rec.phase).toBe('revealed');
+        const f = rec.faction!;
+        expect(g.pirateEmpires).toContain(f);
+        expect(f.active).toBe(true);
+        expect(f.name).toBe('The Gilded Syndicate');
+        expect(peekCasinoState(g)!.faction).toBe(f);
+        // Three huge bases in the casino's own system, each a lot stronger than any warship of the empires.
+        expect(rec.bases).toHaveLength(3);
+        const best = Math.max(...actors(g).flatMap((x) => x.builtObjects.filter((b) => b.role === BuiltObjectRole.Military).map((b) => calculateOverallStrengthFactor(b))));
+        for (const b of rec.bases) {
+            expect(b.role).toBe(BuiltObjectRole.Base);
+            expect(b.actualEmpire).toBe(f);
+            expect(b.hasBeenDestroyed).toBe(false);
+            expect(g.determineHabitatSystemStar(b.parentHabitat!).systemIndex).toBe(w.system.systemStar.systemIndex);
+            expect(calculateOverallStrengthFactor(b)).toBeGreaterThan(best);
+        }
+        expect(f.pirateEmpireBaseHabitat).toBe(rec.home);
+        // The fleet: many warships built at the best tech level, the whole force (bases included) 60 % of the strongest navy, two thirds
+        // of the new ships on guard (a manual patrol of one of the bases).
+        const warships = f.builtObjects.filter((b) => !b.hasBeenDestroyed && b.role === BuiltObjectRole.Military && b.topSpeed > 0);
+        expect(warships.length).toBeGreaterThanOrEqual(12);
+        expect(rec.potency0).toBeGreaterThanOrEqual(strongest * 0.6 * 0.95);
+        expect(empireTechLevel(f)).toBeGreaterThanOrEqual(topTechLevel(g));
+        expect(rec.guards.length).toBeGreaterThanOrEqual(8);
+        for (const s of rec.guards) {
+            const m = builtObjectMission(s.mission);
+            expect(m?.type).toBe(BuiltObjectMissionType.Patrol);
+            expect(rec.bases).toContain(m?.targetBuiltObject);
+        }
+        expect(rec.fleetStrength).toBeGreaterThan(0);
+        // Hostile, no benefit, a crisis the other empires may help against, a pirate slot of its own, the front's friends spared.
+        expect(greatWorkIsHostile(w)).toBe(true);
+        expect(rec.benefit).toBe(0);
+        expect(w.base!.name).toMatch(/front/);
+        expect(casinoLocalBenefit(g, e.capital!, 99)).toBe(0);
+        expect(activeCrises(g).some((c) => c.entry.key === CASINO_KEY && c.faction === f)).toBe(true);
+        expect(scenarioQuery(g, 'pirateFactionCount', 3, {})).toBe(4);
+        expect(obtainPirateRelation(f, compact).type).toBe(PirateRelationType.Protection);
+        for (const x of actors(g)) for (const b of rec.bases) expect(x.knownPirateBases).toContain(b);
+        const after = e.stateMoney;
+        owed(g, rec, 30);
+        giantworksPeriodic(g);
+        expect(e.stateMoney).toBeCloseTo(after, 3); // no income any more (the ordinary economy does not tick here)
+        expect(after).toBeGreaterThanOrEqual(money);
+        // The AI strikes the smugglers' weakest standing base (the resort is spared), against the other bases and the fleet at home.
+        const strike = strikeTarget(g, w)!;
+        expect(rec.bases).toContain(strike.target);
+        expect(strike.target).not.toBe(w.base);
+        expect(strike.defenders.length).toBeGreaterThanOrEqual(2 + 12);
+        expect(strike.defenders).not.toContain(strike.target);
+        for (const b of rec.bases) expect(calculateOverallStrengthFactor(strike.target)).toBeLessThanOrEqual(calculateOverallStrengthFactor(b));
+        const striker = actors(g)[2];
+        strike.target.xpos = striker.capital!.xpos;
+        strike.target.ypos = striker.capital!.ypos;
+        expect(aiChoice(g, w, striker)).toBe('destroy');
+        // Revealing twice, or an honest casino revealing, does nothing.
+        expect(reveal(g, w, rec, null)).toBe(false);
+    }, 1800000);
+
+    it('casino: a successful Deep Cover mission against the Compact finds the front out early; other missions and honest casinos are unaffected', () => {
+        const { g, w, rec, e } = casinoOpen({ gwCasinoFrontPct: 100, gwCasinoDeepCoverPct: 100 });
+        const compact = compactFaction(g)!;
+        const spy = actors(g)[1];
+        scenarioEmit(g, 'intelMissionCompleted', { empire: spy, mission: { type: IntelligenceMissionType.StealTechData, targetEmpire: compact }, outcome: null });
+        scenarioEmit(g, 'intelMissionCompleted', { empire: spy, mission: { type: IntelligenceMissionType.DeepCover, targetEmpire: actors(g)[2] }, outcome: null });
+        expect(rec.phase).toBe('open');
+        scenarioEmit(g, 'intelMissionCompleted', { empire: spy, mission: { type: IntelligenceMissionType.DeepCover, targetEmpire: compact }, outcome: null });
+        expect(rec.phase).toBe('revealed');
+        expect(rec.exposedBy).toBe(spy);
+        expect(rec.revealAt).toBeGreaterThan(galaxyStarDate(g)); // well before the planned date
+        expect(greatWorkIsHostile(w)).toBe(true);
+        void e;
+        const honest = casinoOpen({ gwCasinoFrontPct: 0, gwCasinoDeepCoverPct: 100 });
+        scenarioEmit(honest.g, 'intelMissionCompleted', { empire: actors(honest.g)[1], mission: { type: IntelligenceMissionType.DeepCover, targetEmpire: compactFaction(honest.g) }, outcome: null });
+        expect(honest.rec.phase).toBe('open');
+        expect(honest.rec.faction).toBeNull();
+    }, 1800000);
+
+    it('casino: the smugglers plant stock criminal networks that cut the colonies income; the purge (all three bases gone) breaks the faction, closes the casino for renovation and reopens it at 80%', () => {
+        const { g, w, rec, e } = casinoOpen({ gwCasinoFrontPct: 100 });
+        rec.revealAt = 0;
+        giantworksPeriodic(g);
+        const f = rec.faction!;
+        expect(rec.phase).toBe('revealed');
+        // One network a period at most, never more than the cap, spread over the empires near the site.
+        const rev0 = new Map<unknown, number>();
+        for (const x of actors(g)) for (const h of x.colonies) if (h.empire === x) rev0.set(h, habitatAnnualRevenue(g, h));
+        for (let i = 0; i < 14; i++) {
+            const n = rec.networks.length;
+            rec.nextNetwork = 0;
+            casinoPiratesPeriodic(g);
+            expect(rec.networks.length).toBeLessThanOrEqual(n + 1);
+        }
+        expect(rec.networks.length).toBeGreaterThan(0);
+        expect(rec.networks.length).toBeLessThanOrEqual(10);
+        expect(rec.plantedTotal).toBe(rec.networks.length);
+        const owners = new Set(rec.networks.map((h) => h.empire));
+        expect(owners.size).toBeGreaterThan(1); // fewest-first: not all on one empire
+        const h = rec.networks[0];
+        expect(sectors(g, h, rec.star)).toBeLessThanOrEqual(6);
+        expect(facilitiesCountCompletedByType(h.facilities!, PlanetaryFacilityType.PirateCriminalNetwork)).toBe(1);
+        expect(h.pirateColonyControl.getByFaction(f)?.hasFacilityControl).toBe(true);
+        expect(f.colonies).toContain(h);
+        const corrupt = habitatCorruption(g, h);
+        const rev = habitatAnnualRevenue(g, h);
+        expect(rev).toBeLessThan(rev0.get(h)!);
+        expect(corrupt).toBeGreaterThan(0.3);
+        // Two of the three bases falling is not yet a purge.
+        const [b1, b2, b3] = rec.bases;
+        const hunter = actors(g)[1];
+        for (const b of [b1, b2]) {
+            scenarioEmit(g, 'builtObjectKilledBy', { builtObject: b, destroyer: hunter });
+            builtObjectCompleteTeardown(g, b);
+        }
+        expect(basesBroken(rec)).toBe(false);
+        casinoPiratesPeriodic(g);
+        expect(rec.phase).toBe('revealed');
+        expect(rec.faction).toBe(f);
+        // The last one: the faction breaks, its networks are gone, the resort closes, nobody has to take it.
+        scenarioEmit(g, 'builtObjectKilledBy', { builtObject: b3, destroyer: hunter });
+        builtObjectCompleteTeardown(g, b3);
+        expect(basesBroken(rec)).toBe(true);
+        casinoPiratesPeriodic(g);
+        expect(rec.phase).toBe('renovation');
+        expect(rec.faction).toBeNull();
+        expect(f.active).toBe(false);
+        expect(g.pirateEmpires).not.toContain(f);
+        expect(peekCasinoState(g)!.faction).toBeNull();
+        expect(rec.purgedBy).toBe(hunter);
+        expect(rec.networks).toHaveLength(0);
+        expect(h.facilities === null || facilitiesCountCompletedByType(h.facilities, PlanetaryFacilityType.PirateCriminalNetwork) === 0).toBe(true);
+        expect(h.pirateColonyControl.getByFaction(f)).toBeNull();
+        expect(habitatCorruption(g, h)).toBeLessThan(corrupt);
+        expect(habitatAnnualRevenue(g, h)).toBeGreaterThan(rev);
+        expect(greatWorkIsHostile(w)).toBe(false);
+        expect(w.base!.name).toMatch(/renovation/);
+        expect(rec.benefit).toBe(0);
+        expect(scenarioQuery(g, 'pirateFactionCount', 3, {})).toBe(3);
+        // Six months of renovation pay nothing; then it runs clean at 80 %.
+        const money = e.stateMoney;
+        owed(g, rec, 30);
+        giantworksPeriodic(g);
+        expect(rec.phase).toBe('renovation');
+        expect(e.stateMoney).toBeCloseTo(money, 3);
+        expect(rec.renovationUntil - galaxyStarDate(g)).toBeGreaterThan(170 * GAME_DAY_LENGTH);
+        rec.renovationUntil = 0;
+        giantworksPeriodic(g);
+        expect(rec.phase).toBe('clean');
+        expect(rec.benefit).toBeCloseTo(0.8, 9);
+        expect(w.base!.name).toBe(kindName('casino'));
+        const per = (casinoAnnualIncome(g) * 10) / 360;
+        const m1 = e.stateMoney;
+        owed(g, rec);
+        giantworksPeriodic(g);
+        expect(e.stateMoney - m1).toBeCloseTo(per * 0.8, 3);
+        // The pay follows the clock: a missed stretch is paid (to a point), a double call pays nothing twice.
+        owed(g, rec, 36);
+        const m2 = e.stateMoney;
+        giantworksPeriodic(g);
+        expect(e.stateMoney - m2).toBeCloseTo((per * 0.8 * 36) / 10, 3);
+        const m3 = e.stateMoney;
+        giantworksPeriodic(g);
+        expect(e.stateMoney - m3).toBeCloseTo(0, 3);
+    }, 1800000);
+
+    it('casino: the smugglers prey on private freighters near their bases', () => {
+        const { g, rec } = casinoOpen({ gwCasinoFrontPct: 100 });
+        rec.revealAt = 0;
+        giantworksPeriodic(g);
+        const f = rec.faction!;
+        const victim = actors(g)[1];
+        const freighter = victim.privateBuiltObjects.find((b) => !b.hasBeenDestroyed && b.role === BuiltObjectRole.Freight);
+        expect(freighter).toBeDefined();
+        freighter!.xpos = rec.home!.xpos + 20000;
+        freighter!.ypos = rec.home!.ypos;
+        rebuildIndexes(g);
+        expect(isObjectVisibleToThisEmpire(g, f, freighter!)).toBe(true);
+        casinoPiratesPeriodic(g);
+        const hunters = f.builtObjects.filter((b) => builtObjectMission(b.mission)?.type === BuiltObjectMissionType.Attack && builtObjectMission(b.mission)?.targetBuiltObject === freighter);
+        expect(hunters.length).toBe(1);
+        expect(rec.guards).not.toContain(hunters[0]); // the guards stay home
+        expect(rec.raidOrders).toBe(1);
+        // A freighter of an empire that bought protection is left alone.
+        const safe = actors(g)[2].privateBuiltObjects.find((b) => !b.hasBeenDestroyed && b.role === BuiltObjectRole.Freight)!;
+        changePirateRelation(f, actors(g)[2], PirateRelationType.Protection, galaxyStarDate(g), 0);
+        safe.xpos = rec.home!.xpos;
+        safe.ypos = rec.home!.ypos + 10000;
+        rebuildIndexes(g);
+        const before = rec.raidOrders;
+        casinoPiratesPeriodic(g);
+        expect(f.builtObjects.some((b) => builtObjectMission(b.mission)?.targetBuiltObject === safe)).toBe(false);
+        expect(rec.raidOrders).toBeGreaterThanOrEqual(before);
+    }, 1800000);
+
+    it('casino: destroying the resort before the reveal dissolves the front; after it the smugglers stay until their bases fall', () => {
+        const early = casinoOpen({ gwCasinoFrontPct: 100 });
+        const hunter = actors(early.g)[1];
+        early.w.base!.hasBeenDestroyed = true;
+        scenarioEmit(early.g, 'builtObjectKilledBy', { builtObject: early.w.base!, destroyer: hunter });
+        expect(resolveBaseLoss(early.g, early.w)).toBe(true);
+        expect(early.w.phase).toBe('destroyed');
+        expect(early.rec.phase).toBe('closed');
+        expect(early.rec.front).toBe(false);
+        expect(early.rec.benefit).toBe(0);
+        early.rec.revealAt = 0;
+        giantworksPeriodic(early.g);
+        casinoPiratesPeriodic(early.g);
+        expect(early.rec.faction).toBeNull();
+        const late = casinoOpen({ gwCasinoFrontPct: 100 });
+        late.rec.revealAt = 0;
+        giantworksPeriodic(late.g);
+        const f = late.rec.faction!;
+        late.w.base!.hasBeenDestroyed = true;
+        scenarioEmit(late.g, 'builtObjectKilledBy', { builtObject: late.w.base!, destroyer: actors(late.g)[1] });
+        expect(resolveBaseLoss(late.g, late.w)).toBe(true);
+        expect(late.rec.phase).toBe('revealed'); // the pirates hold their bases
+        casinoPiratesPeriodic(late.g);
+        expect(late.rec.faction).toBe(f);
+        for (const b of late.rec.bases) builtObjectCompleteTeardown(late.g, b);
+        casinoPiratesPeriodic(late.g);
+        expect(late.rec.faction).toBeNull();
+        expect(late.rec.phase).toBe('closed'); // nothing left to reopen
+        expect(f.active).toBe(false);
+    }, 1800000);
+
+    it('casino: save and load keep a revealed casino, its faction, bases, guards and networks', () => {
+        const { g, w, rec, game, gameData } = casinoOpen({ gwCasinoFrontPct: 100 });
+        rec.revealAt = 0;
+        giantworksPeriodic(g);
+        for (let i = 0; i < 3; i++) {
+            rec.nextNetwork = 0;
+            casinoPiratesPeriodic(g);
+        }
+        expect(rec.networks.length).toBeGreaterThan(0);
+        const time = new GalaxyTime();
+        time.bindGalaxy(g);
+        const text = serializeGame(game, time, {} as StartGameOptions);
+        const lg = deserializeGame(text, gameData).game.galaxy;
+        const lrec = casinoRecOf(lg, w.id)!;
+        expect(lrec.phase).toBe('revealed');
+        expect(lrec.front).toBe(true);
+        expect(lrec.faction!.empireId).toBe(rec.faction!.empireId);
+        expect(lg.pirateEmpires).toContain(lrec.faction);
+        expect(peekCasinoState(lg)!.faction).toBe(lrec.faction);
+        expect(lrec.bases.map((b) => b.builtObjectID)).toEqual(rec.bases.map((b) => b.builtObjectID));
+        expect(lrec.guards.map((b) => b.builtObjectID)).toEqual(rec.guards.map((b) => b.builtObjectID));
+        expect(lrec.networks.map((h) => h.habitatIndex)).toEqual(rec.networks.map((h) => h.habitatIndex));
+        expect(lrec.star.habitatIndex).toBe(rec.star.habitatIndex);
+        expect(lrec.beneficiary?.empireId).toBe(rec.beneficiary?.empireId);
+        expect(lrec.revealedAt).toBe(rec.revealedAt);
+        // And it goes on: the loaded game purges the same way.
+        for (const b of lrec.bases) builtObjectCompleteTeardown(lg, b);
+        casinoPiratesPeriodic(lg);
+        expect(lrec.phase).toBe('renovation');
+    }, 3600000);
 });
 
 // Giantworks' Beacon wonder (threats/giantworks/beacon*.ts): the Watchers, corruption, the Reclamation, counterplay, the dark bargain.

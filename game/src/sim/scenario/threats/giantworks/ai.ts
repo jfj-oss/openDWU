@@ -13,6 +13,7 @@
 
 import type { Galaxy } from '../../../galaxy';
 import type { Empire } from '../../../empire';
+import type { BuiltObject } from '../../../builtObject';
 import { CharacterRole, getEmpireCharacters, type Character, type IntelligenceMission } from '../../../characters';
 import { calculateOverallStrengthFactor } from '../../../combat/threats';
 import { aggressionLevel, cautionLevel, friendlinessLevel, FleetPosture } from '../../../diplomacyTick';
@@ -34,6 +35,7 @@ import { formStrikeFleet } from '../../smarterAI/pirates';
 import { KNOWLEDGE_SUSPECTED } from '../framework';
 import { demolitionAuthorised } from './actions';
 import { expectedMenace, expectedValue, workLevel } from './knowledge';
+import { greatWorkKind } from './registry';
 import { compactFaction, greatWorks, gwParam, logGw, ordinaryEmpires, type GreatWorkRecord } from './state';
 
 export type AiAction = 'destroy' | 'sabotage' | 'protect' | 'none';
@@ -51,10 +53,25 @@ function nearestColonyDistance(galaxy: Galaxy, e: Empire, x: number, y: number):
     return best;
 }
 
+/**
+ * What an AI strike goes for and what defends it: the wonder's own base and the Compact's guards, unless the wonder has a garrison
+ * of its own that holds the site while it is hostile (kind.aiStrike: the casino's smugglers, whose bases are struck instead of the resort). Pure.
+ */
+export function strikeTarget(galaxy: Galaxy, work: GreatWorkRecord): { target: BuiltObject; defenders: BuiltObject[]; marginPct?: number } | null {
+    if (work.phase === 'complete' && work.hostile) {
+        const own = greatWorkKind(work.wonder)?.aiStrike?.(galaxy, work) ?? null;
+        if (own !== null) return own;
+    }
+    const base = work.base;
+    if (base === null || base.hasBeenDestroyed) return null;
+    return { target: base, defenders: work.guards.filter((g) => !g.hasBeenDestroyed) };
+}
+
 /** What the empire would do about the work now (pure; no orders). */
 export function aiChoice(galaxy: Galaxy, work: GreatWorkRecord, e: Empire): AiAction {
-    const base = work.base;
-    if (base === null || base.hasBeenDestroyed) return 'none';
+    const strike = strikeTarget(galaxy, work);
+    if (strike === null) return 'none';
+    const base = strike.target;
     const away = nearestColonyDistance(galaxy, e, base.xpos, base.ypos) / galaxy.sectorSize;
     if (away > SPY_REACH_SECTORS) return 'none';
     const fleetsReach = away <= gwParam(galaxy, 'giantworksAiReachSectors');
@@ -73,15 +90,17 @@ export function aiChoice(galaxy: Galaxy, work: GreatWorkRecord, e: Empire): AiAc
     return 'none';
 }
 
-function strengthNeeded(galaxy: Galaxy, work: GreatWorkRecord): number {
-    let s = work.base !== null ? calculateOverallStrengthFactor(work.base) : 0;
-    for (const g of work.guards) if (!g.hasBeenDestroyed) s += calculateOverallStrengthFactor(g);
-    return Math.trunc((s * gwParam(galaxy, 'giantworksAiStrikeMarginPct')) / 100);
+function strengthNeeded(galaxy: Galaxy, strike: { target: BuiltObject; defenders: BuiltObject[]; marginPct?: number }): number {
+    let s = calculateOverallStrengthFactor(strike.target);
+    for (const g of strike.defenders) if (!g.hasBeenDestroyed) s += calculateOverallStrengthFactor(g);
+    return Math.trunc((s * (strike.marginPct ?? gwParam(galaxy, 'giantworksAiStrikeMarginPct'))) / 100);
 }
 
 function sendStrike(galaxy: Galaxy, work: GreatWorkRecord, e: Empire): boolean {
-    const base = work.base!;
-    const need = strengthNeeded(galaxy, work);
+    const strike = strikeTarget(galaxy, work);
+    if (strike === null) return false;
+    const base = strike.target;
+    const need = strengthNeeded(galaxy, strike);
     let fleet = findNearestAvailableFleet(galaxy, e, base.xpos, base.ypos, BuiltObjectMissionPriority.Low, need, FleetPosture.Attack, true, 0.1, false, false, false, true);
     if (fleet === null) fleet = formStrikeFleet(galaxy, e, base.xpos, base.ypos, need);
     if (fleet === null || fleet.leadShip === null || !isAiControlled(fleet.leadShip)) return false;

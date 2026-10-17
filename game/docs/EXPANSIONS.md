@@ -113,6 +113,8 @@ Independent worlds in three far-apart regions band together as the Founders' Com
 
 **The wonders.** The Gilded Orbit (a resort that may be a smugglers' front), the Ultramind (a supercomputer that can decide it is being abused), the Leviathan Sanctuary (a glass sphere of live void whales that can breach) and the Beacon (a relay that calls the Reclaimers; only in galaxies of six or more empires). Each can be switched off in the add-on's settings.
 
+**The Gilded Orbit.** The resort wonder pays its holder a flood of resort and tourism income and lifts the colonies round it. In four games out of ten it is a smugglers' front: exposed within three years, it brings a pirate faction with three huge bases and a high-tier fleet, criminal networks and freighter raids, until all three bases are destroyed and the resort reopens, renovated, at 80%.
+
 **The Diet.** Destroying the work before it is finished is a war crime unless the Diet authorises demolition. The Diet can also send inspectors, protect the work or internationalise a finished wonder.
 
 

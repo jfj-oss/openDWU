@@ -421,6 +421,8 @@ export function calculateMigrationFactor(galaxy: Galaxy, habitat: Habitat): void
         if (habitat.empire !== null && habitat.empire.dominantRace !== null) {
             habitat.migrationFactor = f32(habitat.migrationFactor * raceMigrationFactor(habitat.empire.dominantRace));
         }
+        // [scenario] Giantworks' Gilded Orbit (colonyMigrationFactor); no scenario = no call, no handler = the value unchanged.
+        if (galaxy.scenario != null) habitat.migrationFactor = f32(scenarioQuery(galaxy, 'colonyMigrationFactor', habitat.migrationFactor, { habitat }));
         if (habitat.migrationFactor < 0 && habitat.population.totalAmount < 1000000000) {
             habitat.migrationFactor = 0;
         }

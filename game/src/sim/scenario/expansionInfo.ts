@@ -77,6 +77,7 @@ export const EXPANSION_INFO: Readonly<Record<string, ExpansionInfo>> = {
         features: [
             { heading: 'The Founders\' Compact', text: 'Independent worlds in three far-apart regions band together as the Founders\' Compact. Years later their convoys build a gigantic scaffold in five stages, and nobody knows what it will be. Cargo hints and spies give a shortlist, never proof: protect it, sabotage it or destroy it before it is finished, and live with what it turns out to be.' },
             { heading: 'The wonders', text: 'The Gilded Orbit (a resort that may be a smugglers\' front), the Ultramind (a supercomputer that can decide it is being abused), the Leviathan Sanctuary (a glass sphere of live void whales that can breach) and the Beacon (a relay that calls the Reclaimers; only in galaxies of six or more empires). Each can be switched off in the add-on\'s settings.' },
+            { heading: 'The Gilded Orbit', text: 'The resort wonder pays its holder a flood of resort and tourism income and lifts the colonies round it. In four games out of ten it is a smugglers\' front: exposed within three years, it brings a pirate faction with three huge bases and a high-tier fleet, criminal networks and freighter raids, until all three bases are destroyed and the resort reopens, renovated, at 80%.' },
             { heading: 'The Diet', text: 'Destroying the work before it is finished is a war crime unless the Diet authorises demolition. The Diet can also send inspectors, protect the work or internationalise a finished wonder.' },
         ],
     },

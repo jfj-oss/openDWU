@@ -842,6 +842,12 @@ export interface ScenarioQueries {
     /** civilianAI.ts calculateScenicFactorIncludingRuinsWonders (Habitat.cs 1116): the habitat's scenic factor (tourism). Pure. */
     colonyScenicFactor: { value: number; args: { habitat: Habitat } };
     /**
+     * colonyTick.ts calculateMigrationFactor (Habitat.cs 1162), after the race factor and before the "poor small colony
+     * does not lose people" clamp: the colony's migration factor (stock `value`; > 0 makes it a migration destination,
+     * < 0 a source). Giantworks' Gilded Orbit draws immigrants to the colonies of the empire that holds it. Pure, no Rnd.
+     */
+    colonyMigrationFactor: { value: number; args: { habitat: Habitat } };
+    /**
      * civilianAI.ts checkMilitaryShipWelcomeAtTerritoryLocation (Galaxy.cs 3699) when the stock answer is no: true =
      * `empire`'s warships are welcome in `owner`'s territory anyway. Characters & Victory's Diet (an outlawed pirate faction). Pure.
      */
