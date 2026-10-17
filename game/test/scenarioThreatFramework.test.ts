@@ -32,7 +32,7 @@ import {
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../src/sim/diplomacy';
 import { EmpireMessageType, empireMessages } from '../src/sim/messages';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
-import { findNewestCanBuild } from '../src/sim/designGeneration';
+import { findNewestCanBuild, generateDesignFromSpec } from '../src/sim/designGeneration';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { threatMarker, THREAT_CONFIRMED_COLOR, THREAT_SUSPECTED_COLOR } from '../src/render/overlayLayer';
 import type { CreateGameOptions } from '../src/sim/game';
@@ -41,12 +41,12 @@ import { registerScenarioEvent, scenarioEmit, scenarioQuery } from '../src/sim/s
 import { TroopList } from '../src/sim/cargo';
 import { assaultMargin, genShipsAssaultStrengths, genShipsAssaultWins, genShipsLowLevel, genShipsPeriodic, genShipsState, genShipsStates, genShipsWaveSize, peekGenShipsState } from '../src/sim/scenario/threats/generationShips';
 import { empireTechLevel, maxDesignTechLevel } from '../src/sim/scenario/threats/robotMutiny';
-import { calculateOverallStrengthFactorWithoutShields } from '../src/sim/diplomacyTick';
+import { calculateOverallStrengthFactorWithoutShields, militaryPotency } from '../src/sim/diplomacyTick';
 import { ComponentType } from '../src/sim/data/components';
 import { HabitatType } from '../src/sim/types';
 import { YEAR_LENGTH } from '../src/sim/galaxyTime';
 import { lockWar, makeFactionTroop } from '../src/sim/scenario/threats/framework';
-import { takeOwnershipOfColonyFull } from '../src/sim/combat/ownership';
+import { takeOwnershipOfBuiltObject, takeOwnershipOfColonyFull } from '../src/sim/combat/ownership';
 import { archiveCoresPeriodic, grantArchiveCore, peekArchiveCoresState } from '../src/sim/scenario/threats/archiveCores';
 import { peekProbeSwarmState, probeSwarmIncome, probeSwarmPeriodic, probeSwarmState } from '../src/sim/scenario/threats/probeSwarm';
 import { peekVoidWhaleState, referenceHyperSpeed, voidWhalePeriodic, voidWhaleState } from '../src/sim/scenario/threats/voidWhale';
@@ -142,6 +142,16 @@ import { AutomationLevel } from '../src/sim/empire';
 import type { BuiltObject } from '../src/sim/builtObject';
 import { rebuildIndexes } from '../src/sim/indexRebuild';
 import { SystemVisibilityStatus } from '../src/sim/visibility';
+import { completeWork, greatWorkIsHostile, greatWorkKind, type GreatWorkSite } from '../src/sim/scenario/threats/giantworks/framework';
+import { beaconBuildRate, beaconComplete, beaconKind, beaconKnownSites, beaconLooks, beaconRolled, beaconShipRole, beaconSuppliers, cloakLapsedFor, corrupt, corruptCandidates, watchersPeriodic } from '../src/sim/scenario/threats/giantworks/beacon';
+import { peekBeaconState, salvageStepsOf, type BeaconState } from '../src/sim/scenario/threats/giantworks/beaconState';
+import { beginSeason, designFor, lossCheck, planetStrike, reclamationMonthly, reclamationPeriodic, spawnShip, supplyTroops, targetCandidates } from '../src/sim/scenario/threats/giantworks/beaconFleet';
+import { addSalvage, aiBargainChoice, colonyToCede, counterMonthly, expose, offerCandidates, purgeCorruption, resistanceFactor, resolveBargain } from '../src/sim/scenario/threats/giantworks/beaconCounter';
+import { builtObjectCompleteTeardown } from '../src/sim/combat/teardown';
+import { builtObjectVisibility, isObjectVisibleToThisEmpire, isObjectVisibleToThisEmpireImprecise } from '../src/sim/independentTraders';
+import type { ScenarioDecision } from '../src/sim/scenario/decisions';
+import { generateNewBuiltObject } from '../src/sim/empireEvents';
+import { galaxyDesignSpecificationBySubRole } from '../src/sim/gameStartTail';
 
 
 let base: GameData;
@@ -1987,4 +1997,503 @@ describe('giantworks', () => {
         expect(compactFaction(g)).not.toBeNull();
         void spawnGreatWork;
     }, 900000);
+});
+
+// Giantworks' Beacon wonder (threats/giantworks/beacon*.ts): the Watchers, corruption, the Reclamation, counterplay, the dark bargain.
+describe('the Beacon (Giantworks wonder)', () => {
+    const age3 = (o: CreateGameOptions): CreateGameOptions => ({ ...o, player: { ...o.player, age: 3 }, aiEmpires: o.aiEmpires.map((e) => ({ ...e, age: 3 })) });
+    const ids = ['threat-framework', 'giantworks'];
+
+    function beaconGame(extraFlags: Record<string, boolean> = {}): { g: Galaxy; site: GreatWorkSite; game: Game; gameData: GameData } {
+        const { game, gameData } = createScenarioGame(base, { scenario: comboOverlayFs(ids), flags: {}, options: age3 });
+        const g = game.galaxy;
+        g.scenario!.flags.gwBeacon = true;
+        for (const [k, v] of Object.entries(extraFlags)) g.scenario!.flags[k] = v;
+        let best = null as (typeof g.systems)[number] | null;
+        let bd = Infinity;
+        for (const sys of g.systems) {
+            const s = sys?.systemStar;
+            if (!s || sys.habitats.some((h) => h.empire !== null) || g.checkEmpireTerritoryIdAtLocation(s.xpos, s.ypos) >= 0) continue;
+            const d = g.calculateDistance(s.xpos, s.ypos, g.sizeX / 2, g.sizeY / 2);
+            if (d < bd) {
+                bd = d;
+                best = sys;
+            }
+        }
+        const site: GreatWorkSite = { id: 0, system: best!, habitat: null, base: null, progress: 0, stage: 0, wonder: 'beacon', founders: [], startDate: galaxyStarDate(g), completeDate: null, destroyedBy: null };
+        return { g, site, game, gameData };
+    }
+    const atWarWith = (a: Empire, b: Empire): boolean => obtainDiplomaticRelation(a, b).type === DiplomaticRelationType.War;
+    const normalsOf = (g: Galaxy): Empire[] => g.empires.filter((e): e is Empire => e !== null && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null && e.active && e !== peekBeaconState(g)?.faction);
+    function rolled(): { g: Galaxy; site: GreatWorkSite; st: BeaconState; game: Game; gameData: GameData } {
+        const { g, site, game, gameData } = beaconGame();
+        beaconRolled(g, site);
+        return { g, site, st: peekBeaconState(g)!, game, gameData };
+    }
+    function completed(): { g: Galaxy; site: GreatWorkSite; st: BeaconState; game: Game; gameData: GameData } {
+        const r = rolled();
+        r.site.progress = 1;
+        r.site.stage = 4;
+        r.site.completeDate = galaxyStarDate(r.g);
+        beaconComplete(r.g, r.site);
+        return r;
+    }
+
+    it('the kind is registered against the contract and the crisis list names the faction', () => {
+        expect(beaconKind.id).toBe('beacon');
+        expect(beaconKind.flag).toBe('gwBeacon');
+        expect(greatWorkKind('beacon')).toBe(beaconKind);
+        expect(CRISIS_ENTRIES.some((e) => e.key === 'beacon' && e.flag === 'gwBeacon')).toBe(true);
+    });
+
+    it('flag off: no state, no faction, nothing runs', () => {
+        const { game } = createScenarioGame(base, { scenario: comboOverlayFs(ids), flags: {}, options: age3 });
+        const g = game.galaxy;
+        const n = g.empires.length;
+        watchersPeriodic(g);
+        reclamationPeriodic(g);
+        expect(peekBeaconState(g)).toBeNull();
+        expect(g.empires.length).toBe(n);
+        runGameSeconds(g, 60);
+        expect(peekBeaconState(g)).toBeNull();
+    }, 600000);
+
+    it('onRolled: two cloaked Watchers wait beyond the rim; the faction is "the Watchers"; the independents are noted', () => {
+        const { g, st } = rolled();
+        expect(st.faction!.name).toBe('The Watchers');
+        expect(st.watchers).toHaveLength(2);
+        expect(st.formerIndependents.length).toBe(g.independentColonies.length);
+        for (const w of st.watchers) {
+            const b = w.ship!;
+            expect(b.cloaked).toBe(true);
+            expect(b.actualEmpire).toBe(st.faction);
+            const outside = b.xpos < 0 || b.ypos < 0 || b.xpos > g.sizeX || b.ypos > g.sizeY || g.systems.every((sys) => sys === null || g.calculateDistance(b.xpos, b.ypos, sys.systemStar.xpos, sys.systemStar.ypos) > 40000);
+            expect(outside).toBe(true);
+            expect(calculateOverallStrengthFactorWithoutShields(b)).toBeGreaterThan(0);
+        }
+        // at war with no one
+        for (const e of normalsOf(g)) expect(atWarWith(e, st.faction!)).toBe(false);
+        // determinism of the private stream: a second game gives the same homes
+        const r2 = rolled();
+        expect(r2.st.watchers.map((w) => [w.homeX, w.homeY])).toEqual(st.watchers.map((w) => [w.homeX, w.homeY]));
+    }, 900000);
+
+    it('the cloak hides a Watcher from every other empire, its own empire sees it, and a spotted cloak lapses for the spotter only', () => {
+        const { g, st } = rolled();
+        const [a, b] = normalsOf(g);
+        const ship = st.watchers[0].ship!;
+        expect(isObjectVisibleToThisEmpire(g, a, ship)).toBe(false);
+        expect(isObjectVisibleToThisEmpireImprecise(g, a, ship)).toBe(false);
+        expect(builtObjectVisibility(g, a, ship)).toBe(0);
+        expect(isObjectVisibleToThisEmpire(g, st.faction!, ship)).toBe(true);
+        ship.cloakSeenBy = [{ empireId: a.empireId, until: galaxyStarDate(g) + 1000 }];
+        expect(cloakLapsedFor(ship, a, galaxyStarDate(g))).toBe(true);
+        expect(cloakLapsedFor(ship, b, galaxyStarDate(g))).toBe(false);
+        expect(isObjectVisibleToThisEmpire(g, b, ship)).toBe(false);
+        ship.cloakSeenBy = [{ empireId: a.empireId, until: galaxyStarDate(g) - 1 }];
+        expect(cloakLapsedFor(ship, a, galaxyStarDate(g))).toBe(false);
+        ship.cloaked = false;
+        // uncloaked, the ordinary rules apply again (visible when an empire's sensors reach it)
+        expect(cloakLapsedFor(ship, b, galaxyStarDate(g))).toBe(true);
+    }, 900000);
+
+    it('corruption: a corrupted world speeds the build up and sends freighters; a dead Watcher slows it sharply; purging ends it', () => {
+        const { g, site, st } = rolled();
+        const base1 = beaconBuildRate(g, site);
+        expect(base1).toBe(1);
+        // a small test galaxy has few independents: let some empire colonies count as former independents too
+        for (const e of normalsOf(g)) for (const c of e.colonies.slice(1, 3)) if (!st.formerIndependents.includes(c)) st.formerIndependents.push(c);
+        const cands = corruptCandidates(g, st);
+        expect(cands.length).toBeGreaterThan(2);
+        const r1 = corrupt(g, st, cands[0])!;
+        expect(r1.colony).toBe(cands[0]);
+        expect(corrupt(g, st, cands[0])).toBeNull(); // once
+        corrupt(g, st, cands[1]);
+        expect(beaconBuildRate(g, site)).toBeCloseTo(1 + (2 * 9) / 100, 5);
+        expect(beaconSuppliers(g, site)).toEqual([cands[0], cands[1]]);
+        // capped
+        for (const c of cands.slice(2)) corrupt(g, st, c);
+        expect(beaconBuildRate(g, site)).toBeLessThanOrEqual(2.5 + 1e-9);
+        // a dead Watcher: x0.4, both: x0.16
+        const full = beaconBuildRate(g, site);
+        st.watchers[0].dead = true;
+        expect(beaconBuildRate(g, site)).toBeCloseTo(full * 0.4, 5);
+        st.watchers[1].dead = true;
+        expect(beaconBuildRate(g, site)).toBeCloseTo(full * 0.16, 5);
+        // purge: needs the owner and the money
+        const owner = normalsOf(g)[0];
+        const rec = st.corrupted[0];
+        rec.colony.empire = owner;
+        owner.stateMoney = 10_000_000;
+        const before = owner.stateMoney;
+        expect(purgeCorruption(g, st, rec, owner)).toBe(true);
+        expect(owner.stateMoney).toBe(before - 250000);
+        expect(rec.ended).toBe('purged');
+        expect(beaconSuppliers(g, site)).not.toContain(rec.colony);
+        expect(purgeCorruption(g, st, rec, owner)).toBe(false);
+    }, 900000);
+
+    it('a sighting: the Watcher shows itself over a colony, passive, then slips away cloaked; attacked, it is at locked war with the attacker only', () => {
+        const { g, st } = rolled();
+        const w = st.watchers[0];
+        const ship = w.ship!;
+        const [a, b] = normalsOf(g);
+        const target = a.colonies[0];
+        // put it over the colony as the trip would end
+        ship.xpos = target.xpos + 1000;
+        ship.ypos = target.ypos + 1000;
+        w.target = target;
+        w.mode = 'travel';
+        w.until = -1;
+        watchersPeriodic(g);
+        expect(w.mode).toBe('sighting');
+        expect(ship.cloaked).toBe(false);
+        expect(st.sighted).toEqual([ship]); // the art unfolds an uncloaked Watcher (render/threatArt.ts reads state 'beacon': faction, watchers, sighted, beacon)
+        expect(st.stats.sightings).toBe(1);
+        for (const e of normalsOf(g)) expect(atWarWith(e, st.faction!)).toBe(false);
+        // the owner heard of it, the galaxy had a news line
+        expect(empireMessages(a).some((m) => m.description.includes('unknown make'))).toBe(true);
+        expect(empireMessages(b).some((m) => m.description.includes('unidentified vessel'))).toBe(true);
+        // attacked by a: war with a only, cloak stays down while it fights
+        scenarioEmit(g, 'builtObjectAttacked', { builtObject: ship, attacker: null, attackingEmpire: a });
+        expect(w.mode).toBe('fight');
+        expect(atWarWith(a, st.faction!)).toBe(true);
+        expect(atWarWith(b, st.faction!)).toBe(false);
+        expect(obtainDiplomaticRelation(st.faction!, a).locked).toBe(true);
+        // pirates and monsters do not change it
+        const w2 = st.watchers[1];
+        scenarioEmit(g, 'builtObjectAttacked', { builtObject: w2.ship!, attacker: null, attackingEmpire: g.pirateEmpires[0] ?? null });
+        expect(w2.mode).not.toBe('fight');
+        // with no attacker near, it slips away after 15 days and cloaks
+        ship.xpos = 1;
+        ship.ypos = 1;
+        g.nowMs += 20 * GAME_DAY_LENGTH;
+        watchersPeriodic(g);
+        expect(w.mode).toBe('return');
+        expect(ship.cloaked).toBe(true);
+    }, 900000);
+
+    it('detection: a ship of an empire close to a cloaked Watcher may spot it; the cloak lapses for that empire only, and the Watcher shows in its Threats & Leads', () => {
+        const { g, st } = rolled();
+        const w = st.watchers[0];
+        const ship = w.ship!;
+        const [a, b] = normalsOf(g);
+        const mine = a.builtObjects.find((o) => !o.hasBeenDestroyed)!;
+        mine.xpos = ship.xpos + 5000;
+        mine.ypos = ship.ypos + 5000;
+        g.scenario!.params.beaconDetectPct = 100;
+        watchersPeriodic(g);
+        expect(w.detections).toBeGreaterThanOrEqual(1);
+        expect(cloakLapsedFor(ship, a, galaxyStarDate(g))).toBe(true);
+        expect(knowledgeLevel({ knowledge: w.knowledge }, a)).toBeGreaterThanOrEqual(1);
+        watchersPeriodic(g);
+        g.nowMs += 25 * GAME_DAY_LENGTH;
+        watchersPeriodic(g);
+        expect(knowledgeLevel({ knowledge: w.knowledge }, a)).toBeGreaterThanOrEqual(2);
+        expect(beaconKnownSites(g, a).some((r) => r.kind === 'ship' && r.target === ship)).toBe(true);
+        expect(beaconKnownSites(g, b).some((r) => r.target === ship)).toBe(false);
+    }, 900000);
+
+    it('onComplete: the faction becomes the Reclaimers, at locked war with everyone; the Beacon is theirs; the baseline population is recorded', () => {
+        const { g, st } = completed();
+        expect(st.phase).toBe('reclamation');
+        expect(st.faction!.name).toBe('The Reclaimers');
+        expect(st.beacon).not.toBeNull();
+        expect(st.beacon!.actualEmpire).toBe(st.faction);
+        for (const e of normalsOf(g)) {
+            expect(atWarWith(e, st.faction!), e.name).toBe(true);
+            expect(obtainDiplomaticRelation(st.faction!, e).locked).toBe(true);
+        }
+        expect(st.popBaseline).toBeGreaterThan(0);
+        expect(st.popEliminated).toBe(0);
+        // the art hook names who is who
+        const looks = beaconLooks(g);
+        expect(looks.faction).toBe(st.faction);
+        expect(looks.beacon).toBe(st.beacon);
+        expect(looks.watchers).toHaveLength(2);
+        expect(beaconShipRole(st, st.watchers[0].ship!)).toBe('watcher');
+        expect(beaconShipRole(st, st.beacon!)).toBe('beacon');
+    }, 900000);
+
+    it('onComplete with the framework\'s scaffold base: the base changes hands, is plated like a fortress and named the Beacon', () => {
+        const { g, site } = rolled();
+        const a = normalsOf(g)[0];
+        const d = generateDesignFromSpec(g, a, galaxyDesignSpecificationBySubRole(BuiltObjectSubRole.DefensiveBase)!, 3, galaxyStarDate(g));
+        expect(d).not.toBeNull();
+        const star = site.system.systemStar;
+        const scaffold = generateNewBuiltObject(g, a, d!, null, star.xpos, star.ypos);
+        takeOwnershipOfBuiltObject(g, a, scaffold, a, false);
+        site.base = scaffold;
+        const shields0 = scaffold.shieldsCapacity;
+        site.progress = 1;
+        site.stage = 4;
+        site.completeDate = galaxyStarDate(g);
+        beaconComplete(g, site);
+        const st = peekBeaconState(g)!;
+        expect(st.beacon).toBe(scaffold);
+        expect(scaffold.actualEmpire).toBe(st.faction);
+        expect(scaffold.name).toBe('The Beacon');
+        expect(scaffold.hasBeenDestroyed).toBe(false);
+        expect(scaffold.shieldsCapacity).toBeGreaterThan(shields0);
+        expect(a.builtObjects.includes(scaffold)).toBe(false);
+        expect(st.faction!.builtObjects.includes(scaffold)).toBe(true);
+    }, 900000);
+
+    it('through the framework: the Game Editor forces the Beacon (Watchers appear); finishing the work lights it, hostile, and the faction is a crisis faction', () => {
+        const { game } = createScenarioGame(base, { scenario: comboOverlayFs(ids), flags: {}, options: age3 });
+        const g = game.galaxy;
+        expect(spawnableThreats(g).some((t) => t.key === 'giantworks:beacon')).toBe(true);
+        expect(spawnThreatNow(g, g.playerEmpire!, 'giantworks:beacon')).toBe(true);
+        const work = greatWorks(g)[0];
+        expect(work.wonder).toBe('beacon');
+        const st = peekBeaconState(g)!;
+        expect(st.site).toBe(work);
+        expect(st.watchers).toHaveLength(2);
+        expect(greatWorkIsHostile(work)).toBe(false);
+        // the framework asks the kind for the build speed
+        const mult = greatWorkKind('beacon')!.buildRateMultiplier!(g, work);
+        expect(mult).toBe(1);
+        completeWork(g, work);
+        expect(work.phase).toBe('complete');
+        expect(st.phase).toBe('reclamation');
+        expect(greatWorkIsHostile(work)).toBe(true);
+        expect(work.base!.actualEmpire).toBe(st.faction);
+        expect(st.faction!.name).toBe('The Reclaimers');
+        expect(CRISIS_ENTRIES.some((e) => e.key === 'beacon')).toBe(true);
+        // destroying the hostile wonder is no crime: the framework\'s own records say so
+        expect(work.hostile).toBe(true);
+        runGameSeconds(g, 30);
+    }, 1800000);
+
+    it('a season: preparation with staging points, then ALL groups depart on the same day toward their own targets', () => {
+        const { g, st } = completed();
+        const f = st.faction!;
+        f.stateMoney = 1e9;
+        expect(beginSeason(g, st, 1)).toBe(true);
+        const season = st.season!;
+        expect(season.phase).toBe('prep');
+        expect(season.staging.length).toBeGreaterThanOrEqual(1);
+        expect(season.staging.length).toBeLessThanOrEqual(3);
+        expect(season.groups.length).toBeGreaterThanOrEqual(1);
+        expect(new Set(season.groups.map((x) => x.target)).size).toBe(season.groups.length);
+        for (const grp of season.groups) expect(grp.target!.empire).not.toBe(f);
+        // run the preparation to its end by hand
+        for (let i = 0; i < 80 && season.phase === 'prep'; i++) {
+            g.nowMs += 5 * GAME_DAY_LENGTH;
+            reclamationPeriodic(g);
+        }
+        // the departure may wait for the gather; force it past the cap
+        for (let i = 0; i < 40 && season.phase === 'prep'; i++) {
+            g.nowMs += 5 * GAME_DAY_LENGTH;
+            reclamationPeriodic(g);
+        }
+        expect(season.phase).toBe('offensive');
+        expect(season.departed).toBeGreaterThan(0);
+        expect(season.departures.length).toBeGreaterThanOrEqual(1);
+        expect(new Set(season.departures).size).toBe(1); // the same day
+        for (const grp of season.groups.filter((x) => x.state !== 'done')) {
+            expect(grp.departDate).toBe(season.departed);
+            expect(grp.ships.length).toBeGreaterThan(0);
+        }
+        expect(st.stats.spawned).toBeGreaterThan(0);
+    }, 1800000);
+
+    it('processing: a conquered world is drained over months into a Thrall pool; retaking it saves the survivors; destroyed worlds count as eliminated', () => {
+        const { g, st } = completed();
+        const f = st.faction!;
+        const victim = normalsOf(g)[0];
+        const world = victim.colonies.find((c) => c !== victim.capital && c.population.totalAmount > 0) ?? victim.colonies[0];
+        const pop0 = world.population.totalAmount;
+        takeOwnershipOfColonyFull(g, victim, world, f, false, false);
+        expect(st.processing.some((r) => r.colony === world)).toBe(true);
+        expect(world.troops!.totalDefendStrength).toBeGreaterThan(0);
+        const rec = st.processing.find((r) => r.colony === world)!;
+        reclamationMonthly(g);
+        const after1 = world.population.totalAmount;
+        expect(after1).toBeLessThan(pop0);
+        expect(st.popEliminated).toBeGreaterThan(0);
+        expect(rec.pool).toBeGreaterThan(0);
+        for (let i = 0; i < 12; i++) reclamationMonthly(g);
+        expect(rec.done).toBe(true);
+        expect(world.population.totalAmount).toBeLessThanOrEqual(pop0 * 0.011 + 2);
+        expect(st.popEliminated).toBeGreaterThan(pop0 * 0.9);
+        // retaking stops it: a second world
+        const w2 = victim.colonies.find((c) => c !== world && c !== victim.capital && c.population.totalAmount > 0);
+        if (w2) {
+            takeOwnershipOfColonyFull(g, victim, w2, f, false, false);
+            reclamationMonthly(g);
+            const elim = st.popEliminated;
+            takeOwnershipOfColonyFull(g, f, w2, victim, false, false);
+            reclamationMonthly(g);
+            expect(st.popEliminated).toBe(elim);
+            expect(st.processing.some((r) => r.colony === w2)).toBe(false);
+        }
+    }, 900000);
+
+    it('Thralls and transports: a processing world\'s pool is carried by real transports (interceptable); a planet strike sends the stock planet destroyer and counts the dead as eliminated', () => {
+        const { g, st } = completed();
+        const f = st.faction!;
+        f.stateMoney = 1e9;
+        const victim = normalsOf(g)[0];
+        const world = victim.colonies.find((c) => c !== victim.capital && c.population.totalAmount > 0)!;
+        takeOwnershipOfColonyFull(g, victim, world, f, false, false);
+        const rec = st.processing.find((r) => r.colony === world)!;
+        rec.pool = 40_000_000;
+        expect(beginSeason(g, st, 1)).toBe(true);
+        const grp = st.season!.groups[0];
+        grp.ships.push(spawnShip(g, f, designFor(g, f, BuiltObjectSubRole.Cruiser)!, world.xpos, world.ypos));
+        const before = st.thrallShips.length;
+        const sp = st.season!.staging[grp.staging];
+        const added = supplyTroops(g, st, grp, sp.x, sp.y);
+        expect(added).toBeGreaterThan(0);
+        expect(st.thrallShips.length).toBeGreaterThan(before);
+        expect(rec.pool).toBeLessThan(40_000_000);
+        const thrall = st.thrallShips[st.thrallShips.length - 1];
+        expect(thrall.troops!.count).toBeGreaterThan(0);
+        expect(Math.hypot(thrall.xpos - world.xpos, thrall.ypos - world.ypos)).toBeLessThan(60000); // made at the world, not at the Beacon
+        expect(grp.transports).toContain(thrall);
+        // a player ship kills it: an interception
+        const killer = normalsOf(g)[1];
+        scenarioEmit(g, 'builtObjectKilledBy', { builtObject: thrall, destroyer: killer });
+        expect(st.stats.thrallIntercepted).toBe(1);
+        expect(salvageStepsOf(st, killer)).toBe(0); // one transport is not yet a step
+        // planet strike: the stock planet destroyer, aimed at the target
+        const target = g.habitats.find((h) => h !== null && !h.hasBeenDestroyed && h.population != null && h.population.totalAmount > 0 && h.diameter <= 400 && h.empire !== f && h.category === HabitatCategoryType.Planet)!;
+        grp.target = target;
+        planetStrike(g, st, grp);
+        expect(grp.destroyer).not.toBeNull();
+        expect(grp.destroyer!.isPlanetDestroyer).toBe(true);
+        const m = builtObjectMission(grp.destroyer!.mission);
+        expect(m!.type).toBe(BuiltObjectMissionType.Attack);
+        expect(m!.targetHabitat).toBe(target);
+        const pop = target.population.totalAmount;
+        scenarioEmit(g, 'habitatDestroyed', { habitat: target, destroyer: f });
+        expect(st.stats.planetsDestroyed).toBe(1);
+        expect(st.popEliminated).toBeGreaterThanOrEqual(pop);
+    }, 900000);
+
+    it('a group whose staging fleet was beaten down below a quarter of its share is called off at the departure; its ships go to the reserve', () => {
+        const { g, st } = completed();
+        const f = st.faction!;
+        f.stateMoney = 1e9;
+        beginSeason(g, st, 1);
+        const season = st.season!;
+        // run the spawn half of the preparation, then kill every ship of the first group
+        for (let i = 0; i < 40; i++) {
+            g.nowMs += 5 * GAME_DAY_LENGTH;
+            reclamationPeriodic(g);
+            if (g.nowMs > 0 && season.groups.every((x) => x.ships.length > 0)) break;
+        }
+        const weak = season.groups[0];
+        for (const b of weak.ships.slice(1)) builtObjectCompleteTeardown(g, b);
+        for (let i = 0; i < 120 && season.phase === 'prep'; i++) {
+            g.nowMs += 5 * GAME_DAY_LENGTH;
+            reclamationPeriodic(g);
+        }
+        expect(season.phase).toBe('offensive');
+        const others = season.groups.filter((x) => x !== weak && x.state !== 'done');
+        expect(others.length).toBeGreaterThan(0);
+        if (weak.state === 'done') expect(weak.ships).toHaveLength(0);
+        expect(new Set(season.departures).size).toBe(1);
+    }, 1800000);
+
+    it('the loss: 80% of the starting population eliminated ends the game in defeat; below it does not', () => {
+        const { g, st } = completed();
+        st.popEliminated = st.popBaseline * 0.79;
+        lossCheck(g, st);
+        expect(g.gameIsFinished).toBe(false);
+        st.popEliminated = st.popBaseline * 0.8;
+        lossCheck(g, st);
+        expect(g.gameIsFinished).toBe(true);
+        expect(st.ended).toBe(true);
+    }, 900000);
+
+    it('the dark bargain: the AI refuses unless it is losing; giving up a colony spares it, the protectorate fights on their side; both can be exposed as a war crime', () => {
+        const { g, st } = completed();
+        g.scenario!.flags.warCrimes = true;
+        const [a, b] = normalsOf(g).filter((e) => e.colonies.length >= 2);
+        // ordinary: refuse
+        st.lostBy[String(a.empireId)] = 0;
+        expect(offerCandidates(g, st, galaxyStarDate(g))).not.toContain(a);
+        // hurt a: it becomes a candidate; weak and hurt it gives a colony up
+        st.lostBy[String(a.empireId)] = 1;
+        expect(offerCandidates(g, st, galaxyStarDate(g))).toContain(a);
+        const colony = colonyToCede(a)!;
+        expect(colony).not.toBeNull();
+        expect(colony).not.toBe(a.capital);
+        const dec = { options: [{ id: 'refuse' }, { id: 'cede' }, { id: 'protectorate' }], empire: a } as unknown as ScenarioDecision;
+        expect(aiBargainChoice(g, dec)).toBe('refuse'); // one loss is not enough
+        for (const lost of [2, 4, 40]) {
+            st.lostBy[String(a.empireId)] = lost;
+            const ref = Math.max(...normalsOf(g).map((e) => militaryPotency(e)));
+            const share = lost / (lost + a.colonies.length);
+            const want = militaryPotency(a) < ref * 0.25 && lost >= 4 && share >= 0.3 ? 'protectorate' : militaryPotency(a) < ref * 0.4 && lost >= 2 && share >= 0.2 ? 'cede' : 'refuse';
+            expect(aiBargainChoice(g, dec)).toBe(want);
+        }
+        st.lostBy[String(a.empireId)] = 1;
+        // cede
+        resolveBargain(g, { empire: a, context: { colony: g.habitats.indexOf(colony) }, options: dec.options } as unknown as ScenarioDecision, 'cede');
+        expect(colony.empire).toBe(st.faction);
+        expect(st.bargains).toHaveLength(1);
+        expect(atWarWith(a, st.faction!)).toBe(false);
+        expect(targetCandidates(g, st, galaxyStarDate(g)).some((c) => c.empire === a)).toBe(false);
+        // exposure: a war crime on a's record
+        expose(g, st, st.bargains[0], a, b);
+        expect(st.bargains[0].discovered).toBe(true);
+        expect(warCrimesRecord(g, a)?.counts.collaboration).toBe(1);
+        // the term ends: hunted again
+        g.nowMs += 800 * GAME_DAY_LENGTH;
+        counterMonthly(g);
+        expect(st.bargains[0].ended).toBe(true);
+        expect(atWarWith(a, st.faction!)).toBe(true);
+        // protectorate: at war with everyone else, cannot make peace with them, liquified at the end
+        resolveBargain(g, { empire: b, context: { colony: -1 }, options: [] } as unknown as ScenarioDecision, 'protectorate');
+        expect(atWarWith(b, st.faction!)).toBe(false);
+        const others = normalsOf(g).filter((e) => e !== b);
+        expect(others.every((e) => atWarWith(b, e))).toBe(true);
+        expect(scenarioQuery(g, 'endWarAcceptance', true, { empire: others[0], other: b })).toBe(false);
+        g.nowMs += 8 * 360 * GAME_DAY_LENGTH + 10000;
+        counterMonthly(g);
+        expect(atWarWith(b, st.faction!)).toBe(true);
+    }, 900000);
+
+    it('salvage: points from kills and boarded hulls unlock counter-tech steps (free breakthroughs, resistance, the traced signal)', () => {
+        const { g, st } = completed();
+        const e = normalsOf(g)[0];
+        beginSeason(g, st, 1);
+        const researched = (): number => e.research.techTree.filter((n) => n.isResearched).length;
+        const n0 = researched();
+        addSalvage(g, st, e, 4);
+        expect(salvageStepsOf(st, e)).toBe(1);
+        expect(researched()).toBeGreaterThanOrEqual(n0);
+        expect(resistanceFactor(st, e)).toBe(1);
+        addSalvage(g, st, e, 8);
+        expect(salvageStepsOf(st, e)).toBe(2);
+        addSalvage(g, st, e, 12);
+        expect(salvageStepsOf(st, e)).toBe(3);
+        expect(resistanceFactor(st, e)).toBe(0.5);
+        addSalvage(g, st, e, 16);
+        expect(salvageStepsOf(st, e)).toBe(4);
+        for (const sp of st.season!.staging) expect(knowledgeLevel(sp, e)).toBe(KNOWLEDGE_CONFIRMED);
+        expect(st.stats.salvageSteps).toBe(4);
+    }, 900000);
+
+    it('save / load mid-campaign: the cloaks, the Watchers, the season and the stats survive and the run continues identically', () => {
+        const { g, st, game, gameData } = completed();
+        st.faction!.stateMoney = 1e9;
+        beginSeason(g, st, 1);
+        runGameSeconds(g, 60);
+        const time = new GalaxyTime();
+        time.bindGalaxy(g);
+        const text = serializeGame(game, time, {} as StartGameOptions);
+        const lg = deserializeGame(text, gameData).game.galaxy;
+        const ls = peekBeaconState(lg)!;
+        expect(ls.phase).toBe('reclamation');
+        expect(ls.watchers.map((w) => [w.mode, w.ship?.cloaked])).toEqual(st.watchers.map((w) => [w.mode, w.ship?.cloaked]));
+        expect(ls.season!.groups.length).toBe(st.season!.groups.length);
+        expect(JSON.stringify(ls.stats)).toBe(JSON.stringify(st.stats));
+        runGameSeconds(g, 30);
+        runGameSeconds(lg, 30);
+        expect(stateDigest(lg)).toBe(stateDigest(g));
+    }, 1800000);
 });

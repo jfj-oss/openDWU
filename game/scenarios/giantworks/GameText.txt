@@ -75,3 +75,102 @@ Reputation Cause giantworks.sabotage;You were caught sabotaging the Great Work
 Reputation Cause giantworks.saboteur;Caught sabotaging the Great Work
 Reputation Cause giantworks.destroy;You destroyed the Great Work
 Reputation Cause giantworks.protect;You stood watch over the Great Work
+
+'The Beacon (Giantworks wonder, giantworks/beacon*.ts): message texts. {n} items are filled by the scenario code.
+'Names
+Beacon Faction Watchers;The Watchers
+Beacon Faction Reclaimers;The Reclaimers
+Beacon Watcher Name;Watcher {0}
+Beacon Beacon Name;The Beacon
+Beacon Staging Name;Staging Point {0}
+Beacon Thrall Name;Thrall Regiment
+Beacon Drone Name;Reclaimer Drone Regiment
+Beacon Rising Name;Corrupted Militia
+Beacon Garrison Name;Thrall Garrison
+Beacon Independents;the independents
+'The Watchers
+Beacon Sighting Title;An unidentified vessel
+Beacon Sighting;A vast vessel of unknown make has shown itself over {0}, with no flag and no answer to our hails. It is not hostile. It looks like a machine, and it is enormous.
+Beacon Sighting News;A colossal unidentified vessel has been seen hanging over {0} in the {1} system. It did not respond to hails, and it did not fire.
+Beacon Sighting Gone News;The unidentified vessel over {0} has vanished, as if it had never been there.
+Beacon Detect Title;Something in the dark
+Beacon Detect;Our sensors near {0} brushed something huge and cold, moving in the dark. It was gone before we could be sure.
+Beacon Watcher Row;A vast cloaked vessel (last known near {0})
+Beacon Watcher Status;It is passive unless attacked. It is very hard to kill.
+Beacon Watcher Killed News;One of the vast machine vessels has been destroyed by {0}.
+Beacon Watcher Killed Title;A giant destroyed
+Beacon Watcher Killed;Our forces destroyed one of the vast unidentified vessels. Whatever it was doing, it will do it more slowly now.
+Beacon Watcher Fight News;{0} has attacked one of the vast unidentified vessels, and it is fighting back.
+'Corruption
+Beacon Corrupt Row;{0} serves a hidden master
+Beacon Corrupt Status;Its people work for something else. Purging it costs {0}.
+Beacon Corrupt Found Title;Corruption found
+Beacon Corrupt Found;Counter-intelligence has found that the governor and people of {0} have been quietly serving something outside the empire: freighters bound for the Great Work, orders from nowhere. The colony can be purged.
+Beacon Purged Title;{0} purged
+Beacon Purged;The corruption at {0} has been rooted out at a cost of {1}.
+Beacon Purge Action;Purge corruption
+'The Beacon and the Reclamation
+Beacon Awakens Title;The Beacon has awakened
+Beacon Awakens;The Great Work is finished, and it is a Beacon. Something has answered it. Machine ships are forming in the dark around it.
+Beacon Awakens News;The Great Work at {0} was a Beacon, and it has been lit. Machine ships are gathering around it, and the vast vessels that watched the galaxy for so long are not hiding now.
+Beacon Beacon Row;The Beacon at {0}
+Beacon Beacon Status;Its waves of Reclaimers have conquered {0} worlds. {1}% of the galaxy's people are gone.
+Beacon Season News;The Reclaimers are preparing a campaign: {1} strike groups are forming at deep-space staging points (season {0}).
+Beacon Offensive News;{0} Reclaimer strike groups have left their staging points at the same moment, each bound for its own world. The farthest will need about {1} days to arrive.
+Beacon Inbound Title;Reclaimers inbound
+Beacon Inbound;Reclaimer strike groups have left their staging points. Their targets include our worlds at {0}.
+Beacon Arrived Title;Reclaimers at {0}
+Beacon Arrived;A Reclaimer strike group has arrived over {0}.
+Beacon Quiet News;The Reclaimers have gone quiet after the campaign. Only small raiding parties are seen.
+Beacon Raid Title;Raiders
+Beacon Raid;A pair of Reclaimer ships is raiding toward {0}.
+Beacon Staging Seen Title;Reclaimer staging point
+Beacon Staging Seen;Our sensors show Reclaimer ships gathering at {0}. A strike is being prepared. Hitting them there would thin it.
+Beacon Staging Row;Reclaimer staging point: {0}
+Beacon Staging Status;{0} ships gathered. Strike them before they leave.
+Beacon Conquered News;The Reclaimers have taken {0} from {1}. Its people are being processed.
+Beacon Processing Title;{0} is being processed
+Beacon Processing;The Reclaimers hold {0}. Its people are being drained, month by month. Retake it quickly and the survivors will be saved.
+Beacon Retaken News;{0} has been taken back from the Reclaimers by {1}. {2} million people were saved.
+Beacon Retaken Msg Title;{0} retaken
+Beacon Retaken Msg;We have retaken {0}. {1} million people survived the Reclaimers; {2} million were drained before we came.
+Beacon World Row;{0}, held by the Reclaimers
+Beacon World Status;{0}% of its people drained. A Thrall pool of {1} strength.
+Beacon Rising Title;{0} has risen
+Beacon Rising;The corrupted people of {0} have risen and declared for the Reclaimers.
+Beacon Rising News;{0}, a world of {1}, has risen in revolt and joined the Reclaimers.
+Beacon Destroyer News;A Reclaimer planet destroyer is on its way to {0}.
+Beacon Planet Destroyed News;The Reclaimers have destroyed {0}, with {1} million people on it.
+Beacon Beacon Destroyed News;The Beacon has been destroyed. No more waves will come from it.
+Beacon Lost News;The Reclaimers have eliminated {0}% of the galaxy's people.
+Beacon Defeat Title;The Reclaimers have won
+Beacon Victory Title;The Beacon is gone
+Beacon Victory News;The Beacon is destroyed, the Watchers are destroyed, and the Reclaimers hold nothing. The galaxy is free of them.
+Beacon Early Destroyed News;The Great Work has been destroyed before it was finished. The vast machine vessels have left the galaxy.
+'The dark bargain
+Beacon Offer Title;An offer in the dark
+Beacon Offer;A vast vessel has hailed us in a voice from no ship we know. It offers a bargain. Give up the colony of {0}, and the Reclaimers will spare us for {1} years. Or become their protectorate: we will fight on their side until, in time, we too are liquified. Refuse, and we fight on alone. Nobody will know what we choose, unless it is found out.
+Beacon Offer Refuse;Refuse the bargain
+Beacon Offer Cede;Give up {0}: spared for {1} years
+Beacon Offer Protectorate;Become their protectorate
+Beacon Ceded;The colony of {0} has gone silent. Whatever was said in the dark, the Reclaimers have not come for us since.
+Beacon Ceded Title;{0} lost
+Beacon Protectorate Title;The protectorate
+Beacon Protectorate;We are now a protectorate of the Reclaimers. Their enemies are our enemies, and the war on their side begins. It will not last forever.
+Beacon Spare Ended Title;The bargain has ended
+Beacon Spare Ended;The term of the bargain has run out. The Reclaimers are coming for us again.
+Beacon Betrayed Title;Liquified
+Beacon Betrayed;The Reclaimers have turned on their protectorate. They no longer need us.
+Beacon Betrayed News;The Reclaimers have turned on {0}, their protectorate.
+Beacon Exposed News;{0} has been exposed: it struck a bargain with the Reclaimers in the dark.
+Beacon Exposed Title;Collaboration exposed
+Beacon Exposed;It has come to light that {0} made a secret bargain with the Reclaimers.
+Beacon Exposed Self;Our bargain with the Reclaimers has been exposed. The galaxy will hold us to account.
+'Counterplay: salvage
+Beacon Salvage Title;Reclaimer technology
+Beacon Salvage 1;Study of the wreckage has taught us to tune our shields against the Reclaimers' weapons: {0}
+Beacon Salvage 2;Study of the wreckage has improved our weapons and armour: {0}
+Beacon Salvage 3;Study of the wreckage shows how the Watchers touch a world. Our counter-intelligence finds corruption twice as often, and a purge costs half as much.
+Beacon Salvage 4;Study of the wreckage has traced the Beacon's signal. We now know where the Reclaimers gather.
+Beacon Salvage Tech;a free breakthrough in {0}
+Beacon Salvage Tech None;nothing left to learn

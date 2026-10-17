@@ -10,6 +10,7 @@
 //                  penal colony holds enslaved workers
 //   independents — attacking an independent colony (`habitatAttacked`; once per colony and year) or a Great Work convoy (Giantworks)
 //   greatWork    — destroying (or seizing) a peaceful Great Work without the Diet's leave (Giantworks; weight half a planet's)
+//   collaboration— a secret bargain with the Reclaimers found out (Giantworks' Beacon, giantworks/beaconCounter.ts)
 // Each adds its weight × WAR_CRIME_WEIGHTS to the offender's RECORD, which fades by warCrimesDecayPerYear a year (3%: a
 // record halves in about 23 years — generations). Each crime also costs attitude: every other major empire's toward
 // the offender −weight × warCrimesReputation, the victim's twice that (reputation/ledger.ts applyReputation: the
@@ -47,7 +48,7 @@ export const WAR_CRIMES_FLAG = 'warCrimes';
 const KEY = 'warCrimes';
 const TRIBUNAL = 'warCrimesTribunal';
 
-export type WarCrimeKind = 'bombard' | 'destroyPlanet' | 'scorch' | 'refugees' | 'delegate' | 'enslave' | 'independents' | 'greatWork';
+export type WarCrimeKind = 'bombard' | 'destroyPlanet' | 'scorch' | 'refugees' | 'delegate' | 'enslave' | 'independents' | 'greatWork' | 'collaboration';
 
 /** Record points per crime. */
 export const WAR_CRIME_WEIGHTS: Readonly<Record<WarCrimeKind, number>> = {
@@ -59,6 +60,7 @@ export const WAR_CRIME_WEIGHTS: Readonly<Record<WarCrimeKind, number>> = {
     enslave: 8,
     independents: 2,
     greatWork: 15,
+    collaboration: 40,
 };
 
 export const WAR_CRIME_LABELS: Readonly<Record<WarCrimeKind, string>> = {
@@ -70,6 +72,7 @@ export const WAR_CRIME_LABELS: Readonly<Record<WarCrimeKind, string>> = {
     enslave: 'enslaving conquered peoples',
     independents: 'attacks on independent worlds',
     greatWork: 'destroying or seizing a peaceful Great Work',
+    collaboration: 'collaborating with the Reclaimers',
 };
 
 export interface WarCrimesRecord {

@@ -274,6 +274,7 @@ export enum BuiltObjectVisibility {
 
 // Empire.9.cs IsBuiltObjectVisibleToThisEmpire(builtObject, out visibleKnownPirateBase) (3124).
 export function builtObjectVisibility(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject | null): BuiltObjectVisibility {
+    if (builtObject !== null && builtObject.cloaked === true && builtObject.empire !== empire && cloakHides(galaxy, empire, builtObject)) return BuiltObjectVisibility.None; // mod layer (Giantworks' Beacon)
     if (builtObject !== null) {
         if (empire.pirateEmpireBaseHabitat !== null && builtObject.pirateEmpireId > 0 && builtObject.pirateEmpireId === empire.empireId) {
             return BuiltObjectVisibility.Visible;
@@ -318,6 +319,18 @@ export function builtObjectVisibility(galaxy: Galaxy, empire: Empire, builtObjec
 // (visibility.ts EmpireVisibility.isCreatureVisible, Empire.9.cs 3037), which cannot import this module.
 registerShipOutsideSystemScan((empire, x, y, rangeModifier) => findShipOutsideSystemWithScanRange(empire.galaxy, empire, x, y, rangeModifier) !== null);
 
+/**
+ * Mod layer (Giantworks' Beacon, not a port): a cloaked ship (`cloaked` set by the scenario) is hidden from every empire but its own,
+ * unless that empire's sensors have spotted it (an unexpired `cloakSeenBy` entry). Absent on every ship unless the Beacon runs.
+ */
+export function cloakHides(galaxy: Galaxy, empire: Empire, bo: BuiltObject): boolean {
+    const seen = bo.cloakSeenBy;
+    if (seen === undefined || seen.length === 0) return true;
+    const now = galaxyStarDate(galaxy);
+    for (let i = 0; i < seen.length; i++) if (seen[i].empireId === empire.empireId && seen[i].until > now) return false;
+    return true;
+}
+
 // Empire.9.cs IsObjectVisibleToThisEmpireImprecise(StellarObject) (3065) for Habitat / BuiltObject.
 // A Fighter (combat/fighters.ts) is duck-typed here (this module cannot import it: circular) — only the members the
 // visibility rules read.
@@ -330,6 +343,7 @@ export interface VisibilityFighter {
 }
 export function isObjectVisibleToThisEmpireImprecise(galaxy: Galaxy, empire: Empire, objectToTest: Habitat | BuiltObject | VisibilityFighter): boolean {
     if (objectToTest.empire === empire) return true;
+    if (isBuiltObject(objectToTest) && objectToTest.cloaked === true && cloakHides(galaxy, empire, objectToTest)) return false; // mod layer (Giantworks' Beacon: the Watchers' cloak)
     // Empire.9.cs 3071: _EmpiresViewable (intelligence missions) / _EmpiresSharedVisibility (treaties).
     const objectEmpire = objectToTest.empire as Empire | null;
     if (empire.empiresViewable.includes(objectEmpire as Empire) || empiresSharedVisibility(galaxy, empire).includes(objectEmpire as Empire)) return true;
@@ -359,6 +373,7 @@ export function isObjectVisibleToThisEmpireImprecise(galaxy: Galaxy, empire: Emp
 // includeShipsOutsideSystems) (3198; the 1-arg overload 3193 passes true, true).
 export function isObjectVisibleToThisEmpire(galaxy: Galaxy, empire: Empire, objectToTest: Habitat | BuiltObject | VisibilityFighter, includeLongRangeScanners = true, includeShipsOutsideSystems = true): boolean {
     if (galaxy.scenario !== null && scenarioQuery(galaxy, 'objectVisibleToAll', false, { empire, object: objectToTest as Habitat | BuiltObject })) return true; // mod layer (19a beacon)
+    if (isBuiltObject(objectToTest) && objectToTest.cloaked === true && objectToTest.empire !== empire && cloakHides(galaxy, empire, objectToTest)) return false; // mod layer (Giantworks' Beacon)
     const flag = isObjectVisibleToThisEmpireImprecise(galaxy, empire, objectToTest);
     if (flag) return flag;
     // StellarObject.Stealth (StellarObject.cs 32, float, default 1f; Habitats keep the default).
