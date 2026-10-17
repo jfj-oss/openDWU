@@ -164,7 +164,7 @@ export function threatLeadRows(galaxy: Galaxy, empire: Empire): ThreatLeadRow[] 
     const anyAgent = threatInvestigators(galaxy, empire)[0] ?? null;
     const sites: ThreatLeadRow[] = [];
     for (const s of threatKnownSites(galaxy, empire)) {
-        if (covered.has(s.target)) continue;
+        if (covered.has(s.target) || s.threat === 'giantworksCompact') continue; // the Compact's founding worlds are map seals, not leads
         const k = s.site?.knowledge.find((x) => x.empireId === empire.empireId);
         const inv = threatInvestigationOf(galaxy, empire, s.threat, s.target);
         const confirmed = s.level >= KNOWLEDGE_CONFIRMED;

@@ -102,10 +102,14 @@ export interface GreatWorkRecord extends GreatWorkSite, ThreatSite {
     aiNext: Record<string, number>;
     aiPlan: Record<string, { action: string; since: number }>;
     scaffoldName: string;
+    /** Set by the wonder modules, read by the renderer: the Sanctuary's whale count, whether the Ultramind awoke. */
+    whales?: number;
+    awakened?: boolean;
 }
 
+/** galaxy.scenario.state.giantworks: `sites` is also what the station art reads (src/render/threatArt.ts GIANTWORKS_STATE_KEY). */
 export interface GreatWorksState {
-    works: GreatWorkRecord[];
+    sites: GreatWorkRecord[];
     nextId: number;
     /** The neutral faction that owns the scaffolds, convoys and finished wonders (created at the first Gathering). */
     compact: Empire | null;
@@ -120,7 +124,7 @@ export interface GreatWorksState {
 
 export function gwState(galaxy: Galaxy): GreatWorksState {
     return scenarioState<GreatWorksState>(galaxy, GW_KEY, () => ({
-        works: [],
+        sites: [],
         nextId: 1,
         compact: null,
         rolls: 0,
@@ -163,7 +167,7 @@ export function ordinaryEmpires(galaxy: Galaxy): Empire[] {
 
 /** Every record, in id order. Pure. */
 export function greatWorks(galaxy: Galaxy): readonly GreatWorkRecord[] {
-    return peekGwState(galaxy)?.works ?? [];
+    return peekGwState(galaxy)?.sites ?? [];
 }
 
 /** The records still being built. Pure. */
@@ -222,6 +226,8 @@ const DEFAULTS = {
     giantworksAiDecideDays: 90,
     giantworksAiDestroyMenacePct: 55,
     giantworksAiSabotageMenacePct: 35,
+    giantworksAiReachSectors: 3,
+    giantworksAiStrikeMarginPct: 150,
     giantworksAiProtectValuePct: 45,
 } as const;
 

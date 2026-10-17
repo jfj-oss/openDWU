@@ -22,15 +22,12 @@ import type { Empire } from '../../../empire';
 import type { BuiltObject } from '../../../builtObject';
 import { BuiltObjectMissionType } from '../../../missions/mission';
 import { registerScenarioGameStart, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly } from '../../hooks';
-import { registerScenarioMapFeatures, type ScenarioMapFeatures } from '../../mapFeatures';
-import { scenarioText } from '../../messages';
-import { KNOWLEDGE_SUSPECTED, enableThreat, registerThreatExistence, registerThreatSpawn, threatExists, unregisterThreatSpawn } from '../framework';
+import { enableThreat, registerThreatExistence, registerThreatSpawn, threatExists, unregisterThreatSpawn } from '../framework';
 import { addCrisisEntry, registerCrisisHelpers, type CrisisEntry } from '../crisis';
 import { angerYearly, greatWorkProtectors, protectStep, registerActionEvents, resolveBaseLoss } from './actions';
 import { aiStep } from './ai';
 import './diet';
 import { seedGreatWorks, seedNow } from './founders';
-import { progressPct, workLevel } from './knowledge';
 import { startBuilding, stepWork } from './lifecycle';
 import { greatWorkKinds, registerGreatWork as registerKind, unregisterGreatWork as unregisterKind } from './registry';
 import { GW_FLAG, GW_KEY, gwState, greatWorks, isCompact, peekGwState, PERIOD_DAYS } from './state';
@@ -45,7 +42,7 @@ export { grantTrueHint, hintText, kindName, learnTag, shortlist, workLevel } fro
 export { addProgress, completeWork, destroyWork } from './lifecycle';
 export { greatWorkCount, seedGreatWorks, seedNow } from './founders';
 export { aiChoice, aiReview, aiStep } from './ai';
-export { giantworksKnownSites } from './knowledge';
+export { giantworksCompactSites, giantworksKnownSites, GW_COMPACT_KEY } from './knowledge';
 export { GW_FLAG, GW_KEY };
 
 /**
@@ -104,29 +101,6 @@ export function greatWorkStageOf(galaxy: Galaxy, bo: BuiltObject): GreatWorkStag
     return null;
 }
 
-const COMPACT_COLOR = 0xd9b85f;
-const SITE_COLOR = 0xffc857;
-
-/** Map markers for `viewer`: the founding worlds it has heard of and met, and the site once it has seen it. */
-export function giantworksMapFeatures(galaxy: Galaxy, viewer: Empire | null): ScenarioMapFeatures | null {
-    const st = peekGwState(galaxy);
-    if (st === null || viewer === null) return null;
-    const markers: ScenarioMapFeatures['markers'] = [];
-    for (const w of st.works) {
-        const level = workLevel(w, viewer);
-        if (level < 1 || (w.phase !== 'seeded' && w.phase !== 'building' && w.phase !== 'complete')) continue;
-        for (const h of w.founders) {
-            if (h.hasBeenDestroyed || !viewer.visibility.checkSystemExplored(h.systemIndex)) continue;
-            markers.push({ x: h.xpos, y: h.ypos, label: scenarioText('Giantworks Map Founder'), color: COMPACT_COLOR, glyph: 'compact' });
-        }
-        if ((w.phase === 'building' || w.phase === 'complete') && w.base !== null && !w.base.hasBeenDestroyed && (w.seenBy.includes(viewer.empireId) || level >= KNOWLEDGE_SUSPECTED)) {
-            const label = w.phase === 'complete' ? scenarioText('Giantworks Map Complete', w.base.name) : scenarioText('Giantworks Map Site', progressPct(w));
-            markers.push({ x: w.base.xpos, y: w.base.ypos, label, color: SITE_COLOR, glyph: 'greatWork' });
-        }
-    }
-    return markers.length === 0 ? null : { markers, routes: [] };
-}
-
 // ---------------------------------------------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------------------------------------------
@@ -135,7 +109,7 @@ export function giantworksMapFeatures(galaxy: Galaxy, viewer: Empire | null): Sc
 export function giantworksPeriodic(galaxy: Galaxy): void {
     const st = peekGwState(galaxy);
     if (st === null) return;
-    for (const w of st.works) {
+    for (const w of st.sites) {
         resolveBaseLoss(galaxy, w);
         stepWork(galaxy, w);
         protectStep(galaxy, w);
@@ -165,7 +139,7 @@ export function spawnGreatWork(galaxy: Galaxy, forcedKind: string | null): boole
     gwState(galaxy).seeded = true;
     if (!startBuilding(galaxy, rec)) {
         const st = gwState(galaxy);
-        st.works.splice(st.works.indexOf(rec), 1);
+        st.sites.splice(st.sites.indexOf(rec), 1);
         undo();
         return false;
     }
@@ -206,7 +180,6 @@ export function registerGiantworks(): void {
         run: (g, v, a) => v && !(isCompact(g, a.builtObject.actualEmpire) && refusedMissions().includes(a.missionType)),
     });
     registerScenarioQuery({ id: 'giantworks.noCapture', flag: GW_FLAG, query: 'combatCaptureAllowed', run: (g, v, a) => v && !isCompact(g, a.capturingEmpire) });
-    registerScenarioMapFeatures('giantworks', (g, viewer) => giantworksMapFeatures(g, viewer));
 }
 
 export const GIANTWORKS_HANDLER_IDS = ['giantworks.start', 'giantworks.periodic', 'giantworks.yearly', 'giantworks.attacked', 'giantworks.killed', 'giantworks.owner', 'giantworks.exposed', 'giantworks.intel'] as const;

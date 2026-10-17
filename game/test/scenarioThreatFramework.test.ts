@@ -126,7 +126,7 @@ import {
     addProgress,
     aiChoice,
     spawnGreatWork,
-    giantworksMapFeatures,
+    giantworksCompactSites,
     LAW_DEMOLISH,
     LAW_PROTECT,
     type GreatWorkRecord,
@@ -141,6 +141,7 @@ import { IntelligenceMissionType, newIntelligenceMissionAgainstBuiltObject } fro
 import { AutomationLevel } from '../src/sim/empire';
 import type { BuiltObject } from '../src/sim/builtObject';
 import { rebuildIndexes } from '../src/sim/indexRebuild';
+import { SystemVisibilityStatus } from '../src/sim/visibility';
 
 
 let base: GameData;
@@ -1630,6 +1631,7 @@ describe('giantworks', () => {
         expect(greatWorks(gw({}, { giantworksExistChancePct: 0 }))).toHaveLength(0);
         const g = gw();
         const w = greatWorks(g)[0];
+        expect((g.scenario!.state.giantworks as { sites: unknown[] }).sites[0]).toBe(w); // the shape the station art reads
         expect(w.phase).toBe('seeded');
         expect(w.circles.length).toBeGreaterThanOrEqual(2);
         expect(w.circles.length).toBeLessThanOrEqual(3);
@@ -1827,12 +1829,15 @@ describe('giantworks', () => {
         updateKnowledge(g, w);
         expect(w.seenBy).toContain(e2.empireId);
         expect(workLevel(w, e2)).toBe(2);
-        expect(scenarioMapFeaturesFor(g, e2).some((m) => m.glyph === 'greatWork')).toBe(true);
+        // The map rows the station art draws: the base (from Rumour once seen) and the founding worlds the viewer has explored.
+        expect(threatKnownSites(g, e2, 1).filter((r) => r.threat === 'giantworks').map((r) => r.target)).toEqual([w.base]);
+        expect(threatKnownSites(g, actors(g)[3], 1).filter((r) => r.threat === 'giantworks')).toHaveLength(0); // not seen, not suspected
+        const seen = w.founders.find((h) => e2.visibility.checkSystemExplored(h.systemIndex)) ?? w.founders[0];
+        e2.visibility.systemVisibility[seen.systemIndex].status = SystemVisibilityStatus.Explored;
+        expect(giantworksCompactSites(g, e2).map((r) => r.target)).toContain(seen);
+        expect(giantworksCompactSites(g, e2).every((r) => r.threat === 'giantworksCompact' && r.level === workLevel(w, e2))).toBe(true);
+        expect(threatKnownSites(g, e2).filter((r) => r.threat === 'giantworksCompact').length).toBe(giantworksCompactSites(g, e2).length); // suspected: listed by the generic selector too
     }, 900000);
-
-    function scenarioMapFeaturesFor(g: Galaxy, e: Empire) {
-        return giantworksMapFeatures(g, e)?.markers ?? [];
-    }
 
     it('convoys: an attack counts once per ship as the independents crime and angers the Compact; protectors earn the Compact\'s regard', () => {
         const { g, w } = building();

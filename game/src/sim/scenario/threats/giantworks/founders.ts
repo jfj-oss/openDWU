@@ -292,7 +292,7 @@ export function seedOne(galaxy: Galaxy, st: GreatWorksState, rnd: Random, index:
         return null;
     }
     const used = new Set<Habitat>();
-    for (const w of st.works) for (const h of w.founders) used.add(h);
+    for (const w of st.sites) for (const h of w.founders) used.add(h);
     const offset = rnd.nextDouble() * (TWO_PI / WEDGES) + index * (Math.PI / 3);
     // A small galaxy cannot keep the founders as far from every capital: relax the distance step by step until two circles of real
     // independent worlds fit (else until two circles fit, pilgrim colonies included).
@@ -369,7 +369,7 @@ export function seedOne(galaxy: Galaxy, st: GreatWorksState, rnd: Random, index:
         aiPlan: {},
         scaffoldName: '',
     };
-    st.works.push(rec);
+    st.sites.push(rec);
     logGw(galaxy, now, `work ${rec.id}: ${kind.id} at ${system.systemStar.name}, founders ${rec.founders.map((h) => h.name).join(', ')}`);
     kind.onRolled?.(galaxy, rec);
     return rec;
@@ -388,5 +388,5 @@ export function seedGreatWorks(galaxy: Galaxy): void {
 /** A Great Work started from the Game Editor now (rumour skipped, the first convoy leaves at once). */
 export function seedNow(galaxy: Galaxy, forcedKind: string | null): GreatWorkRecord | null {
     const st = gwState(galaxy);
-    return seedOne(galaxy, st, nextRandom(galaxy), st.works.length, forcedKind, true);
+    return seedOne(galaxy, st, nextRandom(galaxy), st.sites.length, forcedKind, true);
 }

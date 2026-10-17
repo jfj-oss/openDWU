@@ -17,9 +17,8 @@ export interface ScenarioMapMarker {
      * Distinct glyph (default: the beacon ring). 'purifier' = the Purifier itself (live, or `stale` at its last spotted place),
      * 'purifierDock' = its ancient repair station. TODO(art): render/overlayLayer.ts draws all of them as the beacon ring for
      * now (stale dimmed); the real glyphs (medium, no rings / radius overlays) are still to be drawn by the art pass.
-     * 'compact' = a founding world of the Founders' Compact (Giantworks; a faint emblem), 'greatWork' = a Great Work's site (TODO(art): same).
      */
-    glyph?: 'purifier' | 'purifierDock' | 'compact' | 'greatWork';
+    glyph?: 'purifier' | 'purifierDock';
     /** A stale position (the last spotted place): the glyph is drawn dim and hollow. */
     stale?: boolean;
 }

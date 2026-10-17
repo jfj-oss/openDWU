@@ -52,6 +52,8 @@
     { "name": "giantworksAiDecideDays", "label": "Days between an AI empire's reviews of the Great Work", "default": 90, "min": 10, "max": 3600 },
     { "name": "giantworksAiDestroyMenacePct", "label": "Expected menace (%) above which a strong aggressive AI attacks the site", "default": 55, "min": 0, "max": 100 },
     { "name": "giantworksAiSabotageMenacePct", "label": "Expected menace (%) above which an AI sends spies", "default": 35, "min": 0, "max": 100 },
+    { "name": "giantworksAiReachSectors", "label": "AI fleets are sent to a site at most this many sectors from one of their colonies (their fuel range; spies reach further)", "default": 3, "min": 0, "max": 40 },
+    { "name": "giantworksAiStrikeMarginPct", "label": "An AI strike fleet must be this strong against the site and its guards (%)", "default": 150, "min": 10, "max": 1000 },
     { "name": "giantworksAiProtectValuePct", "label": "Expected value (%) above which a friendly AI guards the work", "default": 45, "min": 0, "max": 100 }
   ]
 }

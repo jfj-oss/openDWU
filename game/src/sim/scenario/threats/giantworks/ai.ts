@@ -38,8 +38,8 @@ import { compactFaction, greatWorks, gwParam, logGw, ordinaryEmpires, type Great
 
 export type AiAction = 'destroy' | 'sabotage' | 'protect' | 'none';
 
-/** The AI reaches a site within this many sectors of one of its colonies. */
-const REACH_SECTORS = 14;
+/** Spies reach a site within this many sectors of one of its colonies; fleets only within giantworksAiReachSectors (their fuel range). */
+const SPY_REACH_SECTORS = 14;
 
 function personality(e: Empire): { aggression: number; caution: number; friendly: number } {
     return { aggression: (aggressionLevel(e) - 100) / 50, caution: (cautionLevel(e) - 100) / 50, friendly: (friendlinessLevel(e) - 100) / 50 };
@@ -55,7 +55,9 @@ function nearestColonyDistance(galaxy: Galaxy, e: Empire, x: number, y: number):
 export function aiChoice(galaxy: Galaxy, work: GreatWorkRecord, e: Empire): AiAction {
     const base = work.base;
     if (base === null || base.hasBeenDestroyed) return 'none';
-    if (nearestColonyDistance(galaxy, e, base.xpos, base.ypos) > REACH_SECTORS * galaxy.sectorSize) return 'none';
+    const away = nearestColonyDistance(galaxy, e, base.xpos, base.ypos) / galaxy.sectorSize;
+    if (away > SPY_REACH_SECTORS) return 'none';
+    const fleetsReach = away <= gwParam(galaxy, 'giantworksAiReachSectors');
     const pr = personality(e);
     const hostile = work.phase === 'complete' && work.hostile;
     const menace = hostile ? 1 : expectedMenace(galaxy, work, e);
@@ -65,16 +67,16 @@ export function aiChoice(galaxy: Galaxy, work: GreatWorkRecord, e: Empire): AiAc
     const protectAt = gwParam(galaxy, 'giantworksAiProtectValuePct') / 100;
     const crime = !hostile && scenarioFlag(galaxy, WAR_CRIMES_FLAG) && !demolitionAuthorised(galaxy);
     const needMenace = destroyAt + (crime ? 0.1 + 0.15 * Math.max(0, pr.caution) : 0) - 0.08 * pr.aggression;
-    if (menace >= needMenace && (hostile || pr.aggression > -0.3 || menace >= 0.8)) return 'destroy';
+    if (fleetsReach && menace >= needMenace && (hostile || pr.aggression > -0.3 || menace >= 0.8)) return 'destroy';
     if (work.phase === 'building' && menace >= sabotageAt - 0.05 * pr.aggression) return 'sabotage';
-    if (work.phase === 'building' && value >= protectAt && menace < sabotageAt && pr.friendly > -0.4) return 'protect';
+    if (fleetsReach && work.phase === 'building' && value >= protectAt && menace < sabotageAt && pr.friendly > -0.4) return 'protect';
     return 'none';
 }
 
 function strengthNeeded(galaxy: Galaxy, work: GreatWorkRecord): number {
     let s = work.base !== null ? calculateOverallStrengthFactor(work.base) : 0;
     for (const g of work.guards) if (!g.hasBeenDestroyed) s += calculateOverallStrengthFactor(g);
-    return Math.trunc(s * 1.5);
+    return Math.trunc((s * gwParam(galaxy, 'giantworksAiStrikeMarginPct')) / 100);
 }
 
 function sendStrike(galaxy: Galaxy, work: GreatWorkRecord, e: Empire): boolean {
@@ -104,9 +106,9 @@ function sendSpy(galaxy: Galaxy, work: GreatWorkRecord, e: Empire, menace: numbe
     if (type === null || checkWhetherTargetOfIntelligenceMission(e, compact, base, type)) return false;
     const now = galaxyStarDate(galaxy);
     let best: { agent: Character; mission: IntelligenceMission; margin: number } | null = null;
-    // Keep a share of the agents on counter-intelligence: only agents beyond the first free one go.
+    // An empire with a single agent keeps it on counter-intelligence; with more, the free ones go.
     const free = freeAgents(e);
-    if (free.length < 2) return false;
+    if (free.length < 1 || getEmpireCharacters(e).filter((c) => c.active && c.role === CharacterRole.IntelligenceAgent).length < 2) return false;
     for (const a of free) {
         const d = calculateIntelligenceMissionSkill(e, a, type, compact);
         const m = newIntelligenceMissionAgainstBuiltObject(e, null, type, now, base);

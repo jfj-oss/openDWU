@@ -50,9 +50,8 @@ Giantworks Diet Demolish;Authorise the demolition of the Great Work
 Giantworks Diet Demolish News;The Interstellar Diet has authorised the demolition of the Great Work. Whoever destroys it will not be called a criminal; the Founders' Compact will still be angry.
 Giantworks Diet Intl;Internationalise the Great Work
 Giantworks Diet Intl News;The Interstellar Diet has internationalised the Great Work: its benefits will be shared among the members.
-Giantworks Map Founder;Founder (Compact)
-Giantworks Map Site;Great Work {0}%
-Giantworks Map Complete;{0}
+Giantworks Founder Label;Founding world of the Founders' Compact
+Giantworks Founder Status;Founder
 Giantworks Kind casino;The Gilded Orbit
 Giantworks Kind ultramind;The Ultramind
 Giantworks Kind sanctuary;The Leviathan Sanctuary

@@ -267,25 +267,52 @@ export function siteTexts(galaxy: Galaxy, work: GreatWorkRecord, e: Empire): { l
     return { label: scenarioText(`${TAG} Label Building`, progressPct(work), purpose), status: scenarioText(`${TAG} Status Building`, stage, progressPct(work), purpose), level };
 }
 
-/** Intelligence screen rows: the sites `e` suspects (or knows, once finished). */
+/**
+ * Known-site rows for `e` (threat key `giantworks`): the scaffold / wonder base, from Rumour level on once `e` has seen it (the
+ * Intelligence screen and the generic markers list only suspected and confirmed rows; the station art draws the rest). Level 2 or 3
+ * come with the shortlist text.
+ */
 export function giantworksKnownSites(galaxy: Galaxy, e: Empire): KnownThreatSite[] {
     const st = peekGwState(galaxy);
     if (st === null) return [];
     const out: KnownThreatSite[] = [];
-    for (const w of st.works) {
+    for (const w of st.sites) {
         if ((w.phase !== 'building' && w.phase !== 'complete') || w.base === null || w.base.hasBeenDestroyed) continue;
         const t = siteTexts(galaxy, w, e);
-        if (t.level < KNOWLEDGE_SUSPECTED) continue;
-        out.push({ threat: GW_KEY, kind: 'ship', target: w.base, level: t.level, site: w, label: t.label, status: t.status });
+        if (t.level < KNOWLEDGE_SUSPECTED && !w.seenBy.includes(e.empireId)) continue;
+        out.push({ threat: GW_KEY, kind: 'ship', target: w.base, level: Math.max(1, t.level), site: w, label: t.label, status: t.status });
+    }
+    return out;
+}
+
+/** The threat key of the founding worlds' rows (the Compact's faint seal on the map). */
+export const GW_COMPACT_KEY = 'giantworksCompact';
+
+/**
+ * Known-site rows for the founding worlds (threat key `giantworksCompact`, target = the habitat): every founder `e` has heard of
+ * (Rumour) and explored, while the work is not over. The level is `e`'s level for the work (the seal is faint until it suspects).
+ */
+export function giantworksCompactSites(galaxy: Galaxy, e: Empire): KnownThreatSite[] {
+    const st = peekGwState(galaxy);
+    if (st === null) return [];
+    const out: KnownThreatSite[] = [];
+    for (const w of st.sites) {
+        const level = workLevel(w, e);
+        if (level < 1 || (w.phase !== 'seeded' && w.phase !== 'building' && w.phase !== 'complete')) continue;
+        for (const h of w.founders) {
+            if (h.hasBeenDestroyed || !e.visibility.checkSystemExplored(h.systemIndex)) continue;
+            out.push({ threat: GW_COMPACT_KEY, kind: 'colony', target: h, level, site: w, label: scenarioText(`${TAG} Founder Label`), status: scenarioText(`${TAG} Founder Status`) });
+        }
     }
     return out;
 }
 
 function workOfTarget(galaxy: Galaxy, target: Habitat | BuiltObject): GreatWorkRecord | null {
-    return (peekGwState(galaxy)?.works ?? []).find((w) => w.base === target) ?? null;
+    return (peekGwState(galaxy)?.sites ?? []).find((w) => w.base === target) ?? null;
 }
 
 registerThreatKnownSites(GW_KEY, giantworksKnownSites);
+registerThreatKnownSites(GW_COMPACT_KEY, giantworksCompactSites);
 
 registerThreatInvestigation(GW_KEY, {
     blocked: (g, e, target) => {
