@@ -341,19 +341,29 @@ function dumpEvents(ctx) {
     ctx.report.regress.events = { total: entries.length, byCat, bySource };
 }
 
-async function dumpEventsFile(ctx) {
-    const g = ctx.g;
-    const entries = M.eventLog.eventLogEntries(g);
-    const out = [];
+const SKIP_CAT = new Set(['economy', 'exploration', 'pirate']);
+let keptEvents = [];
+let lastEventId = -1;
+
+/** Copies the interesting new event-log entries (the log is a ring of eventLogSize entries; the economy spam would push them out). */
+function captureEvents(ctx) {
+    const entries = M.eventLog.eventLogEntries(ctx.g);
     for (const e of entries) {
+        if (e.id <= lastEventId) continue;
+        lastEventId = e.id;
+        if (SKIP_CAT.has(e.category) || e.source.startsWith('rim')) continue;
+        if (keptEvents.length >= 30000) return;
         let text = '';
         try { text = M.chronicle.resolveEntryText(e); } catch { text = e.textKey; }
         let title = '';
         try { title = M.chronicle.resolveEntryTitle(e); } catch { title = e.titleKey ?? ''; }
-        out.push({ id: e.id, y: r2((e.starDate - sd0) / YEAR_MS), sd: e.starDate, cat: e.category, imp: e.importance, src: e.source, title, text: text.length > 400 ? text.slice(0, 400) : text, ...(e.place ? { place: e.place.name ?? null } : {}) });
+        keptEvents.push({ id: e.id, y: r2((e.starDate - sd0) / YEAR_MS), cat: e.category, imp: e.importance, src: e.source, title, text: text.length > 400 ? text.slice(0, 400) : text, ...(e.place ? { place: e.place.name ?? null } : {}) });
     }
+}
+
+async function dumpEventsFile(ctx) {
     const file = resolve(ctx.outDir, `${ctx.name}.events.json`);
-    writeFileSync(file, JSON.stringify({ name: ctx.name, total: entries.length, entries: out }));
+    writeFileSync(file, JSON.stringify({ name: ctx.name, total: keptEvents.length, entries: keptEvents }));
 }
 
 function purifierHistory(ctx) {
@@ -380,6 +390,7 @@ export async function chunk(ctx) {
     const y = (g.nowMs - startMs) / YEAR_MS;
     safe('purHist', () => purifierHistory(ctx));
     safe('events', () => dumpEvents(ctx));
+    safe('capture', () => captureEvents(ctx));
     const last = y >= ctx.report.years - ctx.chunkSeconds / (YEAR_MS / 1000) * 0.99;
     if (y - lastEventsDump >= 5 || last) {
         lastEventsDump = y;

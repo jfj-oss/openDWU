@@ -224,6 +224,8 @@ const LATE6 = { age: 6, tech: 5 };
 const CONFIGS_REGRESS = [
     // Short (4-6 years): each threat forced at its natural stage, a late start for the late-game ones.
     ...[1, 2].map((seed) => rg(`rg-cult-late-s${seed}`, { seed, years: 5, late: LATE4, addons: ['cult', ...RG_CORE], params: { ...RG_ALL, ...RG_CULT } })),
+    // The creed is unmasked and purged in the natural settings (counter-intelligence); the forced rising (as the 2026-10-16 spread tuning: one cult-held colony rises, no detection) shows the faction's whole arc.
+    ...[1, 2].map((seed) => rg(`rg-cult-force-late-s${seed}`, { seed, years: 8, late: LATE4, addons: ['cult', ...RG_CORE], params: { ...RG_ALL, ...RG_CULT, cultSpreadPct: 8, cultAmbassadorPct: 15, cultSecedeColonies: 1, cultSecedeMinColonies: 1, cultAgentDetectPct: 0 } })),
     ...[1, 2].map((seed) => rg(`rg-hive-late-s${seed}`, { seed, years: 5, late: LATE4, addons: ['hive', ...RG_CORE], params: { ...RG_ALL, ...RG_HIVE } })),
     ...[1, 2].map((seed) => rg(`rg-purifier-late-s${seed}`, { seed, years: 5, late: LATE4, addons: ['purifier', ...RG_CORE], params: { ...RG_ALL, ...RG_PUR } })),
     rg('rg-purifier-late6-s3', { seed: 3, years: 5, late: LATE6, addons: ['purifier', ...RG_CORE, 'refugees-demographics'], params: { ...RG_ALL, ...RG_PUR } }),
