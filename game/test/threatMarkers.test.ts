@@ -39,12 +39,11 @@ import { BEACON_FRAMES, WATCHER_ART } from '../src/render/beaconArtData';
 import {
     WATCHER_CLOSE_S,
     WATCHER_OPEN_S,
-    beaconBeat,
+    beaconBreath,
     beaconFrameArt,
     beaconPhase,
-    veinBandAlpha,
-    watcherPlateLift,
-    watcherPlateSwing,
+    watcherPartLift,
+    watcherPartSwing,
     watcherUnfoldStep,
 } from '../src/render/beaconFx';
 import type { Galaxy } from '../src/sim/galaxy';
@@ -390,13 +389,13 @@ describe('the Beacon art', () => {
         expect(watcherOpenTarget(watcher, { ...l, watchersSighted: [watcher] })).toBe(true);
     });
 
-    it('frames: square, the heart at the centre of the content box, pulse layers inside their atlas, no markers, no opaque black', () => {
+    it('frames: square, the content box centred, light layers inside their atlas, no markers, no opaque black', () => {
         for (const [f, art] of [...Object.entries(BEACON_FRAMES), ['watcher', WATCHER_ART] as const]) {
             const img = decodePng(png(f));
             expect(img.width, f).toBe(art.size);
             expect(img.height, f).toBe(art.size);
             let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-            let blue = 0, yellow = 0, black = 0;
+            let blue = 0, yellow = 0, black = 0, cyan = 0;
             const d = img.data;
             for (let y = 0; y < img.height; y++) {
                 for (let x = 0; x < img.width; x++) {
@@ -410,49 +409,64 @@ describe('the Beacon art', () => {
                     if (r === 0 && g === 0 && b === 255) blue++;
                     if (r === 255 && g === 255 && b === 0) yellow++;
                     if (a === 255 && r === 0 && g === 0 && b === 0) black++;
+                    if (a > 200 && b > r + 40 && g > r + 20 && b > 90) cyan++;
                 }
             }
             expect(blue, `${f} blue`).toBe(0);
             expect(yellow, `${f} yellow`).toBe(0);
             expect(black, `${f} black`).toBe(0);
-            // the content box centred on the heart (the game turns a frame about its content box's centre), off the edges
-            expect(Math.abs((x0 + x1) / 2 - art.core[0]), f).toBeLessThanOrEqual(1);
-            expect(Math.abs((y0 + y1) / 2 - art.core[1]), f).toBeLessThanOrEqual(1);
+            // the content box centred on the frame (the game turns a frame about its content box's centre), off the edges
+            expect(Math.abs((x0 + x1) / 2 - art.size / 2), f).toBeLessThanOrEqual(1);
+            expect(Math.abs((y0 + y1) / 2 - art.size / 2), f).toBeLessThanOrEqual(1);
             expect(Math.min(x0, y0, img.width - 1 - x1, img.height - 1 - y1), f).toBeGreaterThanOrEqual(4);
-            // the heart is red and bright
-            const ci = (Math.round(art.core[1]) * img.width + Math.round(art.core[0])) * 4;
-            expect(img.data[ci], f).toBeGreaterThan(200);
-            expect(img.data[ci], f).toBeGreaterThan(img.data[ci + 2]);
+            // every frame carries the faction's cyan light lines
+            expect(cyan, `${f} cyan`).toBeGreaterThan(5);
             const fx = decodePng(png(`${f}-fx`));
-            const rects = [art.organs, ...art.veins, ...(f === 'watcher' ? [WATCHER_ART.seams, ...WATCHER_ART.plates.map((p) => p.glow)] : [])];
+            const rects = [art.glow, ...(f === 'watcher' ? [WATCHER_ART.sockets] : [])];
             for (const r of rects) {
                 expect(r.x + r.w, f).toBeLessThanOrEqual(fx.width);
                 expect(r.y + r.h, f).toBeLessThanOrEqual(fx.height);
                 expect(r.dx + r.w, f).toBeLessThanOrEqual(art.size);
                 expect(r.dy + r.h, f).toBeLessThanOrEqual(art.size);
             }
-            // the vein bands run outward: the outermost band reaches further than the innermost
-            expect(art.veins[2].w * art.veins[2].h, f).toBeGreaterThan(art.veins[0].w * art.veins[0].h);
         }
     });
 
-    it('the Watcher: its open body and plates on the pod\'s canvas; open, the plates stay on the canvas', () => {
+    it('the Watcher: its open body and parts on its canvas; closed it is the reference; open, the parts stay on the canvas', () => {
         const body = decodePng(png('watcher-body'));
+        const closed = decodePng(png('watcher'));
         expect(body.width).toBe(WATCHER_ART.size);
-        WATCHER_ART.plates.forEach((p, k) => {
-            const img = decodePng(png(`watcher-plate-${k}`));
-            expect(img.width).toBe(p.w);
-            expect(img.height).toBe(p.h);
+        const parts = decodePng(png('watcher-parts'));
+        expect(WATCHER_ART.parts.length).toBeGreaterThanOrEqual(8); // two horns and six legs at least
+        // the closed frame is the body with every part at rest over it: away from the flank plates the body's pixels
+        // are the closed frame's wherever the body is opaque
+        let same = 0, n = 0;
+        for (let i = 0; i < closed.data.length; i += 4) {
+            if (body.data[i + 3] === 255 && closed.data[i + 3] === 255) {
+                n++;
+                if (body.data[i] === closed.data[i] && body.data[i + 1] === closed.data[i + 1] && body.data[i + 2] === closed.data[i + 2]) same++;
+            }
+        }
+        expect(same / n).toBeGreaterThan(0.8);
+        for (const p of WATCHER_ART.parts) {
+            expect(p.rect.x + p.rect.w).toBeLessThanOrEqual(parts.width);
+            expect(p.rect.y + p.rect.h).toBeLessThanOrEqual(parts.height);
+            expect(p.delay).toBeGreaterThanOrEqual(0);
+            expect(p.delay).toBeLessThan(1);
             for (const t of [0, 0.5, 1]) {
-                const a = WATCHER_ART.swing * t;
-                for (const [cx, cy] of [[p.dx, p.dy], [p.dx + p.w, p.dy], [p.dx, p.dy + p.h], [p.dx + p.w, p.dy + p.h]]) {
+                const a = p.swing * t;
+                const r = p.rect;
+                for (const [cx, cy] of [[r.dx, r.dy], [r.dx + r.w, r.dy], [r.dx, r.dy + r.h], [r.dx + r.w, r.dy + r.h]]) {
                     const x = p.hinge[0] + (cx - p.hinge[0]) * Math.cos(a) - (cy - p.hinge[1]) * Math.sin(a);
                     const y = p.hinge[1] + (cx - p.hinge[0]) * Math.sin(a) + (cy - p.hinge[1]) * Math.cos(a);
-                    // a corner of the plate's box (the plate itself is inside it) reaches at most a little off the canvas
-                    expect(Math.hypot(x - WATCHER_ART.size / 2, y - WATCHER_ART.size / 2)).toBeLessThan(WATCHER_ART.size * 0.62);
+                    // a corner of the part's box (the part itself is inside it) stays on the canvas
+                    expect(x).toBeGreaterThan(-4);
+                    expect(y).toBeGreaterThan(-4);
+                    expect(x).toBeLessThan(WATCHER_ART.size + 4);
+                    expect(y).toBeLessThan(WATCHER_ART.size + 4);
                 }
             }
-        });
+        }
     });
 
     it('reads the Beacon sim\'s state bag: the faction, the Watchers (records with modes, or ships), the Beacon', () => {
@@ -481,49 +495,39 @@ describe('the Beacon art', () => {
         expect(lk.watchers).toEqual([]);
     });
 
-    it('the heartbeat: a strong beat then a weaker one, quiet in between, each hull on its own phase', () => {
-        const P = 2;
-        let max = 0;
+    it('the breath: a slow swell and ebb, lingering low, each hull on its own phase', () => {
+        const P = 8;
+        let max = 0, low = 0;
         for (let i = 0; i < 400; i++) {
-            const b = beaconBeat((i / 400) * P, P);
+            const b = beaconBreath((i / 400) * P, P);
             expect(b).toBeGreaterThanOrEqual(0);
             expect(b).toBeLessThanOrEqual(1);
             max = Math.max(max, b);
+            if (b < 0.25) low++;
         }
-        expect(max).toBeCloseTo(1, 5);
-        expect(beaconBeat(0.06 * P, P)).toBeCloseTo(1, 5);
-        expect(beaconBeat(0.26 * P, P)).toBeCloseTo(0.6, 5);
-        expect(beaconBeat(0.8 * P, P)).toBeLessThan(0.05);
-        expect(beaconBeat(0.06 * P + P * 3, P)).toBeCloseTo(1, 5); // periodic
+        expect(max).toBeCloseTo(1, 3);
+        expect(beaconBreath(0.5 * P, P)).toBeCloseTo(1, 5);
+        expect(beaconBreath(0, P)).toBeCloseTo(0, 5);
+        expect(beaconBreath(0.5 * P + 3 * P, P)).toBeCloseTo(1, 5); // periodic
+        expect(low / 400).toBeGreaterThan(0.3); // a long lull
         expect(beaconPhase(1, P)).not.toBeCloseTo(beaconPhase(2, P), 2);
-        // the pulse runs outward: band k is brightest a little after band k - 1
-        const peak = (k: number): number => {
-            let best = 0, at = 0;
-            for (let i = 0; i < 400; i++) {
-                const t = (i / 400) * P;
-                const v = veinBandAlpha(t, P, 0, k);
-                if (v > best) [best, at] = [v, t];
-            }
-            return at;
-        };
-        expect(peak(1)).toBeGreaterThan(peak(0));
-        expect(peak(2)).toBeGreaterThan(peak(1));
+        for (const art of [...Object.values(BEACON_FRAMES), WATCHER_ART]) expect(art.breath).toBeGreaterThan(3);
     });
 
-    it('the Watcher unfolds: lifts, then swings out plate by plate; opens over 10 s, folds over 7 s', () => {
-        for (let k = 0; k < 3; k++) {
-            expect(watcherPlateSwing(0, k)).toBe(0);
-            expect(watcherPlateLift(0, k)).toBe(0);
-            expect(watcherPlateSwing(1, k)).toBe(1);
+    it('the Watcher unfolds: each part lifts, then swings out, one after another; opens over 10 s, folds over 7 s', () => {
+        for (const d of [0, 0.2, 0.5]) {
+            expect(watcherPartSwing(0, d)).toBe(0);
+            expect(watcherPartLift(0, d)).toBe(0);
+            expect(watcherPartSwing(1, d)).toBe(1);
             let last = 0;
             for (let u = 0; u <= 1.0001; u += 0.05) {
-                const s = watcherPlateSwing(u, k);
+                const s = watcherPartSwing(u, d);
                 expect(s).toBeGreaterThanOrEqual(last);
                 last = s;
             }
         }
-        expect(watcherPlateLift(0.15, 0)).toBeGreaterThan(watcherPlateSwing(0.15, 0)); // up off the body before it swings
-        expect(watcherPlateSwing(0.5, 0)).toBeGreaterThan(watcherPlateSwing(0.5, 2)); // one after another
+        expect(watcherPartLift(0.15, 0)).toBeGreaterThan(watcherPartSwing(0.15, 0)); // up off the body before it swings
+        expect(watcherPartSwing(0.5, 0)).toBeGreaterThan(watcherPartSwing(0.5, 0.3)); // one after another
         let u = 0;
         for (let i = 0; i < 100; i++) u = watcherUnfoldStep(u, true, WATCHER_OPEN_S / 100);
         expect(u).toBeCloseTo(1, 9);

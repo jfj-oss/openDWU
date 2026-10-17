@@ -542,7 +542,7 @@ export class BuiltObjectLayer {
     private swarmFx = new SwarmFxLayer();
     /** threatArt.ts: the generation ships' blinking red positional lights (pooled; above the ships). */
     private genFx = new GenShipsFxLayer();
-    /** beaconFx.ts: the Beacon's hearts, organs and veins pulsing, the Watchers' plates (pooled; above the ships). */
+    /** beaconFx.ts: the Beacon's light lines breathing, the Watchers' legs and plates opening (pooled; above the ships). */
     private beaconFx = new BeaconFxLayer();
     /** threatArt.ts: a Great Work's lights, glows and the Sanctuary's whales (above the ships). */
     private gwFx = new GreatWorkFxLayer();

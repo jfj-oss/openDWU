@@ -1,58 +1,42 @@
 // The Beacon's living art (Giantworks add-on; render only — threatArt.ts says who is who, beaconArtData.ts is the
-// table scripts/beacon-ships.py writes with the frames in public/art/beacon/).
+// table scripts/beacon-ships.py writes with the frames in public/art/beacon/, built from the Mass Effect 4 Mod's
+// Reaper set).
 //
-// Every Reclaimer hull, Watcher and the finished Beacon has one red heart. It beats (a strong beat and a weaker second,
-// beaconBeat), each hull on its own phase and the bigger ones slower: the heart's glow swells, the organs' light rises
-// through the stained-glass panes in their colours, and a pulse runs out along the veins (three bands of the vein
-// network by distance from the heart, each lighting a little after the one inside it). The Beacon also sends a faint
-// ring out into space with every beat (the call). All pooled additive sprites over the ship layer; nothing allocated
-// per frame; skipped under BEACON_FX_MIN_PX drawn size, the veins under BEACON_VEINS_MIN_PX.
+// Every Reclaimer hull, Watcher and the finished Beacon carries cyan light lines. They breathe: a slow, ominous swell
+// of the light (beaconBreath), each hull on its own phase and the bigger ones slower — the frame bakes the lines at
+// rest, the swell is an additive layer (its <file>-fx.png: the lines brighter and a soft halo). No eyes. All pooled
+// additive sprites over the ship layer; nothing allocated per frame; skipped under BEACON_FX_MIN_PX drawn size.
 //
-// A Watcher is drawn as its closed seed pod (watcher.png). While it is sighted (threatArt.ts watcherOpenTarget) it
-// slowly unfolds: the ship layer swaps its sprite to the open body (watcher-body.png, the same canvas), and the three
-// plates (watcher-plate-<k>.png) are drawn here, lifting off the body (a growing shadow under them) and swinging out
-// about their hinges on the rim one after another; they fold back when it is no longer sighted. Closed, the light in
-// its seams pulses with its heart.
+// A Watcher is drawn closed (watcher.png: the reference itself). While it is sighted (threatArt.ts watcherOpenTarget)
+// it slowly opens: the ship layer swaps its sprite to the body alone (watcher-body.png, the same canvas, a ribbed
+// cavity lit from inside under its flank plates) and the moving parts (watcher-parts.png: the horns, the six legs, the
+// flank plates) are drawn here, each lifting a little off the hull (a shadow under it) and swinging about its hinge,
+// one after another; the light in the cavity and the leg sockets rises; they fold back when it is no longer sighted.
 
 import { Container, Rectangle, Texture, type Sprite } from 'pixi.js';
 import type { BuiltObject } from '../sim/builtObject';
 import { SpritePool } from './fxCommon';
 import { loadShipArt } from './shipArt';
-import { textureFromRgbaPixels } from './textureCanvas';
-import { useMinifyingFilter } from './assets';
 import { BEACON_FRAMES, WATCHER_ART, type BeaconFrameArt, type BeaconFxRect } from './beaconArtData';
 import { BEACON_ART_DIR } from './threatArt';
 
-/** No pulse layers under this drawn size (px); no vein bands under BEACON_VEINS_MIN_PX. */
+/** No light layers under this drawn size (px). */
 export const BEACON_FX_MIN_PX = 14;
-export const BEACON_VEINS_MIN_PX = 28;
 /** Seconds for a Watcher to open fully / to close. */
 export const WATCHER_OPEN_S = 10;
 export const WATCHER_CLOSE_S = 7;
-/** When each vein band lights after the beat (fractions of the period, from the heart outward). */
-export const VEIN_BAND_DELAY: readonly number[] = [0.06, 0.13, 0.21];
 
-/** One beat at x periods after its onset: a quick swell, a slower ebb. */
-function beatShape(x: number): number {
-    if (x < 0) return 0;
-    if (x < 0.06) return x / 0.06;
-    return Math.exp(-(x - 0.06) * 8);
-}
-
-/** The heartbeat 0..1 at time `sec` (s): a strong beat, then a weaker one 0.2 periods later, every `period` s. Pure. */
-export function beaconBeat(sec: number, period: number, phase = 0): number {
+/** The breath 0..1 at time `sec` (s): a slow swell and ebb every `period` s, lingering low (a long lull, a shorter
+ * rise). Pure. */
+export function beaconBreath(sec: number, period: number, phase = 0): number {
     const ph = ((((sec + phase) / period) % 1) + 1) % 1;
-    return Math.min(1, Math.max(beatShape(ph), 0.6 * beatShape(ph - 0.2)));
+    const s = 0.5 - 0.5 * Math.cos(ph * Math.PI * 2);
+    return Math.pow(s, 1.4);
 }
 
-/** A hull's own beat phase (s, 0..period) from its id, so a fleet does not beat in step. Pure. */
+/** A hull's own breathing phase (s, 0..period) from its id, so a fleet does not breathe in step. Pure. */
 export function beaconPhase(builtObjectID: number, period: number): number {
     return ((((builtObjectID * 0.6180339887) % 1) + 1) % 1) * period;
-}
-
-/** The light of vein band k (0 at the heart .. 2 outermost) at time `sec`: the beat, a little later per band. Pure. */
-export function veinBandAlpha(sec: number, period: number, phase: number, k: number): number {
-    return beaconBeat(sec - VEIN_BAND_DELAY[k] * period, period, phase) * (1 - 0.12 * k);
 }
 
 function smoothstep(a: number, b: number, x: number): number {
@@ -60,19 +44,19 @@ function smoothstep(a: number, b: number, x: number): number {
     return t * t * (3 - 2 * t);
 }
 
-/** Plate k's own progress 0..1 at the Watcher's unfold u (0 closed .. 1 open): the plates start one after another. */
-function plateProgress(u: number, k: number): number {
-    return Math.max(0, Math.min(1, (u - k * 0.07) / 0.86));
+/** A part's own progress 0..1 at the Watcher's unfold u (0 closed .. 1 open), starting at `delay`. */
+function partProgress(u: number, delay: number): number {
+    return Math.max(0, Math.min(1, (u - delay) / Math.max(1e-3, 1 - delay)));
 }
 
-/** How far plate k has swung (0..1 of the full swing) at unfold u: it lifts first, then swings out, easing in and out. Pure. */
-export function watcherPlateSwing(u: number, k: number): number {
-    return smoothstep(0.12, 1, plateProgress(u, k));
+/** How far a part has swung (0..1 of its full swing) at unfold u: it lifts first, then swings, easing in and out. Pure. */
+export function watcherPartSwing(u: number, delay: number): number {
+    return smoothstep(0.1, 1, partProgress(u, delay));
 }
 
-/** How far plate k has lifted off the body (0..1) at unfold u: in the first fifth of its opening. Pure. */
-export function watcherPlateLift(u: number, k: number): number {
-    return smoothstep(0, 0.2, plateProgress(u, k));
+/** How far a part has lifted off the hull (0..1) at unfold u: in the first fifth of its motion. Pure. */
+export function watcherPartLift(u: number, delay: number): number {
+    return smoothstep(0, 0.2, partProgress(u, delay));
 }
 
 /** The next unfold value: toward 1 over WATCHER_OPEN_S while `open`, toward 0 over WATCHER_CLOSE_S otherwise. Pure. */
@@ -80,63 +64,17 @@ export function watcherUnfoldStep(u: number, open: boolean, dt: number): number 
     return open ? Math.min(1, u + dt / WATCHER_OPEN_S) : Math.max(0, u - dt / WATCHER_CLOSE_S);
 }
 
-/** The pulse layers of a frame (sub-textures of its <file>-fx.png). */
+/** The light layers of a frame (sub-textures of its <file>-fx.png). */
 interface FxSet {
-    organs: Texture;
-    veins: Texture[];
-    /** The Watcher's: its seams' light and each plate's glow. */
-    seams?: Texture;
-    plateGlow?: Texture[];
+    glow: Texture;
+    /** The Watcher's: the light in its cavity and leg sockets. */
+    sockets?: Texture;
 }
 
-/** The Watcher's open body and plates. */
+/** The Watcher's body and its moving parts (sub-textures of watcher-parts.png). */
 interface WatcherTextures {
     body: Texture;
-    plates: Texture[];
-}
-
-const CORE_SIDE = 64;
-/** The heart's glow: a hot core in a crimson halo (the core's radius is CORE_SIDE / 8). */
-function coreGlowTexture(): Texture {
-    const S = CORE_SIDE;
-    const d = new Uint8ClampedArray(S * S * 4);
-    for (let y = 0; y < S; y++) {
-        for (let x = 0; x < S; x++) {
-            const r = Math.hypot(x + 0.5 - S / 2, y + 0.5 - S / 2) / (S / 8);
-            const core = Math.max(0, Math.min(1, 1.15 - r));
-            const halo = Math.exp(-r * r * 0.22) * Math.max(0, 1 - r / 4);
-            const a = Math.min(1, core * 0.9 + halo * 0.7);
-            const i = (y * S + x) * 4;
-            d[i] = 255;
-            d[i + 1] = (0.14 + 0.62 * core) * 255;
-            d[i + 2] = (0.16 + 0.5 * core) * 255;
-            d[i + 3] = a * 255;
-        }
-    }
-    const t = textureFromRgbaPixels(d, S, S);
-    useMinifyingFilter(t);
-    return t;
-}
-
-const RING_SIDE = 128;
-/** The Beacon's call: a thin soft violet-red ring (radius 0.45 of the side). */
-function ringTexture(): Texture {
-    const S = RING_SIDE;
-    const d = new Uint8ClampedArray(S * S * 4);
-    for (let y = 0; y < S; y++) {
-        for (let x = 0; x < S; x++) {
-            const r = Math.hypot(x + 0.5 - S / 2, y + 0.5 - S / 2) / S;
-            const a = Math.exp(-(((r - 0.45) / 0.018) ** 2)) + 0.35 * Math.exp(-(((r - 0.43) / 0.05) ** 2));
-            const i = (y * S + x) * 4;
-            d[i] = 235;
-            d[i + 1] = 60;
-            d[i + 2] = 150;
-            d[i + 3] = Math.min(1, a) * 255;
-        }
-    }
-    const t = textureFromRgbaPixels(d, S, S);
-    useMinifyingFilter(t);
-    return t;
+    parts: Texture[];
 }
 
 function sub(base: Texture, r: BeaconFxRect): Texture {
@@ -161,8 +99,6 @@ export class BeaconFxLayer {
     private fxLoading = new Set<string>();
     private watcherTex: WatcherTextures | null = null;
     private watcherLoading = false;
-    private core: Texture | null = null;
-    private ring: Texture | null = null;
     private unfold = new Map<BuiltObject, Unfold>();
     // The transform of the sprite being decorated (set per draw; no closures per frame).
     private x = 0;
@@ -187,7 +123,7 @@ export class BeaconFxLayer {
         if (this.unfold.size > 4) for (const bo of this.unfold.keys()) if (bo.hasBeenDestroyed) this.unfold.delete(bo);
     }
 
-    /** The pulse layers of `file` (loaded once, on first use; null until then or if it failed). */
+    /** The light layers of `file` (loaded once, on first use; null until then or if it failed). */
     private fxSet(file: string): FxSet | null {
         const got = this.fx.get(file);
         if (got !== undefined) return got;
@@ -200,11 +136,8 @@ export class BeaconFxLayer {
                         this.fx.set(file, null);
                         return;
                     }
-                    const set: FxSet = { organs: sub(a.texture, art.organs), veins: art.veins.map((r) => sub(a.texture, r)) };
-                    if (file === 'watcher') {
-                        set.seams = sub(a.texture, WATCHER_ART.seams);
-                        set.plateGlow = WATCHER_ART.plates.map((p) => sub(a.texture, p.glow));
-                    }
+                    const set: FxSet = { glow: sub(a.texture, art.glow) };
+                    if (file === 'watcher') set.sockets = sub(a.texture, WATCHER_ART.sockets);
                     this.fx.set(file, set);
                 },
                 () => this.fx.set(file, null),
@@ -213,25 +146,19 @@ export class BeaconFxLayer {
         return null;
     }
 
-    /** The Watcher's open body and plates (loaded once, on first use; null until all are loaded). */
+    /** The Watcher's body and parts (loaded once, on first use; null until both are loaded). */
     private watcherTextures(): WatcherTextures | null {
         if (this.watcherTex === null && !this.watcherLoading) {
             this.watcherLoading = true;
-            const urls = [`${BEACON_ART_DIR}watcher-body.png`, ...[0, 1, 2].map((k) => `${BEACON_ART_DIR}watcher-plate-${k}.png`)];
-            void Promise.all(urls.map((u) => loadShipArt(u, false))).then(
-                (arts) => {
-                    if (arts.some((a) => a === null)) return;
-                    this.watcherTex = { body: arts[0]!.texture, plates: arts.slice(1).map((a) => a!.texture) };
+            void Promise.all([loadShipArt(`${BEACON_ART_DIR}watcher-body.png`, false), loadShipArt(`${BEACON_ART_DIR}watcher-parts.png`, false)]).then(
+                ([body, parts]) => {
+                    if (body === null || parts === null) return;
+                    this.watcherTex = { body: body.texture, parts: WATCHER_ART.parts.map((p) => sub(parts.texture, p.rect)) };
                 },
                 () => undefined,
             );
         }
         return this.watcherTex;
-    }
-
-    private coreTex(): Texture {
-        if (this.core === null) this.core = coreGlowTexture();
-        return this.core;
     }
 
     /** Places `s` (anchor `axf`, `ayf`) at frame px (fx, fy) of the sprite being decorated, turned and scaled with it. */
@@ -252,19 +179,10 @@ export class BeaconFxLayer {
         s.alpha = Math.min(1, alpha);
     }
 
-    /** The heart's glow, swelling with the beat. */
-    private heart(art: BeaconFrameArt, beat: number): void {
-        const s = this.pool.acquire(this.coreTex());
-        s.blendMode = 'add';
-        // The texture's core radius is CORE_SIDE / 8 px: scale it to the heart's radius in frame px.
-        this.put(s, art.core[0], art.core[1], 0.5, 0.5, 0, ((art.core[2] * 1.15) / (CORE_SIDE / 8)) * (1 + 0.16 * beat));
-        s.alpha = 0.35 + 0.65 * beat;
-    }
-
     /**
      * The overlays of a Beacon sprite drawing frame `file` (its transform; `tw` × `th` its texture size; `px` its drawn
      * size; `sec` the shared wall clock). `open`: a Watcher's unfold target. Returns the texture the ship layer should
-     * draw instead of the frame (a Watcher's open body while it unfolds), or null.
+     * draw instead of the frame (a Watcher's body while it opens), or null.
      */
     draw(file: string, bo: BuiltObject, open: boolean, x: number, y: number, rotation: number, scale: number, ax: number, ay: number, tw: number, th: number, px: number, sec: number): Texture | null {
         const art = beaconFrameArt(file);
@@ -289,77 +207,40 @@ export class BeaconFxLayer {
         this.sc = scale;
         this.ox = ax * tw;
         this.oy = ay * th;
-        const phase = beaconPhase(bo.builtObjectID, art.beat);
-        const beat = beaconBeat(sec, art.beat, phase);
+        const breath = beaconBreath(sec, art.breath, beaconPhase(bo.builtObjectID, art.breath));
         const fx = this.fxSet(file);
-        if (file === 'watcher') return this.drawWatcher(fx, u, sec, phase, beat, px);
-        if (fx !== null) {
-            this.additive(fx.organs, art.organs, 0.12 + 0.88 * beaconBeat(sec - 0.02 * art.beat, art.beat, phase));
-            if (px >= BEACON_VEINS_MIN_PX) for (let k = 0; k < 3; k++) this.additive(fx.veins[k], art.veins[k], veinBandAlpha(sec, art.beat, phase, k));
-        }
-        this.heart(art, beat);
-        if (file === 'beacon') this.call(art, sec, phase);
+        if (file === 'watcher') return this.drawWatcher(fx, u, sec, breath);
+        if (fx !== null) this.additive(fx.glow, art.glow, 0.12 + 0.88 * breath);
         return null;
     }
 
-    /** The Beacon's call: a ring running out from the heart with each beat (and a fainter one with the second). */
-    private call(art: BeaconFrameArt, sec: number, phase: number): void {
-        if (this.ring === null) this.ring = ringTexture();
-        const ph = ((((sec + phase) / art.beat) % 1) + 1) % 1;
-        for (const [p, a] of [[ph, 0.5], [ph - 0.2, 0.25]] as const) {
-            if (p < 0) continue;
-            const e = 1 - (1 - p) * (1 - p);
-            const radius = art.core[2] * 2 + (art.size * 0.62 - art.core[2] * 2) * e;
-            const s = this.pool.acquire(this.ring);
-            s.blendMode = 'add';
-            this.put(s, art.core[0], art.core[1], 0.5, 0.5, 0, radius / (RING_SIDE * 0.45));
-            s.alpha = a * Math.pow(1 - p, 1.5);
-        }
-    }
-
-    private drawWatcher(fx: FxSet | null, u: number, sec: number, phase: number, beat: number, px: number): Texture | null {
+    private drawWatcher(fx: FxSet | null, u: number, sec: number, breath: number): Texture | null {
         const W = WATCHER_ART;
         const tex = u > 0.001 ? this.watcherTextures() : null;
-        if (tex === null) {
-            // Closed (or the open art still loading): the pod's seams pulse with the heart.
-            if (fx?.seams !== undefined) this.additive(fx.seams, W.seams, 0.3 + 0.7 * beat);
-            this.heart(W, beat);
-            return null;
-        }
-        // Open or opening: the body's organs and veins (fading in as it opens), the heart, then the plates over them.
-        const show = smoothstep(0, 0.6, u);
-        if (fx !== null) {
-            this.additive(fx.organs, W.organs, (0.12 + 0.88 * beaconBeat(sec - 0.02 * W.beat, W.beat, phase)) * show);
-            if (px >= BEACON_VEINS_MIN_PX) for (let k = 0; k < 3; k++) this.additive(fx.veins[k], W.veins[k], veinBandAlpha(sec, W.beat, phase, k) * show);
-            if (fx.seams !== undefined) this.additive(fx.seams, W.seams, (0.3 + 0.7 * beat) * (1 - show));
-        }
-        this.heart(W, beat);
-        for (let k = 0; k < 3; k++) {
-            const p = W.plates[k];
-            const lift = watcherPlateLift(u, k);
-            const swing = watcherPlateSwing(u, k);
-            // Open, the plates breathe a little on their hinges.
-            const a = W.swing * swing + 0.012 * swing * Math.sin(sec * 0.7 + k * 2.1);
-            const grow = 1 + 0.03 * lift;
-            const axf = (p.hinge[0] - p.dx) / p.w;
-            const ayf = (p.hinge[1] - p.dy) / p.h;
+        // Open, the light inside rises a little.
+        const rise = smoothstep(0, 0.6, u);
+        if (fx !== null) this.additive(fx.glow, W.glow, (0.12 + 0.88 * breath) * (1 + 0.15 * rise));
+        if (tex === null) return null;
+        if (fx?.sockets !== undefined) this.additive(fx.sockets, W.sockets, rise * (0.4 + 0.4 * breath));
+        for (let k = 0; k < W.parts.length; k++) {
+            const p = W.parts[k];
+            const lift = watcherPartLift(u, p.delay);
+            const swing = watcherPartSwing(u, p.delay);
+            // Open, the parts sway a little on their hinges.
+            const a = p.swing * swing + 0.015 * swing * Math.sin(sec * 0.6 + k * 1.7);
+            const grow = 1 + 0.02 * lift;
+            const axf = (p.hinge[0] - p.rect.dx) / p.rect.w;
+            const ayf = (p.hinge[1] - p.rect.dy) / p.rect.h;
             if (lift > 0.01) {
-                const sh = this.pool.acquire(tex.plates[k]);
+                const sh = this.pool.acquire(tex.parts[k]);
                 sh.blendMode = 'normal';
-                this.put(sh, p.hinge[0] + 5 * lift, p.hinge[1] + 6 * lift, axf, ayf, a, grow);
+                this.put(sh, p.hinge[0] + 3 * lift, p.hinge[1] + 4 * lift, axf, ayf, a, grow);
                 sh.tint = 0x000000;
-                sh.alpha = 0.5 * lift;
+                sh.alpha = 0.45 * lift;
             }
-            const s = this.pool.acquire(tex.plates[k]);
+            const s = this.pool.acquire(tex.parts[k]);
             s.blendMode = 'normal';
             this.put(s, p.hinge[0], p.hinge[1], axf, ayf, a, grow);
-            if (fx?.plateGlow !== undefined) {
-                const g = this.pool.acquire(fx.plateGlow[k]);
-                g.blendMode = 'add';
-                // The glow's own anchor: the hinge, in its rectangle.
-                this.put(g, p.hinge[0], p.hinge[1], (p.hinge[0] - p.glow.dx) / p.glow.w, (p.hinge[1] - p.glow.dy) / p.glow.h, a, grow);
-                g.alpha = 0.12 + 0.88 * beaconBeat(sec - 0.04 * W.beat, W.beat, phase);
-            }
         }
         return tex.body;
     }

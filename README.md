@@ -897,10 +897,18 @@ data files, code or decompiled source, and almost none of its art. The
 decompiled original was used only as a reference for gameplay accuracy. The game
 reads the original's files live from your own install folder at runtime. Art under
 `game/public/art/` is original artwork created for this project (procedural
-code and our own generated sprites), except `game/public/art/original-resx/`:
+code and our own generated sprites), except `game/public/art/beacon/` (below) and `game/public/art/original-resx/`:
 a few pictures the original keeps inside DistantWorlds.exe (new-game wizard
 pictures, map zoom buttons, game-menu header), which a stock install has no
 other copy of; they are bundled unmodified with the publisher's permission.
+
+**Beacon faction ships** (`game/public/art/beacon/`, the Giantworks add-on's
+Reclaimers and Watchers) are built from the Mass Effect 4 Mod for DWU: original
+Mass Effect Mod by Kalthaniell + Team for Legends, modified for Shadows by
+dostillevi, for Universe by Demonius, compiled and assembled (ME4) by Tyrador,
+using some of the Prothean Cycle mod's assets. The Watchers are that mod's Reaper
+carrier; the other frames are composites of its Reaper ship set
+(`game/scripts/beacon-ships.py`).
 
 **Fonts.** *Forgotten Futurist* (the original's UI font; © 1999 Ray Larabie,
 freeware, Larabie Fonts / Typodermic, www.typodermic.com) is bundled unmodified

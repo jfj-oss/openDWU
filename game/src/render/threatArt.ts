@@ -26,10 +26,10 @@
 //   left, its right side a hollow, half-built skeleton opening to space (planetdestroyer.png). Picked by subRole
 //   (purifierArtUrl), render only: the sim's pictureRef is untouched.
 // - The Beacon (Giantworks add-on): the Reclaimers' warships, the two Watchers and the finished Beacon draw our bundled
-//   black-glass frames (public/art/beacon/, scripts/beacon-ships.py: grown three-way-symmetric hulls, ribbed and
-//   speckled, with stained-glass windows onto beating organs and veins), picked by subRole (beaconArtUrl); the
-//   Watchers and the Beacon are drawn at least a set size (minimumSizeScale). Their hearts beat, the
-//   organs' light swells through the panes and pulses run out along the veins, and a sighted Watcher's plates swing open
+//   frames built from the Mass Effect 4 Mod's Reaper set (public/art/beacon/, scripts/beacon-ships.py: the Watchers
+//   are the mod's carrier itself, the warships and the Beacon composites of its pieces, all in its gunmetal with cyan
+//   light lines), picked by subRole (beaconArtUrl); the Watchers and the Beacon are drawn at least a set size
+//   (minimumSizeScale). Their light lines breathe, and a sighted Watcher's legs, horns and flank plates swing open
 //   (beaconFx.ts BeaconFxLayer). Who is who comes from the Beacon sim's state bag (BeaconArtState, read only).
 // - The Ark Engine (Giantworks): a finished 'ark' Great Work's base (its ship) draws public/art/giantworks/ark*.png
 //   (scripts/ark-art.py) at least an ARK_REF_SIZE hull drawn ARK_VISUAL_SCALE x (threatDrawScale), whole in arkFx.ts
@@ -144,7 +144,7 @@ export function forgetUltramindLooks(habitats: readonly Habitat[]): void {
  * peekThreatState, never created). All optional, so the art works with whatever part of the sim exists:
  * - faction: the machine faction (the Watchers, then the Reclaimers). Every ship it owns draws its Reclaimer frame by
  *   subRole (beaconFileForSubRole; a planet destroyer the capital ship's); its bases keep their stock frames.
- * - watchers: the two Watchers (whoever owns them), as ships or as the sim's records ({ ship, mode }): the seed pod, drawn
+ * - watchers: the two Watchers (whoever owns them), as ships or as the sim's records ({ ship, mode }): the great Reaper, drawn
  *   at least WATCHER_VISUAL_SCALE × a WATCHER_REF_SIZE hull. A record's Watcher unfolds while its mode is 'sighting'
  *   (seen uncloaked, parked over a colony) or 'fight' (it was attacked), and folds again in any other mode.
  * - sighted: (ships given without records) the Watchers seen uncloaked right now, which unfold. With neither records'
@@ -299,7 +299,7 @@ export const PURIFIER_VISUAL_SCALE = 1.5;
 
 /**
  * The Watchers are drawn at least as large as a WATCHER_REF_SIZE hull drawn WATCHER_VISUAL_SCALE × (whatever size the
- * sim gives them: the closed pod is about two capital ships across, and open its plates reach about 2.1 × further); the
+ * sim gives them: about twice a capital ship's length; open, its legs and flank plates spread a little wider); the
  * finished Beacon at least as large as a BEACON_REF_SIZE station drawn BEACON_VISUAL_SCALE ×. A larger hull keeps its
  * own size.
  */
@@ -496,7 +496,7 @@ export function beaconArtFile(bo: BuiltObject, l: ThreatLooks = looks): string |
     return beaconFileForSubRole(bo.subRole);
 }
 
-/** The art URL of a Reclaimer hull, a Watcher (its closed pod) or the Beacon (null: stock art). `l` defaults to the
+/** The art URL of a Reclaimer hull, a Watcher (closed) or the Beacon (null: stock art). `l` defaults to the
  * record of the last threatLooks call, as purifierArtUrl. */
 export function beaconArtUrl(bo: BuiltObject, l: ThreatLooks = looks): string | null {
     const f = beaconArtFile(bo, l);
