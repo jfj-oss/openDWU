@@ -449,13 +449,13 @@ function setupInfo() {
     };
 }
 
-function appendCrashLog(text) {
+function appendCrashLog(text, { report = true } = {}) {
     try {
         fs.appendFileSync(path.join(app.getPath('userData'), 'crash-log.txt'), text);
     } catch {
         /* best effort */
     }
-    crashReport.reportCrashLogEntry(text);
+    if (report) crashReport.reportCrashLogEntry(text);
 }
 
 // The game's simulation in a process of its own (simProcess.cjs): started by the game page (gamePreload.cjs), connected
@@ -509,6 +509,12 @@ ipcMain.handle('dwu:fullscreen-set', (event, on) => {
 // The page's renderer (Pixi WebGL / WebGPU / Canvas and the WebGL renderer string), for the log.
 ipcMain.on('dwu:report-error', (event, info) => {
     if (mainWin === null || event.sender !== mainWin.webContents) return;
+    // The simulation threw and the game paused (the worker's console reaches no log): the stack goes to the crash log too,
+    // scrubbed of the home folder / user name like the Sentry copy; the Sentry report is the handled error below.
+    if (info && info.kind === 'sim-error') {
+        const text = crashReport.scrubLogText(`${new Date().toISOString()} [error] Simulation error (paused): ${String(info.name).slice(0, 60)}: ${String(info.message).slice(0, 500)}\n${String(info.stack).slice(0, 6000)}`, crashReport.scrubOptions(), 8000);
+        appendCrashLog(`${text} version=${APP_VERSION}\n`, { report: false });
+    }
     crashReport.reportRendererError(info);
 });
 // Page -> crash reports (desktop/crashReport.cjs): the once-a-minute performance sample (1 % of sessions), a multiplayer

@@ -606,6 +606,19 @@ describe('new threats: generation ships, archive cores, probe swarm', () => {
         expect(st.transports.every((b) => (b.troops?.count ?? 0) === 0)).toBe(true);
     }, 600000);
 
+    it('generation ships: a state saved by an older build (no pirate / pirateShips / index ...) is filled with defaults, not thrown on', () => {
+        const g = ntGame(ALL, { ...WAVE });
+        const st = genShipsState(g);
+        genShipsPeriodic(g);
+        st.phase = 'ended';
+        st.outcome = 'repelled';
+        const old = st as unknown as Record<string, unknown>;
+        for (const k of ['pirate', 'pirateShips', 'pirateBase', 'index', 'planned', 'spawned', 'nextDate', 'navy', 'retake', 'base', 'committed']) delete old[k];
+        expect(() => genShipsPeriodic(g)).not.toThrow();
+        expect(peekGenShipsState(g)!.pirate).toBeNull();
+        expect(genShipsStates(g)[0].pirateShips).toEqual([]);
+    }, 600000);
+
     it('generation ships: one per six empires (1..4), staggered 2-4 years, each at a different empire', () => {
         expect([5, 6, 11, 12, 18, 24, 40].map((n) => genShipsWaveSize(n, 6))).toEqual([1, 1, 1, 2, 3, 4, 4]);
         const g = ntGame(ALL, { ...WAVE, genShipsEmpiresPerShip: 1 });

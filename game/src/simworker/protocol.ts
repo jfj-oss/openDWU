@@ -372,7 +372,7 @@ export type WorkerEvent =
     /** What the player's message pipeline handled since the last step (each message once, in arrival order). */
     | { kind: 'playerMessages'; receipts: PlayerMessageWire[]; events: PlayerEventWire[] }
     | { kind: 'locationPinged'; target: RemoteArg }
-    | { kind: 'simError'; message: string }
+    | { kind: 'simError'; message: string; name?: string; stack?: string }
     /** The worker stopped for good (its loop threw, it crashed, or it stopped answering): raised by the main thread
      *  (SimClientCore.workerFailed), never sent by the worker. */
     | { kind: 'workerStopped'; message: string }

@@ -534,7 +534,7 @@ export class SimHost {
             schedulerState(this.galaxy).queue.length = 0;
             this.budget.backlogMs = 0;
             time.paused = true;
-            this.events.push({ kind: 'simError', message: err instanceof Error ? err.message : String(err) });
+            this.events.push({ kind: 'simError', message: err instanceof Error ? err.message : String(err), name: err instanceof Error ? err.name : 'Error', stack: err instanceof Error ? err.stack : undefined });
             this.dirty = true;
         }
         this.settleCommands(failure);

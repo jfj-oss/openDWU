@@ -214,12 +214,25 @@ function newState(): GenShipsState {
     };
 }
 
+/**
+ * A state saved by an older build lacks the fields added since (a 0.1.3x save has no pirate / pirateShips / index ...), and the code
+ * reads those with `!== null` and no fallback: fill every missing key with its fresh-state default (in place, once; a key already
+ * there, null included, is left alone, so a current save is untouched).
+ */
+function withDefaults(st: GenShipsState): GenShipsState {
+    const fresh = newState() as unknown as Record<string, unknown>;
+    const have = st as unknown as Record<string, unknown>;
+    for (const k of Object.keys(fresh)) if (have[k] === undefined) have[k] = fresh[k];
+    return st;
+}
+
 export function genShipsState(galaxy: Galaxy): GenShipsState {
-    return threatState(galaxy, GEN_SHIPS_KEY, newState);
+    return withDefaults(threatState(galaxy, GEN_SHIPS_KEY, newState));
 }
 
 export function peekGenShipsState(galaxy: Galaxy): GenShipsState | null {
-    return peekThreatState<GenShipsState>(galaxy, GEN_SHIPS_KEY);
+    const st = peekThreatState<GenShipsState>(galaxy, GEN_SHIPS_KEY);
+    return st === null ? null : withDefaults(st);
 }
 
 /** The wave's cap (most ships in one game). */
@@ -234,7 +247,7 @@ export function genShipsStates(galaxy: Galaxy): GenShipsState[] {
     const out: GenShipsState[] = [];
     for (let k = 0; k < MAX_WAVE; k++) {
         const st = peekThreatState<GenShipsState>(galaxy, instanceKey(k));
-        if (st !== null) out.push(st);
+        if (st !== null) out.push(withDefaults(st));
     }
     return out;
 }
@@ -1628,7 +1641,7 @@ export function genShipsPeriodic(galaxy: Galaxy): void {
     // The rest of the wave: one more ship every 2-4 years, each aimed at another empire.
     if ((first.spawned ?? 1) < (first.planned ?? 1) && galaxyStarDate(galaxy) >= (first.nextDate ?? 0)) {
         const k = first.spawned;
-        const next = threatState(galaxy, instanceKey(k), newState);
+        const next = withDefaults(threatState(galaxy, instanceKey(k), newState));
         next.index = k;
         if (!genShipsArrive(galaxy, next)) next.phase = 'ended';
         first.spawned = k + 1;

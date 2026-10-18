@@ -86,6 +86,23 @@ export async function sendBugReport(message: string): Promise<{ ok: boolean; err
     }
 }
 
+let simErrorReports = 0;
+/**
+ * The simulation threw and the game paused (simLoop.ts in-thread, simHost.ts in the worker): the full error goes to the crash log
+ * and to Sentry as a handled error (the shell scrubs it; a worker's console never reaches either). At most 5 per session.
+ */
+export function reportSimError(err: { name?: string; message: string; stack?: string }): void {
+    console.error('Simulation error (paused):', err.stack ?? err.message);
+    const report = bridge()?.reportError;
+    if (typeof report !== 'function' || simErrorReports >= 5) return;
+    simErrorReports++;
+    try {
+        report({ kind: 'sim-error', name: err.name ?? 'Error', message: err.message, stack: err.stack ?? '' });
+    } catch {
+        /* never break the page over a report */
+    }
+}
+
 /** Frame-time statistics over a window of samples (pure). */
 export function frameStats(deltasMs: number[]): { avgFps: number; p95FrameMs: number } {
     if (deltasMs.length === 0) return { avgFps: 0, p95FrameMs: 0 };

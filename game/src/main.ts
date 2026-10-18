@@ -4,7 +4,7 @@
 // install folder by the desktop shell; under `npm run dev` a public symlink
 // plus the probe middleware in vite.config.ts does the same).
 
-import { installErrorReporting, startPerfSampling } from './errorReporting';
+import { installErrorReporting, reportSimError, startPerfSampling } from './errorReporting';
 import { recordRenderer } from './render/rendererInfo';
 import { fogOf } from './render/fog';
 import { goToMessage, messageGoToTarget } from './ui/messageGoto';
@@ -900,7 +900,10 @@ export async function startGameView(
         if (e.kind === 'locationPinged') {
             const t = resolve(e.target) as { xpos: number; ypos: number } | null;
             if (t !== null) camera.centerOn(t.xpos, t.ypos);
-        } else if (e.kind === 'simError') showToast('Simulation error — game paused (see the worker console)');
+        } else if (e.kind === 'simError') {
+            reportSimError({ name: e.name, message: e.message, stack: e.stack });
+            showToast('Simulation error — game paused (see the worker console)');
+        }
         // The worker itself stopped (docs/sim-worker.md §4.4 "Failed commands"): orders in flight have failed. Offer to
         // restart the game in a new worker (§4.6).
         else if (e.kind === 'workerStopped') {

@@ -215,7 +215,7 @@ function reportRendererError(info) {
         err.name = String(info.name ?? 'Error').slice(0, 60);
         err.stack = String(info.stack ?? '').slice(0, 6000) || undefined;
         Sentry.withScope((scope) => {
-            scope.setTag('source', info.kind === 'rejection' ? 'renderer-rejection' : 'renderer');
+            scope.setTag('source', info.kind === 'rejection' ? 'renderer-rejection' : info.kind === 'sim-error' ? 'sim-error' : 'renderer');
             Sentry.captureException(err);
         });
     } catch {
@@ -311,4 +311,8 @@ function captureMain(err) {
     if (Sentry) Sentry.captureException(err);
 }
 
-module.exports = { DSN, installId, TRACES_SAMPLE_RATE, isPerfSampled, reportPerf, reportDesync, noteConsole, sendFeedback, sentryEnabled, makeScrubber, scrubEvent, scrubBreadcrumb, scrubLogText, isSdkCoveredCrashEntry, init, setTags, reportCrashLogEntry, reportRendererError, captureMain };
+function scrubOptions() {
+    return scrubOpts;
+}
+
+module.exports = { scrubOptions, DSN, installId, TRACES_SAMPLE_RATE, isPerfSampled, reportPerf, reportDesync, noteConsole, sendFeedback, sentryEnabled, makeScrubber, scrubEvent, scrubBreadcrumb, scrubLogText, isSdkCoveredCrashEntry, init, setTags, reportCrashLogEntry, reportRendererError, captureMain };

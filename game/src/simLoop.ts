@@ -25,6 +25,7 @@ import { drainCommandBoundary } from './sim/tick/commandBoundary';
 import { markUiGalaxy } from './sim/readOnlyQuery';
 import { loggedSimViewRect, noteSimSpeed, noteSimViewRect } from './sim/player/playerCommands';
 import { showToast } from './ui/toast';
+import { reportSimError } from './errorReporting';
 import { lockstepStepper } from './net/lockstepSeam';
 import { createRenderTime, updateRenderTime, type RenderTime } from './render/renderInterp';
 import { ADAPTIVE_SHARE_IN_THREAD, OffscreenAdaptiveController } from './offscreenAdaptive';
@@ -143,6 +144,7 @@ export function createSimLoop(galaxy: Galaxy, time: GalaxyTime, camera: Camera, 
                 schedulerState(galaxy).queue.length = 0;
                 budget.backlogMs = 0;
                 time.paused = true;
+                reportSimError(err instanceof Error ? err : { message: String(err) });
                 showToast('Simulation error — game paused (see console)');
             }
             updateRenderTime(renderTime, galaxy.nowMs, budget.backlogMs, time.speed, time.paused, frames);
