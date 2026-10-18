@@ -952,12 +952,13 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
             if (p.advisor) continue;
             // [suggest] end
             // Add-on messages pop up only for their big moments (ui/addonPopups.ts; the ticker and history keep them).
-            const route = p.route!.popup && !addonPopupAllowed(m) ? { ...p.route!, popup: false } : p.route!;
+            // (A scenario message that forces its stub / popup, the Beacon's first-encounter texts, is not held back.)
+            const route = p.route!.popup && m.scenarioPopup === undefined && !addonPopupAllowed(m) ? { ...p.route!, popup: false } : p.route!;
             // [popupstubs] begin
             // A popup message becomes a stub under the top-right panel; the card opens by itself only with the
             // "Open messages automatically" option (the 16d behaviour).
             if (route.popup) {
-                const auto = getSettings().openMessagesAutomatically;
+                const auto = m.scenarioPopup === 'force' ? true : m.scenarioPopup === 'quiet' ? false : getSettings().openMessagesAutomatically;
                 pushMessageStub(m, auto);
                 if (auto) showPopup(m);
             }

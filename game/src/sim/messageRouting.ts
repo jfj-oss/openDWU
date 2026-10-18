@@ -634,7 +634,8 @@ export function routeEmpireMessage(message: EmpireMessage, player: Empire | null
     popup = popup && !message.supressPopup;
     // mod layer (the Beacon's first-encounter messages): a scenario message may force its popup and ticker line, or force only the ticker line
     if (message.scenarioPopup === 'force') return { category: c.category, popup: true, ticker: true, conversation: null, immediate: false };
-    if (message.scenarioPopup === 'quiet') return { category: c.category, popup: false, ticker: true, conversation: null, immediate: false };
+    // 'quiet': popup true makes the badge (the message stub); the UI does not open it by itself (ui/messagePopups.ts)
+    if (message.scenarioPopup === 'quiet') return { category: c.category, popup: true, ticker: true, conversation: null, immediate: false };
     return { category: c.category, popup, ticker, conversation: c.conversation, immediate };
 }
 

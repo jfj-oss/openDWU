@@ -4577,7 +4577,7 @@ describe('the Beacon (Giantworks wonder)', () => {
         expect(empireMessages(ai).length).toBe(aiBefore);
         const route = routeEmpireMessage(decloak1, me, defaultMessageOptions());
         expect(route).toMatchObject({ popup: true, ticker: true });
-        expect(routeEmpireMessage(decloak2, me, defaultMessageOptions())).toMatchObject({ popup: false, ticker: true });
+        expect(routeEmpireMessage(decloak2, me, defaultMessageOptions())).toMatchObject({ popup: true, ticker: true }); // (the badge; the UI opens only 'force' by itself)
     }, 900000);
 
     it('self-defence: an attacked Watcher may fire only at the ships that attacked it and their fleets; it breaks off, resumes its dwell and cloaks, with no war', () => {
