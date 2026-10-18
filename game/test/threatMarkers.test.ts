@@ -46,6 +46,7 @@ import { BEACON_FRAMES, WATCHER_ART } from '../src/render/beaconArtData';
 import { WATCHER_FORK_ART } from '../src/render/beaconForkArtData';
 import { CAPITAL_FORK_ART } from '../src/render/beaconForkCapitalArtData';
 import { FRIGATE_FORK_ART } from '../src/render/beaconForkFrigateArtData';
+import { FORK_FLEET } from '../src/render/beaconForkFleet';
 import { FORK_FX_SHIPS_MAX, forkBlink, forkThrust } from '../src/render/beaconForkFx';
 import {
     WATCHER_CLOSE_S,
@@ -396,7 +397,7 @@ describe('the Beacon art', () => {
             expect(BEACON_FRAMES[f], f).toBeDefined();
         }
         expect(beaconFileForSubRole(BuiltObjectSubRole.MediumSpacePort)).toBeNull();
-        expect(beaconArtFile(ship(BuiltObjectSubRole.Cruiser, reclaimers), l)).toBe('cruiser');
+        expect(beaconArtFile(ship(BuiltObjectSubRole.Cruiser, reclaimers), l)).toBe('cruiser-fork');
         expect(beaconArtFile(ship(BuiltObjectSubRole.SmallSpacePort, reclaimers, BuiltObjectRole.Base), l)).toBeNull();
         expect(beaconArtFile(ship(BuiltObjectSubRole.Cruiser, other), l)).toBeNull();
         // the Watchers' look: the fork by default; the carrier and the Reaper (with its capital ship) selectable
@@ -409,11 +410,27 @@ describe('the Beacon art', () => {
         const frigate = ship(BuiltObjectSubRole.Frigate, reclaimers);
         expect(beaconArtFile(frigate, l)).toBe('frigate-fork');
         expect(threatDrawScale(l, frigate)).toBeCloseTo(FRIGATE_FORK_ART.drawScale, 9);
+        // the rest of the fleet in the fork look; the harvest's cattle ships and harvester bases from the sim's records
+        expect(beaconArtFile(ship(BuiltObjectSubRole.Escort, reclaimers), l)).toBe('frigate-fork');
+        expect(beaconArtFile(ship(BuiltObjectSubRole.Destroyer, reclaimers), l)).toBe('destroyer-fork');
+        expect(beaconArtFile(ship(BuiltObjectSubRole.Cruiser, reclaimers), l)).toBe('cruiser-fork');
+        expect(beaconArtFile(ship(BuiltObjectSubRole.Carrier, reclaimers), l)).toBe('carrier-fork');
+        expect(beaconArtFile(ship(BuiltObjectSubRole.TroopTransport, reclaimers), l)).toBe('trooptransport');
+        const cattle = ship(BuiltObjectSubRole.LargeFreighter, reclaimers, BuiltObjectRole.Freight, 2000);
+        const harv = ship(BuiltObjectSubRole.DefensiveBase, reclaimers, BuiltObjectRole.Base, 1500);
+        const lh: ThreatLooks = { ...l, cattleShips: [cattle], harvesters: [harv] };
+        expect(beaconArtFile(cattle, lh)).toBe('cattle-fork');
+        expect(beaconArtFile(harv, lh)).toBe('harvester-fork');
+        expect(beaconArtFile(harv, l)).toBeNull();
+        expect(threatDrawScale(lh, harv)).toBe(1);
+        expect(threatDrawScale(lh, cattle)).toBeCloseTo(FORK_FLEET['cattle-fork'].drawScale, 9);
+        expect(FORK_FLEET['harvester-fork'].nozzles.length).toBe(0);
         try {
             setWatcherFrame('carrier');
             expect(beaconArtFile(watcher, l)).toBe('watcher');
             expect(beaconArtFile(capital, l)).toBe('capitalship');
             expect(beaconArtFile(frigate, l)).toBe('frigate');
+            expect(beaconArtFile(ship(BuiltObjectSubRole.Cruiser, reclaimers), l)).toBe('cruiser');
             setWatcherFrame('reaper');
             expect(beaconArtFile(watcher, l)).toBe('watcher-reaper');
             expect(beaconArtFile(capital, l)).toBe('capitalship-reaper');
@@ -424,7 +441,7 @@ describe('the Beacon art', () => {
         expect(beaconArtFile(beacon, l)).toBe('beacon');
         expect(isReclaimerHull(ship(BuiltObjectSubRole.Frigate, reclaimers), l)).toBe(true);
         expect(isWatcher(watcher, l)).toBe(true);
-        expect(threatArtUrl(ship(BuiltObjectSubRole.Carrier, reclaimers), l)).toBe(`${BEACON_ART_DIR}carrier.png`);
+        expect(threatArtUrl(ship(BuiltObjectSubRole.Carrier, reclaimers), l)).toBe(`${BEACON_ART_DIR}carrier-fork.png`);
         expect(threatArtUrl(watcher, l)).toBe(`${BEACON_ART_DIR}watcher-fork.png`);
         const none: ThreatLooks = { genFactions: [], worldShips: [], swarmFaction: null, mothercore: null, purifierFaction: null, purifierDock: null };
         expect(beaconLooksActive(none)).toBe(false);
@@ -436,7 +453,7 @@ describe('the Beacon art', () => {
         expect(threatDrawScale(l, watcher)).toBeCloseTo(minimumSizeScale(800, WATCHER_REF_SIZE, WATCHER_VISUAL_SCALE) * WATCHER_FRAME_SCALE.fork, 9);
         expect(threatDrawScale(l, watcher)).toBeGreaterThan(2);
         expect(threatDrawScale(l, beacon)).toBeGreaterThanOrEqual(1);
-        expect(threatDrawScale(l, ship(BuiltObjectSubRole.Cruiser, reclaimers))).toBe(1);
+        expect(threatDrawScale(l, ship(BuiltObjectSubRole.Cruiser, reclaimers))).toBeCloseTo(FORK_FLEET['cruiser-fork'].drawScale, 9);
         expect(minimumSizeScale(1e7, WATCHER_REF_SIZE, WATCHER_VISUAL_SCALE)).toBe(1);
         // the drawn size (∝ sqrt(size) × scale) is the same for any hull below the floor
         const drawn = (size: number): number => Math.sqrt(size) * minimumSizeScale(size, WATCHER_REF_SIZE, WATCHER_VISUAL_SCALE);
@@ -487,7 +504,7 @@ describe('the Beacon art', () => {
     });
 
     it('frames: square, the content box centred, light layers inside their atlas, no markers, no opaque black', () => {
-        for (const [f, art] of [...Object.entries(BEACON_FRAMES), ['watcher', WATCHER_ART] as const, ['watcher-fork', WATCHER_FORK_ART] as const, ['capitalship-fork', CAPITAL_FORK_ART] as const, ['frigate-fork', FRIGATE_FORK_ART] as const]) {
+        for (const [f, art] of [...Object.entries(BEACON_FRAMES), ['watcher', WATCHER_ART] as const, ['watcher-fork', WATCHER_FORK_ART] as const, ...Object.entries(FORK_FLEET)]) {
             const img = decodePng(png(f));
             expect(img.width, f).toBe(art.size);
             expect(img.height, f).toBe(art.size);

@@ -107,8 +107,9 @@ if (process.env.OLDCHAIN) await page.evaluate(async () => Object.assign((await i
 const plan = await page.evaluate(async (who) => {
     const { galaxy } = window.__dwu;
     const roq = await import('/src/sim/readOnlyQuery.ts');
-    const bo = who === 'watcher' ? window.__bc.w1 : who === 'capital' ? window.__bc.made.find((b) => b.subRole === 5) : who === 'frigate' ? window.__bc.made.find((b) => b.subRole === 2) : window.__bc.made[3];
+    const bo = who === 'watcher' ? window.__bc.w1 : who === 'capital' ? window.__bc.made.find((b) => b.subRole === 5) : ({ frigate: 2, destroyer: 3, cruiser: 4, carrier: 7, cattle: 15 })[who] !== undefined ? window.__bc.made.find((b) => b.subRole === ({ frigate: 2, destroyer: 3, cruiser: 4, carrier: 7, cattle: 15 })[who]) : window.__bc.made[3];
     window.__warpBo = bo;
+    if (who === 'cattle') { const ta = await import('/src/render/threatArt.ts'); window.__dwu.galaxy.scenario.state[ta.BEACON_STATE_KEY].cattle = [{ ship: bo }]; }
     // the fork Watcher is sized against its faction's capital design (as tmp-fork-shots.mjs); it starts at rest
     const cap = window.__bc.made.find((b) => b.subRole === 5);
     roq.withSimWrites(() => { if (cap && !bo.actualEmpire.designs.includes(cap.design)) bo.actualEmpire.designs.push(cap.design); bo.currentSpeed = 0; });

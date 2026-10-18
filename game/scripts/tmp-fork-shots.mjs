@@ -108,13 +108,35 @@ await page.evaluate(async () => {
 });
 // SUBJECT=capital: the line-up's capital ship takes the first Watcher's place (the Watcher moved far off) for the
 // close / play stills and the ramp
-if (process.env.SUBJECT === 'capital' || process.env.SUBJECT === 'frigate') await page.evaluate(async (sr) => {
+// SUBJECT: a ship of the line-up (or a cattle ship / harvester base registered in the harvest's records) takes the first
+// Watcher's place (the Watcher moved far off) for the close / play stills and the ramp
+if (process.env.SUBJECT) await page.evaluate(async (subject) => {
     const roq = await import('/src/sim/readOnlyQuery.ts');
+    const ta = await import('/src/render/threatArt.ts');
+    const ev = await import('/src/sim/empireEvents.ts');
+    const own = await import('/src/sim/combat/ownership.ts');
+    const { galaxy } = window.__dwu;
     const { made, w1 } = window.__bc;
-    const cap = made.find((b) => b.subRole === sr);
-    roq.withSimWrites(() => { cap.xpos = w1.xpos; cap.ypos = w1.ypos; w1.xpos += 40000; w1.ypos += 40000; });
+    const SR = { frigate: 2, destroyer: 3, cruiser: 4, capital: 5, carrier: 7, cattle: 15 };
+    const st = galaxy.scenario.state[ta.BEACON_STATE_KEY];
+    let cap;
+    roq.withSimWrites(() => {
+        if (subject === 'harvester') {
+            const f = w1.actualEmpire;
+            const designs = galaxy.empires.flatMap((e) => e.designs);
+            const d = designs.filter((x) => x.role === 8).sort((x, y) => x.size - y.size)[0];
+            cap = ev.generateNewBuiltObject(galaxy, f, d, null, w1.xpos, w1.ypos);
+            own.takeOwnershipOfBuiltObject(galaxy, f, cap, f, false);
+            cap.heading = cap.targetHeading = -Math.PI / 2;
+            st.cores = [{ harvester: cap }];
+        } else {
+            cap = made.find((b) => b.subRole === SR[subject]);
+            if (subject === 'cattle') st.cattle = [{ ship: cap }];
+        }
+        cap.xpos = w1.xpos; cap.ypos = w1.ypos; w1.xpos += 40000; w1.ypos += 40000;
+    });
     window.__bc.w1 = cap;
-}, process.env.SUBJECT === 'frigate' ? 2 : 5);
+}, process.env.SUBJECT);
 const FRAME = process.env.FRAME || 'fork';
 const SCALE = process.env.SCALE ? Number(process.env.SCALE) : undefined;
 console.log('frame', await page.evaluate(async ([f, sc]) => { const ta = await import('/src/render/threatArt.ts'); ta.setWatcherFrame(f, sc); return [ta.getWatcherFrame(), ta.threatDrawScale(ta.threatLooks(window.__dwu.galaxy), window.__bc.w1)]; }, [FRAME, SCALE]));

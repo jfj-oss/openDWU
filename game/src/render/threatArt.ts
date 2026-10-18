@@ -63,8 +63,7 @@ import { GW_CASINO_LOOKS, GW_CASINO_SPR, GW_LIGHTS, GW_LIGHT_KINDS, GW_SANCTUARY
 import { LeviathanRig, leviathanTextures, type LeviathanTextures } from './leviathanRig';
 import { loadLeviathanImages } from './faunaArt';
 import { WATCHER_FORK_ART } from './beaconForkArtData';
-import { CAPITAL_FORK_ART } from './beaconForkCapitalArtData';
-import { FRIGATE_FORK_ART } from './beaconForkFrigateArtData';
+import { FORK_REPLACES, forkFleetArt } from './beaconForkFleet';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Who is who (once per frame)
@@ -84,6 +83,9 @@ export interface ThreatLooks {
     watchers?: BuiltObject[];
     watchersSighted?: BuiltObject[] | null;
     beacon?: BuiltObject | null;
+    /** The Beacon's harvest (beaconHarvest.ts): the cattle ships in flight and the live harvesters over the cores. Optional. */
+    cattleShips?: BuiltObject[];
+    harvesters?: BuiltObject[];
     /** Giantworks: the Great Work sites by their base (scaffold or finished wonder art), and the finished Ultraminds by
      * the planet they wrap (mainView.ts draws the machine shell over it). Optional: absent = none. */
     greatWorks?: Map<BuiltObject, GreatWorkArtSite>;
@@ -109,6 +111,8 @@ const looks: ThreatLooks = {
     watchers: [],
     watchersSighted: null,
     beacon: null,
+    cattleShips: [],
+    harvesters: [],
     greatWorks: new Map(),
     ultramindPlanets: new Map(),
     ultramindLook: new Map(),
@@ -157,6 +161,9 @@ export function forgetUltramindLooks(habitats: readonly Habitat[]): void {
  *   modes nor this list, a Watcher unfolds while it sits still (currentSpeed under 1) and folds when it moves.
  * - beacon: the finished Beacon (the Great Work's station once complete): the relay tower, drawn at least
  *   BEACON_VISUAL_SCALE × a BEACON_REF_SIZE station (the framework's scaffold stages may want the same floor).
+ * - cattle / cores: the harvest's records (beaconHarvest.ts): a cattle ship ({ ship }) and a core's harvester base
+ *   ({ harvester }); in the fork look they draw the cattle ship's and the harvester's frames (other looks: their stock
+ *   Reclaimer / base frames).
  */
 export const BEACON_STATE_KEY = 'beacon';
 export interface BeaconWatcherRecord {
@@ -168,6 +175,8 @@ export interface BeaconArtState {
     watchers?: readonly (BuiltObject | BeaconWatcherRecord | null)[];
     sighted?: readonly BuiltObject[];
     beacon?: BuiltObject | null;
+    cattle?: readonly ({ ship?: BuiltObject | null } | null)[];
+    cores?: readonly ({ harvester?: BuiltObject | null } | null)[];
 }
 /** A Watcher record's modes in which it shows itself open. */
 const WATCHER_OPEN_MODES: ReadonlySet<string> = new Set(['sighting', 'fight']);
@@ -183,6 +192,8 @@ export function threatLooks(galaxy: Galaxy): ThreatLooks {
     looks.watchers!.length = 0;
     looks.watchersSighted = null;
     looks.beacon = null;
+    looks.cattleShips!.length = 0;
+    looks.harvesters!.length = 0;
     const gws = looks.greatWorks!;
     const ums = looks.ultramindPlanets!;
     const dens = looks.casinoDens!;
@@ -236,6 +247,8 @@ export function threatLooks(galaxy: Galaxy): ThreatLooks {
         if (b.sighted !== undefined) for (const w of b.sighted) if (!sightedScratch.includes(w)) sightedScratch.push(w);
         looks.watchersSighted = modes || b.sighted !== undefined ? sightedScratch : null;
         looks.beacon = b.beacon !== undefined && b.beacon !== null && !b.beacon.hasBeenDestroyed ? b.beacon : null;
+        if (Array.isArray(b.cattle)) for (const c of b.cattle) if (c?.ship != null && !c.ship.hasBeenDestroyed) looks.cattleShips!.push(c.ship);
+        if (Array.isArray(b.cores)) for (const c of b.cores) if (c?.harvester != null && !c.harvester.hasBeenDestroyed) looks.harvesters!.push(c.harvester);
     }
     // Giantworks: a finished Great Work whose wonder is the Beacon is the Beacon (its art, size floor and life), unless
     // the Beacon's sim names one itself.
@@ -337,8 +350,13 @@ export function threatDrawScale(l: ThreatLooks, bo: BuiltObject): number {
     if (l.beacon !== undefined && l.beacon !== null && bo === l.beacon) return minimumSizeScale(bo.size, BEACON_REF_SIZE, BEACON_VISUAL_SCALE);
     if (watcherFrame === 'reaper' && beaconLooksActive(l) && beaconArtFile(bo, l) === 'capitalship-reaper') return CAPITAL_REAPER_SCALE;
     // the fork look's capital ship: drawn the old capital frame's length (so the fork Watcher stays FORK_VS_CAPITAL x it)
-    if (watcherFrame === 'fork' && beaconLooksActive(l) && beaconArtFile(bo, l) === 'capitalship-fork') return CAPITAL_FORK_ART.drawScale;
-    if (watcherFrame === 'fork' && beaconLooksActive(l) && beaconArtFile(bo, l) === 'frigate-fork') return FRIGATE_FORK_ART.drawScale;
+    // the fork look's fleet: each frame drawn the length of the Mass Effect frame it replaces (so the fork Watcher stays
+    // FORK_VS_CAPITAL x the capital ship), the harvester base by its own opaque area
+    if (watcherFrame === 'fork' && beaconLooksActive(l)) {
+        const f = beaconArtFile(bo, l);
+        const art = f !== null ? forkFleetArt(f) : null;
+        if (art !== null) return art.drawScale;
+    }
     return 1;
 }
 
@@ -570,11 +588,15 @@ export function setWatcherFrame(f: WatcherFrame, scale: number = WATCHER_FRAME_S
 export function beaconArtFile(bo: BuiltObject, l: ThreatLooks = looks): string | null {
     if (l.beacon !== undefined && l.beacon !== null && bo === l.beacon) return 'beacon';
     if (isWatcher(bo, l)) return WATCHER_FRAME_FILES[watcherFrame];
+    if (watcherFrame === 'fork') {
+        if (l.harvesters !== undefined && l.harvesters.length > 0 && l.harvesters.includes(bo)) return 'harvester-fork';
+        if (l.cattleShips !== undefined && l.cattleShips.length > 0 && l.cattleShips.includes(bo)) return 'cattle-fork';
+    }
     if (!isReclaimerHull(bo, l)) return null;
     const f = bo.isPlanetDestroyer ? 'capitalship' : beaconFileForSubRole(bo.subRole);
-    if (f === 'frigate') return watcherFrame === 'fork' ? 'frigate-fork' : f;
-    if (f !== 'capitalship') return f;
-    return watcherFrame === 'reaper' ? 'capitalship-reaper' : watcherFrame === 'fork' ? 'capitalship-fork' : f;
+    if (f === null) return null;
+    if (watcherFrame === 'fork') return Object.hasOwn(FORK_REPLACES, f) ? FORK_REPLACES[f] : f;
+    return f === 'capitalship' && watcherFrame === 'reaper' ? 'capitalship-reaper' : f;
 }
 
 /** The art URL of a Reclaimer hull, a Watcher (closed) or the Beacon (null: stock art). `l` defaults to the
