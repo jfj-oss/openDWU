@@ -296,6 +296,18 @@ async function main() {
             await shot(page, 'simulation (failed)').catch(() => {});
         }
 
+        // The Introduction window (a modal "Start Playing" panel, shown at every new game) sits over the Main View and intercepts every click
+        // until it is closed; the steps below click the game menu and the HUD, so close it first (it is not under test here).
+        try {
+            const intro = page.locator('button.intro-start');
+            if (await intro.isVisible({ timeout: 2000 }).catch(() => false)) {
+                await intro.click({ timeout: 5000 });
+                await page.waitForSelector('.intro-body', { state: 'detached', timeout: 5000 }).catch(() => {});
+            }
+        } catch (err) {
+            console.log(`  WARN: could not close the Introduction window: ${err instanceof Error ? err.message : err}`);
+        }
+
         // --- Step 5: game menu ---------------------------------------------
         try {
             await page.keyboard.press('Escape');
@@ -382,9 +394,9 @@ async function main() {
         // check presence in the DOM rather than visibility state.
         try {
             const panels = [
-                ['h', '.message-history-wrap'],
+                ['h', '.galactic-history-window'], // H opens the Galactic History / message history screen (galacticHistory.ts)
                 ['F2', '[data-ow="colonies"]'],
-                ['F6', '.empire-summary-wrap'],
+                ['F6', '.es-body'], // the Empire Summary window's body (empireSummary.ts)
             ];
             for (const [key, sel] of panels) {
                 await page.keyboard.press(key);
@@ -412,11 +424,12 @@ async function main() {
                 const d = window.__dwu;
                 const p = d.game.playerEmpire;
                 const before = p.controlResearch;
-                const n = d.commands.log().length;
+                // (With the sim worker commands.log() is a Promise of the worker's log.)
+                const n = (await d.commands.log()).length;
                 d.commands.issue(d.galaxy, p, 'setEmpireControl', ['controlResearch', !before]);
                 const t0 = performance.now();
-                while (d.commands.log().length === n && performance.now() - t0 < 10000) await new Promise((r) => setTimeout(r, 50));
-                const e = d.commands.log()[n];
+                while ((await d.commands.log()).length === n && performance.now() - t0 < 10000) await new Promise((r) => setTimeout(r, 50));
+                const e = (await d.commands.log())[n];
                 const after = p.controlResearch;
                 d.commands.issue(d.galaxy, p, 'setEmpireControl', ['controlResearch', before]);
                 return { landed: after === !before, op: e?.op, nowMs: e?.nowMs };
