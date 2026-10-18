@@ -166,6 +166,7 @@ export function aiReview(galaxy: Galaxy, work: GreatWorkRecord, e: Empire): AiAc
         return action;
     }
     let ok = false;
+    if (action === 'destroy' && work.captureBy === e.empireId) return 'none'; // it chose to take it by ground war instead (capture.ts)
     if (action === 'destroy') ok = sendStrike(galaxy, work, e);
     else if (action === 'sabotage') {
         const lastSpy = prev !== undefined && prev.action === 'sabotage' ? prev.since : -1;

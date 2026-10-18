@@ -38,6 +38,7 @@ import './threats/giantworks/casino';
 import './threats/giantworks/ultramind';
 import './threats/giantworks/sanctuary';
 import './threats/giantworks/ark';
+import './threats/giantworks/capture'; // Giantworks: taking a finished Great Work by ground war
 import './threats/probeSwarm';
 import './threats/voidWhale';
 import './threats/hollowFleet';

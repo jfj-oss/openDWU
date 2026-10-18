@@ -230,6 +230,16 @@ import { ARK_KEY, arkAiChoice, arkParam, arkFightsAgainst, arkLooks, arkPeriodic
 import { breakShields, shieldBreakOf, shieldScheduleFraction, stepShields } from '../src/sim/scenario/threats/giantworks/shields';
 import { warpSpeedWithBonuses } from '../src/sim/movement';
 import { Population } from '../src/sim/population';
+import { CAPTURE_KEY, INVADE_ACTION, keepsFiring, aiQuietChoice, capturableWork, captureForces, captureParam, capturePeriodic, captureRecOf, garrisonSize, mayInvade, peekCaptureState, stepCapture, type CaptureRec } from '../src/sim/scenario/threats/giantworks/capture';
+import { buildGreatWorkGroundReport } from '../src/ui/screens/groundReportModel';
+import { generateNewTroop } from '../src/sim/builtObjectPlacement';
+import { loadTroopsOnto } from '../src/sim/scenario/threats/framework';
+import { TroopType } from '../src/sim/cargo';
+import { ComponentStatus } from '../src/sim/builtObjectComponent';
+import { empireShipGroups } from '../src/sim/fleets/shipGroup';
+import { aiReview } from '../src/sim/scenario/threats/giantworks/ai';
+import { ShipGroup } from '../src/sim/fleets/shipGroup';
+import { FleetPosture } from '../src/sim/diplomacyTick';
 
 
 let base: GameData;
@@ -3843,6 +3853,372 @@ describe('giantworks', () => {
         expect(warpSpeedWithBonuses(lrec.ship!)).toBeLessThanOrEqual(Math.trunc(lrec.ship!.warpSpeed * 0.51));
         expect(w.base).toBe(ark);
         expect(greatWorks(lg)[0].base).toBe(lrec.ship);
+    }, 3600000);
+
+    // ---------------------------------------------------------------------------------------------------------------
+    // Taking a Great Work by ground war (giantworks/capture.ts)
+    // ---------------------------------------------------------------------------------------------------------------
+
+    /** A finished work (a throw-away kind unless `kind`), its capture record made by the first step. */
+    function captureOpen(params: Record<string, number> = {}, flags: Record<string, boolean> = {}, kind = 'gwtest-a'): { g: Galaxy; w: GreatWorkRecord; rec: CaptureRec; base: BuiltObject; game: Game; gameData: GameData } {
+        const { g, w, game, gameData } = building(params, flags, kind);
+        addProgress(g, w, 2);
+        expect(w.phase).toBe('complete');
+        capturePeriodic(g);
+        const rec = captureRecOf(g, w.id)!;
+        expect(rec).not.toBeNull();
+        return { g, w, rec, base: w.base!, game, gameData };
+    }
+    /** A troop transport of `e` at (x, y) with `n` infantry troops of `strength` aboard (the index rebuilt so range scans see it). */
+    function troopShip(g: Galaxy, e: Empire, x: number, y: number, n: number, strength = 100): BuiltObject {
+        const d = generateDesignFromSpec(g, e, galaxyDesignSpecificationBySubRole(BuiltObjectSubRole.TroopTransport)!, 0, galaxyStarDate(g))!;
+        const bo = generateNewBuiltObject(g, e, d, null, x, y);
+        takeOwnershipOfBuiltObject(g, e, bo, e, false);
+        bo.xpos = x;
+        bo.ypos = y;
+        loadTroopsOnto(bo, e, Array.from({ length: n }, (_, i) => generateNewTroop(`Test troop ${i}`, TroopType.Infantry, strength, e, e.dominantRace, true)));
+        rebuildIndexes(g);
+        return bo;
+    }
+    /** A warship of `e` at (x, y). */
+    function warship(g: Galaxy, e: Empire, x: number, y: number): BuiltObject {
+        const d = generateDesignFromSpec(g, e, galaxyDesignSpecificationBySubRole(BuiltObjectSubRole.Destroyer)!, 0, galaxyStarDate(g))!;
+        const bo = generateNewBuiltObject(g, e, d, null, x, y);
+        takeOwnershipOfBuiltObject(g, e, bo, e, false);
+        bo.xpos = x;
+        bo.ypos = y;
+        rebuildIndexes(g);
+        return bo;
+    }
+    /** The shields are shot down: the next step opens the window. */
+    function breach(g: Galaxy, w: GreatWorkRecord, rec: CaptureRec): void {
+        w.base!.currentShields = 0;
+        stepCapture(g, w, rec, galaxyStarDate(g));
+        expect(rec.breachedAt).toBeGreaterThanOrEqual(0);
+    }
+    /** Fights the ground war on in 5-day steps until it ends (at most `steps`). */
+    function fight(g: Galaxy, w: GreatWorkRecord, rec: CaptureRec, steps = 200): void {
+        for (let i = 0; i < steps && rec.invaders.count > 0; i++) {
+            rec.battleAt = galaxyStarDate(g) - 5 * GAME_DAY_LENGTH;
+            stepCapture(g, w, rec, galaxyStarDate(g));
+        }
+    }
+
+    it('capture: a finished wonder is plated to about 30,000 shields and garrisoned per wonder; add-on off leaves no state', () => {
+        const { g, w, rec, base } = captureOpen();
+        expect(rec.plated).toBe(true);
+        expect(base.shieldsCapacity).toBeGreaterThan(27000);
+        expect(base.shieldsCapacity).toBeLessThan(40000);
+        expect(base.currentShields).toBe(base.shieldsCapacity);
+        expect(base.actualEmpire).toBe(compactFaction(g));
+        expect(base.firepowerRaw).toBeGreaterThan(0);
+        expect(rec.garrison.count).toBe(garrisonSize(g, w.wonder));
+        expect(garrisonSize(g, w.wonder)).toBe(captureParam(g, 'gwCaptureGarrisonOther'));
+        for (const t of rec.garrison.items) {
+            expect(t.empire).toBe(compactFaction(g));
+            expect(t.maintenanceMultiplier).toBe(0);
+            expect(t.readiness).toBe(100);
+            expect(t.overallDefendStrength).toBeGreaterThan(0);
+        }
+        expect(rec.garrison.items.some((t) => t.type === TroopType.Armored)).toBe(true);
+        expect(garrisonSize(g, 'casino')).toBe(8);
+        expect(garrisonSize(g, 'ultramind')).toBe(10);
+        expect(garrisonSize(g, 'sanctuary')).toBe(6);
+        expect(garrisonSize(g, 'ark')).toBe(14);
+        expect(captureParam(g, 'gwCaptureShields')).toBe(30000);
+        expect(captureParam(g, 'gwCaptureRechargeDays')).toBe(360);
+        for (const tag of ['Giantworks Capture Breach News', 'Giantworks Capture Captured News', 'Giantworks Capture Action Invade', 'Reputation Cause giantworks.capture']) expect(tryGetText(tag)).not.toBeNull();
+        // Whole shields: no window, nothing to land on.
+        expect(rec.breachedAt).toBe(-1);
+        expect(rec.landingOpen).toBe(false);
+        // They refill from empty over gwCaptureRechargeDays (a year: capacity / 600 game seconds), and not at all under fire.
+        expect(base.shieldRechargeRate).toBeCloseTo(base.shieldsCapacity / 600, 3);
+        base.currentShields -= 1000;
+        stepCapture(g, w, rec, galaxyStarDate(g));
+        expect(base.shieldRechargeRate).toBe(0);
+        expect(rec.breachedAt).toBe(-1); // dented, not broken
+        rec.lastHit = galaxyStarDate(g) - 3 * GAME_DAY_LENGTH;
+        stepCapture(g, w, rec, galaxyStarDate(g));
+        expect(base.shieldRechargeRate).toBeCloseTo(base.shieldsCapacity / 600, 3);
+        // The Beacon is never capturable (it is the Reclaimers' own relay).
+        expect(capturableWork({ ...w, wonder: 'beacon' } as GreatWorkRecord)).toBe(false);
+        expect(capturableWork(w)).toBe(true);
+        // The Compact never sells it in a trade deal (stock tradeable bases); an empire holding it may.
+        const e = actors(g)[0];
+        expect(scenarioQuery(g, 'baseTradeable', true, { base, giver: compactFaction(g)!, receiver: e })).toBe(false);
+        expect(scenarioQuery(g, 'baseTradeable', true, { base, giver: e, receiver: actors(g)[1] })).toBe(true);
+        const off = gw({ threatGiantworks: false });
+        capturePeriodic(off);
+        expect(peekCaptureState(off)).toBeNull();
+    }, 1800000);
+
+    it('capture: broken shields open a one-year landing window; a share of the weapons fires, sparing troop carriers while any other hostile ship is in range, and the Compact answers the attacker', () => {
+        const { g, w, rec, base } = captureOpen();
+        const e = actors(g)[0];
+        const compact = compactFaction(g)!;
+        breach(g, w, rec);
+        const sched = shieldBreakOf(g, base)!;
+        expect(sched.days).toBe(360);
+        expect(rec.landingOpen).toBe(true);
+        // Only gwCaptureBreachedWeaponsPct % of the weapons may fire (the rest are held a day ahead).
+        const ws = base.weapons;
+        const share = captureParam(g, 'gwCaptureBreachedWeaponsPct') / 100;
+        const firing = ws.filter((x) => x.lastFired <= g.nowMs);
+        expect(firing.length).toBe(ws.filter((_, i) => keepsFiring(i, share)).length);
+        expect(Math.abs(firing.length - ws.length * share)).toBeLessThanOrEqual(1);
+        // Spread through the list, so every kind of gun keeps its share.
+        for (const type of new Set(ws.map((x) => x.component.type))) {
+            const all = ws.filter((x) => x.component.type === type).length;
+            if (all >= 5) expect(firing.filter((x) => x.component.type === type).length).toBeGreaterThan(0);
+        }
+        // Half a year on the stock recharge cannot beat the schedule: the window is still open.
+        sched.brokenAt = galaxyStarDate(g) - 180 * GAME_DAY_LENGTH;
+        base.currentShields = base.shieldsCapacity;
+        stepShields(g);
+        expect(base.currentShields / base.shieldsCapacity).toBeCloseTo(0.5, 1);
+        stepCapture(g, w, rec, galaxyStarDate(g));
+        expect(rec.landingOpen).toBe(true);
+        // An attacker's warship and its troop carrier near the base: the carrier is spared while the warship is there.
+        scenarioEmit(g, 'builtObjectAttacked', { builtObject: base, attacker: base, attackingEmpire: e });
+        const war = warship(g, e, base.xpos + 600, base.ypos);
+        const carrier = troopShip(g, e, base.xpos - 600, base.ypos, 2);
+        stepCapture(g, w, rec, galaxyStarDate(g));
+        expect(rec.sparesTroopers).toBe(true);
+        expect(scenarioQuery(g, 'builtObjectSparesStaticTarget', false, { builtObject: base, target: carrier })).toBe(true);
+        expect(scenarioQuery(g, 'builtObjectSparesStaticTarget', false, { builtObject: base, target: war })).toBe(false);
+        expect(scenarioQuery(g, 'attackWithoutWar', false, { empire: compact, target: e })).toBe(true); // it answers the whole fleet in range
+        expect(scenarioQuery(g, 'attackWithoutWar', false, { empire: compact, target: actors(g)[1] })).toBe(false);
+        // The carrier alone: it is fair game.
+        builtObjectCompleteTeardown(g, war);
+        rebuildIndexes(g);
+        stepCapture(g, w, rec, galaxyStarDate(g));
+        expect(rec.sparesTroopers).toBe(false);
+        expect(scenarioQuery(g, 'builtObjectSparesStaticTarget', false, { builtObject: base, target: carrier })).toBe(false);
+        // A year on, the shields are whole: the window closes, the weapons all fire again (no more held).
+        sched.brokenAt = galaxyStarDate(g) - 361 * GAME_DAY_LENGTH;
+        stepShields(g);
+        stepCapture(g, w, rec, galaxyStarDate(g));
+        expect(rec.breachedAt).toBe(-1);
+        expect(rec.landingOpen).toBe(false);
+        expect(scenarioQuery(g, 'attackWithoutWar', false, { empire: compact, target: e })).toBe(false);
+        expect(rec.stats.breaches).toBe(1);
+    }, 1800000);
+
+    it('capture: at half its components damaged its guns fall silent; a Smarter AI attacker then invades when it has the troops and destroys it when it has not', () => {
+        const { g, w, rec, base } = captureOpen();
+        breach(g, w, rec);
+        const comps = base.components.items;
+        for (let i = 0; i < Math.ceil(comps.length * 0.5); i++) comps[i].status = ComponentStatus.Damaged;
+        base.reDefine();
+        stepCapture(g, w, rec, galaxyStarDate(g));
+        expect(rec.quiet).toBe(true);
+        expect(base.weapons.every((x) => x.lastFired > g.nowMs)).toBe(true); // all silent
+        // An AI attacker without troops in reach destroys it; one with plenty invades.
+        const ai = actors(g).filter((e) => !isHumanEmpire(g, e));
+        const [poor, rich] = ai;
+        for (const e of [poor, rich]) for (const sg of empireShipGroups(e)) if (sg !== null) for (const b of sg.ships) if (b.troops !== null) b.troops.clear();
+        // The rich empire's troop fleet: a transport with 40 strong troops, a fleet of its own, near the work.
+        const ship = troopShip(g, rich, base.xpos + 20000, base.ypos, 40, 300);
+        const fleet = new ShipGroup(g);
+        fleet.empire = rich;
+        fleet.posture = FleetPosture.Attack;
+        fleet.ships.push(ship);
+        fleet.leadShip = ship;
+        ship.shipGroup = fleet;
+        empireShipGroups(rich).push(fleet);
+        ship.isAutoControlled = true;
+        expect(fleet.leadShip).toBe(ship);
+        expect(aiQuietChoice(g, w, rec, poor).choice).toBe('destroy');
+        const q = aiQuietChoice(g, w, rec, rich);
+        expect(q.troops).toBeGreaterThan(q.need);
+        expect(q.choice).toBe('capture');
+        // The choice is made once per window, at the quiet point, for each attacker (deterministically).
+        rec.hostiles[poor.empireId] = galaxyStarDate(g);
+        rec.hostiles[rich.empireId] = galaxyStarDate(g);
+        rec.aiAt = -Infinity;
+        stepCapture(g, w, rec, galaxyStarDate(g));
+        expect(rec.plans[poor.empireId]).toBe('destroy');
+        expect(rec.plans[rich.empireId]).toBe('capture');
+        expect(rec.campaign?.empire).toBe(rich);
+        expect(rec.campaign?.stage).toBe('capture');
+        expect(w.captureBy).toBe(rich.empireId); // its destroy strikes stop (ai.ts, ark.ts)
+        expect(aiReview(g, w, rich)).toBe('none');
+        expect(rec.stats.aiCapture).toBe(1);
+        expect(rec.stats.aiDestroy).toBe(1);
+    }, 1800000);
+
+    it('capture: troops land within the window and win the ground war by the stock maths; the work and its benefits pass to the captor, every empire thinks less of it, and it is no war crime', () => {
+        const { g, w, rec, base } = captureOpen();
+        const e = g.playerEmpire!;
+        const witness = actors(g).find((x) => x !== e)!;
+        breach(g, w, rec);
+        // A player's troop ship far away does not land; ordered to attack the work with its troops and close by, it does.
+        const near = troopShip(g, e, base.xpos + 500, base.ypos, 30, 250);
+        expect(availableThreatActions(g, e, base).map((a) => a.kind)).toContain(INVADE_ACTION);
+        stepCapture(g, w, rec, galaxyStarDate(g));
+        expect(rec.invaders.count).toBe(0); // no order naming the work
+        expect(scenarioQuery(g, 'virtualInvasionTargets', [], { empire: e, x: base.xpos, y: base.ypos, range: 5000 })).toEqual([base]);
+        assignMission(g, near, BuiltObjectMissionType.Attack, base, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
+        stepCapture(g, w, rec, galaxyStarDate(g));
+        expect(rec.invaders.count).toBe(30);
+        expect(rec.invader).toBe(e);
+        expect(near.troops!.count).toBe(0);
+        expect(rec.stats.landings).toBe(1);
+        // The forces: the stock troop matchups and Space Control (the guns still fire: the defenders hold the space).
+        const f = captureForces(g, rec);
+        expect(f.attackingStrength).toBeGreaterThan(f.defendingStrength);
+        expect(f.defend.reasons).toContain('Space Control');
+        // Only one invader at a time.
+        const other = actors(g).find((x) => x !== e && x !== witness)!;
+        expect(mayInvade(g, rec, other)).toBe(false);
+        const before = obtainEmpireEvaluation(g, witness, e).incidentEvaluation;
+        fight(g, w, rec);
+        expect(rec.stats.captured).toBe(1);
+        expect(base.actualEmpire).toBe(e);
+        expect(w.holder).toBe(e);
+        expect(greatWorkBeneficiary(g, w)).toBe(e);
+        expect(greatWorkShares(g, w)).toEqual([{ empire: e, share: 1, role: 'owner' }]);
+        expect(rec.garrison.count).toBeGreaterThan(0);
+        for (const t of rec.garrison.items) expect(t.empire).toBe(e);
+        expect(rec.invaders.count).toBe(0);
+        expect(obtainEmpireEvaluation(g, witness, e).incidentEvaluation).toBeLessThan(before);
+        expect(warCrimesRecord(g, e)?.counts.greatWork ?? 0).toBe(0);
+        expect(rec.captures[0].by).toBe(e.name);
+        // Destroyed after the capture: the record lets go.
+        base.hasBeenDestroyed = true;
+        stepCapture(g, w, rec, galaxyStarDate(g));
+        expect(rec.base).toBeNull();
+    }, 1800000);
+
+    it('capture: too few troops are wiped out by the garrison, which then regrows; the window closing stops new landings', () => {
+        const { g, w, rec, base } = captureOpen();
+        const e = g.playerEmpire!;
+        breach(g, w, rec);
+        const near = troopShip(g, e, base.xpos + 500, base.ypos, 1, 20);
+        expect(runThreatAction(g, e, INVADE_ACTION, base)).toBe(true);
+        expect(rec.invaders.count).toBe(1);
+        fight(g, w, rec);
+        expect(rec.stats.repelled).toBe(1);
+        expect(rec.invader).toBeNull();
+        expect(base.actualEmpire).toBe(compactFaction(g));
+        expect(e.troops.items.some((t) => t.name === 'Test troop 0')).toBe(false); // dead troops leave the empire's list
+        // The garrison lost troops and regrows one at a time.
+        rec.garrison.items.splice(0, 3);
+        const n = rec.garrison.count;
+        rec.regrowAt = 0;
+        stepCapture(g, w, rec, galaxyStarDate(g));
+        expect(rec.garrison.count).toBe(n + 1);
+        // The window closes: troops near it no longer land.
+        shieldBreakOf(g, base)!.brokenAt = galaxyStarDate(g) - 361 * GAME_DAY_LENGTH;
+        stepShields(g);
+        stepCapture(g, w, rec, galaxyStarDate(g));
+        loadTroopsOnto(near, e, [generateNewTroop('Late troop', TroopType.Infantry, 100, e, e.dominantRace, true)]);
+        expect(runThreatAction(g, e, INVADE_ACTION, base)).toBe(false);
+        expect(rec.invaders.count).toBe(0);
+    }, 1800000);
+
+    it('capture: the Ark flees once and can be captured at its escape system while its shields are down; it does not flee again there', () => {
+        const a = arkOpen();
+        const { g, w, rec: ark } = a;
+        capturePeriodic(g);
+        const rec = captureRecOf(g, w.id)!;
+        expect(rec.base).toBe(a.ark);
+        expect(rec.garrison.count).toBe(14);
+        const e = g.playerEmpire!;
+        arkSeed(g);
+        const t = arkAtColony(a);
+        attack(g, a, actors(g).find((x) => x !== t.empire)!);
+        a.ark.currentShields = 0;
+        arkPeriodic(g);
+        expect(ark.phase).toBe('escaping');
+        capturePeriodic(g);
+        expect(rec.breachedAt).toBeGreaterThanOrEqual(0); // the weapons share applies on the way
+        expect(rec.landingOpen).toBe(false); // but nobody lands on a ship in flight
+        const star = ark.escapeStar!;
+        a.ark.xpos = star.xpos;
+        a.ark.ypos = star.ypos;
+        arkPeriodic(g);
+        expect(ark.phase).toBe('repairing');
+        capturePeriodic(g);
+        expect(rec.landingOpen).toBe(true);
+        // Found and attacked again at the escape system it stays (crippled) where troops can reach it.
+        attack(g, a, e);
+        ark.lastEscape = galaxyStarDate(g) - 40 * GAME_DAY_LENGTH;
+        arkPeriodic(g);
+        expect(ark.phase).toBe('repairing');
+        expect(ark.escapeStar).toBe(star);
+        rebuildIndexes(g);
+        troopShip(g, e, a.ark.xpos + 500, a.ark.ypos, 40, 300);
+        expect(runThreatAction(g, e, INVADE_ACTION, a.ark)).toBe(true);
+        fight(g, w, rec);
+        expect(rec.stats.captured).toBe(1);
+        expect(a.ark.actualEmpire).toBe(e);
+        arkPeriodic(g);
+        expect(ark.phase).toBe('seized'); // the Ark's own rule for a new holder: it stops roaming, its people stay aboard
+        expect(ark.seizedBy).toBe(e);
+    }, 3600000);
+
+    it('capture: the Ground Report shows a Great Work\'s ground war in the stock view (its garrison, the invaders, the base in orbit, the strengths)', () => {
+        const { g, w, rec, base } = captureOpen();
+        const e = g.playerEmpire!;
+        breach(g, w, rec);
+        troopShip(g, e, base.xpos + 500, base.ypos, 6, 150);
+        expect(runThreatAction(g, e, INVADE_ACTION, base)).toBe(true);
+        const m = buildGreatWorkGroundReport({ galaxy: g, base, panelSize: 0 })!;
+        expect(m).not.toBeNull();
+        expect(m.items.filter((i) => i.kind === 'defendingTroop')).toHaveLength(rec.garrison.count);
+        expect(m.items.filter((i) => i.kind === 'invadingTroop')).toHaveLength(6);
+        expect(m.items.filter((i) => i.kind === 'base').map((i) => i.obj)).toEqual([base]);
+        expect(m.items.some((i) => i.kind === 'population' || i.kind === 'facility')).toBe(false);
+        expect(m.texts.some((t) => t.text === compactFaction(g)!.name)).toBe(true);
+        expect(m.texts.some((t) => t.text === e.name)).toBe(true);
+        const f = captureForces(g, rec);
+        expect(m.defendingStrength).toBe(f.defendingStrength);
+        expect(m.attackingStrength).toBe(f.attackingStrength);
+        expect(m.statusBar).not.toBeNull();
+        expect(m.shield).toBeNull(); // the shields are down
+        for (const it of m.items) {
+            expect(it.rect.x).toBeGreaterThanOrEqual(0);
+            expect(it.rect.x + it.rect.w).toBeLessThanOrEqual(m.size.w);
+            expect(it.rect.y + it.rect.h).toBeLessThanOrEqual(m.size.h);
+        }
+    }, 1800000);
+
+    it('capture: save and load keep the window, the garrison, the invaders and the campaign; a save from before the feature gets it on load', () => {
+        const { g, w, rec, base, game, gameData } = captureOpen();
+        const e = g.playerEmpire!;
+        breach(g, w, rec);
+        troopShip(g, e, base.xpos + 500, base.ypos, 5, 150);
+        expect(runThreatAction(g, e, INVADE_ACTION, base)).toBe(true);
+        const time = new GalaxyTime();
+        time.bindGalaxy(g);
+        const text = serializeGame(game, time, {} as StartGameOptions);
+        const lg = deserializeGame(text, gameData).game.galaxy;
+        const lrec = captureRecOf(lg, w.id)!;
+        expect(lrec.base!.builtObjectID).toBe(base.builtObjectID);
+        expect(lrec.breachedAt).toBe(rec.breachedAt);
+        expect(lrec.garrison.count).toBe(rec.garrison.count);
+        expect(lrec.invaders.items.map((t) => t.name)).toEqual(rec.invaders.items.map((t) => t.name));
+        expect(lrec.invader!.empireId).toBe(e.empireId);
+        expect(shieldBreakOf(lg, lrec.base!)?.days).toBe(360);
+        expect(lrec.base!.shieldsCapacity).toBe(base.shieldsCapacity);
+        // Both copies fight on identically.
+        rec.battleAt = lrec.battleAt = galaxyStarDate(g) - 5 * GAME_DAY_LENGTH;
+        stepCapture(g, w, rec, galaxyStarDate(g));
+        stepCapture(lg, greatWorks(lg)[0], lrec, galaxyStarDate(lg));
+        expect(lrec.invaders.items.map((t) => t.readiness)).toEqual(rec.invaders.items.map((t) => t.readiness));
+        expect(lrec.garrison.items.map((t) => t.readiness)).toEqual(rec.garrison.items.map((t) => t.readiness));
+        // A save made before the feature: no capture state; the first step after loading plates and garrisons the work.
+        const old = captureOpen();
+        delete old.g.scenario!.state[CAPTURE_KEY];
+        const t2 = new GalaxyTime();
+        t2.bindGalaxy(old.g);
+        const og = deserializeGame(serializeGame(old.game, t2, {} as StartGameOptions), old.gameData).game.galaxy;
+        expect(peekCaptureState(og)).toBeNull();
+        capturePeriodic(og);
+        const orec = captureRecOf(og, greatWorks(og)[0].id)!;
+        expect(orec.plated).toBe(true);
+        expect(orec.garrison.count).toBe(garrisonSize(og, greatWorks(og)[0].wonder));
     }, 3600000);
 });
 

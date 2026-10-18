@@ -311,6 +311,27 @@
     { "name": "gwArkDestroyRep", "label": "The Ark: standing every empire loses toward whoever destroys it", "default": 25, "min": 0, "max": 1000 },
     { "name": "gwArkAiMarginPct", "label": "The Ark: an AI empire attacks it only when its military reaches this % of the Ark's strength rating (shields and armour hold it up far more than the rating says)", "default": 300, "min": 10, "max": 1000 },
     { "name": "gwArkAiReviewDays", "label": "The Ark: days between an AI owner's strikes", "default": 60, "min": 10, "max": 3600 },
-    { "name": "gwArkAiAttackAggression", "label": "The Ark: aggression (per 100) above which a strong AI empire attacks it", "default": 20, "min": -100, "max": 100 }
+    { "name": "gwArkAiAttackAggression", "label": "The Ark: aggression (per 100) above which a strong AI empire attacks it", "default": 20, "min": -100, "max": 100 },
+    { "name": "gwCaptureShields", "label": "Capture: the shields a finished Great Work's base is plated to (the Ark Engine has its own)", "default": 30000, "min": 0, "max": 200000 },
+    { "name": "gwCaptureRechargeDays", "label": "Capture: days its shields take to refill from empty (they do not refill under fire); once broken, the window in which troops can land on it", "default": 360, "min": 10, "max": 3600 },
+    { "name": "gwCaptureBreachedWeaponsPct", "label": "Capture: % of its weapons that keep firing while its shields are down (they spare troop carriers while any other hostile ship is in range)", "default": 40, "min": 0, "max": 100 },
+    { "name": "gwCaptureQuietDamagePct", "label": "Capture: % of its components damaged at which its guns fall silent (the AI then chooses: invade or destroy)", "default": 50, "min": 1, "max": 100 },
+    { "name": "gwCaptureGarrisonCasino", "label": "Capture: troops guarding the Gilded Orbit", "default": 8, "min": 1, "max": 200 },
+    { "name": "gwCaptureGarrisonUltramind", "label": "Capture: troops guarding the Ultramind (its battle robots)", "default": 10, "min": 1, "max": 200 },
+    { "name": "gwCaptureGarrisonSanctuary", "label": "Capture: troops guarding the Leviathan Sanctuary", "default": 6, "min": 1, "max": 200 },
+    { "name": "gwCaptureGarrisonArk", "label": "Capture: troops guarding the Ark Engine", "default": 14, "min": 1, "max": 200 },
+    { "name": "gwCaptureGarrisonOther", "label": "Capture: troops guarding any other wonder", "default": 8, "min": 1, "max": 200 },
+    { "name": "gwCaptureTroopStrengthPct", "label": "Capture: a garrison troop's strength, % of its race's troop strength", "default": 100, "min": 10, "max": 1000 },
+    { "name": "gwCaptureGarrisonRegrowDays", "label": "Capture: days for the garrison to raise one more troop while nobody fights on it", "default": 30, "min": 1, "max": 3600 },
+    { "name": "gwCaptureRep", "label": "Capture: standing every empire loses toward the empire that takes a Great Work (not a war crime)", "default": 8, "min": 0, "max": 1000 },
+    { "name": "gwCaptureCompactRep", "label": "Capture: ...and the Compact's regard lost", "default": 10, "min": 0, "max": 1000 },
+    { "name": "gwCaptureAiReviewDays", "label": "Capture: days between an AI empire's looks at a Great Work it might take", "default": 30, "min": 1, "max": 3600 },
+    { "name": "gwCaptureAiSeizePct", "label": "Capture: an AI empire sets out to take a finished Great Work at this score (per 100: the wonder's value, aggression, less friendliness and caution)", "default": 70, "min": 0, "max": 300 },
+    { "name": "gwCaptureAiStrikeMarginPct", "label": "Capture: an AI strike at a Great Work is this % of its strength rating (its whole shields counted)", "default": 250, "min": 10, "max": 1000 },
+    { "name": "gwCaptureAiStrikeFleets", "label": "Capture: fleets an AI empire may send at once against a Great Work's shields", "default": 3, "min": 1, "max": 10 },
+    { "name": "gwCaptureAiTroopMarginPct", "label": "Capture: troops an AI empire brings, % of the garrison's defence", "default": 200, "min": 10, "max": 1000 },
+    { "name": "gwCaptureAiCapturePct", "label": "Capture: at the quiet point an AI attacker invades at this score (per 100: value, troops in reach, the price of destroying it, less aggression), else destroys it", "default": 75, "min": 0, "max": 300 },
+    { "name": "gwCaptureAiCampaignYears", "label": "Capture: years an AI empire keeps at a Great Work whose shields hold", "default": 3, "min": 0.1, "max": 50 },
+    { "name": "gwCaptureAiCooldownYears", "label": "Capture: years before an AI empire that gave up tries the same Great Work again", "default": 3, "min": 0, "max": 50 }
   ]
 }

@@ -50,6 +50,7 @@ import type { ConstructionQueue } from '../sim/construction/constructionQueue';
 import { builtObjectImageUrl, resolveDrawPictureRef } from '../render/builtObjectLayer';
 import { threatArtUrl } from '../render/threatArt';
 import { directiveView } from '../sim/scenario/threats/giantworks/ultramind';
+import { captureView } from '../sim/scenario/threats/giantworks/capture';
 import { fighterImageUrl } from '../render/fighterLayer';
 import { FighterMissionType, Fighter, captainFightersBonus } from '../sim/combat/fighters';
 import { CharacterRole, CharacterSkillType } from '../sim/characters';
@@ -499,6 +500,18 @@ function directiveRows(galaxy: Galaxy, bo: BuiltObject, viewer: Empire): InfoRow
     return [label('Directive', [txt(state)], { title: `The Ultramind works on one directive at a time (${who}).` })];
 }
 
+/** Giantworks capture (not in the original): a Great Work's ground war line (one short line; the details in its hint). */
+function captureRows(galaxy: Galaxy, bo: BuiltObject, viewer: Empire): InfoRow[] {
+    const v = galaxy.scenario === null ? null : captureView(galaxy, bo, viewer);
+    if (v === null || (!v.breached && v.rec.invaders.count === 0)) return [];
+    const fighting = v.rec.invaders.count > 0;
+    const head = fighting ? `${v.rec.invaders.count} vs ${v.rec.garrison.count} troops` : `garrison ${v.rec.garrison.count}`;
+    const tail = v.landingOpen ? `, ${v.windowDays}d to land` : v.breached ? ', shields down' : '';
+    const who = fighting ? `${v.invader?.name ?? '?'} has ${v.rec.invaders.count} troops on it against a garrison of ${v.rec.garrison.count}. ` : `A garrison of ${v.rec.garrison.count} troops holds it. `;
+    const window = v.breached ? `Its shields are down for ${v.windowDays} more days${v.landingOpen ? ': troops can land (Invade, or order troop ships to attack it)' : ''}. ` : '';
+    return [label('Ground war', [txt(`${head}${tail}${v.quiet ? ', guns silent' : ''}`, fighting ? SUPPLY_SHORT : undefined)], { title: `${who}${window}"[" or the Ground Report button shows the fight.` })];
+}
+
 /** A player colony short of luxuries: its luxury count against what development needs, and what is not coming. */
 function luxuryRow(ctx: InfoContext, h: Habitat): InfoRow | null {
     if (!supplyChainEnabled()) return null;
@@ -799,6 +812,7 @@ export function builtObjectInfo(ctx: InfoContext, bo: BuiltObject, extended = fa
     }
     for (const r of threatRows(bo, player)) rows.push(label(r.label, [txt(r.value)]));
     rows.push(...directiveRows(galaxy, bo, player)); // Giantworks: the Ultramind's directive
+    rows.push(...captureRows(galaxy, bo, player)); // Giantworks: a Great Work's ground war
     // [veterans] the crew's rank and battles survived (only with the add-on: the record exists only then).
     const vet = known ? veteranShipLabel(galaxy, bo) : null;
     if (vet !== null) {

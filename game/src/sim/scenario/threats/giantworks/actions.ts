@@ -8,7 +8,9 @@
 //   Destroy  - the scaffold or the finished wonder is destroyed by ships (stock combat: a mission Attack on a base needs no war).
 //              A war crime ('greatWork', war-crimes add-on) unless the Diet has passed "Authorise demolition" or the finished
 //              wonder turned hostile; the Compact's anger rises either way;
-//   Seize    - the finished wonder's base changes owner by stock boarding: its holder changes, a crime unless hostile / authorised.
+//   Seize    - the finished wonder's base changes owner by stock boarding: its holder changes, a crime unless hostile / authorised;
+//   Capture  - troops land on the finished wonder while its shields are down and win the ground war (capture.ts): its holder
+//              changes too, never a crime, but every empire thinks less of the captor.
 // Attacks on convoys count as the existing 'independents' crime (once per ship) and anger the Compact.
 // Rnd: none.
 
@@ -206,6 +208,7 @@ function onOwnerChanged(galaxy: Galaxy, bo: BuiltObject, to: Empire | null): voi
     }
     if (w.holder === to) return;
     w.holder = to;
+    if (w.captureTransfer === true) return; // taken by ground war (capture.ts): no crime; capture.ts sends the news and the standing loss
     logGw(galaxy, galaxyStarDate(galaxy), `work ${w.id} seized by ${to.name}`);
     if (isActor(galaxy, to) && !w.hostile && !demolitionAuthorised(galaxy)) {
         addAnger(w, to, gwParam(galaxy, 'giantworksAngerDestroy') / 2);

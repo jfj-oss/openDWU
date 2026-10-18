@@ -104,6 +104,12 @@ export interface GreatWorkRecord extends GreatWorkSite, ThreatSite {
     aiNext: Record<string, number>;
     aiPlan: Record<string, { action: string; since: number }>;
     scaffoldName: string;
+    /**
+     * The capture feature (capture.ts): set while the base passes to the empire whose troops took it (actions.ts: a capture is
+     * no seizure crime), and the id of the AI empire that chose to take the work by ground war (its strikes stop: ai.ts, ark.ts).
+     */
+    captureTransfer?: boolean;
+    captureBy?: number;
     /** Set by the wonder modules, read by the renderer: the Sanctuary's whale count and whether it is breached, whether the Ultramind awoke. */
     whales?: number;
     breached?: boolean;

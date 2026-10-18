@@ -9,6 +9,7 @@ import type { BuiltObject } from '../sim/builtObject';
 import { issuePlayerCommand } from '../sim/player/playerCommands';
 import { availableThreatActions } from '../sim/scenario/threats/framework';
 import { directiveView, type Directive } from '../sim/scenario/threats/giantworks/ultramind';
+import { INVADE_ACTION } from '../sim/scenario/threats/giantworks/capture';
 
 function svgIcon(body: string, stroke = '#b8c4e0'): string {
     return `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="${stroke}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`)}`;
@@ -56,7 +57,7 @@ export function ultramindSlots(galaxy: Galaxy, viewer: Empire, bo: BuiltObject |
         }
     }
     for (const a of availableThreatActions(galaxy, viewer, bo)) {
-        if (a.kind.startsWith('giantworks.umDirective')) continue;
+        if (a.kind.startsWith('giantworks.umDirective') || a.kind === INVADE_ACTION) continue; // Invade: ui/greatWorkSlots.ts
         out.push({
             label: a.label,
             hint: a.label,

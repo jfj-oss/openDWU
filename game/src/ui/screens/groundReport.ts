@@ -12,6 +12,10 @@
 //
 // The animation (explosions, weapon shots, landing pods: groundReportAnim.ts) is a canvas over the pictures, drawn
 // each animation frame while something plays; it reads the same state (the replica in worker mode) and never writes.
+//
+// Not in the original (Giantworks capture): the same panel shows the ground war on a Great Work (openGreatWorkGroundReport:
+// "[" with the work selected, or its Ground Report action button): its garrison defends, the invaders land from the
+// right, the work's base is in orbit and its shields stand as the planetary shield while they hold.
 
 import './groundReport.css';
 import type { Empire } from '../../sim/empire';
@@ -38,8 +42,12 @@ import { TroopType } from '../../sim/cargo';
 import { EXPLOSION_FRAME_COUNT, EXPLOSION_SET_COUNT, GroundAnimClock, GroundReportAnimator, type GroundAnimFrame } from './groundReportAnim';
 import { tryGetText } from '../../sim/textResolver';
 import type { Race } from '../../sim/data/races';
+import { captureRecOfBase } from '../../sim/scenario/threats/giantworks/capture';
+import { greatWorks } from '../../sim/scenario/threats/giantworks/state';
 import {
+    buildGreatWorkGroundReport,
     buildGroundReport,
+    greatWorkBattlefield,
     groundReportKeyColony,
     groundReportWindowSize,
     hotspotAt,
@@ -91,8 +99,21 @@ function shotUrl(type: TroopType): string {
 
 interface OpenState {
     win: OriginalWindow;
-    colony: Habitat;
+    /** The colony, or the Great Work's base (Giantworks capture). */
+    subject: object;
     close: () => void;
+}
+
+/** What one opening shows: a colony (the original), or a Great Work's ground war (Giantworks capture; not in the original). */
+interface ReportSubject {
+    key: object;
+    /** The colony, or the work's stand-in (groundReportModel.ts greatWorkBattlefield): what the animation diffs. */
+    colony: Habitat;
+    name: () => string;
+    iconUrl: string | null;
+    build: (panelSize: number) => GroundReportModel | null;
+    /** Sim worker: the objects to keep current. */
+    refresh: () => object[];
 }
 
 let open: OpenState | null = null;
@@ -117,7 +138,10 @@ export function toggleGroundReportFromKey(): void {
     const src = getEmpireSummarySource();
     if (!src) return;
     const capital = (src.empire.capital as Habitat | null) ?? null;
-    const colony = groundReportKeyColony(selectedGameObject(getSelection()), (o): o is Habitat => o instanceof Habitat, capital);
+    const selected = selectedGameObject(getSelection());
+    // Giantworks (not in the original): a selected Great Work that can be taken by troops shows its own ground war.
+    if (selected instanceof BuiltObject && openGreatWorkGroundReport(selected)) return;
+    const colony = groundReportKeyColony(selected, (o): o is Habitat => o instanceof Habitat, capital);
     if (colony !== null) openGroundReport(colony);
 }
 
@@ -125,13 +149,48 @@ export function toggleGroundReportFromKey(): void {
 export function openGroundReport(colony: Habitat): void {
     if (typeof document === 'undefined') return;
     if (open !== null) {
-        if (open.colony === colony) return;
+        if (open.subject === colony) return;
         open.close();
     }
     const galaxy = (getEmpireSummarySource()?.empire.galaxy ?? null) as Galaxy | null;
     const player = localViewerEmpire(galaxy) ?? null;
     if (galaxy === null) return;
-    open = createGroundReport(galaxy, player, colony);
+    open = createGroundReport(galaxy, player, {
+        key: colony,
+        colony,
+        name: () => colony.name,
+        iconUrl: habitatImageUrl(colony),
+        build: (size) => buildGroundReport({ galaxy, colony, panelSize: size, habitatTypeName: HabitatType[colony.type] ?? '' }),
+        refresh: () => [colony, colony.troops ?? [], colony.invadingTroops ?? [], ...(colony.basesAtHabitat ?? [])],
+    });
+}
+
+/**
+ * Not in the original (Giantworks capture): open the panel on the ground war of the Great Work whose base is `base` (the
+ * stock view, its garrison as the defenders, the base in orbit). False when `base` is no capturable work. No-op without a DOM.
+ */
+export function openGreatWorkGroundReport(base: BuiltObject): boolean {
+    if (typeof document === 'undefined') return false;
+    const galaxy = (getEmpireSummarySource()?.empire.galaxy ?? null) as Galaxy | null;
+    if (galaxy === null) return false;
+    const rec = captureRecOfBase(galaxy, base);
+    if (rec === null) return false;
+    if (open !== null) {
+        if (open.subject === base) return true;
+        open.close();
+    }
+    const kind = greatWorks(galaxy).find((w) => w.id === rec.workId)?.wonder ?? '';
+    const field = greatWorkBattlefield(rec, rec.workId, kind);
+    const player = localViewerEmpire(galaxy) ?? null;
+    open = createGroundReport(galaxy, player, {
+        key: base,
+        colony: field,
+        name: () => base.name,
+        iconUrl: shipImageUrl(base),
+        build: (size) => buildGreatWorkGroundReport({ galaxy, base, panelSize: size, field }),
+        refresh: () => [base, rec, rec.garrison, rec.invaders],
+    });
+    return true;
 }
 
 /** The window's top-left corner: right of the selection panel, 10 px (scaled) above the bottom (method_164). */
@@ -144,13 +203,14 @@ function anchor(vp: { w: number; h: number }, size: { w: number; h: number }, sc
     return { left, top };
 }
 
-function createGroundReport(galaxy: Galaxy, player: Empire | null, colony: Habitat): OpenState {
-    const title = (): string => `${tryGetText('Ground Report') ?? 'Ground Report'}: ${colony.name}`;
+function createGroundReport(galaxy: Galaxy, player: Empire | null, subject: ReportSubject): OpenState {
+    const colony = subject.colony;
+    const title = (): string => `${tryGetText('Ground Report') ?? 'Ground Report'}: ${subject.name()}`;
     const winSize = groundReportWindowSize(panelSize);
     const win = openOriginalWindow({
         id: 'groundReport',
         title: title(),
-        iconUrl: habitatImageUrl(colony) ?? undefined,
+        iconUrl: subject.iconUrl ?? undefined,
         width: winSize.w,
         height: winSize.h,
         noAutoPause: true, // method_164 does not pause (no method_154)
@@ -200,7 +260,11 @@ function createGroundReport(galaxy: Galaxy, player: Empire | null, colony: Habit
         const size = groundReportWindowSize(panelSize);
         win.setSize(size.w, size.h);
         win.setTitle(title());
-        const m = buildGroundReport({ galaxy, colony, panelSize, habitatTypeName: HabitatType[colony.type] ?? '' });
+        const m = subject.build(panelSize);
+        if (m === null) {
+            setTimeout(() => win.close(), 0); // the work is gone (destroyed): nothing left to show
+            return;
+        }
         model = m;
         anim.setModel(m);
         place(view, 5, 5, m.size.w, m.size.h);
@@ -405,12 +469,12 @@ function createGroundReport(galaxy: Galaxy, player: Empire | null, colony: Habit
         if (!win.closed) render();
     }, 500);
     // Sim worker: keep the colony's troops / characters current (no-op in-thread).
-    const ask = (): void => requestSimRefresh(galaxy, [colony, colony.troops ?? [], colony.invadingTroops ?? [], ...(colony.basesAtHabitat ?? [])], () => {
+    const ask = (): void => requestSimRefresh(galaxy, subject.refresh(), () => {
         if (!win.closed) render();
     });
     ask();
     const refreshTimer = setInterval(ask, 1000);
     void player;
-    const state: OpenState = { win, colony, close: () => win.close() };
+    const state: OpenState = { win, subject: subject.key, close: () => win.close() };
     return state;
 }

@@ -471,6 +471,11 @@ function executeForFighter(ctx: Ctx, fighter: Fighter, action: ShipAction): void
 // ---------------------------------------------------------------------------------------------------------------
 
 function executeForBuiltObject(ctx: Ctx, builtObject: BuiltObject, action: ShipAction): ShipActionResult {
+    if (builtObject.role !== BuiltObjectRole.Base && action.actionType === ShipActionType.ScenarioThreatAction) {
+        // Mod layer (Giantworks): a scenario threat's player action on a ship that is not ours (landing troops on the Ark Engine).
+        if (ctx.galaxy.scenario !== null && action.extraData !== null && action.extraData !== undefined) runThreatAction(ctx.galaxy, ctx.empire, action.extraData, builtObject);
+        return ctx.result;
+    }
     if (builtObject.role === BuiltObjectRole.Base) {
         return executeForBase(ctx, builtObject, action);
     }

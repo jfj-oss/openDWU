@@ -176,6 +176,14 @@ const CONFIGS = [
         flags: { threatGiantworks: true, gwCasino: false, gwUltramind: false, gwSanctuary: false, gwBeacon: false, gwArk: true, smarterAI: true },
         params: { giantworksExistChancePct: 100, giantworksRumourMinYear: 0, giantworksRumourMaxYear: 0, giantworksGatherMinYear: 0, giantworksGatherMaxYear: 0, giantworksGatherFloorYear: 0, giantworksBuildYears: 1 },
     })),
+    // `--set gw-capture` (a hook that forces the wonder: CAPTURE_KIND=casino|ultramind|sanctuary|ark): the Great Work finished within
+    // about two years on a late galaxy (700 stars, 7 AIs, aggressive), then 12 years of AI campaigns to take it by ground war.
+    ...[1, 2, 3].map((seed) => ({
+        name: `gwcap-s${seed}`, set: 'gw-capture', seed, years: 14, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, galaxyExpansionIndex: 5, empireExpansionIndex: 4, empireTechLevelIndex: 7, aggressionIndex: 3 },
+        scenario: ['threat-framework', 'smarter-ai', 'war-crimes', 'giantworks'],
+        flags: { threatGiantworks: true, gwCasino: true, gwUltramind: true, gwSanctuary: true, gwBeacon: false, gwArk: true, smarterAI: true },
+        params: { giantworksExistChancePct: 100, giantworksRumourMinYear: 0, giantworksRumourMaxYear: 0, giantworksGatherMinYear: 0, giantworksGatherMaxYear: 0, giantworksGatherFloorYear: 0, giantworksBuildYears: 1, gwCasinoFrontPct: 0 },
+    })),
     // `--set interdiction` (--hook scripts/interdiction-soak-hook.mjs): Defensive jump interdiction on / off on the os-war
     // galaxy (aggressive AI, older galaxy, 700 stars, 7 empires, 20 years): pirate raids, interdicted jumps, pirate losses.
     ...[['ji-war-on-s1', true], ['ji-war-off-s1', false]].map(([name, on]) => SCN('jump-interdiction', { name, set: 'interdiction', seed: 1, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, flags: { jumpInterdiction: on } })),
@@ -371,7 +379,10 @@ const MODULES = { game: '/src/sim/game.ts', sgo: '/src/sim/startGameOptions.ts',
     // docs/BEACON soak (scripts/beacon-soak-hook.mjs): the Beacon / Giantworks modules (hooks.ts is scnHooks, threats/framework.ts thFramework).
     gwFramework: '/src/sim/scenario/threats/giantworks/framework.ts', gwState: '/src/sim/scenario/threats/giantworks/state.ts', gwLifecycle: '/src/sim/scenario/threats/giantworks/lifecycle.ts',
     beacon: '/src/sim/scenario/threats/giantworks/beacon.ts', beaconState: '/src/sim/scenario/threats/giantworks/beaconState.ts', beaconFleet: '/src/sim/scenario/threats/giantworks/beaconFleet.ts',
-    beaconCounter: '/src/sim/scenario/threats/giantworks/beaconCounter.ts', beaconHarvest: '/src/sim/scenario/threats/giantworks/beaconHarvest.ts', missions: '/src/sim/missions/mission.ts', threats: '/src/sim/combat/threats.ts', ownership: '/src/sim/combat/ownership.ts' };
+    beaconCounter: '/src/sim/scenario/threats/giantworks/beaconCounter.ts', beaconHarvest: '/src/sim/scenario/threats/giantworks/beaconHarvest.ts', missions: '/src/sim/missions/mission.ts', threats: '/src/sim/combat/threats.ts', ownership: '/src/sim/combat/ownership.ts',
+    // Giantworks capture soaks: the capture and Ark modules, the shield schedule.
+    gwCapture: '/src/sim/scenario/threats/giantworks/capture.ts', gwArk: '/src/sim/scenario/threats/giantworks/ark.ts', gwShields: '/src/sim/scenario/threats/giantworks/shields.ts', diplomacy: '/src/sim/diplomacy.ts', assign: '/src/sim/missions/assign.ts', indexRebuild: '/src/sim/indexRebuild.ts', sgTasks: '/src/sim/fleets/shipGroupTasks.ts',
+    empireEvents: '/src/sim/empireEvents.ts', designGen: '/src/sim/designGeneration.ts', gameStartTail: '/src/sim/gameStartTail.ts', boPlacement: '/src/sim/builtObjectPlacement.ts', teardown: '/src/sim/combat/teardown.ts', weapons: '/src/sim/combat/weapons.ts' };
 
 async function bundle() {
     const dir = mkdtempSync(resolve(tmpdir(), 'dwu-soak-'));

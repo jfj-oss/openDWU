@@ -26,6 +26,7 @@
 import { ORBITAL_GUARD_REASON, orbitalGuardBase } from '../combat/orbitalGuard';
 import { markNewOrders, snapshotOrders } from '../missions/playerOrder';
 import { availableThreatActions } from '../scenario/threats/framework';
+import { scenarioQuery } from '../scenario/hooks';
 import { isPrivateer } from '../scenario/privateers/privateers';
 import type { Galaxy } from '../galaxy';
 import { galaxyNow, spanSeconds } from '../tick/simTime';
@@ -986,6 +987,10 @@ function troopAttackMenu(ctx: OrderMenuContext, missionType: BuiltObjectMissionT
     for (const h of coloniesNear(ctx, ctx.cursorX, ctx.cursorY, range)) {
         if (h.empire !== ctx.empire) item.children.push(leaf(h.name, h.name, missionAction(missionType, h)));
     }
+    // Mod layer (Giantworks capture): a finished Great Work whose shields are down takes troops too (no scenario = no call).
+    if (ctx.galaxy.scenario !== null) {
+        for (const b of scenarioQuery(ctx.galaxy, 'virtualInvasionTargets', [], { empire: ctx.empire, x: ctx.cursorX, y: ctx.cursorY, range })) item.children.push(leaf(b.name, b.name, missionAction(missionType, b)));
+    }
     return item.children.length === 0 ? null : item;
 }
 
@@ -1936,8 +1941,9 @@ function builtObjectActionMenu(ctx: OrderMenuContext, builtObject6: BuiltObject,
     }
     if (builtObject6.empire === player || builtObject6.owner === player) pushIf(items, giveToMenu(ctx, builtObject6));
     if (hasMission(builtObject6.mission)) pushIf(items, queueNextMissionMenu(ctx, builtObject6));
-    // Mod layer (Giantworks): scenario threat actions on a site's base (the Ultramind's directives, withdrawing, the Logic Bomb).
-    if (ctx.galaxy.scenario !== null && builtObject6.role === BuiltObjectRole.Base) {
+    // Mod layer (Giantworks): scenario threat actions on a site's base (the Ultramind's directives, withdrawing, the Logic Bomb,
+    // landing troops on a Great Work) or on the Ark Engine (a ship of the Compact).
+    if (ctx.galaxy.scenario !== null && (builtObject6.role === BuiltObjectRole.Base || builtObject6.owner !== player)) {
         for (const t of availableThreatActions(ctx.galaxy, player, builtObject6)) {
             const a = createShipAction(ShipActionType.ScenarioThreatAction, builtObject6);
             a.extraData = t.kind;

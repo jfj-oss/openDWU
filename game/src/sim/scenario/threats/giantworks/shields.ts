@@ -1,5 +1,5 @@
 // Giantworks: slow shield recharge after the shields of a wonder's ship or base are broken. Not a port; shared by the wonders
-// (the Ark Engine uses it now, the capture feature will use it for every Great Work).
+// (the Ark Engine, and the capture feature for every other Great Work: capture.ts), and the design plating both use.
 //
 // The stock recharge (combat/weapons.ts rechargeShields) refills a ship's shields in minutes; a broken Great Work must stay
 // open for about a year. breakShields(galaxy, bo, days) puts the object on a schedule: from then on `currentShields` never
@@ -10,6 +10,8 @@
 
 import type { Galaxy } from '../../../galaxy';
 import type { BuiltObject } from '../../../builtObject';
+import type { Design } from '../../../design';
+import type { ComponentType } from '../../../data/components';
 import { galaxyStarDate } from '../../../tick/simTime';
 import { GAME_DAY_LENGTH, registerScenarioFramePeriodic } from '../../hooks';
 import { scenarioState } from '../../state';
@@ -82,6 +84,32 @@ export function clearShieldBreak(galaxy: Galaxy, bo: BuiltObject, restore: boole
     if (i < 0) return;
     st.breaks.splice(i, 1);
     if (restore && !bo.hasBeenDestroyed) bo.currentShields = bo.shieldsCapacity;
+}
+
+/**
+ * Parts of `type` added to the design until `stat(d)` is about `target` (two ReDefines to measure, one to settle): the Ark's
+ * plating, and the capture feature's shields for a finished Great Work's base. The design's best part of that type is copied.
+ */
+export function plateDesignTo(d: Design, type: ComponentType, target: number, stat: (x: Design) => number): void {
+    let part: (typeof d.components)[number] | null = null;
+    for (const c of d.components) if (c.type === type && c.size > 0 && (part === null || c.value1 + c.value2 > part.value1 + part.value2)) part = c;
+    if (part === null) return;
+    d.reDefine();
+    const base = stat(d);
+    if (base >= target) return;
+    const probe = 60;
+    for (let i = 0; i < probe; i++) d.components.push(part);
+    d.reDefine();
+    const gain = (stat(d) - base) / probe;
+    if (!(gain > 0)) {
+        d.components.length -= probe;
+        d.reDefine();
+        return;
+    }
+    const need = Math.ceil((target - base) / gain);
+    if (need > probe) for (let i = probe; i < need; i++) d.components.push(part);
+    else d.components.length -= probe - need;
+    d.reDefine();
 }
 
 /** Holds every scheduled object's shields to its schedule; a finished schedule is dropped. */

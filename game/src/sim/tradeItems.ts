@@ -74,6 +74,7 @@ import { nodeCategory, resolveResearchAbilityType, ResearchAbilityType } from '.
 import { resolveMoreAdvancedProjectsIncludeSpecial } from './espionage';
 import { doResearchBreakthrough } from './researchTick';
 import { scenarioFlag } from './scenario/state';
+import { scenarioQuery } from './scenario/hooks';
 import { ESPIONAGE_FLAG, espionageHooks } from './scenario/emergent/espionageHooks';
 import type { Component } from './data/components';
 import { ComponentType } from './data/components';
@@ -1070,6 +1071,8 @@ export function resolveTradeableItemsColoniesBases(galaxy: Galaxy, giver: Empire
             const station = builtObjectList[index];
             const nss = station.nearestSystemStar;
             if ((baconSettings.tradeEverything || (nss !== null && (habitatList1.includes(nss) || dominatedSystems.includes(nss)))) && isObjectAreaKnownToThisEmpire(galaxy, receiver, station)) {
+                // Mod layer (Giantworks: the Founders' Compact never trades its Great Work away). No scenario = no call; never draws.
+                if (galaxy.scenario !== null && !scenarioQuery(galaxy, 'baseTradeable', true, { base: station, giver, receiver })) continue;
                 let num = valueBaseForEmpire(galaxy, station, giver);
                 if (num >= 0 && refactorValuesForEmpire) num = refactorValueForEmpire(galaxy, num, receiver, giver);
                 if (num >= 0) list.push(new TradeableItem(TradeableItemType.Base, station, num));

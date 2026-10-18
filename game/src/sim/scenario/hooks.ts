@@ -578,6 +578,18 @@ export interface ScenarioQueries {
      */
     invasionTargetOrbitOk: { value: boolean; args: { empire: Empire; fleet: ShipGroup; target: Habitat } };
     /**
+     * player/orderMenu.ts troop "Attack" menu (Main.Part8.cs 2206 method_332 lists nearby foreign colonies): the objects that
+     * are not colonies but that `empire`'s troops can land on now, near (x, y) within `range` (Giantworks: a finished Great
+     * Work whose shields are down; its ground war is the add-on's own). Stock: none. Pure.
+     */
+    virtualInvasionTargets: { value: BuiltObject[]; args: { empire: Empire; x: number; y: number; range: number } };
+    /**
+     * tradeItems.ts resolveTradeableItemsColoniesBases (Galaxy.4.cs ResolveTradeableItemsColoniesBases): false keeps `giver`'s
+     * base `base` out of the trade items offered to `receiver` (Giantworks: the Founders' Compact never sells its Great Work).
+     * Stock true. Pure.
+     */
+    baseTradeable: { value: boolean; args: { base: BuiltObject; giver: Empire; receiver: Empire } };
+    /**
      * combat/attackAI.ts shouldAttack (BuiltObject.1.cs ShouldAttack), stance AttackEnemies, right before the diplomatic
      * relation test (War → attack; otherwise only a ship's own Attack-mission target): true lets `empire`'s ship engage
      * `target`'s ships and bases without a war, as pirates do. Stock false. 19a tit-for-tat strikes. Never draws.

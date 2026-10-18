@@ -29,6 +29,8 @@ import type { PlanetaryFacility } from '../../sim/construction/facilities';
 import { calculateForceStrengthsDetailed, calculatePopulationStrength, resolveInvasionEmpires } from '../../sim/combat/invasion';
 import { CHARACTER_ROLE, resolveEnumTextDescription } from '../../sim/enumText';
 import { formatNet, tryGetText } from '../../sim/textResolver';
+import { captureForces, captureRecOfBase, type CaptureRec } from '../../sim/scenario/threats/giantworks/capture';
+import { greatWorks } from '../../sim/scenario/threats/giantworks/state';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Sizes and columns
@@ -331,6 +333,12 @@ export interface GroundReportInput {
     panelSize: number;
     /** HabitatType's name (Volcanic, Desert, ...): passed in so the model does not import the enum's table. */
     habitatTypeName: string;
+    /**
+     * Not in the original: the forces of a ground war that is not on a planet (Giantworks: a Great Work taken by troops,
+     * sim/scenario/threats/giantworks/capture.ts). `colony` is then a stand-in with the troop lists (greatWorkBattlefield);
+     * the strengths and their modifiers come from here instead of CalculateForceStrengths, and nobody lives there.
+     */
+    forces?: { defender: Empire | null; invader: Empire | null; defendingStrength: number; attackingStrength: number; defend: { amounts: number[]; reasons: string[] }; attack: { amounts: number[]; reasons: string[] } };
 }
 
 /** Build everything ColonyInvasion.Draw draws for `colony` (no hover state: groundReport.ts adds it). */
@@ -369,13 +377,14 @@ export function buildGroundReport(input: GroundReportInput): GroundReportModel {
     // Draw 1155: `_Colony.Empire != null && Troops != null && Characters != null && InvadingTroops != null &&
     // InvadingCharacters != null` — the lists exist for every colony of an empire, so the empire decides.
     if (empire !== null) {
-        const resolved = resolveInvasionEmpires(colony);
+        const forces = input.forces;
+        const resolved = forces !== undefined ? { invader: forces.invader, defender: forces.defender } : resolveInvasionEmpires(colony);
         const invader = resolved.invader;
         const defender = resolved.defender ?? empire;
-        const r = calculateForceStrengthsDetailed(galaxy, colony, defender, invader, troops, characters, invadingTroops, invadingCharacters);
+        const r = forces ?? calculateForceStrengthsDetailed(galaxy, colony, defender, invader, troops, characters, invadingTroops, invadingCharacters);
         defendingStrength = r.defendingStrength;
         attackingStrength = r.attackingStrength;
-        const pop = calculatePopulationStrength(galaxy, colony, invader, defender);
+        const pop = forces !== undefined ? { result: 0, isDefending: true } : calculatePopulationStrength(galaxy, colony, invader, defender);
         if (pop.isDefending) defendingStrength += pop.result;
         else attackingStrength += pop.result;
         const raiding = invadingTroops.count > 0 && invadingTroops.items[0].type === TroopType.PirateRaider;
@@ -643,4 +652,68 @@ export function groundReportKeyColony(selected: unknown, isHabitat: (o: unknown)
     const h = selected;
     if (h.population == null || h.population.items.length <= 0) return capital;
     return h;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Not in the original: the Ground Report of a Great Work's ground war (Giantworks capture)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The landscape behind a wonder's ground war (a stock planet map; the work has no surface of its own). */
+const GREAT_WORK_LANDSCAPE: Readonly<Record<string, string>> = { casino: 'Desert', ultramind: 'Ice', sanctuary: 'Ocean', ark: 'Continental' };
+
+/**
+ * A stand-in "colony" for the Ground Report of a Great Work: its garrison as the troops, the invaders, the base in orbit,
+ * the shields as the planetary shield while they hold. Read through getters, so a report kept open follows the record
+ * (a capture replaces the garrison list). Nobody lives on it; no facilities.
+ */
+export function greatWorkBattlefield(rec: CaptureRec, workId: number, kind: string): Habitat {
+    const field = {
+        get name(): string {
+            return rec.base?.name ?? '';
+        },
+        get empire(): Empire | null {
+            return rec.base?.actualEmpire ?? null;
+        },
+        get troops(): TroopList {
+            return rec.garrison;
+        },
+        get invadingTroops(): TroopList {
+            return rec.invaders;
+        },
+        get basesAtHabitat(): BuiltObject[] {
+            return rec.base !== null && !rec.base.hasBeenDestroyed ? [rec.base] : [];
+        },
+        get planetaryShieldPresent(): boolean {
+            return rec.breachedAt < 0;
+        },
+        population: null,
+        facilities: [],
+        landscapePictureRef: -1,
+        habitatIndex: 900000 + workId,
+        rebelling: false,
+        greatWorkKind: kind,
+    };
+    return field as unknown as Habitat;
+}
+
+/** HabitatType name of a wonder's landscape (groundReportLandscape / atmosphereColor). */
+export function greatWorkLandscapeType(kind: string): string {
+    return GREAT_WORK_LANDSCAPE[kind] ?? 'Volcanic';
+}
+
+/** The Ground Report of the Great Work whose base is `base` (null: no capturable work there). */
+export function buildGreatWorkGroundReport(input: { galaxy: Galaxy; base: BuiltObject; panelSize: number; field?: Habitat }): GroundReportModel | null {
+    const { galaxy, base, panelSize } = input;
+    const rec = captureRecOfBase(galaxy, base);
+    if (rec === null) return null;
+    const kind = greatWorks(galaxy).find((w) => w.id === rec.workId)?.wonder ?? '';
+    const colony = input.field ?? greatWorkBattlefield(rec, rec.workId, kind);
+    const f = captureForces(galaxy, rec);
+    return buildGroundReport({
+        galaxy,
+        colony,
+        panelSize,
+        habitatTypeName: greatWorkLandscapeType(kind),
+        forces: { defender: base.actualEmpire, invader: rec.invader, ...f },
+    });
 }

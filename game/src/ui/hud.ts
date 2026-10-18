@@ -87,6 +87,7 @@ import { galaxyStarDate } from '../sim/tick/simTime';
 import { createShipAction, ShipActionType } from '../sim/player/shipAction';
 import { issuePlayerCommand } from '../sim/player/playerCommands';
 import { ultramindSlots } from './ultramindSlots';
+import { greatWorkSlots } from './greatWorkSlots';
 import { toggleGameEditor } from './screens/gameEditor';
 import type { PlayerOpArgs, PlayerOpName, PlayerOpResult } from '../sim/player/playerOps';
 import type { Design } from '../sim/design';
@@ -1606,6 +1607,8 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         const out: SelectionFreeSlot[] = [];
         // Giantworks: the Ultramind's directives, Logic Bomb and Withdraw (ui/ultramindSlots.ts).
         for (const u of ultramindSlots(wiring.galaxy, viewer, sel?.builtObject ?? null, () => redrawSelectionActionBar())) out.push({ label: u.label, hint: u.hint, icon: u.icon, disabled: u.disabled, active: u.active, onClick: u.onClick });
+        // Giantworks capture: Invade and the Ground Report of a Great Work whose shields are down (ui/greatWorkSlots.ts).
+        for (const u of greatWorkSlots(wiring.galaxy, viewer, sel?.builtObject ?? null, () => redrawSelectionActionBar())) out.push({ label: u.label, hint: u.hint, icon: u.icon, disabled: u.disabled, onClick: u.onClick });
         // Mothballing add-on (a Gameplay change): Mothball (click or right-click: choose the port) / Reactivate for an own fleet
         // or lone warship (ui/mothballSlots.ts).
         const mb = mothballSlot(wiring.galaxy, viewer, currentSelection);

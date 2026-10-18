@@ -21,8 +21,9 @@
 //               attackers (attackWithoutWar). gwArkFightQuietDays without an attack ends it, and the siphoning resumes.
 //   Escape    - when its shields break (down to 2 %) it limps away to an EMPTY system about gwArkEscapeSectors sectors away and
 //               stays there while its shields refill over gwArkRechargeDays (shields.ts: the stock recharge cannot beat the
-//               schedule), then goes roaming again. The record keeps `breached` (shields broken, not yet whole), the escape and the
-//               people aboard for the capture feature to hook into.
+//               schedule), then goes roaming again. It flees only once per break: found at its escape system it fights back
+//               there. The record keeps `breached` (shields broken, not yet whole) and the escape: capture.ts lets troops land
+//               on it at its escape system while the shields are down (the Great Work capture).
 //   Lost      - destroyed: its people die, the killer loses standing with everybody, the news says so (and the framework's war
 //               crime for destroying a Great Work applies unless the Diet authorised it).
 //
@@ -73,7 +74,7 @@ import { spawnShip } from './beaconFleet';
 import { topTechLevel } from './casino';
 import { compactFaction, greatWorks, kindName, registerGreatWork, type GreatWorkRecord } from './framework';
 import { factionDesign, placeObject } from './lifecycle';
-import { breakShields, shieldBreakOf, shieldsDown } from './shields';
+import { breakShields, plateDesignTo, shieldBreakOf, shieldsDown } from './shields';
 import { systemsWithBases } from './founders';
 import { GW_FLAG, TAG, isCompact, logGw, ordinaryEmpires, ownRandom } from './state';
 import type { GreatWorkSite } from './types';
@@ -385,29 +386,6 @@ function boostWeapons(d: Design, extra: number): void {
     if (n > 0) d.reDefine();
 }
 
-/** Parts of `type` added to the design until `stat(d)` is about `target` (two ReDefines to measure, one to settle). */
-function plateTo(d: Design, type: ComponentType, target: number, stat: (x: Design) => number): void {
-    let part: (typeof d.components)[number] | null = null;
-    for (const c of d.components) if (c.type === type && c.size > 0 && (part === null || c.value1 + c.value2 > part.value1 + part.value2)) part = c;
-    if (part === null) return;
-    d.reDefine();
-    const base = stat(d);
-    if (base >= target) return;
-    const probe = 60;
-    for (let i = 0; i < probe; i++) d.components.push(part);
-    d.reDefine();
-    const gain = (stat(d) - base) / probe;
-    if (!(gain > 0)) {
-        d.components.length -= probe;
-        d.reDefine();
-        return;
-    }
-    const need = Math.ceil((target - base) / gain);
-    if (need > probe) for (let i = probe; i < need; i++) d.components.push(part);
-    else d.components.length -= probe - need;
-    d.reDefine();
-}
-
 /** The Ark's design: the capital-ship template at the best tech level, plated, armed and slowed (see the file comment). */
 function arkDesign(galaxy: Galaxy, faction: Empire): Design | null {
     const spec = faction.designSpecifications.find((s) => s !== null && s.subRole === BuiltObjectSubRole.CapitalShip) ?? galaxyDesignSpecificationBySubRole(BuiltObjectSubRole.CapitalShip);
@@ -418,8 +396,8 @@ function arkDesign(galaxy: Galaxy, faction: Empire): Design | null {
         const d = generateDesignFromSpec(galaxy, faction, spec, lvl, galaxyStarDate(galaxy));
         if (d === null) return null;
         // The ship's armour is a short (BuiltObject.armor): it must stay under 32767 or it wraps negative.
-        plateTo(d, ComponentType.Armor, Math.min(32000, arkParam(galaxy, 'gwArkArmour')), (x) => x.armor);
-        plateTo(d, ComponentType.Shields, arkParam(galaxy, 'gwArkShields'), (x) => x.shieldsCapacity);
+        plateDesignTo(d, ComponentType.Armor, Math.min(32000, arkParam(galaxy, 'gwArkArmour')), (x) => x.armor);
+        plateDesignTo(d, ComponentType.Shields, arkParam(galaxy, 'gwArkShields'), (x) => x.shieldsCapacity);
         boostWeapons(d, arkParam(galaxy, 'gwArkGuns'));
         d.name = scenarioText(`${TAG} Ark Design`);
         d.isObsolete = true; // never an AI build
@@ -998,6 +976,7 @@ function stepAi(galaxy: Galaxy, rec: ArkRec, t: ArkTarget, w: GreatWorkRecord, n
     if (t.plan !== 'attack' || t.startedAt < 0 || !scenarioFlag(galaxy, SMARTER_AI_FLAG) || now < t.nextReview) return;
     const e = t.empire;
     if (isHumanEmpire(galaxy, e) || !isSmarterAIStrategist(galaxy, e)) return;
+    if (w.captureBy === e.empireId) return; // it chose to take the Ark by ground war (capture.ts): no more strikes
     t.nextReview = now + daysOf(arkParam(galaxy, 'gwArkAiReviewDays'));
     if (sendStrike(galaxy, w, e, arkParam(galaxy, 'gwArkAiMarginPct'))) logGw(galaxy, now, `${e.name} sends a strike at the Ark ${w.id}`);
 }
@@ -1036,9 +1015,9 @@ function stepArk(galaxy: Galaxy, rec: ArkRec, compact: Empire, now: number): voi
         rec.held = false;
         logGw(galaxy, now, `ark ${rec.workId}: the fight is over`);
     }
-    // The shields break: it flees (or flees again when it is found while still recharging).
+    // The shields break: it flees once. At its escape system it stays while they mend, found or not: crippled, it can be
+    // boarded there by ground troops (capture.ts; the landing window is the recharge year), and fights back where it is.
     if (rec.fight && shieldBreakOf(galaxy, ark) === null && shieldsDown(ark) && rec.phase !== 'escaping') startEscape(galaxy, rec, ark, now, false);
-    else if (rec.fight && rec.breached && rec.phase === 'repairing' && now - rec.lastEscape > daysOf(20)) startEscape(galaxy, rec, ark, now, true);
 
     if (rec.fight && rec.phase !== 'escaping') {
         // Fight mode: it holds where it is and fights back.

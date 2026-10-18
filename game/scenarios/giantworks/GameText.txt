@@ -324,3 +324,18 @@ Giantworks Ark Transport;We have destroyed an unarmed ship carrying people from 
 Reputation Cause giantworks.ark;You let the Ark take its people
 Reputation Cause giantworks.arkTransport;You shot down the Ark's passenger ships
 Reputation Cause giantworks.arkKiller;You destroyed the Ark and everyone aboard it
+'Taking a Great Work by ground war (giantworks/capture.ts): message texts. {n} items are filled by the scenario code.
+Giantworks Capture Troop;{0} Guard
+Giantworks Capture Breach News;The shields of {0} are down. They will take about {1} days to recharge, and until then troops can land on it.
+Giantworks Capture Quiet Title;Its guns have fallen silent
+Giantworks Capture Quiet;{0} is so badly damaged that its guns have fallen silent. Land troops to take it (select it and choose Invade, or order troop ships to attack it), or finish it off.
+Giantworks Capture Landed News;Troops of {0} have landed on {1}. The fight for it has begun.
+Giantworks Capture Defend Title;Invaders have landed
+Giantworks Capture Defend;Troops of {0} have landed on {1}. Its garrison is fighting them.
+Giantworks Capture Repelled Title;Our invasion has failed
+Giantworks Capture Repelled;Our troops on {0} have been wiped out by its defenders.
+Giantworks Capture Captured News;{0} has taken {1} by ground assault. Whatever it gave its holder now goes to {0}.
+Giantworks Capture Lost Title;We have lost a Great Work
+Giantworks Capture Lost;{0} has taken {1} from us by ground assault.
+Giantworks Capture Action Invade;Invade (land the troops aboard our ships nearby)
+Reputation Cause giantworks.capture;You took a Great Work by force
