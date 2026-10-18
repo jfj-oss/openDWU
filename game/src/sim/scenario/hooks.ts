@@ -606,6 +606,11 @@ export interface ScenarioQueries {
      * attacked by it first (the Dead Probe Swarm leaves colony defences alone). Stock false. Never draws.
      */
     builtObjectSparesStaticTarget: { value: boolean; args: { builtObject: BuiltObject; target: BuiltObject } };
+    /**
+     * combat/spared.ts (shouldAttack, fireWeaponsAtTarget, the damage sinks, threat levels, fighters, area weapons): true = the two
+     * empires never fight each other (the Purifier and the Ancient Guardians). Symmetric. Stock false. Pure; never draws.
+     */
+    empiresSpared: { value: boolean; args: { a: Empire; b: Empire } };
     /** 19j: events.ts applyLocationEffects (BuiltObject.cs 3934 ApplyLocationEffects): true = no lightning / ship-damage effects. */
     builtObjectStormImmune: { value: boolean; args: { builtObject: BuiltObject } };
     /** 19j: movement.ts rechargeReactors (BuiltObject.1.cs 2509 RechargeReactors): true = recharging burns no fuel. */
@@ -1202,4 +1207,45 @@ export function scenarioFindHomeHabitat(
         return h;
     }
     return fallback;
+}
+
+// ---------------------------------------------------------------------------
+// The Ancient Guardians' peace (every Galactic Threat but the Beacon; threats/framework.ts holds the logic)
+// ---------------------------------------------------------------------------
+
+/** What threats/framework.ts supplies (late-bound: the registration below runs at module load, framework may still be initialising). */
+export interface GuardianPeaceImpl {
+    pair: (galaxy: Galaxy, a: Empire, b: Empire, factions: GuardianFactionLister) => boolean;
+    clear: (galaxy: Galaxy, factions: GuardianFactionLister) => void;
+}
+export type GuardianFactionLister = (galaxy: Galaxy) => (Empire | null | undefined)[];
+
+// `var` + lazy creation: threat modules register at module load, possibly while the framework is still initialising.
+// eslint-disable-next-line no-var
+var guardianPeaceImplStore: GuardianPeaceImpl | undefined;
+// eslint-disable-next-line no-var
+var guardianPeaceListersStore: Map<string, GuardianFactionLister> | undefined;
+
+export function setGuardianPeaceImpl(impl: GuardianPeaceImpl): void {
+    guardianPeaceImplStore = impl;
+}
+
+/** Every registered threat's faction lister, by threat key. */
+export function guardianPeaceListers(): Map<string, GuardianFactionLister> {
+    return (guardianPeaceListersStore ??= new Map());
+}
+
+/**
+ * A threat makes the peace: its factions (`factions`, non-empty only while the threat is active) and the Ancient Guardians never attack,
+ * target, blockade, damage or declare war on each other, either way (query empiresSpared, read by combat/spared.ts; declareWarBlocked;
+ * combatCaptureAllowed unless `allowCapture`), and a save where they already fight is cleared within five days. Gated on the threat's
+ * own flag. The Beacon does not call this.
+ */
+export function registerGuardianPeace(key: string, flag: string, factions: GuardianFactionLister, opts: { allowCapture?: boolean } = {}): void {
+    guardianPeaceListers().set(key, factions);
+    const pair = (g: Galaxy, a: Empire, b: Empire): boolean => guardianPeaceImplStore !== undefined && guardianPeaceImplStore.pair(g, a, b, factions);
+    registerScenarioQuery({ id: `${key}.guardiansSpared`, flag, query: 'empiresSpared', run: (g, v, a) => v || pair(g, a.a, a.b) });
+    registerScenarioQuery({ id: `${key}.guardiansNoWar`, flag, query: 'declareWarBlocked', run: (g, v, a) => v || pair(g, a.empire, a.target) });
+    if (opts.allowCapture !== true) registerScenarioQuery({ id: `${key}.guardiansNoCapture`, flag, query: 'combatCaptureAllowed', run: (g, v, a) => v && !(a.capturingEmpire !== null && a.habitat.empire !== null && pair(g, a.capturingEmpire, a.habitat.empire)) });
+    registerScenarioFramePeriodic({ id: `${key}.guardiansClear`, flag, order: 900, periodDays: 5, run: (g) => guardianPeaceImplStore?.clear(g, factions) });
 }

@@ -26,7 +26,7 @@ import { GAME_DAY_LENGTH, registerScenarioEvent, registerScenarioYearly } from '
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
 import { scenarioParam } from '../state';
 import { applyReputation, reputationOn } from '../reputation/ledger';
-import { normalEmpires, peekThreatState, threatState } from './framework';
+import { threatEmpires, peekThreatState, threatState } from './framework';
 
 // ---------------------------------------------------------------------------------------------------------------
 // The registry: which scenario flag / state key holds which crisis faction
@@ -209,7 +209,7 @@ function isNormal(galaxy: Galaxy, e: Empire | null): e is Empire {
 
 /** The ordinary empires (no independents, pirates or crisis factions). */
 export function crisisNormals(galaxy: Galaxy, except: Empire | null = null): Empire[] {
-    return normalEmpires(galaxy, except).filter((e) => !isCrisisFaction(galaxy, e));
+    return threatEmpires(galaxy, except).filter((e) => !isCrisisFaction(galaxy, e));
 }
 
 // ---------------------------------------------------------------------------------------------------------------

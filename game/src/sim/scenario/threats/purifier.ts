@@ -69,7 +69,7 @@ import { empireShipGroups, shipGroupAssignMission } from '../../fleets/shipGroup
 import { DiplomaticRelationType } from '../../diplomacy';
 import { identifyPirateBase } from '../../characters';
 import { isHumanEmpire } from '../../humanEmpires';
-import { GAME_DAY_LENGTH, gameYear, registerScenarioEvent, registerScenarioFramePeriodic, registerScenarioQuery } from '../hooks';
+import { registerGuardianPeace, GAME_DAY_LENGTH, gameYear, registerScenarioEvent, registerScenarioFramePeriodic, registerScenarioQuery } from '../hooks';
 import { scenarioMessage, scenarioText } from '../messages';
 import { scenarioParam } from '../state';
 import { registerScenarioMapFeatures, type ScenarioMapFeatures } from '../mapFeatures';
@@ -83,7 +83,8 @@ import {
     knowledgeLevel,
     createThreatFaction,
     forcedThreatVictim,
-    normalEmpires,
+    guardiansOf,
+    threatEmpires,
     pastThreatMinYear,
     peekThreatState,
     registerThreatExistence,
@@ -313,7 +314,7 @@ export function purifierTargets(galaxy: Galaxy, st: PurifierState): Habitat[] {
     if (d === null) return out;
     const now = galaxyStarDate(galaxy);
     for (const h of galaxy.habitats) {
-        if (!populated(h) || h.empire === st.faction) continue;
+        if (!populated(h) || h.empire === st.faction || h.empire === guardiansOf(galaxy)) continue; // the Ancient Guardians are never a target
         if (st.skip.some((q) => q.habitat === h && q.until > now)) continue;
         if (!purifierHunts(st, familyOf(h)) || !canDestroyHabitat(galaxy, d, h)) continue;
         out.push(h);
@@ -337,7 +338,7 @@ function siteFree(h: Habitat): boolean {
 export function purifierAnchorage(galaxy: Galaxy): Habitat | null {
     const colonised = new Set<number>();
     const cols: { x: number; y: number }[] = [];
-    for (const e of normalEmpires(galaxy)) {
+    for (const e of threatEmpires(galaxy)) {
         for (const c of e.colonies) {
             if (!colonised.has(c.systemIndex)) {
                 colonised.add(c.systemIndex);
@@ -375,7 +376,7 @@ export function purifierAnchorage(galaxy: Galaxy): Habitat | null {
 function finderOf(galaxy: Galaxy, st: PurifierState): Empire | null {
     const s = st.anchorage!;
     const reach = Math.max(SYSTEM_RADIUS, s.diameter);
-    for (const e of normalEmpires(galaxy)) {
+    for (const e of threatEmpires(galaxy)) {
         for (const list of [e.builtObjects, e.privateBuiltObjects]) {
             for (const b of list) {
                 if (b.hasBeenDestroyed || b.role === BuiltObjectRole.Base) continue;
@@ -393,7 +394,7 @@ function fallbackWaker(galaxy: Galaxy, st: PurifierState): Empire | null {
     const s = st.anchorage!;
     let best: Empire | null = null;
     let bd = Number.MAX_VALUE;
-    for (const e of normalEmpires(galaxy)) {
+    for (const e of threatEmpires(galaxy)) {
         if (e.capital === null) continue;
         const d = galaxy.calculateDistance(s.xpos, s.ypos, e.capital.xpos, e.capital.ypos);
         if (d < bd) {
@@ -448,7 +449,7 @@ function spawn(galaxy: Galaxy, faction: Empire, design: Design, x: number, y: nu
 
 function familiesPresent(galaxy: Galaxy): number[] {
     const set = new Set<number>();
-    for (const e of normalEmpires(galaxy)) for (const c of e.colonies) {
+    for (const e of threatEmpires(galaxy)) for (const c of e.colonies) {
         const f = familyOf(c);
         if (f >= 0) set.add(f);
     }
@@ -465,7 +466,7 @@ function raceOfFamily(galaxy: Galaxy, family: number): Race | null {
  */
 export function purifierWake(galaxy: Galaxy, st: PurifierState, waker: Empire | null, huntFamily: number | null = null): boolean {
     const anchorage = st.anchorage;
-    const normals = normalEmpires(galaxy);
+    const normals = threatEmpires(galaxy);
     if (anchorage === null || normals.length === 0) return false;
     const fams = familiesPresent(galaxy);
     // RND(purifier wake): the program (preprogrammed / the waker chooses), then the builders' family.
@@ -536,7 +537,7 @@ export function purifierWake(galaxy: Galaxy, st: PurifierState, waker: Empire | 
 /** An AI's pick: the family of its strongest rival (an empire at war with it first). Pure. */
 export function aiPickFamily(galaxy: Galaxy, waker: Empire | null): number {
     const own = waker?.dominantRace?.raceFamily ?? -1;
-    const rivals = normalEmpires(galaxy, waker).filter((e) => e.dominantRace !== null);
+    const rivals = threatEmpires(galaxy, waker).filter((e) => e.dominantRace !== null);
     const atWarWith = (e: Empire): boolean => waker !== null && waker.diplomaticRelations.byEmpire(e)?.type === 3;
     rivals.sort((a, b) => Number(atWarWith(b)) - Number(atWarWith(a)) || militaryPotency(b) - militaryPotency(a) || a.empireId - b.empireId);
     for (const e of rivals) if (e.dominantRace!.raceFamily !== own) return e.dominantRace!.raceFamily;
@@ -650,7 +651,7 @@ function escortOrders(galaxy: Galaxy, st: PurifierState): void {
 
 function defenders(galaxy: Galaxy, st: PurifierState): { x: number; y: number; f: number }[] {
     const out: { x: number; y: number; f: number }[] = [];
-    for (const e of normalEmpires(galaxy)) {
+    for (const e of threatEmpires(galaxy)) {
         for (const b of e.builtObjects) {
             if (b.hasBeenDestroyed || (b.role !== BuiltObjectRole.Military && b.role !== BuiltObjectRole.Base)) continue;
             const f = shipFirepower(b);
@@ -683,7 +684,7 @@ export function purifierPickTarget(galaxy: Galaxy, st: PurifierState): Habitat |
 export function purifierHideSpot(galaxy: Galaxy, from: { x: number; y: number }, avoid: { x: number; y: number } | null): Habitat | null {
     const colonised = new Set<number>();
     const cols: { x: number; y: number }[] = [];
-    for (const e of normalEmpires(galaxy)) {
+    for (const e of threatEmpires(galaxy)) {
         for (const c of e.colonies) {
             if (colonised.has(c.systemIndex)) continue;
             colonised.add(c.systemIndex);
@@ -726,7 +727,7 @@ function enemyFirepowerNear(galaxy: Galaxy, st: PurifierState): { f: number; x: 
     let sx = 0;
     let sy = 0;
     let n = 0;
-    for (const e of normalEmpires(galaxy)) {
+    for (const e of threatEmpires(galaxy)) {
         for (const b of e.builtObjects) {
             if (b.hasBeenDestroyed || b.role !== BuiltObjectRole.Military) continue;
             const dx = b.xpos - d.xpos;
@@ -889,7 +890,7 @@ function retarget(galaxy: Galaxy, st: PurifierState): void {
     let best: Habitat | null = null;
     let bd = Number.MAX_VALUE;
     for (const h of galaxy.habitats) {
-        if (!populated(h) || h.empire === st.faction || !canDestroyHabitat(galaxy, d, h) || familyOf(h) < 0) continue;
+        if (!populated(h) || h.empire === st.faction || h.empire === guardiansOf(galaxy) || !canDestroyHabitat(galaxy, d, h) || familyOf(h) < 0) continue;
         const dist = galaxy.calculateDistance(d.xpos, d.ypos, h.xpos, h.ypos);
         if (dist < bd) {
             bd = dist;
@@ -933,7 +934,7 @@ function sightingOf(st: PurifierState, empire: Empire | null): PurifierSighting 
 /** Hunting empires: those of a hunted family, and the victims. */
 export function purifierHunters(galaxy: Galaxy, st: PurifierState): Empire[] {
     const out: Empire[] = [];
-    for (const e of normalEmpires(galaxy, st.faction)) {
+    for (const e of threatEmpires(galaxy, st.faction)) {
         const f = e.dominantRace?.raceFamily ?? -1;
         if (purifierHunts(st, f) || st.victims.includes(e) || (st.mode === 'repair' && knowledgeLevel({ knowledge: st.dockKnowledge }, e) >= KNOWLEDGE_CONFIRMED)) out.push(e);
     }
@@ -967,11 +968,11 @@ function sightings(galaxy: Galaxy, st: PurifierState): void {
     const d = st.destroyer!;
     const now = galaxyStarDate(galaxy);
     const seeing: Empire[] = [];
-    for (const e of normalEmpires(galaxy, st.faction)) if (isObjectVisibleToThisEmpire(galaxy, e, d)) seeing.push(e);
+    for (const e of threatEmpires(galaxy, st.faction)) if (isObjectVisibleToThisEmpire(galaxy, e, d)) seeing.push(e);
     // Hyperjump detection: a long-range scanner within range of either end of a jump reveals it.
     const jumped = galaxy.calculateDistance(st.lastX, st.lastY, d.xpos, d.ypos) >= JUMP_MIN;
     if (jumped) {
-        for (const e of normalEmpires(galaxy, st.faction)) {
+        for (const e of threatEmpires(galaxy, st.faction)) {
             if (seeing.includes(e)) continue;
             for (const s of e.longRangeScanners as BuiltObject[]) {
                 if (s.hasBeenDestroyed) continue;
@@ -997,9 +998,9 @@ function sightings(galaxy: Galaxy, st: PurifierState): void {
     if (crippled || seeing.length > 0) {
         const tell = new Set<Empire>(hunters);
         for (const e of seeing) {
-            for (const o of normalEmpires(galaxy, st.faction)) if (o !== e && e.diplomaticRelations.byEmpire(o)?.type === DiplomaticRelationType.MutualDefensePact) tell.add(o);
+            for (const o of threatEmpires(galaxy, st.faction)) if (o !== e && e.diplomaticRelations.byEmpire(o)?.type === DiplomaticRelationType.MutualDefensePact) tell.add(o);
         }
-        for (const o of normalEmpires(galaxy, st.faction)) if (tell.has(o) && !seeing.includes(o)) record(galaxy, st, o, d.xpos, d.ypos, now, true);
+        for (const o of threatEmpires(galaxy, st.faction)) if (tell.has(o) && !seeing.includes(o)) record(galaxy, st, o, d.xpos, d.ypos, now, true);
     }
     st.lastX = d.xpos;
     st.lastY = d.ypos;
@@ -1010,7 +1011,7 @@ function dockSightings(galaxy: Galaxy, st: PurifierState): void {
     const dock = identifyPirateBase(st.faction);
     if (dock === null) return;
     const site = { knowledge: st.dockKnowledge };
-    for (const e of normalEmpires(galaxy, st.faction)) {
+    for (const e of threatEmpires(galaxy, st.faction)) {
         if (knowledgeLevel(site, e) >= KNOWLEDGE_CONFIRMED) continue;
         if (isObjectVisibleToThisEmpire(galaxy, e, dock) || (st.mode === 'repair' && st.visibleTo.includes(e.empireId))) {
             revealTo(galaxy, site, e, KNOWLEDGE_CONFIRMED);
@@ -1324,7 +1325,7 @@ function finish(galaxy: Galaxy, st: PurifierState, killer: Empire | null): void 
     // empire that sank the most of its ships.
     if (real === null) {
         let top = 0;
-        for (const e of normalEmpires(galaxy, st.faction)) {
+        for (const e of threatEmpires(galaxy, st.faction)) {
             const k = st.killsBy[String(e.empireId)] ?? 0;
             if (k > top) {
                 top = k;
@@ -1338,7 +1339,7 @@ function finish(galaxy: Galaxy, st: PurifierState, killer: Empire | null): void 
         real.stateMoney += bounty; // salvage money, never research
         st.bounty = bounty;
         real.civilityRating += P.killerRep(galaxy);
-        for (const e of normalEmpires(galaxy, real)) applyReputation(galaxy, e, real, P.killerRep(galaxy), { cause: 'purifier.slayer', labelKey: 'Reputation Cause purifier.slayer', source: 'purifier', legacy: 'factored', decayPerYear: 1 });
+        for (const e of threatEmpires(galaxy, real)) applyReputation(galaxy, e, real, P.killerRep(galaxy), { cause: 'purifier.slayer', labelKey: 'Reputation Cause purifier.slayer', source: 'purifier', legacy: 'factored', decayPerYear: 1 });
         if (isHumanEmpire(galaxy, real)) scenarioMessage(galaxy, real, scenarioText(`${TAG} Bounty Title`), scenarioText(`${TAG} Bounty`, Math.round(bounty).toLocaleString('en-US')), { type: EmpireMessageType.GeneralGoodEvent, popup: false });
     }
     arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Ended', textTag: `${TAG} Ended News`, args: [real !== null ? real.name : scenarioText(`${TAG} Unknown Slayer`), st.worlds] });
@@ -1507,6 +1508,7 @@ export const PURIFIER_HANDLER_IDS = [
 
 export function registerPurifier(): void {
     registerThreatExistence(PURIFIER_KEY, PURIFIER_FLAG);
+    registerGuardianPeace(PURIFIER_KEY, PURIFIER_FLAG, (g) => [peekPurifierState(g)?.faction]); // the Ancient Guardians and this threat never fight
     registerThreatSpawn({ key: PURIFIER_KEY, label: 'The Purifier', group: 'empire', addons: ['purifier'], note: purifierSpawnNote, spawn: purifierSpawnNow });
     registerScenarioFramePeriodic({ id: 'purifier.periodic', flag: PURIFIER_FLAG, periodDays: PERIOD_DAYS, order: 16, run: (g) => purifierPeriodic(g) });
     registerScenarioEvent({ id: 'purifier.killedBy', flag: PURIFIER_FLAG, event: 'builtObjectKilledBy', run: (g, e) => onKilledBy(g, e.builtObject, e.destroyer) });

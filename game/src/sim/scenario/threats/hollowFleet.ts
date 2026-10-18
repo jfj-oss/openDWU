@@ -47,7 +47,7 @@ import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission 
 import { generateDebrisField } from '../../story/storyStart';
 import { isHumanEmpire } from '../../humanEmpires';
 import { identifyPirateBase } from '../../characters';
-import { GAME_DAY_LENGTH, gameYear, registerScenarioEvent, registerScenarioPeriodic, registerScenarioQuery } from '../hooks';
+import { registerGuardianPeace, GAME_DAY_LENGTH, gameYear, registerScenarioEvent, registerScenarioPeriodic, registerScenarioQuery } from '../hooks';
 import { scenarioMessage, scenarioText } from '../messages';
 import { scenarioFlag, scenarioParam } from '../state';
 import { registerScenarioMapFeatures, type ScenarioMapFeatures } from '../mapFeatures';
@@ -56,7 +56,7 @@ import {
     KNOWLEDGE_CONFIRMED,
     arcNews,
     createThreatFaction,
-    normalEmpires,
+    threatEmpires,
     pastThreatMinYear,
     peekThreatState,
     registerThreatExistence,
@@ -272,7 +272,7 @@ function siteFree(h: Habitat): boolean {
 
 function colonisedSystems(galaxy: Galaxy): Set<number> {
     const out = new Set<number>();
-    for (const e of normalEmpires(galaxy)) for (const c of e.colonies) out.add(c.systemIndex);
+    for (const e of threatEmpires(galaxy)) for (const c of e.colonies) out.add(c.systemIndex);
     return out;
 }
 
@@ -283,7 +283,7 @@ function systemPos(galaxy: Galaxy, systemIndex: number): { x: number; y: number 
 
 /** The anchorage: a free asteroid / planet / moon in an uncolonised system, the farthest from every capital. Pure. */
 export function hollowFleetAnchorage(galaxy: Galaxy, near: Empire | null = null): Habitat | null {
-    const capitals = (near !== null && near.capital !== null ? [near.capital] : normalEmpires(galaxy).map((e) => e.capital)).filter((c): c is Habitat => c !== null);
+    const capitals = (near !== null && near.capital !== null ? [near.capital] : threatEmpires(galaxy).map((e) => e.capital)).filter((c): c is Habitat => c !== null);
     const colonised = colonisedSystems(galaxy);
     let best: Habitat | null = null;
     let bestD = near !== null ? -Infinity : -1;
@@ -315,7 +315,7 @@ export function hollowFleetAnchorage(galaxy: Galaxy, near: Empire | null = null)
  */
 export function hollowFleetRouteSystems(galaxy: Galaxy, anchorageSystem: number, count: number, firstPick: number): number[] {
     const capitalSystems = new Set<number>();
-    for (const e of normalEmpires(galaxy)) if (e.capital !== null) capitalSystems.add(e.capital.systemIndex);
+    for (const e of threatEmpires(galaxy)) if (e.capital !== null) capitalSystems.add(e.capital.systemIndex);
     const inhabited = [...colonisedSystems(galaxy)].filter((s) => !capitalSystems.has(s) && s !== anchorageSystem).sort((a, b) => a - b);
     const cands = [...inhabited];
     if (cands.length < count) {
@@ -420,7 +420,7 @@ function spawnShip(galaxy: Galaxy, faction: Empire, design: Design, x: number, y
 
 /** Wakes the fleet at `anchorage` (tests force it). Returns false when no faction or route could be made. Draws Rnd. */
 export function hollowFleetWake(galaxy: Galaxy, st: HollowFleetState, anchorage: Habitat): boolean {
-    const normals = normalEmpires(galaxy);
+    const normals = threatEmpires(galaxy);
     if (normals.length === 0) return false;
     const race = galaxy.races.find((r) => r !== null && r.name === 'Mechanoid') ?? galaxy.races.find((r) => r !== null) ?? null;
     if (race === null) return false;
@@ -619,7 +619,7 @@ function sightings(galaxy: Galaxy, st: HollowFleetState, phase: HollowPhase): vo
     const stop = st.stops[phase.stop];
     const here = st.ships.filter((b) => inSystem(galaxy, b, stop));
     if (here.length === 0) return;
-    for (const e of normalEmpires(galaxy)) {
+    for (const e of threatEmpires(galaxy)) {
         let seen = false;
         for (const b of here) {
             if (isObjectVisibleToThisEmpireImprecise(galaxy, e, b)) {
@@ -691,7 +691,7 @@ function ambush(galaxy: Galaxy, st: HollowFleetState, phase: HollowPhase): void 
     const need = (currentStrength(st) * P.ambushPct(galaxy)) / 100;
     const target = st.ships.find((b) => !b.hasBeenDestroyed && inSystem(galaxy, b, stop)) ?? null;
     if (target === null) return;
-    for (const e of normalEmpires(galaxy)) {
+    for (const e of threatEmpires(galaxy)) {
         if (isHumanEmpire(galaxy, e)) continue;
         const key = `${e.empireId}:${phase.stop}:${phase.cycle}`;
         if (st.ambushes.includes(key)) continue;
@@ -727,7 +727,7 @@ function finish(galaxy: Galaxy, st: HollowFleetState): void {
     st.endDate = galaxyStarDate(galaxy);
     let top: Empire | null = null;
     let best = 0;
-    for (const e of normalEmpires(galaxy)) {
+    for (const e of threatEmpires(galaxy)) {
         const n = st.killsBy[String(e.empireId)] ?? 0;
         if (n > best) {
             best = n;
@@ -878,6 +878,7 @@ export function hollowFleetSpawnNow(galaxy: Galaxy, victim: Empire): boolean {
 
 export function registerHollowFleet(): void {
     registerThreatExistence(HOLLOW_FLEET_KEY, HOLLOW_FLEET_FLAG);
+    registerGuardianPeace(HOLLOW_FLEET_KEY, HOLLOW_FLEET_FLAG, (g) => [peekHollowFleetState(g)?.faction]); // the Ancient Guardians and this threat never fight
     registerThreatSpawn({ key: HOLLOW_FLEET_KEY, label: 'The Hollow Fleet', group: 'galactic', addons: ['hollow-fleet'], note: hollowFleetSpawnNote, spawn: hollowFleetSpawnNow });
     registerScenarioPeriodic({ id: 'hollowFleet.periodic', flag: HOLLOW_FLEET_FLAG, periodDays: PERIOD_DAYS, order: 15, run: (g) => hollowFleetPeriodic(g) });
     registerScenarioEvent({ id: 'hollowFleet.killedBy', flag: HOLLOW_FLEET_FLAG, event: 'builtObjectKilledBy', run: (g, e) => onKilledBy(g, e.builtObject, e.destroyer) });

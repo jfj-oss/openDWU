@@ -21,8 +21,9 @@ import type { Galaxy } from '../../../galaxy';
 import type { Empire } from '../../../empire';
 import type { BuiltObject } from '../../../builtObject';
 import { BuiltObjectMissionType } from '../../../missions/mission';
-import { registerScenarioGameStart, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly } from '../../hooks';
-import { enableThreat, registerThreatExistence, registerThreatSpawn, threatExists, unregisterThreatSpawn } from '../framework';
+import { registerGuardianPeace, registerScenarioGameStart, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly } from '../../hooks';
+import { compactFaction } from './state';
+import { enableThreat, peekThreatState, registerThreatExistence,  registerThreatSpawn, threatExists, unregisterThreatSpawn } from '../framework';
 import { addCrisisEntry, registerCrisisHelpers, type CrisisEntry } from '../crisis';
 import { angerYearly, greatWorkProtectors, protectStep, registerActionEvents, resolveBaseLoss } from './actions';
 import { aiStep } from './ai';
@@ -156,6 +157,7 @@ function refusedMissions(): readonly number[] {
 
 export function registerGiantworks(): void {
     registerThreatExistence(GW_KEY, GW_FLAG);
+    registerGuardianPeace(GW_KEY, GW_FLAG, (g) => [compactFaction(g), peekThreatState<{ faction: Empire | null }>(g, 'gwUltramind')?.faction]); // the Founders' Compact and the Ultramind never fight the Ancient Guardians (the Beacon does)
     registerThreatSpawn({ key: GW_KEY, label: 'A Great Work (random wonder)', group: 'galactic', addons: [GW_KEY], note: spawnNote, spawn: (g) => spawnGreatWork(g, null) });
     registerScenarioGameStart({
         id: 'giantworks.start',

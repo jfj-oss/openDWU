@@ -49,7 +49,8 @@ import { applyReputation } from '../reputation/ledger';
 import { createWreckField, wreckageState, type WreckRecord } from '../wreckage/common';
 import { wreckRecordOf } from '../wreckage/wreckage';
 import { interdictingBasesInSystem, interdictionRadius, jumpInterdictionOn, spoolFactor } from '../interdiction/jumpInterdiction';
-import { empireAnchor, normalEmpires, pastThreatMinYear, peekThreatState, registerThreatExistence, registerThreatSpawn, threatExists, threatState } from './framework';
+import { sparedOwnerOf } from '../../combat/spared';
+import { empireAnchor, guardiansOf, threatEmpires, pastThreatMinYear, peekThreatState, registerThreatExistence, registerThreatSpawn, threatExists, threatState } from './framework';
 
 export const VOID_WHALE_KEY = 'voidWhale';
 export const VOID_WHALE_FLAG = 'threatVoidWhale';
@@ -423,7 +424,7 @@ export function voidWhaleDeepPoint(galaxy: Galaxy, st: VoidWhaleState): { x: num
     let bestMin = -1;
     for (const k of corners) {
         let m = Number.MAX_VALUE;
-        for (const e of normalEmpires(galaxy)) if (e.capital !== null) m = Math.min(m, dist(galaxy, k.x, k.y, e.capital.xpos, e.capital.ypos));
+        for (const e of threatEmpires(galaxy)) if (e.capital !== null) m = Math.min(m, dist(galaxy, k.x, k.y, e.capital.xpos, e.capital.ypos));
         if (m > bestMin) {
             bestMin = m;
             best = k;
@@ -582,7 +583,7 @@ export function voidWhaleSlain(galaxy: Galaxy, st: VoidWhaleState, killer: Empir
         const bounty = P.bounty(galaxy);
         real.stateMoney += bounty;
         st.bountyPaid = bounty;
-        for (const e of normalEmpires(galaxy, real)) applyReputation(galaxy, e, real, P.repBoost(galaxy), { cause: 'voidWhale.slayer', labelKey: 'Reputation Cause voidWhale.slayer', source: 'void-whale', legacy: 'factored', decayPerYear: 1 });
+        for (const e of threatEmpires(galaxy, real)) applyReputation(galaxy, e, real, P.repBoost(galaxy), { cause: 'voidWhale.slayer', labelKey: 'Reputation Cause voidWhale.slayer', source: 'void-whale', legacy: 'factored', decayPerYear: 1 });
         if (isHumanEmpire(galaxy, real)) scenarioMessage(galaxy, real, scenarioText(`${TAG} Bounty Title`), scenarioText(`${TAG} Bounty`, Math.round(bounty).toLocaleString('en-US')), { type: EmpireMessageType.GeneralGoodEvent, popup: false });
     }
     if (scenarioFlag(galaxy, WRECKAGE_FLAG)) {
@@ -783,6 +784,10 @@ export function voidWhaleSpawnNow(galaxy: Galaxy, victim: Empire): boolean {
     return star !== null && voidWhaleWake(galaxy, st, star);
 }
 
+function isWhale(galaxy: Galaxy, creature: Creature): boolean {
+    return peekVoidWhaleState(galaxy)?.creature === creature;
+}
+
 export function registerVoidWhale(): void {
     registerThreatExistence(VOID_WHALE_KEY, VOID_WHALE_FLAG);
     registerThreatSpawn({ key: VOID_WHALE_KEY, label: 'The Void Whale', group: 'galactic', addons: ['void-whale'], note: voidWhaleSpawnNote, spawn: voidWhaleSpawnNow });
@@ -790,7 +795,9 @@ export function registerVoidWhale(): void {
     registerScenarioEvent({ id: 'voidWhale.damaged', flag: VOID_WHALE_FLAG, event: 'creatureDamaged', run: (g, e) => onDamaged(g, e.creature, e.empire, e.amount) });
     registerScenarioEvent({ id: 'voidWhale.killed', flag: VOID_WHALE_FLAG, event: 'creatureKilled', run: (g, e) => onKilled(g, e.creature, e.empire) });
     // The beast does not pick fights with bystanders on its own; it hits back at whoever attacks it (ported CheckForAttackers).
-    registerScenarioQuery({ id: 'voidWhale.ignore', flag: VOID_WHALE_FLAG, query: 'creatureIgnoresTarget', run: (g, v, a) => v || peekVoidWhaleState(g)?.creature === a.creature });
+    // The Ancient Guardians' ships, bases and colonies are beyond the whale, and it is beyond them (user 2026-10-18).
+    registerScenarioQuery({ id: 'voidWhale.ignore', flag: VOID_WHALE_FLAG, query: 'creatureIgnoresTarget', run: (g, v, a) => v || peekVoidWhaleState(g)?.creature === a.creature || (isWhale(g, a.creature) && sparedOwnerOf(a.target) === guardiansOf(g) && guardiansOf(g) !== null) });
+    registerScenarioQuery({ id: 'voidWhale.sparedByGuardians', flag: VOID_WHALE_FLAG, query: 'builtObjectSparesCreature', run: (g, v, a) => v || (isWhale(g, a.creature) && a.builtObject.actualEmpire === guardiansOf(g) && guardiansOf(g) !== null) });
     registerScenarioEvent({ id: 'voidWhale.defend', flag: VOID_WHALE_FLAG, event: 'defensiveBaseLocations', run: (g, e) => defendLastSeen(g, e.empire, e.locations) });
 }
 

@@ -20,7 +20,7 @@ import { Troop, TroopList, TroopType } from '../../cargo';
 import { generateNewTroop } from '../../builtObjectPlacement';
 import { takeOwnershipOfBuiltObject } from '../../combat/ownership';
 import { createNewDesigns } from '../../designGeneration';
-import { declareWar } from '../../diplomacyTick';
+import { clearOutlawsFromEmpire, declareWar } from '../../diplomacyTick';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../../diplomacy';
 import { empireCompleteTeardown } from '../../events';
 import { EmpireMessageType } from '../../messages';
@@ -35,12 +35,14 @@ import { GalaxyScenario, scenarioParam, scenarioState } from '../state';
 import { parseScenarioManifest } from '../manifest';
 import { addMissingText } from '../../textResolver';
 import { THREAT_TEXTS } from './threatTexts';
-import { gameYear, registerScenarioGameStart } from '../hooks';
+import type { GuardianFactionLister } from '../hooks';
+import { gameYear, guardianPeaceListers, registerScenarioGameStart, setGuardianPeaceImpl } from '../hooks';
 import type { Character, StellarObject } from '../../characters';
 import { getEmpireCharacters } from '../../characters';
 import { GalaxyLocation } from '../../galaxyLocation';
 import { mirrorPackageDiscovery } from '../security/registry';
 import { isHumanEmpire, isMultiHuman } from '../../humanEmpires';
+import { cancelAttackMissionsAgainstEmpire, clearAttackFleetAssignments, identifyMechanoidEmpire } from '../../fleets/militaryAI';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Hidden state
@@ -416,6 +418,8 @@ export interface ThreatFactionSpec {
     relationBias?: number;
     /** Government id (default: the race's preferred starting government); a threat's fixed theocracy/hive/corporate government (governments.txt is not overlaid, so ids are cited directly, e.g. the Cult's "Way of Darkness" = 7). */
     governmentId?: number;
+    /** True only for the Beacon's Reclaimers: every other threat faction never fights the Ancient Guardians (guardian peace below). */
+    fightsGuardians?: boolean;
 }
 
 /**
@@ -438,7 +442,8 @@ export function createThreatFaction(galaxy: Galaxy, spec: ThreatFactionSpec): Em
         relationBias: spec.relationBias ?? -100,
     });
     if (faction === null) return null;
-    for (const enemy of spec.enemies ?? []) lockWar(galaxy, faction, enemy);
+    const guardians = spec.fightsGuardians === true ? null : guardiansOf(galaxy);
+    for (const enemy of spec.enemies ?? []) if (enemy !== guardians) lockWar(galaxy, faction, enemy); // the Ancient Guardians are never an enemy of a threat (user 2026-10-18)
     const now = galaxyStarDate(galaxy);
     createNewDesigns(galaxy, faction, now, now, true);
     return faction;
@@ -447,6 +452,7 @@ export function createThreatFaction(galaxy: Galaxy, spec: ThreatFactionSpec): Em
 /** A war that never ends: DeclareWar(lockedWar: true), and `locked` set on both relations whatever path it took. */
 export function lockWar(galaxy: Galaxy, faction: Empire, enemy: Empire): void {
     if (enemy === faction || !enemy.active) return;
+    if (guardianPeaceBetween(galaxy, faction, enemy)) return;
     declareWar(galaxy, faction, enemy, null, true);
     const a = obtainDiplomaticRelation(faction, enemy);
     const b = obtainDiplomaticRelation(enemy, faction);
@@ -560,6 +566,12 @@ export function teardownIfDead(galaxy: Galaxy, faction: Empire | null): boolean 
 /** Normal empires (not the independents, not pirate factions, not `except`), in galaxy.empires order. */
 export function normalEmpires(galaxy: Galaxy, except: Empire | null = null): Empire[] {
     return galaxy.empires.filter((e) => e !== null && e !== except && e !== galaxy.independentEmpire && e.active && e.pirateEmpireBaseHabitat === null);
+}
+
+/** normalEmpires without the Ancient Guardians: the empires a threat may target, infect, raid, convert or hack (every threat but the Beacon). */
+export function threatEmpires(galaxy: Galaxy, except: Empire | null = null): Empire[] {
+    const g = guardiansOf(galaxy);
+    return normalEmpires(galaxy, except).filter((e) => e !== g);
 }
 
 /** State military ships of an empire. */
@@ -733,3 +745,100 @@ export function runThreatAction(galaxy: Galaxy, empire: Empire, kind: string, ta
     if (h === undefined || galaxy.scenario === null || !h.available(galaxy, empire, target)) return false;
     return h.run(galaxy, empire, target);
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// The Ancient Guardians' peace: no Galactic Threat but the Beacon ever fights them (user 2026-10-18)
+// ---------------------------------------------------------------------------------------------------------------
+
+interface GuardianCache {
+    empires: number;
+    guardians: Empire | null;
+}
+// `var` + lazy creation: threat modules register at module load, possibly while this module is still initialising (import cycle).
+// eslint-disable-next-line no-var
+var guardianCacheStore: WeakMap<Galaxy, GuardianCache> | undefined;
+function guardianCache(): WeakMap<Galaxy, GuardianCache> {
+    return (guardianCacheStore ??= new WeakMap());
+}
+
+/** The Ancient Guardians (the Mechanoid story empire), cached: it exists from the start, so a found one never changes. Pure. */
+export function guardiansOf(galaxy: Galaxy): Empire | null {
+    const c = guardianCache().get(galaxy);
+    if (c !== undefined && (c.guardians !== null || c.empires === galaxy.empires.length)) return c.guardians;
+    const guardians = identifyMechanoidEmpire(galaxy);
+    guardianCache().set(galaxy, { empires: galaxy.empires.length, guardians });
+    return guardians;
+}
+
+/** Forgets the cached Guardians (a test that re-races an empire). */
+export function forgetGuardians(galaxy: Galaxy): void {
+    guardianCache().delete(galaxy);
+}
+
+type FactionLister = GuardianFactionLister;
+
+
+/** True when `a` and `b` are the Guardians and a faction of a threat that has made the peace (any registered threat, active or not). */
+function guardianPeaceBetween(galaxy: Galaxy, a: Empire, b: Empire): boolean {
+    const g = guardiansOf(galaxy);
+    if (g === null || (a !== g && b !== g)) return false;
+    const other = a === g ? b : a;
+    for (const list of guardianPeaceListers().values()) if (list(galaxy).includes(other)) return true;
+    return false;
+}
+
+function ownerOfObject(o: unknown): Empire | null {
+    if (o === null || o === undefined || typeof o !== 'object') return null;
+    const x = o as { actualEmpire?: Empire | null; empire?: Empire | null };
+    return x.actualEmpire ?? x.empire ?? null;
+}
+
+function dropBetween(list: unknown[] | null | undefined, other: Empire): void {
+    if (list == null) return;
+    for (let i = list.length - 1; i >= 0; i--) if (ownerOfObject(list[i]) === other) list.splice(i, 1);
+}
+
+/** Wipes every order, target, attacker record and war state between two empires (a save where they were already fighting). */
+export function clearHostility(galaxy: Galaxy, a: Empire, b: Empire): void {
+    for (const [x, y] of [[a, b], [b, a]] as [Empire, Empire][]) {
+        const rel = x.diplomaticRelations.byEmpire(y);
+        if (rel !== null && rel.type === DiplomaticRelationType.War) {
+            rel.type = DiplomaticRelationType.None;
+            rel.locked = false;
+        }
+        cancelAttackMissionsAgainstEmpire(galaxy, x, y);
+        clearAttackFleetAssignments(galaxy, x, y);
+        clearOutlawsFromEmpire(x, y);
+        const incoming = x.incomingEnemyFleetsAndPlanetDestroyers as { fleet: { empire: Empire | null } | null; planetDestroyer: { empire: Empire | null } | null }[];
+        for (let i = incoming.length - 1; i >= 0; i--) if (incoming[i].fleet?.empire === y || incoming[i].planetDestroyer?.empire === y) incoming.splice(i, 1);
+        const ships = [...x.builtObjects, ...x.privateBuiltObjects] as BuiltObject[];
+        for (const bo of ships) {
+            if (bo.hasBeenDestroyed) continue;
+            if (ownerOfObject(bo.currentTarget) === y) bo.currentTarget = null;
+            dropBetween(bo.attackers as unknown[] | null, y);
+            for (const w of bo.weapons) {
+                if (w != null && w.target !== null && ownerOfObject(w.target) === y) {
+                    w.target = null;
+                    w.resetNext = true;
+                }
+            }
+        }
+        for (const h of x.colonies) dropBetween((h as unknown as { attackers?: unknown[] | null }).attackers, y);
+    }
+}
+
+function guardianPairOf(galaxy: Galaxy, a: Empire, b: Empire, factions: FactionLister): boolean {
+    const g = guardiansOf(galaxy);
+    if (g === null || (a !== g && b !== g)) return false;
+    const other = a === g ? b : a;
+    return other !== g && factions(galaxy).includes(other);
+}
+
+setGuardianPeaceImpl({
+    pair: guardianPairOf,
+    clear: (g, factions) => {
+        const guardians = guardiansOf(g);
+        if (guardians === null) return;
+        for (const f of factions(g)) if (f != null && f !== guardians) clearHostility(g, f, guardians);
+    },
+});

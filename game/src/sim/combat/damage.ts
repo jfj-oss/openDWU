@@ -84,6 +84,7 @@ import { isBvrMissile } from '../scenario/bvr/bvr';
 import { anyCombat2On, criticalsOn, surrenderOn } from '../scenario/combat2/common';
 import { isStruck, surrenderTick } from '../scenario/combat2/surrender';
 import { c2HitPower } from '../scenario/combat2/hits';
+import { sparedObjects } from './spared';
 import { critComponentDamaged } from '../scenario/combat2/criticals';
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -983,6 +984,7 @@ export function inflictDamageFull(
     strikeAngle: number,
     allowArmorInvulnerability: boolean,
 ): boolean {
+    if (galaxy.scenario !== null && sparedObjects(galaxy, self, abstractTarget)) return false; // mod layer (Purifier / Ancient Guardians): no damage between them
     hitPower *= baconInflictDamageMultiplier(self);
     const selfBattleStats = battleStatsOf(self);
     const selfGroupStats = shipGroupBattleStats(self);
@@ -1373,6 +1375,7 @@ function isWeaponCategory(category: ComponentCategoryType): boolean {
  */
 export function inflictIonDamage(galaxy: Galaxy, self: BuiltObject, target: StellarObject, weapon: Weapon | null, hitPower: number, time: number, strikeAngle: number): number {
     void strikeAngle;
+    if (galaxy.scenario !== null && sparedObjects(galaxy, self, target)) return 0; // mod layer (threat factions / Ancient Guardians)
     hitPower *= baconInflictDamageMultiplier(self);
     if (isCreature(target)) {
         const creature = target;
@@ -1428,6 +1431,7 @@ export function inflictIonDamage(galaxy: Galaxy, self: BuiltObject, target: Stel
 /** Habitat.cs 2350 InflictIonDamage(target, hitPower, time, galaxy, strikeAngle) (the giant ion cannon). Rnd: Next(20000, 30000) per component disabled. */
 export function habitatInflictIonDamage(galaxy: Galaxy, self: Habitat, target: StellarObject, hitPower: number, time: number, strikeAngle: number): number {
     void strikeAngle;
+    if (galaxy.scenario !== null && sparedObjects(galaxy, self, target)) return 0; // mod layer (threat factions / Ancient Guardians)
     if (isCreature(target)) {
         const creature = target;
         // Habitat.cs 2355 creature.DamageCreature(this, (int)hitPower, GiantIonCannon).
@@ -1501,6 +1505,7 @@ export function selectRandomFacility(galaxy: Galaxy, facilities: PlanetaryFacili
  * Next(0, 10), Next(0, d), Next(0, 2), Next(0, d), Next(0, 2) for the explosion.
  */
 export function inflictBombardDamage(galaxy: Galaxy, self: BuiltObject, habitat: Habitat, bombardPower: number): void {
+    if (galaxy.scenario !== null && sparedObjects(galaxy, self, habitat)) return; // mod layer (threat factions / Ancient Guardians)
     const empire = habitat.empire;
     if (!habitat.planetaryShieldPresent) {
         if (bombardPower > 1 && habitat.troops !== null) {
@@ -1665,6 +1670,7 @@ export function inflictHabitatDestructionAreaDamage(galaxy: Galaxy, self: BuiltO
 
 /** BuiltObject.1.cs 3490 DestroyHabitat(habitat). Rnd: Next(0, 10) per habitat (recursing into the habitat's moons). */
 export function destroyHabitat(galaxy: Galaxy, self: BuiltObject, habitat: Habitat): void {
+    if (galaxy.scenario !== null && sparedObjects(galaxy, self, habitat)) return; // mod layer (threat factions / Ancient Guardians)
     const explosion = new Explosion();
     explosion.explosionStart = galaxyNow(galaxy);
     explosion.explosionSize = toShort(Math.trunc(habitat.diameter * 4.0));

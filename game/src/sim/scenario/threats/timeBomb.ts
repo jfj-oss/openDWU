@@ -45,7 +45,7 @@ import {
     arcNews,
     atWar,
     knowledgeLevel,
-    normalEmpires,
+    threatEmpires,
     pastThreatMinYear,
     peekThreatState,
     registerThreatExistence,
@@ -202,7 +202,7 @@ function liveCultFaction(cst: CultState | null): Empire | null {
 
 /** The empires the cult preys on: normal empires other than the cult faction (galaxy.empires order). */
 function victims(galaxy: Galaxy, cst: CultState | null): Empire[] {
-    return normalEmpires(galaxy, cst?.faction ?? null);
+    return threatEmpires(galaxy, cst?.faction ?? null);
 }
 
 /** Node ids the cult faction holds (0 before secession). */
@@ -467,7 +467,7 @@ export function detonate(galaxy: Galaxy, st: TimeBombState, habitat: Habitat, em
         const faction = liveCultFaction(peekCultState(galaxy));
         if (faction !== null) recordReputation(galaxy, empire, faction, { cause: 'timeBomb.cultDetonation', value: -P.grievance(galaxy), source: '19f' });
     }
-    for (const e of normalEmpires(galaxy)) {
+    for (const e of threatEmpires(galaxy)) {
         if (e === empire) continue;
         const scientists = getEmpireCharacters(e).filter((c) => c.role === CharacterRole.Scientist && c.active).length;
         if (scientists === 0) continue;

@@ -310,7 +310,7 @@ describe('Robot Mutiny: seeding, sleepers, risings, empire, beacon', () => {
         expect(sa.beaconTransports!.length).toBeGreaterThanOrEqual(30);
         expect(fa.mainColor).toBe(0x4b3586);
         expect(fa.secondaryColor).toBe(0x0080ff);
-        expect(obtainDiplomaticRelation(fa, mechA).locked).toBe(true);
+        expect(obtainDiplomaticRelation(fa, mechA).locked).toBe(false); // the Ancient Guardians are never an enemy of a threat (2026-10-18)
         // Full takeover: the whole Guardians absorbed, no transports, the turtle posture.
         const t = rmGame({}, { mutinyFullTakeoverPct: 100 });
         const stt = seeded(t.g);

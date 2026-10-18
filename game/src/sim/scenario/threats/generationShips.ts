@@ -64,7 +64,7 @@ import { reviewEmpireTerritory } from '../../exploration';
 import { Population, PopulationList } from '../../population';
 import { generateDebrisField } from '../../story/storyStart';
 import { isHumanEmpire } from '../../humanEmpires';
-import { GAME_DAY_LENGTH, gameYear, registerScenarioEvent, registerScenarioPeriodic, registerScenarioQuery, scenarioEmit } from '../hooks';
+import { registerGuardianPeace, GAME_DAY_LENGTH, gameYear, registerScenarioEvent, registerScenarioPeriodic, registerScenarioQuery, scenarioEmit } from '../hooks';
 import { registerScenarioDecision, raiseScenarioDecision, type ScenarioDecision } from '../decisions';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
 import { scenarioFlag, scenarioParam } from '../state';
@@ -1996,6 +1996,7 @@ export const GEN_SHIPS_HANDLER_IDS = ['genShips.periodic', 'genShips.ownerChange
 export function registerGenerationShips(): void {
     if (!reDefineHooks.extra.includes(reDefineWorldShip)) reDefineHooks.extra.push(reDefineWorldShip);
     registerThreatExistence(GEN_SHIPS_KEY, GEN_SHIPS_FLAG);
+    registerGuardianPeace(GEN_SHIPS_KEY, GEN_SHIPS_FLAG, (g) => [peekGenShipsState(g)?.faction, peekGenShipsState(g)?.pirate]); // the Ancient Guardians and this threat never fight
     registerThreatSpawn({ key: GEN_SHIPS_KEY, label: 'Generation Ships', group: 'empire', addons: ['generation-ships', 'archive-cores'], note: genShipsSpawnNote, spawn: genShipsSpawnNow });
     registerScenarioPeriodic({ id: 'genShips.periodic', flag: GEN_SHIPS_FLAG, periodDays: PERIOD_DAYS, order: 12, run: (g) => genShipsPeriodic(g) });
     registerScenarioEvent({ id: 'genShips.ownerChanged', flag: GEN_SHIPS_FLAG, event: 'builtObjectOwnerChanged', run: (g, e) => onOwnerChanged(g, e.builtObject, e.to) });

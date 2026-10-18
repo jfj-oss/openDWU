@@ -28,9 +28,10 @@ import { scenarioText } from '../messages';
 import { startStarDateForAge } from '../../galaxyTime';
 import {
     arcNews,
-    normalEmpires,
+    threatEmpires,
     pastThreatMinYear,
     peekThreatState,
+    guardiansOf,
     registerThreatExistence,
     registerThreatSpawn,
     nearestToEmpire,
@@ -205,6 +206,7 @@ export function silenceHyperDenyExempt(galaxy: Galaxy, value: boolean, args: { b
     const st = peekSilenceState(galaxy);
     if (st === null || st.zone === null || args.location !== st.zone) return value;
     const e = args.builtObject.actualEmpire;
+    if (e !== null && e === guardiansOf(galaxy)) return true; // the Ancient Guardians' ships are untouched by the zone
     return e !== null && e.pirateEmpireBaseHabitat !== null ? true : value;
 }
 
@@ -230,7 +232,7 @@ export function silenceAiHint(galaxy: Galaxy): Empire[] {
     const st = peekSilenceState(galaxy);
     if (st === null || st.source === null || st.zone === null) return [];
     const inside: Empire[] = [];
-    for (const e of normalEmpires(galaxy)) {
+    for (const e of threatEmpires(galaxy)) {
         if (e.colonies.some((h) => galaxy.calculateDistance(h.xpos, h.ypos, st.source!.xpos, st.source!.ypos) <= st.radius)) inside.push(e);
     }
     return inside;

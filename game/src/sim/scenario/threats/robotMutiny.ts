@@ -28,7 +28,7 @@
 // Rnd (§0.4): draws in mutinyTrigger (faction creation, the ship-flip roll), the beacon (design naming, the ship-type
 // roll, parking points / headings / names) and mutinyPeriodic's discovery roll. Sleeper accrual, the rising test,
 // mutinyHints, the conversion and the AI policy rule are deterministic. Fixed iteration orders: galaxy.habitats index
-// order for accrual / risings, normalEmpires(galaxy) order for hints / discovery / the AI rule, an empire's builtObjects
+// order for accrual / risings, threatEmpires(galaxy) order for hints / discovery / the AI rule, an empire's builtObjects
 // list order for the ship-flip sweep.
 
 import type { Galaxy } from '../../galaxy';
@@ -60,7 +60,7 @@ import { makeHabitatIntoColonyRuntime } from '../../missions/cmdTroops';
 import { reviewEmpireTerritory } from '../../exploration';
 import { HabitatCategoryType, HabitatType, recalculateMaximumPopulation } from '../../types';
 import { identifyMechanoidEmpire } from '../../fleets/militaryAI';
-import { gameYear, scenarioEmit, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly } from '../hooks';
+import { registerGuardianPeace, gameYear, scenarioEmit, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly } from '../hooks';
 import { scenarioParam } from '../state';
 import { scenarioText } from '../messages';
 import { GameEndOutcome } from '../../victory';
@@ -77,7 +77,7 @@ import {
     loadTroopsOnto,
     makeRobotTroop,
     knowledgeLevel,
-    normalEmpires,
+    threatEmpires,
     pastThreatMinYear,
     peekThreatState,
     registerThreatExistence,
@@ -295,13 +295,13 @@ function empireRobotCount(galaxy: Galaxy, empire: Empire): number {
 
 function galaxyRobotCount(galaxy: Galaxy): number {
     let n = 0;
-    for (const e of normalEmpires(galaxy)) n += empireRobotCount(galaxy, e);
+    for (const e of threatEmpires(galaxy)) n += empireRobotCount(galaxy, e);
     return n;
 }
 
 function mutinyHints(galaxy: Galaxy, st: RobotMutinyState, year: number): void {
     if (year < P.year(galaxy) - 10) return;
-    for (const e of normalEmpires(galaxy)) {
+    for (const e of threatEmpires(galaxy)) {
         if (empireRobotCount(galaxy, e) >= 10) arcMessage(galaxy, st.sentStages, [e], { prefix: TAG, stage: 'Hint', onceKey: `Hint:${e.empireId}` });
     }
 }
@@ -571,7 +571,7 @@ export function mutinyTrigger(galaxy: Galaxy, st: RobotMutinyState): boolean {
     faction.secondaryColor = P.colorSecondary(galaxy);
     provisionCapital(st);
     mutinyUprising(galaxy, st, faction); // every BattleBot garrison defects; the Guardians lend an eighth of their fleet
-    for (const e of normalEmpires(galaxy, faction)) {
+    for (const e of threatEmpires(galaxy, faction)) {
         for (const bo of [...e.builtObjects]) {
             if (bo.hasBeenDestroyed || bo.troops === null || bo.troops.count === 0) continue;
             const robotCount = bo.troops.items.filter((t) => isRobotTroop(galaxy, t)).length;
@@ -585,7 +585,7 @@ export function mutinyTrigger(galaxy: Galaxy, st: RobotMutinyState): boolean {
         }
     }
     arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Trigger', textTag: `${TAG} Trigger News` });
-    for (const e of normalEmpires(galaxy, faction)) arcMessage(galaxy, st.sentStages, [e], { prefix: TAG, stage: 'Trigger' });
+    for (const e of threatEmpires(galaxy, faction)) arcMessage(galaxy, st.sentStages, [e], { prefix: TAG, stage: 'Trigger' });
     mutinyBeacon(galaxy, st, st.risingYear);
     if (st.turtle !== true) {
         spawnTransports(galaxy, st, faction, st.source!, P.initialTransports(galaxy) * REGIMENTS_PER_TRANSPORT);
@@ -648,7 +648,7 @@ export function maxDesignTechLevel(galaxy: Galaxy): number {
 /** Beacon tech level: the best regular empire's tech level + mutinyTechBonus, clamped to the generator's maximum. */
 export function beaconTechLevel(galaxy: Galaxy, faction: Empire | null): number {
     let best = 1;
-    for (const e of normalEmpires(galaxy, faction)) best = Math.max(best, empireTechLevel(e));
+    for (const e of threatEmpires(galaxy, faction)) best = Math.max(best, empireTechLevel(e));
     const max = maxDesignTechLevel(galaxy);
     const lvl = Math.trunc(best + P.techBonus(galaxy));
     return max > 0 ? Math.min(lvl, max) : lvl;
@@ -660,7 +660,7 @@ export function strongestEmpireFirepower(galaxy: Galaxy, faction: Empire | null)
     const shak = identifyShakturiEmpire(galaxy);
     const concord = rimTraderEmpire(galaxy);
     let best = 0;
-    for (const e of normalEmpires(galaxy, faction)) {
+    for (const e of threatEmpires(galaxy, faction)) {
         if (e === mech || e === shak || e === concord || isHerderEmpire(galaxy, e)) continue;
         best = Math.max(best, militaryPotency(e));
     }
@@ -843,7 +843,7 @@ export function assaultCandidates(galaxy: Galaxy, st: RobotMutinyState): Habitat
     const faction = st.faction;
     if (src === null || faction === null) return [];
     const list: { h: Habitat; d: number }[] = [];
-    for (const e of normalEmpires(galaxy, faction)) {
+    for (const e of threatEmpires(galaxy, faction)) {
         for (const c of e.colonies) {
             if (c.hasBeenDestroyed || c.population.totalAmount <= 0) continue;
             list.push({ h: c, d: galaxy.calculateDistance(src.xpos, src.ypos, c.xpos, c.ypos) });
@@ -950,7 +950,7 @@ function mutinyDiscovery(galaxy: Galaxy, st: RobotMutinyState): void {
     if (st.source === null) return;
     const pct = P.sourceDetectPct(galaxy) / 100;
     if (pct <= 0) return;
-    for (const e of normalEmpires(galaxy, st.faction)) {
+    for (const e of threatEmpires(galaxy, st.faction)) {
         if (empireRobotCount(galaxy, e) === 0) continue;
         if (knowledgeLevel({ knowledge: st.sourceKnowledge }, e) >= KNOWLEDGE_CONFIRMED) continue;
         const watching = getEmpireCharacters(e).some(agentWatchesCounterIntelligence);
@@ -964,7 +964,7 @@ function mutinyDiscovery(galaxy: Galaxy, st: RobotMutinyState): void {
 
 /** §9 AI: an empire at knowledge level 3 stops recruiting robots (policy colonyAllowFacilityRoboticTroopFoundry = false). */
 function aiStopRecruiting(galaxy: Galaxy, st: RobotMutinyState): void {
-    for (const e of normalEmpires(galaxy, st.faction)) {
+    for (const e of threatEmpires(galaxy, st.faction)) {
         if (st.stoppedRecruiting.includes(e.empireId)) continue;
         if (knowledgeLevel({ knowledge: st.sourceKnowledge }, e) < KNOWLEDGE_CONFIRMED) continue;
         if (e.policy !== null) e.policy.colonyAllowFacilityRoboticTroopFoundry = false;
@@ -1084,6 +1084,7 @@ export const ROBOT_MUTINY_HANDLER_IDS = ['robotMutiny.yearly', 'robotMutiny.peri
 
 export function registerRobotMutiny(): void {
     registerThreatExistence(ROBOT_MUTINY_KEY, ROBOT_MUTINY_FLAG);
+    registerGuardianPeace(ROBOT_MUTINY_KEY, ROBOT_MUTINY_FLAG, (g) => [peekRobotMutinyState(g)?.faction], { allowCapture: true }); // the full-takeover story variant absorbs the Guardians; no fighting // the Ancient Guardians and this threat never fight
     registerThreatSpawn({ key: ROBOT_MUTINY_KEY, label: 'The Robot Mutiny', group: 'galactic', addons: ['robotmutiny', 'darkfarms'], note: robotMutinySpawnNote, spawn: robotMutinySpawnNow });
     registerScenarioYearly({ id: 'robotMutiny.yearly', flag: ROBOT_MUTINY_FLAG, order: 10, run: mutinyYearly });
     registerScenarioQuery({ id: 'robotMutiny.turtle', flag: ROBOT_MUTINY_FLAG, query: 'assignMissionAllowed', run: turtleMissionAllowed });

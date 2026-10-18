@@ -89,7 +89,7 @@ import { mirrorPackageDiscovery, registerHiddenThing } from '../security/registr
 import { peekCouncilState, registerCouncilExtension, type Council, type MotionCandidate } from '../emergent/council';
 import { raiseScenarioDecision, registerScenarioDecision, pendingScenarioDecisions, type ScenarioDecision } from '../decisions';
 import { createEmpireMidGame } from '../empireMidGame';
-import {
+import { registerGuardianPeace,
     gameYear,
     radiusFraction,
     registerScenarioEvent,
@@ -110,7 +110,7 @@ import {
     arcNews,
     atWar,
     knowledgeLevel,
-    normalEmpires,
+    threatEmpires,
     pastThreatMinYear,
     peekThreatState,
     registerThreatExistence,
@@ -574,7 +574,7 @@ export function exchangePlace(galaxy: Galaxy, st: ExchangeState, year: number = 
     st.station = { bo, knowledge: [] };
     st.appearedYear = year;
     generateStartingCharacters(galaxy, faction, habitat); // leader (portrait) and the race's starting characters
-    for (const e of normalEmpires(galaxy, faction)) introduce(faction, e);
+    for (const e of threatEmpires(galaxy, faction)) introduce(faction, e);
     refreshCharts(galaxy, st);
     maintainPacts(galaxy, st);
     st.agentTarget = P.agents(galaxy);
@@ -592,7 +592,7 @@ function refreshCharts(galaxy: Galaxy, st: ExchangeState): void {
     const f = st.faction;
     if (f === null) return;
     const now = galaxyStarDate(galaxy);
-    for (const e of normalEmpires(galaxy, f)) applyIntelligenceMissionEffect(galaxy, f, newIntelligenceMissionAgainstEmpire(f, null, IntelligenceMissionType.StealGalaxyMap, now, e));
+    for (const e of threatEmpires(galaxy, f)) applyIntelligenceMissionEffect(galaxy, f, newIntelligenceMissionAgainstEmpire(f, null, IntelligenceMissionType.StealGalaxyMap, now, e));
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -610,7 +610,7 @@ function stronger(a: Empire, b: Empire): boolean {
 
 /** Every war among normal empires (the Exchange excluded), weaker / stronger by military potency. Pure. */
 export function exchangeWarPairs(galaxy: Galaxy, faction: Empire | null = exchangeFaction(galaxy)): { weaker: Empire; stronger: Empire }[] {
-    const empires = normalEmpires(galaxy, faction);
+    const empires = threatEmpires(galaxy, faction);
     const out: { weaker: Empire; stronger: Empire }[] = [];
     for (let i = 0; i < empires.length; i++) {
         for (let j = i + 1; j < empires.length; j++) {
@@ -631,7 +631,7 @@ function fundedEmpireIds(galaxy: Galaxy, faction: Empire | null): Set<number> {
 export function exchangeMissionTargets(galaxy: Galaxy, faction: Empire): Empire[] {
     const gst = peekExchangeState(galaxy);
     const grudged = gst !== null ? exchangeGrudged(galaxy, gst) : [];
-    const clients = normalEmpires(galaxy, faction).filter((e) => e.colonies.length > 0);
+    const clients = threatEmpires(galaxy, faction).filter((e) => e.colonies.length > 0);
     const atWarAny = (e: Empire): boolean => clients.some((o) => o !== e && atWar(e, o));
     const weary = clients.filter((e) => e.warWearinessRaw > 0 && atWarAny(e)).sort((a, b) => b.warWearinessRaw - a.warWearinessRaw || a.empireId - b.empireId);
     const strongest = [...clients].sort((a, b) => militaryPotency(b) - militaryPotency(a) || a.empireId - b.empireId).slice(0, Math.max(1, Math.ceil(clients.length / 3)));
@@ -643,7 +643,7 @@ export function exchangeMissionTargets(galaxy: Galaxy, faction: Empire): Empire[
 /** The victim's war enemy the false flag names (the weakest enemy — the Exchange's client). */
 function falseFlagEnemy(galaxy: Galaxy, faction: Empire, victim: Empire): Empire | null {
     let best: Empire | null = null;
-    for (const e of normalEmpires(galaxy, faction)) {
+    for (const e of threatEmpires(galaxy, faction)) {
         if (e === victim || !atWar(e, victim)) continue;
         if (best === null || stronger(best, e)) best = e;
     }
@@ -734,7 +734,7 @@ export function exchangeIntelPrice(galaxy: Galaxy, rival: Empire): number {
 
 /** A rival `buyer` is at war with (lowest empire id), or null. Pure. */
 function warRival(galaxy: Galaxy, faction: Empire, buyer: Empire): Empire | null {
-    for (const e of normalEmpires(galaxy, faction)) if (e !== buyer && atWar(buyer, e)) return e;
+    for (const e of threatEmpires(galaxy, faction)) if (e !== buyer && atWar(buyer, e)) return e;
     return null;
 }
 
@@ -774,7 +774,7 @@ const SALE_ITEMS: readonly ExchangeIntelItem[] = ['galaxyMap', 'operationsMap', 
 export function aiIntelSales(galaxy: Galaxy, st: ExchangeState): void {
     const f = st.faction;
     if (f === null) return;
-    for (const buyer of normalEmpires(galaxy, f)) {
+    for (const buyer of threatEmpires(galaxy, f)) {
         if (isHumanEmpire(galaxy, buyer) || !hasMet(buyer, f) || exchangeIsGrudged(galaxy, st, buyer)) continue;
         const rival = warRival(galaxy, f, buyer);
         if (rival === null) continue;
@@ -855,7 +855,7 @@ export function exchangeIsGrudged(galaxy: Galaxy, st: ExchangeState, empire: Emp
 /** Grudged active normal empires, worst grudge first (ties: empire id). Pure. */
 export function exchangeGrudged(galaxy: Galaxy, st: ExchangeState): Empire[] {
     if (st.grudges === undefined) return [];
-    return normalEmpires(galaxy, st.faction)
+    return threatEmpires(galaxy, st.faction)
         .filter((e) => exchangeIsGrudged(galaxy, st, e))
         .sort((a, b) => exchangeGrudge(st, b) - exchangeGrudge(st, a) || a.empireId - b.empireId);
 }
@@ -896,7 +896,7 @@ export function exchangeGrudgeYearly(galaxy: Galaxy, st: ExchangeState): void {
     }
     let worst: Empire | null = null;
     let worstSum = 0;
-    for (const e of normalEmpires(galaxy, f)) {
+    for (const e of threatEmpires(galaxy, f)) {
         const sum = reputationSum(galaxy, e, f);
         if (sum < worstSum) {
             worst = e;
@@ -1512,6 +1512,7 @@ export function registerExchange(): void {
         },
     });
     registerThreatExistence(EXCHANGE_KEY, EXCHANGE_FLAG);
+    registerGuardianPeace(EXCHANGE_KEY, EXCHANGE_FLAG, (g) => [peekExchangeState(g)?.faction]); // the Ancient Guardians and this threat never fight
     registerThreatSpawn({ key: EXCHANGE_KEY, label: 'The Exchange', group: 'galactic', addons: ['exchange'], note: exchangeSpawnNote, spawn: exchangeSpawnNow });
     registerScenarioYearly({ id: 'exchange.yearly', flag: EXCHANGE_FLAG, order: 10, run: exchangeYearly });
     registerScenarioPeriodic({ id: 'exchange.periodic', flag: EXCHANGE_FLAG, periodDays: PERIOD_DAYS, order: 10, run: (g) => exchangePeriodic(g) });

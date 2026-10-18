@@ -16,6 +16,7 @@
 
 import { bvrEngagement } from '../scenario/bvr/bvrTactics';
 import { struckSparesTarget } from '../scenario/combat2/surrender';
+import { sparedObjects } from './spared';
 import { isAiControlled } from '../missions/playerOrder';
 import { scenarioEmit, scenarioQuery } from '../scenario/hooks';
 import type { Galaxy } from '../galaxy';
@@ -910,6 +911,8 @@ export function shouldAttack(galaxy: Galaxy, bo: BuiltObject, potentialTarget: S
             if (builtObject.empire === galaxy.independentEmpire) {
                 return false;
             }
+            // Mod layer (Purifier): it and the Ancient Guardians never target each other.
+            if (galaxy.scenario !== null && sparedObjects(galaxy, bo, builtObject)) return false;
             if (builtObject.pirateEmpireId > 0 && builtObject.pirateEmpireId === bo.pirateEmpireId) {
                 return false;
             }

@@ -40,7 +40,7 @@ import { SystemVisibilityStatus } from '../../visibility';
 import { EmpireMessageType } from '../../messages';
 import { startStarDateForAge } from '../../galaxyTime';
 import { galaxyStarDate } from '../../tick/simTime';
-import { GAME_DAY_LENGTH, gameYear, registerScenarioEvent, registerScenarioPeriodic, registerScenarioQuery } from '../hooks';
+import { registerGuardianPeace, GAME_DAY_LENGTH, gameYear, registerScenarioEvent, registerScenarioPeriodic, registerScenarioQuery } from '../hooks';
 import { scenarioMessage, scenarioText } from '../messages';
 import { scenarioParam } from '../state';
 import { isHumanEmpire } from '../../humanEmpires';
@@ -51,7 +51,7 @@ import {
     arcNews,
     createThreatFaction,
     knowledgeLevel,
-    normalEmpires,
+    threatEmpires,
     pastThreatMinYear,
     peekThreatState,
     registerThreatExistence,
@@ -196,7 +196,7 @@ function siteFree(h: Habitat): boolean {
  * Without such a site, the qualifying asteroid farthest from the capitals. Pure.
  */
 export function probeSwarmHomeSite(galaxy: Galaxy, near: Empire | null = null): Habitat | null {
-    const capitals = normalEmpires(galaxy).map((e) => e.capital).filter((c): c is Habitat => c !== null);
+    const capitals = threatEmpires(galaxy).map((e) => e.capital).filter((c): c is Habitat => c !== null);
     const colonised = colonisedSystems(galaxy);
     const minD = P.minCapitalDistance(galaxy);
     const range = P.expandRange(galaxy);
@@ -480,7 +480,7 @@ function defend(galaxy: Galaxy, st: ProbeSwarmState): void {
 function checkDiscovery(galaxy: Galaxy, st: ProbeSwarmState): void {
     const home = st.home;
     if (home === null) return;
-    for (const e of normalEmpires(galaxy)) {
+    for (const e of threatEmpires(galaxy)) {
         if (knowledgeLevel(st, e) >= KNOWLEDGE_CONFIRMED) continue;
         const status = e.systemVisibility[home.systemIndex]?.status;
         if (status === SystemVisibilityStatus.Explored || status === SystemVisibilityStatus.Visible) {
@@ -596,6 +596,7 @@ export function probeSwarmSpawnNow(galaxy: Galaxy, victim: Empire): boolean {
 
 export function registerProbeSwarm(): void {
     registerThreatExistence(PROBE_SWARM_KEY, PROBE_SWARM_FLAG);
+    registerGuardianPeace(PROBE_SWARM_KEY, PROBE_SWARM_FLAG, (g) => [peekProbeSwarmState(g)?.faction]); // the Ancient Guardians and this threat never fight
     registerThreatSpawn({ key: PROBE_SWARM_KEY, label: 'The Dead Probe Swarm', group: 'galactic', addons: ['probe-swarm', 'archive-cores'], note: probeSwarmSpawnNote, spawn: probeSwarmSpawnNow });
     registerScenarioPeriodic({ id: 'probeSwarm.periodic', flag: PROBE_SWARM_FLAG, periodDays: PERIOD_DAYS, order: 14, run: (g) => probeSwarmPeriodic(g) });
     registerScenarioEvent({ id: 'probeSwarm.killedBy', flag: PROBE_SWARM_FLAG, event: 'builtObjectKilledBy', run: (g, e) => onKilledBy(g, e.builtObject, e.destroyer) });

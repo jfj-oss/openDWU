@@ -24,7 +24,7 @@ import { EmpireMessageType } from '../../messages';
 import { GameEndOutcome } from '../../victory';
 import { galaxyStarDate } from '../../tick/simTime';
 import { registerHiddenThing } from '../security/registry';
-import { registerScenarioEvent, registerScenarioPeriodic, registerScenarioYearly } from '../hooks';
+import { registerGuardianPeace, registerScenarioEvent, registerScenarioPeriodic, registerScenarioYearly } from '../hooks';
 import { scenarioParam } from '../state';
 import { scenarioText } from '../messages';
 import {
@@ -35,7 +35,7 @@ import {
     createThreatFaction,
     flipToFaction,
     knowledgeLevel,
-    normalEmpires,
+    threatEmpires,
     pastThreatMinYear,
     peekThreatState,
     revealTo,
@@ -156,7 +156,7 @@ export function doppelgangersYearly(galaxy: Galaxy, year: number): void {
     if (st.ended || st.faction !== null) return;
     const perYear = P.plantPerYear(galaxy);
     if (perYear <= 0) return;
-    for (const e of normalEmpires(galaxy)) {
+    for (const e of threatEmpires(galaxy)) {
         if (!st.captured.some((c) => c.owner === e) && !st.sleepers.some((s) => s.trueOwner === e)) continue;
         for (let i = 0; i < perYear; i++) plantDerelict(galaxy, st, e);
     }
@@ -247,7 +247,7 @@ export function doppelgangersTrigger(galaxy: Galaxy, st: DoppelgangersState): bo
     const faction = createThreatFaction(galaxy, {
         race,
         name: scenarioText(`${TAG} Faction Name`),
-        enemies: normalEmpires(galaxy),
+        enemies: threatEmpires(galaxy),
     });
     if (faction === null) return false;
     st.faction = faction;
@@ -257,7 +257,7 @@ export function doppelgangersTrigger(galaxy: Galaxy, st: DoppelgangersState): bo
         flipToFaction(galaxy, s.bo, faction);
     }
     arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Turn', textTag: `${TAG} Turn News` });
-    for (const e of normalEmpires(galaxy, faction)) {
+    for (const e of threatEmpires(galaxy, faction)) {
         arcMessage(galaxy, st.sentStages, [e], { prefix: TAG, stage: 'Turn', type: EmpireMessageType.GeneralBadEvent });
     }
     return true;
@@ -272,7 +272,7 @@ export function doppelgangersSpawnNote(galaxy: Galaxy): string | null {
 /** Game Editor: doppelTurnCount of the player's own ships (then others') turn out to be sleepers and The Mirror rises now. */
 export function doppelgangersSpawnNow(galaxy: Galaxy, victim: Empire): boolean {
     const st = doppelgangersState(galaxy);
-    const owners = [victim, ...normalEmpires(galaxy).filter((e) => e !== victim)];
+    const owners = [victim, ...threatEmpires(galaxy).filter((e) => e !== victim)];
     let n = st.sleepers.filter((s) => !s.bo.hasBeenDestroyed).length;
     for (const e of owners) {
         for (const bo of e.builtObjects) {
@@ -330,6 +330,7 @@ export const DOPPELGANGERS_HANDLER_IDS = ['doppel.yearly', 'doppel.periodic', 'd
 
 export function registerDoppelgangers(): void {
     registerThreatExistence(DOPPELGANGERS_KEY, DOPPELGANGERS_FLAG);
+    registerGuardianPeace(DOPPELGANGERS_KEY, DOPPELGANGERS_FLAG, (g) => [peekDoppelgangersState(g)?.faction]); // the Ancient Guardians and this threat never fight
     registerThreatSpawn({ key: DOPPELGANGERS_KEY, label: 'The Doppelgangers', group: 'galactic', addons: ['doppelgangers'], note: doppelgangersSpawnNote, spawn: doppelgangersSpawnNow });
     registerScenarioYearly({ id: 'doppel.yearly', flag: DOPPELGANGERS_FLAG, order: 10, run: doppelgangersYearly });
     registerScenarioPeriodic({ id: 'doppel.periodic', flag: DOPPELGANGERS_FLAG, order: 10, periodDays: PERIOD_DAYS, run: doppelgangersPeriodic });

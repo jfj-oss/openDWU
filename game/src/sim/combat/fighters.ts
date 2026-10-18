@@ -79,6 +79,7 @@ import { builtObjectSubject, habitatSubject } from '../player/hintSubjects';
 import { generateAbandonedBuiltObject, getMonitoringStationDesignSpec } from '../gameStartTail';
 import { findLonelyColonyLocation } from '../civilianAI';
 import { determineAngle, checkOurEmpireBoarding, checkOurEmpireOverwhelmingBoarding, shouldAttack as builtObjectShouldAttack } from './attackAI';
+import { sparedEmpires } from './spared';
 import { THREAT_RANGE, STRIKE_RANGE_SQUARED, ATTACK_OVERMATCH_FACTOR, ATTACK_EVALUATION_RANGE_FACTOR, calculateOverallStrengthFactor, determineThreatLevel, doSuperPirateEmpireEncounter, shipGroupOf, type ThreatTarget } from './threats';
 import {
     EXPLOSION_IMAGE_COUNT,
@@ -1342,6 +1343,7 @@ export function fighterShouldAttack(galaxy: Galaxy, fighter: Fighter, potentialT
             empire === builtObject.empire ||
             builtObject.empire === null ||
             builtObject.empire === galaxy.independentEmpire ||
+            (galaxy.scenario !== null && sparedEmpires(galaxy, empire, builtObject.actualEmpire ?? builtObject.empire)) || // mod layer (Purifier / Ancient Guardians)
             (builtObject.pirateEmpireId > 0 && fighter.parentBuiltObject !== null && builtObject.pirateEmpireId === fighter.parentBuiltObject.pirateEmpireId) ||
             (builtObject.empire.pirateEmpireBaseHabitat !== null && obtainPirateRelation(builtObject.empire, empire).type === PirateRelationType.Protection) ||
             (empire.pirateEmpireBaseHabitat !== null && obtainPirateRelation(empire, builtObject.empire).type === PirateRelationType.Protection) ||
@@ -1458,6 +1460,7 @@ function fighterEvaluateAdequateAttackers(galaxy: Galaxy, fighter: Fighter, pote
  */
 export function determineThreatLevelFighter(galaxy: Galaxy, fighter: Fighter, target: ThreatTarget, empire: Empire | null, targetX: number, targetY: number, scanRangeSquared: number): number {
     void target;
+    if (galaxy.scenario !== null && sparedEmpires(galaxy, empire, fighter.empire)) return 0; // mod layer (Purifier / Ancient Guardians)
     if (empire !== fighter.empire) {
         const num = galaxy.calculateDistanceSquared(fighter.xpos, fighter.ypos, targetX, targetY);
         if (num <= scanRangeSquared) {

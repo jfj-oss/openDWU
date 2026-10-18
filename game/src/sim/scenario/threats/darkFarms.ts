@@ -39,7 +39,7 @@ import { GameEndOutcome } from '../../victory';
 import { YEAR_LENGTH, startStarDateForAge } from '../../galaxyTime';
 import { galaxyStarDate } from '../../tick/simTime';
 import { TroopList } from '../../cargo';
-import { GAME_DAY_LENGTH, gameYear, registerScenarioEvent, registerScenarioPeriodic, registerScenarioYearly } from '../hooks';
+import { registerGuardianPeace, GAME_DAY_LENGTH, gameYear, registerScenarioEvent, registerScenarioPeriodic, registerScenarioYearly } from '../hooks';
 import { scenarioFlag, scenarioParam } from '../state';
 import { scenarioText } from '../messages';
 import { registerHiddenThing, retireHiddenTarget } from '../security/registry';
@@ -57,7 +57,7 @@ import {
     lockWar,
     makeRobotTroop,
     militaryShipCount,
-    normalEmpires,
+    threatEmpires,
     pastThreatMinYear,
     peekThreatState,
     refitInPlace,
@@ -276,7 +276,7 @@ export function eligibleFarmColonies(galaxy: Galaxy, st: DarkFarmsState): Habita
     const out: Habitat[] = [];
     const minDev = P.minDevelopment(galaxy);
     const minPop = P.minPopulationMillions(galaxy) * 1e6;
-    for (const e of normalEmpires(galaxy, st.faction)) {
+    for (const e of threatEmpires(galaxy, st.faction)) {
         if (isShakturi(galaxy, e)) continue;
         for (const h of e.colonies) {
             if (h === e.capital || h.hasBeenDestroyed) continue;
@@ -535,7 +535,7 @@ function checkDiscovery(galaxy: Galaxy, st: DarkFarmsState, farm: DarkFarm): voi
     if (farm.periods % AGENT_PERIODS !== 0) return;
     const apct = P.agentDetectPct(galaxy) / 100;
     if (apct <= 0) return;
-    for (const e of normalEmpires(galaxy, st.faction)) {
+    for (const e of threatEmpires(galaxy, st.faction)) {
         if (knowledgeLevel(farm, e) >= KNOWLEDGE_CONFIRMED) continue;
         for (const c of getEmpireCharacters(e)) {
             if (!agentWatchesHost(c, e, farm.host)) continue;
@@ -637,14 +637,14 @@ function configureFactionPolicy(policy: EmpirePolicy): void {
 /** The faction (one for all farms), created on the first turn. Null when the galaxy has no empire id left. */
 function ensureFaction(galaxy: Galaxy, st: DarkFarmsState, farm: DarkFarm): Empire | null {
     if (st.faction !== null && st.faction.active) {
-        for (const e of normalEmpires(galaxy, st.faction)) if (!atWar(st.faction, e)) lockWar(galaxy, st.faction, e);
+        for (const e of threatEmpires(galaxy, st.faction)) if (!atWar(st.faction, e)) lockWar(galaxy, st.faction, e);
         return st.faction;
     }
     const faction = createThreatFaction(galaxy, {
         race: 'Harvester',
         name: scenarioText(`${TAG} Faction Name`),
         techLevel: hostTechLevel(farm.host),
-        enemies: normalEmpires(galaxy),
+        enemies: threatEmpires(galaxy),
         configurePolicy: configureFactionPolicy,
     });
     if (faction === null) return null;
@@ -855,7 +855,7 @@ export function directFaction(galaxy: Galaxy, st: DarkFarmsState): void {
     }
     if (loaded.length === 0) return;
     const attack = loaded.reduce((a, b) => a + (b.troops?.totalAttackStrength ?? 0), 0);
-    const enemies = normalEmpires(galaxy, faction).filter((e) => atWar(faction, e));
+    const enemies = threatEmpires(galaxy, faction).filter((e) => atWar(faction, e));
     // Reach: 3 × the distance from the farm to the nearest enemy colony.
     let nearest = Number.MAX_VALUE;
     for (const e of enemies) for (const c of e.colonies) nearest = Math.min(nearest, galaxy.calculateDistance(home.xpos, home.ypos, c.xpos, c.ypos));
@@ -986,7 +986,7 @@ function hints(galaxy: Galaxy, st: DarkFarmsState, farm: DarkFarm, now: number):
     }
     if (age >= 4 * YEAR_LENGTH) {
         arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Rumour', onceKey: `Rumour:${farm.id}`, args: [systemName(galaxy, farm.habitat)], subject: farm.habitat });
-        for (const e of normalEmpires(galaxy, st.faction)) revealTo(galaxy, farm, e, 1);
+        for (const e of threatEmpires(galaxy, st.faction)) revealTo(galaxy, farm, e, 1);
     }
     if (robotArmy(galaxy) && farm.hiddenTroops >= 4 * P.troopsPerYear(galaxy) && P.troopsPerYear(galaxy) > 0) {
         arcMessage(galaxy, st.sentStages, [host], { prefix: TAG, stage: 'Hint Missing', onceKey: `Hint Missing:${farm.id}`, args: [farm.habitat.name], type: EmpireMessageType.GeneralWarning, subject: farm.habitat });
@@ -1159,7 +1159,7 @@ export function darkFarmsSpawnNow(galaxy: Galaxy, victim: Empire): boolean {
     const st = darkFarmsState(galaxy);
     const pick = (e: Empire): Habitat | null => [...e.colonies].filter((h) => h !== e.capital && !h.hasBeenDestroyed && farmAt(st, h) === null).sort((a, b) => b.population.totalAmount - a.population.totalAmount)[0] ?? null;
     let host = pick(victim);
-    for (const e of normalEmpires(galaxy, st.faction)) if (host === null) host = pick(e);
+    for (const e of threatEmpires(galaxy, st.faction)) if (host === null) host = pick(e);
     if (host === null) return false;
     spawnFarm(galaxy, st, host);
     return true;
@@ -1167,6 +1167,7 @@ export function darkFarmsSpawnNow(galaxy: Galaxy, victim: Empire): boolean {
 
 export function registerDarkFarms(): void {
     registerThreatExistence(DARK_FARMS_KEY, DARK_FARMS_FLAG);
+    registerGuardianPeace(DARK_FARMS_KEY, DARK_FARMS_FLAG, (g) => [peekDarkFarmsState(g)?.faction]); // the Ancient Guardians and this threat never fight
     registerThreatSpawn({ key: DARK_FARMS_KEY, label: 'The Dark Farms', group: 'galactic', addons: ['darkfarms'], note: darkFarmsSpawnNote, spawn: darkFarmsSpawnNow });
     registerScenarioYearly({ id: 'darkFarms.spawn', flag: DARK_FARMS_FLAG, order: 10, run: darkFarmsYearly });
     registerScenarioPeriodic({ id: 'darkFarms.periodic', flag: DARK_FARMS_FLAG, order: 10, periodDays: DARK_FARMS_PERIOD_DAYS, run: darkFarmsPeriodic });

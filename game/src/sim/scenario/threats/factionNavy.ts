@@ -38,7 +38,7 @@ import { shipGroupAssignMission, shipGroupCompleteMissionWith } from '../../flee
 import { troopEmpire } from '../../combat/invasion';
 import { scenarioParam } from '../state';
 import { empireTechLevel, formBeaconFleets, maxDesignTechLevel, raiseFactionTech } from './robotMutiny';
-import { makeFactionTroop, normalEmpires } from './framework';
+import { makeFactionTroop, threatEmpires } from './framework';
 
 export type NavyPrefix = 'cult' | 'hive' | 'genShips';
 
@@ -138,7 +138,7 @@ export function capturedFleetLimit(galaxy: Galaxy, k: NavyPrefix, conqueror: Emp
 
 /** The galaxy's average empireTechLevel over the normal empires (excluding `faction`), floored, at least 1, within the generator's range. */
 export function averageTechLevel(galaxy: Galaxy, faction: Empire): number {
-    const normals = normalEmpires(galaxy, faction);
+    const normals = threatEmpires(galaxy, faction);
     if (normals.length === 0) return 1;
     const avg = normals.reduce((s, e) => s + empireTechLevel(e), 0) / normals.length;
     const max = maxDesignTechLevel(galaxy);
@@ -172,7 +172,7 @@ export function navyRise(galaxy: Galaxy, k: NavyPrefix, faction: Empire, navy: N
 
 /** The average militaryPotency of the normal empires (the Hive's reference). */
 export function averageMilitary(galaxy: Galaxy, faction: Empire | null): number {
-    const normals = normalEmpires(galaxy, faction);
+    const normals = threatEmpires(galaxy, faction);
     return normals.length === 0 ? 0 : normals.reduce((s, e) => s + militaryPotency(e), 0) / normals.length;
 }
 
@@ -322,7 +322,7 @@ export function pumpShipCap(galaxy: Galaxy, k: NavyPrefix, faction: Empire): num
     const fixed = P.pumpMaxShips(galaxy, k);
     if (fixed > 0) return fixed;
     let largest = 0;
-    for (const e of normalEmpires(galaxy, faction)) {
+    for (const e of threatEmpires(galaxy, faction)) {
         let n = 0;
         for (const b of e.builtObjects) if (!b.hasBeenDestroyed && b.role === BuiltObjectRole.Military) n++;
         if (n > largest) largest = n;

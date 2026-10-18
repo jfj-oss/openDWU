@@ -25,7 +25,7 @@ import { SystemVisibilityStatus } from '../../visibility';
 import { BuiltObjectRole } from '../../data/designSpecifications';
 import { builtObjectCompleteTeardown } from '../../combat/teardown';
 import { GameEndOutcome } from '../../victory';
-import { gameYear, registerScenarioPeriodic, registerScenarioYearly } from '../hooks';
+import { registerGuardianPeace, gameYear, registerScenarioPeriodic, registerScenarioYearly } from '../hooks';
 import { scenarioParam } from '../state';
 import { scenarioText } from '../messages';
 import { registerHiddenThing } from '../security/registry';
@@ -36,7 +36,7 @@ import {
     arcNews,
     createThreatFaction,
     knowledgeLevel,
-    normalEmpires,
+    threatEmpires,
     pastThreatMinYear,
     peekThreatState,
     registerThreatAction,
@@ -116,7 +116,7 @@ function isGasGiant(h: Habitat): boolean {
 
 /** No active normal empire has explored this habitat's system (Galaxy.9.cs's super-pirate seed analogue, visibility.ts 32). */
 function unexploredByAll(galaxy: Galaxy, h: Habitat): boolean {
-    for (const e of normalEmpires(galaxy)) {
+    for (const e of threatEmpires(galaxy)) {
         if (e.systemVisibility[h.systemIndex]?.status !== SystemVisibilityStatus.Unexplored) return false;
     }
     return true;
@@ -260,7 +260,7 @@ function eatNearbyTarget(galaxy: Galaxy, st: GreyTideState, nest: Nest): void {
 
 function checkDiscovery(galaxy: Galaxy, st: GreyTideState, nest: Nest): void {
     void st;
-    for (const e of normalEmpires(galaxy)) {
+    for (const e of threatEmpires(galaxy)) {
         if (knowledgeLevel(nest, e) >= KNOWLEDGE_CONFIRMED) continue;
         const status = e.systemVisibility[nest.habitat.systemIndex]?.status;
         if (status === SystemVisibilityStatus.Explored || status === SystemVisibilityStatus.Visible) revealTo(galaxy, nest, e, KNOWLEDGE_CONFIRMED);
@@ -328,6 +328,7 @@ export const GREY_TIDE_HANDLER_IDS = ['greyTide.yearly', 'greyTide.periodic'] as
 
 export function registerGreyTide(): void {
     registerThreatExistence(GREY_TIDE_KEY, GREY_TIDE_FLAG);
+    registerGuardianPeace(GREY_TIDE_KEY, GREY_TIDE_FLAG, (g) => [peekGreyTideState(g)?.faction]); // the Ancient Guardians and this threat never fight
     registerThreatSpawn({ key: GREY_TIDE_KEY, label: 'The Grey Tide', group: 'galactic', addons: ['greytide'], note: greyTideSpawnNote, spawn: greyTideSpawnNow });
     registerScenarioYearly({ id: 'greyTide.yearly', flag: GREY_TIDE_FLAG, order: 10, run: greyTideYearly });
     registerScenarioPeriodic({ id: 'greyTide.periodic', flag: GREY_TIDE_FLAG, order: 10, periodDays: PERIOD_DAYS, run: greyTidePeriodic });

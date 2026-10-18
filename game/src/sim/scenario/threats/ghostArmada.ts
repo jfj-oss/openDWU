@@ -34,7 +34,7 @@ import { assignMission } from '../../missions/assign';
 import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission } from '../../missions/mission';
 import { YEAR_LENGTH } from '../../galaxyTime';
 import { galaxyStarDate } from '../../tick/simTime';
-import { registerScenarioEvent, registerScenarioPeriodic, registerScenarioYearly } from '../hooks';
+import { registerGuardianPeace, registerScenarioEvent, registerScenarioPeriodic, registerScenarioYearly } from '../hooks';
 import { scenarioParam } from '../state';
 import { scenarioText } from '../messages';
 import { GameEndOutcome } from '../../victory';
@@ -44,7 +44,7 @@ import {
     arcNews,
     atWar,
     createThreatFaction,
-    normalEmpires,
+    threatEmpires,
     pastThreatMinYear,
     peekThreatState,
     registerThreatExistence,
@@ -241,7 +241,7 @@ function rise(galaxy: Galaxy, st: GhostArmadaState, entry: GhostPending): void {
     const recipients = entry.conqueror !== null ? [entry.conqueror] : [];
     arcMessage(galaxy, st.sentStages, recipients, { prefix: TAG, stage: 'Rise', onceKey: `Rise:${entry.deadEmpireId}`, args: [entry.deadEmpireName, fieldName], subject: nearHabitat });
     arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Rise', onceKey: `Rise News:${entry.deadEmpireId}`, textTag: `${TAG} Rise News`, args: [entry.deadEmpireName, fieldName, entry.conqueror?.name ?? ''], subject: nearHabitat });
-    for (const e of normalEmpires(galaxy, faction)) revealTo(galaxy, risen, e, KNOWLEDGE_RUMOUR);
+    for (const e of threatEmpires(galaxy, faction)) revealTo(galaxy, risen, e, KNOWLEDGE_RUMOUR);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -315,6 +315,7 @@ export const GHOST_ARMADA_HANDLER_IDS = ['ghostArmada.removed', 'ghostArmada.eli
 
 export function registerGhostArmada(): void {
     registerThreatExistence(GHOST_ARMADA_KEY, GHOST_ARMADA_FLAG);
+    registerGuardianPeace(GHOST_ARMADA_KEY, GHOST_ARMADA_FLAG, (g) => (peekGhostArmadaState(g)?.risen ?? []).map((r) => r.faction)); // the Ancient Guardians and this threat never fight
     // Not in the Game Editor (user 2026-10-16): with no eliminated empire it had to take over a living AI empire. The threat itself is unchanged.
     registerScenarioEvent({ id: 'ghostArmada.removed', flag: GHOST_ARMADA_FLAG, event: 'builtObjectRemoved', run: (g, e) => onBuiltObjectRemoved(g, e.builtObject) });
     registerScenarioEvent({ id: 'ghostArmada.eliminated', flag: GHOST_ARMADA_FLAG, event: 'empireEliminated', run: (g, e) => onEmpireEliminated(g, e.empire, e.conqueror) });

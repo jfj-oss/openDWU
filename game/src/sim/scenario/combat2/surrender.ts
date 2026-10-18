@@ -14,6 +14,7 @@
 // is taken back by its crew, which will not surrender again for as long. State: scenario.state.combat2.struck / calm.
 
 import type { Galaxy } from '../../galaxy';
+import { sparedEmpires } from '../../combat/spared';
 import type { BuiltObject } from '../../builtObject';
 import type { Empire } from '../../empire';
 import type { StellarObject } from '../../missions/mission';
@@ -168,7 +169,7 @@ function nearestCaptor(galaxy: Galaxy, bo: BuiltObject, range: number): BuiltObj
     for (let i = 0; i < cell.length; i++) {
         const c = cell[i];
         if (c == null || c === bo || c.hasBeenDestroyed || c.empire === null || c.role !== BuiltObjectRole.Military || !(c.firepowerRaw > 0) || !(c.topSpeed > 0)) continue;
-        if (!hostile(c.empire, bo.empire)) continue;
+        if (!hostile(c.empire, bo.empire) || sparedEmpires(galaxy, c.empire, bo.empire)) continue;
         const st = peekC2State(galaxy);
         if (st !== undefined && st.struck.has(c)) continue;
         const dx = c.xpos - bo.xpos;

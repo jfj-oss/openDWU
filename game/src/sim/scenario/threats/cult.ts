@@ -24,7 +24,7 @@ import { colonyGovernor, spawnGovernorFor } from '../governors';
 import { CharacterRole, CharacterTraitType, type Character, type IntelligenceMission, getEmpireCharacters } from '../../characters';
 import { EmpireMessageType } from '../../messages';
 import { GameEndOutcome } from '../../victory';
-import { GAME_DAY_LENGTH, gameYear, registerScenarioEvent, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly } from '../hooks';
+import { registerGuardianPeace, GAME_DAY_LENGTH, gameYear, registerScenarioEvent, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly } from '../hooks';
 import { militaryPotency } from '../../diplomacyTick';
 import { identifyMechanoidEmpire } from '../../fleets/militaryAI';
 import { scenarioParam } from '../state';
@@ -615,6 +615,7 @@ export const CULT_HANDLER_IDS = ['cult.yearly', 'cult.periodic', 'cult.character
 
 export function registerCult(): void {
     registerThreatExistence(CULT_KEY, CULT_FLAG);
+    registerGuardianPeace(CULT_KEY, CULT_FLAG, (g) => [peekCultState(g)?.faction]); // the Ancient Guardians and this threat never fight
     registerThreatSpawn({ key: CULT_KEY, label: 'The Cult', group: 'empire', addons: ['cult'], note: cultSpawnNote, spawn: cultSpawnNow });
     registerScenarioYearly({ id: 'cult.yearly', flag: CULT_FLAG, order: 10, run: cultYearly });
     registerScenarioPeriodic({ id: 'cult.periodic', flag: CULT_FLAG, order: 10, periodDays: PERIOD_DAYS, run: cultPeriodic });

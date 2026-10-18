@@ -70,6 +70,7 @@ import { anyCombat2On, decoysOn } from '../scenario/combat2/common';
 import { c2AdjustHit } from '../scenario/combat2/hits';
 import { critFireFactor } from '../scenario/combat2/criticals';
 import { c2StruckSpares } from '../scenario/combat2/surrender';
+import { sparedObjects } from './spared';
 import { bvrMayFire, bvrMissileHit, bvrNoteDowned, bvrNoteFired, bvrNoteUntracked, bvrNoteHit, bvrOn, bvrParam, bvrTracked, isBvrMissile, isLimitedLauncher } from '../scenario/bvr/bvr';
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -599,6 +600,7 @@ export function checkFireAreaWeaponAtTarget(galaxy: Galaxy, self: BuiltObject, w
 export function firePlanetDestroyerAtHabitat(galaxy: Galaxy, builtObject: BuiltObject, distanceToTarget: number, target: Habitat): void {
     const self = builtObject;
     if (self._fuelHandicapped) return;
+    if (galaxy.scenario !== null && sparedObjects(galaxy, self, target)) return; // mod layer (Purifier / Ancient Guardians)
     const tempNow = galaxy.nowMs;
     const shipGroup = shipGroupOf(self);
     for (let i = 0; i < self.weapons.length; i++) {
@@ -637,6 +639,7 @@ export function firePlanetDestroyerAtHabitat(galaxy: Galaxy, builtObject: BuiltO
 export function bombardTarget(galaxy: Galaxy, builtObject: BuiltObject, distanceToTarget: number, habitat: Habitat): void {
     const self = builtObject;
     if (self._fuelHandicapped || habitat.hasBeenDestroyed) return;
+    if (galaxy.scenario !== null && sparedObjects(galaxy, self, habitat)) return; // mod layer (Purifier / Ancient Guardians)
     const tempNow = galaxy.nowMs;
     const shipGroup = shipGroupOf(self);
     for (let i = 0; i < self.weapons.length; i++) {
@@ -773,6 +776,8 @@ export function fireWeaponsAtTarget(galaxy: Galaxy, builtObject: BuiltObject, di
     const bvr = galaxy.scenario !== null && bvrOn(galaxy); // mod layer (BVR combat)
     // Mod layer (Surrender): a ship that has struck its colours does not fire, and nothing fires at it.
     if (galaxy.scenario !== null && c2StruckSpares(galaxy, self, target)) return;
+    // Mod layer (Purifier): it and the Ancient Guardians never fire at each other.
+    if (galaxy.scenario !== null && sparedObjects(galaxy, self, target)) return;
     const critK2 = galaxy.scenario !== null ? critFireFactor(galaxy, self) : 1; // mod layer (Critical hits)
     const shipGroup = shipGroupOf(self);
     let flag = false;
@@ -951,6 +956,12 @@ export function handleWeaponsFiringBuiltObject(galaxy: Galaxy, builtObject: Buil
             continue;
         }
         let target = weaponTarget(weapon);
+        // Mod layer (Purifier): a shot in flight at the Ancient Guardians (or theirs at it) is dropped; nothing hits.
+        if (target !== null && galaxy.scenario !== null && sparedObjects(galaxy, self, target)) {
+            weapon.target = null;
+            weapon.resetNext = true;
+            continue;
+        }
         if (weapon.isPlanetDestroyer) {
             if (target !== null && isHabitat(target)) {
                 handlePlanetDestroyerFiring(galaxy, self, weapon, timePassed);
@@ -1221,6 +1232,7 @@ export function handleWeaponsFiringBuiltObject(galaxy: Galaxy, builtObject: Buil
                 for (let m = 0; m < cell2.length; m++) {
                     const builtObject4 = cell2[m];
                     if (builtObject4 == null) continue;
+                    if (galaxy.scenario !== null && sparedObjects(galaxy, self, builtObject4)) continue; // mod layer (Purifier / Ancient Guardians)
                     const num18 = galaxy.calculateDistanceSquared(weapon.x, weapon.y, builtObject4.xpos, builtObject4.ypos);
                     if (num18 < num16 && builtObject4.role !== BuiltObjectRole.Base) {
                         const num19 = Math.min(1.0, Math.max(0.01, 1.0 - num18 / num16));
@@ -1278,6 +1290,7 @@ export function handleWeaponsFiringBuiltObject(galaxy: Galaxy, builtObject: Buil
                 for (let j = 0; j < cell.length; j++) {
                     const bo = cell[j];
                     if (bo == null || bo === self) continue;
+                    if (galaxy.scenario !== null && sparedObjects(galaxy, self, bo)) continue; // mod layer (Purifier / Ancient Guardians)
                     const num10 = galaxy.calculateDistance(weapon.x, weapon.y, bo.xpos, bo.ypos);
                     if (!(num10 >= num9) || !(num10 < weapon.distanceTravelled)) continue;
                     const strikeAngle = determineAngle(weapon.x, weapon.y, bo.xpos, bo.ypos);
@@ -1749,6 +1762,7 @@ export function habitatDetermineHitTarget(galaxy: Galaxy, habitat: Habitat, weap
 
 /** Habitat.cs 2416 FireWeaponsAtTarget(distanceToTarget, target, time). Rnd: NextDouble (jitter); when firing DetermineHitTarget + Fire draws. */
 export function habitatFireWeaponsAtTarget(galaxy: Galaxy, habitat: Habitat, distanceToTarget: number, target: StellarObject, time: number): void {
+    if (galaxy.scenario !== null && sparedObjects(galaxy, habitat, target)) return; // mod layer (Purifier / Ancient Guardians)
     const giantIonCannon = giantIonCannonOf(habitat);
     if (habitat.giantIonCannonPresent && giantIonCannon !== null && !target.hasBeenDestroyed && giantIonCannon.distanceTravelled < 0 && giantIonCannon.range >= distanceToTarget) {
         const timeSpanMs = galaxy.nowMs - giantIonCannon.lastFired;
@@ -1792,7 +1806,7 @@ export function attackEnemyTargets(galaxy: Galaxy, habitat: Habitat, time: numbe
         if (threats !== null) {
             for (let i = 0; i < threats.length; i++) {
                 const bo = threats[i];
-                if (bo != null && habitatShouldAttack(habitat, bo)) {
+                if (bo != null && habitatShouldAttack(habitat, bo) && !(galaxy.scenario !== null && sparedObjects(galaxy, habitat, bo))) {
                     const r = checkTargetInRange(galaxy, habitat, bo);
                     if (r.inRange) {
                         habitatFireWeaponsAtTarget(galaxy, habitat, r.distanceToTarget, bo, time);

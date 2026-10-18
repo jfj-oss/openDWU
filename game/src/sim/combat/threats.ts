@@ -58,6 +58,7 @@ import { isHumanEmpire } from '../humanEmpires';
 import { flagshipThreatFactor, veteranWithdrawFactor } from '../scenario/veterans/veterans';
 import { ambushAiFactor } from '../scenario/combat2/ambush';
 import { critWithdrawFactor } from '../scenario/combat2/criticals';
+import { sparedEmpires } from './spared';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Galaxy constants (Galaxy.3.cs static ctor 4971-5055)
@@ -332,6 +333,7 @@ function pirateRelationThreatFactor(galaxy: Galaxy, empire: Empire, threatEmpire
 /** Galaxy.7.cs 3681 DetermineThreatLevel(BuiltObject builtObject, object target, Empire empire, int targetX, int targetY, double scanRangeSquared, left, right, top, bottom). */
 export function determineThreatLevelBuiltObject(galaxy: Galaxy, builtObject: BuiltObject, target: ThreatTarget, empire: Empire | null, targetX: number, targetY: number, scanRangeSquared: number): number {
     void target;
+    if (galaxy.scenario !== null && sparedEmpires(galaxy, empire, builtObject.actualEmpire ?? builtObject.empire)) return 0; // mod layer (Purifier / Ancient Guardians): not a threat to each other
     if (empire !== builtObject.empire) {
         const num = galaxy.calculateDistanceSquared(builtObject.xpos, builtObject.ypos, targetX, targetY);
         if (num <= scanRangeSquared) {

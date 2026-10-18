@@ -18,7 +18,7 @@ import { CharacterRole, generateNewCharacter } from '../../characters';
 import { EmpireMessageType } from '../../messages';
 import { GameEndOutcome } from '../../victory';
 import { galaxyStarDate } from '../../tick/simTime';
-import { gameYear, registerScenarioEvent, registerScenarioGameStart, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly, type HomePlacementHelpers } from '../hooks';
+import { registerGuardianPeace, gameYear, registerScenarioEvent, registerScenarioGameStart, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly, type HomePlacementHelpers } from '../hooks';
 import { scenarioParam } from '../state';
 import { scenarioText } from '../messages';
 import { registerHiddenThing, retireHiddenTarget } from '../security/registry';
@@ -31,7 +31,7 @@ import {
     invadeFromInside,
     knowledgeLevel,
     makeFactionTroop,
-    normalEmpires,
+    threatEmpires,
     pastThreatMinYear,
     peekThreatState,
     revealTo,
@@ -280,7 +280,7 @@ export function hiveTrigger(galaxy: Galaxy, st: HiveState, near: Habitat | null 
         race,
         name: scenarioText(`${TAG} Faction Name`),
         governmentId: HIVE_MIND_GOVERNMENT,
-        enemies: normalEmpires(galaxy),
+        enemies: threatEmpires(galaxy),
     });
     if (faction === null) return false;
     st.faction = faction;
@@ -309,7 +309,7 @@ export function hiveTrigger(galaxy: Galaxy, st: HiveState, near: Habitat | null 
     }
     topUpPorts(galaxy, 'hive', faction, st.navy);
     arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Turn', textTag: `${TAG} Turn News` });
-    for (const e of normalEmpires(galaxy, faction)) arcMessage(galaxy, st.sentStages, [e], { prefix: TAG, stage: 'Turn', type: EmpireMessageType.GeneralBadEvent });
+    for (const e of threatEmpires(galaxy, faction)) arcMessage(galaxy, st.sentStages, [e], { prefix: TAG, stage: 'Turn', type: EmpireMessageType.GeneralBadEvent });
     return true;
 }
 
@@ -447,6 +447,7 @@ export function hiveSpawnNow(galaxy: Galaxy, victim: Empire): boolean {
 
 export function registerHive(): void {
     registerThreatExistence(HIVE_KEY, HIVE_FLAG);
+    registerGuardianPeace(HIVE_KEY, HIVE_FLAG, (g) => [peekHiveState(g)?.faction]); // the Ancient Guardians and this threat never fight
     registerThreatSpawn({ key: HIVE_KEY, label: 'The Hive', group: 'galactic', addons: ['hive'], note: hiveSpawnNote, spawn: hiveSpawnNow });
     registerScenarioGameStart({ id: 'hive.init', flag: HIVE_FLAG, run: (g, ctx) => hiveInit(g, ctx) });
     registerScenarioPeriodic({ id: 'hive.periodic', flag: HIVE_FLAG, order: 10, periodDays: PERIOD_DAYS, run: hivePeriodic });

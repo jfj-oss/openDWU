@@ -90,6 +90,10 @@ import type { Empire } from '../src/sim/empire';
 import { threatLeadRows, threatsSectionVisible } from '../src/ui/internalSecurityView';
 import { CharacterRole, getEmpireCharacters } from '../src/sim/characters';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
+import { shouldAttack } from '../src/sim/combat/attackAI';
+import { inflictDamage } from '../src/sim/combat/damage';
+import { sparedObjects } from '../src/sim/combat/spared';
+import { clearHostility, forgetGuardians, guardiansOf, normalEmpires, threatEmpires } from '../src/sim/scenario/threats/framework';
 import { buildActionMenu } from '../src/sim/player/orderMenu';
 import { createShipAction, ShipActionType } from '../src/sim/player/shipAction';
 import { runGameSeconds } from '../src/sim/tick/harness';
@@ -1501,6 +1505,47 @@ describe('purifier', () => {
         runGameSeconds(lg, 60);
         expect(stateDigest(lg)).toBe(stateDigest(g));
         expect(peekPurifierState(lg)!.worlds).toBe(peekPurifierState(g)!.worlds);
+    }, 900000);
+    it('the Ancient Guardians and the Purifier never interact: no target, no shot, no damage, no war, no capture, in either direction', () => {
+        const { g, st } = woken();
+        const faction = st.faction!;
+        const normals = g.empires.filter((e) => e !== null && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null && e !== g.playerEmpire && e !== st.waker) as Empire[];
+        const guardians = normals[0];
+        const other = g.playerEmpire!;
+        guardians.dominantRace = g.races.find((r) => r.name.toLowerCase() === 'mechanoid')!; // the story empire, as identifyMechanoidEmpire finds it
+        forgetGuardians(g);
+        expect(guardiansOf(g)).toBe(guardians);
+        // Every threat's victim lists (threatEmpires) leave the Guardians out; the Beacon's (normalEmpires) keep them.
+        expect(threatEmpires(g).includes(guardians)).toBe(false);
+        expect(normalEmpires(g).includes(guardians)).toBe(true);
+        // The shared query is symmetric, covers the Guardians only, and is quiet for everyone else.
+        expect(scenarioQuery(g, 'empiresSpared', false, { a: faction, b: guardians })).toBe(true);
+        expect(scenarioQuery(g, 'empiresSpared', false, { a: guardians, b: faction })).toBe(true);
+        expect(scenarioQuery(g, 'empiresSpared', false, { a: faction, b: other })).toBe(false);
+        expect(scenarioQuery(g, 'declareWarBlocked', false, { empire: faction, target: guardians })).toBe(true);
+        // Ships: the Purifier's escort never picks a Guardian ship, nor a Guardian ship the escort; it still picks everyone else's.
+        const escort = st.escorts[0];
+        const gShip = guardians.builtObjects.find((b) => !b.hasBeenDestroyed && b.role === BuiltObjectRole.Military)!;
+        const oShip = other.builtObjects.find((b) => !b.hasBeenDestroyed && b.role === BuiltObjectRole.Military)!;
+        for (const v of [gShip, oShip]) {
+            v.xpos = escort.xpos + 10;
+            v.ypos = escort.ypos;
+            v.nearestSystemStar = escort.nearestSystemStar;
+        }
+        const time = galaxyStarDate(g);
+        expect(shouldAttack(g, escort, gShip, time)).toBe(false);
+        expect(shouldAttack(g, gShip, escort, time)).toBe(false);
+        expect(shouldAttack(g, escort, oShip, time)).toBe(true);
+        // No damage either way, and the Purifier's targets never include a Guardian colony.
+        expect(inflictDamage(g, escort, gShip, null, 50, time, 10, 0)).toBe(false);
+        expect(sparedObjects(g, gShip, escort)).toBe(true);
+        expect(purifierTargets(g, st).some((h) => h.empire === guardians)).toBe(false);
+        // A save where they were already at war: the next clearing pass drops the targets.
+        escort.currentTarget = gShip;
+        gShip.currentTarget = escort;
+        clearHostility(g, faction, guardians);
+        expect(escort.currentTarget).toBeNull();
+        expect(gShip.currentTarget).toBeNull();
     }, 900000);
 });
 
