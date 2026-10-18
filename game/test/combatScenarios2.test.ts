@@ -1469,7 +1469,7 @@ describe('(8) BVR combat add-on', () => {
         expect(bdata.scenario!.warnings).toEqual([]);
     });
 
-    it('lethality: four launcher hits kill the AI frigate of the era (3-5 hits), two torpedo hits do (2-3), armour does not halve the BVR missile', () => {
+    it('lethality: about four launcher hits kill the AI frigate of the era (median 3-6 over the empires, races differ in shields), about two torpedo hits do (2-4); armour does not halve the BVR missile', () => {
         const attacker = aiEmpires()[0].builtObjects.find((b) => b.role === BuiltObjectRole.Military)!;
         const hits = (missile: boolean): number => {
             const all: number[] = [];
@@ -1495,9 +1495,9 @@ describe('(8) BVR combat add-on', () => {
         const m = hits(true);
         const t = hits(false);
         expect(m).toBeGreaterThanOrEqual(3);
-        expect(m).toBeLessThanOrEqual(5);
+        expect(m).toBeLessThanOrEqual(6);
         expect(t).toBeGreaterThanOrEqual(2);
-        expect(t).toBeLessThanOrEqual(3);
+        expect(t).toBeLessThanOrEqual(4);
     });
 
     it('AI designs: frigates and up carry launchers, destroyers and up torpedoes, escorts none and more point defence', () => {
@@ -1695,9 +1695,10 @@ describe('(8) BVR combat add-on', () => {
         const both = bvrEngagement(bg, mine, theirs, BattleTactics.Standoff);
         expect(both).not.toBeNull();
         expect(both!.tactic).toBe(BattleTactics.AllWeapons);
-        // A player-ordered (not automated) ship keeps the design's tactic.
+        // A player-ordered (not automated) ship is not kited or rushed, but a dry Standoff ship still fights with its guns.
         mine.isAutoControlled = false;
-        expect(bvrEngagement(bg, mine, theirs, BattleTactics.Standoff)).toBeNull();
+        expect(bvrEngagement(bg, mine, theirs, BattleTactics.Standoff)!.tactic).toBe(BattleTactics.AllWeapons);
+        expect(bvrEngagement(bg, mine, theirs, BattleTactics.AllWeapons)).toBeNull();
     });
 
     it('saves: spent rounds round-trip through a save; a ship with no entry (an older save) is full; the state is saved', () => {

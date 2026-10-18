@@ -10,8 +10,8 @@
 //     90% of its missile range, backing off when the target closes (the salvo is fired at a distance the enemy cannot answer).
 //   - Rush: it has no missile loaded and the target's fleet has loaded missiles that out-range its guns by half: it closes fast to
 //     the inside of its gun band, minimising the time under fire.
-//   - A Standoff ship whose standoff weapons are all empty fights as AllWeapons (its guns), or as PointBlank with no guns: it does not
-//     keep the range of an empty launcher.
+//   - A Standoff ship (any ship, yours too) whose standoff weapons are all empty fights as AllWeapons (its guns), or as PointBlank with no guns:
+//     it does not keep the range of an empty launcher.
 //   - Otherwise the design's own band: the fleets trade missile salvos as they close, then fight with guns and torpedoes.
 // Also: a ship's strength in the AI's comparisons counts a limited launcher by the share of its magazine that is loaded and by
 // bvrAiValuePct (a finite magazine is worth less than a gun that never runs dry): bvrWeaponShare, used by threats.ts
@@ -25,7 +25,7 @@ import { isBuiltObject } from '../../missions/mission';
 import { BattleTactics } from '../../data/designSpecifications';
 import { ComponentType } from '../../data/components';
 import { isAiControlled } from '../../missions/playerOrder';
-import { ammoFraction, bvrAiOn, bvrParam, isBvrMissile, isLimitedLauncher, roundsLeft } from './bvr';
+import { ammoFraction, bvrAiOn, bvrOn, bvrParam, isBvrMissile, isLimitedLauncher, roundsLeft } from './bvr';
 
 /** The share (0..1) of this weapon's contribution that counts: a limited launcher by its loaded share and bvrAiValuePct, any other weapon fully. */
 export function bvrWeaponShare(galaxy: Galaxy, bo: BuiltObject, weapon: Weapon): number {
@@ -120,20 +120,23 @@ export interface BvrEngagement {
 }
 
 export function bvrEngagement(galaxy: Galaxy, bo: BuiltObject, target: StellarObject, tactic: BattleTactics): BvrEngagement | null {
-    if (!bvrAiOn(galaxy) || !isBuiltObject(target) || bo.empire === null || !isAiControlled(bo)) return null;
+    if (!bvrOn(galaxy) || !isBuiltObject(target) || bo.empire === null) return null;
     if (tactic !== BattleTactics.Standoff && tactic !== BattleTactics.AllWeapons && tactic !== BattleTactics.PointBlank) return null;
-    const mine = fleetMissileRounds(galaxy, bo);
-    const theirs = fleetMissileRounds(galaxy, target);
-    const myRange = loadedMissileRange(galaxy, bo);
-    const theirReach = fleetReach(galaxy, target);
-    if (myRange > 0 && mine > theirs && myRange > theirReach * 1.15) {
-        const max = Math.trunc(myRange * 0.9);
-        const min = Math.min(max - 50, Math.trunc(Math.max(myRange * 0.6, theirReach * 1.15)));
-        return { tactic, band: { min: Math.max(0, min), max } };
-    }
-    if (myRange <= 0 && theirs > 0) {
-        const gun = bo.beamWeaponsMinRange > 0 ? bo.beamWeaponsMinRange : loadedReach(galaxy, bo);
-        if (gun > 0 && fleetMissileReach(galaxy, target) > gun * 1.5) return { tactic, band: { min: 0, max: Math.max(50, Math.trunc(gun * 0.75)) } };
+    // Kite and rush are the AI's (and automated ships'); the Standoff correction below is a rule for every ship.
+    if (bvrAiOn(galaxy) && isAiControlled(bo)) {
+        const mine = fleetMissileRounds(galaxy, bo);
+        const theirs = fleetMissileRounds(galaxy, target);
+        const myRange = loadedMissileRange(galaxy, bo);
+        const theirReach = fleetReach(galaxy, target);
+        if (myRange > 0 && mine > theirs && myRange > theirReach * 1.15) {
+            const max = Math.trunc(myRange * 0.9);
+            const min = Math.min(max - 50, Math.trunc(Math.max(myRange * 0.6, theirReach * 1.15)));
+            return { tactic, band: { min: Math.max(0, min), max } };
+        }
+        if (myRange <= 0 && theirs > 0) {
+            const gun = bo.beamWeaponsMinRange > 0 ? bo.beamWeaponsMinRange : loadedReach(galaxy, bo);
+            if (gun > 0 && fleetMissileReach(galaxy, target) > gun * 1.5) return { tactic, band: { min: 0, max: Math.max(50, Math.trunc(gun * 0.75)) } };
+        }
     }
     if (tactic === BattleTactics.Standoff) {
         const loaded = loadedStandoffRange(galaxy, bo);

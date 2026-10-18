@@ -27,7 +27,7 @@ import { IndustryType } from '../../types';
 import { isHumanEmpire } from '../../humanEmpires';
 import { DiplomaticRelationType } from '../../diplomacy';
 import { registerScenarioFramePeriodic, registerScenarioQuery } from '../hooks';
-import { BVR_AI_FLAG, BVR_FLAG, bvrAiOn, bvrAmmoSummary, bvrParam, bvrState, isBvrMissile, nearestRearmPoint, sourcesFor } from './bvr';
+import { bvrAiOn, bvrAmmoSummary, bvrParam, bvrState, isBvrMissile, nearestRearmPoint, sourcesFor } from './bvr';
 import type { BuiltObject } from '../../builtObject';
 import type { ShipGroup } from '../../fleets/shipGroup';
 import { shipGroupAssignMission } from '../../fleets/shipGroup';
@@ -37,6 +37,11 @@ import { isAiControlled } from '../../missions/playerOrder';
 import { BuiltObjectRole } from '../../data/designSpecifications';
 
 /** The BVR research line (research.txt 375-381) and its root (Missile Weapons). */
+// The flag names are literals here, not imports from bvr.ts: the registrations below run when this module loads, which can be
+// inside bvr.ts's own import cycle (an imported const would still be uninitialised: 'Cannot access BVR_AI_FLAG before initialization').
+const BVR_FLAG = 'bvrCombat';
+const BVR_AI_FLAG = 'bvrAI';
+
 export const BVR_PROJECTS: readonly number[] = [372, 373, 374, 375, 376, 377, 378];
 const MISSILE_ROOT_PROJECT = 369;
 
