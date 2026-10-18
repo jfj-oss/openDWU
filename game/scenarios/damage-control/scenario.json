@@ -1,7 +1,7 @@
 {
   "id": "damage-control",
   "name": "Damage control in battle",
-  "description": "Gameplay change (off by default; Other Empires page, Gameplay changes). Crews repair damaged components during a fight, slowly: one component every 60 game seconds for an average crew, checked every 3 seconds (the stock self-repair of ships with a damage control component works as before). Better crews are faster (+20% a crew level above average, from Bacon's career-damage crew levels), veterans faster still (+25% a rank with the Veterans change), and engines, reactors and command parts are fixed first, which also ends their critical effects. A ship with more than 70% of its parts damaged is past saving by its crew.",
+  "description": "Combat change, a sub-option of BVR combat (add-on picker, Work in progress; on by default there). It also works without BVR combat. Crews repair damaged components during a fight, slowly: one component every 60 game seconds for an average crew, checked every 3 seconds (the stock self-repair of ships with a damage control component works as before). Better crews are faster (+20% a crew level above average, from Bacon's career-damage crew levels), veterans faster still (+25% a rank with the Veterans change), and engines, reactors and command parts are fixed first, which also ends their critical effects. A ship with more than 70% of its parts damaged is past saving by its crew.",
   "flags": [
     { "name": "damageControl", "label": "Damage control in battle", "description": "Master switch.", "default": true }
   ],

@@ -20,6 +20,10 @@ import {
     peekGhostArmadaState,
 } from '../src/sim/scenario/threats/ghostArmada';
 import { KNOWLEDGE_RUMOUR } from '../src/sim/scenario/threats/framework';
+import { threatGameEndPolicy } from '../src/sim/scenario/threats/framework';
+// These tests cover each ending's own mechanics; the user's rule that only the Beacon's endings end the game (threatGameEndPolicy)
+// is tested in scenarioThreatFramework.test.ts ("threat game-end policy").
+threatGameEndPolicy.restrict = false;
 
 let base: GameData;
 beforeAll(async () => {

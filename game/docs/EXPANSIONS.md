@@ -7,7 +7,13 @@ the same however they were switched on. In multiplayer the lobby shows the host'
 add-on packages. Read each expansion's full article in the Galactopedia (Expansions) or via "Read more" in the picker.
 
 Not in any expansion (standalone add-ons): Smarter AI, Big Galaxies, Art Bundle, Themed Names, Event Log, LLM Layer,
-Court & Dynasties.
+Court & Dynasties, BVR combat (Work in progress; six combat changes are its sub-options).
+
+Picker status: the Rim members (Rim Trade, Rim Fauna, Rim Herders, Rim Frontier, Rim Atmosphere) are in the picker's Work in progress
+section ("still being tuned"). Endings: no threat ends the game in victory any more; the only exceptions are destroying the
+Beacon after it has fired its mega beam at least once (victory) and the Beacon's own defeat (80% of the galaxy's people gone).
+Every other threat still ends or is contained with its messages and news, but the game goes on (src/sim/scenario/threats/framework.ts
+threatGameEndPolicy; set `restrict = false` to bring the old endings back).
 
 Meters: **Changes to the base game** rates how much the expansion alters the stock game (1-5, relative to the others);
 **Difficulty** says whether it makes the game harder or easier for you.

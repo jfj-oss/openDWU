@@ -1,7 +1,7 @@
 {
   "id": "armour-facing",
   "name": "Armour facing",
-  "description": "Gameplay change (off by default; Other Empires page, Gameplay changes). A ship's armour is thickest at the bow: a hit from ahead does 25% less damage, a hit from the side 10% more, and a hit from behind 40% more (the bow and stern arcs are 60 degrees to either side of the ship's heading). Bases and fixed targets have no facing. AI fleets turn a stationary ship's bow to the nearest enemy, and fast ships (30% or more faster than their target) circle to hit slower ships from the flank or rear instead of charging straight in.",
+  "description": "Combat change, a sub-option of BVR combat (add-on picker, Work in progress; on by default there). It also works without BVR combat. A ship's armour is thickest at the bow: a hit from ahead does 25% less damage, a hit from the side 10% more, and a hit from behind 40% more (the bow and stern arcs are 60 degrees to either side of the ship's heading). Bases and fixed targets have no facing. AI fleets turn a stationary ship's bow to the nearest enemy, and fast ships (30% or more faster than their target) circle to hit slower ships from the flank or rear instead of charging straight in.",
   "flags": [
     { "name": "armourFacing", "label": "Armour facing", "description": "Master switch.", "default": true },
     { "name": "facingAI", "label": "AI fleets turn their bows to the enemy and fast ships flank", "description": "Off: the AI steers as usual (only the damage rule changes).", "default": true }

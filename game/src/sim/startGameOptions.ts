@@ -200,14 +200,14 @@ export interface StartGameOptions {
      */
     veterans?: boolean;
     /**
-     * The Other Empires page's "Gameplay changes: BVR combat" checkbox (scenarios/bvr-combat). Folded into `scenario`
-     * (addons.ts withBvrCombat); absent / false = off.
+     * LEGACY (kept so old settings and scripts still map): BVR combat was a "Gameplay changes" checkbox; it is now an add-on of the
+     * Scenario page's Work in progress list. The wizard folds this key and the six below into the add-on picks and sub-options
+     * (newGameWizard.ts legacyBvrChoice) and clears them; addons.ts withBvrCombat still reads it.
      */
     bvrCombat?: boolean;
     /**
-     * The Other Empires page's six combat checkboxes under "Gameplay changes" (scenarios/decoys-chaff, ambush-strike,
-     * critical-hits, damage-control, armour-facing, surrender-wrecks). Folded into `scenario` (addons.ts withCombat2);
-     * absent / false = off.
+     * LEGACY: the six combat checkboxes (scenarios/decoys-chaff, ambush-strike, critical-hits, damage-control, armour-facing,
+     * surrender-wrecks), now sub-options of BVR combat (see above); on = that sub-option on.
      */
     decoys?: boolean;
     ambushStrike?: boolean;

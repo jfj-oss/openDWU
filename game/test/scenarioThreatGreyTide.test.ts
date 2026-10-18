@@ -29,6 +29,10 @@ import {
 import { availableThreatActions } from '../src/sim/scenario/threats/framework';
 import { GameEndOutcome, setGameEndHandler, type GameEndEventArgs } from '../src/sim/victory';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
+import { threatGameEndPolicy } from '../src/sim/scenario/threats/framework';
+// These tests cover each ending's own mechanics; the user's rule that only the Beacon's endings end the game (threatGameEndPolicy)
+// is tested in scenarioThreatFramework.test.ts ("threat game-end policy").
+threatGameEndPolicy.restrict = false;
 
 let base: GameData;
 beforeAll(async () => {

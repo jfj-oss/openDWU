@@ -42,6 +42,10 @@ import { builtObjectCompleteTeardown } from '../src/sim/combat/teardown';
 import { takeOwnershipOfColonyFull } from '../src/sim/combat/ownership';
 import type { Empire } from '../src/sim/empire';
 import type { Habitat } from '../src/sim/types';
+import { threatGameEndPolicy } from '../src/sim/scenario/threats/framework';
+// These tests cover each ending's own mechanics; the user's rule that only the Beacon's endings end the game (threatGameEndPolicy)
+// is tested in scenarioThreatFramework.test.ts ("threat game-end policy").
+threatGameEndPolicy.restrict = false;
 
 let base: GameData;
 beforeAll(async () => {

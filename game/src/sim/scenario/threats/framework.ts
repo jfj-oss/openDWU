@@ -690,6 +690,19 @@ export function arcNews(galaxy: Galaxy, sent: SentStages, spec: ArcMessageSpec):
 }
 
 /**
+ * Which threat endings end the game (user rule, 2026-10-18): the only threat VICTORY is destroying the Beacon after it has fired
+ * its mega beam at least once (code 2152, beacon.ts), and the only threat DEFEAT is the Beacon's (80% of the galaxy's people gone,
+ * code 2051). Every other threat still ends or is contained with its own messages and news, but threatGameEnd does nothing for it:
+ * no game-over screen. REVERSIBLE: set `restrict = false` (every threat ending ends the game again, as before), or add a code to
+ * `allowed`. Stock victory conditions and the Galactic Diet's emperor ending do not go through here.
+ */
+export const threatGameEndPolicy: { restrict: boolean; allowed: Set<number> } = { restrict: true, allowed: new Set([2051, 2152]) };
+
+export function threatGameEndAllowed(code: number): boolean {
+    return !threatGameEndPolicy.restrict || threatGameEndPolicy.allowed.has(code);
+}
+
+/**
  * Ends the game (Galaxy.cs 1274 OnGameEnd; victory.ts onGameEnd) with a threat's code (19b: 1901 containment, 1902
  * defeat; 19f: 1911… defeat, +100 victory). `outcome` is the player's.
  */
@@ -697,6 +710,7 @@ export function arcNews(galaxy: Galaxy, sent: SentStages, spec: ArcMessageSpec):
 // Defeat for all) — or, with `shared` (a threat contained, the sites that pass "the player"), to every human still
 // playing. With one human: OnGameEnd, as before.
 export function threatGameEnd(galaxy: Galaxy, victor: Empire | null, outcome: GameEndOutcome, description: string, code: number, shared = false): void {
+    if (!threatGameEndAllowed(code)) return;
     if (isMultiHuman(galaxy)) {
         if (outcome === GameEndOutcome.Victory && shared) threatsContainedGameEnd(galaxy, description, code);
         else humansGameEnd(galaxy, victor, outcome === GameEndOutcome.Victory && isHumanEmpire(galaxy, victor) ? [victor!] : [], description, code);

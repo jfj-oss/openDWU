@@ -63,6 +63,7 @@ import { refitInPlace } from '../framework';
 import { greatWorkProtectors, markGreatWorkHostile, registerGreatWork, registerHostileWonderCrisis } from './framework';
 import type { GreatWorkKind, GreatWorkSite } from './types';
 import {
+    BEACON_CODE_DESTROYED,
     BEACON_CODE_VICTORY,
     BEACON_FLAG,
     BEACON_KEY,
@@ -598,7 +599,10 @@ function onKilledBy(galaxy: Galaxy, bo: BuiltObject, destroyer: Empire | null): 
     if (bo.actualEmpire === st.faction) {
         onShipKilled(galaxy, st, bo, destroyer);
         onKilledForSalvage(galaxy, st, bo, destroyer, false);
-        if (bo === st.beacon) st.beaconDestroyed = true;
+        if (bo === st.beacon) {
+            st.beaconDestroyed = true;
+            if (destroyer !== null) st.beaconKillerId = destroyer.empireId;
+        }
     }
 }
 
@@ -724,6 +728,14 @@ export function beaconEndCheck(galaxy: Galaxy): void {
     const st = peekBeaconState(galaxy);
     if (st === null || st.phase !== 'reclamation' || st.ended || st.faction === null) return;
     if (!st.beaconDestroyed && st.beacon !== null && st.beacon.hasBeenDestroyed) st.beaconDestroyed = true;
+    // The only threat victory (framework.ts threatGameEndPolicy): the Beacon destroyed AFTER it fired its mega beam at least once.
+    // Destroyed before any launch it does not end the game. The destroyer wins; with no human destroyer, every human shares it.
+    if (st.beaconDestroyed && (st.launches ?? 0) > 0 && st.destroyVictoryDone !== true) {
+        st.destroyVictoryDone = true;
+        const killer = st.beaconKillerId === undefined ? null : (galaxy.empires.find((e) => e !== null && e.empireId === st.beaconKillerId) ?? null);
+        const humanKiller = killer !== null && isHumanEmpire(galaxy, killer);
+        threatGameEnd(galaxy, humanKiller ? killer : galaxy.playerEmpire, GameEndOutcome.Victory, T(`${TAG} Victory Title`), BEACON_CODE_DESTROYED, !humanKiller);
+    }
     if (!st.beaconDestroyed || liveWatchers(st).length > 0 || st.watchers.some((w) => !w.dead)) return;
     if (processingWorlds(st).length > 0 || st.faction.colonies.some((c) => !c.hasBeenDestroyed)) return;
     st.ended = true;

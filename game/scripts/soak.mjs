@@ -48,6 +48,7 @@ function arg(name, fallback) {
 // (beyond its 1400 maximum); `scenario` is a folder under scenarios/ with `flags: 'all'` (every flag of the resolved
 // manifest on, except `flagsOff`) and `params` overrides (threats made to appear early enough for the run).
 // ---------------------------------------------------------------------------------------------------------------
+const BVR_ONLY = { decoys: false, ambush: false, criticalHits: false, damageControl: false, armourFacing: false, surrender: false };
 const early = (prefix) => ({ [`${prefix}ExistChancePct`]: 100, [`${prefix}MinYear`]: 0 });
 const SCN = (id, extra = {}) => ({ name: id, seed: 101 + id.length * 7, years: 4, wizard: { starCountIndex: 2, dimensionIndex: 2, otherEmpires: { empireCount: 7 } }, scenario: id, flags: 'all', ...extra });
 const CONFIGS = [
@@ -247,15 +248,16 @@ const CONFIGS = [
             mk('bl-smoke', 'beacon-smoke', 1, 3, { starCountIndex: 2, dimensionIndex: 2, otherEmpires: { empireCount: 7 }, ...late }, { giantworksBuildYears: 0.6 }),
         ];
     })(),
+    // BVR combat is one add-on whose six combat changes are sub-options (on by default): the BVR-only runs switch the six off.
     // `--set bvr` (BVR combat; --hook scripts/bvr-hook.mjs): the os-war galaxy (700 stars, 7 empires, aggressive AI, older galaxy), 20 years, Smarter AI
     // and Coordinated landings at their defaults, BVR combat on vs off; three seeds (one seed's war history diverges too much to compare alone).
-    ...[1, 2, 3].flatMap((seed) => [true, false].map((on) => ({ name: `bvr-${on ? 'on' : 'off'}-s${seed}`, set: 'bvr', seed, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, addons: [], gameplay: on ? ['bvr-combat'] : [] }))),
+    ...[1, 2, 3].flatMap((seed) => [true, false].map((on) => ({ name: `bvr-${on ? 'on' : 'off'}-s${seed}`, set: 'bvr', seed, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, addons: [], gameplay: on ? ['bvr-combat'] : [], flags: on ? BVR_ONLY : {} }))),
     // bvr-nai-*: BVR on with its AI switched off (flag bvrAI): the rules and data only, the stock AI designs and tactics.
-    ...[1, 2].map((seed) => ({ name: `bvr-noai-s${seed}`, set: 'bvr', seed, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, addons: [], gameplay: ['bvr-combat'], flags: { bvrAI: false } })),
+    ...[1, 2].map((seed) => ({ name: `bvr-noai-s${seed}`, set: 'bvr', seed, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, addons: [], gameplay: ['bvr-combat'], flags: { ...BVR_ONLY, bvrAI: false } })),
     // `--set combat2` (the six combat changes after BVR; --hook scripts/combat2-hook.mjs): the os-war galaxy (700 stars, 9 empires, aggressive AI, older
     // galaxy), 20 years, Smarter AI at its defaults: BVR combat plus Decoys, Ambush, Critical hits, Damage control, Armour facing and Surrender
     // ('c2-all-*') against BVR combat alone ('c2-bvr-*'); seeds 1 and 2.
-    ...[1, 2].flatMap((seed) => [true, false].map((all) => ({ name: `c2-${all ? 'all' : 'bvr'}-s${seed}`, set: 'combat2', seed, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, addons: [], gameplay: all ? ['bvr-combat', 'decoys-chaff', 'ambush-strike', 'critical-hits', 'damage-control', 'armour-facing', 'surrender-wrecks'] : ['bvr-combat'] }))),
+    ...[1, 2].flatMap((seed) => [true, false].map((all) => ({ name: `c2-${all ? 'all' : 'bvr'}-s${seed}`, set: 'combat2', seed, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, addons: [], gameplay: ['bvr-combat'], flags: all ? {} : BVR_ONLY }))),
     // `--set long`: the many-decade runs (not in the default set).
     { name: 'long-s1-30y', set: 'long', seed: 1, years: 30, wizard: {} },
     { name: 'long-s7-small-50y', set: 'long', seed: 7, years: 50, wizard: { starCountIndex: 1, dimensionIndex: 1, otherEmpires: { empireCount: 5 } } },
@@ -535,7 +537,8 @@ async function runOne(name) {
             const A = await load('addons');
             const S = await load('scenario');
             const cat = A.addonCatalog(S.scenarioIndexFs());
-            const ids = cfg.addons === 'recommended' ? Object.keys(A.ADDON_STATUS).filter((k) => A.ADDON_STATUS[k] === 'recommended') : cfg.addons;
+            // 'recommended' keeps the soak coverage of the Rim add-ons, which moved to Work in progress (2026-10-18).
+            const ids = cfg.addons === 'recommended' ? [...Object.keys(A.ADDON_STATUS).filter((k) => A.ADDON_STATUS[k] === 'recommended'), 'rimTrade', 'rim-fauna', 'rim-herders', 'rim-frontier', 'rim-atmosphere'] : cfg.addons;
             const smart = cfg.smarterAI === false ? null : { ...A.defaultSmarterAIChoice(), ...(typeof cfg.smarterAI === 'object' ? cfg.smarterAI : {}) };
             const w1 = A.withSmarterAI([...A.BASE_ADDONS, ...ids], { flags: { ...(cfg.flags ?? {}) }, params: { ...(cfg.params ?? {}) } }, smart);
             // cfg.gameplay: the other "Gameplay changes" checkboxes by add-on id.

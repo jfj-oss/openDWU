@@ -22,6 +22,8 @@ export const BEACON_KIND = 'beacon';
 /** Game-end codes (threats: 1911… defeat, +100 victory; Giantworks takes 2051 / 2151). */
 export const BEACON_CODE_LOST = 2051;
 export const BEACON_CODE_VICTORY = 2151;
+/** The Beacon destroyed after its first launch: the only threat victory that ends the game (framework.ts threatGameEndPolicy). */
+export const BEACON_CODE_DESTROYED = 2152;
 
 /** Galaxy.MaxSolarSystemSize: a ship this close to a system's star is inside the system. */
 export const SYSTEM_RADIUS = 23000;
@@ -361,6 +363,9 @@ export interface BeaconState {
     /** The launch record (the art's beam, camera and pop-up fire once per launch): how many times the strike groups were called out and
      *  the star date of the last call (set in the pass that orders the simultaneous departure; saved, so it holds across save / load). */
     launches?: number;
+    /** The empire that destroyed the Beacon (empireId; absent: unknown / not an empire) and whether the victory for destroying it after a launch was declared. */
+    beaconKillerId?: number;
+    destroyVictoryDone?: boolean;
     lastLaunchDate?: number;
     /** Star date of the last reclamation pass (a pass is credited with the days since: the periodics run once per stock long block). */
     lastPassDate?: number;

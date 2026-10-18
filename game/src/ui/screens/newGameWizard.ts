@@ -107,7 +107,7 @@ import { selectColorFromKey } from '../../sim/empireColors';
 import { loadScenarioIndex } from '../../sim/scenario/fetchScenario';
 import type { ScenarioManifest } from '../../sim/scenario/manifest';
 import { IS_CLASSIC } from '../../appVersion';
-import { BASE_ADDONS, FORCEABLE_THREATS, SMARTER_AI_ADDON_ID, addonCatalog, addonClosure, addonPickerModel, canonicalAddons, defaultSmarterAIChoice, coordinatedLandingsChoice, withCoordinatedLandings, expansionMemberIds, expansionRows, toggleExpansion, type ExpansionRow, planAddonStart, resolveAddonSwitches, toggleAddon, withFlagAddons, forcedFlags, withSmarterAI, withOrbitalSuperiority, withLongerGroundCombat, withJumpInterdiction, withBlockadesBite, withMothballing, MOTHBALLING_ADDON_ID, withSlowHyperdrive, withFightingRetreats, FIGHTING_RETREATS_ADDON_ID, withVeterans, withBvrCombat, withCombat2, COMBAT2_ADDONS, BVR_COMBAT_ADDON_ID, VETERANS_ADDON_ID, SLOW_HYPERDRIVE_ADDON_ID, ORBITAL_SUPERIORITY_ADDON_ID, LONGER_GROUND_COMBAT_ADDON_ID, JUMP_INTERDICTION_ADDON_ID, BLOCKADES_BITE_ADDON_ID, type AddonCatalog, type AddonOverrides, type AddonRow, type SmarterAIChoice, type Combat2Choice, type Combat2Key } from '../../sim/scenario/addons';
+import { BASE_ADDONS, FORCEABLE_THREATS, SMARTER_AI_ADDON_ID, addonCatalog, addonClosure, addonPickerModel, canonicalAddons, defaultSmarterAIChoice, coordinatedLandingsChoice, withCoordinatedLandings, expansionMemberIds, expansionRows, toggleExpansion, type ExpansionRow, planAddonStart, resolveAddonSwitches, toggleAddon, withFlagAddons, forcedFlags, withSmarterAI, withOrbitalSuperiority, withLongerGroundCombat, withJumpInterdiction, withBlockadesBite, withMothballing, MOTHBALLING_ADDON_ID, withSlowHyperdrive, withFightingRetreats, FIGHTING_RETREATS_ADDON_ID, withVeterans, withBvrCombat, withCombat2, COMBAT2_ADDONS, BVR_COMBAT_ADDON_ID, SUB_ADDONS, VETERANS_ADDON_ID, SLOW_HYPERDRIVE_ADDON_ID, ORBITAL_SUPERIORITY_ADDON_ID, LONGER_GROUND_COMBAT_ADDON_ID, JUMP_INTERDICTION_ADDON_ID, BLOCKADES_BITE_ADDON_ID, type AddonCatalog, type AddonOverrides, type AddonRow, type SmarterAIChoice, type Combat2Choice, type Combat2Key } from '../../sim/scenario/addons';
 import {
     COLORS,
     FONT,
@@ -2073,7 +2073,7 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
 
     // Not in the original: "Gameplay changes" (opt-in rule changes, folded into options.scenario by addonChoiceFor):
     // a one-row GradientPanel under the Smarter AI one with the Orbital superiority checkbox (scenarios/orbital-superiority).
-    const gameplayPanel = panel(wrap, 10, 474, 880, 90, 'wizard-panel-group wizard-gameplay-changes');
+    const gameplayPanel = panel(wrap, 10, 474, 880, 64, 'wizard-panel-group wizard-gameplay-changes');
     // The heading is a master switch: ticking it turns every gameplay change on except the hyperdrive spool, unticking
     // turns them all off (wired after the checkboxes below).
     const gameplayMaster = check(gameplayPanel, 'Gameplay changes', false, 10, 6, (v) => setAllGameplay(v), FONT.normal);
@@ -2176,38 +2176,6 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
         'Warships and troop units that survive battles gain experience: Green, Regular, Veteran, Elite. Each rank gives ships +5% weapon damage, targeting and evasion (up to +15%) and troops +10% attack and defence. Veteran ships get a name and a service record, and each fleet has a flagship that steadies the fleet while it lives; losing it shakes the whole fleet for a while. Experience is lost with the ship or unit.';
     veterans.row.title = VETERANS_HELP;
     veterans.row.addEventListener('mouseenter', () => ctx.help('Veterans', VETERANS_HELP));
-    // BVR combat (scenarios/bvr-combat): off by default; row one, between Orbital superiority and Longer ground battles.
-    const bvr = check(gameplayPanel, 'BVR combat', options.bvrCombat === true, 316, 6, (v) => {
-        if (v) options.bvrCombat = true;
-        else delete options.bvrCombat;
-        ctx.refreshScenario();
-    });
-    bvr.row.classList.add('wizard-bvr-combat');
-    const BVR_HELP =
-        'Beyond-visual-range combat. A new family of missile launchers (four tiers in the tech tree) fires very fast, very accurate missiles from far beyond gun range, but only at targets your sensors track, and each launcher holds 4 missiles. Torpedoes become close-range, slow, hard hitters with 6 per launcher. Four missile hits kill a frigate of the matching era, two torpedo hits do. Point defence and guns shoot missiles and torpedoes down (escorts cover their fleet), countermeasures spoil missile locks, and empty magazines are reloaded for credits at your own or allied space ports and bases with a dock, or from deployed resupply ships (slower). AI empires research and design launchers, open with missile salvos or keep their distance, rearm after fights and field more point defence against missile fleets.';
-    bvr.row.title = BVR_HELP;
-    bvr.row.addEventListener('mouseenter', () => ctx.help('BVR combat', BVR_HELP));
-    // The six later combat changes (scenarios/decoys-chaff, ambush-strike, critical-hits, damage-control, armour-facing,
-    // surrender-wrecks): off by default, third row of the panel (placed by layoutGameplayRows below).
-    const COMBAT2_UI: readonly { key: Combat2Key; label: string; cls: string; help: string }[] = [
-        { key: 'decoys', label: 'Decoys and chaff', cls: 'wizard-decoys-chaff', help: 'Ships with a countermeasures (ECM) component carry a few decoy charges (3 by default). When missiles or torpedoes (BVR or stock) are inbound, a decoy pulls half of them off target; one decoy every few seconds, so a big salvo is a cat-and-mouse game. Decoys are reloaded at ports, bases with a dock and resupply ships for a small price. AI empires fit more countermeasures against missile users. Works with or without BVR combat.' },
-        { key: 'ambushStrike', label: 'Ambush first strike', cls: 'wizard-ambush-strike', help: 'A ship that opens fire on an empire that has not detected it (stock visibility: sensors, scanners, stealth) gets an ambush for its opening 10 seconds: a third of its misses turn into hits and every hit does 50% more damage. Rewards stealth, scouts and sensor range. AI empires count an ambush when they weigh an attack.' },
-        { key: 'criticalHits', label: 'Critical hits', cls: 'wizard-critical-hits', help: 'A hit that damages an engine, a reactor or a command part is critical 30% of the time, with a lasting effect until repaired: a critical engine hit slows the ship, a critical reactor hit makes its weapons fire more slowly, a critical command hit spoils its aim. Effects stack (up to three). Damaged ships fight worse well before they die; AI fleets withdraw sooner.' },
-        { key: 'damageControl', label: 'Damage control', cls: 'wizard-damage-control', help: 'Crews repair damaged components during a fight, slowly: one component a minute for an average crew, faster for better crews and (with Veterans) veteran ones; engines, reactors and command parts are fixed first. A ship with most of its parts damaged is past saving. Checked every few seconds, not every frame.' },
-        { key: 'armourFacing', label: 'Armour facing', cls: 'wizard-armour-facing', help: 'Armour is thickest at the bow: a hit from ahead does 25% less damage, from the side 10% more, from behind 40% more. AI fleets turn stationary ships bow-on to the enemy, and fast ships circle to hit slower ones from the flank or rear.' },
-        { key: 'surrenderWrecks', label: 'Surrender', cls: 'wizard-surrender-wrecks', help: 'A badly crippled AI ship that cannot run and is outgunned may strike its colours (cautious races sooner) instead of fighting to the death: it stops fighting, is no longer fired at, and an enemy puts a prize crew aboard (the stock capture policy applies). Your own ships never surrender on their own.' },
-    ];
-    const combat2Boxes = COMBAT2_UI.map((u) => {
-        const box = check(gameplayPanel, u.label, options[u.key] === true, 10, 54, (v) => {
-            if (v) options[u.key] = true;
-            else delete options[u.key];
-            ctx.refreshScenario();
-        });
-        box.row.classList.add(u.cls);
-        box.row.title = u.help;
-        box.row.addEventListener('mouseenter', () => ctx.help(u.label, u.help));
-        return { key: u.key, box };
-    });
     // Coordinated landings (scenarios/coordinated-landings): follows Smarter AI until ticked / unticked here.
     const landingOn = (): boolean => coordinatedLandingsChoice(options.coordinatedLandings, options.smarterAI);
     const landings = check(gameplayPanel, 'Land together', landingOn(), 512, 30, (v) => {
@@ -2223,7 +2191,7 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
         landings.input.checked = landingOn();
         syncMaster();
     };
-    type GameplayKey = 'orbitalSuperiority' | 'longerGroundCombat' | 'jumpInterdiction' | 'blockadesBite' | 'mothballing' | 'fightingRetreats' | 'veterans' | 'bvrCombat' | Combat2Key;
+    type GameplayKey = 'orbitalSuperiority' | 'longerGroundCombat' | 'jumpInterdiction' | 'blockadesBite' | 'mothballing' | 'fightingRetreats' | 'veterans';
     const masterSet: { key: GameplayKey; box: { input: HTMLInputElement } }[] = [
         { key: 'orbitalSuperiority', box: orbital },
         { key: 'longerGroundCombat', box: longer },
@@ -2232,8 +2200,6 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
         { key: 'mothballing', box: mothball },
         { key: 'fightingRetreats', box: retreats },
         { key: 'veterans', box: veterans },
-        { key: 'bvrCombat', box: bvr },
-        ...combat2Boxes,
     ];
     const syncMaster = (): void => {
         gameplayMaster.input.checked = masterSet.every((m) => options[m.key] === true) && landingOn();
@@ -2257,10 +2223,10 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
     landings.input.addEventListener('change', syncMaster);
     syncMaster();
 
-    // Layout of the panel: three rows of checkboxes, left to right with an even gap (each box's width is its measured
+    // Layout of the panel: two rows of checkboxes, left to right with an even gap (each box's width is its measured
     // label plus the tick; the estimates below were taken from the 880 px design layout). Row 1: the master and the
-    // ground / orbit / missile changes; row 2: the fleet and movement changes (the hyperdrive spinner follows its box);
-    // row 3: the six combat changes.
+    // ground / orbit / interdiction changes; row 2: the fleet and movement changes (the hyperdrive spinner follows its box).
+    // (BVR combat and its six combat sub-options are add-ons of the Scenario page's Work in progress list.)
     const GAMEPLAY_GAP = 30;
     const layoutGameplayRows = (rows: readonly (readonly [HTMLElement, number][])[]): void => {
         rows.forEach((row, r) => {
@@ -2272,9 +2238,8 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
         });
     };
     layoutGameplayRows([
-        [[gameplayMaster.row, 125], [orbital.row, 117], [bvr.row, 85], [longer.row, 172], [interdiction.row, 114], [veterans.row, 67]],
+        [[gameplayMaster.row, 125], [orbital.row, 117], [longer.row, 172], [interdiction.row, 114], [veterans.row, 67]],
         [[retreats.row, 110], [bite.row, 126], [mothball.row, 79], [landings.row, 96], [slow.row, 192]],
-        combat2Boxes.map((c, i) => [c.box.row, [117, 127, 78, 108, 98, 147][i]] as [HTMLElement, number]),
     ]);
     gameplayPanel.appendChild(place(spool.el, 10 + 110 + 126 + 79 + 96 + 4 * GAMEPLAY_GAP + 142, 6 + 24 - 2, 52, 22));
 
@@ -3053,7 +3018,19 @@ function buildVictoryPage(ctx: WizardCtx): HTMLDivElement {
 /** Scenarios listed by the Scenario page (filled when the index loads; read by the Start summary). */
 let wizardScenarios: ScenarioManifest[] = [];
 
-/** The six combat checkboxes of the Other Empires page as the add-on fold reads them. */
+/**
+ * Legacy StartGameOptions (bvrCombat, decoys, ambushStrike, criticalHits, damageControl, armourFacing, surrenderWrecks: once seven
+ * checkboxes of the Gameplay changes panel, now ONE add-on, BVR combat, with the six as sub-options). Any of the seven on means
+ * the add-on is on, with each sub-option on exactly when its old key was on. Null when none was. Pure.
+ */
+export function legacyBvrChoice(options: StartGameOptions): { flags: Record<string, boolean> } | null {
+    if (options.bvrCombat !== true && !COMBAT2_ADDONS.some((a) => options[a.key] === true)) return null;
+    const flags: Record<string, boolean> = {};
+    for (const a of COMBAT2_ADDONS) flags[a.flag] = options[a.key] === true;
+    return { flags };
+}
+
+/** The six combat checkboxes of the old Other Empires page as the add-on fold reads them. */
 function combat2Of(options: StartGameOptions): Combat2Choice {
     const out: Record<string, boolean> = {};
     for (const a of COMBAT2_ADDONS) out[a.key] = options[a.key] === true;
@@ -3078,9 +3055,14 @@ export function addonChoiceFor(cat: AddonCatalog, picked: readonly string[], ove
     const w2 = withVeterans(w1.picked, w1.overrides, veterans);
     // Coordinated landings: unset follows Smarter AI (on whenever it is on).
     const w3 = withCoordinatedLandings(w2.picked, w2.overrides, coordinatedLandingsChoice(coordinatedLandings, smart));
+    // Legacy options (see legacyBvrChoice): BVR combat on = the add-on with the sub-options of the old keys; just a few of the six
+    // keys on and no BVR = those combat changes alone, as before.
     const w4 = withBvrCombat(w3.picked, w3.overrides, bvrCombat);
-    const w5 = withCombat2(w4.picked, w4.overrides, combat2);
-    const w = { picked: withFlagAddons(cat, w5.picked, w5.overrides), overrides: w5.overrides };
+    const w4b = bvrCombat ? { picked: w4.picked, overrides: { flags: { ...w4.overrides.flags, ...Object.fromEntries(COMBAT2_ADDONS.map((a) => [a.flag, combat2[a.key] === true])) }, params: w4.overrides.params } } : w4;
+    const w5 = withCombat2(w4b.picked, w4b.overrides, combat2);
+    // The legacy folds above drop an add-on their key does not tick; BVR combat and its six are picker add-ons now, so keep the picks.
+    const keepPicks = picked.filter((id) => id === BVR_COMBAT_ADDON_ID || COMBAT2_ADDONS.some((a) => a.id === id));
+    const w = { picked: withFlagAddons(cat, [...new Set([...w5.picked, ...keepPicks])], w5.overrides), overrides: w5.overrides };
     const plan = planAddonStart(cat, w.picked);
     if (plan === null) return null;
     const sw = resolveAddonSwitches(cat, w.picked, w.overrides);
@@ -3126,8 +3108,15 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
     /** Base add-ons (event log, themed names) are always on in both editions. */
     const withBase = (ids: string[]): string[] => [...new Set([...BASE_ADDONS, ...ids])];
     // The Smarter AI add-on is the Other Empires page's (options.smarterAI), not a tick of this page.
-    let picked: string[] = IS_CLASSIC ? [...BASE_ADDONS] : withBase((options.scenario?.addons ?? (options.scenario ? [options.scenario.id] : [])).filter((id) => id !== SMARTER_AI_ADDON_ID && id !== ORBITAL_SUPERIORITY_ADDON_ID && id !== LONGER_GROUND_COMBAT_ADDON_ID && id !== JUMP_INTERDICTION_ADDON_ID && id !== BLOCKADES_BITE_ADDON_ID && id !== MOTHBALLING_ADDON_ID && id !== SLOW_HYPERDRIVE_ADDON_ID && id !== FIGHTING_RETREATS_ADDON_ID && id !== VETERANS_ADDON_ID && id !== BVR_COMBAT_ADDON_ID && !COMBAT2_ADDONS.some((a) => a.id === id)));
+    let picked: string[] = IS_CLASSIC ? [...BASE_ADDONS] : withBase((options.scenario?.addons ?? (options.scenario ? [options.scenario.id] : [])).filter((id) => id !== SMARTER_AI_ADDON_ID && id !== ORBITAL_SUPERIORITY_ADDON_ID && id !== LONGER_GROUND_COMBAT_ADDON_ID && id !== JUMP_INTERDICTION_ADDON_ID && id !== BLOCKADES_BITE_ADDON_ID && id !== MOTHBALLING_ADDON_ID && id !== SLOW_HYPERDRIVE_ADDON_ID && id !== FIGHTING_RETREATS_ADDON_ID && id !== VETERANS_ADDON_ID));
     const overrides: AddonOverrides = { flags: {}, params: {} };
+    // Options from before BVR combat became one add-on (see legacyBvrChoice): fold them into the picks, once.
+    const legacyBvr = IS_CLASSIC ? null : legacyBvrChoice(options);
+    if (legacyBvr !== null) {
+        picked = [...new Set([...picked, BVR_COMBAT_ADDON_ID])];
+        Object.assign(overrides.flags, legacyBvr.flags);
+    }
+    for (const k of ['bvrCombat', ...COMBAT2_ADDONS.map((a) => a.key)] as const) delete options[k];
     /** Settings panels the player opened (kept open across re-renders). */
     const openPanels = new Set<string>();
     let wipOpen = false; // the Work in progress section starts folded
@@ -3141,7 +3130,7 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
     }
 
     function update(): void {
-        options.scenario = addonChoiceFor(cat, picked, overrides, options.smarterAI ?? null, options.orbitalSuperiority === true, options.longerGroundCombat === true, options.jumpInterdiction === true, options.blockadesBite === true, options.mothballing === true, options.slowHyperdrive === true, options.hyperjumpSpoolFactor, options.fightingRetreats === true, options.veterans === true, options.coordinatedLandings, options.bvrCombat === true, combat2Of(options));
+        options.scenario = addonChoiceFor(cat, picked, overrides, options.smarterAI ?? null, options.orbitalSuperiority === true, options.longerGroundCombat === true, options.jumpInterdiction === true, options.blockadesBite === true, options.mothballing === true, options.slowHyperdrive === true, options.hyperjumpSpoolFactor, options.fightingRetreats === true, options.veterans === true, options.coordinatedLandings, false, {});
         render();
     }
     ctx.refreshScenario = update;
@@ -3315,11 +3304,25 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
                 if (pnl.open) openPanels.add(id);
                 else openPanels.delete(id);
             });
-            pnl.appendChild(el('summary', '', m.name));
+            const parentId = Object.keys(SUB_ADDONS).find((k) => SUB_ADDONS[k]!.includes(id));
+            pnl.appendChild(el('summary', '', parentId !== undefined ? `${cat.byId.get(parentId)?.name ?? parentId}: ${m.name}` : m.name));
             const body = el('div', 'wizard-addon-panel-body');
             const forcedBy = forcedFlags(cat, choice.flags, addonClosure(cat, choice.addons ?? [], 'on')).get(id);
+            // A sub-add-on's switch (BVR combat's six combat changes) is an option of its parent's panel.
+            for (const subId of SUB_ADDONS[id] ?? []) {
+                const sm = cat.manifests.get(subId);
+                if (sm === undefined || sm.flags.length === 0) continue;
+                const mf = sm.flags[0]!;
+                const c = checkBox(sm.name, choice.flags[mf.name] ?? mf.default, (x) => {
+                    overrides.flags[mf.name] = x;
+                    update();
+                }, FONT.normal);
+                c.classList.add('wizard-checkbox', 'wizard-flow', 'wizard-addon-sub-option');
+                body.appendChild(c);
+                body.appendChild(el('div', 'wizard-todo wizard-scenario-note', firstSentence(sm.description.replace(/^Combat change[^.]*\.[^.]*\.\s*/, ''))));
+            }
             for (const f of m.flags) {
-                if (f.name === a.masterFlag) continue; // the tick is the master switch
+                if (f.name === a.masterFlag) continue; // the tick is the master switch (a sub-add-on's is its checkbox in the parent's panel)
                 const by = forcedBy?.get(f.name);
                 const c = checkBox(f.label, by !== undefined ? true : choice.flags[f.name] ?? f.default, by !== undefined ? null : (x) => {
                     overrides.flags[f.name] = x;
@@ -3329,7 +3332,7 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
                         update();
                         return;
                     }
-                    options.scenario = addonChoiceFor(cat, picked, overrides, options.smarterAI ?? null, options.orbitalSuperiority === true, options.longerGroundCombat === true, options.jumpInterdiction === true, options.blockadesBite === true, options.mothballing === true, options.slowHyperdrive === true, options.hyperjumpSpoolFactor, options.fightingRetreats === true, options.veterans === true, options.coordinatedLandings, options.bvrCombat === true, combat2Of(options));
+                    options.scenario = addonChoiceFor(cat, picked, overrides, options.smarterAI ?? null, options.orbitalSuperiority === true, options.longerGroundCombat === true, options.jumpInterdiction === true, options.blockadesBite === true, options.mothballing === true, options.slowHyperdrive === true, options.hyperjumpSpoolFactor, options.fightingRetreats === true, options.veterans === true, options.coordinatedLandings, false, {});
                 }, FONT.normal);
                 c.classList.add('wizard-checkbox', 'wizard-flow');
                 if (by !== undefined) c.title = `Required by ${by.join(', ')}`;
@@ -3346,7 +3349,7 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
                     const v = parseInt(s.input.value, 10);
                     if (!Number.isNaN(v)) {
                         overrides.params[p.name] = Math.min(max, Math.max(min, v));
-                        options.scenario = addonChoiceFor(cat, picked, overrides, options.smarterAI ?? null, options.orbitalSuperiority === true, options.longerGroundCombat === true, options.jumpInterdiction === true, options.blockadesBite === true, options.mothballing === true, options.slowHyperdrive === true, options.hyperjumpSpoolFactor, options.fightingRetreats === true, options.veterans === true, options.coordinatedLandings, options.bvrCombat === true, combat2Of(options));
+                        options.scenario = addonChoiceFor(cat, picked, overrides, options.smarterAI ?? null, options.orbitalSuperiority === true, options.longerGroundCombat === true, options.jumpInterdiction === true, options.blockadesBite === true, options.mothballing === true, options.slowHyperdrive === true, options.hyperjumpSpoolFactor, options.fightingRetreats === true, options.veterans === true, options.coordinatedLandings, false, {});
                     }
                 });
                 s.el.classList.add('wizard-flow-spin');

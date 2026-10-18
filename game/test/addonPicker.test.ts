@@ -32,6 +32,8 @@ import {
     withBvrCombat,
     withCombat2,
     COMBAT2_ADDONS,
+    SUB_ADDONS,
+    addonWipReason,
     HIDDEN_ADDONS,
     ELSEWHERE_ADDONS,
     withFlagAddons,
@@ -45,7 +47,7 @@ import {
 } from '../src/sim/scenario/addons';
 import { scenarioRuns } from '../src/sim/scenario/state';
 import { parityFlags } from '../src/sim/scenario/llm/parity';
-import { addonChoiceFor, firstSentence } from '../src/ui/screens/newGameWizard';
+import { addonChoiceFor, firstSentence, legacyBvrChoice } from '../src/ui/screens/newGameWizard';
 
 let base: GameData;
 let cat: AddonCatalog;
@@ -189,7 +191,7 @@ describe('picker UI model (tick / lock)', () => {
         expect(model.finalNames).toEqual(['New Fauna', 'Rim Fauna', 'Robot Mutiny']);
         expect(model.summary).toBe('New Fauna, Rim Fauna, Robot Mutiny');
         expect(model.panels).toEqual(expect.arrayContaining(['threat-framework', 'robotmutiny', 'new-fauna', 'rim-fauna']));
-        expect(model.groups.map((g) => g.group)).toEqual(['Hidden threats', 'Giantworks', 'Economy & factions', 'Politics & court', 'Rim', 'LLM layer', 'Visuals']);
+        expect(model.groups.map((g) => g.group)).toEqual(['Hidden threats', 'Giantworks', 'Economy & factions', 'Politics & court', 'Rim', 'LLM layer', 'Visuals', 'Other']);
         expect(scenarioChoiceSummary(addonChoiceFor(cat, ['robotmutiny', 'new-fauna'], { flags: {}, params: {} }), scenarioIndexFs())).toBe('New Fauna, Rim Fauna, Robot Mutiny');
         expect(firstSentence('End-game hidden threat. A creed spreads. More.')).toBe('End-game hidden threat. A creed spreads.');
     });
@@ -315,48 +317,66 @@ describe('picker sections, base add-ons, council follows the Diet', () => {
     });
 });
 
-describe('BVR combat (a Gameplay changes checkbox)', () => {
-    it('is folded in by withBvrCombat, hidden from the picker, allowed in Classic, off by default and compatible with the time bomb', async () => {
+describe('BVR combat: one Work in progress add-on with the six combat changes as sub-options', () => {
+    const ids = ['decoys-chaff', 'ambush-strike', 'critical-hits', 'damage-control', 'armour-facing', 'surrender-wrecks'];
+    const keys = { decoys: 'decoys', ambushStrike: 'ambush', criticalHits: 'criticalHits', damageControl: 'damageControl', armourFacing: 'armourFacing', surrenderWrecks: 'surrender' };
+    it('is a row of the Work in progress section; the six are not rows; none is a Gameplay changes checkbox; Classic has none', async () => {
         const { CLASSIC_ADDONS } = await import('../scripts/scenarioIndex.mjs');
+        const model = addonPickerModel(cat, []);
+        const rows = model.sections.flatMap((x) => x.groups.flatMap((g) => g.rows.map((r) => [x.section, r] as const)));
+        expect(rows.find(([, r]) => r.id === 'bvr-combat')![0]).toBe('Work in progress');
+        expect(addonWipReason('bvr-combat')).toMatch(/placeholder/);
+        for (const id of ids) {
+            expect(rows.some(([, r]) => r.id === id)).toBe(false);
+            expect(HIDDEN_ADDONS.has(id)).toBe(true);
+            expect(CLASSIC_ADDONS).not.toContain(id);
+        }
+        expect(HIDDEN_ADDONS.has('bvr-combat')).toBe(false);
+        expect(ELSEWHERE_ADDONS.has('bvr-combat')).toBe(false);
+        expect(CLASSIC_ADDONS).not.toContain('bvr-combat');
+        const m = scenarioIndexFs().find((x) => x.id === 'bvr-combat')!;
+        expect(m.include).toEqual(ids);
+        expect(m.conflicts ?? []).toEqual([]);
+        expect(SUB_ADDONS['bvr-combat']).toEqual(ids);
+        expect(COMBAT2_ADDONS.map((a) => a.id)).toEqual(ids);
+    });
+    it('the Rim add-ons are all in Work in progress', () => {
+        const rows = addonPickerModel(cat, []).sections.flatMap((x) => x.groups.flatMap((g) => g.rows.map((r) => [x.section, r.id] as const)));
+        for (const id of ['rimTrade', 'rim-fauna', 'rim-herders', 'rim-frontier', 'rim-atmosphere']) expect(rows.find(([, r]) => r === id)![0]).toBe('Work in progress');
+    });
+    it('ticking it runs all six, on by default, and each can be switched off alone', () => {
+        const sw = resolveAddonSwitches(cat, ['bvr-combat']);
+        expect(sw.flags.bvrCombat).toBe(true);
+        for (const f of Object.values(keys)) expect(sw.flags[f]).toBe(true);
+        const off = resolveAddonSwitches(cat, ['bvr-combat'], { flags: { decoys: false, surrender: false }, params: {} }).flags;
+        expect([off.decoys, off.surrender, off.ambush, off.criticalHits, off.damageControl, off.armourFacing]).toEqual([false, false, true, true, true, true]);
+        expect(addonPickerModel(cat, ['bvr-combat']).panels).toEqual(expect.arrayContaining(['bvr-combat', 'decoys-chaff']));
+        // ticked alone (an old save / options with just one of them) a change is still its own master
+        expect(resolveAddonSwitches(cat, ['decoys-chaff']).flags.decoys).toBe(true);
+        expect(resolveAddonSwitches(cat, ['decoys-chaff']).flags.bvrCombat).toBeUndefined();
+        const ch = addonChoiceFor(cat, ['bvr-combat'], { flags: {}, params: {} })!;
+        expect(ch.addons).toEqual(['bvr-combat']);
+        expect(ch.flags).toMatchObject({ bvrCombat: true, decoys: true, ambush: true, criticalHits: true, damageControl: true, armourFacing: true, surrender: true });
+    });
+    it('old options map: any of the seven on gives the add-on with exactly those sub-options on; the old fold functions still work', () => {
+        expect(legacyBvrChoice({} as never)).toBeNull();
+        expect(legacyBvrChoice({ bvrCombat: true } as never)!.flags).toEqual({ decoys: false, ambush: false, criticalHits: false, damageControl: false, armourFacing: false, surrender: false });
+        expect(legacyBvrChoice({ decoys: true, surrenderWrecks: true } as never)!.flags).toMatchObject({ decoys: true, surrender: true, ambush: false, armourFacing: false });
+        const c = addonChoiceFor(cat, [], { flags: {}, params: {} }, null, false, false, false, false, false, false, undefined, false, false, undefined, true, { decoys: true, armourFacing: true })!;
+        expect(c.addons).toContain('bvr-combat');
+        expect(c.flags).toMatchObject({ bvrCombat: true, decoys: true, armourFacing: true, ambush: false, criticalHits: false, damageControl: false, surrender: false });
         const on = withBvrCombat([], { flags: {}, params: {} }, true);
         expect(on.picked).toEqual(['bvr-combat']);
-        expect(on.overrides.flags.bvrCombat).toBe(true);
         expect(withBvrCombat(on.picked, on.overrides, false).picked).toEqual([]);
-        expect(withBvrCombat([], { flags: {}, params: {} }, undefined).picked).toEqual([]);
-        expect(HIDDEN_ADDONS.has('bvr-combat')).toBe(true);
-        expect(ELSEWHERE_ADDONS.has('bvr-combat')).toBe(true);
-        expect(CLASSIC_ADDONS).toContain('bvr-combat');
-        const m = scenarioIndexFs().find((x) => x.id === 'bvr-combat')!;
-        expect(m.conflicts ?? []).toEqual([]); // its ids are allocated after the time bomb's (scenario/overlay.ts finalizeDynamicIds)
-        expect(m.flags.map((f) => f.name)).toEqual(['bvrCombat', 'bvrAI']);
-    });
-});
-
-describe('The six combat changes after BVR (Gameplay changes checkboxes)', () => {
-    const ids = ['decoys-chaff', 'ambush-strike', 'critical-hits', 'damage-control', 'armour-facing', 'surrender-wrecks'];
-    it('are folded in by withCombat2 one by one, hidden from the picker, allowed in Classic, off by default and compatible with BVR combat', async () => {
-        const { CLASSIC_ADDONS } = await import('../scripts/scenarioIndex.mjs');
-        expect(COMBAT2_ADDONS.map((a) => a.id)).toEqual(ids);
         for (const a of COMBAT2_ADDONS) {
-            const on = withCombat2([], { flags: {}, params: {} }, { [a.key]: true });
-            expect(on.picked).toEqual([a.id]);
-            expect(on.overrides.flags[a.flag]).toBe(true);
-            expect(withCombat2(on.picked, on.overrides, { [a.key]: false }).picked).toEqual([]);
-            expect(HIDDEN_ADDONS.has(a.id)).toBe(true);
-            expect(ELSEWHERE_ADDONS.has(a.id)).toBe(true);
-            expect(CLASSIC_ADDONS).toContain(a.id);
+            const w = withCombat2([], { flags: {}, params: {} }, { [a.key]: true });
+            expect(w.picked).toEqual([a.id]);
+            expect(w.overrides.flags[a.flag]).toBe(true);
             const m = scenarioIndexFs().find((x) => x.id === a.id)!;
             expect(m.flags[0].name).toBe(a.flag); // the master flag is the first
-            expect(m.conflicts ?? []).toEqual([]);
         }
-        const all = withCombat2(withBvrCombat([], { flags: {}, params: {} }, true).picked, { flags: {}, params: {} }, { decoys: true, ambushStrike: true, criticalHits: true, damageControl: true, armourFacing: true, surrenderWrecks: true });
-        expect([...all.picked].sort()).toEqual(['bvr-combat', ...ids].sort());
-        expect(withCombat2([], { flags: {}, params: {} }, undefined).picked).toEqual([]);
-        expect(withCombat2([], { flags: {}, params: {} }, {}).picked).toEqual([]);
-        // Sub-switches default on under their masters (the wizard sets only the master).
         const surrender = scenarioIndexFs().find((x) => x.id === 'surrender-wrecks')!;
         expect(surrender.flags.map((f) => f.name)).toEqual(['surrender']);
-        expect(surrender.params.some((p) => /^wreck/.test(p.name))).toBe(false);
         expect(surrender.name).toBe('Surrender');
     });
 });

@@ -37,12 +37,12 @@ export const ADDON_GROUPS: readonly AddonGroup[] = ['Hidden threats', 'Giantwork
  * hover reason. Moving an add-on between sections is a one-line change. Visible add-ons not listed are WIP (WIP_DEFAULT_REASON).
  */
 export const ADDON_STATUS: Readonly<Record<string, string>> = {
-    'rimTrade': 'recommended',
-    'rim-fauna': 'recommended',
-    'rim-herders': 'recommended',
-    'rim-frontier': 'recommended',
+    'rimTrade': 'still being tuned',
+    'rim-fauna': 'still being tuned',
+    'rim-herders': 'still being tuned',
+    'rim-frontier': 'still being tuned',
     'new-fauna': 'recommended',
-    'rim-atmosphere': 'recommended',
+    'rim-atmosphere': 'still being tuned',
     'cult': 'recommended',
     'hive': 'recommended',
     'doppelgangers': 'recommended',
@@ -78,7 +78,7 @@ export const ADDON_STATUS: Readonly<Record<string, string>> = {
     mothballing: 'new',
     'slow-hyperdrive': 'new',
     veterans: 'new',
-    'bvr-combat': 'new',
+    'bvr-combat': 'new; art is placeholder, AI balance still being tuned',
     'decoys-chaff': 'new',
     'ambush-strike': 'new',
     'critical-hits': 'new',
@@ -181,13 +181,13 @@ const GROUP_OF: Readonly<Record<string, AddonGroup>> = {
 // colony-defence: withdrawn from the picker (the user wants the original's pirate control); saves that use it still load.
 // wreckage-salvage: RETIRED (the user: it should not be enableable); saves that had it on load with it off and the debris fields removed (scenario/retired.ts).
 // silence: TEMPORARILY DISABLED (the user; to come back to): code and data stay, a save that had it on loads with it off and its zone removed (scenario/retired.ts).
-export const HIDDEN_ADDONS: ReadonlySet<string> = new Set(['threat-framework', 'example', 'ai-parity', 'soak-15y', 'resource-crises', 'colony-defence', 'big-galaxies', 'galactic-council', 'themed-names', 'event-log', 'fighting-retreats', 'coordinated-landings', 'bvr-combat', 'decoys-chaff', 'ambush-strike', 'critical-hits', 'damage-control', 'armour-facing', 'surrender-wrecks', 'wreckage-salvage', 'silence']);
+export const HIDDEN_ADDONS: ReadonlySet<string> = new Set(['threat-framework', 'example', 'ai-parity', 'soak-15y', 'resource-crises', 'colony-defence', 'big-galaxies', 'galactic-council', 'themed-names', 'event-log', 'fighting-retreats', 'coordinated-landings', 'decoys-chaff', 'ambush-strike', 'critical-hits', 'damage-control', 'armour-facing', 'surrender-wrecks', 'wreckage-salvage', 'silence']);
 
 /**
  * Add-ons set on another wizard page (not listed on the Scenario page, but named in the summaries like any other):
  * Smarter AI and Orbital superiority live on the Other Empires page (withSmarterAI / withOrbitalSuperiority below).
  */
-export const ELSEWHERE_ADDONS: ReadonlySet<string> = new Set(['smarter-ai', 'orbital-superiority', 'longer-ground-combat', 'jump-interdiction', 'blockades-bite', 'mothballing', 'slow-hyperdrive', 'fighting-retreats', 'veterans', 'coordinated-landings', 'bvr-combat', 'decoys-chaff', 'ambush-strike', 'critical-hits', 'damage-control', 'armour-facing', 'surrender-wrecks']);
+export const ELSEWHERE_ADDONS: ReadonlySet<string> = new Set(['smarter-ai', 'orbital-superiority', 'longer-ground-combat', 'jump-interdiction', 'blockades-bite', 'mothballing', 'slow-hyperdrive', 'fighting-retreats', 'veterans', 'coordinated-landings']);
 
 /** openDWU Classic: add-ons every game starts with (treated as base game: no picker). Smarter AI stays the Other Empires page's toggle. */
 export const CLASSIC_BASE_ADDONS: readonly string[] = ['themed-names', 'event-log'];
@@ -629,7 +629,7 @@ export function resolveAddonSwitches(cat: AddonCatalog, picked: readonly string[
     }
     for (const id of on) {
         const master = cat.byId.get(id)!.masterFlag;
-        if (master !== null) {
+        if (master !== null && !subAddonOfRunning(id, onSet)) {
             masters.add(master);
             flags[master] = true;
         }
@@ -645,6 +645,26 @@ export function resolveAddonSwitches(cat: AddonCatalog, picked: readonly string[
     // The galactic council is a hidden background part of Characters & Victory: its flag follows cvCouncil (the Interstellar Diet).
     if (onSet.has('characters-victory') && onSet.has('galactic-council') && 'cvCouncil' in flags && 'galacticCouncil' in flags) flags.galacticCouncil = flags.cvCouncil;
     return { flags, params };
+}
+
+/**
+ * Sub-add-ons: add-ons that are the sub-options of another one (BVR combat's six combat changes). Ticking the parent loads and
+ * runs them all, but each one's master flag is an ordinary option of the parent's panel (default on, the player can switch it
+ * off) instead of being forced on. Ticked on their own (an old save or options with just one of them) they are masters again.
+ */
+export const SUB_ADDONS: Readonly<Record<string, readonly string[]>> = {
+    'bvr-combat': ['decoys-chaff', 'ambush-strike', 'critical-hits', 'damage-control', 'armour-facing', 'surrender-wrecks'],
+};
+
+/** The parent add-on of a sub-add-on (null: not a sub-add-on). */
+export function subAddonParent(id: string): string | null {
+    for (const [parent, subs] of Object.entries(SUB_ADDONS)) if (subs.includes(id)) return parent;
+    return null;
+}
+
+function subAddonOfRunning(id: string, onSet: ReadonlySet<string>): boolean {
+    const parent = subAddonParent(id);
+    return parent !== null && onSet.has(parent);
 }
 
 /**
@@ -858,11 +878,18 @@ export function addonPickerModel(cat: AddonCatalog, picked: readonly string[]): 
         groups: groups.map((g) => ({ group: g.group, rows: g.rows.filter((r) => (r.wip === null) === (section === 'Recommended')) })).filter((g) => g.rows.length > 0),
     })).filter((x) => x.groups.length > 0);
     const finalNames = cat.list.filter((a) => onSet.has(a.id) && !a.hidden).map((a) => a.name);
-    const panels = on.filter((id) => {
+    let panels = on.filter((id) => {
         if (ELSEWHERE_ADDONS.has(id)) return false;
         const m = cat.manifests.get(id)!;
         return m.flags.length > 1 || m.params.length > 0;
     });
+    // A parent's panel (BVR combat) comes first, then the panels of its sub-add-ons.
+    for (const [parent, subs] of Object.entries(SUB_ADDONS)) {
+        if (!panels.includes(parent)) continue;
+        const at = panels.indexOf(parent);
+        const own = panels.filter((x) => subs.includes(x));
+        panels = [...panels.slice(0, at).filter((x) => !own.includes(x)), parent, ...own, ...panels.slice(at + 1).filter((x) => !own.includes(x))];
+    }
     return { sections, groups, finalNames, summary: finalNames.length === 0 ? 'None (the original game)' : finalNames.join(', '), panels };
 }
 

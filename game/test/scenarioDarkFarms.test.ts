@@ -41,12 +41,16 @@ import { EmpireMessageType, empireMessages } from '../src/sim/messages';
 import { takeOwnershipOfColonyFull } from '../src/sim/combat/ownership';
 import { builtObjectCompleteTeardown } from '../src/sim/combat/teardown';
 import { inflictBombardDamage } from '../src/sim/combat/damage';
-import { setGameEndHandler, type GameEndEventArgs } from '../src/sim/victory';
+import { setGameEndHandler, GameEndOutcome, type GameEndEventArgs } from '../src/sim/victory';
 import { CharacterRole, getEmpireCharacters } from '../src/sim/characters';
 import { createShipAction, ShipActionType } from '../src/sim/player/shipAction';
 import { runPlayerCommand } from '../src/sim/player/playerCommands';
 import { BuiltObjectMissionType, builtObjectMission } from '../src/sim/missions/mission';
 import { threatRows } from '../src/ui/hud';
+import { threatGameEndPolicy, threatGameEnd } from '../src/sim/scenario/threats/framework';
+// These tests cover each ending's own mechanics; the user's rule that only the Beacon's endings end the game (threatGameEndPolicy)
+// is tested in scenarioThreatFramework.test.ts ("threat game-end policy").
+threatGameEndPolicy.restrict = false;
 
 let base: GameData;
 beforeAll(async () => {
@@ -294,6 +298,26 @@ describe('Dark Farms: forced trigger on seed 1', () => {
         st.ended = false;
         g.scenario!.params.defeatPopulationPct = 100;
         setGameEndHandler(g, null);
+    }, 600000);
+
+    it('policy: with the user\'s victory rule on, a Harvester population share past the limit no longer ends the game (the Beacon\'s loss still does)', () => {
+        const st = darkFarmsState(g);
+        const ends: GameEndEventArgs[] = [];
+        setGameEndHandler(g, (e) => ends.push(e));
+        const keep = threatGameEndPolicy.restrict;
+        threatGameEndPolicy.restrict = true;
+        try {
+            g.scenario!.params.defeatPopulationPct = 0.0001;
+            darkFarmsEndCheck(g, st);
+            expect(ends).toEqual([]);
+            threatGameEnd(g, null, GameEndOutcome.Defeat, 'beacon', 2051); // BEACON_CODE_LOST
+            expect(ends.map((e) => e.code)).toEqual([2051]);
+        } finally {
+            threatGameEndPolicy.restrict = keep;
+            st.ended = false;
+            g.scenario!.params.defeatPopulationPct = 100;
+            setGameEndHandler(g, null);
+        }
     }, 600000);
 
     it('retake: taking the farm colony destroys the farm (retakeDestroysFarm 1) or re-hides it (0)', () => {

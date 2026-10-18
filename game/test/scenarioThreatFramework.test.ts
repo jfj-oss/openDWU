@@ -243,6 +243,11 @@ import { empireShipGroups } from '../src/sim/fleets/shipGroup';
 import { aiReview } from '../src/sim/scenario/threats/giantworks/ai';
 import { ShipGroup } from '../src/sim/fleets/shipGroup';
 import { FleetPosture } from '../src/sim/diplomacyTick';
+import { threatGameEndPolicy, threatGameEnd } from '../src/sim/scenario/threats/framework';
+import { GameEndOutcome, GameEndEventArgs, setGameEndHandler } from '../src/sim/victory';
+// These tests cover each ending's own mechanics; the user's rule that only the Beacon's endings end the game (threatGameEndPolicy)
+// is tested in scenarioThreatFramework.test.ts ("threat game-end policy").
+threatGameEndPolicy.restrict = false;
 
 
 let base: GameData;
@@ -5282,6 +5287,57 @@ describe('the Beacon (Giantworks wonder)', () => {
         expect(st.phase).toBe('ended');
         expect(g.gameIsFinished).toBe(true);
         expect(f.builtObjects.every((b) => b.hasBeenDestroyed)).toBe(true); // the leftovers fall silent
+    }, 900000);
+    it('threat game-end policy: only the Beacon destroyed after a launch (victory) and the Beacon\'s own loss (defeat) end the game', () => {
+        const { g } = completed();
+        const ends: GameEndEventArgs[] = [];
+        setGameEndHandler(g, (e) => ends.push(e));
+        const keep = threatGameEndPolicy.restrict;
+        threatGameEndPolicy.restrict = true;
+        try {
+            // a contained threat (the +100 containment code of another threat) and a non-Beacon defeat: no game end
+            threatGameEnd(g, g.playerEmpire, GameEndOutcome.Victory, 'contained', 2001, true);
+            threatGameEnd(g, g.playerEmpire, GameEndOutcome.Victory, 'contained', 1901);
+            threatGameEnd(g, null, GameEndOutcome.Defeat, 'dark farms', 1902);
+            threatGameEnd(g, null, GameEndOutcome.Defeat, 'time bomb', 2016);
+            expect(ends).toEqual([]);
+            // the Beacon's defeat still ends it
+            threatGameEnd(g, null, GameEndOutcome.Defeat, 'beacon', 2051);
+            expect(ends.map((e) => e.code)).toEqual([2051]);
+            // reversible
+            threatGameEndPolicy.restrict = false;
+            threatGameEnd(g, g.playerEmpire, GameEndOutcome.Victory, 'contained', 1901);
+            expect(ends.map((e) => e.code)).toEqual([2051, 1901]);
+        } finally {
+            threatGameEndPolicy.restrict = keep;
+            setGameEndHandler(g, null);
+        }
+    }, 900000);
+    it('the Beacon destroyed before it ever launched does not end the game; destroyed after a launch it does (victory)', () => {
+        const keep = threatGameEndPolicy.restrict;
+        threatGameEndPolicy.restrict = true;
+        try {
+            for (const launched of [false, true]) {
+                const { g, st } = completed();
+                const ends: GameEndEventArgs[] = [];
+                setGameEndHandler(g, (e) => ends.push(e));
+                const [a] = normalsOf(g);
+                if (launched) st.launches = 1;
+                scenarioEmit(g, 'builtObjectKilledBy', { builtObject: st.beacon!, destroyer: a });
+                expect(st.beaconDestroyed).toBe(true);
+                beaconEndCheck(g);
+                if (launched) {
+                    expect(ends.map((e) => [e.code, e.outcomeForPlayer])).toEqual([[2152, GameEndOutcome.Victory]]);
+                    beaconEndCheck(g);
+                    expect(ends.length).toBe(1); // once
+                } else {
+                    expect(ends).toEqual([]);
+                }
+                setGameEndHandler(g, null);
+            }
+        } finally {
+            threatGameEndPolicy.restrict = keep;
+        }
     }, 900000);
     it('the AI coalition against the Beacon: the members gather their free fleets at a waypoint, strike the Beacon together, and are released when it falls', () => {
         const { g, st } = completed();
