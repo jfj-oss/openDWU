@@ -86,6 +86,7 @@ import { confirmAutomationOff } from './orderMenu';
 import { galaxyStarDate } from '../sim/tick/simTime';
 import { createShipAction, ShipActionType } from '../sim/player/shipAction';
 import { issuePlayerCommand } from '../sim/player/playerCommands';
+import { ultramindSlots } from './ultramindSlots';
 import { toggleGameEditor } from './screens/gameEditor';
 import type { PlayerOpArgs, PlayerOpName, PlayerOpResult } from '../sim/player/playerOps';
 import type { Design } from '../sim/design';
@@ -1603,6 +1604,8 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         if (viewer === null || !wiring.galaxy) return [];
         const sel = currentSelection;
         const out: SelectionFreeSlot[] = [];
+        // Giantworks: the Ultramind's directives, Logic Bomb and Withdraw (ui/ultramindSlots.ts).
+        for (const u of ultramindSlots(wiring.galaxy, viewer, sel?.builtObject ?? null, () => redrawSelectionActionBar())) out.push({ label: u.label, hint: u.hint, icon: u.icon, disabled: u.disabled, active: u.active, onClick: u.onClick });
         // Mothballing add-on (a Gameplay change): Mothball (click or right-click: choose the port) / Reactivate for an own fleet
         // or lone warship (ui/mothballSlots.ts).
         const mb = mothballSlot(wiring.galaxy, viewer, currentSelection);
@@ -2094,12 +2097,6 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         if (t.kind === 'supply') {
             const src = getEmpireSummarySource();
             if (src) openConstructionYards({ ...constructionYardsOptions(src.empire), site: t.target, tab: 'supply' });
-            return;
-        }
-        // Not in the original: a scenario threat action on a base (the Ultramind's directive buttons), through the command queue.
-        if (t.kind === 'threatAction') {
-            const player = localViewerEmpire(wiring.galaxy) ?? null;
-            if (player !== null && wiring.galaxy) issuePlayerCommand(wiring.galaxy, player, 'threatAction', [t.action, t.target], () => refresh());
             return;
         }
         // Not in the original: a fleet's "Template" row opens the Fleets screen on the fleet (fleetRefillControls.ts).

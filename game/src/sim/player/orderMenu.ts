@@ -1936,6 +1936,14 @@ function builtObjectActionMenu(ctx: OrderMenuContext, builtObject6: BuiltObject,
     }
     if (builtObject6.empire === player || builtObject6.owner === player) pushIf(items, giveToMenu(ctx, builtObject6));
     if (hasMission(builtObject6.mission)) pushIf(items, queueNextMissionMenu(ctx, builtObject6));
+    // Mod layer (Giantworks): scenario threat actions on a site's base (the Ultramind's directives, withdrawing, the Logic Bomb).
+    if (ctx.galaxy.scenario !== null && builtObject6.role === BuiltObjectRole.Base) {
+        for (const t of availableThreatActions(ctx.galaxy, player, builtObject6)) {
+            const a = createShipAction(ShipActionType.ScenarioThreatAction, builtObject6);
+            a.extraData = t.kind;
+            items.push(leaf(t.kind, t.label, a));
+        }
+    }
 }
 
 /** Main.Part8.cs 4133-4943: one of the player's ships is selected. */

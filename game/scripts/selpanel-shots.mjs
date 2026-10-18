@@ -190,9 +190,9 @@ for (const kind of kinds) {
     }
     await page.waitForTimeout(1500);
     if (process.env.CLICK) {
-        // Click the panel's glass button of that label (the command queue runs it at the next frame boundary), run a moment, report.
+        // Click the action button whose label starts with that text (the command queue runs it at the next frame boundary), run a moment, report.
         const clicked = await page.evaluate((label) => {
-            const b = [...document.querySelectorAll('.sel-buttons .ow-glass')].find((x) => x.textContent === label);
+            const b = [...document.querySelectorAll('.order-actions .order-action-btn')].find((x) => (x.getAttribute('aria-label') ?? '').startsWith(label));
             b?.click();
             return b !== undefined;
         }, process.env.CLICK);
@@ -205,10 +205,10 @@ for (const kind of kinds) {
     await page.screenshot({ path, clip: { x: 0, y: +h - frameH, width: frameW, height: frameH } });
     console.log(`${kind}: ${name} -> ${path}`);
     if (process.env.DUMP) {
-        // The panel's text and its glass buttons (label, toggled, enabled by a click handler), for a text-only check.
+        // The panel's text and its action buttons (label, lit, disabled), for a text-only check.
         console.log(await page.evaluate(() => {
             const sc = document.querySelector('.sel-scroll');
-            const btns = [...document.querySelectorAll('.sel-buttons .ow-glass')].map((b) => `[${b.textContent}${b.classList.contains('ow-glass-on') ? '*' : ''}${b.classList.contains('sel-glass-fixed') ? ' fixed' : ''}${b.classList.contains('sel-glass-pending') ? ' pending' : ''}] ${b.title.slice(0, 60)}`);
+            const btns = [...document.querySelectorAll('.order-actions .order-action-btn')].filter((b) => b.getAttribute('aria-label')).map((b) => `[${b.getAttribute('aria-label')}${b.classList.contains('order-action-on') ? ' *on*' : ''}${b.disabled ? ' disabled' : ''}] ${(b.dataset.hint ?? '').slice(0, 70)}`);
             return `${sc?.innerText}\n${btns.join('\n')}`;
         }));
     }

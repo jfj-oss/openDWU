@@ -482,6 +482,10 @@ function executeForBase(ctx: Ctx, builtObject: BuiltObject, action: ShipAction):
     const { galaxy, empire } = ctx;
     // 107-269
     switch (action.actionType) {
+        case ShipActionType.ScenarioThreatAction:
+            // Mod layer (Giantworks): a scenario threat's player action on this base (the Ultramind's directives, withdrawing, the Logic Bomb).
+            if (galaxy.scenario !== null && action.extraData !== null && action.extraData !== undefined) runThreatAction(galaxy, empire, action.extraData, builtObject);
+            break;
         case ShipActionType.ChangePirateHomeBase: {
             if (!isHabitat(action.target)) break;
             const habitat = action.target;

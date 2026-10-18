@@ -84,6 +84,8 @@ export interface ThreatLooks {
     ultramindPlanets?: Map<Habitat, GreatWorkArtSite>;
     /** Giantworks: the look of each finished Ultramind built round a planet, decided when its system's bodies are built (ultramindLookFor). Absent = the caged planet. */
     ultramindLook?: Map<Habitat, UltramindLook>;
+    /** Giantworks: the world width of the planet / moon picture each Ultramind's cube must cover (set by syncUltramindShell each frame the picture is drawn). */
+    ultramindCover?: Map<Habitat, number>;
     /** Giantworks: the casinos that are a pirate den now (their sites; casinoDenOf). Optional: absent = none. */
     casinoDens?: Set<object>;
     /** Giantworks: the Ark Engines afloat, by ship, with their sim records (ARK_STATE_KEY, read only). Optional. */
@@ -104,6 +106,7 @@ const looks: ThreatLooks = {
     greatWorks: new Map(),
     ultramindPlanets: new Map(),
     ultramindLook: new Map(),
+    ultramindCover: new Map(),
     casinoDens: new Set(),
     arks: new Map(),
 };
@@ -129,7 +132,10 @@ export function ultramindLookFor(siteId: number, starDate: number): UltramindLoo
 export function forgetUltramindLooks(habitats: readonly Habitat[]): void {
     const l = looks.ultramindLook!;
     if (l.size === 0) return;
-    for (const h of habitats) l.delete(h);
+    for (const h of habitats) {
+        l.delete(h);
+        looks.ultramindCover!.delete(h);
+    }
 }
 
 /**
@@ -840,6 +846,17 @@ export function greatWorkFrame(site: Pick<GreatWorkArtSite, 'stage' | 'wonder' |
 export function greatWorkDrawnFrame(site: Pick<GreatWorkArtSite, 'stage' | 'wonder' | 'habitat'> & Partial<Pick<GreatWorkArtSite, 'awakened'>>, l: ThreatLooks = looks): string | null {
     const f = greatWorkFrame(site, l);
     return f === 'beacon' ? null : f;
+}
+
+/** The solid cube covers its planet: its frame spans this many times the planet picture's width (the cube is about 0.6 of the frame wide, a hexagon-like silhouette). */
+export const ULTRAMIND_CUBE_COVER = 2.4;
+
+/** greatWorkDrawPx for a site: the Ultramind's cube look over a planet is drawn at least ULTRAMIND_CUBE_COVER times the picture it covers (a gas giant is far bigger than the standard frame). Pure but for that record. */
+export function greatWorkDrawPxOf(site: Pick<GreatWorkArtSite, 'wonder' | 'habitat'>, frame: string, f: number, l: ThreatLooks = looks): number {
+    const px = greatWorkDrawPx(frame, f);
+    if (site.wonder !== 'ultramind' || site.habitat === null || (frame !== 'ultramind' && frame !== 'ultramind-awake') || l.ultramindLook?.get(site.habitat) !== 'cube') return px;
+    const cover = l.ultramindCover?.get(site.habitat);
+    return cover === undefined ? px : Math.max(px, Math.trunc((cover * ULTRAMIND_CUBE_COVER) / f));
 }
 
 /** World units the whole frame spans at zoom factor 1 (about a large planet). */
@@ -1812,6 +1829,7 @@ export function syncUltramindShell(parent: Container, holder: UltramindShellHold
     const names = site?.awakened === true ? UM_SHELL_AWAKE : UM_SHELL;
     // the cube look covers the planet with the whole cube instead (the base's own frame, greatWorkFrame): no cage
     const cube = site !== undefined && looks.ultramindLook?.get(h) === 'cube';
+    if (site !== undefined && body.visible) looks.ultramindCover?.set(h, body.scale.x * body.texture.width); // the cube look covers this picture (greatWorkDrawPxOf)
     const shellTex = site !== undefined && !cube && body.visible ? gwTexture(names.front) : null;
     const backTex = shellTex !== null ? gwTexture(names.back) : null;
     const glowTex = backTex !== null ? gwTexture(names.glow) : null;

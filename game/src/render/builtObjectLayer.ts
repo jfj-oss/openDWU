@@ -29,7 +29,7 @@ import { CONCORD_LIMBS_MIN_PX, ConcordFxLayer, concordArtEmpire, concordShipArt,
 import { ConstructionOverlays, DamageOverlays, shipConstructionSubject, shipDamageSubject } from './shipOverlays';
 import { artBundleFlag } from './artBundleFlags';
 import { LiveryOverlays } from './liveryLayer';
-import { ANCIENT_TINT, ANCIENT_WEAR, GenShipsFxLayer, GreatWorkFxLayer, SwarmFxLayer, arkRecordOf, beaconArtFile, beaconLooksActive, genShipsArtFile, greatWorkDrawPx, greatWorkDrawnFrame, isAncientHull, threatArtUrl, threatDrawScale, threatLooks, watcherOpenTarget } from './threatArt';
+import { ANCIENT_TINT, ANCIENT_WEAR, GenShipsFxLayer, GreatWorkFxLayer, SwarmFxLayer, arkRecordOf, beaconArtFile, beaconLooksActive, genShipsArtFile, greatWorkDrawPxOf, greatWorkDrawnFrame, isAncientHull, threatArtUrl, threatDrawScale, threatLooks, watcherOpenTarget } from './threatArt';
 import { ArkFxLayer, arkDrawScale } from './arkFx';
 import { BeaconFxLayer } from './beaconFx';
 import { fogOf } from './fog';
@@ -770,7 +770,7 @@ export class BuiltObjectLayer {
             const px = isArk
                 ? builtObjectSizePx(bo.size, metrics.areaRatio, f, DesignImageScalingMode.None, 1) * arkDrawScale(bo.size)
                 : gwFrame !== null
-                  ? greatWorkDrawPx(gwFrame, f)
+                  ? greatWorkDrawPxOf(gwSite!, gwFrame, f)
                   : builtObjectSizePx(bo.size, metrics.areaRatio, f, bo.design?.imageScalingType ?? DesignImageScalingMode.None, bo.design?.imageScalingFactor ?? 1) * tScale;
             this.drawnPx.set(bo, px);
             if (bars) {
@@ -778,7 +778,7 @@ export class BuiltObjectLayer {
                 const unitPx = isArk
                     ? builtObjectSizePx(bo.size, metrics.areaRatio, 1, DesignImageScalingMode.None, 1) * arkDrawScale(bo.size)
                     : gwFrame !== null
-                      ? greatWorkDrawPx(gwFrame, 1)
+                      ? greatWorkDrawPxOf(gwSite!, gwFrame, 1)
                       : builtObjectSizePx(bo.size, metrics.areaRatio, 1, bo.design?.imageScalingType ?? DesignImageScalingMode.None, bo.design?.imageScalingFactor ?? 1) * tScale;
                 const n = this.battleBarShips.length;
                 let rec = this.barPool[n];

@@ -8,7 +8,6 @@ import type { Empire } from '../sim/empire';
 import { troopImageUrl, wireTroopImageFallback } from '../render/troopImages';
 import { raceHasConcordArt } from '../render/concordArt';
 import type { Race } from '../sim/data/races';
-import { glassButton } from './originalWindow';
 import { resolveEmpireEmblem, rgbaToDataUrl, stockEmpireFlagRgba } from './empireEmblem';
 import {
     BAR_BACKGROUND,
@@ -372,24 +371,6 @@ function rowElement(row: InfoRow, labelWidth: number, o: InfoViewOptions, banded
             return barElement(row, labelWidth);
         case 'colonies':
             return coloniesElement(row, labelWidth, o);
-        case 'buttons': {
-            // Giantworks: the Ultramind's directive buttons, in the panel's glass-button style (originalWindow.ts glassButton).
-            const line = document.createElement('div');
-            line.className = 'sel-row sel-buttons';
-            line.style.marginLeft = `${banded ? labelWidth + 10 : 5}px`;
-            for (const b of row.buttons) {
-                const btn = glassButton(b.text, {
-                    size: 10.5,
-                    toggled: b.on || b.pending,
-                    title: b.title,
-                    className: `sel-glass${b.pending ? ' sel-glass-pending' : ''}`,
-                    onClick: b.target !== undefined ? () => o.onTarget(b.target!) : undefined,
-                });
-                if (b.target === undefined) btn.classList.add('sel-glass-fixed');
-                line.appendChild(btn);
-            }
-            return line;
-        }
         case 'grid':
             return gridElement(row, labelWidth, o, banded);
         case 'line': {

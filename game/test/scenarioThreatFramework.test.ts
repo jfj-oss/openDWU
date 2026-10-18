@@ -91,6 +91,8 @@ import type { Empire } from '../src/sim/empire';
 import { threatLeadRows, threatsSectionVisible } from '../src/ui/internalSecurityView';
 import { CharacterRole, getEmpireCharacters } from '../src/sim/characters';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
+import { buildActionMenu } from '../src/sim/player/orderMenu';
+import { createShipAction, ShipActionType } from '../src/sim/player/shipAction';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import { stateDigest } from '../src/sim/tick/digest';
 import { GalaxyTime } from '../src/sim/galaxyTime';
@@ -3052,6 +3054,14 @@ describe('giantworks', () => {
             runPlayerCommand(g, other, 'threatAction', ['giantworks.umDirective.1.war.set', w.base!]);
             expect(m.switchTo).toBe('intelligence');
         }
+        m.switchTo = null;
+        // The right-click order menu lists them for the holder (a ShipAction on the base) and the same action runs through the 'shipAction' command.
+        const menu = buildActionMenu({ galaxy: g, empire: e!, selected: w.base!, cursorX: 0, cursorY: 0, zoomFactor: 1, pickAt: () => null }).map((i) => i.label);
+        expect(menu.some((t) => t.startsWith('Directive: Economy'))).toBe(true);
+        const act = createShipAction(ShipActionType.ScenarioThreatAction, w.base!);
+        act.extraData = 'giantworks.umDirective.2.economy.set';
+        runPlayerCommand(g, e!, 'shipAction', [w.base!, act, false, undefined]);
+        expect(m.switchTo).toBe('economy');
         m.switchTo = null;
         // The AI holder reviews by situation: a war raises War and lowers Research.
         const s0 = aiDirectiveScores(g, m, e!);

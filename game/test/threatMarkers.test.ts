@@ -83,6 +83,8 @@ import {
     gwTracePulse,
     gwUltramindPulse,
     ultramindLookFor,
+    greatWorkDrawPxOf,
+    ULTRAMIND_CUBE_COVER,
     sanctuaryWhaleCount,
     sanctuaryWhalePose,
     type GreatWorkArtSite,
@@ -573,7 +575,7 @@ describe('giantworks art', () => {
         for (let b = 0; b < 24; b++) seen.add(ultramindLookFor(3, b * 30 * DAY));
         expect([...seen].sort()).toEqual(['cage', 'cube']);
         const planet = {} as Habitat;
-        const l = { genFactions: [], worldShips: [], swarmFaction: null, mothercore: null, purifierFaction: null, purifierDock: null, ultramindLook: new Map<Habitat, 'cage' | 'cube'>() };
+        const l = { genFactions: [], worldShips: [], swarmFaction: null, mothercore: null, purifierFaction: null, purifierDock: null, ultramindLook: new Map<Habitat, 'cage' | 'cube'>(), ultramindCover: new Map<Habitat, number>() };
         // the cage look keeps the uplink node (and the cage over the planet); the cube look draws the whole cube over the planet; the awakened state follows the look
         expect(greatWorkFrame(site(4, 'ultramind', planet), l)).toBe('ultramind-node');
         l.ultramindLook.set(planet, 'cage');
@@ -582,6 +584,15 @@ describe('giantworks art', () => {
         expect(greatWorkFrame(site(4, 'ultramind', planet), l)).toBe('ultramind');
         expect(greatWorkFrame({ ...site(4, 'ultramind', planet), awakened: true }, l)).toBe('ultramind-awake');
         expect(greatWorkDrawPx('ultramind', 1)).toBe(GREAT_WORK_WORLD_SIZE);
+        // the solid cube is drawn at least ULTRAMIND_CUBE_COVER times the picture it covers (a gas giant is far wider than the standard frame)
+        const planetSite = site(4, 'ultramind', planet);
+        l.ultramindCover.set(planet, 100);
+        expect(greatWorkDrawPxOf(planetSite, 'ultramind', 1, l)).toBe(GREAT_WORK_WORLD_SIZE); // a small planet: the standard frame
+        l.ultramindCover.set(planet, 969);
+        expect(greatWorkDrawPxOf(planetSite, 'ultramind', 1, l)).toBe(Math.trunc(969 * ULTRAMIND_CUBE_COVER));
+        expect(greatWorkDrawPxOf(planetSite, 'ultramind', 2, l)).toBe(Math.trunc((969 * ULTRAMIND_CUBE_COVER) / 2));
+        l.ultramindLook.set(planet, 'cage');
+        expect(greatWorkDrawPxOf(planetSite, 'ultramind-node', 1, l)).toBe(280); // the cage look keeps the node's size
         // without a planet it stays the solid cube
         expect(greatWorkFrame(site(4, 'ultramind'), l)).toBe('ultramind');
     });
