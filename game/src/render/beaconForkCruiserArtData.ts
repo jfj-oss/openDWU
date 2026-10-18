@@ -7,22 +7,23 @@
 import type { ForkArt } from './beaconForkArtData';
 
 export const CRUISER_FORK_ART: ForkArt & { readonly drawScale: number } = {
-    size: 382,
+    size: 392,
     breath: 6.40,
-    glow: { x: 0, y: 0, w: 125, h: 261, dx: 130, dy: 43 },
+    glow: { x: 0, y: 0, w: 231, h: 277, dx: 80, dy: 43 },
     capitalLength: 1,
-    drawScale: 1.3787,
+    drawScale: 1.3182,
     nozzles: [
-        { x: 143.0, y: 330.0, w: 52.0 },
-        { x: 239.0, y: 330.0, w: 52.0 },
+        { x: 89.0, y: 339.0, w: 52.0 },
+        { x: 305.0, y: 339.5, w: 52.0 },
+        { x: 197.0, y: 314.5, w: 60.0 },
     ],
     lights: [
-        { x: 190.5, y: 14.0, phase: 0.758, period: 2.49 },
-        { x: 139.5, y: 111.1, phase: 0.337, period: 2.76 },
-        { x: 255.5, y: 132.7, phase: 0.646, period: 1.86 },
-        { x: 122.5, y: 233.8, phase: 0.768, period: 2.35 },
-        { x: 250.5, y: 248.3, phase: 0.313, period: 2.49 },
-        { x: 85.5, y: 320.5, phase: 0.987, period: 2.49 },
-        { x: 295.5, y: 327.7, phase: 0.082, period: 2.36 },
+        { x: 196.5, y: 15.0, phase: 0.758, period: 2.49 },
+        { x: 130.5, y: 113.9, phase: 0.337, period: 2.76 },
+        { x: 257.5, y: 136.1, phase: 0.646, period: 1.86 },
+        { x: 175.5, y: 240.0, phase: 0.768, period: 2.35 },
+        { x: 223.5, y: 254.9, phase: 0.313, period: 2.49 },
+        { x: 53.5, y: 329.1, phase: 0.987, period: 2.49 },
+        { x: 338.5, y: 336.5, phase: 0.082, period: 2.36 },
     ],
 };

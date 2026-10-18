@@ -11,7 +11,7 @@ export const CATTLE_FORK_ART: ForkArt & { readonly drawScale: number } = {
     breath: 6.00,
     glow: { x: 0, y: 0, w: 204, h: 387, dx: 111, dy: 33 },
     capitalLength: 1,
-    drawScale: 1.7579,
+    drawScale: 1.7642,
     nozzles: [
         { x: 130.7, y: 405.5, w: 78.6 },
         { x: 295.3, y: 405.0, w: 78.6 },
