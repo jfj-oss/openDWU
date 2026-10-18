@@ -31,6 +31,9 @@
 //   light lines), picked by subRole (beaconArtUrl); the Watchers and the Beacon are drawn at least a set size
 //   (minimumSizeScale). Their light lines breathe, and a sighted Watcher's legs, horns and flank plates swing open
 //   (beaconFx.ts BeaconFxLayer). Who is who comes from the Beacon sim's state bag (BeaconArtState, read only).
+//   The Watchers' look (WatcherFrame) is by default the fork (watcher-fork.png: an ivory twin-prong warship kitbashed
+//   from stock DW:U ship art after the user's reference image, beaconForkArtData.ts); the Mass Effect carrier (it opens
+//   when sighted) and the Reaper (kept, with its Reaper capital ship, for a future faction) stay selectable.
 // - The Ark Engine (Giantworks): a finished 'ark' Great Work's base (its ship) draws public/art/giantworks/ark*.png
 //   (scripts/ark-art.py) at least an ARK_REF_SIZE hull drawn ARK_VISUAL_SCALE x (threatDrawScale), whole in arkFx.ts
 //   ArkFxLayer under the ships, its look picked by its sim record (ArkArtRecord, under ARK_STATE_KEY, read only).
@@ -59,6 +62,7 @@ import { GEN_SHIPS_LIGHTS } from './genShipsLights';
 import { GW_CASINO_LOOKS, GW_CASINO_SPR, GW_LIGHTS, GW_LIGHT_KINDS, GW_SANCTUARY_GLASS_R, GW_UM_RACKS, GW_UM_TRACES, type GwCasinoLook } from './giantworksLights';
 import { LeviathanRig, leviathanTextures, type LeviathanTextures } from './leviathanRig';
 import { loadLeviathanImages } from './faunaArt';
+import { WATCHER_FORK_ART } from './beaconForkArtData';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Who is who (once per frame)
@@ -320,7 +324,14 @@ export function threatDrawScale(l: ThreatLooks, bo: BuiltObject): number {
     if (l.worldShips.includes(bo)) return WORLD_SHIP_VISUAL_SCALE;
     if (bo === l.mothercore) return MOTHERCORE_VISUAL_SCALE;
     if (bo.isPlanetDestroyer && l.purifierFaction !== null && bo.actualEmpire === l.purifierFaction) return PURIFIER_VISUAL_SCALE;
-    if (l.watchers !== undefined && l.watchers.length > 0 && l.watchers.includes(bo)) return minimumSizeScale(bo.size, WATCHER_REF_SIZE, WATCHER_VISUAL_SCALE) * watcherFrameScale;
+    if (l.watchers !== undefined && l.watchers.length > 0 && l.watchers.includes(bo)) {
+        // the fork: exactly FORK_VS_CAPITAL x its own faction's capital ship's drawn length (forkWatcherScale)
+        if (watcherFrame === 'fork') {
+            const k = forkWatcherScale(bo);
+            if (k !== null) return k;
+        }
+        return minimumSizeScale(bo.size, WATCHER_REF_SIZE, WATCHER_VISUAL_SCALE) * watcherFrameScale;
+    }
     if (l.beacon !== undefined && l.beacon !== null && bo === l.beacon) return minimumSizeScale(bo.size, BEACON_REF_SIZE, BEACON_VISUAL_SCALE);
     if (watcherFrame === 'reaper' && beaconLooksActive(l) && beaconArtFile(bo, l) === 'capitalship-reaper') return CAPITAL_REAPER_SCALE;
     return 1;
@@ -488,20 +499,55 @@ export function isWatcher(bo: BuiltObject, l: ThreatLooks = looks): boolean {
     return l.watchers !== undefined && l.watchers.length > 0 && l.watchers.includes(bo);
 }
 
-/** The Watchers' frame: 'carrier' (watcher.png, the Mass Effect 4 Mod's carrier as it is; it opens when sighted) or
- * 'reaper' (watcher-reaper.png, the Reaper from the user's image, scripts/beacon-ships.py; a static frame). */
-export type WatcherFrame = 'carrier' | 'reaper';
-export const WATCHER_FRAME_FILES: Readonly<Record<WatcherFrame, string>> = { carrier: 'watcher', reaper: 'watcher-reaper' };
+/** The Watchers' frame: 'fork' (watcher-fork.png, the default: the ivory twin-prong warship kitbashed from stock DW:U
+ * ship art after the user's reference image; a static frame, its lamps breathing), 'carrier' (watcher.png, the Mass
+ * Effect 4 Mod's carrier as it is; it opens when sighted) or 'reaper' (watcher-reaper.png, the Reaper from the user's
+ * image, scripts/beacon-ships.py; a static frame; kept, with its capital ship, for a future faction). */
+export type WatcherFrame = 'fork' | 'carrier' | 'reaper';
+export const WATCHER_FRAME_FILES: Readonly<Record<WatcherFrame, string>> = { fork: 'watcher-fork', carrier: 'watcher', reaper: 'watcher-reaper' };
 /** The Watchers' frame drawn (WatcherFrame). */
-export const WATCHER_FRAME_DEFAULT: WatcherFrame = 'carrier';
+export const WATCHER_FRAME_DEFAULT: WatcherFrame = 'fork';
 /** Each frame's draw scale on top of WATCHER_VISUAL_SCALE. The game sizes a frame by its opaque area (builtObjectSizePx's
- * areaRatio): the Reaper's broader frame is scaled so it draws about as long as the carrier. */
-export const WATCHER_FRAME_SCALE: Readonly<Record<WatcherFrame, number>> = { carrier: 1, reaper: 1.262 };
+ * areaRatio): the Reaper's broader frame is scaled so it draws about as long as the carrier. The fork is sized against
+ * its own faction's capital ships instead (forkScaleFor: FORK_VS_CAPITAL x as long); its entry here is the fallback
+ * when the faction has no capital design, about twice a size-786 capital ship. */
+export const WATCHER_FRAME_SCALE: Readonly<Record<WatcherFrame, number>> = { fork: 0.98, carrier: 1, reaper: 1.262 };
 let watcherFrame: WatcherFrame = WATCHER_FRAME_DEFAULT;
 /** With the Reaper look, the Reclaimers' capital ship draws the Reaper frame too (capitalship-reaper.png, the Watcher's
  * art at concept 16's Watcher proportions), scaled to keep the old capital frame's drawn length (the game sizes by opaque area). */
 export const CAPITAL_REAPER_SCALE = 1.067;
 let watcherFrameScale = WATCHER_FRAME_SCALE[WATCHER_FRAME_DEFAULT];
+
+/** The fork Watcher is drawn this many times as long as its faction's capital ship. */
+export const FORK_VS_CAPITAL = 2;
+const capitalSizeCache = new WeakMap<Empire, { n: number; size: number }>();
+
+/** The biggest current (not obsolete) capital ship design of `e` (0: none); cached by its design count. */
+export function capitalDesignSize(e: Empire): number {
+    const designs = e.designs;
+    if (designs === undefined) return 0;
+    const got = capitalSizeCache.get(e);
+    if (got !== undefined && got.n === designs.length) return got.size;
+    let best = 0;
+    for (const d of designs) if (d.subRole === BuiltObjectSubRole.CapitalShip && !d.isObsolete && d.size > best) best = d.size;
+    capitalSizeCache.set(e, { n: designs.length, size: best });
+    return best;
+}
+
+/** The draw scale that shows a fork Watcher (size `watcherSize`) FORK_VS_CAPITAL x as long as a capital ship of size
+ * `capitalSize` drawn at scale 1: both are drawn ∝ √(size · areaRatio), so the scale is the length ratio corrected by
+ * the two frames' length per √(opaque px) (WATCHER_FORK_ART.capitalLength, from the art build). Pure. */
+export function forkScaleFor(watcherSize: number, capitalSize: number): number {
+    return FORK_VS_CAPITAL * WATCHER_FORK_ART.capitalLength * Math.sqrt(capitalSize / Math.max(1, watcherSize));
+}
+
+/** A fork Watcher's draw scale against its own faction's capital ships, or null (no capital design to measure by). */
+function forkWatcherScale(bo: BuiltObject): number | null {
+    const e = bo.actualEmpire;
+    if (e === null || e === undefined) return null;
+    const cap = capitalDesignSize(e);
+    return cap > 0 ? forkScaleFor(bo.size, cap) : null;
+}
 
 /** The Watchers' frame drawn now. */
 export function getWatcherFrame(): WatcherFrame {
@@ -514,7 +560,7 @@ export function setWatcherFrame(f: WatcherFrame, scale: number = WATCHER_FRAME_S
     watcherFrameScale = scale;
 }
 
-/** The Beacon frame of an object ('watcher' / 'watcher-reaper', 'beacon' or a Reclaimer frame), or null (not the
+/** The Beacon frame of an object (a Watcher's: 'watcher-fork' / 'watcher' / 'watcher-reaper'; 'beacon' or a Reclaimer frame), or null (not the
  * Beacon's / stock art). */
 export function beaconArtFile(bo: BuiltObject, l: ThreatLooks = looks): string | null {
     if (l.beacon !== undefined && l.beacon !== null && bo === l.beacon) return 'beacon';

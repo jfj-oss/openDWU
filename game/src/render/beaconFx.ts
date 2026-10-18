@@ -24,11 +24,13 @@ import type { BuiltObject } from '../sim/builtObject';
 import { SpritePool } from './fxCommon';
 import { loadShipArt } from './shipArt';
 import { BEACON_FRAMES, BEACON_RELAY, WATCHER_ART, type BeaconFrameArt, type BeaconFxRect } from './beaconArtData';
+import { WATCHER_FORK_ART } from './beaconForkArtData';
 import { BEACON_ART_DIR } from './threatArt';
 import { BeaconRelayFx, type RelayFrame } from './beaconRelayFx';
 import { BeaconWarpLayer } from './beaconWarp';
 import { ReaperFx } from './beaconReaperFx';
 import { ReaperMotionFx } from './beaconReaperMotion';
+import { ForkFx } from './beaconForkFx';
 
 /** No light layers under this drawn size (px). */
 export const BEACON_FX_MIN_PX = 14;
@@ -115,9 +117,10 @@ function sub(base: Texture, r: BeaconFxRect): Texture {
     return new Texture({ source: base.source, frame: new Rectangle(r.x, r.y, r.w, r.h) });
 }
 
-/** The frame data of a Beacon file (a Reclaimer frame, 'beacon' (the relay) or 'watcher'), or null. */
+/** The frame data of a Beacon file (a Reclaimer frame, 'beacon' (the relay), 'watcher' or 'watcher-fork'), or null. */
 export function beaconFrameArt(file: string): BeaconFrameArt | null {
     if (file === 'watcher') return WATCHER_ART;
+    if (file === 'watcher-fork') return WATCHER_FORK_ART;
     if (file === 'beacon') return BEACON_RELAY_FRAME;
     return Object.hasOwn(BEACON_FRAMES, file) ? BEACON_FRAMES[file] : null;
 }
@@ -139,6 +142,8 @@ export class BeaconFxLayer {
     private reaper = new ReaperFx(this.root);
     /** Its moving-effect previews (beaconReaperMotion.ts, off by default). */
     private motion = new ReaperMotionFx(this.root);
+    /** The fork Watcher's engine plumes and blinking navigation lights (beaconForkFx.ts). */
+    private fork = new ForkFx(this.root);
     private fx = new Map<string, FxSet | null>();
     private fxLoading = new Set<string>();
     private watcherTex: WatcherTextures | null = null;
@@ -172,6 +177,7 @@ export class BeaconFxLayer {
         this.warp.begin();
         this.reaper.begin();
         this.motion.begin();
+        this.fork.begin();
     }
 
     end(): void {
@@ -180,6 +186,7 @@ export class BeaconFxLayer {
         this.warp.end();
         this.reaper.end();
         this.motion.end();
+        this.fork.end();
         if (this.unfold.size > 4) for (const bo of this.unfold.keys()) if (bo.hasBeenDestroyed) this.unfold.delete(bo);
     }
 
@@ -274,6 +281,11 @@ export class BeaconFxLayer {
             const cruise = Math.max(1, bo.cruiseSpeed > 0 ? bo.cruiseSpeed : bo.topSpeed);
             this.motion.draw(bo, x, y, rotation, scale, ax * tw, ay * th, px, sec, bo.currentSpeed / cruise);
             return null;
+        }
+        if (file === 'watcher-fork') {
+            // its engines' plumes (by its speed) and its blinking navigation lights; its lamps' swell below
+            const cruise = Math.max(1, bo.cruiseSpeed > 0 ? bo.cruiseSpeed : bo.topSpeed);
+            this.fork.draw(bo, x, y, rotation, scale, ax * tw, ay * th, px, sec, bo.currentSpeed / cruise);
         }
         const art = beaconFrameArt(file);
         if (art === null) return null;

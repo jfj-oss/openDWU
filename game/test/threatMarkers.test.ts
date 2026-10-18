@@ -23,9 +23,16 @@ import { GEN_LIGHT_FLASH, GEN_LIGHT_PERIOD, GEN_SHIPS_ART_DIR, genShipsArtFile, 
 import { GEN_SHIPS_LIGHTS } from '../src/render/genShipsLights';
 import {
     BEACON_ART_DIR,
+    FORK_VS_CAPITAL,
+    WATCHER_FRAME_DEFAULT,
+    WATCHER_FRAME_SCALE,
+    capitalDesignSize,
+    forkScaleFor,
     WATCHER_REF_SIZE,
     WATCHER_VISUAL_SCALE,
     beaconArtFile,
+    getWatcherFrame,
+    setWatcherFrame,
     beaconFileForSubRole,
     BEACON_STATE_KEY,
     beaconLooksActive,
@@ -36,6 +43,8 @@ import {
     watcherOpenTarget,
 } from '../src/render/threatArt';
 import { BEACON_FRAMES, WATCHER_ART } from '../src/render/beaconArtData';
+import { WATCHER_FORK_ART } from '../src/render/beaconForkArtData';
+import { FORK_FX_SHIPS_MAX, forkBlink, forkThrust } from '../src/render/beaconForkFx';
 import {
     WATCHER_CLOSE_S,
     WATCHER_OPEN_S,
@@ -388,12 +397,27 @@ describe('the Beacon art', () => {
         expect(beaconArtFile(ship(BuiltObjectSubRole.Cruiser, reclaimers), l)).toBe('cruiser');
         expect(beaconArtFile(ship(BuiltObjectSubRole.SmallSpacePort, reclaimers, BuiltObjectRole.Base), l)).toBeNull();
         expect(beaconArtFile(ship(BuiltObjectSubRole.Cruiser, other), l)).toBeNull();
-        expect(beaconArtFile(watcher, l)).toBe('watcher');
+        // the Watchers' look: the fork by default; the carrier and the Reaper (with its capital ship) selectable
+        expect(WATCHER_FRAME_DEFAULT).toBe('fork');
+        expect(getWatcherFrame()).toBe('fork');
+        expect(beaconArtFile(watcher, l)).toBe('watcher-fork');
+        const capital = { ...ship(BuiltObjectSubRole.CapitalShip, reclaimers), isPlanetDestroyer: true } as BuiltObject;
+        expect(beaconArtFile(capital, l)).toBe('capitalship');
+        try {
+            setWatcherFrame('carrier');
+            expect(beaconArtFile(watcher, l)).toBe('watcher');
+            expect(beaconArtFile(capital, l)).toBe('capitalship');
+            setWatcherFrame('reaper');
+            expect(beaconArtFile(watcher, l)).toBe('watcher-reaper');
+            expect(beaconArtFile(capital, l)).toBe('capitalship-reaper');
+        } finally {
+            setWatcherFrame(WATCHER_FRAME_DEFAULT);
+        }
         expect(beaconArtFile(beacon, l)).toBe('beacon');
         expect(isReclaimerHull(ship(BuiltObjectSubRole.Frigate, reclaimers), l)).toBe(true);
         expect(isWatcher(watcher, l)).toBe(true);
         expect(threatArtUrl(ship(BuiltObjectSubRole.Carrier, reclaimers), l)).toBe(`${BEACON_ART_DIR}carrier.png`);
-        expect(threatArtUrl(watcher, l)).toBe(`${BEACON_ART_DIR}watcher.png`);
+        expect(threatArtUrl(watcher, l)).toBe(`${BEACON_ART_DIR}watcher-fork.png`);
         const none: ThreatLooks = { genFactions: [], worldShips: [], swarmFaction: null, mothercore: null, purifierFaction: null, purifierDock: null };
         expect(beaconLooksActive(none)).toBe(false);
         expect(threatArtUrl(ship(BuiltObjectSubRole.Cruiser, reclaimers), none)).toBeNull();
@@ -401,7 +425,7 @@ describe('the Beacon art', () => {
     });
 
     it('the Watchers and the Beacon are drawn at least a set size; a bigger hull keeps its own', () => {
-        expect(threatDrawScale(l, watcher)).toBeCloseTo(minimumSizeScale(800, WATCHER_REF_SIZE, WATCHER_VISUAL_SCALE), 9);
+        expect(threatDrawScale(l, watcher)).toBeCloseTo(minimumSizeScale(800, WATCHER_REF_SIZE, WATCHER_VISUAL_SCALE) * WATCHER_FRAME_SCALE.fork, 9);
         expect(threatDrawScale(l, watcher)).toBeGreaterThan(2);
         expect(threatDrawScale(l, beacon)).toBeGreaterThanOrEqual(1);
         expect(threatDrawScale(l, ship(BuiltObjectSubRole.Cruiser, reclaimers))).toBe(1);
@@ -415,13 +439,47 @@ describe('the Beacon art', () => {
         expect(watcherOpenTarget(watcher, { ...l, watchersSighted: [watcher] })).toBe(true);
     });
 
+    it('the fork Watcher: twice its faction\'s capital ship, two wide plumes off the notch, blinking lights', () => {
+        // sized against the faction's biggest current capital design (obsolete ones, e.g. the Watcher's own, skipped)
+        const fac = { designs: [{ subRole: BuiltObjectSubRole.CapitalShip, isObsolete: false, size: 600 }, { subRole: BuiltObjectSubRole.CapitalShip, isObsolete: true, size: 9000 }, { subRole: BuiltObjectSubRole.Cruiser, isObsolete: false, size: 700 }] } as unknown as Empire;
+        expect(capitalDesignSize(fac)).toBe(600);
+        const big = { ...ship(BuiltObjectSubRole.CapitalShip, fac, BuiltObjectRole.Military, 6000) } as BuiltObject;
+        const lw: ThreatLooks = { ...l, watchers: [big] };
+        expect(threatDrawScale(lw, big)).toBeCloseTo(forkScaleFor(6000, 600), 9);
+        // drawn length ∝ √size · scale · (length per √px): the Watcher's over the capital's is FORK_VS_CAPITAL
+        expect((Math.sqrt(6000) * forkScaleFor(6000, 600)) / (Math.sqrt(600) * WATCHER_FORK_ART.capitalLength)).toBeCloseTo(FORK_VS_CAPITAL, 9);
+        expect(FORK_VS_CAPITAL).toBe(2);
+        // the engines: two wide banks, one a side of the centre line, neither over the notch
+        const c = WATCHER_FORK_ART.size / 2;
+        expect(WATCHER_FORK_ART.nozzles.length).toBe(2);
+        for (const n of WATCHER_FORK_ART.nozzles) expect(Math.abs(n.x - c) - n.w / 2).toBeGreaterThan(10);
+        expect(WATCHER_FORK_ART.nozzles.filter((n) => n.x < c).length).toBe(1);
+        for (const n of WATCHER_FORK_ART.nozzles) expect(n.y).toBeGreaterThan(WATCHER_FORK_ART.size * 0.8);
+        for (const L of WATCHER_FORK_ART.lights) {
+            expect(L.x).toBeGreaterThan(0);
+            expect(L.x).toBeLessThan(WATCHER_FORK_ART.size);
+            expect(L.y).toBeGreaterThan(0);
+            expect(L.y).toBeLessThan(WATCHER_FORK_ART.size);
+        }
+        // plumes: none at rest, full from cruise; lights flash briefly once a period
+        expect(forkThrust(0)).toBe(0);
+        expect(forkThrust(1)).toBe(1);
+        expect(forkThrust(3)).toBe(1);
+        expect(forkThrust(0.5)).toBeGreaterThan(0.5);
+        let lit = 0;
+        for (let i = 0; i < 1000; i++) if (forkBlink(i * 0.002, 2, 0.3) > 0) lit++;
+        expect(lit).toBeGreaterThan(220);
+        expect(lit).toBeLessThan(380);
+        expect(FORK_FX_SHIPS_MAX).toBe(4);
+    });
+
     it('frames: square, the content box centred, light layers inside their atlas, no markers, no opaque black', () => {
-        for (const [f, art] of [...Object.entries(BEACON_FRAMES), ['watcher', WATCHER_ART] as const]) {
+        for (const [f, art] of [...Object.entries(BEACON_FRAMES), ['watcher', WATCHER_ART] as const, ['watcher-fork', WATCHER_FORK_ART] as const]) {
             const img = decodePng(png(f));
             expect(img.width, f).toBe(art.size);
             expect(img.height, f).toBe(art.size);
             let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-            let blue = 0, yellow = 0, black = 0, cyan = 0;
+            let blue = 0, yellow = 0, black = 0, cyan = 0, pink = 0;
             const d = img.data;
             for (let y = 0; y < img.height; y++) {
                 for (let x = 0; x < img.width; x++) {
@@ -436,6 +494,7 @@ describe('the Beacon art', () => {
                     if (r === 255 && g === 255 && b === 0) yellow++;
                     if (a === 255 && r === 0 && g === 0 && b === 0) black++;
                     if (a > 200 && b > r + 40 && g > r + 20 && b > 90) cyan++;
+                    if (a > 200 && r > g + 60 && b > g + 20) pink++;
                 }
             }
             expect(blue, `${f} blue`).toBe(0);
@@ -445,8 +504,9 @@ describe('the Beacon art', () => {
             expect(Math.abs((x0 + x1) / 2 - art.size / 2), f).toBeLessThanOrEqual(1);
             expect(Math.abs((y0 + y1) / 2 - art.size / 2), f).toBeLessThanOrEqual(1);
             expect(Math.min(x0, y0, img.width - 1 - x1, img.height - 1 - y1), f).toBeGreaterThanOrEqual(4);
-            // every frame carries the faction's cyan light lines
-            expect(cyan, `${f} cyan`).toBeGreaterThan(5);
+            // every frame carries the faction's cyan light lines; the fork Watcher pink lamps (its plumes are purple)
+            if (f === 'watcher-fork') expect(pink, `${f} pink`).toBeGreaterThan(5);
+            else expect(cyan, `${f} cyan`).toBeGreaterThan(5);
             const fx = decodePng(png(`${f}-fx`));
             const rects = [art.glow, ...(f === 'watcher' ? [WATCHER_ART.sockets] : [])];
             for (const r of rects) {
@@ -503,7 +563,7 @@ describe('the Beacon art', () => {
         expect(lk.reclaimers).toBe(reclaimers);
         expect(lk.watchers).toEqual([w1, w2]);
         expect(lk.beacon).toBe(beacon);
-        expect(beaconArtFile(w1, lk)).toBe('watcher'); // a Watcher before its faction's ship role
+        expect(beaconArtFile(w1, lk)).toBe('watcher-fork'); // a Watcher before its faction's ship role
         expect(watcherOpenTarget(w1, lk)).toBe(false);
         expect(watcherOpenTarget(w2, lk)).toBe(true);
         lk = threatLooks(g({ [BEACON_STATE_KEY]: { faction: reclaimers, watchers: [{ ship: w1, mode: 'fight' }, { ship: w2, mode: 'parked' }] } }));
@@ -562,6 +622,7 @@ describe('the Beacon art', () => {
         expect(WATCHER_OPEN_S).toBe(10);
         expect(WATCHER_CLOSE_S).toBe(7);
         expect(beaconFrameArt('watcher')).toBe(WATCHER_ART);
+        expect(beaconFrameArt('watcher-fork')).toBe(WATCHER_FORK_ART);
         expect(beaconFrameArt('nope')).toBeNull();
     });
 

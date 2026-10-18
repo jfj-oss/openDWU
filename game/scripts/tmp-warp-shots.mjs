@@ -15,6 +15,9 @@ const page0 = await browser.newPage({ viewport: { width: 1600, height: 1000 }, d
 const page = page0;
 const KB = process.env.KB_FRAME;
 if (KB) await page.route('**/art/beacon/watcher-reaper.png*', (r) => r.fulfill({ path: KB, contentType: 'image/png' }));
+// FORK_FRAME / FORK_FX: preview another fork Watcher frame (the base + extras variant) in place of watcher-fork.png
+if (process.env.FORK_FRAME) await page.route('**/art/beacon/watcher-fork.png*', (r) => r.fulfill({ path: process.env.FORK_FRAME, contentType: 'image/png' }));
+if (process.env.FORK_FX) await page.route('**/art/beacon/watcher-fork-fx.png*', (r) => r.fulfill({ path: process.env.FORK_FX, contentType: 'image/png' }));
 const logs = [];
 page.on('console', (m) => logs.push(`[${m.type()}] ${m.text()}`));
 page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`));
@@ -106,6 +109,9 @@ const plan = await page.evaluate(async (who) => {
     const roq = await import('/src/sim/readOnlyQuery.ts');
     const bo = who === 'watcher' ? window.__bc.w1 : window.__bc.made[3];
     window.__warpBo = bo;
+    // the fork Watcher is sized against its faction's capital design (as tmp-fork-shots.mjs); it starts at rest
+    const cap = window.__bc.made.find((b) => b.subRole === 5);
+    roq.withSimWrites(() => { if (cap && !bo.actualEmpire.designs.includes(cap.design)) bo.actualEmpire.designs.push(cap.design); bo.currentSpeed = 0; });
     // on its own, clear of the others (they may be given jumps of their own once the clock runs)
     roq.withSimWrites(() => {
         bo.xpos += who === 'watcher' ? 0 : 0;
