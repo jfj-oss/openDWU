@@ -254,6 +254,10 @@ const CONFIGS = [
     ...[1, 2, 3].flatMap((seed) => [true, false].map((on) => ({ name: `bvr-${on ? 'on' : 'off'}-s${seed}`, set: 'bvr', seed, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, addons: [], gameplay: on ? ['bvr-combat'] : [] }))),
     // bvr-nai-*: BVR on with its AI switched off (flag bvrAI): the rules and data only, the stock AI designs and tactics.
     ...[1, 2].map((seed) => ({ name: `bvr-noai-s${seed}`, set: 'bvr', seed, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, addons: [], gameplay: ['bvr-combat'], flags: { bvrAI: false } })),
+    // `--set combat2` (the six combat changes after BVR; --hook scripts/combat2-hook.mjs): the os-war galaxy (700 stars, 9 empires, aggressive AI, older
+    // galaxy), 20 years, Smarter AI at its defaults: BVR combat plus Decoys, Ambush, Critical hits, Damage control, Armour facing and Surrender and wrecks
+    // ('c2-all-*') against BVR combat alone ('c2-bvr-*'); seeds 1 and 2.
+    ...[1, 2].flatMap((seed) => [true, false].map((all) => ({ name: `c2-${all ? 'all' : 'bvr'}-s${seed}`, set: 'combat2', seed, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, addons: [], gameplay: all ? ['bvr-combat', 'decoys-chaff', 'ambush-strike', 'critical-hits', 'damage-control', 'armour-facing', 'surrender-wrecks'] : ['bvr-combat'] }))),
     // `--set long`: the many-decade runs (not in the default set).
     { name: 'long-s1-30y', set: 'long', seed: 1, years: 30, wizard: {} },
     { name: 'long-s7-small-50y', set: 'long', seed: 7, years: 50, wizard: { starCountIndex: 1, dimensionIndex: 1, otherEmpires: { empireCount: 5 } } },
@@ -539,7 +543,7 @@ async function runOne(name) {
             // cfg.gameplay: the other "Gameplay changes" checkboxes by add-on id.
             const gp = { 'orbital-superiority': A.withOrbitalSuperiority, 'longer-ground-combat': A.withLongerGroundCombat, 'jump-interdiction': A.withJumpInterdiction, 'blockades-bite': A.withBlockadesBite,
                 mothballing: A.withMothballing, 'slow-hyperdrive': A.withSlowHyperdrive, 'fighting-retreats': A.withFightingRetreats, veterans: A.withVeterans, 'bvr-combat': A.withBvrCombat,
-                ...Object.fromEntries(A.COMBAT2_ADDONS.map((a) => [a.id, (picked, overrides, on) => A.withCombat2(picked, overrides, { [a.key]: on })])) };
+                ...Object.fromEntries(A.COMBAT2_ADDONS.map((a) => [a.id, (picked, overrides, on) => A.withCombat2(picked, overrides, Object.fromEntries(A.COMBAT2_ADDONS.map((b) => [b.key, b.id === a.id ? on : picked.includes(b.id)])))])) };
             let wg = w1;
             for (const id of cfg.gameplay ?? []) wg = gp[id](wg.picked, wg.overrides, true);
             const w2 = A.withCoordinatedLandings(wg.picked, wg.overrides, cfg.coordinatedLandings ?? A.coordinatedLandingsChoice(undefined, smart));
