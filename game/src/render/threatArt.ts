@@ -31,6 +31,9 @@
 //   Watchers and the Beacon are drawn at least a set size (minimumSizeScale). Their hearts beat, the
 //   organs' light swells through the panes and pulses run out along the veins, and a sighted Watcher's plates swing open
 //   (beaconFx.ts BeaconFxLayer). Who is who comes from the Beacon sim's state bag (BeaconArtState, read only).
+// - The Ark Engine (Giantworks): a finished 'ark' Great Work's base (its ship) draws public/art/giantworks/ark*.png
+//   (scripts/ark-art.py) at least an ARK_REF_SIZE hull drawn ARK_VISUAL_SCALE x (threatDrawScale), whole in arkFx.ts
+//   ArkFxLayer under the ships, its look picked by its sim record (ArkArtRecord, under ARK_STATE_KEY, read only).
 
 import { Container, Graphics, Matrix, Rectangle, Sprite, Texture } from 'pixi.js';
 import type { Galaxy } from '../sim/galaxy';
@@ -41,6 +44,8 @@ import { peekThreatState } from '../sim/scenario/threats/framework';
 import { genShipsStates } from '../sim/scenario/threats/generationShips';
 import { peekProbeSwarmState } from '../sim/scenario/threats/probeSwarm';
 import { peekPurifierState } from '../sim/scenario/threats/purifier';
+import { ARK_REF_SIZE, ARK_VISUAL_SCALE } from '../sim/scenario/threats/giantworks/ark';
+import { ARK_LOOK } from './arkLights';
 import { identifyPirateBase } from '../sim/characters';
 import { BuiltObjectRole } from '../sim/data/designSpecifications';
 import { BuiltObjectSubRole } from '../sim/builtObjectTypes';
@@ -77,6 +82,8 @@ export interface ThreatLooks {
     ultramindPlanets?: Map<Habitat, GreatWorkArtSite>;
     /** Giantworks: the casinos that are a pirate den now (their sites; casinoDenOf). Optional: absent = none. */
     casinoDens?: Set<object>;
+    /** Giantworks: the Ark Engines afloat, by ship, with their sim records (ARK_STATE_KEY, read only). Optional. */
+    arks?: Map<BuiltObject, ArkArtRecord>;
 }
 
 const looks: ThreatLooks = {
@@ -93,6 +100,7 @@ const looks: ThreatLooks = {
     greatWorks: new Map(),
     ultramindPlanets: new Map(),
     casinoDens: new Set(),
+    arks: new Map(),
 };
 
 /**
@@ -137,6 +145,8 @@ export function threatLooks(galaxy: Galaxy): ThreatLooks {
     const gws = looks.greatWorks!;
     const ums = looks.ultramindPlanets!;
     const dens = looks.casinoDens!;
+    const arks = looks.arks!;
+    if (arks.size > 0) arks.clear();
     if (gws.size > 0) gws.clear();
     if (ums.size > 0) ums.clear();
     if (dens.size > 0) dens.clear();
@@ -147,6 +157,13 @@ export function threatLooks(galaxy: Galaxy): ThreatLooks {
         if (site.stage >= 4 && site.wonder === 'ultramind' && site.habitat !== null) ums.set(site.habitat, site);
     }
     if (gws.size > 0) {
+        const ak = peekThreatState<ArkArtState | null | undefined>(galaxy, ARK_STATE_KEY);
+        if (ak !== null && ak !== undefined && typeof ak === 'object' && Array.isArray(ak.arks)) {
+            for (const r of ak.arks) {
+                const ship = r !== null && r !== undefined && typeof r === 'object' ? r.ship : null;
+                if (ship !== null && ship !== undefined && !ship.hasBeenDestroyed) arks.set(ship, r!);
+            }
+        }
         const cs = peekThreatState<CasinoArtState | null | undefined>(galaxy, CASINO_STATE_KEY);
         if (cs !== null && cs !== undefined && typeof cs === 'object' && Array.isArray(cs.sites)) {
             for (const rec of cs.sites) {
@@ -257,8 +274,10 @@ export function minimumSizeScale(size: number, refSize: number, k: number): numb
     return Math.max(1, k * Math.sqrt(refSize / Math.max(1, size)));
 }
 
-/** Visual size multiplier of an object (1 for everything but the world ship, the Mothercore, the Purifier, the Watchers and the Beacon). */
+/** Visual size multiplier of an object (1 for everything but the world ship, the Mothercore, the Purifier, the Watchers,
+ * the Beacon and the Ark Engine: at least an ARK_REF_SIZE hull drawn ARK_VISUAL_SCALE x, planet-sized). */
 export function threatDrawScale(l: ThreatLooks, bo: BuiltObject): number {
+    if (l.arks !== undefined && l.arks.size > 0 && l.arks.has(bo)) return minimumSizeScale(bo.size, ARK_REF_SIZE, ARK_VISUAL_SCALE);
     if (l.worldShips.includes(bo)) return WORLD_SHIP_VISUAL_SCALE;
     if (bo === l.mothercore) return MOTHERCORE_VISUAL_SCALE;
     if (bo.isPlanetDestroyer && l.purifierFaction !== null && bo.actualEmpire === l.purifierFaction) return PURIFIER_VISUAL_SCALE;
@@ -509,10 +528,10 @@ const LAMP_ORANGE: readonly [number, number, number] = [1.0, 0.55, 0.12];
 /** The generation ships' red navigation lamp. */
 const RED_LAMP: readonly [number, number, number] = [1.0, 0.12, 0.08];
 const LAMP_SIDE = 32;
-const LAMP_CORE_PX = 3;
+export const LAMP_CORE_PX = 3;
 const lampTexs = new Map<readonly [number, number, number], Texture>();
 /** A small lamp of colour `LAMP`: a hot core of LAMP_CORE_PX radius in a short halo, built once per colour. */
-function lampTexture(LAMP: readonly [number, number, number] = LAMP_ORANGE): Texture {
+export function lampTexture(LAMP: readonly [number, number, number] = LAMP_ORANGE): Texture {
     const got = lampTexs.get(LAMP);
     if (got !== undefined) return got;
     const S = LAMP_SIDE;
@@ -670,6 +689,36 @@ export class GenShipsFxLayer {
 // smaller uplink node.
 
 /**
+ * The render contract with the Ark Engine's sim (the 'ark' wonder; sim/scenario/threats/giantworks ark.ts ARK_KEY): its
+ * scenario state bag under ARK_STATE_KEY, read through peekThreatState, never created. Each record of `arks` names its
+ * ship; its phase ('roaming', 'siphoning', 'escaping', 'repairing', ...), `fight` (attacked: it fights back), `breached`
+ * (its shields broke and are not whole yet) and its `target` (the colony it parks at and siphons; `startedAt` >= 0 once
+ * the siphoning began) pick its look (arkFx.ts arkMode). All fields optional.
+ */
+export const ARK_STATE_KEY = 'giantworksArk';
+export interface ArkArtTarget {
+    colony?: { xpos: number; ypos: number } | null;
+    parkX?: number;
+    parkY?: number;
+    startedAt?: number;
+}
+export interface ArkArtRecord {
+    ship?: BuiltObject | null;
+    phase?: string;
+    fight?: boolean;
+    breached?: boolean;
+    target?: ArkArtTarget | null;
+}
+export interface ArkArtState {
+    arks?: readonly (ArkArtRecord | null | undefined)[];
+}
+
+/** The Ark record of a ship (the last threatLooks record), or null. */
+export function arkRecordOf(bo: BuiltObject, l: ThreatLooks = looks): ArkArtRecord | null {
+    return l.arks === undefined || l.arks.size === 0 ? null : (l.arks.get(bo) ?? null);
+}
+
+/**
  * The Giantworks add-on's scenario-state key: its framework keeps its sites in galaxy.scenario.state.giantworks as
  * `{ sites: GreatWorkSite[] }` (sim/scenario/threats/giantworks). The render only reads it (peekThreatState, never
  * created).
@@ -744,6 +793,8 @@ export function greatWorkFrame(site: Pick<GreatWorkArtSite, 'stage' | 'wonder' |
             return 'sanctuary';
         case 'beacon':
             return 'beacon'; // the Beacon's own art (public/art/beacon/beacon.png), drawn by the Beacon's paths
+        case 'ark':
+            return 'ark'; // the Ark Engine (public/art/giantworks/ark*.png), drawn by arkFx.ts ArkFxLayer at its own size
         default:
             return 'scaffold_3';
     }
@@ -759,7 +810,7 @@ export function greatWorkDrawnFrame(site: Pick<GreatWorkArtSite, 'stage' | 'wond
 /** World units the whole frame spans at zoom factor 1 (about a large planet). */
 export const GREAT_WORK_WORLD_SIZE = 560;
 /** Frames drawn smaller than the rest (the Ultramind's uplink node beside the planet it wraps). */
-const GW_FRAME_SCALE: Readonly<Record<string, number>> = { 'ultramind-node': 0.5, 'ultramind-node-awake': 0.5 };
+const GW_FRAME_SCALE: Readonly<Record<string, number>> = { 'ultramind-node': 0.5, 'ultramind-node-awake': 0.5, ark: ARK_LOOK.worldSide / GREAT_WORK_WORLD_SIZE };
 
 /** The drawn side (px) of a Great Work frame at zoom factor f: a fixed world size, whatever its base's size. Pure. */
 export function greatWorkDrawPx(frame: string, f: number): number {

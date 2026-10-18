@@ -29,7 +29,8 @@ import { CONCORD_LIMBS_MIN_PX, ConcordFxLayer, concordArtEmpire, concordShipArt,
 import { ConstructionOverlays, DamageOverlays, shipConstructionSubject, shipDamageSubject } from './shipOverlays';
 import { artBundleFlag } from './artBundleFlags';
 import { LiveryOverlays } from './liveryLayer';
-import { ANCIENT_TINT, ANCIENT_WEAR, GenShipsFxLayer, GreatWorkFxLayer, SwarmFxLayer, beaconArtFile, beaconLooksActive, genShipsArtFile, greatWorkDrawPx, greatWorkDrawnFrame, isAncientHull, threatArtUrl, threatDrawScale, threatLooks, watcherOpenTarget } from './threatArt';
+import { ANCIENT_TINT, ANCIENT_WEAR, GenShipsFxLayer, GreatWorkFxLayer, SwarmFxLayer, arkRecordOf, beaconArtFile, beaconLooksActive, genShipsArtFile, greatWorkDrawPx, greatWorkDrawnFrame, isAncientHull, threatArtUrl, threatDrawScale, threatLooks, watcherOpenTarget } from './threatArt';
+import { ArkFxLayer, arkDrawScale } from './arkFx';
 import { BeaconFxLayer } from './beaconFx';
 import { fogOf } from './fog';
 import { Galaxy } from '../sim/galaxy';
@@ -545,6 +546,8 @@ export class BuiltObjectLayer {
     private beaconFx = new BeaconFxLayer();
     /** threatArt.ts: a Great Work's lights, glows and the Sanctuary's whales (above the ships). */
     private gwFx = new GreatWorkFxLayer();
+    /** arkFx.ts: the Ark Engines, drawn whole in their own layer UNDER the ships (fleets fly over them, as over planets). */
+    private arkFx = new ArkFxLayer();
     /** Render interpolation between sim steps (renderInterp.ts; set by MainView). Null: draw the sim positions. */
     motion: MotionInterpolator | null = null;
     /** The ship the follow camera is centred on this frame (set by MainView before update; null when not following). Its
@@ -563,6 +566,7 @@ export class BuiltObjectLayer {
         private store: AssetStore,
         private overlays: MapOverlayState,
     ) {
+        world.addChild(this.arkFx.root);
         world.addChild(this.root);
         world.addChild(this.concordFx.root); // [concordArt]
         world.addChild(this.swarmFx.root);
@@ -616,6 +620,7 @@ export class BuiltObjectLayer {
         this.genFx.root.visible = this.root.visible;
         this.beaconFx.root.visible = this.root.visible;
         this.gwFx.root.visible = this.root.visible;
+        this.arkFx.root.visible = this.root.visible;
         if (!this.root.visible) return;
         // [concordArt] begin — null with the scenario / flag off: every object keeps its stock art.
         const concord = concordArtEmpire(this.galaxy);
@@ -645,6 +650,8 @@ export class BuiltObjectLayer {
         this.beaconFx.begin();
         const beaconOn = beaconLooksActive(looks);
         this.gwFx.begin();
+        this.arkFx.begin();
+        this.arkFx.setScreenScale(z);
         const sec = nowMs / 1000;
         // Camera.worldToScreen, inlined (no allocation per ship per frame).
         const camX = cam.x;
@@ -758,17 +765,21 @@ export class BuiltObjectLayer {
             const tScale = threatDrawScale(looks, bo);
             const gwSite = looks.greatWorks !== undefined && looks.greatWorks.size > 0 ? looks.greatWorks.get(bo) : undefined;
             const gwFrame = gwSite !== undefined ? greatWorkDrawnFrame(gwSite) : null;
-            const px =
-                gwFrame !== null
-                    ? greatWorkDrawPx(gwFrame, f)
-                    : builtObjectSizePx(bo.size, metrics.areaRatio, f, bo.design?.imageScalingType ?? DesignImageScalingMode.None, bo.design?.imageScalingFactor ?? 1) * tScale;
+            // arkFx.ts: the Ark Engine is drawn at least an ARK_REF_SIZE hull drawn ARK_VISUAL_SCALE x (planet-sized)
+            const isArk = gwFrame === 'ark';
+            const px = isArk
+                ? builtObjectSizePx(bo.size, metrics.areaRatio, f, DesignImageScalingMode.None, 1) * arkDrawScale(bo.size)
+                : gwFrame !== null
+                  ? greatWorkDrawPx(gwFrame, f)
+                  : builtObjectSizePx(bo.size, metrics.areaRatio, f, bo.design?.imageScalingType ?? DesignImageScalingMode.None, bo.design?.imageScalingFactor ?? 1) * tScale;
             this.drawnPx.set(bo, px);
             if (bars) {
                 // PrepareBuiltObjectImageNEW(..., 1.0): the image at zoom factor 1 (DetermineBuiltObjectSizeNEW).
-                const unitPx =
-                    gwFrame !== null
-                        ? greatWorkDrawPx(gwFrame, 1)
-                        : builtObjectSizePx(bo.size, metrics.areaRatio, 1, bo.design?.imageScalingType ?? DesignImageScalingMode.None, bo.design?.imageScalingFactor ?? 1) * tScale;
+                const unitPx = isArk
+                    ? builtObjectSizePx(bo.size, metrics.areaRatio, 1, DesignImageScalingMode.None, 1) * arkDrawScale(bo.size)
+                    : gwFrame !== null
+                      ? greatWorkDrawPx(gwFrame, 1)
+                      : builtObjectSizePx(bo.size, metrics.areaRatio, 1, bo.design?.imageScalingType ?? DesignImageScalingMode.None, bo.design?.imageScalingFactor ?? 1) * tScale;
                 const n = this.battleBarShips.length;
                 let rec = this.barPool[n];
                 if (rec === undefined) {
@@ -811,6 +822,7 @@ export class BuiltObjectLayer {
             else sprite.anchor.set(metrics.cropCenterX / texture.width, metrics.cropCenterY / texture.height);
             // threatArt.ts: a Great Work keeps its frame's own orientation (its light from the upper left, every stage
             // in register), whatever its base's heading.
+            const trueHeading = heading;
             if (gwFrame !== null) heading = -Math.PI / 2;
             sprite.rotation = heading + Math.PI / 2;
             sprite.scale.set(px / metrics.cropSide / z);
@@ -836,6 +848,12 @@ export class BuiltObjectLayer {
                     if (body !== null) sprite.texture = body;
                 }
             }
+            if (isArk) {
+                // the Ark draws itself, whole, under the ships (its sprite here stays hidden; its drawn size above holds)
+                sprite.visible = false;
+                this.arkFx.draw(bo, arkRecordOf(bo, looks), shipTex, metrics.cropCenterX, metrics.cropCenterY, x, y, sprite.scale.x, px, trueHeading, sec);
+                continue;
+            }
             if (gwSite !== undefined && gwFrame !== null) this.gwFx.draw(gwSite, gwFrame, bo, x, y, sprite.rotation, sprite.scale.x, sprite.anchor.x, sprite.anchor.y, texture.width, texture.height, px, sec);
             if (ancient && !this.liveries.forced.has(bo)) this.liveries.forced.set(bo, ANCIENT_WEAR);
             if ((liveries || ancient) && shipArtRecord !== null) this.liveries.draw(bo, shipArtRecord, px, z, sprite.alpha, x, y, heading);
@@ -850,6 +868,7 @@ export class BuiltObjectLayer {
         this.genFx.end();
         this.beaconFx.end();
         this.gwFx.end();
+        this.arkFx.end();
         this.damage.end();
         this.construction.end();
         if (liveryPass) this.liveries.end();

@@ -84,7 +84,12 @@ import {
     sanctuaryWhaleCount,
     sanctuaryWhalePose,
     type GreatWorkArtSite,
+    ARK_STATE_KEY,
+    arkRecordOf,
 } from '../src/render/threatArt';
+import { ARK_BAND_SLICES, ARK_SPIN, arkBandSliceAlpha, arkDrawScale, arkEngineAft, arkEnginePower, arkFighting, arkIrisFrames, arkMode, arkSpin, arkTargetPos } from '../src/render/arkFx';
+import { ARK_LOOK } from '../src/render/arkLights';
+import { ARK_KEY, ARK_REF_SIZE, ARK_VISUAL_SCALE } from '../src/sim/scenario/threats/giantworks/ark';
 import { GW_CASINO_LOOKS, GW_LIGHTS, GW_LIGHT_KINDS, GW_SANCTUARY_GLASS_R, GW_UM_RACKS, GW_UM_TRACES } from '../src/render/giantworksLights';
 import type { Habitat } from '../src/sim/types';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
@@ -1005,5 +1010,178 @@ describe('giantworks art', () => {
         expect([0, 1, 2, 3].map((q) => greatWorkArcFill(0.375, q))).toEqual([1, 0.5, 0, 0]);
         expect([0, 1, 2, 3].map((q) => greatWorkArcFill(1, q))).toEqual([1, 1, 1, 1]);
         expect(threatMarkerStyle('toString', 2, 'colony')).toMatchObject({ kind: 'ring' });
+    });
+});
+
+describe('the Ark Engine art', () => {
+    const png = (f: string): string => resolve(__dirname, '../public', `${GW_ART_DIR.slice(1)}${f}.png`);
+    const site = (stage: number): GreatWorkArtSite => ({ base: null, stage, wonder: 'ark', habitat: null });
+    const ship = (extra: Record<string, unknown> = {}): BuiltObject => ({ hasBeenDestroyed: false, ...extra }) as unknown as BuiltObject;
+    it('a finished Ark draws its own frame (the scaffold while it is built); the state key is the sim\'s', () => {
+        for (let s = 0; s < 4; s++) expect(greatWorkFrame(site(s))).toBe(`scaffold_${s}`);
+        expect(greatWorkFrame(site(4))).toBe('ark');
+        expect(greatWorkDrawnFrame(site(4))).toBe('ark');
+        expect(ARK_STATE_KEY).toBe(ARK_KEY);
+        expect(ARK_LOOK.frame).toBeGreaterThanOrEqual(2048);
+    });
+    it('threatLooks keeps the Arks afloat by ship (read defensively)', () => {
+        const a1 = ship();
+        const a2 = ship({ hasBeenDestroyed: true });
+        const base = ship();
+        const g = (ark: unknown): Galaxy => ({ scenario: { state: { [GIANTWORKS_STATE_KEY]: { sites: [{ ...site(4), base }] }, [ARK_STATE_KEY]: ark } } }) as unknown as Galaxy;
+        let lk = threatLooks(g({ arks: [{ ship: a1, phase: 'roaming' }, { ship: a2, phase: 'lost' }, null, { ship: null }, 7] }));
+        expect([...lk.arks!.keys()]).toEqual([a1]);
+        expect(arkRecordOf(a1)?.phase).toBe('roaming');
+        expect(arkRecordOf(a2)).toBeNull();
+        for (const bad of [undefined, null, {}, { arks: 3 }, 'x']) {
+            lk = threatLooks(g(bad));
+            expect(lk.arks!.size).toBe(0);
+        }
+        threatLooks({ scenario: null } as unknown as Galaxy);
+        expect(arkRecordOf(a1)).toBeNull();
+    });
+    it('the look by state: broken over fight over siphoning over cruising', () => {
+        const started = { colony: { xpos: 1, ypos: 2 }, startedAt: 5 };
+        expect(arkMode(null)).toBe('cruising');
+        expect(arkMode({ phase: 'roaming' })).toBe('cruising');
+        expect(arkMode({ phase: 'siphoning', target: { startedAt: -1 } })).toBe('cruising'); // waiting for the owner's answer
+        expect(arkMode({ phase: 'siphoning', target: started })).toBe('siphoning');
+        expect(arkMode({ phase: 'siphoning', target: started, fight: true })).toBe('fight');
+        expect(arkMode({ phase: 'siphoning', fight: true, breached: true })).toBe('broken');
+        expect(arkMode({ phase: 'escaping' })).toBe('broken');
+        expect(arkMode({ phase: 'repairing', breached: true })).toBe('broken');
+        expect(arkMode({ phase: 'repairing', breached: false })).toBe('cruising');
+        expect(arkFighting({ fight: true })).toBe(true);
+        expect(arkFighting({ fight: 'yes' as unknown as boolean })).toBe(false);
+        const out = { x: 0, y: 0 };
+        expect(arkTargetPos({ target: started }, out)).toBe(true);
+        expect(out).toEqual({ x: 1, y: 2 });
+        expect(arkTargetPos({ target: { colony: null, parkX: 9, parkY: 8 } }, out)).toBe(true);
+        expect(out).toEqual({ x: 9, y: 8 });
+        expect(arkTargetPos({ target: { parkX: Number.NaN, parkY: 1 } }, out)).toBe(false);
+        expect(arkTargetPos({}, out)).toBe(false);
+    });
+    it('engines: power by speed, the aft bells brightest (the globe never turns: the heading shows in its engines)', () => {
+        expect(arkEnginePower(0, 100)).toBe(0);
+        expect(arkEnginePower(50, 100)).toBe(0.5);
+        expect(arkEnginePower(900, 100)).toBe(1);
+        expect(arkEnginePower(30, 0)).toBe(1);
+        // a bell facing left on screen is aft when heading right, not when heading left
+        expect(arkEngineAft(-1, 0, 0)).toBeCloseTo(1, 9);
+        expect(arkEngineAft(-1, 0, Math.PI)).toBe(0);
+        expect(arkEngineAft(-0.5, 0, 0)).toBeCloseTo(0.5, 9); // half its axis in the screen plane
+        expect(arkEngineAft(0, 0, 1)).toBe(0);
+        // the engine rows face every way round the band: whatever the heading, some bells are aft
+        for (let h = 0; h < 8; h++) {
+            const heading = (h * Math.PI) / 4;
+            const best = Math.max(...ARK_LOOK.engines.map((e) => arkEngineAft(e[2], e[3], heading)));
+            if (Math.sin(heading) <= 0.2) expect(best, `heading ${h}`).toBeGreaterThan(0.3);
+        }
+    });
+    it('the iris opens through its atlas (a crossfade of neighbouring frames); the deck turns steadily', () => {
+        const n = ARK_LOOK.irisBox[5];
+        expect(arkIrisFrames(0)).toEqual({ lo: 0, hi: 1, t: 0 });
+        expect(arkIrisFrames(1)).toEqual({ lo: n, hi: n, t: 0 });
+        expect(arkIrisFrames(2)).toEqual({ lo: n, hi: n, t: 0 });
+        const mid = arkIrisFrames(0.5);
+        expect(mid.lo).toBe(n / 2);
+        const q = arkIrisFrames(0.51);
+        expect(q.hi).toBe(q.lo + 1);
+        expect(q.t).toBeGreaterThan(0);
+        expect(q.t).toBeLessThan(1);
+        expect(arkSpin(10) - arkSpin(5)).toBeCloseTo(5 * ARK_SPIN, 9);
+        expect(arkSpin(1e6)).toBeLessThan(2 * Math.PI);
+        for (let k = 0; k < ARK_BAND_SLICES; k++) {
+            const v = [0, 1.3, 2.7, 4.4, 9.1].map((t) => arkBandSliceAlpha(k, t));
+            for (const a of v) expect(a).toBeGreaterThanOrEqual(0);
+            for (const a of v) expect(a).toBeLessThanOrEqual(1);
+        }
+    });
+    it('planet-sized: at least an ARK_REF_SIZE hull drawn ARK_VISUAL_SCALE x, whatever its own size', () => {
+        expect(arkDrawScale(ARK_REF_SIZE)).toBeCloseTo(ARK_VISUAL_SCALE, 9);
+        expect(arkDrawScale(ARK_REF_SIZE * 1e4)).toBe(1);
+        // drawn size = sqrt(size * areaRatio * 8) * scale: the same for any hull up to ARK_VISUAL_SCALE^2 x the reference
+        const drawn = (size: number): number => Math.sqrt(size * 3 * 8) * arkDrawScale(size);
+        expect(drawn(6000)).toBeCloseTo(drawn(15000), 6);
+        // the threat layers size it the same (the ambient layer, the site marker's ring)
+        const ark = ship({ size: 9000 });
+        const lk = threatLooks({ scenario: { state: { [GIANTWORKS_STATE_KEY]: { sites: [{ ...site(4), base: ark }] }, [ARK_STATE_KEY]: { arks: [{ ship: ark }] } } } } as unknown as Galaxy);
+        expect(threatDrawScale(lk, ark)).toBeCloseTo(arkDrawScale(9000), 9);
+        threatLooks({ scenario: null } as unknown as Galaxy);
+        expect(Math.abs(greatWorkDrawPx('ark', 1) - ARK_LOOK.worldSide)).toBeLessThanOrEqual(1);
+        // planet-sized: the globe wider than the largest gas giant (diameter 970), far wider than a capital ship
+        const globeWorld = (2 * ARK_LOOK.globe[2] * ARK_LOOK.worldSide) / ARK_LOOK.frame;
+        expect(globeWorld).toBeGreaterThan(970);
+        expect(globeWorld).toBeLessThan(2000);
+    });
+    it('the frames: one structure, the overlays in register, no opaque black nor marker colours', () => {
+        const base = decodePng(png('ark'));
+        expect(base.width).toBe(ARK_LOOK.frame);
+        expect(base.height).toBe(ARK_LOOK.frame);
+        const W = base.width;
+        const alphaAt = (x: number, y: number): number => base.data[(Math.round(y) * W + Math.round(x)) * 4 + 3];
+        // registration pixels: the crop square is the whole frame
+        expect(alphaAt(4, 4)).toBeGreaterThan(0);
+        expect(alphaAt(W - 5, W - 5)).toBeGreaterThan(0);
+        expect(ARK_LOOK.engines.length).toBeGreaterThanOrEqual(8);
+        expect(ARK_LOOK.turrets.length).toBeGreaterThan(10);
+        for (const rows of [ARK_LOOK.engines, ARK_LOOK.turrets, ARK_LOOK.nav, ARK_LOOK.strobes, ARK_LOOK.hits]) {
+            for (const r of rows) expect(alphaAt(r[0], r[1]), `${r[0]},${r[1]}`).toBeGreaterThan(200);
+        }
+        expect(alphaAt(ARK_LOOK.iris[0], ARK_LOOK.iris[1])).toBe(255);
+        const [gx, gy, R] = ARK_LOOK.globe;
+        expect(alphaAt(gx, gy)).toBe(255);
+        expect(alphaAt(gx, gy - R * 0.98)).toBe(255);
+        const iris = decodePng(png('ark-iris'));
+        const [ix, iy, iw, ih, cols, n] = ARK_LOOK.irisBox;
+        expect(iris.width).toBe(cols * (iw + 2));
+        expect(iris.height).toBe(Math.ceil(n / cols) * (ih + 2));
+        expect(ix + iw).toBeLessThanOrEqual(W);
+        expect(iy + ih).toBeLessThanOrEqual(W);
+        const deck = decodePng(png('ark-deck'));
+        expect(deck.width).toBe(ARK_LOOK.deckSide);
+        for (const [f, at] of [['ark-occluder', ARK_LOOK.occluder], ['ark-damage', ARK_LOOK.damage]] as const) {
+            const im = decodePng(png(f));
+            expect(at[0] + im.width, f).toBeLessThanOrEqual(W);
+            expect(at[1] + im.height, f).toBeLessThanOrEqual(W);
+        }
+        for (const f of ['ark', 'ark-deck', 'ark-occluder', 'ark-iris', 'ark-damage', 'ark-glow-hab', 'ark-glow-band', 'ark-glow-eng', 'ark-glow-fire', 'ark-shield', 'ark-beam', 'ark-plume', 'ark-smoke']) {
+            const im = decodePng(png(f));
+            let black = 0;
+            let marker = 0;
+            for (let i = 0; i < im.data.length; i += 4) {
+                const [r, g, b, a] = [im.data[i], im.data[i + 1], im.data[i + 2], im.data[i + 3]];
+                if (a === 255 && r === 0 && g === 0 && b === 0) black++;
+                if (a > 0 && ((r === 0 && g === 0 && b === 255) || (r === 255 && g === 255 && b === 0))) marker++;
+            }
+            expect(black, f).toBe(0);
+            expect(marker, f).toBe(0);
+        }
+        // one connected structure: from the globe's centre, the opaque pixels reach the ring's far ends
+        const seen = new Uint8Array(W * W);
+        const stack = [Math.round(gy) * W + Math.round(gx)];
+        seen[stack[0]] = 1;
+        let count = 0;
+        while (stack.length > 0) {
+            const p = stack.pop()!;
+            count++;
+            const x = p % W;
+            const y = (p - x) / W;
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    const nx = x + dx;
+                    const ny = y + dy;
+                    if (nx < 0 || ny < 0 || nx >= W || ny >= W) continue;
+                    const q = ny * W + nx;
+                    if (seen[q] === 0 && base.data[q * 4 + 3] > 40) {
+                        seen[q] = 1;
+                        stack.push(q);
+                    }
+                }
+            }
+        }
+        let opaque = 0;
+        for (let i = 3; i < base.data.length; i += 4) if (base.data[i] > 40) opaque++;
+        expect(count).toBe(opaque);
     });
 });
