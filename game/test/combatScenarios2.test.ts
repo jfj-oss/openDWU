@@ -90,7 +90,7 @@ import { BVR_ADDON_ID, bvrAmmoText, bvrMayFire, bvrNeedsRounds, bvrNoteFired, bv
 import { Design } from '../src/sim/design';
 import { shipGroupAddShipToFleet } from '../src/sim/fleets/shipGroupTasks';
 import { BVR_PROJECT_NAMES, aiResupplyTick, aiRearmTick, bvrFixLaunchers, bvrProjectNodes } from '../src/sim/scenario/bvr/bvrAI';
-import { bvrEngagement } from '../src/sim/scenario/bvr/bvrTactics';
+import { bvrEngagement, bvrFirepowerFactor } from '../src/sim/scenario/bvr/bvrTactics';
 import { BattleTactics } from '../src/sim/data/designSpecifications';
 import { C2_DEFAULTS, c2State, peekC2State, type C2Param } from '../src/sim/scenario/combat2/common';
 import { decoyCapacity, decoyDefend, decoyRestockTick, decoyText, decoysLeft, ecmCount } from '../src/sim/scenario/combat2/decoys';
@@ -1585,6 +1585,26 @@ describe('(8) BVR combat add-on', () => {
         expect(bvrAmmoText(bg, d)).toBe(`Missiles ${d.weapons.filter((w) => isBvrMissile(w.component)).length * 4}/${d.weapons.filter((w) => isBvrMissile(w.component)).length * 4}, Torpedoes ${t * 6}/${t * 6}`);
         // A ship with no limited launcher has no line.
         expect(bvrAmmoText(bg, spawn(e, BuiltObjectSubRole.Escort))).toBeNull();
+    });
+
+    it('Firepower figure: a limited launcher counts by what its magazine delivers in a reference engagement, not its per-shot damage (a few torpedoes no longer read ~3000)', () => {
+        const e = aiEmpires()[0];
+        for (const sub of [BuiltObjectSubRole.Frigate, BuiltObjectSubRole.Destroyer, BuiltObjectSubRole.Cruiser]) {
+            const b = spawn(e, sub);
+            const limited = b.weapons.filter((w) => w.rawDamage > 0 && (isBvrMissile(w.component) || w.component.type === ComponentType.WeaponTorpedo));
+            if (limited.length === 0) continue;
+            const naive = b.weapons.reduce((n, w) => n + (w.rawDamage > 0 && w.component.type !== ComponentType.WeaponPointDefense ? w.rawDamage : 0), 0);
+            const discounted = limited.reduce((n, w) => n + w.rawDamage * (1 - bvrFirepowerFactor(bg, w)), 0);
+            expect(bvrFirepowerFactor(bg, limited[0])).toBeLessThan(0.35 + 1e-9);
+            expect(b.firepowerRaw).toBeLessThan(naive);
+            // At most 35% of the limited launchers' per-shot damage is counted (the rest of the figure is unchanged).
+            expect(b.firepowerRaw).toBeLessThanOrEqual(naive - discounted + limited.length + 15);
+            expect(discounted).toBeGreaterThanOrEqual(limited.reduce((n, w) => n + w.rawDamage, 0) * 0.65 - 1e-6);
+            expect(b.design.firepowerRaw).toBe(b.firepowerRaw);
+        }
+        // An unlimited weapon counts in full.
+        const gun = spawn(e, BuiltObjectSubRole.Escort).weapons.find((w) => w.component.type === ComponentType.WeaponBeam);
+        if (gun !== undefined) expect(bvrFirepowerFactor(bg, gun)).toBe(1);
     });
 
     it('sensor targeting: a lock needs the target inside the tracking range (stealth shortens it, a long-range scanner extends it)', () => {

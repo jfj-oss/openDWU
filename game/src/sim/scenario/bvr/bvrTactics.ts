@@ -25,13 +25,36 @@ import { isBuiltObject } from '../../missions/mission';
 import { BattleTactics } from '../../data/designSpecifications';
 import { ComponentType } from '../../data/components';
 import { isAiControlled } from '../../missions/playerOrder';
-import { ammoFraction, bvrAiOn, bvrOn, bvrParam, isBvrMissile, isLimitedLauncher, roundsLeft } from './bvr';
+import { registerScenarioQuery } from '../hooks';
+import { ammoFraction, bvrAiOn, bvrOn, bvrParam, isBvrMissile, isLimitedLauncher, roundsLeft, roundsPerLauncher } from './bvr';
 
 /** The share (0..1) of this weapon's contribution that counts: a limited launcher by its loaded share and bvrAiValuePct, any other weapon fully. */
 export function bvrWeaponShare(galaxy: Galaxy, bo: BuiltObject, weapon: Weapon): number {
     if (!isLimitedLauncher(weapon.component)) return 1;
     return (ammoFraction(galaxy, bo, weapon.component) * bvrParam(galaxy, 'bvrAiValuePct')) / 100;
 }
+
+/**
+ * The factor the Firepower figure (firepowerRaw: a sum of per-shot damage, which the stock formula counts as if every weapon
+ * fires for ever) counts a weapon's damage at. A limited launcher fires only as many rounds as its magazine holds: over a
+ * reference engagement of bvrFirepowerSeconds it delivers min(1, rounds x fire interval / engagement) of the shots a gun would,
+ * and (as in the AI's own estimate, bvrWeaponShare) a finite magazine is worth bvrAiValuePct of an endless one. Without this a
+ * few BVR torpedoes (hundreds of damage a hit) made a frigate read ~3000 and every strength comparison with it.
+ */
+export function bvrFirepowerFactor(galaxy: Galaxy, weapon: Weapon): number {
+    if (!isLimitedLauncher(weapon.component)) return 1;
+    const interval = Math.max(1, weapon.fireRate) / 1000;
+    const rounds = roundsPerLauncher(galaxy, weapon.component);
+    const share = Math.min(1, (rounds * interval) / Math.max(1, bvrParam(galaxy, 'bvrFirepowerSeconds')));
+    return (share * bvrParam(galaxy, 'bvrAiValuePct')) / 100;
+}
+
+registerScenarioQuery({
+    id: 'bvr.firepowerShare',
+    query: 'weaponFirepowerShare',
+    flag: 'bvrCombat', // BVR_FLAG as a literal: this module is in an import cycle with bvr.ts and registers at load
+    run: (galaxy, value, { weapon }) => value * bvrFirepowerFactor(galaxy, weapon),
+});
 
 /** The ship's longest loaded BVR missile range (0 when it has none loaded). */
 export function loadedMissileRange(galaxy: Galaxy, bo: BuiltObject): number {

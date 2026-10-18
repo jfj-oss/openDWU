@@ -1208,6 +1208,16 @@ export class BuiltObject {
         this.size = num23;
         this.troopCapacity = num3;
         this.fuelCapacity = num4;
+        // Mod layer (BVR combat): a limited launcher's per-shot damage counts by what its magazine delivers (weaponFirepowerShare).
+        if (this._galaxy.scenario !== null) {
+            for (let i = 0; i < weaponList.length; i++) {
+                const w = weaponList[i];
+                if (w.rawDamage > 0 && (w.component.type === T.WeaponTorpedo || w.component.type === T.WeaponMissile)) {
+                    const k = scenarioQuery(this._galaxy, 'weaponFirepowerShare', 1, { weapon: w });
+                    if (k !== 1) num5 = Math.round(num5 + w.rawDamage * (k - 1));
+                }
+            }
+        }
         this.firepowerRaw = num5;
         this.ionWeaponPower = num8;
         this.bombardWeaponPower = num6;

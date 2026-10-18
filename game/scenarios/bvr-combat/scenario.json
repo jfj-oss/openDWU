@@ -31,6 +31,7 @@
     { "name": "bvrRearmRange", "label": "A ship is rearmed within this distance of the port, base or resupply ship (units)", "default": 1500, "min": 100, "max": 20000 },
     { "name": "bvrRoundCostPct", "label": "Credits to load one round, as % of the launcher's price", "default": 12, "min": 0, "max": 100 },
     { "name": "bvrAiValuePct", "label": "How much of a loaded launcher's damage rate counts in the AI's strength estimates (%; the magazine is finite)", "default": 35, "min": 5, "max": 100 },
+    { "name": "bvrFirepowerSeconds", "label": "Reference engagement (game seconds) a limited magazine's damage is spread over in the Firepower figure shown and used for strength comparisons", "default": 120, "min": 10, "max": 1200 },
     { "name": "bvrCapFrigate", "label": "Most missile launchers on an AI frigate (and carrier); the space of any more goes to armour, point defence and guns", "default": 2, "min": 0, "max": 40 },
     { "name": "bvrCapDestroyer", "label": "Most missile launchers on an AI destroyer", "default": 3, "min": 0, "max": 40 },
     { "name": "bvrCapCruiser", "label": "Most missile launchers on an AI cruiser", "default": 5, "min": 0, "max": 40 },

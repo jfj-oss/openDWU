@@ -75,6 +75,7 @@ export const BVR_DEFAULTS = {
     bvrRoundCostPct: 12,
     bvrDryPct: 25,
     bvrAiValuePct: 35,
+    bvrFirepowerSeconds: 120,
     bvrCapFrigate: 2,
     bvrCapDestroyer: 3,
     bvrCapCruiser: 5,

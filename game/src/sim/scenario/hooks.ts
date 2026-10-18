@@ -8,6 +8,7 @@ import { WITHDRAWN_FLAGS } from './state';
 import type { Galaxy } from '../galaxy';
 import type { Race } from '../data/races';
 import type { Habitat } from '../types';
+import type { Weapon } from '../weapon';
 import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
 import type { ShipGroup } from '../fleets/shipGroup';
@@ -457,6 +458,11 @@ export function scenarioEmit<E extends ScenarioEventName>(galaxy: Galaxy, event:
  * of times).
  */
 export interface ScenarioQueries {
+    /**
+     * builtObject.ts / design.ts reDefine, when summing the Firepower figure (firepowerRaw): the factor (stock 1) one weapon's
+     * per-shot damage counts at. BVR combat: a limited launcher counts by what its magazine delivers in a reference engagement. Pure.
+     */
+    weaponFirepowerShare: { value: number; args: { weapon: Weapon } };
     /** taxes.ts empireApprovalRating(h) (Habitat.cs approval of its empire): the rating; an additive term goes here. */
     empireApprovalRating: { value: number; args: { habitat: Habitat; empire: Empire | null } };
     /**
