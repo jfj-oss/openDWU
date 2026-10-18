@@ -12,6 +12,7 @@ import { interceptOrderOf, watchStatusText } from '../sim/player/intercept';
 import { interdictionInfoLine } from '../sim/scenario/interdiction/jumpInterdiction';
 import { mothballStatusText } from '../sim/scenario/mothballing/mothballing';
 import { fleetRetreatStatusText } from '../sim/scenario/fightingRetreats/fightingRetreats';
+import { bvrAmmoText } from '../sim/scenario/bvr/bvr';
 import type { Ruin } from '../sim/ruins';
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
@@ -777,6 +778,11 @@ export function builtObjectInfo(ctx: InfoContext, bo: BuiltObject, extended = fa
     }
     // Weapons (BaconInfoPanel.cs:710-713).
     rows.push(label('Weapons', [txt(bo.firepowerRaw === 0 ? '(None)' : `Firepower: ${bo.firepowerRaw}, Range: ${Math.trunc(bo.maximumWeaponsRange)}`)]));
+    // Not in the original (BVR combat): the missile and torpedo magazines, e.g. "Missiles 3/8, Torpedoes 12/12".
+    if (known && galaxy.scenario !== null) {
+        const ammo = bvrAmmoText(galaxy, bo);
+        if (ammo !== null) rows.push(label('Magazines', [txt(ammo)]));
+    }
     // Boarding pods (BaconInfoPanel.cs:715-724).
     if (bo.assaultRange > 0 && bo.assaultStrength > 0) {
         rows.push(label('Boarding', [txt(`Strength: ${Math.round(calculateAvailableAssaultPodAttackStrength(galaxy, bo, galaxy.nowMs))}`)]));

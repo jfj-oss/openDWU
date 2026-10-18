@@ -16,7 +16,8 @@
 //       DoRaidBonuses) and looting (Empire.LootingFactor);
 //   (5) AI retargeting (BuiltObject.1.cs 245 ThreatEvaluation, 207 PerformThreatEvaluation, 390 CheckAssignAttackOnThreat);
 //   (6) repair and retreat (BuiltObject.1.cs 1520 ShouldFleeFrom, Empire.4.cs 4863 AssignRepairMission, BaconBuiltObject.cs
-//       4763 DoRepairs, ConstructionQueue.cs 1142 IdentifyComponentToBuild).
+//       4763 DoRepairs, ConstructionQueue.cs 1142 IdentifyComponentToBuild);
+//   (7) the Fighting retreats add-on; (8) the BVR combat add-on (magazines, sensor lock, seeking, point-defence cover, rearming, AI).
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { cachedTickGame } from './helpers/gameCache';
@@ -74,6 +75,18 @@ import { PiratePlayStyle, pirateFactionModifiers } from '../src/sim/pirates';
 import { createGalaxyScenario } from '../src/sim/scenario/state';
 import { loadScenarioOverlayFs } from './helpers/scenarioGame';
 import { FIGHTING_RETREATS_ADDON_ID, fightingRetreatsFrame, fightingRetreatsState, fleetBattle, fleetFallbackPoint, fleetRepairPoint, fleetRetreatStatusText } from '../src/sim/scenario/fightingRetreats/fightingRetreats';
+import { createScenarioGame } from './helpers/scenarioGame';
+import type { Game } from '../src/sim/game';
+import { generateBuiltObjectFromDesign } from '../src/sim/exploration';
+import { GalaxyTime } from '../src/sim/galaxyTime';
+import { deserializeGame, serializeGame } from '../src/sim/save/gameSave';
+import { defaultStartGameOptions } from '../src/sim/startGameOptions';
+import { scenarioQuery } from '../src/sim/scenario/hooks';
+import { IndustryType } from '../src/sim/types';
+import { BVR_ADDON_ID, bvrAmmoText, bvrMayFire, bvrNeedsRounds, bvrNoteFired, bvrOn, bvrRearmTick, bvrState, bvrTracked, isBvrMissile, peekBvrState } from '../src/sim/scenario/bvr/bvr';
+import { BVR_PROJECTS, aiRearmTick } from '../src/sim/scenario/bvr/bvrAI';
+import { bvrEngagement } from '../src/sim/scenario/bvr/bvrTactics';
+import { BattleTactics } from '../src/sim/data/designSpecifications';
 
 let gameData: GameData;
 let componentDefs: Map<number, ComponentDefinition>;
@@ -1385,6 +1398,336 @@ describe('(7) fighting retreats add-on', () => {
         expect('fightingRetreats' in g.scenario!.state).toBe(false);
         expect(fleet.frLosingSinceMs).toBeUndefined();
         expect(fleet.frWithdrawal).toBeUndefined();
+        expect(g.rnd.getState()).toEqual(rnd);
+    });
+});
+
+
+// ---------------------------------------------------------------------------------------------------------------
+// (8) The BVR combat add-on (scenarios/bvr-combat; not in the original): a late start (tech 4) with the add-on's data overlay.
+// ---------------------------------------------------------------------------------------------------------------
+
+describe('(8) BVR combat add-on', () => {
+    let bgame: Game;
+    let bdata: GameData;
+    let bg: Galaxy;
+    const aiEmpires = (): Empire[] => bg.empires.filter((e): e is Empire => e !== null && e !== bg.playerEmpire && e !== bg.independentEmpire && e.pirateEmpireBaseHabitat === null && !e.name.startsWith('Ancient'));
+    const newest = (e: Empire, sub: BuiltObjectSubRole) => e.designs.filter((d) => d.role === BuiltObjectRole.Military && d.subRole === sub && !d.isObsolete).sort((a, b) => b.dateCreated - a.dateCreated)[0];
+    let spotX = 0;
+    let spotY = 0;
+    let slot = 0;
+    /** A fresh ship of the empire's newest design of the sub-role, in the empty spot (600 apart), shields full, automated and idle. */
+    const spawn = (e: Empire, sub: BuiltObjectSubRole): BuiltObject => {
+        const b = generateBuiltObjectFromDesign(bg, e, newest(e, sub), `bvr${slot}`, true, spotX + 600 * slot++, spotY);
+        b.currentShields = b.shieldsCapacity;
+        b.isAutoControlled = true;
+        return b;
+    };
+    const spend = (b: BuiltObject): void => {
+        for (const w of [...b.weapons]) {
+            while (w.component.type !== undefined && bvrMayFire(bg, b, w) && (isBvrMissile(w.component) || w.component.type === ComponentType.WeaponTorpedo)) bvrNoteFired(bg, b, w);
+        }
+    };
+
+    beforeAll(() => {
+        const r = createScenarioGame(gameData, {
+            scenario: BVR_ADDON_ID,
+            options: (o) => ({ ...o, galaxyAge: 4, player: { ...o.player, age: 4, techLevel: 4 }, aiEmpires: o.aiEmpires.map((e) => ({ ...e, age: 4, techLevel: 4 })) }),
+        });
+        bgame = r.game;
+        bdata = r.gameData;
+        bg = bgame.galaxy;
+        const s = emptySpot(bg);
+        spotX = s.x;
+        spotY = s.y;
+    }, 300000);
+
+    it('data: four launcher tiers (ids 129-132, WeaponMissile) in a dense component table, rebuilt close-range torpedoes, seven new weapons projects', () => {
+        const defs = bg.researchStatic!.componentStatic!.definitions;
+        for (let id = 0; id < defs.length; id++) expect(defs[id].componentId).toBe(id);
+        for (const id of [129, 130, 131, 132]) {
+            expect(defs[id].type).toBe(ComponentType.WeaponMissile);
+            expect(isBvrMissile(defs[id])).toBe(true);
+            expect(defs[id].value2).toBeGreaterThanOrEqual(1800); // far beyond any gun
+            expect(defs[id].value4).toBeGreaterThanOrEqual(420); // very fast
+        }
+        for (const id of [10, 108, 128]) expect(isBvrMissile(defs[id])).toBe(false); // the stock missiles are untouched
+        expect(defs[129].value1).toBeLessThan(defs[132].value1);
+        // Torpedoes: short range (the BVR missiles out-range them 5x or more), no damage loss, much more damage than stock (36 for FireStorm).
+        for (const id of [5, 6, 7, 8, 9]) {
+            expect(defs[id].type).toBe(ComponentType.WeaponTorpedo);
+            expect(defs[id].value2).toBeLessThanOrEqual(350);
+            expect(defs[id].value5).toBe(0);
+            expect(defs[id].value1).toBeGreaterThan(200);
+        }
+        // The torpedoes concentrate more damage per component size than the missiles (the best of each).
+        const density = (ids: number[]) => Math.max(...ids.map((id) => defs[id].value1 / defs[id].size));
+        expect(density([5, 6, 7, 8, 9])).toBeGreaterThan(density([129, 130, 131, 132]));
+        const tree = bg.playerEmpire!.research.techTree;
+        for (let i = 0; i < tree.length; i++) expect(tree[i].def.projectId).toBe(i);
+        for (const id of BVR_PROJECTS) expect(tree[id].def.name).not.toBe('');
+        expect(bdata.scenario!.warnings).toEqual([]);
+    });
+
+    it('lethality: four launcher hits kill the AI frigate of the era (3-5 hits), two torpedo hits do (2-3), armour does not halve the BVR missile', () => {
+        const attacker = aiEmpires()[0].builtObjects.find((b) => b.role === BuiltObjectRole.Military)!;
+        const hits = (missile: boolean): number => {
+            const all: number[] = [];
+            for (const e of aiEmpires()) {
+                const research = e.research;
+                const owned = research.researchedComponents.filter((c) => (missile ? isBvrMissile(c) : c.type === ComponentType.WeaponTorpedo));
+                const best = owned.sort((a, b) => research.resolveImprovedComponentValues(b).value1 - research.resolveImprovedComponentValues(a).value1)[0];
+                expect(best).toBeDefined();
+                const damage = research.resolveImprovedComponentValues(best).value1;
+                for (let k = 0; k < 3; k++) {
+                    const t = spawn(e, BuiltObjectSubRole.Frigate);
+                    let n = 0;
+                    while (!t.hasBeenDestroyed && n < 40) {
+                        inflictDamage(bg, attacker, t, { component: best } as unknown as Weapon, damage, bg.nowMs, 0, 0);
+                        n++;
+                    }
+                    all.push(n);
+                }
+            }
+            all.sort((a, b) => a - b);
+            return all[Math.floor(all.length / 2)];
+        };
+        const m = hits(true);
+        const t = hits(false);
+        expect(m).toBeGreaterThanOrEqual(3);
+        expect(m).toBeLessThanOrEqual(5);
+        expect(t).toBeGreaterThanOrEqual(2);
+        expect(t).toBeLessThanOrEqual(3);
+    });
+
+    it('AI designs: frigates and up carry launchers, destroyers and up torpedoes, escorts none and more point defence', () => {
+        for (const e of aiEmpires()) {
+            const count = (d: ReturnType<typeof newest>, f: (c: { componentId: number; type: ComponentType }) => boolean) => d.components.filter(f).length;
+            const launchers = (sub: BuiltObjectSubRole) => count(newest(e, sub), (c) => isBvrMissile(c));
+            expect(launchers(BuiltObjectSubRole.Escort)).toBe(0);
+            expect(launchers(BuiltObjectSubRole.Frigate)).toBeGreaterThanOrEqual(2);
+            expect(launchers(BuiltObjectSubRole.Destroyer)).toBeGreaterThanOrEqual(3);
+            expect(count(newest(e, BuiltObjectSubRole.Destroyer), (c) => c.type === ComponentType.WeaponTorpedo)).toBeGreaterThanOrEqual(1);
+            expect(count(newest(e, BuiltObjectSubRole.Escort), (c) => c.type === ComponentType.WeaponPointDefense)).toBeGreaterThanOrEqual(3);
+        }
+    });
+
+    it('AI research: the next launcher project goes to the front of the weapons order once the empire is within a level of it', () => {
+        const e = aiEmpires()[0];
+        const order = scenarioQuery(bg, 'researchProjectOrder', [], { empire: e, industry: IndustryType.Weapon });
+        const next = BVR_PROJECTS.find((id) => !e.research.techTree[id].isResearched);
+        if (next !== undefined) expect(BVR_PROJECTS).toContain(order.find((id) => BVR_PROJECTS.includes(id)) ?? -1);
+        // Human empires keep their own research.
+        expect(scenarioQuery(bg, 'researchProjectOrder', [], { empire: bg.playerEmpire!, industry: IndustryType.Weapon })).toEqual([]);
+    });
+
+    it('magazines: full at first, one round a shot, a launcher at zero cannot fire, the text counts missiles and torpedoes', () => {
+        const e = aiEmpires()[0];
+        const f = spawn(e, BuiltObjectSubRole.Frigate);
+        const cap = f.weapons.filter((w) => isBvrMissile(w.component)).length * 4;
+        expect(cap).toBeGreaterThanOrEqual(8);
+        expect(bvrAmmoText(bg, f)).toBe(`Missiles ${cap}/${cap}`);
+        expect(bvrNeedsRounds(bg, f)).toBe(false);
+        const l = f.weapons.find((w) => isBvrMissile(w.component))!;
+        for (let i = 0; i < cap; i++) {
+            expect(bvrMayFire(bg, f, l)).toBe(true);
+            bvrNoteFired(bg, f, l);
+        }
+        expect(bvrMayFire(bg, f, l)).toBe(false);
+        expect(bvrAmmoText(bg, f)).toBe(`Missiles 0/${cap}`);
+        expect(bvrNeedsRounds(bg, f)).toBe(true);
+        const d = spawn(e, BuiltObjectSubRole.Destroyer);
+        const t = d.weapons.filter((w) => w.component.type === ComponentType.WeaponTorpedo).length;
+        expect(bvrAmmoText(bg, d)).toBe(`Missiles ${d.weapons.filter((w) => isBvrMissile(w.component)).length * 4}/${d.weapons.filter((w) => isBvrMissile(w.component)).length * 4}, Torpedoes ${t * 6}/${t * 6}`);
+        // A ship with no limited launcher has no line.
+        expect(bvrAmmoText(bg, spawn(e, BuiltObjectSubRole.Escort))).toBeNull();
+    });
+
+    it('sensor targeting: a lock needs the target inside the tracking range (stealth shortens it, a long-range scanner extends it)', () => {
+        const [a, b] = aiEmpires();
+        const x = spawn(a, BuiltObjectSubRole.Frigate);
+        const y = spawn(b, BuiltObjectSubRole.Frigate);
+        place(bg, y, x.xpos + 1000, x.ypos);
+        expect(bvrTracked(bg, x, y)).toBe(true);
+        place(bg, y, x.xpos + 90000, x.ypos);
+        expect(bvrTracked(bg, x, y)).toBe(false);
+        place(bg, y, x.xpos + 1500, x.ypos);
+        y.stealth = 0.1; // a cloak: 10% of the range
+        expect(bvrTracked(bg, x, y)).toBe(false);
+        x.sensorLongRange = 450000; // a long-range scanner aboard the fleet
+        expect(bvrTracked(bg, x, y)).toBe(true);
+        x.sensorLongRange = 0;
+        y.stealth = 1;
+        // Planets need no lock.
+        expect(bvrTracked(bg, x, bg.habitats[0])).toBe(true);
+    });
+
+    it('rearming: in range of an own space port a spent magazine is reloaded for credits, out of range it is not; a docked ship on a Refuel order is held until full', () => {
+        const e = aiEmpires()[0];
+        const port = (e.spacePorts as BuiltObject[]).find((p) => p !== null && !p.hasBeenDestroyed)!;
+        const f = spawn(e, BuiltObjectSubRole.Frigate);
+        spend(f);
+        expect(bvrNeedsRounds(bg, f)).toBe(true);
+        const far = spawn(e, BuiltObjectSubRole.Frigate);
+        spend(far);
+        place(bg, far, port.xpos + 90000, port.ypos);
+        place(bg, f, port.xpos + 300, port.ypos);
+        e.stateMoney = 100000;
+        const money = e.stateMoney;
+        bvrRearmTick(bg);
+        for (let k = 0; k < 40; k++) {
+            bg.nowMs += 5000;
+            bvrRearmTick(bg);
+        }
+        expect(bvrNeedsRounds(bg, f)).toBe(false);
+        expect(peekBvrState(bg)!.mags.has(f)).toBe(false);
+        expect(e.stateMoney).toBeLessThan(money);
+        expect(peekBvrState(bg)!.roundsLoaded).toBeGreaterThanOrEqual(8);
+        expect(bvrNeedsRounds(bg, far)).toBe(true); // nowhere near a rearm point
+        // The cost is paid even into debt (as fuel is).
+        spend(f);
+        e.stateMoney = 0;
+        for (let k = 0; k < 40; k++) {
+            bg.nowMs += 5000;
+            bvrRearmTick(bg);
+        }
+        expect(bvrNeedsRounds(bg, f)).toBe(false);
+        expect(e.stateMoney).toBeLessThan(0);
+        e.stateMoney = money;
+    });
+
+    it('AI rearming: an idle automated warship that has fired its rounds is sent to a rearm point on a Refuel order; a fighting one is not', () => {
+        const e = aiEmpires()[0];
+        const f = spawn(e, BuiltObjectSubRole.Frigate);
+        builtObjectMission(f.mission)?.clear();
+        spend(f);
+        const before = peekBvrState(bg)?.aiRearmTrips ?? 0;
+        f.attackers!.push(aiEmpires()[1].builtObjects.find((b) => b.role === BuiltObjectRole.Military)!);
+        aiRearmTick(bg);
+        expect(builtObjectMission(f.mission)?.type ?? BuiltObjectMissionType.Undefined).not.toBe(BuiltObjectMissionType.Refuel);
+        f.attackers!.length = 0;
+        aiRearmTick(bg);
+        const m = builtObjectMission(f.mission);
+        expect(m).not.toBeNull();
+        expect(m!.type).toBe(BuiltObjectMissionType.Refuel);
+        expect(peekBvrState(bg)!.aiRearmTrips).toBeGreaterThan(before);
+    });
+
+    it('point defence: a downed missile is reset; a ship with point defence covers its fleet mates; guns and a torpedo fare worse', () => {
+        const [a, b] = aiEmpires();
+        const shooter = spawn(a, BuiltObjectSubRole.Frigate);
+        const target = spawn(b, BuiltObjectSubRole.Frigate);
+        const l = shooter.weapons.find((w) => isBvrMissile(w.component))!;
+        const inFlight = (): void => {
+            l.reset();
+            weaponFire(bg, l, shooter, target, 1500, bg.nowMs, true, 0.9);
+            l.distanceTravelled = 300;
+            l.x = target.xpos - 100; // inside point-defence range (140-250)
+            l.y = target.ypos;
+            l.distanceFromTarget = 100;
+            if (!target.attackers!.includes(shooter)) target.attackers!.push(shooter);
+            target.assaultPodFiringCounter = 0;
+            for (const w of target.weapons) w.lastFired = MIN_TIME;
+            target.currentEnergy = target.reactorStorageCapacity;
+        };
+        const run = (): void => {
+            for (let k = 0; k < 3; k++) interceptMissiles(bg, target, bg.nowMs, false);
+        };
+        const params = bg.scenario!.params;
+        const saved = { pd: params.bvrPdPct, gun: params.bvrGunPct };
+        params.bvrPdPct = 100;
+        params.bvrGunPct = 0;
+        place(bg, target, shooter.xpos + 1500, shooter.ypos);
+        inFlight();
+        run();
+        expect(l.distanceTravelled).toBeLessThan(0); // downed (reset)
+        const downed = peekBvrState(bg)!.downedByPd;
+        expect(downed).toBeGreaterThan(0);
+        params.bvrPdPct = 0;
+        inFlight();
+        run();
+        expect(l.distanceTravelled).toBeGreaterThan(0); // no chance: it flies on
+        // Cover: a fleet mate with point defence shoots at a missile aimed at a ship that has none of its own.
+        const player = bg.playerEmpire!;
+        const guard = playerShip(bg, BuiltObjectSubRole.Frigate, 0);
+        const screened = playerShip(bg, BuiltObjectSubRole.Escort, 0);
+        for (const w of screened.weapons) if (w.component.type === ComponentType.WeaponPointDefense) w.reset();
+        expect(guard.pointDefenseWeaponsRange).toBeGreaterThan(0);
+        executeShipAction(bg, player, [guard, screened], createShipAction(ShipActionType.CreateNewFleet, null), true);
+        expect(guard.shipGroup).not.toBeNull();
+        expect(guard.shipGroup).toBe(screened.shipGroup);
+        place(bg, screened, shooter.xpos + 1500, shooter.ypos);
+        place(bg, guard, screened.xpos + 80, screened.ypos);
+        guard.currentEnergy = guard.reactorStorageCapacity;
+        for (const w of guard.weapons) w.lastFired = MIN_TIME;
+        const hitWeapon = shooter.weapons.find((w) => isBvrMissile(w.component) && w !== l)!;
+        weaponFire(bg, hitWeapon, shooter, screened, 1500, bg.nowMs, true, 0.9);
+        hitWeapon.distanceTravelled = 300;
+        hitWeapon.x = screened.xpos - 60;
+        hitWeapon.y = screened.ypos;
+        hitWeapon.distanceFromTarget = 60;
+        guard.assaultPodFiringCounter = 0;
+        params.bvrPdPct = 100;
+        for (let k = 0; k < 3; k++) interceptMissiles(bg, guard, bg.nowMs, false); // the guard's own pass covers the escort
+        expect(hitWeapon.distanceTravelled).toBeLessThan(0);
+        params.bvrPdPct = saved.pd;
+        params.bvrGunPct = saved.gun;
+    });
+
+    it('tactics: with more loaded missiles and the longer reach the AI ship kites; dry against a missile fleet it rushes; a dry Standoff ship fights with its guns', () => {
+        const [a, b] = aiEmpires();
+        const mine = spawn(a, BuiltObjectSubRole.Frigate);
+        const theirs = spawn(b, BuiltObjectSubRole.Frigate);
+        spend(theirs);
+        const k = bvrEngagement(bg, mine, theirs, BattleTactics.AllWeapons);
+        expect(k).not.toBeNull();
+        expect(k!.band).not.toBeNull();
+        const range = Math.max(...mine.weapons.filter((w) => isBvrMissile(w.component)).map((w) => w.range));
+        expect(k!.band!.max).toBe(Math.trunc(range * 0.9));
+        expect(k!.band!.min).toBeGreaterThan(range * 0.5);
+        // Dry against a loaded enemy: close fast to the gun band.
+        const rushed = bvrEngagement(bg, theirs, mine, BattleTactics.Standoff);
+        expect(rushed).not.toBeNull();
+        expect(rushed!.band!.min).toBe(0);
+        expect(rushed!.band!.max).toBeLessThanOrEqual(Math.trunc(theirs.beamWeaponsMinRange * 0.75) + 1);
+        // Both dry: the design's Standoff turns into AllWeapons (it does not hold the range of an empty launcher).
+        spend(mine);
+        const both = bvrEngagement(bg, mine, theirs, BattleTactics.Standoff);
+        expect(both).not.toBeNull();
+        expect(both!.tactic).toBe(BattleTactics.AllWeapons);
+        // A player-ordered (not automated) ship keeps the design's tactic.
+        mine.isAutoControlled = false;
+        expect(bvrEngagement(bg, mine, theirs, BattleTactics.Standoff)).toBeNull();
+    });
+
+    it('saves: spent rounds round-trip through a save; a ship with no entry (an older save) is full; the state is saved', () => {
+        const e = aiEmpires()[0];
+        const f = spawn(e, BuiltObjectSubRole.Frigate);
+        const l = f.weapons.find((w) => isBvrMissile(w.component))!;
+        bvrNoteFired(bg, f, l);
+        bvrNoteFired(bg, f, l);
+        const before = bvrAmmoText(bg, f)!;
+        const time = new GalaxyTime();
+        time.togglePause();
+        const text = serializeGame(bgame, time, defaultStartGameOptions());
+        const restored = deserializeGame(text, bdata);
+        const f2 = restored.game.galaxy.builtObjects.find((b): b is BuiltObject => b !== null && b.builtObjectID === f.builtObjectID)!;
+        expect(bvrAmmoText(restored.game.galaxy, f2)).toBe(before);
+        expect(bvrOn(restored.game.galaxy)).toBe(true);
+        peekBvrState(restored.game.galaxy)!.mags.delete(f2);
+        expect(bvrAmmoText(restored.game.galaxy, f2)).toMatch(/^Missiles (\d+)\/\1$/);
+    }, 300000);
+
+    it('toggle off: with the flag off none of it runs (no state bag, no draws, the stock intercept and firing)', () => {
+        const g = cachedTickGame(gameData).galaxy;
+        g.scenario = createGalaxyScenario(loadScenarioOverlayFs(BVR_ADDON_ID).manifest, { flags: { bvrCombat: false } });
+        expect(bvrOn(g)).toBe(false);
+        const ship = playerShip(g, BuiltObjectSubRole.Frigate, 0);
+        const rnd = g.rnd.getState();
+        interceptMissiles(g, ship, g.nowMs, false);
+        bvrRearmTick(g);
+        expect('bvrCombat' in g.scenario.state).toBe(false);
+        expect(bvrAmmoText(g, ship)).toBeNull();
         expect(g.rnd.getState()).toEqual(rnd);
     });
 });

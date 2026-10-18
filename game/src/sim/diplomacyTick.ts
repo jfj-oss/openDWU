@@ -15,6 +15,8 @@
 //
 // Text: TextResolver.GetText(key) returns the key (M9 localises); string.Format substitutes {n} placeholders.
 
+import { bvrOn } from './scenario/bvr/bvr';
+import { bvrWeaponShare } from './scenario/bvr/bvrTactics';
 import { isAiControlled } from './missions/playerOrder';
 import { checkTriggerEvent, getMatchingGameEventIdDiplomaticRelationChange } from './story/eventActions';
 import { EventTriggerType } from './story/gameEventModel';
@@ -268,7 +270,11 @@ function calculateFirepowerFactor(bo: BuiltObject): number {
     if (bo.weapons != null) {
         for (let i = 0; i < bo.weapons.length; i++) {
             const weapon = bo.weapons[i];
-            if (weapon != null) num = Math.fround(num + Math.fround(weapon.rawDamage / Math.fround(weapon.fireRate / 1000)));
+            if (weapon != null) {
+                const dps = Math.fround(weapon.rawDamage / Math.fround(weapon.fireRate / 1000));
+                // Mod layer (BVR combat): a limited launcher counts by the loaded share of its magazine.
+                num = Math.fround(num + (bo._galaxy.scenario !== null && bvrOn(bo._galaxy) ? Math.fround(dps * bvrWeaponShare(bo._galaxy, bo, weapon)) : dps));
+            }
         }
     }
     return Math.trunc(num);

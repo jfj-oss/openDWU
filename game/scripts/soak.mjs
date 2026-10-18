@@ -249,6 +249,11 @@ const CONFIGS = [
             mk('bl-smoke', 'beacon-smoke', 1, 3, { starCountIndex: 2, dimensionIndex: 2, otherEmpires: { empireCount: 7 }, ...late }, { giantworksBuildYears: 0.6 }),
         ];
     })(),
+    // `--set bvr` (BVR combat; --hook scripts/bvr-hook.mjs): the os-war galaxy (700 stars, 7 empires, aggressive AI, older galaxy), 20 years, Smarter AI
+    // and Coordinated landings at their defaults, BVR combat on vs off; three seeds (one seed's war history diverges too much to compare alone).
+    ...[1, 2, 3].flatMap((seed) => [true, false].map((on) => ({ name: `bvr-${on ? 'on' : 'off'}-s${seed}`, set: 'bvr', seed, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, addons: [], gameplay: on ? ['bvr-combat'] : [] }))),
+    // bvr-nai-*: BVR on with its AI switched off (flag bvrAI): the rules and data only, the stock AI designs and tactics.
+    ...[1, 2].map((seed) => ({ name: `bvr-noai-s${seed}`, set: 'bvr', seed, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, addons: [], gameplay: ['bvr-combat'], flags: { bvrAI: false } })),
     // `--set long`: the many-decade runs (not in the default set).
     { name: 'long-s1-30y', set: 'long', seed: 1, years: 30, wizard: {} },
     { name: 'long-s7-small-50y', set: 'long', seed: 7, years: 50, wizard: { starCountIndex: 1, dimensionIndex: 1, otherEmpires: { empireCount: 5 } } },
@@ -370,7 +375,7 @@ const MODULES = { game: '/src/sim/game.ts', sgo: '/src/sim/startGameOptions.ts',
     slavery: '/src/sim/slavery.ts', slaveryReview: '/src/sim/slaveryReview.ts',
     // The add-on picker's resolution (cfg.addons) and what scripts/regress-soak-hook.mjs reads (same module instances as the sim).
     addons: '/src/sim/scenario/addons.ts', scnHooks: '/src/sim/scenario/hooks.ts', scnState: '/src/sim/scenario/state.ts', overlay: '/src/sim/scenario/overlay.ts',
-    playerCommands: '/src/sim/player/playerCommands.ts', humans: '/src/sim/humanEmpires.ts',
+    playerCommands: '/src/sim/player/playerCommands.ts', bvr: '/src/sim/scenario/bvr/bvr.ts', humans: '/src/sim/humanEmpires.ts',
     thFramework: '/src/sim/scenario/threats/framework.ts', thCult: '/src/sim/scenario/threats/cult.ts', thHive: '/src/sim/scenario/threats/hive.ts',
     thPurifier: '/src/sim/scenario/threats/purifier.ts', thGenShips: '/src/sim/scenario/threats/generationShips.ts', thNavy: '/src/sim/scenario/threats/factionNavy.ts',
     thCrisis: '/src/sim/scenario/threats/crisis.ts', thRobot: '/src/sim/scenario/threats/robotMutiny.ts', thProbe: '/src/sim/scenario/threats/probeSwarm.ts', thWhale: '/src/sim/scenario/threats/voidWhale.ts',
@@ -533,7 +538,7 @@ async function runOne(name) {
             const w1 = A.withSmarterAI([...A.BASE_ADDONS, ...ids], { flags: { ...(cfg.flags ?? {}) }, params: { ...(cfg.params ?? {}) } }, smart);
             // cfg.gameplay: the other "Gameplay changes" checkboxes by add-on id.
             const gp = { 'orbital-superiority': A.withOrbitalSuperiority, 'longer-ground-combat': A.withLongerGroundCombat, 'jump-interdiction': A.withJumpInterdiction, 'blockades-bite': A.withBlockadesBite,
-                mothballing: A.withMothballing, 'slow-hyperdrive': A.withSlowHyperdrive, 'fighting-retreats': A.withFightingRetreats, veterans: A.withVeterans };
+                mothballing: A.withMothballing, 'slow-hyperdrive': A.withSlowHyperdrive, 'fighting-retreats': A.withFightingRetreats, veterans: A.withVeterans, 'bvr-combat': A.withBvrCombat };
             let wg = w1;
             for (const id of cfg.gameplay ?? []) wg = gp[id](wg.picked, wg.overrides, true);
             const w2 = A.withCoordinatedLandings(wg.picked, wg.overrides, cfg.coordinatedLandings ?? A.coordinatedLandingsChoice(undefined, smart));

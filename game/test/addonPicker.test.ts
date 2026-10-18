@@ -29,6 +29,9 @@ import {
     resolveAddonSwitches,
     scenarioOverlayFor,
     toggleAddon,
+    withBvrCombat,
+    HIDDEN_ADDONS,
+    ELSEWHERE_ADDONS,
     withFlagAddons,
     forcedFlags,
     EXPANSIONS,
@@ -310,5 +313,22 @@ describe('picker sections, base add-ons, council follows the Diet', () => {
         const off = resolveAddonSwitches(cat, ['characters-victory'], { flags: { cvCouncil: false }, params: {} }).flags;
         expect(off.galacticCouncil).toBe(false);
         expect(resolveAddonSwitches(cat, ['galactic-council']).flags.galacticCouncil).toBe(true);
+    });
+});
+
+describe('BVR combat (a Gameplay changes checkbox)', () => {
+    it('is folded in by withBvrCombat, hidden from the picker, allowed in Classic, off by default and not combined with the time bomb', async () => {
+        const { CLASSIC_ADDONS } = await import('../scripts/scenarioIndex.mjs');
+        const on = withBvrCombat([], { flags: {}, params: {} }, true);
+        expect(on.picked).toEqual(['bvr-combat']);
+        expect(on.overrides.flags.bvrCombat).toBe(true);
+        expect(withBvrCombat(on.picked, on.overrides, false).picked).toEqual([]);
+        expect(withBvrCombat([], { flags: {}, params: {} }, undefined).picked).toEqual([]);
+        expect(HIDDEN_ADDONS.has('bvr-combat')).toBe(true);
+        expect(ELSEWHERE_ADDONS.has('bvr-combat')).toBe(true);
+        expect(CLASSIC_ADDONS).toContain('bvr-combat');
+        const m = scenarioIndexFs().find((x) => x.id === 'bvr-combat')!;
+        expect(m.conflicts).toEqual(['timebomb']); // the same research project ids
+        expect(m.flags.map((f) => f.name)).toEqual(['bvrCombat', 'bvrAI']);
     });
 });

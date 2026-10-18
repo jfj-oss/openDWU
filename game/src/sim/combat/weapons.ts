@@ -65,6 +65,7 @@ import {
 import { baconSettings } from '../data/baconSettings';
 import { noteBuiltObjectEffect } from './effectWatch';
 import { veteranShipBonusOf } from '../scenario/veterans/veterans';
+import { bvrMayFire, bvrMissileHit, bvrNoteDowned, bvrNoteFired, bvrNoteHit, bvrOn, bvrParam, bvrTracked, isBvrMissile, isLimitedLauncher } from '../scenario/bvr/bvr';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants
@@ -310,6 +311,12 @@ export function determineHitTargetWeapon(galaxy: Galaxy, self: BuiltObject, weap
 
 /** BuiltObject.1.cs 5243 DetermineHitTarget(galaxy, weapon, target, distanceToTarget, out hitRangeChance). Rnd: NextDouble, Next(0, 12). */
 export function determineHitTarget(galaxy: Galaxy, self: BuiltObject, weapon: Weapon, target: StellarObject | FighterTargetLike, distanceToTarget: number): { willHit: boolean; hitRangeChance: number } {
+    // Mod layer (BVR combat): a BVR missile's lock-on roll at a ship or base (scenario/bvr/bvr.ts bvrMissileHit).
+    if (galaxy.scenario !== null && isBvrMissile(weapon.component) && isBuiltObject(target) && bvrOn(galaxy)) {
+        const sg = shipGroupOf(self);
+        const tg = shipGroupOf(target);
+        return bvrMissileHit(galaxy, self, target, sg !== null ? sg.targetingBonus : 1, captainTargetingBonus(self, galaxy), tg !== null ? tg.countermeasuresBonus : 1, captainCountermeasuresBonus(target, galaxy));
+    }
     let num = weapon.range;
     const selfGroup = shipGroupOf(self);
     if (selfGroup !== null) num *= selfGroup.weaponsRangeBonus;
@@ -749,6 +756,7 @@ export function fireWeaponsAtTarget(galaxy: Galaxy, builtObject: BuiltObject, di
     const self = builtObject;
     if (self._fuelHandicapped || target.hasBeenDestroyed) return;
     const tempNow = galaxy.nowMs;
+    const bvr = galaxy.scenario !== null && bvrOn(galaxy); // mod layer (BVR combat)
     const shipGroup = shipGroupOf(self);
     let flag = false;
     if (self.ionWeaponPower > 0 && isCreature(target)) {
@@ -799,12 +807,19 @@ export function fireWeaponsAtTarget(galaxy: Galaxy, builtObject: BuiltObject, di
             flag2 = checkFireAreaWeaponAtTarget(galaxy, self, weapon2, target);
         }
         if (!flag2) continue;
+        // Mod layer (BVR combat): a launcher fires only with a round left, a missile only at a tracked target (scenario/bvr/bvr.ts).
+        const limited = bvr && isLimitedLauncher(weapon2.component);
+        if (limited) {
+            if (!bvrMayFire(galaxy, self, weapon2)) continue;
+            if (isBvrMissile(weapon2.component) && !bvrTracked(galaxy, self, target)) continue;
+        }
         const timeSpan2Ms = tempNow - weapon2.lastFired;
         const num6 = galaxy.rnd.nextDouble() * 800.0 - 400.0;
         if (timeSpan2Ms >= weapon2.fireRate + num6) {
             if (mayModifyDiplomacy && isBuiltObject(target)) modifyDiplomacyFromAttackBuiltObject(galaxy, self, target);
             const r = determineHitTarget(galaxy, self, weapon2, target, distanceToTarget);
             weaponFire(galaxy, weapon2, self, target, distanceToTarget, time, r.willHit, r.hitRangeChance);
+            if (limited) bvrNoteFired(galaxy, self, weapon2);
         }
     }
 }
@@ -895,6 +910,7 @@ export function handlePlanetDestroyerFiring(galaxy: Galaxy, self: BuiltObject, w
 export function handleWeaponsFiringBuiltObject(galaxy: Galaxy, builtObject: BuiltObject, timePassed: number, time: number): void {
     const self = builtObject;
     const tempNow = galaxy.nowMs;
+    const bvr = galaxy.scenario !== null && bvrOn(galaxy); // mod layer (BVR combat)
     // BuiltObject.1.cs 3739: `float num = BaconBuiltObject.WeaponRangeIncrementForDamageLoss(this);` — computed and never
     // read. It is pure (three Empire.Name.Contains("Romulan") tests, no Rnd, no writes), so the call is skipped: it was
     // ~2% of frame time as a per-ship-per-frame string search.
@@ -1129,6 +1145,8 @@ export function handleWeaponsFiringBuiltObject(galaxy: Galaxy, builtObject: Buil
                 weapon.y += Math.sin(weapon.heading) * num8;
                 weapon.distanceFromTarget = Math.fround(galaxy.calculateDistance(weapon.x, weapon.y, num2, num3));
                 weapon.power = weaponDamageDropoff(self, weapon, num6);
+                // Mod layer (BVR combat): torpedoes keep their full punch over their short flight (no linear damage drop-off).
+                if (bvr && weapon.component.type === ComponentType.WeaponTorpedo) weapon.power = num6;
                 if (weapon.willHitTarget) {
                     if (!flag2) {
                         let flag4 = false;
@@ -1136,6 +1154,7 @@ export function handleWeaponsFiringBuiltObject(galaxy: Galaxy, builtObject: Buil
                         else if (distanceFromTarget < weapon.distanceFromTarget || num8 > distanceFromTarget) flag4 = true;
                         if (flag4 && target !== null) {
                             const t = target;
+                            if (bvr && isLimitedLauncher(weapon.component)) bvrNoteHit(galaxy, weapon);
                             if (isHabitat(t) && weapon.bombardDamage > 0) {
                                 inflictBombardDamage(galaxy, self, t, weapon.bombardDamage);
                                 weapon.target = null;
@@ -1549,9 +1568,88 @@ export function defendBase(galaxy: Galaxy, builtObject: BuiltObject, time: numbe
     self.hyperDenyActive = hyperDenyActive;
 }
 
+/** How far a ship's point defence covers its fleet mates (BVR combat). */
+const BVR_COVER_RANGE = 600;
+
+/**
+ * Mod layer (BVR combat), in place of Bacon's InterceptMissiles: missiles AND torpedoes in flight at the ship, and at its fleet
+ * mates within BVR_COVER_RANGE when it has point defence (escorts cover their fleet), can be shot at. A point-defence cannon
+ * has bvrPdPct to down a missile (bvrTorpedoPdPct a torpedo), a beam, phaser or rail gun bvrGunPct (only for the ship itself);
+ * the shot is a real projectile (hit or miss by the roll) and a downed round is reset at once as in Bacon's. Runs on every
+ * third pass of the ship's tick. Rnd: the roll and Fire's two draws, per shot.
+ */
+function bvrInterceptMissiles(galaxy: Galaxy, ship: BuiltObject, time: number): void {
+    if (ship.weapons == null || ship.weapons.length === 0) return;
+    if (ship.assaultPodFiringCounter >= 32766) ship.assaultPodFiringCounter = 0;
+    ++ship.assaultPodFiringCounter;
+    if (ship.assaultPodFiringCounter % 3 !== 0) return;
+    const covered: BuiltObject[] = [ship];
+    const group = shipGroupOf(ship);
+    if (ship.pointDefenseWeaponsRange > 0 && group !== null) {
+        const r2 = BVR_COVER_RANGE * BVR_COVER_RANGE;
+        for (const m of group.ships as (BuiltObject | null)[]) {
+            if (m == null || m === ship || m.hasBeenDestroyed) continue;
+            const dx = m.xpos - ship.xpos;
+            const dy = m.ypos - ship.ypos;
+            if (dx * dx + dy * dy <= r2) covered.push(m);
+        }
+    }
+    const pdPct = bvrParam(galaxy, 'bvrPdPct') / 100;
+    const pdTorpPct = bvrParam(galaxy, 'bvrPdTorpedoPct') / 100;
+    const gunPct = bvrParam(galaxy, 'bvrGunPct') / 100;
+    for (const x of covered) {
+        const attackers = attackersOf(x);
+        for (let a = 0; a < attackers.length; a++) {
+            const attacker = attackers[a];
+            if (attacker == null || !isBuiltObject(attacker) || attacker.weapons == null) continue;
+            for (let i = 0; i < attacker.weapons.length; i++) {
+                const incoming = attacker.weapons[i];
+                if (incoming == null || incoming.component === null || incoming.target !== x) continue;
+                const torpedo = incoming.component.type === ComponentType.WeaponTorpedo;
+                if (!torpedo && incoming.component.type !== ComponentType.WeaponMissile) continue;
+                if (incoming.distanceTravelled < (torpedo ? 10 : 100)) continue;
+                // The first defender weapon that can take the shot: point defence first, then (the ship's own cover only) guns.
+                const d = galaxy.calculateDistance(ship.xpos, ship.ypos, incoming.x, incoming.y);
+                let shooter: Weapon | null = null;
+                let pct = 0;
+                for (let k = 0; k < ship.weapons.length && shooter === null; k++) {
+                    const w = ship.weapons[k];
+                    if (w == null || w.component === null || w.range < d || !weaponIsAvailable(w, ship, time)) continue;
+                    if (w.component.type === ComponentType.WeaponPointDefense) {
+                        shooter = w;
+                        pct = torpedo ? pdTorpPct : pdPct;
+                    }
+                }
+                if (shooter === null && x === ship) {
+                    for (let k = 0; k < ship.weapons.length && shooter === null; k++) {
+                        const w = ship.weapons[k];
+                        if (w == null || w.component === null || w.range < d || !weaponIsAvailable(w, ship, time)) continue;
+                        const t = w.component.type;
+                        if (t === ComponentType.WeaponBeam || t === ComponentType.WeaponPhaser || t === ComponentType.WeaponRailGun) {
+                            shooter = w;
+                            pct = gunPct * (torpedo ? 0.5 : 1);
+                        }
+                    }
+                }
+                if (shooter === null) continue;
+                const down = galaxy.rnd.nextDouble() < pct;
+                weaponFireAtWeapon(galaxy, shooter, ship, incoming, d, time, down, 0.5);
+                if (down) {
+                    incoming.reset();
+                    bvrNoteDowned(galaxy, shooter.component.type === ComponentType.WeaponPointDefense);
+                }
+            }
+        }
+    }
+}
+
 /** BaconBuiltObject.cs 5032 InterceptMissiles(ship, time, inView). Rnd: Fire draws (NextDouble, Next(0, 2)) per interception. */
 export function interceptMissiles(galaxy: Galaxy, builtObject: BuiltObject, time: number, inView: boolean): void {
     const ship = builtObject;
+    if (galaxy.scenario !== null && bvrOn(galaxy)) {
+        bvrInterceptMissiles(galaxy, ship, time);
+        return;
+    }
     if (!baconSettings.pointDefenseAffectsMissiles) return;
     if (ship.assaultPodFiringCounter >= 32766) ship.assaultPodFiringCounter = 0;
     ++ship.assaultPodFiringCounter;

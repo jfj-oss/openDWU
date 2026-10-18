@@ -200,6 +200,11 @@ export interface StartGameOptions {
      */
     veterans?: boolean;
     /**
+     * The Other Empires page's "Gameplay changes: BVR combat" checkbox (scenarios/bvr-combat). Folded into `scenario`
+     * (addons.ts withBvrCombat); absent / false = off.
+     */
+    bvrCombat?: boolean;
+    /**
      * The Other Empires page's "Gameplay changes: Coordinated landings" checkbox (scenarios/coordinated-landings; addons.ts
      * coordinatedLandingsChoice). Absent = follows Smarter AI (on when it is on); an explicit true / false wins.
      */

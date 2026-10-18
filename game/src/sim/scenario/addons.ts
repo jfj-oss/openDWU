@@ -79,6 +79,7 @@ export const ADDON_STATUS: Readonly<Record<string, string>> = {
     mothballing: 'new',
     'slow-hyperdrive': 'new',
     veterans: 'new',
+    'bvr-combat': 'new',
     'coordinated-landings': 'new',
     'war-crimes': 'recommended',
     'timebomb': 'lightly tested; the AI rarely uses it',
@@ -147,6 +148,7 @@ const GROUP_OF: Readonly<Record<string, AddonGroup>> = {
     mothballing: 'Other',
     'slow-hyperdrive': 'Other',
     veterans: 'Other',
+    'bvr-combat': 'Other',
     'coordinated-landings': 'Other',
     slavery: 'Economy & factions',
     exchange: 'Economy & factions',
@@ -167,13 +169,13 @@ const GROUP_OF: Readonly<Record<string, AddonGroup>> = {
 // big-galaxies: its extended palette is now automatic in the base game (empireColors.ts); old saves with the add-on still load.
 // resource-crises: withdrawn from the picker (its per-luxury approval loss stacked to absurd values); saves that use it still load.
 // colony-defence: withdrawn from the picker (the user wants the original's pirate control); saves that use it still load.
-export const HIDDEN_ADDONS: ReadonlySet<string> = new Set(['threat-framework', 'example', 'ai-parity', 'soak-15y', 'resource-crises', 'colony-defence', 'big-galaxies', 'galactic-council', 'themed-names', 'event-log', 'fighting-retreats', 'coordinated-landings']);
+export const HIDDEN_ADDONS: ReadonlySet<string> = new Set(['threat-framework', 'example', 'ai-parity', 'soak-15y', 'resource-crises', 'colony-defence', 'big-galaxies', 'galactic-council', 'themed-names', 'event-log', 'fighting-retreats', 'coordinated-landings', 'bvr-combat']);
 
 /**
  * Add-ons set on another wizard page (not listed on the Scenario page, but named in the summaries like any other):
  * Smarter AI and Orbital superiority live on the Other Empires page (withSmarterAI / withOrbitalSuperiority below).
  */
-export const ELSEWHERE_ADDONS: ReadonlySet<string> = new Set(['smarter-ai', 'orbital-superiority', 'longer-ground-combat', 'jump-interdiction', 'blockades-bite', 'mothballing', 'slow-hyperdrive', 'fighting-retreats', 'veterans', 'coordinated-landings']);
+export const ELSEWHERE_ADDONS: ReadonlySet<string> = new Set(['smarter-ai', 'orbital-superiority', 'longer-ground-combat', 'jump-interdiction', 'blockades-bite', 'mothballing', 'slow-hyperdrive', 'fighting-retreats', 'veterans', 'coordinated-landings', 'bvr-combat']);
 
 /** openDWU Classic: add-ons every game starts with (treated as base game: no picker). Smarter AI stays the Other Empires page's toggle. */
 export const CLASSIC_BASE_ADDONS: readonly string[] = ['themed-names', 'event-log'];
@@ -321,6 +323,14 @@ export const VETERANS_ADDON_ID = 'veterans';
 /** The picks with the Other Empires page's Veterans checkbox folded in (StartGameOptions.veterans). Pure. */
 export function withVeterans(picked: readonly string[], overrides: AddonOverrides, on: boolean | null | undefined): { picked: string[]; overrides: AddonOverrides } {
     return withToggleAddon(picked, overrides, VETERANS_ADDON_ID, 'veterans', on);
+}
+
+/** The BVR combat gameplay change (scenarios/bvr-combat; also under "Gameplay changes"). */
+export const BVR_COMBAT_ADDON_ID = 'bvr-combat';
+
+/** The picks with the Other Empires page's BVR combat checkbox folded in (StartGameOptions.bvrCombat). Pure. */
+export function withBvrCombat(picked: readonly string[], overrides: AddonOverrides, on: boolean | null | undefined): { picked: string[]; overrides: AddonOverrides } {
+    return withToggleAddon(picked, overrides, BVR_COMBAT_ADDON_ID, 'bvrCombat', on);
 }
 
 /** The Coordinated landings gameplay change (scenarios/coordinated-landings; also under "Gameplay changes"). */

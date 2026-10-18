@@ -1140,8 +1140,9 @@ export function projectForceStructure(galaxy: Galaxy, empire: Empire, ctx: Force
             val2 = 0.0;
         }
     }
-    const num26 = 1.0;
+    const num26 = galaxy.scenario !== null ? scenarioQuery(galaxy, 'forceStructureEscorts', 1.0, { empire }) : 1.0; // mod layer (BVR combat AI): more point-defence escorts
     const num27 = 1.0;
+    if (galaxy.scenario !== null) val2 = scenarioQuery(galaxy, 'forceStructureResupply', val2, { empire }); // mod layer (BVR combat AI): more rearm points
     if (val2 > 0.0) projections.add(new ForceStructureProjection(BuiltObjectSubRole.ResupplyShip, csToInt32(val2), currentStarDate));
     let num28 = csToInt32(num17 * num26);
     if (num28 > 0) projections.add(new ForceStructureProjection(BuiltObjectSubRole.Escort, num28, currentStarDate));

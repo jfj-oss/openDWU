@@ -14,6 +14,7 @@
 //   Weapon.cs 181 IsAvailableWithoutEnergyConsideration (a pure predicate; Weapon.Fire itself is M4o).
 // Galaxy.Rnd: none in this file.
 
+import { bvrEngagement } from '../scenario/bvr/bvrTactics';
 import { isAiControlled } from '../missions/playerOrder';
 import { scenarioEmit, scenarioQuery } from '../scenario/hooks';
 import type { Galaxy } from '../galaxy';
@@ -634,7 +635,7 @@ export function setOptimalAttackRanges(galaxy: Galaxy, bo: BuiltObject, target: 
     if (target === null) {
         return;
     }
-    const battleTactics = determineTacticsAgainstTarget(bo, target);
+    let battleTactics = determineTacticsAgainstTarget(bo, target);
     let flag = false;
     if ((actionType === CommandAction.Capture || actionType === CommandAction.Raid) && bo.assaultStrength > 0) {
         if (isBuiltObject(target)) {
@@ -647,8 +648,15 @@ export function setOptimalAttackRanges(galaxy: Galaxy, bo: BuiltObject, target: 
             }
         }
     }
+    // Mod layer (BVR combat AI): kite with missiles loaded / rush when out-ranged and dry / fight with guns when the standoff weapons are empty
+    // (scenario/bvr/bvrTactics.ts); null = the design's tactic and band.
+    const bvr = !flag && galaxy.scenario !== null ? bvrEngagement(galaxy, bo, target, battleTactics) : null;
+    if (bvr !== null) battleTactics = bvr.tactic;
     if (flag) {
         setOptimalAttackRangesBoarding(bo);
+    } else if (bvr !== null && bvr.band !== null) {
+        bo.optimalMinimumAttackRange = bvr.band.min;
+        bo.optimalMaximumAttackRange = bvr.band.max;
     } else {
         switch (battleTactics) {
             case BattleTactics.Evade: {

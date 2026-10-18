@@ -7,6 +7,7 @@
 //   Galaxy.5.cs 160 DetermineMaximumConstructionSizeForYard → ResearchNodeList.cs 458 CheckAncestorsForAbility
 // plus the .NET number formats they use. Pure reads of the sim (no state changes).
 
+import { bvrOn, bvrParam, isBvrMissile } from '../../sim/scenario/bvr/bvr';
 import type { Empire } from '../../sim/empire';
 import type { Galaxy } from '../../sim/galaxy';
 import { ComponentType } from '../../sim/data/components';
@@ -206,6 +207,24 @@ export function determineMaximumConstructionSizeForYard(node: TechNode | null): 
 const secs = (): string => gt('seconds abbreviation');
 const per100 = (v: number): string => gt('X per 100 distance', String(v));
 
+/**
+ * Not in the original (BVR combat): rewrites the torpedo / missile lines of the detail column after weaponBlock + bombard: the
+ * Damage Loss line goes (BVR rounds keep their damage), the Magazine and one note line follow the fire rate; the Bombard Damage line
+ * stays only when the weapon bombards (`keepBombard`).
+ */
+function bvrMagazineLines(d: (string | null)[], v: (string | null)[], keepBombard: boolean, magazine: string, rounds: string, note: string): void {
+    const bombardD = d[6];
+    const bombardV = v[6];
+    d[4] = d[5];
+    v[4] = v[5];
+    d[5] = magazine;
+    v[5] = rounds;
+    d[6] = keepBombard ? bombardD : note;
+    v[6] = keepBombard ? bombardV : null;
+    d[7] = keepBombard ? note : null;
+    v[7] = null;
+}
+
 /** Port of BaconGalaxy.cs 427 ResolveComponentDescriptionDetailed (8 lines). */
 export function resolveComponentDescriptionDetailed(galaxy: Galaxy | null, component: ComponentDefinition, imp: ImprovementValues, project: TechNode | null): BenefitColumn {
     const d: (string | null)[] = new Array(8).fill(null);
@@ -258,6 +277,10 @@ export function resolveComponentDescriptionDetailed(galaxy: Galaxy | null, compo
             weaponBlock();
             d[6] = gt('Bombard Damage');
             v[6] = formatM(imp.value7 * 1000000.0);
+            // Not in the original (BVR combat): torpedoes carry a limited magazine, keep their damage over the flight and can be shot down.
+            if (component.type === ComponentType.WeaponTorpedo && galaxy !== null && galaxy.scenario !== null && bvrOn(galaxy)) {
+                bvrMagazineLines(d, v, imp.value7 > 0, gt('Magazine'), `${bvrParam(galaxy, 'bvrTorpedoRounds')} torpedoes`, gt('Close range and slow; point defence and guns can shoot it down'));
+            }
             break;
         case ComponentType.WeaponMissile:
         case ComponentType.WeaponSuperMissile:
@@ -265,6 +288,10 @@ export function resolveComponentDescriptionDetailed(galaxy: Galaxy | null, compo
             d[6] = gt('Bombard Damage');
             v[6] = formatM(imp.value7 * 1000000.0);
             d[7] = gt('Missiles are X less effective against armor', '50%');
+            // Not in the original (BVR combat): a BVR launcher carries a limited magazine, needs a sensor lock and ignores the armour penalty.
+            if (galaxy !== null && galaxy.scenario !== null && bvrOn(galaxy) && isBvrMissile(component)) {
+                bvrMagazineLines(d, v, false, gt('Magazine'), `${bvrParam(galaxy, 'bvrMissileRounds')} missiles`, gt('Fired only at targets your sensors track; seeks well, can be shot down'));
+            }
             break;
         case ComponentType.WeaponPointDefense:
             specialBlock('Close-in weapons system that fires deadly bursts at enemy fighters, disabling or destroying them', 'Damage', 'Damage Loss');

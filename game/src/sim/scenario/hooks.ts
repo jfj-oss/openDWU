@@ -766,6 +766,10 @@ export interface ScenarioQueries {
      * `threat` is the final multiplier. Smarter AI defence (a per-colony floor). Never draws.
      */
     forceStructureWarships: { value: number; args: { empire: Empire; threat: number } };
+    /** forceStructure.ts: the multiplier of the escort target (stock 1.0). BVR combat AI: more point-defence escorts. */
+    forceStructureEscorts: { value: number; args: { empire: Empire } };
+    /** forceStructure.ts: the resupply ship target (stock value in, count out). BVR combat AI: more rearm points. */
+    forceStructureResupply: { value: number; args: { empire: Empire } };
     /** stationPlacement.ts determineResearchStationLocation (Empire.5.cs 3580), end: the sorted research-bonus build locations. Smarter AI. No Rnd. */
     researchStationLocations: { value: Habitat[]; args: { empire: Empire } };
     /** stationPlacement.ts analyzeNewResearchFacilities (Empire.5.cs 3495), end: the research station to build next (null = none). Smarter AI. No Rnd. */

@@ -40,6 +40,7 @@ import { applyCorruptionToIncome, cargoEmpireId, cargoGetCargoById, cargoIndexOf
 import { builtObjectContracts, type Contract } from '../logistics/contracts';
 import { checkClearDocking, checkMissionStillValid, dockingBayIndexOfShip, removeFirst } from '../logistics/docking';
 import { REFUEL_RATE, checkCancelRefuelData, checkForNegativeRefueling, getCargoIndex, purchasePrivateFuel, purchaseStateFuel } from '../logistics/refuel';
+import { bvrHoldDockedForRearm } from '../scenario/bvr/bvr';
 import { cmdLoadTroops } from '../combat/troopsRuntime';
 import { processTourists } from '../civilianAI';
 import { checkCancelContracts, clearPreviousMissionRequirements, assignMission } from './assign';
@@ -851,6 +852,8 @@ export const cmdRefuel: CommandHandler = (ctx) => {
     const { galaxy, bo, mission, timePassed, starDate } = ctx;
     let result = 0.0;
     const dockedAt = bo.dockedAt;
+    // Mod layer (BVR combat): a docked ship short of missiles / torpedoes stays on the order until its rounds are loaded.
+    const bvrHold = dockedAt !== null && galaxy.scenario !== null && bvrHoldDockedForRearm(galaxy, bo, dockedAt);
     if (dockedAt !== null) {
         if (dockedAt.isRefuellingDepot) {
             let num31 = -1;
@@ -929,20 +932,28 @@ export const cmdRefuel: CommandHandler = (ctx) => {
                         bo.reDefine();
                         bo._fuelHandicapped = false;
                     }
-                    mission.completeCommand();
-                    bo.firstExecutionOfCommand = true;
+                    if (bvrHold) {
+                        result = 0.0;
+                    } else {
+                        mission.completeCommand();
+                        bo.firstExecutionOfCommand = true;
+                    }
                 }
             } else {
                 checkCancelRefuelData(galaxy, bo);
-                mission.completeCommand();
-                bo.firstExecutionOfCommand = true;
-                result = timePassed;
+                if (!bvrHold) {
+                    mission.completeCommand();
+                    bo.firstExecutionOfCommand = true;
+                    result = timePassed;
+                }
             }
         } else {
             checkCancelRefuelData(galaxy, bo);
-            mission.completeCommand(true);
-            bo.firstExecutionOfCommand = true;
-            result = timePassed;
+            if (!bvrHold) {
+                mission.completeCommand(true);
+                bo.firstExecutionOfCommand = true;
+                result = timePassed;
+            }
         }
     } else {
         checkCancelRefuelData(galaxy, bo);

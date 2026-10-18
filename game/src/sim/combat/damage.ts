@@ -80,6 +80,7 @@ import { baconSettings } from '../data/baconSettings';
 import { scenarioEmit, scenarioQuery } from '../scenario/hooks';
 import { humanEmpires, isHumanEmpire } from '../humanEmpires';
 import { noteBuiltObjectEffect } from './effectWatch';
+import { isBvrMissile } from '../scenario/bvr/bvr';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (Galaxy.3.cs SetDefaults)
@@ -1143,6 +1144,9 @@ export function inflictDamageFull(
                     if (weapon !== null && weapon.component !== null) {
                         switch (weapon.component.type) {
                             case ComponentType.WeaponMissile:
+                                // Mod layer (BVR combat): the BVR launchers' missiles are not halved by armour (their damage is tuned to kill in four hits).
+                                if (isBvrMissile(weapon.component)) break;
+                            // falls through
                             case ComponentType.WeaponRailGun:
                             case ComponentType.WeaponSuperMissile:
                             case ComponentType.WeaponSuperRailGun:

@@ -19,6 +19,8 @@
 // determineThreatLevelFighter; fighters reach BuiltObject.Attackers, so ShouldFleeFrom can return one (the
 // `stellarObject is Fighter` carrier redirects, escapeTargetForFleeFrom).
 
+import { bvrOn } from '../scenario/bvr/bvr';
+import { bvrWeaponShare } from '../scenario/bvr/bvrTactics';
 import { orbitalLandingBlocked } from '../scenario/orbital/orbitalSuperiority';
 import { orbitalGuardBase } from './orbitalGuard';
 import { isAiControlled } from '../missions/playerOrder';
@@ -164,10 +166,12 @@ export function calculateShieldStrengthFactor(bo: BuiltObject): number {
 export function calculateFirepowerFactor(bo: BuiltObject): number {
     let num = 0;
     if (bo.weapons !== null) {
+        const bvr = bo._galaxy.scenario !== null && bvrOn(bo._galaxy); // mod layer (BVR combat): a limited launcher counts by its loaded share
         for (let i = 0; i < bo.weapons.length; i++) {
             const weapon = bo.weapons[i];
             if (weapon != null) {
-                num = Math.fround(num + Math.fround(Math.fround(weapon.rawDamage) / Math.fround(Math.fround(weapon.fireRate) / 1000)));
+                const dps = Math.fround(Math.fround(weapon.rawDamage) / Math.fround(Math.fround(weapon.fireRate) / 1000));
+                num = Math.fround(num + (bvr ? Math.fround(dps * bvrWeaponShare(bo._galaxy, bo, weapon)) : dps));
             }
         }
     }
