@@ -121,6 +121,8 @@ Independent worlds in three far-apart regions band together as the Founders' Com
 
 **The Ark Engine.** A planet-sized machine ship that roams from empire to empire. At each it picks one colony that used to be independent, parks beside it and takes that colony's original people home in a stream of free passenger ships. The people keep growing aboard. Its owner may let them go (the Compact's favour and a trade deal) or refuse; shooting down the passenger ships costs standing. Attack the Ark and it fights back; break its 30,000 shields and it flees to an empty system for a year to mend.
 
+**The Beacon's harvest.** Finished, the Beacon calls the Reclaimers, who take worlds and carry their people in huge cattle ships to a few harvest cores, where they are rendered into the fuel that pays for their troops and fleets. Intercept the cattle ships (their captives die), destroy a core's harvester or retake the core (its pens go free) to starve them. The game is lost when they have eliminated 80% of the galaxy's people.
+
 **The Diet.** Destroying the work before it is finished is a war crime unless the Diet authorises demolition. The Diet can also send inspectors, protect the work or internationalise a finished wonder.
 
 

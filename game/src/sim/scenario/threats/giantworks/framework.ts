@@ -27,7 +27,7 @@ import { addCrisisEntry, registerCrisisHelpers, type CrisisEntry } from '../cris
 import { angerYearly, greatWorkProtectors, protectStep, registerActionEvents, resolveBaseLoss } from './actions';
 import { aiStep } from './ai';
 import './diet';
-import { seedGreatWorks, seedNow } from './founders';
+import { kindTaken, seedGreatWorks, seedNow } from './founders';
 import { startBuilding, stepWork } from './lifecycle';
 import { greatWorkKinds, registerGreatWork as registerKind, unregisterGreatWork as unregisterKind } from './registry';
 import { GW_FLAG, GW_KEY, gwState, greatWorks, isCompact, peekGwState, PERIOD_DAYS } from './state';
@@ -55,7 +55,7 @@ export function registerGreatWork(kind: GreatWorkKind): void {
         label: `Great Work: ${kind.id}`,
         group: 'galactic',
         addons: [GW_KEY],
-        note: spawnNote,
+        note: (g) => spawnNote(g) ?? (kindTaken(g, kind.id) ? 'Already under way (one per galaxy)' : null),
         spawn: (g) => spawnGreatWork(g, kind.id),
     });
 }

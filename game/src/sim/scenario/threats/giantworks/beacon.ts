@@ -30,7 +30,9 @@ import { generateDesignFromSpec } from '../../../designGeneration';
 import { galaxyDesignSpecificationBySubRole } from '../../../gameStartTail';
 import { builtObjectCompleteTeardown } from '../../../combat/teardown';
 import { calculateOverallStrengthFactorWithoutShields } from '../../../diplomacyTick';
-import { assignMission } from '../../../missions/assign';
+import { assignMission, clearPreviousMissionRequirements } from '../../../missions/assign';
+import { forceCompleteMission } from '../../../fleets/shipGroupTasks';
+import { empireShipGroups } from '../../../fleets/shipGroup';
 import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission } from '../../../missions/mission';
 import { isHumanEmpire } from '../../../humanEmpires';
 import { GameEndOutcome } from '../../../victory';
@@ -67,6 +69,7 @@ import {
     BEACON_KIND,
     P,
     activeCorruption,
+    cloakLapsedFor,
     beaconRandom,
     beaconState,
     galaxyPopulation,
@@ -95,7 +98,10 @@ import {
     spawnShip,
     syncReclaimerTech,
 } from './beaconFleet';
+import { registerBeaconAi } from './beaconAi';
 import { counterIntelligencePass, counterMonthly, onBoarded, onKilledForSalvage, registerCounterplay, resistanceFactor } from './beaconCounter';
+import { beaconArtInfo, cattleOf, initHarvest, liveCores, registerHarvest, releaseCaptives, rescueCattle } from './beaconHarvest';
+import type { BeaconArtInfo } from './beaconState';
 
 declare module '../../../builtObject' {
     interface BuiltObject {
@@ -220,13 +226,7 @@ function arrived(galaxy: Galaxy, bo: BuiltObject, x: number, y: number, within =
     return galaxy.calculateDistance(bo.xpos, bo.ypos, x, y) <= within;
 }
 
-/** True when the cloak does not hide `bo` from `empire` right now. Pure. */
-export function cloakLapsedFor(bo: BuiltObject, empire: Empire, now: number): boolean {
-    if (bo.cloaked !== true) return true;
-    if (bo.cloakSeenBy === undefined) return false;
-    for (const s of bo.cloakSeenBy) if (s.empireId === empire.empireId && s.until > now) return true;
-    return false;
-}
+export { cloakLapsedFor };
 
 /** Ships and bases of `empire` within `range` of (x, y): the nearest distance, Infinity when none. */
 function nearestOwnUnit(galaxy: Galaxy, empire: Empire, x: number, y: number): number {
@@ -246,6 +246,28 @@ function nearestOwnUnit(galaxy: Galaxy, empire: Empire, x: number, y: number): n
 }
 
 /**
+ * The Watcher slipped out of sight (it cloaked, or the spotter's 20 days lapsed): the empires that had ships ordered at it lose
+ * track. Missions that name it (Attack and the like, set while it was visible) are cleared, as they would be for a ship that
+ * jumped away; the ships and fleets go back to the stock AI. `only`: just those empires.
+ */
+function loseTrack(galaxy: Galaxy, faction: Empire, ship: BuiltObject, only: readonly Empire[] | null): void {
+    for (const e of galaxy.empires) {
+        if (e === null || e === faction || e === galaxy.independentEmpire || (only !== null && !only.includes(e))) continue;
+        for (const sg of empireShipGroups(e)) {
+            if (sg !== null && sg.mission !== null && sg.mission.targetBuiltObject === ship) forceCompleteMission(galaxy, sg);
+        }
+        for (const b of e.builtObjects) {
+            if (b.hasBeenDestroyed) continue;
+            const m = builtObjectMission(b.mission);
+            if (m !== null && m.type !== BuiltObjectMissionType.Undefined && m.targetBuiltObject === ship) {
+                clearPreviousMissionRequirements(galaxy, b);
+                m.clear();
+            }
+        }
+    }
+}
+
+/**
  * Every 2 days: an empire with a ship, base or colony close to a cloaked Watcher may spot it (beaconDetectPct per check); the
  * cloak then lapses for that empire for beaconDetectSeenDays, and its knowledge of the Watchers rises (1 rumour, 2 suspected
  * after a second sighting, 3 confirmed once it was seen uncloaked).
@@ -254,7 +276,12 @@ function detectCloaked(galaxy: Galaxy, st: BeaconState, w: WatcherRec): void {
     const ship = w.ship;
     if (ship === null || ship.hasBeenDestroyed || ship.cloaked !== true) return;
     const now = galaxyStarDate(galaxy);
-    ship.cloakSeenBy = (ship.cloakSeenBy ?? []).filter((s) => s.until > now);
+    const before = ship.cloakSeenBy ?? [];
+    ship.cloakSeenBy = before.filter((s) => s.until > now);
+    if (ship.cloakSeenBy.length < before.length && st.faction !== null) {
+        const lapsed = before.filter((s) => s.until <= now).map((s) => galaxy.empires.find((x) => x !== null && x.empireId === s.empireId)).filter((x): x is Empire => x !== undefined && x !== null);
+        loseTrack(galaxy, st.faction, ship, lapsed);
+    }
     const rnd = beaconRandom(galaxy, st, 61 + w.index);
     for (const e of normalEmpires(galaxy, st.faction)) {
         if (ship.cloakSeenBy.some((s) => s.empireId === e.empireId)) continue;
@@ -341,6 +368,7 @@ function setMode(w: WatcherRec, mode: WatcherRec['mode'], now: number): void {
 
 function goHome(galaxy: Galaxy, st: BeaconState, w: WatcherRec, now: number): void {
     const ship = w.ship!;
+    if (ship.cloaked !== true && st.faction !== null) loseTrack(galaxy, st.faction, ship, null);
     ship.cloaked = true;
     w.target = null;
     setMode(w, 'return', now);
@@ -384,6 +412,21 @@ function driveWatcher(galaxy: Galaxy, st: BeaconState, w: WatcherRec, sightingOp
         return false;
     }
     if (w.mode === 'parked' || w.mode === 'return') {
+        // A return that has not ended in 150 days (a home point the ship cannot reach: it was seen sailing for 600 days a few million units short) is given a
+        // new one close by, away from the galaxy's heart; nothing of the Watchers is ever left in limbo.
+        if (w.mode === 'return' && now - w.modeDate > days(150)) {
+            const cx = galaxy.sizeX / 2;
+            const cy = galaxy.sizeY / 2;
+            let dx = ship.xpos - cx;
+            let dy = ship.ypos - cy;
+            const len = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+            dx /= len;
+            dy /= len;
+            w.homeX = Math.min(galaxy.sizeX - 1000, Math.max(1000, ship.xpos + dx * 400000));
+            w.homeY = Math.min(galaxy.sizeY - 1000, Math.max(1000, ship.ypos + dy * 400000));
+            w.modeDate = now;
+            st.stats.watcherRehomed = (st.stats.watcherRehomed ?? 0) + 1;
+        }
         if (w.mode === 'return' && arrived(galaxy, ship, w.homeX, w.homeY)) setMode(w, 'parked', now);
         else if (w.mode === 'return') sendTo(galaxy, ship, w.homeX, w.homeY);
         if (w.mode === 'parked' && !arrived(galaxy, ship, w.homeX, w.homeY, 40000)) sendTo(galaxy, ship, w.homeX, w.homeY);
@@ -480,7 +523,13 @@ export function watchersPeriodic(galaxy: Galaxy): void {
     }
     // a Watcher that no longer exists is dead
     for (const w of st.watchers) {
-        if (!w.dead && (w.ship === null || w.ship.hasBeenDestroyed)) markDead(galaxy, st, w, null);
+        if (w.dead) continue;
+        if (w.ship === null || w.ship.hasBeenDestroyed) markDead(galaxy, st, w, null);
+        else if (w.ship.actualEmpire !== st.faction) {
+            // boarded and taken: the faction has lost it; for its new owner it is an ordinary (visible) ship
+            w.ship.cloaked = false;
+            markDead(galaxy, st, w, w.ship.actualEmpire);
+        }
     }
     let sightingBusy = st.watchers.some((x) => !x.dead && (x.until === -1 || x.mode === 'sighting'));
     for (const w of st.watchers) {
@@ -594,6 +643,7 @@ export function beaconComplete(galaxy: Galaxy, site: GreatWorkSite): void {
     syncReclaimerTech(galaxy, faction, reclaimerLevel(galaxy, faction, 1), true);
     setupBeacon(galaxy, st, site, faction, pos);
     st.popBaseline = galaxyPopulation(galaxy, faction);
+    initHarvest(galaxy, st);
     for (const e of normalEmpires(galaxy, faction)) lockWar(galaxy, faction, e);
     st.nextOfferDate = now + days(P.offerFirstDays(galaxy));
     arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Awakens', textTag: `${TAG} Awakens News`, args: [site.system.systemStar.name] });
@@ -679,7 +729,9 @@ export function beaconEndCheck(galaxy: Galaxy): void {
     st.ended = true;
     st.phase = 'ended';
     arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Victory', textTag: `${TAG} Victory News` });
-    // leftover ships fall silent
+    // the captives still on cattle ships go home; leftover ships fall silent
+    for (const c of cattleOf(st)) if (!c.ship.hasBeenDestroyed) releaseCaptives(galaxy, st, c.load, c.ship, null, null);
+    st.cattle = [];
     for (const b of [...st.faction.builtObjects]) if (!b.hasBeenDestroyed) builtObjectCompleteTeardown(galaxy, b);
     const player = galaxy.playerEmpire;
     threatGameEnd(galaxy, player, GameEndOutcome.Victory, T(`${TAG} Victory Title`), BEACON_CODE_VICTORY, true);
@@ -715,14 +767,19 @@ export function beaconKnownSites(galaxy: Galaxy, empire: Empire): KnownThreatSit
             out.push({ threat: BEACON_KEY, kind: 'ship', target: ship, level: KNOWLEDGE_CONFIRMED, site: sp, label: T(`${TAG} Staging Row`, sp.name), status: T(`${TAG} Staging Status`, st.season.groups.filter((g) => g.staging === sp.index).reduce((n, g) => n + g.ships.length + g.transports.length, 0)) });
         }
     }
+    const cores = liveCores(st);
+    for (const c of cores) {
+        out.push({ threat: BEACON_KEY, kind: 'colony', target: c.colony, level: KNOWLEDGE_CONFIRMED, label: T(`${TAG} Core Row`, c.colony.name), status: T(`${TAG} Core Status`, Math.round(c.waiting / 1e6).toLocaleString('en-US'), Math.round(c.processed / 1e6).toLocaleString('en-US')) });
+    }
     for (const r of processingWorlds(st)) {
-        if (r.colony.empire !== st.faction) continue;
-        out.push({ threat: BEACON_KEY, kind: 'colony', target: r.colony, level: KNOWLEDGE_CONFIRMED, label: T(`${TAG} World Row`, r.colony.name), status: T(`${TAG} World Status`, Math.round((100 * r.drained) / Math.max(1, r.popStart)), Math.round(r.pool).toLocaleString('en-US')) });
+        if (r.colony.empire !== st.faction || cores.some((c) => c.colony === r.colony)) continue;
+        out.push({ threat: BEACON_KEY, kind: 'colony', target: r.colony, level: KNOWLEDGE_CONFIRMED, label: T(`${TAG} World Row`, r.colony.name), status: T(`${TAG} World Status`, Math.round((100 * r.drained) / Math.max(1, r.popStart))) });
     }
     return out;
 }
 
 const MARKER_COLOR = 0x8a2be2;
+const CORE_COLOR = 0xc0203a;
 
 /** Map: the staging points (those the viewer knows) and the Beacon, as the default ring marker. */
 export function beaconMapFeatures(galaxy: Galaxy, viewer: Empire | null): ScenarioMapFeatures | null {
@@ -731,6 +788,7 @@ export function beaconMapFeatures(galaxy: Galaxy, viewer: Empire | null): Scenar
     const markers: ScenarioMapFeatures['markers'] = [];
     if (st.beacon !== null && !st.beacon.hasBeenDestroyed) markers.push({ x: st.beacon.xpos, y: st.beacon.ypos, label: '', color: MARKER_COLOR });
     if (st.season !== null && st.season.phase === 'prep') for (const sp of st.season.staging) if (knowledgeLevel(sp, viewer) >= KNOWLEDGE_CONFIRMED) markers.push({ x: sp.x, y: sp.y, label: sp.name, color: MARKER_COLOR });
+    for (const c of liveCores(st)) markers.push({ x: c.colony.xpos, y: c.colony.ypos, label: T(`${TAG} Core Marker`), color: CORE_COLOR });
     return markers.length === 0 ? null : { markers, routes: [] };
 }
 
@@ -738,7 +796,8 @@ export function beaconMapFeatures(galaxy: Galaxy, viewer: Empire | null): Scenar
 // What the art needs (render only): faction identification and roles
 // ---------------------------------------------------------------------------------------------------------------
 
-export type BeaconShipRole = 'watcher' | 'beacon' | 'capital' | 'cruiser' | 'destroyer' | 'frigate' | 'carrier' | 'transport' | 'planetDestroyer' | 'other';
+/** Art keys: 'cattle' is a cattle ship (a huge rectangular freighter, beaconHarvest.ts cattleDesign), 'harvester' a core's processing base. */
+export type BeaconShipRole = 'watcher' | 'beacon' | 'capital' | 'cruiser' | 'destroyer' | 'frigate' | 'carrier' | 'transport' | 'planetDestroyer' | 'cattle' | 'harvester' | 'other';
 
 export interface BeaconLooks {
     /** The machine faction ("the Watchers" / "the Reclaimers"), or null. Its ships, bases and the Beacon wear the new art. */
@@ -747,9 +806,14 @@ export interface BeaconLooks {
     beacon: BuiltObject | null;
     /** Transports that carry Thralls (to draw the Thrall marker). */
     thrallShips: BuiltObject[];
+    /** Cattle ships in flight (art key 'cattle') and the live harvesters over the cores (art key 'harvester'). */
+    cattleShips: BuiltObject[];
+    harvesters: BuiltObject[];
+    /** The season's phase, its dates, the launch moment, the station's damage (beaconArtInfo; null before the state exists). */
+    art: BeaconArtInfo | null;
 }
 
-const lookRecord: BeaconLooks = { faction: null, watchers: [], beacon: null, thrallShips: [] };
+const lookRecord: BeaconLooks = { faction: null, watchers: [], beacon: null, thrallShips: [], cattleShips: [], harvesters: [], art: null };
 
 /** Read only (never creates state): who is who for the renderer. A shared record, refreshed in place. */
 export function beaconLooks(galaxy: Galaxy): BeaconLooks {
@@ -757,8 +821,14 @@ export function beaconLooks(galaxy: Galaxy): BeaconLooks {
     lookRecord.watchers = [];
     lookRecord.beacon = null;
     lookRecord.thrallShips = [];
+    lookRecord.cattleShips = [];
+    lookRecord.harvesters = [];
+    lookRecord.art = null;
     const st = peekBeaconState(galaxy);
     if (st === null) return lookRecord;
+    lookRecord.cattleShips = cattleOf(st).map((c) => c.ship).filter((b) => !b.hasBeenDestroyed);
+    lookRecord.harvesters = liveCores(st).map((c) => c.harvester).filter((b): b is BuiltObject => b !== null && !b.hasBeenDestroyed);
+    lookRecord.art = beaconArtInfo(galaxy, st);
     lookRecord.faction = st.faction;
     lookRecord.watchers = watcherShips(st);
     lookRecord.beacon = st.beacon;
@@ -772,6 +842,8 @@ export function beaconShipRole(st: BeaconState, bo: BuiltObject): BeaconShipRole
     if (bo === st.beacon) return 'beacon';
     if (st.watchers.some((w) => w.ship === bo)) return 'watcher';
     if (bo.isPlanetDestroyer) return 'planetDestroyer';
+    if ((st.cattle ?? []).some((c) => c.ship === bo)) return 'cattle';
+    if ((st.cores ?? []).some((c) => c.harvester === bo)) return 'harvester';
     switch (bo.subRole) {
         case BuiltObjectSubRole.CapitalShip:
             return 'capital';
@@ -808,7 +880,7 @@ export const beaconKind: GreatWorkKind = {
     onDestroyed: beaconDestroyedEarly,
 };
 
-export const BEACON_HANDLER_IDS = ['beacon.watchers', 'beacon.reclaim', 'beacon.monthly', 'beacon.attacked', 'beacon.killed', 'beacon.owner', 'beacon.destroyed', 'beacon.boarded', 'beacon.repair', 'beacon.troops', 'beacon.counter'] as const;
+export const BEACON_HANDLER_IDS = ['beacon.watchers', 'beacon.reclaim', 'beacon.monthly', 'beacon.attacked', 'beacon.killed', 'beacon.owner', 'beacon.destroyed', 'beacon.boarded', 'beacon.repair', 'beacon.troops', 'beacon.counter', 'beacon.ai', 'beacon.cloakTarget', 'beacon.cloakSpares', 'beacon.cattleSpool'] as const;
 
 export function registerBeacon(): void {
     registerGreatWork(beaconKind);
@@ -855,10 +927,57 @@ export function registerBeacon(): void {
             if (st !== null) fleetOnHabitatDestroyed(g, st, e.habitat, e.destroyer);
         },
     });
-    registerScenarioEvent({ id: 'beacon.boarded', flag: BEACON_FLAG, event: 'builtObjectOwnerChanged', run: (g, e) => onBoarded(g, e.builtObject, e.from, e.to) });
+    registerScenarioEvent({
+        id: 'beacon.boarded',
+        flag: BEACON_FLAG,
+        event: 'builtObjectOwnerChanged',
+        run: (g, e) => {
+            onBoarded(g, e.builtObject, e.from, e.to);
+            // a cattle ship boarded and taken: its captives are rescued (rescueCattle: the hook a shared capture feature calls)
+            const st = peekBeaconState(g);
+            if (st === null || st.faction === null || e.from !== st.faction || e.to === st.faction) return;
+            rescueCattle(g, st, e.builtObject, e.to);
+            // a Watcher taken (boarded, or by a story faction): lost to the faction at once (the 2-day pass may run a long block later)
+            const w = watcherOf(st, e.builtObject);
+            if (w !== undefined && !w.dead) {
+                e.builtObject.cloaked = false;
+                markDead(g, st, w, e.to);
+            }
+        },
+    });
     // Machines mend themselves in the field (the stock AI would send a damaged warship home to a port the Reclaimers do not have).
     registerScenarioQuery({ id: 'beacon.repair', flag: BEACON_FLAG, query: 'repairRateFactor', run: (g, v, a) => (peekBeaconState(g)?.faction === a.builtObject.actualEmpire ? v * 4 : v) });
     registerScenarioQuery({ id: 'beacon.troops', flag: BEACON_FLAG, query: 'troopMaintenanceFactor', run: (g, v, a) => (peekBeaconState(g)?.faction === a.empire ? 0 : v) });
+    // The AI never targets a cloaked Watcher: no mission (of any empire but the faction's own) may name a ship whose cloak still hides it
+    // from the ship's empire. (The stock fog already keeps its AI from picking one; story factions that pick targets without the fog,
+    // such as the Ancient Guardians, are stopped here.)
+    registerScenarioQuery({
+        id: 'beacon.cloakTarget',
+        flag: BEACON_FLAG,
+        query: 'assignMissionAllowed',
+        run: (g, v, a) => {
+            if (!v) return v;
+            const t = a.target as { builtObjectID?: number; cloaked?: boolean } | null;
+            if (t === null || t === undefined || t.builtObjectID === undefined || t.cloaked !== true) return v;
+            const tb = t as unknown as BuiltObject;
+            const owner = a.builtObject.actualEmpire;
+            if (owner === null || owner === tb.actualEmpire) return v;
+            return cloakLapsedFor(tb, owner, galaxyStarDate(g));
+        },
+    });
+    // Nor does the stock combat shoot at (or board) a cloaked Watcher its empire cannot see: it is spared like a colony-system base,
+    // unless it fired first (builtObjectSparesStaticTarget, the probe swarm's hook).
+    registerScenarioQuery({
+        id: 'beacon.cloakSpares',
+        flag: BEACON_FLAG,
+        query: 'builtObjectSparesStaticTarget',
+        run: (g, v, a) => {
+            if (v) return v;
+            const t = a.target;
+            if (t.cloaked !== true || a.builtObject.empire === null || a.builtObject.empire === t.empire) return v;
+            return !cloakLapsedFor(t, a.builtObject.empire, galaxyStarDate(g));
+        },
+    });
     registerThreatKnownSites(BEACON_KEY, beaconKnownSites);
     // The Reclaimers are a crisis faction (opportunists, reputation, the council). The helpers are the empires that protected the Great Work
     // (the framework's rule) and the dealers whose bargain with the Reclaimers was found out.
@@ -874,11 +993,14 @@ export function registerBeacon(): void {
     });
     registerScenarioMapFeatures(BEACON_KEY, beaconMapFeatures);
     registerCounterplay();
+    registerBeaconAi();
+    registerHarvest();
 }
 
 registerBeacon();
 
 // Kept for the soak / tests.
+export { beaconArtInfo };
 export { corruptCandidates as beaconCorruptCandidates, defenceOf as beaconDefenceOf, lossCheck as beaconLossCheck, referenceMilitary as beaconReferenceMilitary };
 void calculateOverallStrengthFactorWithoutShields;
 void BEACON_CODE_VICTORY;

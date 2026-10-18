@@ -125,6 +125,11 @@ export interface Season {
     /** Star dates of each group's departure (all equal by construction; kept as the evidence). */
     departures: number[];
     plannedTravelDays: number;
+    /** When the preparation began (start is overwritten by each later phase) and the departure planned at its start (the art's launch countdown). */
+    prepStart?: number;
+    launchAt?: number;
+    /** What of the budget the season gets for nothing (the scripted share of the funding model); the rest is paid from the fleet biofuel. */
+    freeLeft?: number;
 }
 
 export interface ProcessRec {
@@ -137,6 +142,78 @@ export interface ProcessRec {
     done: boolean;
     /** The star date of the next convoy from this world. */
     nextConvoy: number;
+    /** The garrison was set to beaconGarrison after the landing's leftovers settled (absent in older saves). */
+    garrisoned?: boolean;
+}
+
+/** People of one race (by name: plain data) carried or penned. */
+export interface Captive {
+    race: string;
+    amount: number;
+}
+
+/**
+ * A harvest core (beaconHarvest.ts): one of the Reclaimers' conquered worlds where people are rendered into biofuel. The other held worlds
+ * send their people to the nearest core in cattle ships; they wait in its pens until processed. The harvester (a plated base orbiting it)
+ * does the work: destroying it breaks the core and frees the pens.
+ */
+export interface CoreRec {
+    colony: Habitat;
+    since: number;
+    harvester: BuiltObject | null;
+    /** People waiting in the pens, by race, and their sum. */
+    pens: Captive[];
+    waiting: number;
+    received: number;
+    processed: number;
+    /** The world's population when it was made a core (its own people are processed slowly too). */
+    popStart: number;
+    /** The harvester is built by this star date (beaconCoreBuildDays after the designation): the pens fill but nothing is processed before. */
+    readyDate?: number;
+    /** retaken: an empire took the world back; broken: its harvester was destroyed; lost: the world was destroyed or slipped away. */
+    ended: 'retaken' | 'broken' | 'lost' | null;
+    endDate: number;
+}
+
+/** A cattle ship in flight from a held world to its core with a slice of the world's people. */
+export interface CattleRec {
+    ship: BuiltObject;
+    from: Habitat;
+    core: Habitat;
+    load: Captive[];
+    total: number;
+    launched: number;
+}
+
+/** The biofuel accounts, in fleet strength (the season budget's measure): the fleet's and the troops' (a troop costs strength / beaconTroopsPerFuel). */
+export interface FuelRec {
+    fleet: number;
+    troops: number;
+    /** Totals since the Reclamation began: made, spent on warships, spent on troops, the awakening reserve. */
+    income: number;
+    spentShips: number;
+    spentTroops: number;
+    startGrant: number;
+    /** Monthly income, the last 24 months (newest last). */
+    monthly: number[];
+}
+
+/** What the Beacon's art reads (beaconArtInfo; refreshed in BeaconState.art every 5-day pass). Star dates are galaxyStarDate units. */
+export interface BeaconArtInfo {
+    /** dormant: the Great Work is not finished; awakening: finished, before the first season; prep / offensive / quiet: the season's phase; dead: the Beacon is destroyed or the arc is over. */
+    phase: 'dormant' | 'awakening' | 'prep' | 'offensive' | 'quiet' | 'dead';
+    season: number;
+    phaseStart: number;
+    phaseEnd: number;
+    /** 0..1 through the phase (by the dates; the departure may wait up to 60 days past the planned end of a preparation). */
+    progress: number;
+    /** The departure planned when the preparation began (0 when no season is preparing or has prepared). */
+    launchAt: number;
+    /** The star date every strike group left (the launch moment, the mega beam), 0 before the departure of the current season. */
+    launched: number;
+    /** The station's damage: the share of its components damaged (0..1), and its shields (0..1 of capacity). */
+    stationDamage: number;
+    stationShields: number;
 }
 
 export interface RaidRec {
@@ -189,6 +266,37 @@ export interface BeaconStats {
     salvageSteps: number;
     stagingHits: number;
     thrallIntercepted: number;
+    /** Staging points an empire noticed (empire x point), worlds retaken from the Reclaimers, strikes the AI coalition launched at staging fleets / the Beacon / Watchers, relief fleets sent. */
+    stagingSeen?: number;
+    retaken?: number;
+    aiStrikes?: number;
+    aiRelief?: number;
+    /** Warships of the Reclaimers sunk at a staging point while the season was still gathering. */
+    stagingKills?: number;
+    /** Watchers whose return home took over 150 days and were given a nearer home point. */
+    watcherRehomed?: number;
+    /** The harvest (beaconHarvest.ts): cores designated / retaken / broken (harvester destroyed) / lost; cattle ships launched / docked / destroyed
+     *  (with their captives) / boarded; people killed on them, freed from the pens, rescued from boarded ships, processed; biofuel made, spent
+     *  on warships and troops; troop regiments raised by the troop pass; the AI's cattle interceptions, harvester strikes and retake orders. */
+    coresDesignated?: number;
+    coresRetaken?: number;
+    coresBroken?: number;
+    coresLost?: number;
+    cattleLaunched?: number;
+    cattleArrived?: number;
+    cattleKilled?: number;
+    cattleBoarded?: number;
+    captivesKilled?: number;
+    captivesFreed?: number;
+    captivesRescued?: number;
+    processed?: number;
+    fuelIncome?: number;
+    fuelShips?: number;
+    fuelTroops?: number;
+    troopRegiments?: number;
+    aiCattle?: number;
+    aiCore?: number;
+    aiRetake?: number;
 }
 
 export interface BeaconState {
@@ -243,12 +351,34 @@ export interface BeaconState {
     ended: boolean;
     /** Spawned from the Game Editor / a test: the existence-year gates are skipped. */
     forced?: boolean;
+    /** The AI coalition's standing operations (beaconAi.ts), by key ('beacon', 'staging:<season>:<point>'): the rally star's system index (-1 none) and whether the force has gone in; launches counts the Beacon assaults. */
+    /** The harvest (beaconHarvest.ts; absent before it first ran): cores (live and ended, the last 40 kept), cattle ships in flight, worlds
+     *  that may not be made a core again before a date (their harvester was destroyed), the biofuel accounts. */
+    cores?: CoreRec[];
+    cattle?: CattleRec[];
+    coreBans?: { colony: Habitat; until: number }[];
+    fuel?: FuelRec;
+    /** The launch record (the art's beam, camera and pop-up fire once per launch): how many times the strike groups were called out and
+     *  the star date of the last call (set in the pass that orders the simultaneous departure; saved, so it holds across save / load). */
+    launches?: number;
+    lastLaunchDate?: number;
+    /** Star date of the last reclamation pass (a pass is credited with the days since: the periodics run once per stock long block). */
+    lastPassDate?: number;
+    /** Render only (refreshed every pass): the live harvest cores' worlds, the cattle ships in flight, the live harvesters; the art record (beaconArtInfo). */
+    coreWorlds?: Habitat[];
+    cattleShips?: BuiltObject[];
+    harvesters?: BuiltObject[];
+    art?: BeaconArtInfo;
+    ai?: { launches: number; /** Lead ships of the units the coalition ordered at its last pass (released when no longer ordered). */ held?: BuiltObject[]; ops: Record<string, { go: boolean; rally: number; /** Force gathered at the rally / the target at the last pass (a measure for soaks). */ there?: number; need?: number; /** The waypoint the force gathers at before it strikes. */ wx?: number; wy?: number; /** When the force began to gather; when a given-up operation may start again. */ since?: number; cooldown?: number }>; /** What the last pass saw (a measure for soaks): members, free units, their strength, the force the Beacon needs and what the nearest units sum to. */ last?: { members: number; units: number; free: number; need: number; sum: number } };
 }
 
 export function newStats(): BeaconStats {
     return {
         corrupted: 0, purged: 0, rose: 0, sightings: 0, watcherDetections: 0, seasons: 0, spawned: 0, transportsSpawned: 0, thrallConvoys: 0, conquests: 0, landingsWon: 0, landingsLost: 0,
         planetsDestroyed: 0, popDrained: 0, popDestroyed: 0, raids: 0, offers: 0, accepted: 0, refused: 0, discoveries: 0, salvageSteps: 0, stagingHits: 0, thrallIntercepted: 0,
+        stagingSeen: 0, retaken: 0, aiStrikes: 0, aiRelief: 0, stagingKills: 0, watcherRehomed: 0,
+        coresDesignated: 0, coresRetaken: 0, coresBroken: 0, coresLost: 0, cattleLaunched: 0, cattleArrived: 0, cattleKilled: 0, cattleBoarded: 0, captivesKilled: 0, captivesFreed: 0, captivesRescued: 0,
+        processed: 0, fuelIncome: 0, fuelShips: 0, fuelTroops: 0, troopRegiments: 0, aiCattle: 0, aiCore: 0, aiRetake: 0,
     };
 }
 
@@ -318,25 +448,87 @@ export const P = {
     stagingPoints: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'beaconStagingPoints', 3))),
     /** Strike groups in season 1; one more every two seasons, up to the max. */
     groupsBase: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'beaconGroups', 3))),
-    groupsMax: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'beaconGroupsMax', 10))),
+    groupsMax: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'beaconGroupsMax', 16))),
+    /** One more strike group per this many colonies in the galaxy (0: one per eight empires). */
+    groupColonies: (g: Galaxy) => Math.max(0, Math.trunc(p(g, 'beaconGroupColonies', 16))),
+    /** The Beacon's own guard: this many strike groups' worth of warships parked at it. */
+    guardGroups: (g: Galaxy) => p(g, 'beaconGuardGroups', 2),
+    guardCapPct: (g: Galaxy) => p(g, 'beaconGuardCapPct', 20),
+    guardRampDays: (g: Galaxy) => p(g, 'beaconGuardRampDays', 720),
+    /** A target's pull grows with its population to this power (x 100: 50 = the square root, 100 = linearly). */
+    targetPopPct: (g: Galaxy) => p(g, 'beaconTargetPopPct', 50),
     /** Season strength: % of the reference military (mean of the three strongest empires), season 1, growth per season, per processing world, cap. */
-    strengthPct: (g: Galaxy) => p(g, 'beaconStrengthPct', 65),
-    strengthGrowthPct: (g: Galaxy) => p(g, 'beaconStrengthGrowthPct', 14),
-    strengthPerWorldPct: (g: Galaxy) => p(g, 'beaconStrengthPerWorldPct', 7),
-    strengthCapPct: (g: Galaxy) => p(g, 'beaconStrengthCapPct', 360),
+    strengthPct: (g: Galaxy) => p(g, 'beaconStrengthPct', 15),
+    strengthGrowthPct: (g: Galaxy) => p(g, 'beaconStrengthGrowthPct', 2),
+    strengthPerWorldPct: (g: Galaxy) => p(g, 'beaconStrengthPerWorldPct', 1),
+    strengthCapPct: (g: Galaxy) => p(g, 'beaconStrengthCapPct', 1500),
     minSeasonStrength: (g: Galaxy) => p(g, 'beaconMinStrength', 1500),
     /** Largest number of warships one season spawns. */
-    maxSeasonShips: (g: Galaxy) => Math.trunc(p(g, 'beaconMaxSeasonShips', 160)),
+    maxSeasonShips: (g: Galaxy) => Math.trunc(p(g, 'beaconMaxSeasonShips', 400)),
     /** Most troop transports one strike group has (a world needing more troops than they carry is not struck). */
     maxTransports: (g: Galaxy) => Math.trunc(p(g, 'beaconMaxTransports', 8)),
+    /** The Reclaimers' regiments: strongest natural strength of one regiment (x 100 readiness = its strength), the share (%) of the defenders' regiments a landing must field, regiments in a held world's garrison / in a rising. */
+    regimentNatural: (g: Galaxy) => Math.max(10, p(g, 'beaconRegimentNatural', 600)),
+    hpPct: (g: Galaxy) => p(g, 'beaconHpPct', 50),
+    garrisonRegiments: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'beaconGarrisonRegiments', 24))),
+    riseRegiments: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'beaconRiseRegiments', 16))),
     /** Troops of a landing must beat the defence by this % (and a failed landing at a target raises it). */
     assaultMarginPct: (g: Galaxy) => p(g, 'beaconAssaultMarginPct', 150),
     assaultFailStepPct: (g: Galaxy) => p(g, 'beaconAssaultFailStepPct', 30),
-    // Conquest and processing
-    drainMonths: (g: Galaxy) => p(g, 'beaconDrainMonths', 8),
-    /** Thrall strength made per million people drained. */
-    thrallPerMillion: (g: Galaxy) => p(g, 'beaconThrallPerMillion', 400000),
-    garrisonStrength: (g: Galaxy) => p(g, 'beaconGarrison', 1500000),
+    // Conquest and the harvest (beaconHarvest.ts)
+    /** How the Reclaimers' fleets and troops are paid for: 0 harvest only (biofuel; an awakening reserve starts season 1), 1 scripted (the
+     *  season strength grows by itself; biofuel buys troops only), 2 combined (a guaranteed trickle of beaconTricklePct % of the scripted
+     *  strength, biofuel on top). */
+    fundingModel: (g: Galaxy) => Math.max(0, Math.min(2, Math.trunc(p(g, 'beaconFundingModel', 2)))),
+    tricklePct: (g: Galaxy) => p(g, 'beaconTricklePct', 50),
+    /** Biofuel made per billion people processed: this % of the reference military, in fleet strength. */
+    fuelPerBillionPct: (g: Galaxy) => p(g, 'beaconFuelPerBillionPct', 6),
+    /** A season paid with biofuel reaches at most this % of the scripted season strength (models 0 and 2). */
+    fuelCapPct: (g: Galaxy) => p(g, 'beaconFuelCapPct', 150),
+    /** The awakening reserve (models 0 and 2): this % of season 1's scripted strength, less the trickle's share. */
+    fuelStartPct: (g: Galaxy) => p(g, 'beaconFuelStartPct', 100),
+    /** Share (%) of the biofuel put to the troops (models 0 and 2; model 1 puts all of it there). */
+    fuelTroopPct: (g: Galaxy) => p(g, 'beaconFuelTroopPct', 30),
+    /** Troop strength (the invasion measure) one unit of biofuel buys. */
+    troopsPerFuel: (g: Galaxy) => Math.max(1, p(g, 'beaconTroopsPerFuel', 5000)),
+    /** Cores: at most one per this many held worlds; how many by the galaxy's star count (2 below beaconCoresMidStars, 3 below beaconCoresBigStars,
+     *  then from beaconCoresBig rising to beaconCoresMax at beaconCoresHugeStars). */
+    coreWorldsPer: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'beaconCoreWorldsPer', 3))),
+    coresSmall: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'beaconCoresSmall', 2))),
+    coresMidStars: (g: Galaxy) => p(g, 'beaconCoresMidStars', 700),
+    coresMid: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'beaconCoresMid', 3))),
+    coresBigStars: (g: Galaxy) => p(g, 'beaconCoresBigStars', 1400),
+    coresBig: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'beaconCoresBig', 4))),
+    coresHugeStars: (g: Galaxy) => p(g, 'beaconCoresHugeStars', 4000),
+    coresMax: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'beaconCoresMax', 7))),
+    /** A new core's pull falls off within this many sectors of an existing core (they spread across the holdings). */
+    coreSpreadSectors: (g: Galaxy) => p(g, 'beaconCoreSpreadSectors', 3),
+    /** Share (%) of the pens processed a month; a core's own people are processed over this many months. */
+    coreProcessPct: (g: Galaxy) => p(g, 'beaconCoreProcessPct', 20),
+    coreDrainMonths: (g: Galaxy) => Math.max(1, p(g, 'beaconCoreDrainMonths', 36)),
+    /** A new core's harvester takes this many days to build before it processes anything. */
+    coreBuildDays: (g: Galaxy) => p(g, 'beaconCoreBuildDays', 120),
+    /** A world whose harvester was destroyed cannot be made a core again for this many days. */
+    coreBanDays: (g: Galaxy) => p(g, 'beaconCoreBanDays', 360),
+    /** Garrison targets: a core's (% of beaconGarrison), a threatened world's (enemy warships near or troops landed). */
+    coreGarrisonPct: (g: Galaxy) => p(g, 'beaconCoreGarrisonPct', 150),
+    threatGarrisonPct: (g: Galaxy) => p(g, 'beaconThreatGarrisonPct', 125),
+    /** The harvester: the faction's defensive base plated with this % of armour / shields, its guns this % more. */
+    harvesterArmourPct: (g: Galaxy) => p(g, 'beaconHarvesterArmourPct', 150),
+    harvesterShieldPct: (g: Galaxy) => p(g, 'beaconHarvesterShieldPct', 100),
+    harvesterGunsPct: (g: Galaxy) => p(g, 'beaconHarvesterGunsPct', 0),
+    /** Cattle ships: a held world launches one every this many days, carrying this % of the people it had when taken; at most this many fly at once; their plating, their holds and their slow spool. */
+    cattleDays: (g: Galaxy) => Math.max(1, p(g, 'beaconCattleDays', 20)),
+    cattleLoadPct: (g: Galaxy) => Math.max(0.1, p(g, 'beaconCattleLoadPct', 5)),
+    cattleMax: (g: Galaxy) => Math.max(0, Math.trunc(p(g, 'beaconCattleMax', 150))),
+    cattleArmourPct: (g: Galaxy) => p(g, 'beaconCattleArmourPct', 100),
+    cattleHoldPct: (g: Galaxy) => p(g, 'beaconCattleHoldPct', 250),
+    /** Their hyperdrive spools this many times as long as a warship's (they sit exposed at the world they leave). */
+    cattleSpoolFactor: (g: Galaxy) => p(g, 'beaconCattleSpoolFactor', 12),
+    /** The captives killed with a destroyed cattle ship: this % of them count toward the Reclaimers' eliminated people (the loss measure; 0: the
+     *  interceptors killed them, not the Reclaimers; they are gone from the galaxy all the same). */
+    cattleDeadCountPct: (g: Galaxy) => p(g, 'beaconCattleDeadCountPct', 0),
+    garrisonStrength: (g: Galaxy) => p(g, 'beaconGarrison', 150000),
     /** A siege this long (days) against a world the landing cannot take ends in a planet strike (chance %). */
     siegeDays: (g: Galaxy) => p(g, 'beaconSiegeDays', 150),
     destroyPct: (g: Galaxy) => p(g, 'beaconDestroyPct', 30),
@@ -354,6 +546,28 @@ export const P = {
     discoverPct: (g: Galaxy) => p(g, 'beaconDiscoverPct', 3),
     agentDetectPct: (g: Galaxy) => p(g, 'beaconAgentDetectPct', 5),
     // Counterplay
+    /** Staging-point detection: an empire with a colony within this many sectors of a staging point may notice the gathering (chance % per 5-day pass at 0 distance, falling to 0 at the range). */
+    stagingDetectSectors: (g: Galaxy) => p(g, 'beaconStagingDetectSectors', 5),
+    stagingDetectPct: (g: Galaxy) => p(g, 'beaconStagingDetectPct', 25),
+    /** The AI coalition (beaconAi.ts): on (1) / off (0), the force it needs against the Beacon / a staging fleet / a Watcher (% of the defence), against a strike group (relief, % of the group), how far it reaches (sectors), the share of its military a member may give, the share of the force that must be gathered before the Beacon is attacked. */
+    aiOn: (g: Galaxy) => p(g, 'beaconAiOn', 1),
+    aiRatioPct: (g: Galaxy) => p(g, 'beaconAiRatioPct', 220),
+    aiWatcherRatioPct: (g: Galaxy) => p(g, 'beaconAiWatcherRatioPct', 200),
+    aiReliefPct: (g: Galaxy) => p(g, 'beaconAiReliefPct', 100),
+    aiReachSectors: (g: Galaxy) => p(g, 'beaconAiReachSectors', 12),
+    aiStagingReachSectors: (g: Galaxy) => p(g, 'beaconAiStagingReachSectors', 4),
+    aiStagingRatioPct: (g: Galaxy) => p(g, 'beaconAiStagingRatioPct', 70),
+    aiStagingGatherPct: (g: Galaxy) => p(g, 'beaconAiStagingGatherPct', 50),
+    aiSharePct: (g: Galaxy) => p(g, 'beaconAiSharePct', 60),
+    aiUrgencyPct: (g: Galaxy) => p(g, 'beaconAiUrgencyPct', 30),
+    aiGatherPct: (g: Galaxy) => p(g, 'beaconAiGatherPct', 80),
+    /** The coalition and the harvest: it intercepts cattle ships (on / off, sectors from a member's fleet, orders per pass; it knows the captives
+     *  die), strikes harvesters (force, % of the harvester and the fleet guarding its core), and Smarter AI members retake cores (on / off). */
+    aiCattleOn: (g: Galaxy) => p(g, 'beaconAiCattleOn', 1),
+    aiCattleReachSectors: (g: Galaxy) => p(g, 'beaconAiCattleReachSectors', 3),
+    aiCattleMax: (g: Galaxy) => Math.max(0, Math.trunc(p(g, 'beaconAiCattleMax', 6))),
+    aiCoreRatioPct: (g: Galaxy) => p(g, 'beaconAiCoreRatioPct', 150),
+    aiRetakeOn: (g: Galaxy) => p(g, 'beaconAiRetakeOn', 1),
     salvageKill: (g: Galaxy) => p(g, 'beaconSalvageKill', 1),
     salvageBoard: (g: Galaxy) => p(g, 'beaconSalvageBoard', 6),
 };
@@ -369,12 +583,12 @@ export function isNormalEmpire(galaxy: Galaxy, e: Empire | null, st: BeaconState
 
 export function watcherShips(st: BeaconState): BuiltObject[] {
     const out: BuiltObject[] = [];
-    for (const w of st.watchers) if (w.ship !== null && !w.ship.hasBeenDestroyed) out.push(w.ship);
+    for (const w of st.watchers) if (!w.dead && w.ship !== null && !w.ship.hasBeenDestroyed) out.push(w.ship);
     return out;
 }
 
 export function liveWatchers(st: BeaconState): WatcherRec[] {
-    return st.watchers.filter((w) => !w.dead && w.ship !== null && !w.ship.hasBeenDestroyed);
+    return st.watchers.filter((w) => !w.dead && w.ship !== null && !w.ship.hasBeenDestroyed && w.ship.actualEmpire === st.faction);
 }
 
 /** The corrupted worlds still serving the Beacon. Pure. */
@@ -408,6 +622,14 @@ export function beaconPosition(st: BeaconState): { x: number; y: number } | null
     if (s === null) return null;
     if (s.base !== null) return { x: s.base.xpos, y: s.base.ypos };
     return { x: s.system.systemStar.xpos, y: s.system.systemStar.ypos };
+}
+
+/** True when the cloak does not hide `bo` from `empire` right now (not cloaked, or a ship / base of the empire spotted it). Pure. */
+export function cloakLapsedFor(bo: BuiltObject, empire: Empire, now: number): boolean {
+    if (bo.cloaked !== true) return true;
+    if (bo.cloakSeenBy === undefined) return false;
+    for (const s of bo.cloakSeenBy) if (s.empireId === empire.empireId && s.until > now) return true;
+    return false;
 }
 
 /** Salvage steps `empire` has unlocked (0-4). Pure. */

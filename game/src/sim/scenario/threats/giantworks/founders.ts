@@ -13,7 +13,7 @@ import { Random } from '../../../random';
 import { galaxyStarDate } from '../../../tick/simTime';
 import { radiusFraction } from '../../hooks';
 import { greatWorkKinds } from './registry';
-import { gwParam, gwState, logGw, ordinaryEmpires, ownRandom, nextRandom, type GreatWorkRecord, type GreatWorksState } from './state';
+import { gwParam, gwState, logGw, ordinaryEmpires, ownRandom, nextRandom, peekGwState, type GreatWorkRecord, type GreatWorksState } from './state';
 import type { GreatWorkKind } from './types';
 
 const TWO_PI = Math.PI * 2;
@@ -29,11 +29,17 @@ export function enabledKinds(galaxy: Galaxy): GreatWorkKind[] {
     return greatWorkKinds().filter((k) => flags[k.flag] !== false);
 }
 
-/** The roll weight: the kind's own, the Beacon only with enough empires and likelier in late-age starts. Pure. */
+/** True when `kindId` is a one-per-galaxy wonder (the Beacon: one machine faction, one set of Watchers) that already has a live work. Pure. */
+export function kindTaken(galaxy: Galaxy, kindId: string): boolean {
+    if (kindId !== 'beacon') return false;
+    return (peekGwState(galaxy)?.sites ?? []).some((w) => w.wonder === kindId && (w.phase === 'seeded' || w.phase === 'building' || w.phase === 'complete'));
+}
+
+/** The roll weight: the kind's own, the Beacon only with enough empires (and only once) and likelier in late-age starts. Pure. */
 export function kindRollWeight(galaxy: Galaxy, kind: GreatWorkKind): number {
     let w = kind.weight;
     if (kind.id === 'beacon') {
-        if (ordinaryEmpires(galaxy).length < gwParam(galaxy, 'giantworksBeaconMinEmpires')) return 0;
+        if (ordinaryEmpires(galaxy).length < gwParam(galaxy, 'giantworksBeaconMinEmpires') || kindTaken(galaxy, kind.id)) return 0;
         w *= 1 + (galaxy.age * gwParam(galaxy, 'giantworksBeaconLatePct')) / 100;
     }
     return Math.max(0, w);
@@ -42,7 +48,7 @@ export function kindRollWeight(galaxy: Galaxy, kind: GreatWorkKind): number {
 /** The weighted roll among the enabled wonders (null: none can be rolled). */
 export function rollKind(galaxy: Galaxy, rnd: Random, forced: string | null = null): GreatWorkKind | null {
     const kinds = enabledKinds(galaxy);
-    if (forced !== null) return kinds.find((k) => k.id === forced) ?? greatWorkKinds().find((k) => k.id === forced) ?? null;
+    if (forced !== null) return kindTaken(galaxy, forced) ? null : kinds.find((k) => k.id === forced) ?? greatWorkKinds().find((k) => k.id === forced) ?? null;
     const weights = kinds.map((k) => kindRollWeight(galaxy, k));
     const total = weights.reduce((a, b) => a + b, 0);
     if (!(total > 0)) return null;

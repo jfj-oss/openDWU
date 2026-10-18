@@ -576,6 +576,19 @@ export function makeTroopsOfStrength(galaxy: Galaxy, faction: Empire, strength: 
     return out;
 }
 
+/**
+ * `count` regiments sharing `strength` equally (each at most the short range allows): the ground war's attrition is in readiness
+ * points taken from ONE random regiment per tick, whatever its strength, so a force's staying power is its number of regiments,
+ * not its total strength (one huge regiment dies in a few ticks, the Beacon's first landings). The Beacon sizes its landings with this.
+ */
+export function makeTroopsSplit(galaxy: Galaxy, faction: Empire, strength: number, count: number, name: string, race: Race | null): Troop[] {
+    const n = Math.max(1, Math.min(200, Math.trunc(count)));
+    const each = Math.max(READINESS, Math.min(MAX_NATURAL * READINESS, strength / n));
+    const out: Troop[] = [];
+    for (let i = 0; i < n; i++) out.push(makeTroopOfStrength(galaxy, faction, each, name, race));
+    return out;
+}
+
 /** Enemy troops are on the ground at `colony`, or a loaded enemy troop ship is bound for it within reach (an invasion under way). */
 export function colonyBeingInvaded(galaxy: Galaxy, k: NavyPrefix, faction: Empire, colony: Habitat): boolean {
     const inv = colony.invadingTroops;

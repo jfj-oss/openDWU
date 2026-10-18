@@ -1565,7 +1565,7 @@ function raidInProgress(galaxy: Galaxy, self: Habitat, defender: Empire, invader
     }
     const description4 = formatText(getText('Raid Withdrawal Description Invader'), self.name);
     sendMessageToEmpire(invader, invader, EmpireMessageType.ColonyDefended, self, description4);
-    const description5 = formatText(getText('Raid Withdrawal Description Defender'), self.name, invader.name);
+    const description5 = formatText(getText('Raid Withdrawal Description Defender'), self.name, invader?.name ?? ''); // guard (new): the raiders' empire can be gone (the C# NREs here)
     sendMessageToEmpire(defender, defender, EmpireMessageType.ColonyDefended, self, description5);
     if (galaxy.scenario !== null) scenarioEmit(galaxy, 'pirateRaidRepulsed', { habitat: self, invader }); // mod layer (colony defence)
     removeTroopsByType(invadingTroops, TroopType.PirateRaider, true);

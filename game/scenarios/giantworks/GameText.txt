@@ -100,6 +100,11 @@ Beacon Watcher Name;Watcher {0}
 Beacon Beacon Name;The Beacon
 Beacon Staging Name;Staging Point {0}
 Beacon Thrall Name;Thrall Regiment
+Beacon Harvester Design;Harvester
+Beacon Harvester Name;Harvester of {0}
+Beacon Cattle Design;Cattle Ship
+Beacon Cattle Name;Cattle Ship from {0}
+Beacon Core Marker;Harvest core
 Beacon Drone Name;Reclaimer Drone Regiment
 Beacon Rising Name;Corrupted Militia
 Beacon Garrison Name;Thrall Garrison
@@ -137,6 +142,9 @@ Beacon Inbound Title;Reclaimers inbound
 Beacon Inbound;Reclaimer strike groups have left their staging points. Their targets include our worlds at {0}.
 Beacon Arrived Title;Reclaimers at {0}
 Beacon Arrived;A Reclaimer strike group has arrived over {0}.
+Beacon Coalition Staging News;The empires have fallen on the Reclaimers' gathering at {0}.
+Beacon Coalition Beacon News;The empires' fleets have gathered and gone in against the Beacon (attack {0}).
+Beacon Coalition Core News;The empires' fleets have gone in against the harvester over {0}.
 Beacon Quiet News;The Reclaimers have gone quiet after the campaign. Only small raiding parties are seen.
 Beacon Raid Title;Raiders
 Beacon Raid;A pair of Reclaimer ships is raiding toward {0}.
@@ -146,12 +154,21 @@ Beacon Staging Row;Reclaimer staging point: {0}
 Beacon Staging Status;{0} ships gathered. Strike them before they leave.
 Beacon Conquered News;The Reclaimers have taken {0} from {1}. Its people are being processed.
 Beacon Processing Title;{0} is being processed
-Beacon Processing;The Reclaimers hold {0}. Its people are being drained, month by month. Retake it quickly and the survivors will be saved.
+Beacon Processing;The Reclaimers hold {0}. Its people are being loaded into cattle ships, a shipload every few weeks, and carried to a harvest core to be rendered into fuel. Retake it quickly to save those still there.
 Beacon Retaken News;{0} has been taken back from the Reclaimers by {1}. {2} million people were saved.
 Beacon Retaken Msg Title;{0} retaken
 Beacon Retaken Msg;We have retaken {0}. {1} million people survived the Reclaimers; {2} million were drained before we came.
 Beacon World Row;{0}, held by the Reclaimers
-Beacon World Status;{0}% of its people drained. A Thrall pool of {1} strength.
+Beacon Core Row;Harvest core: {0}
+Beacon Core Status;{0} million people wait in its pens; {1} million processed. Destroy the harvester over it or retake the world to free them.
+Beacon Core News;The Reclaimers have made {0} a harvest core. Huge cattle ships are carrying the people of their other worlds there, to be rendered into fuel for their fleets.
+Beacon Core Retaken News;{0}, a Reclaimer harvest core, has been taken back by {1}. {2} million people were freed from its pens.
+Beacon Harvester Destroyed News;The harvester over {0} has been destroyed by {1}. {2} million people escaped its pens.
+Beacon Freed Title;Captives freed
+Beacon Freed;We have freed {0} million people from the Reclaimers' pens at {1}. They are coming home.
+Beacon Rescued Title;Captives rescued
+Beacon Rescued;Our boarding crews have taken a cattle ship from {1} and freed the {0} million people in its holds.
+Beacon World Status;{0}% of its people taken away in cattle ships.
 Beacon Rising Title;{0} has risen
 Beacon Rising;The corrupted people of {0} have risen and declared for the Reclaimers.
 Beacon Rising News;{0}, a world of {1}, has risen in revolt and joined the Reclaimers.

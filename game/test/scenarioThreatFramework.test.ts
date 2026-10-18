@@ -37,7 +37,7 @@ import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { threatMarker, THREAT_CONFIRMED_COLOR, THREAT_SUSPECTED_COLOR } from '../src/render/overlayLayer';
 import type { CreateGameOptions } from '../src/sim/game';
 import { comboOverlayFs, createScenarioGame } from './helpers/scenarioGame';
-import { registerScenarioEvent, scenarioEmit, scenarioQuery } from '../src/sim/scenario/hooks';
+import { registerScenarioEvent, registerScenarioQuery, scenarioEmit, scenarioQuery } from '../src/sim/scenario/hooks';
 import { TroopList } from '../src/sim/cargo';
 import { assaultMargin, genShipsAssaultStrengths, genShipsAssaultWins, genShipsLowLevel, genShipsPeriodic, genShipsState, genShipsStates, genShipsWaveSize, peekGenShipsState } from '../src/sim/scenario/threats/generationShips';
 import { empireTechLevel, maxDesignTechLevel } from '../src/sim/scenario/threats/robotMutiny';
@@ -68,7 +68,8 @@ import {
 } from '../src/sim/scenario/threats/hollowFleet';
 import { purifierHideSpot, purifierHunts, purifierMapFeatures, purifierPeriodic, purifierPickTarget, purifierState, purifierTargets, purifierWake, peekPurifierState } from '../src/sim/scenario/threats/purifier';
 import { HabitatCategoryType } from '../src/sim/types';
-import { BuiltObjectMissionType, builtObjectMission } from '../src/sim/missions/mission';
+import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission } from '../src/sim/missions/mission';
+import { assignMission } from '../src/sim/missions/assign';
 import { GAME_DAY_LENGTH } from '../src/sim/scenario/hooks';
 import { reviewThreatInvestigations, THREAT_INVESTIGATIONS_KEY } from '../src/sim/scenario/threats/investigate';
 import { issuePlayerCommand, runPlayerCommand } from '../src/sim/player/playerCommands';
@@ -189,9 +190,13 @@ import { addStress, breachChancePerYear, breachSanctuary, growthBonusAt, rageSte
 import { rebuildIndexes } from '../src/sim/indexRebuild';
 import { SystemVisibilityStatus } from '../src/sim/visibility';
 import { completeWork, greatWorkIsHostile, greatWorkKind, type GreatWorkSite } from '../src/sim/scenario/threats/giantworks/framework';
-import { beaconBuildRate, beaconComplete, beaconKind, beaconKnownSites, beaconLooks, beaconRolled, beaconShipRole, beaconSuppliers, cloakLapsedFor, corrupt, corruptCandidates, watchersPeriodic } from '../src/sim/scenario/threats/giantworks/beacon';
+import { beaconBuildRate, beaconComplete, beaconEndCheck, beaconKind, beaconKnownSites, beaconLooks, beaconRolled, beaconShipRole, beaconSuppliers, cloakLapsedFor, corrupt, corruptCandidates, watchersPeriodic } from '../src/sim/scenario/threats/giantworks/beacon';
 import { peekBeaconState, salvageStepsOf, type BeaconState } from '../src/sim/scenario/threats/giantworks/beaconState';
-import { beginSeason, designFor, lossCheck, planetStrike, reclamationMonthly, reclamationPeriodic, spawnShip, supplyTroops, targetCandidates } from '../src/sim/scenario/threats/giantworks/beaconFleet';
+import { beginSeason, designFor, groupCarryRegiments, scriptedBudget, seasonBudget, landingPlan, lossCheck, noticedGathering, planetStrike, reclamationMonthly, reclamationPeriodic, spawnShip, supplyTroops, targetCandidates } from '../src/sim/scenario/threats/giantworks/beaconFleet';
+import { coalitionMembers, coalitionPass } from '../src/sim/scenario/threats/giantworks/beaconAi';
+import { beaconArtInfo, cattleDesign, cattleOf, coreCountFor, coreTarget, coresOf, freeShare, fuelOf, harvestMonthly, harvestPeriodic, liveCores, pickCore, rescueCattle } from '../src/sim/scenario/threats/giantworks/beaconHarvest';
+import { kindTaken } from '../src/sim/scenario/threats/giantworks/founders';
+import { isHumanEmpire } from '../src/sim/humanEmpires';
 import { addSalvage, aiBargainChoice, colonyToCede, counterMonthly, expose, offerCandidates, purgeCorruption, resistanceFactor, resolveBargain } from '../src/sim/scenario/threats/giantworks/beaconCounter';
 import { builtObjectCompleteTeardown } from '../src/sim/combat/teardown';
 import { builtObjectVisibility, isObjectVisibleToThisEmpire, isObjectVisibleToThisEmpireImprecise } from '../src/sim/independentTraders';
@@ -202,7 +207,6 @@ import { ARK_KEY, arkAiChoice, arkParam, arkFightsAgainst, arkLooks, arkPeriodic
 import { breakShields, shieldBreakOf, shieldScheduleFraction, stepShields } from '../src/sim/scenario/threats/giantworks/shields';
 import { warpSpeedWithBonuses } from '../src/sim/movement';
 import { Population } from '../src/sim/population';
-import { isHumanEmpire } from '../src/sim/humanEmpires';
 
 
 let base: GameData;
@@ -3606,6 +3610,10 @@ describe('the Beacon (Giantworks wonder)', () => {
         const w2 = st.watchers[1];
         scenarioEmit(g, 'builtObjectAttacked', { builtObject: w2.ship!, attacker: null, attackingEmpire: g.pirateEmpires[0] ?? null });
         expect(w2.mode).not.toBe('fight');
+        // a's warship has been ordered at it (it was in view); it slips out of sight and a loses track
+        const hunter = a.builtObjects.find((o) => !o.hasBeenDestroyed && o.role === BuiltObjectRole.Military && o.topSpeed > 0 && o.shipGroup === null)!;
+        assignMission(g, hunter, BuiltObjectMissionType.Attack, ship, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
+        expect(builtObjectMission(hunter.mission)?.targetBuiltObject).toBe(ship);
         // with no attacker near, it slips away after 15 days and cloaks
         ship.xpos = 1;
         ship.ypos = 1;
@@ -3613,6 +3621,7 @@ describe('the Beacon (Giantworks wonder)', () => {
         watchersPeriodic(g);
         expect(w.mode).toBe('return');
         expect(ship.cloaked).toBe(true);
+        expect(builtObjectMission(hunter.mission)?.targetBuiltObject ?? null).not.toBe(ship);
     }, 900000);
 
     it('detection: a ship of an empire close to a cloaked Watcher may spot it; the cloak lapses for that empire only, and the Watcher shows in its Threats & Leads', () => {
@@ -3740,47 +3749,226 @@ describe('the Beacon (Giantworks wonder)', () => {
         expect(st.stats.spawned).toBeGreaterThan(0);
     }, 1800000);
 
-    it('processing: a conquered world is drained over months into a Thrall pool; retaking it saves the survivors; destroyed worlds count as eliminated', () => {
+    it('the harvest: the first conquest becomes a core with a harvester; the other held worlds send their people in cattle ships to its pens; processing makes biofuel and counts as eliminated', () => {
         const { g, st } = completed();
         const f = st.faction!;
         const victim = normalsOf(g)[0];
-        const world = victim.colonies.find((c) => c !== victim.capital && c.population.totalAmount > 0) ?? victim.colonies[0];
-        const pop0 = world.population.totalAmount;
-        takeOwnershipOfColonyFull(g, victim, world, f, false, false);
-        expect(st.processing.some((r) => r.colony === world)).toBe(true);
-        expect(world.troops!.totalDefendStrength).toBeGreaterThan(0);
-        const rec = st.processing.find((r) => r.colony === world)!;
-        reclamationMonthly(g);
-        const after1 = world.population.totalAmount;
-        expect(after1).toBeLessThan(pop0);
-        expect(st.popEliminated).toBeGreaterThan(0);
-        expect(rec.pool).toBeGreaterThan(0);
-        for (let i = 0; i < 12; i++) reclamationMonthly(g);
-        expect(rec.done).toBe(true);
-        expect(world.population.totalAmount).toBeLessThanOrEqual(pop0 * 0.011 + 2);
-        expect(st.popEliminated).toBeGreaterThan(pop0 * 0.9);
-        // retaking stops it: a second world
-        const w2 = victim.colonies.find((c) => c !== world && c !== victim.capital && c.population.totalAmount > 0);
-        if (w2) {
-            takeOwnershipOfColonyFull(g, victim, w2, f, false, false);
-            reclamationMonthly(g);
-            const elim = st.popEliminated;
-            takeOwnershipOfColonyFull(g, f, w2, victim, false, false);
-            reclamationMonthly(g);
-            expect(st.popEliminated).toBe(elim);
-            expect(st.processing.some((r) => r.colony === w2)).toBe(false);
+        const worlds = victim.colonies.filter((c) => c !== victim.capital && c.population.totalAmount > 0).slice(0, 3);
+        expect(worlds.length).toBeGreaterThanOrEqual(2);
+        const [first, second] = worlds;
+        takeOwnershipOfColonyFull(g, victim, first, f, false, false);
+        harvestPeriodic(g, st);
+        const core = liveCores(st)[0];
+        expect(core.colony).toBe(first);
+        expect(st.coreWorlds).toEqual([first]);
+        expect(core.harvester).not.toBeNull();
+        expect(core.harvester!.actualEmpire).toBe(f);
+        expect(beaconShipRole(st, core.harvester!)).toBe('harvester');
+        // a second held world is a feeder (one core per three held worlds): its first cattle ship leaves within the interval
+        const pop2 = second.population.totalAmount;
+        takeOwnershipOfColonyFull(g, victim, second, f, false, false);
+        for (let i = 0; i < 6 && cattleOf(st).length === 0; i++) {
+            g.nowMs += 5 * GAME_DAY_LENGTH;
+            harvestPeriodic(g, st);
         }
+        expect(liveCores(st)).toHaveLength(1);
+        const cattle = cattleOf(st)[0];
+        expect(cattle.from).toBe(second);
+        expect(cattle.core).toBe(first);
+        expect(cattle.total).toBeGreaterThan(0);
+        expect(second.population.totalAmount).toBeLessThan(pop2); // they leave at the launch
+        expect(beaconShipRole(st, cattle.ship)).toBe('cattle');
+        expect(cattle.ship.subRole).toBe(BuiltObjectSubRole.LargeFreighter);
+        const elim0 = st.popEliminated;
+        // it docks: the people are penned at the core (not yet eliminated)
+        cattle.ship.xpos = first.xpos + 1000;
+        cattle.ship.ypos = first.ypos;
+        harvestPeriodic(g, st);
+        expect(cattleOf(st).includes(cattle)).toBe(false);
+        expect(cattle.ship.hasBeenDestroyed).toBe(true);
+        expect(core.waiting).toBe(cattle.total);
+        expect(st.stats.cattleArrived).toBe(1);
+        expect(st.popEliminated).toBe(elim0);
+        // nothing is processed while the harvester is being built (beaconCoreBuildDays)
+        expect(harvestMonthly(g, st)).toBe(0);
+        g.nowMs = core.readyDate! + GAME_DAY_LENGTH;
+        // processing: a share of the pens (and of the core's own people) becomes biofuel, and the processed are eliminated
+        const fuel0 = fuelOf(st).income;
+        const done = harvestMonthly(g, st);
+        expect(done).toBeGreaterThan(0);
+        expect(core.waiting).toBeLessThan(cattle.total);
+        expect(st.popEliminated).toBe(elim0 + done);
+        expect(fuelOf(st).income).toBeGreaterThan(fuel0);
+        expect(st.stats.processed).toBe(done);
     }, 900000);
 
-    it('Thralls and transports: a processing world\'s pool is carried by real transports (interceptable); a planet strike sends the stock planet destroyer and counts the dead as eliminated', () => {
+    it('counterplay on the harvest: retaking a core frees its pens to the liberator; a destroyed cattle ship kills its captives (not counted as eliminated by default); a boarded one frees them; a destroyed harvester breaks the core', () => {
+        const { g, st } = completed();
+        const f = st.faction!;
+        const [victim, other] = normalsOf(g);
+        const worlds = victim.colonies.filter((c) => c !== victim.capital && c.population.totalAmount > 0).slice(0, 3);
+        expect(worlds.length).toBeGreaterThanOrEqual(3);
+        for (const w of worlds) takeOwnershipOfColonyFull(g, victim, w, f, false, false);
+        harvestPeriodic(g, st);
+        const core = liveCores(st)[0];
+        core.pens = [{ race: core.colony.population.dominantRace!.name, amount: 500_000_000 }];
+        core.waiting = 500_000_000;
+        // a cattle ship destroyed: its captives die (eliminated), no core is touched
+        for (let i = 0; i < 8 && cattleOf(st).length < 2; i++) {
+            g.nowMs += 5 * GAME_DAY_LENGTH;
+            harvestPeriodic(g, st);
+        }
+        expect(cattleOf(st).length).toBeGreaterThanOrEqual(2);
+        const [c1, c2, c3] = cattleOf(st);
+        const elim = st.popEliminated;
+        scenarioEmit(g, 'builtObjectKilledBy', { builtObject: c1.ship, destroyer: other });
+        expect(st.popEliminated).toBe(elim); // the interceptors killed them, not the Reclaimers (beaconCattleDeadCountPct 0)
+        expect(st.stats.cattleKilled).toBe(1);
+        expect(st.stats.captivesKilled).toBe(c1.total);
+        if (c3 !== undefined) {
+            g.scenario!.params.beaconCattleDeadCountPct = 100; // counted, when the setting says so
+            scenarioEmit(g, 'builtObjectKilledBy', { builtObject: c3.ship, destroyer: other });
+            expect(st.popEliminated).toBe(elim + c3.total);
+            delete g.scenario!.params.beaconCattleDeadCountPct;
+        }
+        // a cattle ship boarded: its captives are freed to the taker's worlds (the capture hook)
+        const otherPop = other.colonies.reduce((a, c) => a + c.population.totalAmount, 0);
+        expect(rescueCattle(g, st, c2.ship, other)).toBeGreaterThan(0);
+        expect(other.colonies.reduce((a, c) => a + c.population.totalAmount, 0)).toBeGreaterThan(otherPop);
+        expect(st.stats.captivesRescued).toBe(c2.total);
+        // retaking the core: the pens go home with the world, and another held world becomes the core
+        const pop = core.colony.population.totalAmount;
+        takeOwnershipOfColonyFull(g, f, core.colony, victim, false, false);
+        expect(core.ended).toBe('retaken');
+        expect(core.colony.population.totalAmount).toBeGreaterThanOrEqual(pop + 400_000_000);
+        expect(st.stats.captivesFreed).toBe(500_000_000);
+        expect(core.harvester).toBeNull();
+        harvestPeriodic(g, st);
+        const next = liveCores(st)[0];
+        expect(next).toBeDefined();
+        expect(next.colony).not.toBe(core.colony);
+        // its harvester destroyed: the core is broken, the world may not be a core again for a while, the pens freed toward the attacker
+        next.pens = [{ race: next.colony.population.dominantRace!.name, amount: 300_000_000 }];
+        next.waiting = 300_000_000;
+        scenarioEmit(g, 'builtObjectKilledBy', { builtObject: next.harvester!, destroyer: other });
+        expect(next.ended).toBe('broken');
+        expect(st.stats.coresBroken).toBe(1);
+        expect(st.stats.captivesFreed).toBe(800_000_000);
+        expect(pickCore(g, st, galaxyStarDate(g))).not.toBe(next.colony);
+    }, 900000);
+
+    it('harvest cores: 2 / 3 below the size thresholds, then rising to 7 in the biggest galaxies, one per three held worlds; a second core is chosen away from the first', () => {
+        const { g, st } = completed();
+        const at = (n: number): number => {
+            const was = g.starCount;
+            g.starCount = n;
+            const t = coreTarget(g);
+            g.starCount = was;
+            return t;
+        };
+        expect([at(250), at(400), at(699), at(700), at(1000), at(1399), at(1400), at(2700), at(4000), at(8000)]).toEqual([2, 2, 2, 3, 3, 3, 4, 6, 7, 7]);
+        g.scenario!.params.beaconCoresMidStars = 300;
+        expect(at(400)).toBe(3);
+        delete g.scenario!.params.beaconCoresMidStars;
+        g.starCount = 4000;
+        expect([coreCountFor(g, 0), coreCountFor(g, 1), coreCountFor(g, 3), coreCountFor(g, 4), coreCountFor(g, 21), coreCountFor(g, 40)]).toEqual([0, 1, 1, 2, 7, 7]);
+        // spread: with one core, a far world of similar size beats a near one
+        const f = st.faction!;
+        const all = normalsOf(g).flatMap((e) => e.colonies.filter((c) => c !== e.capital && c.population.totalAmount > 0));
+        for (const w of all.slice(0, 12)) takeOwnershipOfColonyFull(g, w.empire!, w, f, false, false);
+        harvestPeriodic(g, st);
+        const cores = liveCores(st);
+        expect(cores.length).toBe(coreCountFor(g, 12));
+        expect(cores.length).toBeGreaterThanOrEqual(2);
+        const d = g.calculateDistance(cores[0].colony.xpos, cores[0].colony.ypos, cores[1].colony.xpos, cores[1].colony.ypos);
+        const near = Math.min(...all.slice(0, 12).filter((w) => w !== cores[0].colony).map((w) => g.calculateDistance(w.xpos, w.ypos, cores[0].colony.xpos, cores[0].colony.ypos)));
+        expect(d).toBeGreaterThan(near);
+    }, 900000);
+
+    it('funding models: scripted (1) spawns the scripted strength; harvest only (0) spends the fleet biofuel and waits when it is empty; combined (2) gets the trickle plus the biofuel', () => {
+        const { g, st } = completed();
+        const fuel = fuelOf(st);
+        const scripted = scriptedBudget(g, st, 1);
+        // model 2 (default): the awakening reserve makes season 1 as strong as the scripted one
+        expect(P_model(g)).toBe(2);
+        expect(freeShare(g)).toBeCloseTo(0.5, 5);
+        expect(fuel.startGrant).toBeCloseTo(scripted * 0.5, 0);
+        expect(seasonBudget(g, st, 1)).toBeCloseTo(scripted, 0);
+        g.scenario!.params.beaconFundingModel = 1;
+        expect(seasonBudget(g, st, 1)).toBeCloseTo(scripted, 5);
+        g.scenario!.params.beaconFundingModel = 0;
+        fuel.fleet = 0;
+        expect(seasonBudget(g, st, 1)).toBe(0);
+        expect(beginSeason(g, st, 1)).toBe(false); // starved: no season
+        fuel.fleet = scripted;
+        expect(beginSeason(g, st, 1)).toBe(true);
+        const season = st.season!;
+        expect(season.freeLeft).toBe(0);
+        for (let i = 0; i < 60 && season.phase === 'prep'; i++) {
+            g.nowMs += 5 * GAME_DAY_LENGTH;
+            reclamationPeriodic(g);
+        }
+        // the fleet was paid for: the account fell by what was spawned (the guard is paid from it too)
+        expect(fuel.spentShips).toBeGreaterThan(scripted * 0.5);
+        expect(fuel.fleet).toBeLessThan(scripted * 0.5);
+        function P_model(gx: Galaxy): number {
+            return Number(gx.scenario!.params.beaconFundingModel ?? 2);
+        }
+    }, 1800000);
+
+    it('the art record: the season phase, its dates, the planned and actual launch, the station damage', () => {
+        const { g, st } = completed();
+        const a0 = beaconArtInfo(g, st);
+        expect(a0.phase).toBe('awakening');
+        expect(a0.phaseEnd).toBeGreaterThan(a0.phaseStart);
+        st.faction!.stateMoney = 1e9;
+        beginSeason(g, st, 1);
+        const a1 = beaconArtInfo(g, st);
+        expect(a1.phase).toBe('prep');
+        expect(a1.season).toBe(1);
+        expect(a1.launchAt).toBe(st.season!.end);
+        expect(a1.launched).toBe(0);
+        expect(a1.stationDamage).toBeGreaterThanOrEqual(0);
+        expect(a1.stationShields).toBeGreaterThanOrEqual(0);
+        for (let i = 0; i < 120 && st.season!.phase === 'prep'; i++) {
+            g.nowMs += 5 * GAME_DAY_LENGTH;
+            reclamationPeriodic(g);
+        }
+        const a2 = beaconArtInfo(g, st);
+        expect(a2.phase).toBe('offensive');
+        expect(a2.launched).toBe(st.season!.departed);
+        expect(st.launches).toBe(1); // the monotonic launch record the art fires on
+        expect(st.lastLaunchDate).toBe(st.season!.departed);
+        expect(a2.launchAt).toBeGreaterThan(0);
+        expect(st.art?.phase).toBe('offensive'); // refreshed in the state every pass
+        expect(beaconLooks(g).art?.phase).toBe('offensive');
+        st.beacon!.hasBeenDestroyed = true;
+        st.beaconDestroyed = true;
+        expect(beaconArtInfo(g, st).phase).toBe('dead');
+    }, 1800000);
+
+    it('the cattle ship: a huge plated freighter of the Reclaimers that the AI never builds', () => {
+        const { g, st } = completed();
+        const d = cattleDesign(g, st.faction!)!;
+        expect(d).not.toBeNull();
+        expect(d.subRole).toBe(BuiltObjectSubRole.LargeFreighter);
+        expect(d.isObsolete).toBe(true);
+        const plain = designFor(g, st.faction!, BuiltObjectSubRole.LargeFreighter);
+        if (plain !== null && plain !== d) expect(d.size).toBeGreaterThan(plain.size * 1.5);
+        expect(cattleDesign(g, st.faction!)).toBe(d); // made once
+    }, 900000);
+
+    it('Thralls and transports: Thralls for a landing are raised at the nearest core, paid from the troop biofuel, on real transports (interceptable); a planet strike sends the stock planet destroyer and counts the dead as eliminated', () => {
         const { g, st } = completed();
         const f = st.faction!;
         f.stateMoney = 1e9;
         const victim = normalsOf(g)[0];
         const world = victim.colonies.find((c) => c !== victim.capital && c.population.totalAmount > 0)!;
         takeOwnershipOfColonyFull(g, victim, world, f, false, false);
-        const rec = st.processing.find((r) => r.colony === world)!;
-        rec.pool = 40_000_000;
+        harvestPeriodic(g, st);
+        expect(liveCores(st)[0].colony).toBe(world);
+        fuelOf(st).troops = 1e6;
+        const troops0 = fuelOf(st).troops;
         expect(beginSeason(g, st, 1)).toBe(true);
         const grp = st.season!.groups[0];
         grp.ships.push(spawnShip(g, f, designFor(g, f, BuiltObjectSubRole.Cruiser)!, world.xpos, world.ypos));
@@ -3789,10 +3977,10 @@ describe('the Beacon (Giantworks wonder)', () => {
         const added = supplyTroops(g, st, grp, sp.x, sp.y);
         expect(added).toBeGreaterThan(0);
         expect(st.thrallShips.length).toBeGreaterThan(before);
-        expect(rec.pool).toBeLessThan(40_000_000);
+        expect(fuelOf(st).troops).toBeLessThan(troops0);
         const thrall = st.thrallShips[st.thrallShips.length - 1];
         expect(thrall.troops!.count).toBeGreaterThan(0);
-        expect(Math.hypot(thrall.xpos - world.xpos, thrall.ypos - world.ypos)).toBeLessThan(60000); // made at the world, not at the Beacon
+        expect(Math.hypot(thrall.xpos - world.xpos, thrall.ypos - world.ypos)).toBeLessThan(60000); // made at the core, not at the Beacon
         expect(grp.transports).toContain(thrall);
         // a player ship kills it: an interception
         const killer = normalsOf(g)[1];
@@ -3808,6 +3996,12 @@ describe('the Beacon (Giantworks wonder)', () => {
         const m = builtObjectMission(grp.destroyer!.mission);
         expect(m!.type).toBe(BuiltObjectMissionType.Attack);
         expect(m!.targetHabitat).toBe(target);
+        // the destroyer keeps its Attack order: a mission lost to a refuel or a retreat is given again at the next pass
+        expect(grp.destroyer!.isAutoControlled).toBe(false);
+        (builtObjectMission(grp.destroyer!.mission) as unknown as { clear(): void }).clear();
+        reclamationPeriodic(g);
+        expect(builtObjectMission(grp.destroyer!.mission)!.type).toBe(BuiltObjectMissionType.Attack);
+        expect(builtObjectMission(grp.destroyer!.mission)!.targetHabitat).toBe(target);
         const pop = target.population.totalAmount;
         scenarioEmit(g, 'habitatDestroyed', { habitat: target, destroyer: f });
         expect(st.stats.planetsDestroyed).toBe(1);
@@ -3938,4 +4132,300 @@ describe('the Beacon (Giantworks wonder)', () => {
         runGameSeconds(lg, 30);
         expect(stateDigest(lg)).toBe(stateDigest(g));
     }, 1800000);
+    it('staging points: an empire with a colony near enough notices the gathering (sight alone never finds a fleet in deep space); a distant one does not', () => {
+        const { g, st } = completed();
+        beginSeason(g, st, 1);
+        const sp = st.season!.staging[0];
+        const [a, b] = normalsOf(g);
+        const home = a.colonies[0];
+        sp.x = home.xpos;
+        sp.y = home.ypos;
+        g.scenario!.params.beaconStagingDetectPct = 100;
+        g.scenario!.params.beaconStagingDetectSectors = 1;
+        const rnd = { nextDouble: () => 0.5 } as unknown as Parameters<typeof noticedGathering>[4];
+        expect(noticedGathering(g, st, a, sp, rnd)).toBe(true); // at its door: 100 %
+        const far = Math.min(...b.colonies.map((c) => g.calculateDistance(c.xpos, c.ypos, sp.x, sp.y)));
+        if (far > g.sectorSize) expect(noticedGathering(g, st, b, sp, rnd)).toBe(false);
+        g.scenario!.params.beaconStagingDetectSectors = 0;
+        expect(noticedGathering(g, st, a, sp, rnd)).toBe(false); // the range is a parameter
+        g.scenario!.params.beaconStagingDetectSectors = 5;
+        g.scenario!.params.beaconStagingDetectPct = 0;
+        expect(noticedGathering(g, st, a, sp, rnd)).toBe(false);
+    }, 900000);
+
+    it('one Beacon per galaxy: while one work is live the roll weight is nil and the Game Editor refuses a second', () => {
+        const { game } = createScenarioGame(base, { scenario: comboOverlayFs(ids), flags: {}, options: age3 });
+        const g = game.galaxy;
+        expect(kindTaken(g, 'beacon')).toBe(false);
+        expect(spawnThreatNow(g, g.playerEmpire!, 'giantworks:beacon')).toBe(true);
+        expect(kindTaken(g, 'beacon')).toBe(true);
+        expect(spawnableThreats(g).find((t) => t.key === 'giantworks:beacon')!.note).not.toBeNull();
+        expect(spawnThreatNow(g, g.playerEmpire!, 'giantworks:beacon')).toBe(false);
+        expect(greatWorks(g).filter((w) => w.wonder === 'beacon')).toHaveLength(1);
+        expect(kindTaken(g, 'casino')).toBe(false);
+    }, 900000);
+
+    it('the cloak is honoured by every mission: only the faction itself may be ordered at a hidden Watcher; a lapsed cloak lets another empire target it', () => {
+        const { g, st } = rolled();
+        const ship = st.watchers[0].ship!;
+        const [a, b] = normalsOf(g);
+        const mine = a.builtObjects.find((o) => !o.hasBeenDestroyed && o.role === BuiltObjectRole.Military && o.topSpeed > 0)!;
+        const ask = (bo: BuiltObject): boolean => scenarioQuery(g, 'assignMissionAllowed', true, { builtObject: bo, missionType: BuiltObjectMissionType.Attack, target: ship, x: -2000000001, y: -2000000001 });
+        expect(ask(mine)).toBe(false);
+        expect(ask(st.watchers[1].ship!)).toBe(true); // the faction's own ships are not refused
+        ship.cloakSeenBy = [{ empireId: a.empireId, until: galaxyStarDate(g) + 1000 }];
+        expect(ask(mine)).toBe(true);
+        const theirs = b.builtObjects.find((o) => !o.hasBeenDestroyed && o.role === BuiltObjectRole.Military && o.topSpeed > 0)!;
+        expect(ask(theirs)).toBe(false); // the cloak lapsed for the spotter only
+        ship.cloaked = false;
+        expect(ask(theirs)).toBe(true);
+        // the stock combat spares a hidden Watcher too (it is not shot at, boarded or captured by an empire that cannot see it)
+        ship.cloaked = true;
+        ship.cloakSeenBy = [{ empireId: a.empireId, until: galaxyStarDate(g) + 1000 }];
+        const spares = (bo: BuiltObject): boolean => scenarioQuery(g, 'builtObjectSparesStaticTarget', false, { builtObject: bo, target: ship });
+        expect(spares(mine)).toBe(false); // a spotted it
+        expect(spares(theirs)).toBe(true); // b did not
+        expect(spares(st.watchers[1].ship!)).toBe(false); // its own faction's ships are not its keepers
+        // a Watcher taken by another empire is lost to the faction (and no longer cloaked for its new owner)
+        takeOwnershipOfBuiltObject(g, st.faction!, ship, a, false);
+        watchersPeriodic(g);
+        expect(st.watchers[0].dead).toBe(true);
+        expect(ship.cloaked).toBe(false);
+    }, 900000);
+
+    it('the AI coalition and the harvest: members near a harvester strike it together; a cattle ship in sight is intercepted; a human is never ordered', () => {
+        const { g, st } = completed();
+        const f = st.faction!;
+        st.popEliminated = st.popBaseline * 0.2; // losing: every free warship is called
+        g.scenario!.params.beaconAiCoreRatioPct = 1;
+        g.scenario!.params.beaconAiSharePct = 100;
+        g.scenario!.params.beaconAiRatioPct = 100000; // the Beacon itself is out of reach: its operation takes no unit
+        const members = coalitionMembers(g, st);
+        const ai = members[0];
+        const victim = normalsOf(g).find((e) => e !== ai && e.colonies.filter((c) => c !== e.capital && c.population.totalAmount > 0).length >= 3)!;
+        const worlds = victim.colonies.filter((c) => c !== victim.capital && c.population.totalAmount > 0).slice(0, 3);
+        for (const w of worlds) takeOwnershipOfColonyFull(g, victim, w, f, false, false);
+        harvestPeriodic(g, st);
+        const hv = liveCores(st)[0].harvester!;
+        const human = g.playerEmpire!;
+        const humanBefore = human.builtObjects.map((b) => b.mission);
+        const war = ai.builtObjects.filter((b) => !b.hasBeenDestroyed && b.role === BuiltObjectRole.Military && b.topSpeed > 0 && b.warpSpeed > 0);
+        expect(war.length).toBeGreaterThan(0);
+        for (const b of war) {
+            b.xpos = hv.xpos + 4000;
+            b.ypos = hv.ypos;
+        }
+        rebuildIndexes(g);
+        expect(coalitionPass(g)).toBeGreaterThan(0);
+        expect(st.stats.aiCore).toBe(1);
+        const atHv = (o: { mission: unknown } | null): boolean => {
+            const m = (o?.mission ?? null) as { type: number; targetBuiltObject: unknown } | null;
+            return m !== null && m.type === BuiltObjectMissionType.Attack && m.targetBuiltObject === hv;
+        };
+        expect([...ai.builtObjects, ...ai.shipGroups.filter((x) => x !== null)].some((o) => atHv(o as never) || atHv((o as BuiltObject).shipGroup as never))).toBe(true);
+        expect(human.builtObjects.map((b) => b.mission)).toEqual(humanBefore);
+        // the harvester gone: the units go for a cattle ship within reach (one unit each)
+        for (let i = 0; i < 8 && cattleOf(st).length === 0; i++) {
+            g.nowMs += 5 * GAME_DAY_LENGTH;
+            harvestPeriodic(g, st);
+        }
+        const c = cattleOf(st)[0];
+        expect(c).toBeDefined();
+        builtObjectCompleteTeardown(g, hv);
+        for (const b of war) {
+            b.xpos = c.ship.xpos + 3000;
+            b.ypos = c.ship.ypos;
+            // the harvester is gone: their orders at it are over (the stock mission ends with its target)
+            (builtObjectMission(b.mission) as unknown as { clear(): void } | null)?.clear();
+            ((b.shipGroup as { mission?: { clear(): void } | null } | null)?.mission ?? null)?.clear();
+        }
+        c.ship.cloaked = undefined;
+        rebuildIndexes(g);
+        g.scenario!.params.beaconAiCoreRatioPct = 100000;
+        coalitionPass(g);
+        // sight is the stock fog's: no member sees it (the fog is not refreshed here), so nothing is ordered
+        expect(members.some((e) => isObjectVisibleToThisEmpire(g, e, c.ship))).toBe(false);
+        expect(st.stats.aiCattle ?? 0).toBe(0);
+        // in sight (the scenario query the fog consults): one unit goes for it
+        registerScenarioQuery({ id: 'test.beaconSeeCattle', flag: 'zzTestSeeCattle', query: 'objectVisibleToAll', run: (_g, v, x) => v || (x.object as unknown) === c.ship });
+        g.scenario!.flags.zzTestSeeCattle = true;
+        coalitionPass(g);
+        g.scenario!.flags.zzTestSeeCattle = false;
+        expect(st.stats.aiCattle).toBe(1);
+        {
+            const atC = [...ai.builtObjects].some((b) => {
+                const m = ((b.shipGroup as { mission?: unknown } | null)?.mission ?? builtObjectMission(b.mission)) as { type: number; targetBuiltObject: unknown } | null;
+                return m !== null && m.type === BuiltObjectMissionType.Attack && m.targetBuiltObject === c.ship;
+            });
+            expect(atC).toBe(true);
+        }
+    }, 900000);
+
+    it('the AI coalition: members with free fleets near a staging fleet they know strike it together; a human is never ordered; short of the force nobody commits', () => {
+        const { g, st } = completed();
+        const f = st.faction!;
+        f.stateMoney = 1e9;
+        st.popEliminated = st.popBaseline * 0.2; // the galaxy is losing: every free warship is called (else only Attack fleets and the heavier single ships are)
+        g.scenario!.params.beaconAiRatioPct = 10;
+        g.scenario!.params.beaconAiStagingRatioPct = 10;
+        beginSeason(g, st, 1);
+        const season = st.season!;
+        for (let i = 0; i < 40; i++) {
+            g.nowMs += 5 * GAME_DAY_LENGTH;
+            reclamationPeriodic(g);
+            if (season.groups.every((x) => x.ships.length > 0)) break;
+        }
+        const grp = season.groups.find((x) => x.ships.length > 0)!;
+        const sp = season.staging[grp.staging];
+        for (const b of grp.ships) {
+            b.xpos = sp.x;
+            b.ypos = sp.y;
+        }
+        const members = coalitionMembers(g, st);
+        expect(members.every((e) => !isHumanEmpire(g, e))).toBe(true);
+        expect(members.length).toBeGreaterThan(0);
+        const ai = members[0];
+        const human = g.playerEmpire!;
+        const humanBefore = human.builtObjects.map((b) => b.mission);
+        const warships = ai.builtObjects.filter((b) => !b.hasBeenDestroyed && b.role === BuiltObjectRole.Military && b.topSpeed > 0 && b.warpSpeed > 0 && b.shipGroup === null);
+        for (const b of ai.builtObjects) if (!b.hasBeenDestroyed && b.role === BuiltObjectRole.Military && b.topSpeed > 0) {
+            b.xpos = sp.x + 2000;
+            b.ypos = sp.y;
+        }
+        rebuildIndexes(g);
+        // nobody has noticed the gathering yet: the pass still pools what members know (none), so no strike
+        expect(coalitionPass(g)).toBe(0);
+        revealTo(g, sp, ai, KNOWLEDGE_CONFIRMED);
+        // an impossible ratio: not enough force, nobody commits
+        g.scenario!.params.beaconAiRatioPct = 100000;
+        g.scenario!.params.beaconAiStagingRatioPct = 100000;
+        expect(coalitionPass(g)).toBe(0);
+        g.scenario!.params.beaconAiRatioPct = 10;
+        g.scenario!.params.beaconAiStagingRatioPct = 10;
+        g.scenario!.params.beaconAiSharePct = 100;
+        const n = coalitionPass(g);
+        expect(n).toBeGreaterThan(0);
+        expect(st.stats.aiStrikes).toBeGreaterThan(0);
+        const ordered = [...ai.builtObjects, ...ai.shipGroups.filter((x) => x !== null)].filter((o) => {
+            const m = (o as { mission?: { type?: number; targetBuiltObject?: unknown } | null }).mission;
+            return m != null && m.type === BuiltObjectMissionType.Attack && (m.targetBuiltObject as BuiltObject | null)?.actualEmpire === f;
+        });
+        expect(ordered.length + warships.length).toBeGreaterThan(0);
+        expect(ordered.length).toBeGreaterThan(0);
+        // the human's ships were not touched
+        expect(human.builtObjects.map((b) => b.mission)).toEqual(humanBefore);
+        // the knowledge is pooled among members
+        for (const e of members) expect(knowledgeLevel(sp, e)).toBe(KNOWLEDGE_CONFIRMED);
+    }, 1800000);
+    it('landings are sized in regiments: the ground war wears down readiness points of ONE random regiment a tick, so a landing fields at least half the defenders\' regiments, and a held world\'s garrison is many regiments, not one', () => {
+        const { g, st } = completed();
+        const f = st.faction!;
+        const victim = normalsOf(g)[0];
+        const world = victim.colonies.find((c) => c !== victim.capital && c.population.totalAmount > 0)!;
+        // a garrison of 20 regiments
+        world.troops ??= new TroopList();
+        while (world.troops.count < 20) world.troops.add(makeFactionTroop(g, victim, 75, 'Guard', null));
+        const plan = landingPlan(g, f, world, 150);
+        expect(plan.regiments).toBeGreaterThanOrEqual(Math.ceil(0.5 * 22));
+        expect(plan.strength).toBeGreaterThan(0);
+        expect(plan.regiments).toBeLessThanOrEqual(groupCarryRegiments(g, f) + 100);
+        beginSeason(g, st, 1);
+        const grp = st.season!.groups[0];
+        grp.target = world;
+        grp.ships.push(spawnShip(g, f, designFor(g, f, BuiltObjectSubRole.Cruiser)!, world.xpos, world.ypos));
+        supplyTroops(g, st, grp, world.xpos, world.ypos);
+        const regs = grp.transports.reduce((n, b) => n + (b.troops?.count ?? 0), 0);
+        expect(regs).toBeGreaterThanOrEqual(Math.min(plan.regiments, groupCarryRegiments(g, f)) - 1);
+        // a conquered world's garrison is many regiments of the garrison strength
+        takeOwnershipOfColonyFull(g, victim, world, f, false, false);
+        expect(world.troops!.count).toBeGreaterThanOrEqual(20);
+        // beaconGarrison 150 000: the model's free share for nothing, the rest as far as the troop biofuel goes
+        expect(world.troops!.totalDefendStrength).toBeGreaterThan(75_000);
+        expect(world.troops!.totalDefendStrength).toBeLessThan(190_000);
+    }, 900000);
+    it('the campaign scales: strength is per strike group, the group count grows with the galaxy\'s colonies, and the Beacon\'s guard is a couple of groups\' worth', () => {
+        const { g, st } = completed();
+        g.scenario!.params.beaconMinStrength = 0;
+        const refBefore = scriptedBudget(g, st, 1);
+        g.scenario!.params.beaconGroupColonies = 0;
+        g.scenario!.params.beaconGroups = 3;
+        g.scenario!.params.beaconStrengthPct = 20;
+        const few = scriptedBudget(g, st, 1);
+        g.scenario!.params.beaconGroupColonies = 5; // many more groups (the test galaxy has tens of colonies)
+        const many = scriptedBudget(g, st, 1);
+        expect(many).toBeGreaterThan(few);
+        g.scenario!.params.beaconStrengthPct = 40;
+        expect(scriptedBudget(g, st, 1)).toBeGreaterThan(many * 1.5); // per-group strength doubled
+        expect(refBefore).toBeGreaterThan(0);
+        g.scenario!.params.beaconStrengthPct = 20;
+        g.scenario!.params.beaconFundingModel = 1; // the scripted season: every group is fielded (a biofuel-paid one fields what it can afford)
+        st.faction!.stateMoney = 1e9;
+        expect(beginSeason(g, st, 1)).toBe(true);
+        const k = st.season!.groups.length;
+        expect(k).toBeGreaterThan(3); // 3 + one per five colonies
+        expect(k).toBeLessThanOrEqual(16);
+    }, 900000);
+    it('victory: the Beacon and both Watchers destroyed and no world held ends the game in victory, and nothing short of that does', () => {
+        const { g, st } = completed();
+        const f = st.faction!;
+        const [a] = normalsOf(g);
+        beaconEndCheck(g);
+        expect(st.ended).toBe(false);
+        // a world is held
+        const victim = normalsOf(g)[1];
+        const world = victim.colonies.find((c) => c !== victim.capital && c.population.totalAmount > 0)!;
+        takeOwnershipOfColonyFull(g, victim, world, f, false, false);
+        // the Beacon dies (killed by an empire)
+        scenarioEmit(g, 'builtObjectKilledBy', { builtObject: st.beacon!, destroyer: a });
+        expect(st.beaconDestroyed).toBe(true);
+        beaconEndCheck(g);
+        expect(st.ended).toBe(false); // two Watchers left
+        scenarioEmit(g, 'builtObjectKilledBy', { builtObject: st.watchers[0].ship!, destroyer: a });
+        beaconEndCheck(g);
+        expect(st.ended).toBe(false); // one Watcher and a held world left
+        scenarioEmit(g, 'builtObjectKilledBy', { builtObject: st.watchers[1].ship!, destroyer: a });
+        expect(st.watchers.every((w) => w.dead)).toBe(true);
+        beaconEndCheck(g);
+        expect(st.ended).toBe(false); // the world is still held
+        takeOwnershipOfColonyFull(g, f, world, victim, false, false);
+        reclamationMonthly(g);
+        beaconEndCheck(g);
+        expect(st.ended).toBe(true);
+        expect(st.phase).toBe('ended');
+        expect(g.gameIsFinished).toBe(true);
+        expect(f.builtObjects.every((b) => b.hasBeenDestroyed)).toBe(true); // the leftovers fall silent
+    }, 900000);
+    it('the AI coalition against the Beacon: the members gather their free fleets at a waypoint, strike the Beacon together, and are released when it falls', () => {
+        const { g, st } = completed();
+        st.popEliminated = st.popBaseline * 0.2;
+        g.scenario!.params.beaconAiRatioPct = 5;
+        g.scenario!.params.beaconAiSharePct = 100;
+        g.scenario!.params.beaconAiGatherPct = 50;
+        const beacon = st.beacon!;
+        const members = coalitionMembers(g, st);
+        expect(members.length).toBeGreaterThan(0);
+        // every member's warships wait close to the Beacon (gathered already)
+        for (const e of members) for (const b of e.builtObjects) if (!b.hasBeenDestroyed && b.role === BuiltObjectRole.Military && b.topSpeed > 0) {
+            b.xpos = beacon.xpos + 100000;
+            b.ypos = beacon.ypos;
+        }
+        rebuildIndexes(g);
+        expect(coalitionPass(g)).toBeGreaterThan(0);
+        expect(st.ai!.ops.beacon.go).toBe(true);
+        expect(st.ai!.launches).toBe(1);
+        expect(st.stats.aiStrikes).toBeGreaterThanOrEqual(1);
+        const attacking = (): BuiltObject[] => members.flatMap((e) => e.builtObjects).filter((b) => {
+            const m = builtObjectMission(b.mission) ?? ((b.shipGroup as { mission: ReturnType<typeof builtObjectMission> } | null)?.mission ?? null);
+            return m !== null && m.type === BuiltObjectMissionType.Attack && m.targetBuiltObject === beacon;
+        });
+        expect(attacking().length).toBeGreaterThan(0);
+        expect(st.ai!.held!.length).toBeGreaterThan(0);
+        // the Beacon falls: the operation ends, the force is released (their Attack missions on it are cleared)
+        scenarioEmit(g, 'builtObjectKilledBy', { builtObject: beacon, destroyer: members[0] });
+        expect(st.beaconDestroyed).toBe(true);
+        coalitionPass(g);
+        expect(st.ai!.ops.beacon.go).toBe(false);
+        expect(attacking()).toHaveLength(0);
+        expect(st.ai!.held ?? []).toHaveLength(0);
+    }, 900000);
 });

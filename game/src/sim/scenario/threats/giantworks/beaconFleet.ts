@@ -13,8 +13,9 @@
 //     the margin; a failed landing raises the margin and brings a reinforcing transport; a long siege of a world the troops
 //     cannot take ends, rarely, in a planet strike (the stock planet destroyer, as the Purifier's).
 //   QUIET (about a year): only raids by pairs of ships.
-// PROCESSING: a conquered world's population is drained over months (beaconDrainMonths); the drained people become Thrall regiments
-// (makeFactionTroop) in the world's pool and so feed the next season. Retaking the world stops it; the survivors are saved.
+// THE HARVEST (beaconHarvest.ts): the conquered worlds' people are carried in cattle ships to harvest cores and rendered into biofuel,
+// which pays for the troops (Thrall regiments made at the nearest core) and, by the funding model (beaconFundingModel), the fleets.
+// Retaking a world stops its harvest; retaking a core (or destroying its harvester) frees its pens.
 // Corrupted worlds (beacon.ts) rise from inside at the start of an offensive (invadeFromInside).
 // LOSS: the game is lost when the Reclaimers have ELIMINATED beaconLossPct % of the galaxy's population (drained or destroyed,
 // against the population when the Reclamation began).
@@ -52,13 +53,14 @@ import { GAME_DAY_LENGTH } from '../../hooks';
 import { GameEndOutcome } from '../../../victory';
 import { empireTechLevel, maxDesignTechLevel, raiseFactionTech } from '../robotMutiny';
 import { averageTechLevel } from '../factionNavy';
-import { makeTroopOfStrength, makeTroopsOfStrength } from '../factionNavy';
+import { makeTroopOfStrength, makeTroopsSplit } from '../factionNavy';
 import { genShipsAssaultStrengths, genShipsAssaultWins } from '../generationShips';
 import {
     KNOWLEDGE_CONFIRMED,
     arcMessage,
     arcNews,
     invadeFromInside,
+    knowledgeLevel,
     loadTroopsOnto,
     lockWar,
     normalEmpires,
@@ -81,6 +83,7 @@ import {
     type StrikeGroup,
 } from './beaconState';
 import { scenarioText as T } from '../../messages';
+import { freeShare, fuelOf, harvestMonthly, harvestPeriodic, onCattleKilled, onCoreRetaken, onHarvesterLost, payFleet, payTroops, troopSourceCore, troopsAffordable } from './beaconHarvest';
 
 const TAG = 'Beacon';
 /** A fleet this close to a target is "on station"; defenders this close block a landing. */
@@ -93,7 +96,6 @@ const LANDING_RANGE = 3000;
 const GATHER_RANGE = 25000;
 /** Units per game day of a warp-speed-1 ship (YEAR 600 s, 360 days): speed is units per game second. */
 const SECONDS_PER_DAY = 600 / 360;
-const MAX_REGIMENT_NATURAL = 30000;
 const WAVE_PER_PASS = 14;
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -250,11 +252,27 @@ export function processingWorlds(st: BeaconState): ProcessRec[] {
     return st.processing.filter((r) => !r.colony.hasBeenDestroyed && r.colony.empire === st.faction);
 }
 
-/** The strength the next season spawns: referenceMilitary x (strengthPct + growth per season + per processing world), capped. Pure. */
-export function seasonBudget(galaxy: Galaxy, st: BeaconState, n: number): number {
+/**
+ * The SCRIPTED strength of season n: referenceMilitary x (k strike groups x (strengthPct + growth per season) + per processing
+ * world), capped. strengthPct is PER GROUP (season 1) so a galaxy with more worlds to strike meets a bigger campaign. Pure.
+ */
+export function scriptedBudget(galaxy: Galaxy, st: BeaconState, n: number): number {
     const worlds = processingWorlds(st).length;
-    const pct = Math.min(P.strengthCapPct(galaxy), P.strengthPct(galaxy) + P.strengthGrowthPct(galaxy) * (n - 1) + P.strengthPerWorldPct(galaxy) * worlds);
+    const k = groupCountFor(galaxy, st, n);
+    const pct = Math.min(P.strengthCapPct(galaxy), k * (P.strengthPct(galaxy) + P.strengthGrowthPct(galaxy) * (n - 1)) + P.strengthPerWorldPct(galaxy) * worlds);
     return Math.max(P.minSeasonStrength(galaxy), (referenceMilitary(galaxy, st.faction) * pct) / 100);
+}
+
+/**
+ * The strength season n may spawn, by the funding model: 1 scripted (scriptedBudget); 0 harvest only (the fleet biofuel); 2 combined (the
+ * trickle, beaconTricklePct % of the scripted, plus the fleet biofuel). Capped at beaconFuelCapPct % of the scripted strength. Pure.
+ */
+export function seasonBudget(galaxy: Galaxy, st: BeaconState, n: number): number {
+    const s = scriptedBudget(galaxy, st, n);
+    if (P.fundingModel(galaxy) === 1) return s;
+    // biofuel raises a season to at most beaconFuelCapPct % of the scripted one (the rest stays banked for the next)
+    const cap = (s * P.fuelCapPct(galaxy)) / 100;
+    return Math.min(cap, s * freeShare(galaxy) + Math.max(0, fuelOf(st).fleet));
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -296,18 +314,42 @@ export function targetCandidates(galaxy: Galaxy, st: BeaconState, now: number): 
     return out;
 }
 
-/** Troop strength one group's transports can carry at most (beaconMaxTransports of them). */
-export function groupCarryCapacity(galaxy: Galaxy, faction: Empire): number {
+/** Regiments one group's transports can carry at most (beaconMaxTransports of them, a regiment is 100 of a transport's troop capacity). */
+export function groupCarryRegiments(galaxy: Galaxy, faction: Empire): number {
     const d = transportDesign(galaxy, faction);
     if (d === null) return 0;
-    return P.maxTransports(galaxy) * Math.max(1, Math.floor(d.troopCapacity / 100)) * MAX_REGIMENT_NATURAL * 100;
+    return P.maxTransports(galaxy) * Math.max(1, Math.floor(d.troopCapacity / 100));
 }
 
-/** True when the troops that beat `h` by the assault margin fit on one group's transports. */
+/** Troop strength one group's transports can carry at most (the regiments at their largest). */
+export function groupCarryCapacity(galaxy: Galaxy, faction: Empire): number {
+    return groupCarryRegiments(galaxy, faction) * P.regimentNatural(galaxy) * 100;
+}
+
+export interface LandingPlan {
+    /** Total strength the landing needs to beat the defence by the margin (with a tenth to spare). */
+    strength: number;
+    /** Regiments it needs: the ground war's attrition is in readiness points taken from one random regiment per tick, so staying power is the NUMBER of regiments. */
+    regiments: number;
+}
+
+/**
+ * What a landing at `h` needs: the strength that beats its defence by `marginPct`, in at least as many regiments as the strength needs
+ * at the regiment cap and beaconHpPct % of the defenders' regiments (the garrison and those recruiting, plus a couple to spare).
+ */
+export function landingPlan(galaxy: Galaxy, faction: Empire, h: Habitat, marginPct: number): LandingPlan {
+    const strength = troopNeed(galaxy, faction, h, marginPct) * 1.1;
+    const defenders = (h.troops?.count ?? 0) + (h.troopsToRecruit?.count ?? 0) + 2;
+    const regiments = Math.max(1, Math.ceil(strength / (P.regimentNatural(galaxy) * 100)), Math.ceil((P.hpPct(galaxy) / 100) * defenders));
+    return { strength, regiments };
+}
+
+/** True when the landing that beats `h` by the assault margin fits on one group's transports. */
 function troopsFit(galaxy: Galaxy, st: BeaconState, h: Habitat): boolean {
     const faction = st.faction;
     if (faction === null) return false;
-    return troopNeed(galaxy, faction, h, P.assaultMarginPct(galaxy)) * 1.1 <= groupCarryCapacity(galaxy, faction);
+    const plan = landingPlan(galaxy, faction, h, P.assaultMarginPct(galaxy));
+    return plan.regiments <= groupCarryRegiments(galaxy, faction);
 }
 
 export interface PickedTarget {
@@ -329,7 +371,7 @@ export function pickTargets(galaxy: Galaxy, st: BeaconState, k: number, budget: 
     const scored = cands.map((h) => {
         const def = defenceOf(galaxy, h);
         const d = galaxy.calculateDistance(pos.x, pos.y, h.xpos, h.ypos);
-        const w = Math.sqrt(1 + h.population.totalAmount / 1e6) * (1 / (1 + d / 6e6)) * (1 / (1 + def / Math.max(1, share * 1.5)));
+        const w = Math.pow(1 + h.population.totalAmount / 1e6, P.targetPopPct(galaxy) / 100) * (1 / (1 + d / 6e6)) * (1 / (1 + def / Math.max(1, share * 1.5)));
         return { habitat: h, defence: def, w };
     });
     const picked: PickedTarget[] = [];
@@ -423,10 +465,11 @@ function loadedStrength(bo: BuiltObject): number {
     return bo.troops === null ? 0 : bo.troops.totalAttackStrength;
 }
 
-/** Fills `transports` with regiments totalling `strength` (BattleBots, or Thralls of `race`). Returns the strength loaded. */
-function loadStrength(galaxy: Galaxy, faction: Empire, transports: readonly BuiltObject[], strength: number, race: Race | null, name: string): number {
-    const troops = makeTroopsOfStrength(galaxy, faction, strength, name, race);
+/** Fills `transports` with `count` regiments sharing `strength` (BattleBots, or Thralls of `race`). Returns the strength and the regiments loaded. */
+function loadSplit(galaxy: Galaxy, faction: Empire, transports: readonly BuiltObject[], strength: number, count: number, race: Race | null, name: string): { strength: number; regiments: number } {
+    const troops = makeTroopsSplit(galaxy, faction, strength, count, name, race);
     let loaded = 0;
+    let regiments = 0;
     let ti = 0;
     for (const t of troops) {
         let placed = false;
@@ -435,22 +478,26 @@ function loadStrength(galaxy: Galaxy, faction: Empire, transports: readonly Buil
             if (bo.troopCapacityRemaining >= t.size) {
                 loadTroopsOnto(bo, faction, [t]);
                 loaded += t.attackStrength * (t.readiness / 100) * 1;
+                regiments++;
                 ti = (ti + tries + 1) % transports.length;
                 placed = true;
             }
         }
         if (!placed) break;
     }
-    return loaded;
+    return { strength: loaded, regiments };
 }
 
-/** The transports needed to carry `strength` of regiments (regiment cap MAX_REGIMENT_NATURAL x 100 each). */
-function transportsFor(galaxy: Galaxy, faction: Empire, strength: number): number {
+/** The transports needed to carry `regiments` regiments. */
+function transportsFor(galaxy: Galaxy, faction: Empire, regiments: number): number {
     const d = transportDesign(galaxy, faction);
     if (d === null) return 0;
-    const regs = Math.ceil(strength / (MAX_REGIMENT_NATURAL * 100));
     const per = Math.max(1, Math.floor(d.troopCapacity / 100));
-    return Math.max(1, Math.ceil(regs / per));
+    return Math.max(1, Math.ceil(regiments / per));
+}
+
+function loadedRegiments(bo: BuiltObject): number {
+    return bo.troops === null ? 0 : bo.troops.count;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -462,9 +509,16 @@ function days(n: number): number {
 }
 
 function groupCountFor(galaxy: Galaxy, st: BeaconState, n: number): number {
-    // one more group every two seasons, and one more per eight empires (a big galaxy has more worlds to strike)
-    const empires = normalEmpires(galaxy, st.faction).length;
-    return Math.min(P.groupsMax(galaxy), P.groupsBase(galaxy) + Math.floor((n - 1) / 2) + Math.floor(empires / 8));
+    // one more group every two seasons, and more for a bigger galaxy: one per beaconGroupColonies colonies of the empires and independents
+    // (0: one per eight empires, the original rule), so a big galaxy has more worlds struck at once
+    const per = P.groupColonies(galaxy);
+    let extra: number;
+    if (per > 0) {
+        let colonies = galaxy.independentColonies.length;
+        for (const e of normalEmpires(galaxy, st.faction)) colonies += e.colonies.length;
+        extra = Math.floor(colonies / per);
+    } else extra = Math.floor(normalEmpires(galaxy, st.faction).length / 8);
+    return Math.min(P.groupsMax(galaxy), P.groupsBase(galaxy) + Math.floor((n - 1) / 2) + extra);
 }
 
 function stagingName(index: number): string {
@@ -480,15 +534,22 @@ export function beginSeason(galaxy: Galaxy, st: BeaconState, n: number): boolean
     const pos = beaconPosition(st);
     if (faction === null || pos === null || st.beaconDestroyed) return false;
     const now = galaxyStarDate(galaxy);
-    const rnd = beaconRandom(galaxy, st, 21);
     const budget = seasonBudget(galaxy, st, n);
-    const k = groupCountFor(galaxy, st, n);
+    const scripted = scriptedBudget(galaxy, st, n);
+    const kFull = groupCountFor(galaxy, st, n);
+    // Paid for by biofuel (models 0 and 2): a season the Reclaimers cannot afford waits; a thin one strikes fewer worlds.
+    if (P.fundingModel(galaxy) !== 1 && budget < P.minSeasonStrength(galaxy)) return false;
+    const k = P.fundingModel(galaxy) === 1 ? kFull : Math.max(1, Math.min(kFull, Math.round(budget / Math.max(1, scripted / kFull))));
+    const rnd = beaconRandom(galaxy, st, 21);
     const targets = pickTargets(galaxy, st, k, budget, now);
     if (targets.length === 0) return false;
     const staged = stagingPointsFor(galaxy, st, targets.map((t) => t.habitat), P.stagingPoints(galaxy));
     const staging: StagingPoint[] = staged.points.map((pt, i) => ({ index: i, x: pt.x, y: pt.y, name: stagingName(i), knowledge: [], strength: 0, startStrength: 0 }));
     const prep = P.prepMinDays(galaxy) + rnd.nextDouble() * Math.max(0, P.prepMaxDays(galaxy) - P.prepMinDays(galaxy));
-    const season: Season = { n, phase: 'prep', start: now, end: now + days(prep), staging, groups: [], budget, spawned: 0, departed: 0, departures: [], plannedTravelDays: 0 };
+    const season: Season = {
+        n, phase: 'prep', start: now, end: now + days(prep), staging, groups: [], budget, spawned: 0, departed: 0, departures: [], plannedTravelDays: 0, prepStart: now, launchAt: now + days(prep),
+        freeLeft: Math.min(budget, P.fundingModel(galaxy) === 1 ? budget : scripted * freeShare(galaxy)),
+    };
     targets.forEach((t, i) => {
         season.groups.push({
             id: st.nextGroupId++, season: n, state: 'gather', target: t.habitat, staging: staged.of[i], ships: [], transports: [], lead: null, departDate: 0, arriveDate: 0, siegeStart: 0, landings: 0, fails: 0,
@@ -542,13 +603,15 @@ function stagingOf(season: Season, g: StrikeGroup): StagingPoint {
 }
 
 /** Spawns warships at the Beacon for the groups, up to `until` of the season's budget, a batch per pass. */
-function spawnWave(galaxy: Galaxy, st: BeaconState, season: Season, until: number): number {
+function spawnWave(galaxy: Galaxy, st: BeaconState, season: Season, until: number, batch = WAVE_PER_PASS): number {
     const faction = st.faction!;
     const pos = beaconPosition(st);
     if (pos === null || season.groups.length === 0) return 0;
     let spawnedNow = 0;
     const quota = season.budget / season.groups.length;
-    for (let i = 0; i < WAVE_PER_PASS && season.spawned < until && st.stats.spawned < 1_000_000; i++) {
+    for (let i = 0; i < batch && season.spawned < until && st.stats.spawned < 1_000_000; i++) {
+        // paid for: the season's free share first, then the fleet biofuel (an empty account ends the wave)
+        if ((season.freeLeft ?? Infinity) <= 0 && fuelOf(st).fleet <= 0) break;
         // the group furthest below its quota gets the next ship
         let g: StrikeGroup | null = null;
         let low = Infinity;
@@ -569,6 +632,11 @@ function spawnWave(galaxy: Galaxy, st: BeaconState, season: Season, until: numbe
         if (g.lead === null || g.lead.hasBeenDestroyed) g.lead = bo;
         const s = strengthOf(bo);
         season.spawned += s;
+        if (season.freeLeft !== undefined) {
+            const free = Math.min(season.freeLeft, s);
+            season.freeLeft -= free;
+            if (s > free) payFleet(st, s - free);
+        }
         spawnedNow++;
         st.stats.spawned++;
         const sp = stagingOf(season, g);
@@ -578,17 +646,12 @@ function spawnWave(galaxy: Galaxy, st: BeaconState, season: Season, until: numbe
     return spawnedNow;
 }
 
-/** Thrall pools nearest `x, y` first. */
-function poolsNear(galaxy: Galaxy, st: BeaconState, x: number, y: number): ProcessRec[] {
-    return processingWorlds(st)
-        .filter((r) => r.pool >= 1_000_000)
-        .sort((a, b) => galaxy.calculateDistance(a.colony.xpos, a.colony.ypos, x, y) - galaxy.calculateDistance(b.colony.xpos, b.colony.ypos, x, y) || a.colony.name.localeCompare(b.colony.name));
-}
-
 /**
- * Troops for one group (called once its warships are spawned and again to reinforce): the strength the target needs (minus
- * what the group already carries). Thralls first from the nearest processing worlds' pools, on transports that fly from the
- * world to `(destX, destY)`; the rest BattleBots on transports made at the Beacon. Returns the strength added.
+ * Troops for one group (called once its warships are spawned and again to reinforce): the landing plan the target needs (strength in
+ * enough regiments, landingPlan) minus what the group already carries. First the troops biofuel pays for: Thrall regiments raised at the
+ * nearest harvest core, on transports that fly from the core to `(destX, destY)` (the ones a player can intercept), or drones made at the
+ * Beacon while no core works. Then free BattleBots from the Beacon for the funding model's free share of what is still missing (model 1:
+ * all of it; model 0: none). Returns the strength added.
  */
 export function supplyTroops(galaxy: Galaxy, st: BeaconState, g: StrikeGroup, destX: number, destY: number): number {
     const faction = st.faction!;
@@ -596,47 +659,62 @@ export function supplyTroops(galaxy: Galaxy, st: BeaconState, g: StrikeGroup, de
     const pos = beaconPosition(st);
     if (target === null || pos === null) return 0;
     const margin = P.assaultMarginPct(galaxy) + Math.min(120, g.fails * P.assaultFailStepPct(galaxy));
+    const plan = landingPlan(galaxy, faction, target, margin);
     const carried = g.transports.reduce((s, b) => s + (b.hasBeenDestroyed ? 0 : loadedStrength(b)), 0);
-    let need = troopNeed(galaxy, faction, target, margin) * 1.1 - carried;
-    if (!(need > 0)) return 0;
+    const carriedRegs = g.transports.reduce((s, b) => s + (b.hasBeenDestroyed ? 0 : loadedRegiments(b)), 0);
+    let needS = plan.strength - carried;
+    let needN = plan.regiments - carriedRegs;
+    if (!(needS > 0) && needN <= 0) return 0;
+    needS = Math.max(0, needS);
+    needN = Math.max(0, needN);
     const design = transportDesign(galaxy, faction);
     if (design === null) return 0;
+    const cap = P.regimentNatural(galaxy) * 100;
+    // a landing short only of staying power still gets its regiments: a token regiment is 20 000 strong
+    const wantS = Math.max(needS, needN * 20_000);
     let added = 0;
-    const race = machineRace(galaxy);
-    for (const rec of poolsNear(galaxy, st, destX, destY)) {
-        if (need <= 0) break;
-        const take = Math.min(need, rec.pool);
-        const n = Math.min(transportsFor(galaxy, faction, take), Math.max(0, P.maxTransports(galaxy) - g.transports.length));
-        if (n <= 0) break;
+    // 1. Paid: Thralls from the nearest working core (drones from the Beacon while none works)
+    const paidS = Math.min(wantS, troopsAffordable(galaxy, st));
+    const room0 = Math.max(0, P.maxTransports(galaxy) - g.transports.length);
+    if (paidS >= 20_000 && room0 > 0) {
+        const core = troopSourceCore(galaxy, st, destX, destY);
+        const from = core !== null ? core.colony : null;
+        const regs = Math.max(1, Math.ceil(paidS / cap), Math.round(needN * (wantS > 0 ? paidS / wantS : 1)));
+        const n = Math.min(transportsFor(galaxy, faction, regs), room0);
         const ships: BuiltObject[] = [];
-        for (let i = 0; i < n; i++) ships.push(spawnShip(galaxy, faction, design, rec.colony.xpos, rec.colony.ypos));
-        const got = loadStrength(galaxy, faction, ships, take, (rec.colony.population?.dominantRace ?? race) as Race | null, T('Beacon Thrall Name'));
-        if (got <= 0) {
-            for (const b of ships) builtObjectCompleteTeardown(galaxy, b);
-            continue;
+        for (let i = 0; i < n; i++) ships.push(spawnShip(galaxy, faction, design, from?.xpos ?? pos.x, from?.ypos ?? pos.y));
+        const race = from !== null ? ((from.population?.dominantRace ?? machineRace(galaxy)) as Race | null) : null;
+        const got = loadSplit(galaxy, faction, ships, paidS, regs, race, T(from !== null ? 'Beacon Thrall Name' : 'Beacon Drone Name'));
+        if (got.strength <= 0) for (const b of ships) builtObjectCompleteTeardown(galaxy, b);
+        else {
+            payTroops(galaxy, st, got.strength);
+            needS -= got.strength;
+            needN -= got.regiments;
+            added += got.strength;
+            for (const b of ships) {
+                g.transports.push(b);
+                if (from !== null) st.thrallShips.push(b);
+                move(galaxy, b, destX, destY);
+            }
+            if (from !== null) st.stats.thrallConvoys++;
+            st.stats.transportsSpawned += ships.length;
         }
-        rec.pool = Math.max(0, rec.pool - take);
-        need -= got;
-        added += got;
-        for (const b of ships) {
-            g.transports.push(b);
-            st.thrallShips.push(b);
-            move(galaxy, b, destX, destY);
-        }
-        st.stats.thrallConvoys++;
-        st.stats.transportsSpawned += ships.length;
     }
+    // 2. Free: BattleBots from the Beacon for the free share of what is still missing
+    const share = freeShare(galaxy);
     const room = Math.max(0, P.maxTransports(galaxy) - g.transports.length);
-    if (need > 0 && room > 0) {
-        const n = Math.min(transportsFor(galaxy, faction, need), room);
+    if (share > 0 && (needS > 0 || needN > 0) && room > 0) {
+        const strength = Math.max(needS, needN * 20_000) * share;
+        const regs = Math.max(1, Math.round(needN * share), Math.ceil(strength / cap));
+        const n = Math.min(transportsFor(galaxy, faction, regs), room);
         const ships: BuiltObject[] = [];
         for (let i = 0; i < n; i++) ships.push(spawnShip(galaxy, faction, design, pos.x, pos.y));
-        const got = loadStrength(galaxy, faction, ships, need, null, T('Beacon Drone Name'));
+        const got = loadSplit(galaxy, faction, ships, strength, regs, null, T('Beacon Drone Name'));
         for (const b of ships) {
             g.transports.push(b);
             move(galaxy, b, destX, destY);
         }
-        added += got;
+        added += got.strength;
         st.stats.transportsSpawned += ships.length;
     }
     return added;
@@ -666,13 +744,34 @@ function watchStaging(galaxy: Galaxy, st: BeaconState, season: Season): void {
         sp.strength = strength;
         if (fleet.length === 0) continue;
         const sample = fleet[0];
+        const rnd = beaconRandom(galaxy, st, 131 + sp.index);
         for (const e of normalEmpires(galaxy, faction)) {
-            if (!isObjectVisibleToThisEmpire(galaxy, e, sample)) continue;
-            if (revealTo(galaxy, sp, e, KNOWLEDGE_CONFIRMED) && isHumanEmpire(galaxy, e)) {
-                arcMessage(galaxy, st.sentStages, [e], { prefix: TAG, stage: 'Staging Seen', onceKey: `Staging${season.n}:${sp.index}:${e.empireId}`, args: [sp.name], type: EmpireMessageType.GeneralWarning, subject: sample });
+            if (knowledgeLevel(sp, e) >= KNOWLEDGE_CONFIRMED) continue;
+            if (!isObjectVisibleToThisEmpire(galaxy, e, sample) && !noticedGathering(galaxy, st, e, sp, rnd)) continue;
+            if (revealTo(galaxy, sp, e, KNOWLEDGE_CONFIRMED)) {
+                st.stats.stagingSeen = (st.stats.stagingSeen ?? 0) + 1;
+                if (isHumanEmpire(galaxy, e)) arcMessage(galaxy, st.sentStages, [e], { prefix: TAG, stage: 'Staging Seen', onceKey: `Staging${season.n}:${sp.index}:${e.empireId}`, args: [sp.name], type: EmpireMessageType.GeneralWarning, subject: sample });
             }
         }
     }
+}
+
+/**
+ * The staging fleets lie in deep space, far from every sensor, so sight alone would never find them. Traders, pickets and listening
+ * posts of the neighbouring empires do: an empire with a colony within beaconStagingDetectSectors of the point notices the gathering
+ * with beaconStagingDetectPct % per pass at the colony's door, falling to nothing at the range. Draws the private Random only.
+ */
+export function noticedGathering(galaxy: Galaxy, st: BeaconState, e: Empire, sp: StagingPoint, rnd: ReturnType<typeof beaconRandom>): boolean {
+    const range = P.stagingDetectSectors(galaxy) * galaxy.sectorSize;
+    if (!(range > 0)) return false;
+    let best = Infinity;
+    for (const c of e.colonies) {
+        const d = galaxy.calculateDistance(c.xpos, c.ypos, sp.x, sp.y);
+        if (d < best) best = d;
+    }
+    if (best >= range) return false;
+    void st;
+    return rnd.nextDouble() * 100 < P.stagingDetectPct(galaxy) * (1 - best / range);
 }
 
 function gatherProgress(galaxy: Galaxy, season: Season, g: StrikeGroup): number {
@@ -695,7 +794,8 @@ function prepPass(galaxy: Galaxy, st: BeaconState, season: Season): void {
     const total = season.end - season.start;
     const spawnWindow = total * 0.5;
     const frac = Math.min(1, Math.max(0, (now - season.start) / Math.max(1, spawnWindow)));
-    if (!st.beaconDestroyed) spawnWave(galaxy, st, season, season.budget * frac);
+    // A batch per 5 days since the last pass: the periodic runs once per stock long block (36 days at 1x), not every 5 days.
+    if (!st.beaconDestroyed) spawnWave(galaxy, st, season, season.budget * frac, Math.ceil(WAVE_PER_PASS * passDays(st, now) / 5));
     // Troops once the warships are spawned (half way through the preparation).
     if (now - season.start >= spawnWindow) {
         for (const g of season.groups) {
@@ -744,6 +844,10 @@ function depart(galaxy: Galaxy, st: BeaconState, season: Season): void {
         orderGroup(galaxy, g);
     }
     season.departed = departing.length > 0 ? now : 0;
+    if (departing.length > 0) {
+        st.launches = (st.launches ?? 0) + 1;
+        st.lastLaunchDate = now;
+    }
     season.plannedTravelDays = maxDays;
     season.phase = 'offensive';
     season.start = now;
@@ -890,6 +994,8 @@ function driveGroup(galaxy: Galaxy, st: BeaconState, g: StrikeGroup): void {
     const defenders = defendersNear(galaxy, target.empire, target);
     const superior = onStationStrength > 0 && onStationStrength >= defenders * 1.5 && onStation * 2 >= g.ships.length;
     const troops = loadedTroopsOf(g);
+    // Enough staying power: at least 80 % of the regiments the plan wants (the ground war's attrition is per regiment, not per strength)
+    const regsOk = troops.length >= Math.ceil(0.8 * landingPlan(galaxy, faction, target, marginFor(galaxy, g)).regiments);
     if (g.state === 'landed') {
         const troopsLeft = g.transports.some((b) => loadedStrength(b) > 0) || (target.invadingTroops !== null && target.invadingTroops.items.some((t) => t.empire === faction));
         if (target.empire === faction) {
@@ -907,7 +1013,7 @@ function driveGroup(galaxy: Galaxy, st: BeaconState, g: StrikeGroup): void {
         return;
     }
     if (superior || g.committed) {
-        if (troops.length > 0 && genShipsAssaultWins(galaxy, target, faction, troops, g.committed ? 100 : marginFor(galaxy, g))) g.committed = true;
+        if (troops.length > 0 && (regsOk || g.committed) && genShipsAssaultWins(galaxy, target, faction, troops, g.committed ? 100 : marginFor(galaxy, g))) g.committed = true;
         else {
             g.committed = false;
             if (troops.length === 0 || now - g.siegeStart > days(30)) reinforce(galaxy, st, g);
@@ -997,9 +1103,35 @@ export function planetStrike(galaxy: Galaxy, st: BeaconState, g: StrikeGroup): v
     }
     g.destroyer = pd;
     g.targetPop = target.population.totalAmount;
-    pd.isAutoControlled = true;
+    pd.isAutoControlled = false; // driven by drivePlanetDestroyers (the stock AI would take it for its own errands)
     assignMission(galaxy, pd, BuiltObjectMissionType.Attack, target, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
     arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Destroyer', onceKey: `Destroyer${g.id}`, textTag: `${TAG} Destroyer News`, args: [target.name] });
+}
+
+/**
+ * Every pass: a planet destroyer sent at a world keeps its Attack order (a mission lost to a refuel or a retreat is given again) until the
+ * world is gone or it is. The planet destroyer fires from its own weapons range once the Attack command has set the colony (cmdAttack.ts).
+ */
+export function drivePlanetDestroyers(galaxy: Galaxy, st: BeaconState): void {
+    for (const s of st.seasons) {
+        for (const g of s.groups) {
+            const pd = g.destroyer;
+            if (pd === null || pd.hasBeenDestroyed || pd.actualEmpire !== st.faction) continue;
+            const t = g.target;
+            if (t === null || t.hasBeenDestroyed || t.empire === st.faction) {
+                g.destroyer = null;
+                const home = beaconPosition(st);
+                if (home !== null) move(galaxy, pd, home.x, home.y);
+                st.reserve.push(pd);
+                continue;
+            }
+            const m = builtObjectMission(pd.mission);
+            if (m === null || m.type !== BuiltObjectMissionType.Attack || m.targetHabitat !== t) {
+                pd.isAutoControlled = false;
+                assignMission(galaxy, pd, BuiltObjectMissionType.Attack, t, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
+            }
+        }
+    }
 }
 
 /** The group's surviving warships stay at the conquered world (Patrol) as its fleet. */
@@ -1037,8 +1169,8 @@ function risingWorlds(galaxy: Galaxy, st: BeaconState, season: Season): void {
         if (h.invadingTroops !== null && h.invadingTroops.items.some((t) => t.empire === faction)) continue;
         const race = (h.population?.dominantRace ?? null) as Race | null;
         const owner = h.empire;
-        const troop = makeTroopOfStrength(galaxy, faction, P.riseStrength(galaxy) * (1 + 0.15 * season.n), T('Beacon Rising Name'), race);
-        invadeFromInside(galaxy, h, faction, [troop]);
+        const rising = makeTroopsSplit(galaxy, faction, P.riseStrength(galaxy) * (1 + 0.15 * season.n), P.riseRegiments(galaxy), T('Beacon Rising Name'), race);
+        invadeFromInside(galaxy, h, faction, rising);
         c.ended = 'rose';
         c.endDate = galaxyStarDate(galaxy);
         st.stats.rose++;
@@ -1086,7 +1218,11 @@ function quietPass(galaxy: Galaxy, st: BeaconState, season: Season): void {
     const target = cands[rnd.next(0, Math.min(8, cands.length))];
     const designs = [designFor(galaxy, faction, BuiltObjectSubRole.Cruiser), designFor(galaxy, faction, BuiltObjectSubRole.Destroyer)].filter((d): d is Design => d !== null);
     if (designs.length === 0) return;
+    // raiders are paid from the fleet biofuel unless the model is the scripted one
+    const paid = P.fundingModel(galaxy) !== 1;
+    if (paid && fuelOf(st).fleet <= 0) return;
     const ships = designs.slice(0, 2).map((d) => spawnShip(galaxy, faction, d, pos.x, pos.y));
+    if (paid) payFleet(st, ships.reduce((a, b) => a + strengthOf(b), 0));
     st.stats.spawned += ships.length;
     st.stats.raids++;
     const done = new Set<ShipGroup>();
@@ -1100,48 +1236,36 @@ function quietPass(galaxy: Galaxy, st: BeaconState, season: Season): void {
 // Processing: the monthly drain, the Thrall pools
 // ---------------------------------------------------------------------------------------------------------------
 
-export function drainWorld(galaxy: Galaxy, st: BeaconState, rec: ProcessRec): number {
+/**
+ * A held world the cattle ships have emptied stays empty: what regrows is cut back (taken to the harvest uncounted: it never had time to
+ * grow up). Returns nothing; no Rnd.
+ */
+export function holdEmpty(rec: ProcessRec): void {
     const h = rec.colony;
-    if (h.population === null || h.population.totalAmount <= 0) return 0;
+    if (!rec.done || h.population === null || h.population.totalAmount <= 0) return;
     const floor = Math.max(1, rec.popStart * 0.01);
     const total = h.population.totalAmount;
-    if (rec.done) {
-        // A processed world stays empty: what regrows is cut back (not counted again).
-        if (total > floor * 1.5) {
-            const keep = floor / total;
-            for (const p of h.population.items) p.amount = Math.floor(p.amount * keep);
-            h.population.recalculateTotalAmount();
-        }
-        return 0;
+    if (total > floor * 1.5) {
+        const keep = floor / total;
+        for (const p of h.population.items) p.amount = Math.floor(p.amount * keep);
+        h.population.recalculateTotalAmount();
     }
-    if (total <= floor) {
-        rec.done = true;
-        return 0;
-    }
-    const step = Math.min(total - floor, Math.max(1, rec.popStart / Math.max(1, P.drainMonths(galaxy))));
-    const frac = step / total;
-    let removed = 0;
-    for (const p of h.population.items) {
-        const cut = Math.floor(p.amount * frac);
-        p.amount -= cut;
-        removed += cut;
-    }
-    h.population.recalculateTotalAmount();
-    rec.drained += removed;
-    rec.pool += (removed / 1e6) * P.thrallPerMillion(galaxy);
-    st.popEliminated += removed;
-    st.stats.popDrained += removed;
-    if (h.population.totalAmount <= floor * 1.05) rec.done = true;
-    return removed;
 }
 
-/** Monthly: the drain, convoys of Thralls for groups that need them, income, tech, the Beacon's guard, the losing check. */
+/** Monthly: garrisons settled, emptied worlds kept empty, the harvest (processing, biofuel, the troop pass), wars, the losing check. */
 export function reclamationMonthly(galaxy: Galaxy): void {
     const st = (galaxy.scenario?.state['beacon'] ?? null) as BeaconState | null;
     if (st === null || st.phase !== 'reclamation' || st.faction === null || !st.faction.active) return;
     const faction = st.faction;
     st.processing = st.processing.filter((r) => !r.colony.hasBeenDestroyed && r.colony.empire === faction);
-    for (const rec of st.processing) drainWorld(galaxy, st, rec);
+    for (const rec of st.processing) {
+        if (rec.garrisoned !== true && rec.colony.invadingTroops?.items.every((t) => t.empire === faction) !== false) {
+            rec.garrisoned = true;
+            setGarrison(galaxy, faction, rec.colony, st);
+        }
+        holdEmpty(rec);
+    }
+    harvestMonthly(galaxy, st);
     faction.stateMoney = Math.max(faction.stateMoney, 5_000_000);
     refuelAll(faction);
     st.thrallShips = st.thrallShips.filter((b) => !b.hasBeenDestroyed);
@@ -1179,15 +1303,31 @@ function topUpGuard(galaxy: Galaxy, st: BeaconState): void {
     const pos = beaconPosition(st);
     if (pos === null || st.beaconDestroyed) return;
     st.guards = aliveShips(st.guards, faction);
-    const want = seasonBudget(galaxy, st, Math.max(1, st.stats.seasons)) * 0.4;
+    const n = Math.max(1, st.stats.seasons);
+    let want = (scriptedBudget(galaxy, st, n) / Math.max(1, groupCountFor(galaxy, st, n))) * P.guardGroups(galaxy);
+    // The guard is raised over the first beaconGuardRampDays after completion (30 % at the start): the empires get a window to strike before it is full.
+    const ramp = P.guardRampDays(galaxy);
+    if (ramp > 0) want *= Math.min(1, 0.3 + (0.7 * Math.max(0, galaxyStarDate(galaxy) - st.completeDate)) / days(ramp));
+    // The guard never outgrows what the world's empires could ever field against it (else the Beacon could not be beaten at all).
+    const capPct = P.guardCapPct(galaxy);
+    if (capPct > 0) {
+        let total = 0;
+        for (const e of normalEmpires(galaxy, faction)) total += militaryPotency(e);
+        want = Math.min(want, Math.max(P.minSeasonStrength(galaxy), (total * capPct) / 100));
+    }
     let have = st.guards.reduce((s, b) => s + strengthOf(b), 0);
+    // The funding model's free share of the guard comes for nothing; the rest is paid from the fleet biofuel.
+    const freeTo = want * freeShare(galaxy);
     for (let i = 0; i < 12 && have < want; i++) {
+        const paid = have >= freeTo;
+        if (paid && fuelOf(st).fleet <= 0) break;
         const sub = WAVE_CYCLE[(st.guards.length + i) % WAVE_CYCLE.length];
         const d = designFor(galaxy, faction, sub);
         if (d === null) break;
         const bo = spawnShip(galaxy, faction, d, pos.x, pos.y);
         st.guards.push(bo);
         st.stats.spawned++;
+        if (paid) payFleet(st, strengthOf(bo));
         have += strengthOf(bo);
         if (!(strengthOf(bo) > 0)) break;
     }
@@ -1200,12 +1340,25 @@ function topUpGuard(galaxy: Galaxy, st: BeaconState): void {
 // The driver
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Every 5 days: the season state machine and every strike group. */
+/** Days since the last reclamation pass (5 to 60): the scenario periodics run once per stock long block, so a pass can stand for weeks. */
+export function passDays(st: BeaconState, now: number): number {
+    const last = st.lastPassDate ?? now - days(5);
+    return Math.max(5, Math.min(60, (now - last) / GAME_DAY_LENGTH));
+}
+
+/** Every 5 days (at most once per stock long block): the season state machine and every strike group. */
 export function reclamationPeriodic(galaxy: Galaxy): void {
     const st = (galaxy.scenario?.state['beacon'] ?? null) as BeaconState | null;
     if (st === null || st.phase !== 'reclamation' || st.faction === null || !st.faction.active) return;
     const faction = st.faction;
     const now = galaxyStarDate(galaxy);
+    reclamationPass(galaxy, st, now);
+    st.lastPassDate = now;
+    void faction;
+}
+
+function reclamationPass(galaxy: Galaxy, st: BeaconState, now: number): void {
+    const faction = st.faction!;
     if (st.beacon !== null && st.beacon.hasBeenDestroyed && !st.beaconDestroyed) {
         st.beaconDestroyed = true;
         arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Beacon Destroyed', textTag: `${TAG} Beacon Destroyed News` });
@@ -1229,8 +1382,10 @@ export function reclamationPeriodic(galaxy: Galaxy): void {
             if (!beginSeason(galaxy, st, season.n + 1)) season.end = now + days(60); // nothing to strike: wait a little
         }
     }
+    harvestPeriodic(galaxy, st);
     // Groups of every recent season go on until they are done (a siege runs past its season's end).
     for (const s of st.seasons) for (const g of s.groups) if (g.state !== 'gather' && g.state !== 'done') driveGroup(galaxy, st, g);
+    drivePlanetDestroyers(galaxy, st);
     if (!st.beaconDestroyed && now - (st.guardDate ?? 0) >= days(60)) {
         st.guardDate = now;
         topUpGuard(galaxy, st);
@@ -1242,6 +1397,38 @@ export function reclamationPeriodic(galaxy: Galaxy): void {
 // Events: conquest, retaking, destruction
 // ---------------------------------------------------------------------------------------------------------------
 
+/**
+ * A world the Reclaimers hold is garrisoned at exactly beaconGarrison (in beaconGarrisonRegiments regiments), whatever mix of
+ * survivors the landing left: more is sent home (a stronger garrison than a landing's leftovers would make retaking hopeless for
+ * every AI), less is topped up. No Rnd beyond troop naming.
+ */
+export function setGarrison(galaxy: Galaxy, faction: Empire, colony: Habitat, st: BeaconState | null = null): void {
+    colony.troops ??= new TroopList();
+    const full = P.garrisonStrength(galaxy);
+    const have = colony.troops.totalDefendStrength;
+    if (have >= full * 0.8 && have <= full * 1.25) return;
+    // Short of it: the funding model's free share is raised for nothing, the rest paid from the troop biofuel (as far as it goes).
+    let want = full;
+    if (have < full * 0.8 && st !== null) {
+        const free = (full - have) * freeShare(galaxy);
+        const paid = Math.min(full - have - free, troopsAffordable(galaxy, st));
+        payTroops(galaxy, st, paid);
+        want = have + free + paid;
+        if (want <= have) return;
+    }
+    for (const t of [...colony.troops.items]) {
+        const e = t.empire as Empire | null;
+        if (e !== null && e.troops != null) e.troops.remove(t);
+    }
+    colony.troops.clear();
+    if (!(want > 0)) return;
+    const race = (colony.population?.dominantRace ?? null) as Race | null;
+    for (const t of makeTroopsSplit(galaxy, faction, want, P.garrisonRegiments(galaxy), T('Beacon Thrall Name'), race)) {
+        t.colony = colony;
+        colony.troops.add(t);
+    }
+}
+
 /** colonyOwnerChanged: a world falls to the Reclaimers (processing begins), or is retaken from them (the survivors are saved). */
 export function onColonyOwnerChanged(galaxy: Galaxy, st: BeaconState, colony: Habitat, from: Empire | null, to: Empire | null): void {
     const faction = st.faction;
@@ -1250,7 +1437,9 @@ export function onColonyOwnerChanged(galaxy: Galaxy, st: BeaconState, colony: Ha
     if (to === faction) {
         if (faction.capital === null || faction.capital.empire !== faction) faction.capital = colony;
         if (!st.processing.some((r) => r.colony === colony)) {
-            st.processing.push({ colony, since: now, popStart: colony.population.totalAmount, drained: 0, pool: 0, done: false, nextConvoy: 0 });
+            // the first cattle ship leaves after a part of the interval (staggered by the world's index, no Rnd)
+            const first = now + days(P.cattleDays(galaxy) * (0.3 + (colony.habitatIndex % 7) / 7));
+            st.processing.push({ colony, since: now, popStart: colony.population.totalAmount, drained: 0, pool: 0, done: false, nextConvoy: first });
             st.stats.conquests++;
         }
         if (from !== null && from !== galaxy.independentEmpire && from.pirateEmpireBaseHabitat === null && st.ceding !== true) st.lostBy[String(from.empireId)] = (st.lostBy[String(from.empireId)] ?? 0) + 1;
@@ -1261,23 +1450,16 @@ export function onColonyOwnerChanged(galaxy: Galaxy, st: BeaconState, colony: Ha
         }
         arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Conquered', onceKey: `Conquered:${colony.name}:${st.stats.conquests}`, textTag: `${TAG} Conquered News`, args: [colony.name, from?.name ?? T('Beacon Independents')] });
         if (from !== null && isHumanEmpire(galaxy, from)) arcMessage(galaxy, st.sentStages, [from], { prefix: TAG, stage: 'Processing', onceKey: `Processing:${colony.name}:${st.stats.conquests}`, args: [colony.name], type: EmpireMessageType.GeneralBadEvent, subject: colony });
-        // a garrison of Thrall regiments (free upkeep): the world is held at beaconGarrison
-        colony.troops ??= new TroopList();
-        const have = colony.troops.totalDefendStrength;
-        const want = P.garrisonStrength(galaxy);
-        if (have < want) {
-            const race = (colony.population?.dominantRace ?? null) as Race | null;
-            for (const t of makeTroopsOfStrength(galaxy, faction, want - have, T('Beacon Thrall Name'), race)) {
-                t.colony = colony;
-                colony.troops.add(t);
-            }
-        }
+        // a garrison of Thrall regiments (free upkeep): the world is held at beaconGarrison, however many invaders survived
+        setGarrison(galaxy, faction, colony, st);
     } else if (from === faction) {
         const i = st.processing.findIndex((r) => r.colony === colony);
         if (i >= 0) {
             const rec = st.processing[i];
             st.processing.splice(i, 1);
+            st.stats.retaken = (st.stats.retaken ?? 0) + 1;
             const saved = colony.population.totalAmount;
+            onCoreRetaken(galaxy, st, colony, to);
             arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Retaken', onceKey: `Retaken:${colony.name}:${rec.since}`, textTag: `${TAG} Retaken News`, args: [colony.name, to?.name ?? T('Beacon Independents'), Math.round(saved / 1e6)] });
             if (to !== null && isHumanEmpire(galaxy, to)) arcMessage(galaxy, st.sentStages, [to], { prefix: TAG, stage: 'Retaken Msg', onceKey: `RetakenMsg:${colony.name}:${rec.since}`, args: [colony.name, Math.round(saved / 1e6), Math.round(rec.drained / 1e6)], type: EmpireMessageType.GeneralGoodEvent, subject: colony });
         }
@@ -1298,7 +1480,15 @@ export function onHabitatDestroyed(galaxy: Galaxy, st: BeaconState, habitat: Hab
 
 /** A Reclaimer ship was destroyed: a Thrall transport lost counts as an interception. */
 export function onShipKilled(galaxy: Galaxy, st: BeaconState, bo: BuiltObject, destroyer: Empire | null): void {
-    void galaxy;
     if (destroyer === null || destroyer === st.faction) return;
     if (st.thrallShips.includes(bo)) st.stats.thrallIntercepted++;
+    // a cattle ship: its captives die with it; a harvester: its core is broken and the pens freed toward the attacker
+    if (onCattleKilled(galaxy, st, bo)) return;
+    const core = (st.cores ?? []).find((c) => c.ended === null && c.harvester === bo);
+    if (core !== undefined) onHarvesterLost(galaxy, st, core, destroyer);
+    // a warship sunk at a staging point while the season is still gathering: the staging fleet was hit
+    const season = st.season;
+    if (season !== null && season.phase === 'prep' && bo.role === BuiltObjectRole.Military && bo.subRole !== BuiltObjectSubRole.TroopTransport) {
+        for (const sp of season.staging) if (distTo(galaxy, bo, sp.x, sp.y) <= 2 * GATHER_RANGE) st.stats.stagingKills = (st.stats.stagingKills ?? 0) + 1;
+    }
 }

@@ -203,6 +203,44 @@ const CONFIGS = [
     // galaxy, 20 years): share of ranked warships / troops over time, ships lost, invasions won / lost.
     // vet-war-nocaution-s1: on, without the AI's veteran caution (veteranAiCautionPerRank 0); -s7: a second galaxy.
     ...[['vet-war-on-s1', 1, true, {}], ['vet-war-off-s1', 1, false, {}], ['vet-war-nocaution-s1', 1, true, { veteranAiCautionPerRank: 0 }], ['vet-war-on-s7', 7, true, {}], ['vet-war-off-s7', 7, false, {}]].map(([name, seed, on, params]) => SCN('veterans', { name, set: 'veterans', seed, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, flags: { veterans: on }, params })),
+    // `--set beacon-short|beacon-med|beacon-long` (scripts/beacon-soak-hook.mjs; BEACON_MODE=natural|force|complete): the Beacon (Giantworks
+    // wonder) with the add-ons that interact (Smarter AI + Coordinated landings by default, Reputation, Characters & Victory with the Diet,
+    // War crimes), the Beacon the only wonder. Short runs start late (older galaxy, bigger empires, higher tech) with the Beacon forced through
+    // the Game Editor key; the long runs start normally and play the whole arc (the Gathering window is pulled in so the Reclamation has years to run).
+    ...(() => {
+        const only = { gwCasino: false, gwUltramind: false, gwSanctuary: false, gwRiftGate: false, gwArk: false };
+        const picks = ['giantworks', 'reputation', 'characters-victory', 'war-crimes'];
+        const mk = (name, set, seed, years, wizard, params = {}, extra = {}) => ({ name, set, seed, years, wizard, addons: picks, flags: { ...only, ...(extra.flags ?? {}) }, params: { giantworksBuildYears: 1.5, giantworksExistChancePct: 0, ...params }, ...Object.fromEntries(Object.entries(extra).filter(([k]) => k !== 'flags')) });
+        const w700 = (n, more = {}) => ({ starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: n }, ...more });
+        const late = { galaxyExpansionIndex: 4, empireExpansionIndex: 4, empireTechLevelIndex: 5 };
+        const nat = { giantworksBuildYears: 4, giantworksGatherMinYear: 3, giantworksGatherMaxYear: 5, giantworksExistChancePct: 100 };
+        return [
+            // short: late starts, forced
+            mk('bk-late-7-s1', 'beacon-short', 1, 8, w700(7, late)),
+            mk('bk-late-12-s2', 'beacon-short', 2, 8, { starCountIndex: 4, dimensionIndex: 4, otherEmpires: { empireCount: 12 }, ...late }),
+            mk('bk-late-20-s3', 'beacon-short', 3, 6, { starCountIndex: 5, dimensionIndex: 4, otherEmpires: { empireCount: 19 }, ...late }),
+            mk('bk-old-7-s4', 'beacon-short', 4, 8, w700(7, { galaxyExpansionIndex: 5, empireExpansionIndex: 5, empireTechLevelIndex: 7 })),
+            mk('bk-small-6-s5', 'beacon-short', 5, 8, { starCountIndex: 2, dimensionIndex: 2, otherEmpires: { empireCount: 6 }, ...late }),
+            // the harvest's core count reaches 7 only in really big galaxies: 4000 stars on 16 x 16 sectors, 12 empires (on 8 x 8 no system is far enough from every capital for the site; late start, forced, complete)
+            mk('bk-huge-12-s6', 'beacon-short', 6, 8, { starCountIndex: 5, dimensionIndex: 4, customStarCount: 4000, customSectorWidth: 16, customSectorHeight: 16, otherEmpires: { empireCount: 11 }, ...late }),
+            // medium: late start, natural arc (Gathering at once through the Game Editor force, 1.5 years to build)
+            mk('bm-late-7-s1', 'beacon-med', 1, 15, w700(7, late)),
+            mk('bm-late-12-s2', 'beacon-med', 2, 15, { starCountIndex: 4, dimensionIndex: 4, otherEmpires: { empireCount: 12 }, ...late }),
+            mk('bm-mid-7-s3', 'beacon-med', 3, 15, w700(7, { galaxyExpansionIndex: 3, empireExpansionIndex: 3, empireTechLevelIndex: 3 })),
+            // long: normal start, the whole arc
+            mk('bl-7-s1', 'beacon-long', 1, 35, w700(7), nat),
+            mk('bl-7-s2', 'beacon-long', 2, 35, w700(7), nat),
+            mk('bl-12-s3', 'beacon-long', 3, 35, { starCountIndex: 4, dimensionIndex: 4, otherEmpires: { empireCount: 12 } }, nat),
+            mk('bl-20-s4', 'beacon-long', 4, 30, { starCountIndex: 5, dimensionIndex: 4, otherEmpires: { empireCount: 19 } }, nat),
+            mk('bl-7-s5', 'beacon-long', 5, 35, w700(7), nat),
+            // long, the late arc: Giantworks seeds itself at game start (the Beacon the only wonder); the Gathering is year 10-14 and the work takes about 4-5 years,
+            // so the Reclamation has some twenty-odd years of a 40-year game; the Watchers corrupt worlds for the whole build.
+            ...[[7, 11, 700], [12, 12, 1000], [20, 13, 1400]].map(([n, seed, stars]) => mk(`bl2-${n}-s${seed}`, 'beacon-long2', seed, 40,
+                { starCountIndex: stars === 700 ? 3 : stars === 1000 ? 4 : 5, dimensionIndex: stars === 700 ? 3 : 4, otherEmpires: { empireCount: n === 20 ? 19 : n } },
+                { giantworksBuildYears: 4, giantworksGatherMinYear: 10, giantworksGatherMaxYear: 14, giantworksExistChancePct: 100 })),
+            mk('bl-smoke', 'beacon-smoke', 1, 3, { starCountIndex: 2, dimensionIndex: 2, otherEmpires: { empireCount: 7 }, ...late }, { giantworksBuildYears: 0.6 }),
+        ];
+    })(),
     // `--set long`: the many-decade runs (not in the default set).
     { name: 'long-s1-30y', set: 'long', seed: 1, years: 30, wizard: {} },
     { name: 'long-s7-small-50y', set: 'long', seed: 7, years: 50, wizard: { starCountIndex: 1, dimensionIndex: 1, otherEmpires: { empireCount: 5 } } },
@@ -329,7 +367,11 @@ const MODULES = { game: '/src/sim/game.ts', sgo: '/src/sim/startGameOptions.ts',
     thPurifier: '/src/sim/scenario/threats/purifier.ts', thGenShips: '/src/sim/scenario/threats/generationShips.ts', thNavy: '/src/sim/scenario/threats/factionNavy.ts',
     thCrisis: '/src/sim/scenario/threats/crisis.ts', thRobot: '/src/sim/scenario/threats/robotMutiny.ts', thProbe: '/src/sim/scenario/threats/probeSwarm.ts', thWhale: '/src/sim/scenario/threats/voidWhale.ts',
     council: '/src/sim/scenario/emergent/council.ts', ledger: '/src/sim/scenario/reputation/ledger.ts', eventLog: '/src/sim/scenario/eventLog/log.ts', chronicle: '/src/sim/scenario/eventLog/chronicle.ts',
-    diplomacyTick: '/src/sim/diplomacyTick.ts', boTypes: '/src/sim/builtObjectTypes.ts', simTime: '/src/sim/tick/simTime.ts', designSpecs: '/src/sim/data/designSpecifications.ts', characters: '/src/sim/characters.ts', governors: '/src/sim/scenario/governors.ts', coordLand: '/src/sim/scenario/coordinatedLandings/coordinatedLandings.ts' };
+    diplomacyTick: '/src/sim/diplomacyTick.ts', boTypes: '/src/sim/builtObjectTypes.ts', simTime: '/src/sim/tick/simTime.ts', designSpecs: '/src/sim/data/designSpecifications.ts', characters: '/src/sim/characters.ts', governors: '/src/sim/scenario/governors.ts', coordLand: '/src/sim/scenario/coordinatedLandings/coordinatedLandings.ts' ,
+    // docs/BEACON soak (scripts/beacon-soak-hook.mjs): the Beacon / Giantworks modules (hooks.ts is scnHooks, threats/framework.ts thFramework).
+    gwFramework: '/src/sim/scenario/threats/giantworks/framework.ts', gwState: '/src/sim/scenario/threats/giantworks/state.ts', gwLifecycle: '/src/sim/scenario/threats/giantworks/lifecycle.ts',
+    beacon: '/src/sim/scenario/threats/giantworks/beacon.ts', beaconState: '/src/sim/scenario/threats/giantworks/beaconState.ts', beaconFleet: '/src/sim/scenario/threats/giantworks/beaconFleet.ts',
+    beaconCounter: '/src/sim/scenario/threats/giantworks/beaconCounter.ts', beaconHarvest: '/src/sim/scenario/threats/giantworks/beaconHarvest.ts', missions: '/src/sim/missions/mission.ts', threats: '/src/sim/combat/threats.ts', ownership: '/src/sim/combat/ownership.ts' };
 
 async function bundle() {
     const dir = mkdtempSync(resolve(tmpdir(), 'dwu-soak-'));
@@ -342,6 +384,17 @@ async function bundle() {
 const outDir = resolve(String(arg('out', resolve(root, 'test/.cache/soak'))));
 mkdirSync(outDir, { recursive: true });
 
+// --make-bundle DIR: bundle the sim into DIR and exit (a sweep freezes the code once, then every run takes --bundle DIR).
+const makeBundle = arg('make-bundle', null);
+if (makeBundle !== null) {
+    const dir = await bundle();
+    const { cpSync } = await import('node:fs');
+    mkdirSync(String(makeBundle), { recursive: true });
+    cpSync(dir, String(makeBundle), { recursive: true });
+    rmSync(dir, { recursive: true, force: true });
+    console.log(`bundle written to ${makeBundle}`);
+    process.exit(0);
+}
 const runName = arg('run', null);
 if (runName === null) await driver();
 else await runOne(String(runName));
@@ -410,6 +463,11 @@ async function runOne(name) {
     let cfg = arg('seed', null) === null ? cfg0 : { ...cfg0, seed: Number(arg('seed')) };
     // --flags-off a,b: also switch these scenario flags off (ablation runs of an 'all flags' config).
     if (arg('flags-off', null) !== null) cfg = { ...cfg, flagsOff: [...(cfg.flagsOff ?? []), ...String(arg('flags-off')).split(',')] };
+    // SOAK_PARAMS='{"beaconStrengthPct":80}' / SOAK_FLAGS='{"gwBeacon":true}' / SOAK_WIZARD='{"otherEmpires":{"empireCount":12}}': overrides of the config (tuning runs).
+    if (process.env.SOAK_ADDONS) cfg = { ...cfg, addons: JSON.parse(process.env.SOAK_ADDONS) };
+    if (process.env.SOAK_PARAMS) cfg = { ...cfg, params: { ...(cfg.params ?? {}), ...JSON.parse(process.env.SOAK_PARAMS) } };
+    if (process.env.SOAK_FLAGS) cfg = { ...cfg, flags: { ...(cfg.flags && cfg.flags !== 'all' ? cfg.flags : {}), ...JSON.parse(process.env.SOAK_FLAGS) } };
+    if (process.env.SOAK_WIZARD) cfg = { ...cfg, wizard: { ...(cfg.wizard ?? {}), ...JSON.parse(process.env.SOAK_WIZARD) } };
     const ownBundle = arg('bundle', null) === null;
     const bundleDir = ownBundle ? await bundle() : String(arg('bundle'));
     const load = (key) => import(resolve(bundleDir, key + '.js'));
