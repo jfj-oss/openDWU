@@ -43,6 +43,7 @@ import { calculateCrewLevel, doRepairs } from '../src/sim/construction/repair';
 import { findNearestShipYard } from '../src/sim/construction/empireConstruction';
 import { builtObjectConstructionQueue } from '../src/sim/construction/constructionQueue';
 import { shipGroupRepairBonus } from '../src/sim/fleets/shipGroup';
+import { cleanupInvalidShips } from '../src/sim/combat/teardown';
 import { determineDestroyOrCaptureTarget, empireRaidStrengthFactor, shouldAttack } from '../src/sim/combat/attackAI';
 import { ShipGroup, shipGroupAssignMission } from '../src/sim/fleets/shipGroup';
 import { runGameSeconds } from '../src/sim/tick/harness';
@@ -2265,6 +2266,14 @@ describe('(9) the six combat changes (decoys, ambush, critical hits, damage cont
         expect(c2StruckSpares(cg, raiders[0], victim)).toBe(true);
         expect(c2StruckSpares(cg, victim, raiders[0])).toBe(true);
         expect(shouldAttack(cg, raiders[0], victim, cg.nowMs)).toBe(false);
+        // Nothing hurts it: not rounds in flight or base guns (inflictDamage), not the stock stranded-ship cleanup (engines out, no yard).
+        const wpn = raiders[0].weapons[0];
+        const before = victim.undamagedComponentSize;
+        expect(inflictDamage(cg, raiders[0], victim, wpn, 5000, cg.nowMs, 100, 0)).toBe(false);
+        expect(victim.undamagedComponentSize).toBe(before);
+        expect(victim.hasBeenDestroyed).toBe(false);
+        cleanupInvalidShips(cg, b);
+        expect(victim.hasBeenDestroyed).toBe(false);
         // A prize crew within range for the capture time takes it (the stock boarding capture).
         const t0 = cg.nowMs;
         surrenderCaptureTick(cg);
