@@ -1,3 +1,4 @@
+import { isStruck } from '../scenario/combat2/surrender';
 // M4o — BuiltObject teardown, mission clearing for a destroyed target, invalid-ship cleanup.
 //
 // Ports (statement for statement): BuiltObject.2.cs 5150 CheckCancelContracts, 5166 / 5171 CompleteTeardown,
@@ -440,6 +441,7 @@ export function cleanupInvalidShips(galaxy: Galaxy, empire: Empire): void {
         const builtObject = builtObjectList2[i];
         if (builtObject == null || builtObject.inView || !builtObject.isAutoControlled) continue;
         if (builtObject.hasBeenDestroyed) builtObjectList.push(builtObject);
+        else if (galaxy.scenario !== null && isStruck(galaxy, builtObject)) continue; // mod layer (Surrender): a ship that struck its colours (engines out) waits to be taken, it is not cleaned up
         if (builtObject.owner !== null && isHumanEmpire(galaxy, builtObject.owner) && !builtObject.hasBeenDestroyed) continue;
         if (!builtObject.isFunctional && builtObject.builtAt === null && builtObject.role !== BuiltObjectRole.Base) builtObjectList.push(builtObject);
         if (builtObject.role !== BuiltObjectRole.Base && builtObject.builtAt === null && builtObject.topSpeed <= 0) builtObjectList.push(builtObject);

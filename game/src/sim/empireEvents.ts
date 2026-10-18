@@ -217,14 +217,14 @@ export function findNearestBuiltObjectOfEmpire(galaxy: Galaxy, x: number, y: num
         for (let i = 0; i < builtObjectList.length; i++) {
             const builtObject2 = builtObjectList[i];
             if (builtObject2 == null) continue;
+            // openDWU speed-up (same result: the tests are pure, so their order does not matter): the cheap empire test first. A pirate event's ring
+            // search for one empire's nearest ship walked every ship in range computing distances (a 0.5 s frame with 18,000 ships alive).
+            if (empire !== null && builtObject2.empire !== empire) continue;
             const num = galaxy.calculateDistanceSquared(x, y, builtObject2.xpos, builtObject2.ypos);
             if (!(num < distance)) continue;
             let flag = true;
             if (fullyFunctional && (builtObject2.builtAt != null || builtObject2.unbuiltOrDamagedComponentCount > 0)) flag = false;
             if (!flag) continue;
-            let flag2 = true;
-            if (empire !== null && builtObject2.empire !== empire) flag2 = false;
-            if (!flag2) continue;
             if (subRole !== BuiltObjectSubRole.Undefined) {
                 if (builtObject2.subRole === subRole) {
                     builtObject = builtObject2;

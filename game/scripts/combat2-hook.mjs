@@ -31,7 +31,9 @@ let lastYearLogged = -1;
 const wrecksByYear = [];
 let lastSample = -Infinity;
 
-export function frame(ctx, _dt, g) {
+const frameTimes = [];
+export function frame(ctx, dt, g) {
+    frameTimes.push(dt);
     if (g.nowMs - lastSample < 2000) return;
     lastSample = g.nowMs;
     for (const e of g.empires) {
@@ -127,6 +129,7 @@ export function chunk(ctx) {
         colonies: colonies.map((c) => `${c.name.slice(0, 12)}:${c.colonies}`),
         aiStrikeMissions: strikes,
         wrecks: { now: wrecksNow, maxInOneSystemNow: maxInSystem, peakInOneSystem: wreckPeakSystem, peakTotal: wreckPeakTotal, byYear_total_slash_maxSystem: wrecksByYear },
+        frameMs: (() => { const a = [...frameTimes].sort((x, y) => x - y); const q = (p) => +a[Math.min(a.length - 1, Math.floor(a.length * p))].toFixed(2); return { n: a.length, p50: q(0.5), p99: q(0.99), p999: q(0.999), max: +a[a.length - 1].toFixed(0) }; })(),
         combat2Stats: c2 === null ? null : c2.stats,
         combat2Tracked: c2 === null ? null : { decoyPools: c2.decoys.size, ambush: c2.ambush.size, crits: c2.crits.size, dc: c2.dc.size, struckNow: c2.struck.size, calm: c2.calm.size, flank: c2.flank.size },
         bvr: st === null ? null : { missilesFired: st.missilesFired, missileHits: st.missileHits, torpedoesFired: st.torpedoesFired, torpedoHits: st.torpedoHits, downedByPd: st.downedByPd, roundsLoaded: st.roundsLoaded, aiRearmTrips: st.aiRearmTrips },

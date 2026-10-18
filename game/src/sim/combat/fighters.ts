@@ -1,3 +1,4 @@
+import { isStruck } from '../scenario/combat2/surrender';
 // M4p — fighters and carriers (tasks/M4-plan.md §3.3 row M4p).
 //
 // Ports, statement for statement and in C# Galaxy.Rnd draw order:
@@ -2058,6 +2059,8 @@ export function fighterInflictDamageFull(
     strikeAngle: number,
     allowArmorInvulnerability: boolean,
 ): boolean {
+    // Mod layer (Surrender): fighters do not hurt a ship that has struck its colours.
+    if (galaxy.scenario !== null && isBuiltObject(abstractTarget as never) && isStruck(galaxy, abstractTarget as unknown as BuiltObject)) return false;
     hitPower *= inflictDamageFighterMultiplier(self);
     checkForLevelGain(galaxy, self, hitPower);
     const parent = self.parentBuiltObject;
