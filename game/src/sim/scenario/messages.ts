@@ -20,6 +20,8 @@ export interface ScenarioMessageOptions {
     log?: ScenarioLogOptions;
     /** false = a ticker / history line only, never a popup (EmpireMessage.SupressPopup); default: the message settings decide. */
     popup?: boolean;
+    /** The player sees it whatever the message settings: 'force' = ticker, badge and an automatic popup; 'quiet' = ticker and badge, no automatic popup (overrides `popup`). */
+    popupMode?: 'force' | 'quiet';
 }
 
 /**
@@ -40,6 +42,7 @@ export function scenarioMessage(galaxy: Galaxy, recipient: Empire, title: string
     m.description = description;
     m.starDate = galaxyStarDate(galaxy);
     if (opts.popup === false) m.supressPopup = true;
+    if (opts.popupMode !== undefined) m.scenarioPopup = opts.popupMode;
     withoutEmpireMessageTap(() => sendEmpireMessage(m, recipient));
     logScenarioMessage(galaxy, recipient, m, opts.log); // 19p (flag eventLog)
     return m;
@@ -50,7 +53,7 @@ export function scenarioMessage(galaxy: Galaxy, recipient: Empire, title: string
  * `filter` (default: all). `source` names the reporting empire in the title, like SendNewsBroadcastCore ("NewsNet: X").
  * Returns the recipients. `log`: the 19p event log's explicit category / importance (default: the package's).
  */
-export function scenarioNews(galaxy: Galaxy, source: Empire | null, description: string, filter: (e: Empire) => boolean = () => true, subject: unknown = null, log?: ScenarioLogOptions): Empire[] {
+export function scenarioNews(galaxy: Galaxy, source: Empire | null, description: string, filter: (e: Empire) => boolean = () => true, subject: unknown = null, log?: ScenarioLogOptions, popupMode?: 'force' | 'quiet'): Empire[] {
     // As SendNewsBroadcastCore (events.ts): gameText('Galactic NewsNet').ToUpper().
     const newsNet = gameText('Galactic NewsNet').toUpperCase();
     const title = source !== null ? `${newsNet}: ${source.name}` : newsNet;
@@ -61,6 +64,7 @@ export function scenarioNews(galaxy: Galaxy, source: Empire | null, description:
         m.title = title;
         m.description = source !== null ? `${title} - ${description}` : `${newsNet}: ${description}`;
         m.starDate = galaxyStarDate(galaxy);
+        if (popupMode !== undefined) m.scenarioPopup = popupMode;
         withoutEmpireMessageTap(() => sendEmpireMessage(m, e));
         sent.push(e);
     }

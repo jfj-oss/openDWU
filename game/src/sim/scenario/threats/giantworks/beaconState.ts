@@ -349,6 +349,8 @@ export interface BeaconState {
     /** Seed counter for beaconRandom. */
     rndCounter: number;
     sentStages: SentStages;
+    /** Message kind → ids of the human empires that already had its first-encounter message (beacon.ts watcherVariant; absent in older saves). */
+    msgSeen?: Record<string, number[]>;
     /** The colonies that were independent at the start (the Watchers corrupt only these). */
     formerIndependents: Habitat[];
     watchers: WatcherRec[];
@@ -430,7 +432,7 @@ export function newStats(): BeaconStats {
 
 function newState(): BeaconState {
     return {
-        site: null, faction: null, phase: 'watching', rndCounter: 0, sentStages: {}, formerIndependents: [], watchers: [], sighted: [], corrupted: [], nextSightingDate: 0, completeDate: 0, beacon: null, beaconDestroyed: false,
+        site: null, faction: null, phase: 'watching', rndCounter: 0, sentStages: {}, msgSeen: {}, formerIndependents: [], watchers: [], sighted: [], corrupted: [], nextSightingDate: 0, completeDate: 0, beacon: null, beaconDestroyed: false,
         beaconKnowledge: [], guards: [], guardDate: 0, thrallShips: [], seasons: [], season: null, nextGroupId: 1, processing: [], raids: [], nextRaidDate: 0, reserve: [], popBaseline: 0, popEliminated: 0, bargains: [], lostBy: {}, offered: {},
         nextOfferDate: 0, salvage: [], reclamationDate: 0, stats: newStats(), ended: false,
     };

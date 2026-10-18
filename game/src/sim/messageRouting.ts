@@ -619,7 +619,7 @@ export interface MessageRoute {
 // Port of Main.Part9.cs:1521 method_252 + the ReceiveMessageInternal tail (Main.Part9.cs:2349-2415).
 export function routeEmpireMessage(message: EmpireMessage, player: Empire | null, opts: MessageOptions): MessageRoute {
     const c = classifyEmpireMessage(message, player);
-    if (c.drop) return { category: null, popup: false, ticker: false, conversation: null, immediate: false };
+    if (c.drop && message.scenarioPopup === undefined) return { category: null, popup: false, ticker: false, conversation: null, immediate: false };
     // method_252 runs first; the case's explicit bool_ / bool_2 sets come after it.
     let popup = c.category !== null && opts.popup[c.category];
     let ticker = c.category !== null && opts.ticker[c.category];
@@ -632,6 +632,9 @@ export function routeEmpireMessage(message: EmpireMessage, player: Empire | null
         immediate = IMMEDIATE_CONVERSATIONS.has(c.conversation);
     }
     popup = popup && !message.supressPopup;
+    // mod layer (the Beacon's first-encounter messages): a scenario message may force its popup and ticker line, or force only the ticker line
+    if (message.scenarioPopup === 'force') return { category: c.category, popup: true, ticker: true, conversation: null, immediate: false };
+    if (message.scenarioPopup === 'quiet') return { category: c.category, popup: false, ticker: true, conversation: null, immediate: false };
     return { category: c.category, popup, ticker, conversation: c.conversation, immediate };
 }
 

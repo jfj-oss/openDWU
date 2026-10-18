@@ -216,7 +216,8 @@ import { addStress, breachChancePerYear, breachSanctuary, growthBonusAt, rageSte
 import { rebuildIndexes } from '../src/sim/indexRebuild';
 import { SystemVisibilityStatus } from '../src/sim/visibility';
 import { completeWork, greatWorkIsHostile, greatWorkKind, type GreatWorkSite } from '../src/sim/scenario/threats/giantworks/framework';
-import { beaconBuildRate, beaconComplete, beaconEndCheck, beaconKind, beaconKnownSites, beaconLooks, beaconRolled, beaconShipRole, beaconSuppliers, cloakLapsedFor, corrupt, corruptCandidates, watchersPeriodic } from '../src/sim/scenario/threats/giantworks/beacon';
+import { defaultMessageOptions, routeEmpireMessage } from '../src/sim/messageRouting';
+import { watcherVariant, beaconBuildRate, beaconComplete, beaconEndCheck, beaconKind, beaconKnownSites, beaconLooks, beaconRolled, beaconShipRole, beaconSuppliers, cloakLapsedFor, corrupt, corruptCandidates, watchersPeriodic } from '../src/sim/scenario/threats/giantworks/beacon';
 import { peekBeaconState, salvageStepsOf, type BeaconState } from '../src/sim/scenario/threats/giantworks/beaconState';
 import { beginSeason, driveWatcherFleets, watcherTargetValue, designFor, groupCarryRegiments, scriptedBudget, seasonBudget, landingPlan, lossCheck, noticedGathering, planetStrike, reclamationMonthly, reclamationPeriodic, spawnShip, supplyTroops, targetCandidates } from '../src/sim/scenario/threats/giantworks/beaconFleet';
 import { coalitionMembers, coalitionPass } from '../src/sim/scenario/threats/giantworks/beaconAi';
@@ -4490,9 +4491,7 @@ describe('the Beacon (Giantworks wonder)', () => {
         expect(st.sighted).toEqual([ship]); // the art unfolds an uncloaked Watcher (render/threatArt.ts reads state 'beacon': faction, watchers, sighted, beacon)
         expect(st.stats.sightings).toBe(1);
         for (const e of normalsOf(g)) expect(atWarWith(e, st.faction!)).toBe(false);
-        // the owner heard of it, the galaxy had a news line
-        expect(empireMessages(a).some((m) => m.description.includes('unknown make'))).toBe(true);
-        expect(empireMessages(b).some((m) => m.description.includes('unidentified vessel'))).toBe(true);
+        // (the messages to the human owner and the NewsNet lines are checked in 'Watcher messages')
         // attacked by a: self-defence only. No war is declared or locked with anyone, the cloak stays down while it fights
         const hunter0 = a.builtObjects.find((o) => !o.hasBeenDestroyed && o.role === BuiltObjectRole.Military && o.topSpeed > 0 && o.shipGroup === null)!;
         scenarioEmit(g, 'builtObjectAttacked', { builtObject: ship, attacker: hunter0, attackingEmpire: a });
@@ -4527,6 +4526,58 @@ describe('the Beacon (Giantworks wonder)', () => {
         expect(ship.cloaked).toBe(true);
         expect(builtObjectMission(hunter.mission)?.targetBuiltObject ?? null).not.toBe(ship);
         for (const e of normalsOf(g)) expect(atWarWith(e, st.faction!)).toBe(false);
+    }, 900000);
+
+    it('Watcher messages: the first of each kind an empire gets is the first-encounter text and opens its popup; repeats are a seeded random variant, ticker and badge only', () => {
+        const { g, st } = rolled();
+        const w = st.watchers[0];
+        const ship = w.ship!;
+        const me = g.playerEmpire!;
+        const target = me.colonies[0];
+        const tag = (m: { scenarioPopup?: string }): string | undefined => m.scenarioPopup;
+        const sighting = (): void => {
+            ship.xpos = target.xpos + 1000;
+            ship.ypos = target.ypos + 1000;
+            w.target = target;
+            w.mode = 'travel';
+            w.until = -1;
+            watchersPeriodic(g);
+            expect(w.mode).toBe('sighting');
+            g.nowMs += 10 * GAME_DAY_LENGTH;
+            watchersPeriodic(g); // the sighting ends: the cloak message
+            st.watchers[1].until = 0;
+        };
+        const before = empireMessages(me).length;
+        sighting();
+        let msgs = empireMessages(me).slice(before);
+        const decloak1 = msgs.find((m) => m.title === 'An unidentified vessel')!;
+        expect(decloak1.description).toContain('Something has appeared above');
+        expect(tag(decloak1)).toBe('force');
+        const cloak1 = msgs.find((m) => m.title === 'It is gone')!;
+        expect(cloak1.description).toContain('is gone, and nobody saw it go');
+        expect(tag(cloak1)).toBe('force');
+        // the second time: a repeat variant, shown but never opened by itself
+        const mark = empireMessages(me).length;
+        g.nowMs += 300 * GAME_DAY_LENGTH;
+        sighting();
+        msgs = empireMessages(me).slice(mark);
+        const decloak2 = msgs.find((m) => m.title === 'An unidentified vessel')!;
+        expect(decloak2.description).toContain('went dark at midday');
+        expect(tag(decloak2)).toBe('quiet');
+        expect(tag(msgs.find((m) => m.title === 'It is gone')!)).toBe('quiet');
+        // the variant pick is deterministic: the same seed and counter give the same variant, and it is one of the listed repeats
+        const a = watcherVariant(g, st, 'cloak', me);
+        st.rndCounter -= 1;
+        expect(watcherVariant(g, st, 'cloak', me)).toBe(a);
+        expect(['Repeat 1', 'Repeat 2', 'Repeat 3']).toContain(a);
+        // an AI empire gets nothing; a message the routing sees as ticker + badge even where the settings say no
+        const ai = normalsOf(g).find((e) => !isHumanEmpire(g, e))!;
+        const aiBefore = empireMessages(ai).length;
+        scenarioEmit(g, 'builtObjectAttacked', { builtObject: ship, attacker: null, attackingEmpire: ai });
+        expect(empireMessages(ai).length).toBe(aiBefore);
+        const route = routeEmpireMessage(decloak1, me, defaultMessageOptions());
+        expect(route).toMatchObject({ popup: true, ticker: true });
+        expect(routeEmpireMessage(decloak2, me, defaultMessageOptions())).toMatchObject({ popup: false, ticker: true });
     }, 900000);
 
     it('self-defence: an attacked Watcher may fire only at the ships that attacked it and their fleets; it breaks off, resumes its dwell and cloaks, with no war', () => {
@@ -4717,6 +4768,7 @@ describe('the Beacon (Giantworks wonder)', () => {
         f.stateMoney = 1e9;
         g.scenario!.params.beaconFundingModel = 1;
         g.scenario!.params.beaconGroups = 4;
+        g.scenario!.params.beaconStrengthPct = 400; // (max-tech ships are big: a season has to be able to buy several of them per group)
         const t0 = galaxyStarDate(g);
         // the Reclamation made them flagships: no routine of their own, uncloaked, the first offensive 3 to 4 years away
         expect(st.watcherFleets).toHaveLength(2);

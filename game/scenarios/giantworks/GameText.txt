@@ -110,18 +110,36 @@ Beacon Rising Name;Corrupted Militia
 Beacon Garrison Name;Thrall Garrison
 Beacon Independents;the independents
 'The Watchers
-Beacon Sighting Title;An unidentified vessel
-Beacon Sighting;A vast vessel of unknown make has shown itself over {0}, with no flag and no answer to our hails. It is not hostile. It looks like a machine, and it is enormous.
-Beacon Sighting News;A colossal unidentified vessel has been seen hanging over {0} in the {1} system. It did not respond to hails, and it did not fire.
-Beacon Sighting Gone News;The unidentified vessel over {0} has vanished, as if it had never been there.
-Beacon Detect Title;Something in the dark
-Beacon Detect;Our sensors near {0} brushed something huge and cold, moving in the dark. It was gone before we could be sure.
 Beacon Watcher Row;A vast cloaked vessel (last known near {0})
-Beacon Watcher Status;It is passive unless attacked, and then it fights only the ships that attacked it. It is very hard to kill.
+Beacon Watcher Status;It watches. It has never once fired first.
+Beacon Msg Detect Title;Something in the dark
+Beacon Msg Detect First;Our long-range array near {0} has logged a reading the technicians insist must be a fault: a mass the size of a moon, colder than empty space, there for eleven seconds and then gone. They have run the diagnostics three times. The array is fine.
+Beacon Msg Detect Repeat 1;Sensor log, {0}: for eleven seconds our array returned a shape where there was nothing. Something the size of a moon, colder than empty space. Then it was gone, and the array has reported static since. The crew have asked to be relieved.
+Beacon Msg Detect Repeat 2;It is back. Near {0} our sensors traced the same impossible cold, and this time it was moving against the drift of the stars. Whatever it is, it is not lost. It is looking for something.
+Beacon Msg Decloak Title;An unidentified vessel
+Beacon Msg Decloak First;Something has appeared above {0}. We do not know what it is. It is bigger than anything we have ever built, it carries no markings, and it is not doing anything. The governor is asking what to do. We do not have an answer.
+Beacon Msg Decloak Repeat 1;The sky over {0} went dark at midday. A vessel larger than any city we have built hangs above the colony in perfect silence. It does not answer our hails. It does not need to. Its lights are counting something.
+Beacon Msg Decloak News;Panic in the {1} system: a colossal ship of no known make has appeared over {0}. Witnesses describe pink lights blinking in slow, deliberate patterns, and a cold that frosted windows on the ground. It made no demands. It only watched.
+Beacon Msg Cloak Title;It is gone
+Beacon Msg Cloak First;The vessel over {0} is gone, and nobody saw it go. One moment it filled the sky, the next our sensors read empty space. We are no longer sure it was ever there.
+Beacon Msg Cloak Repeat 1;The vessel over {0} faded like breath on glass. Our sensors kept tracking empty space for an hour afterwards, as if they could not accept it was gone.
+Beacon Msg Cloak Repeat 2;Between one sweep of the scanners and the next, the giant over {0} was simply not there. No wake, no heat, nothing to follow.
+Beacon Msg Cloak Repeat 3;{0}'s sky is clear again. The colonists keep looking up anyway.
+Beacon Msg Corrupt Title;Strange cargo
+Beacon Msg Corrupt First;Something odd from {0}: its port is shipping cargo nobody ordered, to a destination nobody can name. The manifests list weights, not contents. When our clerks asked, the port officials seemed confused by the question.
+Beacon Msg Corrupt Repeat 1;The port authority at {0} has flagged its own freighters: their manifests list cargo by weight alone, no contents, no buyer, and their destination field is blank. They leave anyway. None of them have come back.
+Beacon Msg Corrupt Repeat 2;Customs inspectors on {0} report holds sealed from the inside, manifests signed by officials who deny signing them, and flight plans that end in empty space.
+Beacon Msg Corrupt Repeat 3;Freighters out of {0} are filing manifests in a format no registry recognises. Asked where they are bound, the pilots answer with the same coordinates and seem puzzled by the question.
+Beacon Msg Attack First;{0} fired on the giant. It did not flee and it did not threaten. It destroyed exactly the ships that shot at it, then went still again, as if nothing had happened.
+Beacon Msg Attack Repeat 1;{0} opened fire on one of the giants. For a long moment it did nothing. Then it answered, and the ships that fired on it went dark one by one.
+Beacon Msg Attack Repeat 2;Fragments of {0}'s fleet are drifting near {1}. They attacked the giant. It did not pursue the survivors; it simply finished what they had started.
+Beacon Msg Attack Repeat 3;{0} struck at one of the vast vessels. It turned to face them with terrible patience, and only those who fired were destroyed.
+Beacon Msg Killed Title;A giant destroyed
+Beacon Msg Killed First;We have destroyed it, and we still do not know what it was. The wreck is enormous, unmarked and cold, and nothing aboard resembles a crew.
+Beacon Msg Killed Repeat 1;Another giant has fallen near {0}. Its wreck drifts dark and silent; even its lights died without a flicker.
+Beacon Msg Killed Repeat 2;The machine is broken. For hours afterwards our sensors near {0} picked up a faint signal from the wreck, the same short pattern over and over, until it faded.
+Beacon Msg Killed Repeat 3;The giant drifted apart in slow, silent pieces. Long after the last of it went dark, the debris was still turning to face our ships.
 Beacon Watcher Killed News;One of the vast machine vessels has been destroyed by {0}.
-Beacon Watcher Killed Title;A giant destroyed
-Beacon Watcher Killed;Our forces destroyed one of the vast unidentified vessels. Whatever it was doing, it will do it more slowly now.
-Beacon Watcher Fight News;{0} has attacked one of the vast unidentified vessels, and it is fighting back.
 Beacon Watcher Offensive News;One of the great machine flagships has left its guard of the harvest worlds, with its fleet, and is bearing down on {0}.
 'Corruption
 Beacon Corrupt Row;{0} serves a hidden master

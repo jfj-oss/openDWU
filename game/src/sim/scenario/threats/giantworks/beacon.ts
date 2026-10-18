@@ -41,7 +41,7 @@ import { GameEndOutcome } from '../../../victory';
 import { CharacterRole, getEmpireCharacters } from '../../../characters';
 import { GAME_DAY_LENGTH, registerScenarioEvent, registerScenarioPeriodic, registerScenarioQuery } from '../../hooks';
 import { registerScenarioMapFeatures, type ScenarioMapFeatures } from '../../mapFeatures';
-import { scenarioMessage, scenarioText as T } from '../../messages';
+import { scenarioMessage, scenarioNews, scenarioText as T } from '../../messages';
 import { colonyGovernor, spawnGovernorFor } from '../../governors';
 import { isObjectVisibleToThisEmpire } from '../../../independentTraders';
 import {
@@ -296,7 +296,8 @@ function detectCloaked(galaxy: Galaxy, st: BeaconState, w: WatcherRec): void {
         st.stats.watcherDetections++;
         const first = knowledgeLevel({ knowledge: w.knowledge }, e) === 0;
         revealTo(galaxy, { knowledge: w.knowledge }, e, knowledgeLevel({ knowledge: w.knowledge }, e) >= KNOWLEDGE_RUMOUR ? KNOWLEDGE_SUSPECTED : KNOWLEDGE_RUMOUR);
-        if (first && isHumanEmpire(galaxy, e)) arcMessage(galaxy, st.sentStages, [e], { prefix: TAG, stage: 'Detect', onceKey: `Detect:${w.index}:${e.empireId}`, args: [placeName(galaxy, ship)], type: EmpireMessageType.GeneralWarning, subject: ship });
+        void first;
+        if (isHumanEmpire(galaxy, e)) watcherMessage(galaxy, st, 'detect', e, [placeName(galaxy, ship)], ship, EmpireMessageType.GeneralWarning);
     }
 }
 
@@ -337,6 +338,13 @@ export function corrupt(galaxy: Galaxy, st: BeaconState, colony: Habitat): Corru
     const rec: CorruptRec = { colony, governor, date: galaxyStarDate(galaxy), knowledge: [], ended: null, endDate: 0 };
     st.corrupted.push(rec);
     st.stats.corrupted++;
+    // the owner (or the people who can see it: a colony in the system or a ship close by) hear of the odd cargo
+    const star = galaxy.determineHabitatSystemStar(colony);
+    for (const e of humanEmpires(galaxy)) {
+        const sees = e === owner || e.colonies.some((c) => !c.hasBeenDestroyed && galaxy.determineHabitatSystemStar(c) === star && star !== null) ||
+            e.builtObjects.some((b) => !b.hasBeenDestroyed && galaxy.calculateDistance(b.xpos, b.ypos, colony.xpos, colony.ypos) <= P.detectRange(galaxy));
+        if (sees) watcherMessage(galaxy, st, 'corrupt', e, [colony.name], colony, EmpireMessageType.GeneralWarning);
+    }
     return rec;
 }
 
@@ -526,6 +534,46 @@ function driveWatcher(galaxy: Galaxy, st: BeaconState, w: WatcherRec, sightingOp
     return false;
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// The player's messages: the FIRST time an empire gets a kind it reads the confused first-encounter text and the popup opens by itself;
+// later ones pick one of the repeat variants at random (the private Random). Both show in the ticker and as a badge (popupMode). AI: no UI.
+// ---------------------------------------------------------------------------------------------------------------
+
+const MSG_REPEATS = { detect: 2, decloak: 1, cloak: 3, corrupt: 3, attack: 3, killed: 3 } as const;
+type MsgKind = keyof typeof MSG_REPEATS;
+
+function humanEmpires(galaxy: Galaxy): Empire[] {
+    return galaxy.empires.filter((e): e is Empire => e !== null && e.active && isHumanEmpire(galaxy, e));
+}
+
+/** 'First' the first time `e` gets this kind, else 'Repeat n' (n drawn with the Beacon's seeded Random). Records the first. */
+export function watcherVariant(galaxy: Galaxy, st: BeaconState, kind: MsgKind, e: Empire): string {
+    st.msgSeen ??= {}; // (saves from before the messages)
+    const seen = (st.msgSeen[kind] ??= []);
+    if (!seen.includes(e.empireId)) {
+        seen.push(e.empireId);
+        return 'First';
+    }
+    return `Repeat ${beaconRandom(galaxy, st, 400 + Object.keys(MSG_REPEATS).indexOf(kind)).next(1, MSG_REPEATS[kind] + 1)}`;
+}
+
+const cap = (k: string): string => k.charAt(0).toUpperCase() + k.slice(1);
+
+/** One message of `kind` to a human empire: the first one opens its popup, the repeats only show in the ticker and as a badge. `news`: a NewsNet line (the empire's name is not the recipient's). */
+function watcherMessage(galaxy: Galaxy, st: BeaconState, kind: MsgKind, e: Empire, args: (string | number)[], subject: unknown, type: EmpireMessageType, news = false): void {
+    if (!isHumanEmpire(galaxy, e)) return;
+    const v = watcherVariant(galaxy, st, kind, e);
+    const popupMode = v === 'First' ? 'force' : 'quiet';
+    if (news) scenarioNews(galaxy, null, T(`${TAG} Msg ${cap(kind)} ${v}`, ...args), (x) => x === e, subject, undefined, popupMode);
+    else scenarioMessage(galaxy, e, T(`${TAG} Msg ${cap(kind)} Title`), T(`${TAG} Msg ${cap(kind)} ${v}`, ...args), { type, subject, popupMode });
+}
+
+/** A NewsNet line with a fixed text for one human empire (the sighting's news). */
+function watcherNews(galaxy: Galaxy, st: BeaconState, tag: string, e: Empire, args: (string | number)[], subject: unknown): void {
+    void st;
+    scenarioNews(galaxy, null, T(`${TAG} Msg ${tag} News`, ...args), (x) => x === e, subject, undefined, 'quiet');
+}
+
 function sightingStarts(galaxy: Galaxy, st: BeaconState, w: WatcherRec, over: Habitat): void {
     st.stats.sightings++;
     const star = galaxy.determineHabitatSystemStar(over);
@@ -534,15 +582,15 @@ function sightingStarts(galaxy: Galaxy, st: BeaconState, w: WatcherRec, over: Ha
     for (const e of normalEmpires(galaxy, st.faction)) {
         if (isObjectVisibleToThisEmpire(galaxy, e, ship)) revealTo(galaxy, { knowledge: w.knowledge }, e, KNOWLEDGE_CONFIRMED);
     }
-    arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Sighting', onceKey: `Sighting${st.stats.sightings}`, textTag: `${TAG} Sighting News`, args: [over.name, where], subject: ship });
     const owner = over.empire;
-    if (owner !== null && owner !== galaxy.independentEmpire && owner !== st.faction && owner.active) {
-        scenarioMessage(galaxy, owner, T(`${TAG} Sighting Title`), T(`${TAG} Sighting`, over.name), { type: EmpireMessageType.GeneralWarning, subject: ship, popup: isHumanEmpire(galaxy, owner) });
-    }
+    const ownerOk = owner !== null && owner !== galaxy.independentEmpire && owner !== st.faction && owner.active;
+    if (ownerOk) watcherMessage(galaxy, st, 'decloak', owner, [over.name], ship, EmpireMessageType.GeneralWarning);
+    for (const e of humanEmpires(galaxy)) if (e !== owner) watcherNews(galaxy, st, 'Decloak', e, [over.name, where], ship);
 }
 
 function sightingEnds(galaxy: Galaxy, st: BeaconState, w: WatcherRec, over: Habitat): void {
-    arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Sighting Gone', onceKey: `SightingGone${st.stats.sightings}`, textTag: `${TAG} Sighting Gone News`, args: [over.name] });
+    const owner = over.empire;
+    if (owner !== null && owner !== galaxy.independentEmpire && owner !== st.faction && owner.active) watcherMessage(galaxy, st, 'cloak', owner, [over.name], null, EmpireMessageType.GeneralNeutralEvent);
     void w;
 }
 
@@ -585,7 +633,7 @@ function markDead(galaxy: Galaxy, st: BeaconState, w: WatcherRec, by: Empire | n
     w.dead = true;
     w.mode = 'dead';
     arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Watcher Killed', onceKey: `WatcherKilled${w.index}`, textTag: `${TAG} Watcher Killed News`, args: [by?.name ?? T(`${TAG} Independents`)] });
-    if (by !== null && isHumanEmpire(galaxy, by)) arcMessage(galaxy, st.sentStages, [by], { prefix: TAG, stage: 'Watcher Killed', onceKey: `WatcherKilledMsg${w.index}`, type: EmpireMessageType.GeneralGoodEvent });
+    if (by !== null && isHumanEmpire(galaxy, by) && w.ship !== null) watcherMessage(galaxy, st, 'killed', by, [placeName(galaxy, w.ship)], null, EmpireMessageType.GeneralGoodEvent);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -617,7 +665,7 @@ function onAttacked(galaxy: Galaxy, bo: BuiltObject, attacker: unknown, attackin
         w.prevModeDate = w.modeDate;
         setMode(w, 'fight', now);
         w.until = now; // marks when the fight began
-        arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Watcher Fight', onceKey: `WatcherFight${w.index}:${attackingEmpire.empireId}`, textTag: `${TAG} Watcher Fight News`, args: [attackingEmpire.name] });
+        for (const e of humanEmpires(galaxy)) watcherMessage(galaxy, st, 'attack', e, [attackingEmpire.name, placeName(galaxy, bo)], bo, EmpireMessageType.GalacticNewsNet, true);
     }
     w.lastHit = now;
     const ship = attackerShipOf(attacker);

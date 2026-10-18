@@ -79,6 +79,8 @@ export class EmpireMessage {
     title = '';
     starDate = 0;
     supressPopup = false;
+    /** Not in the C#: a scenario message that must reach the player whatever the message settings say. 'force': ticker line, badge and an automatic popup; 'quiet': ticker line and badge, never an automatic popup. */
+    declare scenarioPopup?: 'force' | 'quiet';
     /**
      * Not in the C#: the stable id of a queued advisor suggestion (Empire.nextAdvisorSuggestionId; set when it joins
      * Empire.advisorSuggestions, advisorQueue.ts). Only queued suggestions carry the field, so other messages save as
