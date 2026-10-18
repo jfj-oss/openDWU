@@ -3,4 +3,4 @@
 // effect of a critical hit); builtObject.ts calls it. Not a port.
 import type { BuiltObject } from './builtObject';
 
-export const reDefineHooks: { after: ((bo: BuiltObject) => void) | null } = { after: null };
+export const reDefineHooks: { after: ((bo: BuiltObject) => void) | null; extra: ((bo: BuiltObject) => void)[] } = { after: null, extra: [] };

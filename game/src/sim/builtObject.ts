@@ -1243,6 +1243,7 @@ export class BuiltObject {
         }
         // Mod layer (Critical hits): the lasting engine effect caps the speeds, before the clamp below (scenario/combat2/criticals.ts).
         if (reDefineHooks.after !== null && this._galaxy.scenario !== null) reDefineHooks.after(this);
+        if (reDefineHooks.extra.length > 0 && this._galaxy.scenario !== null) for (const h of reDefineHooks.extra) h(this);
         this._fuelHandicapped = false;
         if (this.currentSpeed > this.topSpeed || this.targetSpeed > this.topSpeed || this.preferredSpeed > this.topSpeed) {
             this.targetSpeed = this.topSpeed;

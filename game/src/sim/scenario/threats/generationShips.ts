@@ -51,7 +51,8 @@ import { FleetPosture, calculateOverallStrengthFactorWithoutShields, changeDiplo
 import { identifyMechanoidEmpire } from '../../fleets/militaryAI';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../../diplomacy';
 import { assignMission } from '../../missions/assign';
-import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission } from '../../missions/mission';
+import { BuiltObjectMissionPriority, BuiltObjectMissionType, CommandAction, builtObjectMission } from '../../missions/mission';
+import { reDefineHooks } from '../../reDefineHooks';
 import { makeHabitatIntoColonyRuntime } from '../../missions/cmdTroops';
 import { habitatGenerateNewTroop } from '../../troops';
 import { TroopList, TroopType, type Troop } from '../../cargo';
@@ -200,6 +201,8 @@ export interface GenShipsState {
     recruited?: number;
     retargets?: number;
     launches?: number;
+    /** The world ship's sublight speed floor and turn-rate scale have been applied (saves from before lack it; the periodic applies them once). */
+    wsLimited?: boolean;
 }
 
 function newState(): GenShipsState {
@@ -210,7 +213,7 @@ function newState(): GenShipsState {
         answer: null, answeredBy: null, outcome: null, worldShipFate: null, worldShipTaker: null, landings: 0, sentStages: {}, knowledge: [],
         index: 0, planned: 1, spawned: 1, nextDate: 0, strikeStart: 0, strikeDone: false, stationsHit: 0, strikeTargets: [], lastX: 0, lastY: 0, pirate: null, pirateShips: [], pirateBase: null,
         stageX: 0, stageY: 0, stageName: null, engageDate: 0, committed: false, navy: null, econDate: 0, designDate: 0, econStarted: false,
-        retake: null, base: null, retargetDate: 0, recruitDate: 0, recruited: 0, retargets: 0, launches: 0,
+        retake: null, base: null, retargetDate: 0, recruitDate: 0, recruited: 0, retargets: 0, launches: 0, wsLimited: false,
     };
 }
 
@@ -297,7 +300,15 @@ const P = {
     grudge: (g: Galaxy) => p(g, 'genShipsGrudge', 60),
     gratitude: (g: Galaxy) => p(g, 'genShipsGratitude', 50),
     refuelRange: (g: Galaxy) => p(g, 'genShipsRefuelRange', 6000),
-    stagingMinSectors: (g: Galaxy) => p(g, 'genShipsStagingMinSectors', 0.25),
+    stagingMinSectors: (g: Galaxy) => p(g, 'genShipsStagingMinSectors', 1),
+    /** The world ship's in-system (sublight) top speed floor; 0 = leave the design's. */
+    worldShipSpeed: (g: Galaxy) => p(g, 'genShipsWorldShipSpeed', 7),
+    /** The world ship's turn rate as a % of what its design gives. */
+    worldShipTurnPct: (g: Galaxy) => p(g, 'genShipsWorldShipTurnPct', 20),
+    /** Radius (game units) of the close patrol ring around the world ship; ships on it are spread over three rings from this to 1.5x. */
+    patrolRadius: (g: Galaxy) => p(g, 'genShipsPatrolRadius', 3000),
+    /** Share (%) of the screens (destroyers, frigates and the rest) that patrol the staging system's planets instead of the world ship. */
+    systemPatrolPct: (g: Galaxy) => p(g, 'genShipsSystemPatrolPct', 50),
     stagingMaxSectors: (g: Galaxy) => p(g, 'genShipsStagingMaxSectors', 4),
     worldShipArmourPct: (g: Galaxy) => p(g, 'genShipsWorldShipArmourPct', 400),
     worldShipShieldPct: (g: Galaxy) => p(g, 'genShipsWorldShipShieldPct', 200),
@@ -617,11 +628,62 @@ function resupply(galaxy: Galaxy, st: GenShipsState): void {
     }
 }
 
+/** The staging system's planets, moons and asteroids (the star itself is not a patrol stop), cached by stage point. */
+const stageBodyCache = new WeakMap<Galaxy, { x: number; y: number; n: number; list: Habitat[] }>();
+function stagingBodies(galaxy: Galaxy, st: GenShipsState): Habitat[] {
+    const x = st.stageX ?? 0;
+    const y = st.stageY ?? 0;
+    const hit = stageBodyCache.get(galaxy);
+    if (hit !== undefined && hit.x === x && hit.y === y && hit.n === galaxy.habitats.length) return hit.list;
+    let star: Habitat | null = null;
+    for (const sys of galaxy.systems) {
+        const sstar = sys?.systemStar ?? null;
+        if (sstar !== null && sstar.xpos === x && sstar.ypos === y) {
+            star = sstar;
+            break;
+        }
+    }
+    const planets: Habitat[] = [];
+    const rest: Habitat[] = [];
+    if (star !== null) {
+        for (const h of galaxy.habitats) {
+            if (h === null || h.hasBeenDestroyed || h === star || h.parent === null || h.category === HabitatCategoryType.Star || h.category === HabitatCategoryType.GasCloud) continue;
+            if (galaxy.determineHabitatSystemStar(h) !== star) continue;
+            (h.category === HabitatCategoryType.Planet ? planets : rest).push(h);
+        }
+    }
+    const list = planets.length > 0 ? planets : rest;
+    stageBodyCache.set(galaxy, { x, y, n: galaxy.habitats.length, list });
+    return list;
+}
+
 /**
- * Off-mission ships stay with the world ship: the heavy hulls, carriers and the troop transports Escort it (a close
- * screen), the screens and the rest Patrol it (the stock hexagon orbit, which follows the ship). A ship is left alone
- * while it is on any other mission (a strike's Attack, a Refuel or Repair, the landing Move); when that mission
- * completes it is idle again and returns here. Missions only, no Rnd.
+ * Sets the radius of a stock Patrol of the world ship (the stock hexagon is 400 out, which is on top of a world ship):
+ * the three MoveTo legs' offsets from the ship are rescaled in place. Idempotent.
+ */
+function setPatrolRadius(bo: BuiltObject, ws: BuiltObject, radius: number): void {
+    const m = builtObjectMission(bo.mission);
+    if (m === null) return;
+    for (const c of new Set(m.showAllCommands())) {
+        if (c.action !== CommandAction.MoveTo || c.targetBuiltObject !== ws) continue;
+        const r = Math.hypot(c.targetRelativeXpos, c.targetRelativeYpos);
+        if (!(r > 0) || Math.abs(r - radius) < 1) continue;
+        const k = radius / r;
+        const nx = c.targetRelativeXpos * k;
+        const ny = c.targetRelativeYpos * k;
+        c.targetRelativeXpos = nx;
+        c.targetRelativeYpos = ny;
+    }
+}
+
+/**
+ * Off-mission ships stay with the world ship, but they patrol rather than sit on it (stock Patrol missions only):
+ * the troop transports Escort it (a close screen), the heavy hulls and carriers a ring of genShipsPatrolRadius (rings spread
+ * over 1 to 1.5 of it by ship), and once the world ship is at the staging point a genShipsSystemPatrolPct share of the
+ * screens patrol the staging system's planets, one planet each in turn, while the others ring the world ship wider.
+ * They react to threats and defend as a stock Patrol does. A ship is left alone while it is on any other mission (a
+ * strike's Attack, a Refuel or Repair, the landing Move); when that mission completes it is idle again and returns
+ * here. Missions only, no Rnd.
  */
 function guardWorldShip(galaxy: Galaxy, st: GenShipsState, ships: readonly BuiltObject[]): void {
     const ws = st.worldShip;
@@ -632,18 +694,67 @@ function guardWorldShip(galaxy: Galaxy, st: GenShipsState, ships: readonly Built
         for (const b of ships) if (isIdle(b) || (st.base != null && builtObjectMission(b.mission)?.type === BuiltObjectMissionType.Move)) hold(galaxy, b, x, y);
         return;
     }
+    const staged = st.phase !== 'war' && galaxy.calculateDistance(ws.xpos, ws.ypos, st.stageX ?? st.spawnX, st.stageY ?? st.spawnY) <= ARRIVE_RANGE;
+    const radius = Math.max(400, P.patrolRadius(galaxy));
+    const sysShare = Math.max(0, Math.min(100, P.systemPatrolPct(galaxy)));
+    let bodies: Habitat[] | null = null;
     for (const b of ships) {
         if (b.hasBeenDestroyed || b.topSpeed <= 0) continue;
-        const close = st.transports.includes(b) || HEAVY_OR_CARRIER.has(b.subRole);
-        const want = close ? BuiltObjectMissionType.Escort : BuiltObjectMissionType.Patrol;
+        const idx = st.escorts.indexOf(b);
+        const key = idx >= 0 ? idx : st.transports.indexOf(b);
+        const isTransport = st.transports.includes(b);
+        let ring = radius * (1 + 0.25 * (key % 3));
+        let body: Habitat | null = null;
+        if (!isTransport && !HEAVY_OR_CARRIER.has(b.subRole)) {
+            ring = radius * 2 * (1 + 0.25 * (key % 3)); // the screens range wider than the heavy hulls
+            if (staged && (key * 37) % 100 < sysShare) {
+                bodies ??= stagingBodies(galaxy, st);
+                if (bodies.length > 0) body = bodies[key % bodies.length];
+            }
+        }
         const m = builtObjectMission(b.mission);
-        if (m !== null && m.type === want && m.targetBuiltObject === ws) continue;
+        const want = isTransport ? BuiltObjectMissionType.Escort : BuiltObjectMissionType.Patrol;
+        const aimed = body !== null ? m !== null && m.targetHabitat === body : m !== null && m.targetBuiltObject === ws;
+        if (m !== null && m.type === want && aimed) {
+            if (body === null && !isTransport) setPatrolRadius(b, ws, ring);
+            continue;
+        }
         const free = m === null || isIdle(b) || m.type === BuiltObjectMissionType.Patrol || m.type === BuiltObjectMissionType.Escort || m.type === BuiltObjectMissionType.Move;
-        // Not automated: a manually controlled Patrol / Escort renews itself when it ends (cmdReassign), where an
-        // automated one is handed back to the empire AI, which sends it wandering.
+        // Not automated: a manually controlled Patrol renews itself when it ends (cmdReassign), where an automated one is
+        // handed back to the empire AI, which sends it wandering.
         b.isAutoControlled = false;
-        if (free) assignMission(galaxy, b, want, ws, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
+        if (!free) continue;
+        assignMission(galaxy, b, want, body ?? ws, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
+        if (body === null && !isTransport) setPatrolRadius(b, ws, ring);
     }
+}
+
+/**
+ * The world ship's drive limits (user 2026-10-18): its in-system (sublight) top speed is at least genShipsWorldShipSpeed
+ * (the design gave it 1) and it turns at only genShipsWorldShipTurnPct % of the design's rate. Warp and hyperjump are not
+ * touched. `fresh` = the ship's stats were just recomputed (BuiltObject.reDefine), so the turn rate is scaled again;
+ * otherwise it is scaled once (st.wsLimited). The speed floor is idempotent, re-applied every period (a slowed zone's reset
+ * restores the design's speed). No Rnd.
+ */
+function limitWorldShip(galaxy: Galaxy, st: GenShipsState, ws: BuiltObject, fresh: boolean): void {
+    const speed = P.worldShipSpeed(galaxy);
+    if (speed > 0 && ws.topSpeed > 0 && ws.topSpeed < speed) {
+        ws.topSpeed = speed;
+        if (ws.cruiseSpeed < speed) ws.cruiseSpeed = speed;
+        ws.accelerationRate = Math.max(ws.accelerationRate, Math.fround(speed / 8 + 0.5));
+    }
+    if (fresh || st.wsLimited !== true) {
+        const pct = P.worldShipTurnPct(galaxy);
+        if (pct > 0 && pct < 100) ws.turnRate = Math.fround(ws.turnRate * (pct / 100));
+        st.wsLimited = true;
+    }
+}
+
+function reDefineWorldShip(bo: BuiltObject): void {
+    const g = bo._galaxy;
+    if (!scenarioFlag(g, GEN_SHIPS_FLAG) || g.scenario === null || g.scenario.state[GEN_SHIPS_KEY] === undefined) return;
+    const st = stateOfWorldShip(g, bo);
+    if (st !== null) limitWorldShip(g, st, bo, true);
 }
 
 /**
@@ -761,6 +872,10 @@ export function genShipsArrive(galaxy: Galaxy, st: GenShipsState, aimAt: Empire 
         }
     }
     if (colony !== null) st.worldShip = spawnShip(galaxy, faction, colony, pt.x, pt.y, scenarioText(`${TAG} World Ship Name ${FLAVOUR_TEXT[st.flavour]}`));
+    if (st.worldShip !== null) {
+        st.wsLimited = false;
+        limitWorldShip(galaxy, st, st.worldShip, false);
+    }
     st.sleepers = Math.round(P.sleepersM(galaxy) * 1e6);
     const scoutDesign = designs.get(BuiltObjectSubRole.ExplorationShip) ?? designs.get(BuiltObjectSubRole.Escort) ?? null;
     if (scoutDesign !== null) {
@@ -1703,6 +1818,7 @@ function driveInstance(galaxy: Galaxy, st: GenShipsState): void {
         st.lastY = st.worldShip.ypos;
     }
     resupply(galaxy, st);
+    if (st.worldShip !== null) limitWorldShip(galaxy, st, st.worldShip, false);
     const now = galaxyStarDate(galaxy);
     switch (st.phase) {
         case 'arrived': {
@@ -1878,6 +1994,7 @@ export function genShipsSpawnNow(galaxy: Galaxy, victim: Empire): boolean {
 export const GEN_SHIPS_HANDLER_IDS = ['genShips.periodic', 'genShips.ownerChanged', 'genShips.killedBy'] as const;
 
 export function registerGenerationShips(): void {
+    if (!reDefineHooks.extra.includes(reDefineWorldShip)) reDefineHooks.extra.push(reDefineWorldShip);
     registerThreatExistence(GEN_SHIPS_KEY, GEN_SHIPS_FLAG);
     registerThreatSpawn({ key: GEN_SHIPS_KEY, label: 'Generation Ships', group: 'empire', addons: ['generation-ships', 'archive-cores'], note: genShipsSpawnNote, spawn: genShipsSpawnNow });
     registerScenarioPeriodic({ id: 'genShips.periodic', flag: GEN_SHIPS_FLAG, periodDays: PERIOD_DAYS, order: 12, run: (g) => genShipsPeriodic(g) });

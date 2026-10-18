@@ -68,7 +68,7 @@ import {
 } from '../src/sim/scenario/threats/hollowFleet';
 import { purifierHideSpot, purifierHunts, purifierMapFeatures, purifierPeriodic, purifierPickTarget, purifierState, purifierTargets, purifierWake, peekPurifierState } from '../src/sim/scenario/threats/purifier';
 import { HabitatCategoryType } from '../src/sim/types';
-import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission } from '../src/sim/missions/mission';
+import { BuiltObjectMissionPriority, BuiltObjectMissionType, CommandAction, builtObjectMission } from '../src/sim/missions/mission';
 import { assignMission } from '../src/sim/missions/assign';
 import { GAME_DAY_LENGTH } from '../src/sim/scenario/hooks';
 import { reviewThreatInvestigations, THREAT_INVESTIGATIONS_KEY } from '../src/sim/scenario/threats/investigate';
@@ -549,6 +549,60 @@ describe('new threats: generation ships, archive cores, probe swarm', () => {
     }, 600000);
 
     const WAVE = { genShipsEarliestYear: 0, genShipsTechLevel: 1, genShipsEmpiresAtTech: 1, genShipsFlavour: 1, genShipsAiFightRatioPct: 100000, genShipsMinFirepower: 500 };
+
+    it('generation ships: the world ship has a 7+ sublight speed and turns slowly (kept through a reDefine), stages a sector or more out, and its escort patrols instead of sitting on it', () => {
+        const g = ntGame(ALL, { ...WAVE });
+        const st = genShipsState(g);
+        genShipsPeriodic(g);
+        const ws = st.worldShip!;
+        // Speed: the design's 1-4 is lifted to genShipsWorldShipSpeed (7); the warp speed is untouched.
+        expect(ws.topSpeed).toBeGreaterThanOrEqual(7);
+        expect(ws.cruiseSpeed).toBeGreaterThanOrEqual(7);
+        expect(st.wsLimited).toBe(true);
+        const warp = ws.warpSpeed;
+        const turn = ws.turnRate;
+        // Turn rate: a fifth of the design's, and a reDefine (which recomputes it) lands on the same value, not a squared one.
+        ws.reDefine();
+        expect(ws.turnRate).toBeCloseTo(turn, 6);
+        expect(ws.topSpeed).toBeGreaterThanOrEqual(7);
+        expect(ws.warpSpeed).toBe(warp);
+        const heavy = st.escorts.map((e) => e.turnRate).sort((a, b) => a - b)[Math.floor(st.escorts.length / 2)];
+        expect(turn).toBeLessThan(heavy * 0.5);
+        // A speed knocked back (a slowed zone) is restored by the next period; a save from before the limit is limited once.
+        ws.topSpeed = 1;
+        st.wsLimited = false;
+        genShipsPeriodic(g);
+        expect(ws.topSpeed).toBeGreaterThanOrEqual(7);
+        expect(ws.turnRate).toBeLessThan(turn);
+        // Staging: at least genShipsStagingMinSectors (1) from every colony of the target empire when such a system exists.
+        const nearest = Math.min(...st.owner!.colonies.filter((c) => !c.hasBeenDestroyed).map((c) => g.calculateDistance(st.stageX!, st.stageY!, c.xpos, c.ypos)));
+        expect(nearest).toBeGreaterThanOrEqual(g.sectorSize * 0.99);
+        // Patrol: the world ship is at the staging point; the warships all Patrol, the transports Escort, the
+        // screens split between rings round the ship and the staging system's planets, and no ring is the stock 400.
+        ws.xpos = st.stageX!;
+        ws.ypos = st.stageY!;
+        for (const b of [...st.escorts, ...st.transports]) b.currentFuel = b.fuelCapacity;
+        genShipsPeriodic(g);
+        let ring = 0;
+        let system = 0;
+        for (const b of st.escorts) {
+            const m = builtObjectMission(b.mission)!;
+            expect(m.type).toBe(BuiltObjectMissionType.Patrol);
+            if (m.targetBuiltObject === ws) {
+                ring++;
+                const legs = m.showAllCommands().filter((c) => c.action === CommandAction.MoveTo && c.targetBuiltObject === ws);
+                expect(legs.length).toBeGreaterThan(0);
+                for (const c of legs) expect(Math.hypot(c.targetRelativeXpos, c.targetRelativeYpos)).toBeGreaterThan(2000);
+            } else {
+                system++;
+                expect(m.targetHabitat).not.toBeNull();
+                expect(g.determineHabitatSystemStar(m.targetHabitat!)!.xpos).toBe(st.stageX);
+            }
+        }
+        expect(ring).toBeGreaterThan(0);
+        expect(system + ring).toBe(st.escorts.length);
+        for (const b of st.transports) expect(builtObjectMission(b.mission)!.type).toBe(BuiltObjectMissionType.Escort);
+    }, 600000);
 
     it('generation ships: starts at the galaxy edge, stages at a free system outside every territory, the mothership is heavily armoured and shielded', () => {
         const g = ntGame(ALL, { ...WAVE });
