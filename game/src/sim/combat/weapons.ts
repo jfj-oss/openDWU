@@ -65,6 +65,11 @@ import {
 import { baconSettings } from '../data/baconSettings';
 import { noteBuiltObjectEffect } from './effectWatch';
 import { veteranShipBonusOf } from '../scenario/veterans/veterans';
+import { decoyDefend } from '../scenario/combat2/decoys';
+import { anyCombat2On, decoysOn } from '../scenario/combat2/common';
+import { c2AdjustHit } from '../scenario/combat2/hits';
+import { critFireFactor } from '../scenario/combat2/criticals';
+import { c2StruckSpares } from '../scenario/combat2/surrender';
 import { bvrMayFire, bvrMissileHit, bvrNoteDowned, bvrNoteFired, bvrNoteUntracked, bvrNoteHit, bvrOn, bvrParam, bvrTracked, isBvrMissile, isLimitedLauncher } from '../scenario/bvr/bvr';
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -309,8 +314,16 @@ export function determineHitTargetWeapon(galaxy: Galaxy, self: BuiltObject, weap
     return { willHit: num6 > 0.5, hitRangeChance };
 }
 
-/** BuiltObject.1.cs 5243 DetermineHitTarget(galaxy, weapon, target, distanceToTarget, out hitRangeChance). Rnd: NextDouble, Next(0, 12). */
+/**
+ * BuiltObject.1.cs 5243 DetermineHitTarget(galaxy, weapon, target, distanceToTarget, out hitRangeChance). Rnd: NextDouble, Next(0, 12).
+ * Mod layer (the ambush and critical-hit changes): the roll below can be adjusted afterwards (scenario/combat2/hits.ts c2AdjustHit).
+ */
 export function determineHitTarget(galaxy: Galaxy, self: BuiltObject, weapon: Weapon, target: StellarObject | FighterTargetLike, distanceToTarget: number): { willHit: boolean; hitRangeChance: number } {
+    const r = determineHitTargetBase(galaxy, self, weapon, target, distanceToTarget);
+    return galaxy.scenario !== null && anyCombat2On(galaxy) ? c2AdjustHit(galaxy, self, weapon, target as StellarObject, r) : r;
+}
+
+function determineHitTargetBase(galaxy: Galaxy, self: BuiltObject, weapon: Weapon, target: StellarObject | FighterTargetLike, distanceToTarget: number): { willHit: boolean; hitRangeChance: number } {
     // Mod layer (BVR combat): a BVR missile's lock-on roll at a ship or base (scenario/bvr/bvr.ts bvrMissileHit).
     if (galaxy.scenario !== null && isBvrMissile(weapon.component) && isBuiltObject(target) && bvrOn(galaxy)) {
         const sg = shipGroupOf(self);
@@ -705,6 +718,7 @@ export function fireWeaponSetAtTarget(galaxy: Galaxy, self: BuiltObject, weapons
     if (self._fuelHandicapped || target.hasBeenDestroyed) return;
     const tempNow = galaxy.nowMs;
     const shipGroup = shipGroupOf(self);
+    const critK = galaxy.scenario !== null ? critFireFactor(galaxy, self) : 1; // mod layer (Critical hits): a critical reactor slows every weapon
     const num = Math.max(1, Math.trunc(weapons.length * maximumPortion + 0.5));
     let num2 = 0;
     for (let i = 0; i < weapons.length; i++) {
@@ -734,7 +748,7 @@ export function fireWeaponSetAtTarget(galaxy: Galaxy, self: BuiltObject, weapons
                     if (flag) {
                         const timeSpanMs = tempNow - weapon.lastFired;
                         const num5 = galaxy.rnd.nextDouble() * 800.0 - 400.0;
-                        if (timeSpanMs >= weapon.fireRate + num5) {
+                        if (timeSpanMs >= weapon.fireRate * critK + num5) {
                             if (mayModifyDiplomacy && isBuiltObject(target)) modifyDiplomacyFromAttackBuiltObject(galaxy, self, target);
                             const r = determineHitTarget(galaxy, self, weapon, target, distanceToTarget);
                             weaponFire(galaxy, weapon, self, target, distanceToTarget, time, r.willHit, r.hitRangeChance);
@@ -757,6 +771,9 @@ export function fireWeaponsAtTarget(galaxy: Galaxy, builtObject: BuiltObject, di
     if (self._fuelHandicapped || target.hasBeenDestroyed) return;
     const tempNow = galaxy.nowMs;
     const bvr = galaxy.scenario !== null && bvrOn(galaxy); // mod layer (BVR combat)
+    // Mod layer (Surrender): a ship that has struck its colours does not fire, and nothing fires at it.
+    if (galaxy.scenario !== null && c2StruckSpares(galaxy, self, target)) return;
+    const critK2 = galaxy.scenario !== null ? critFireFactor(galaxy, self) : 1; // mod layer (Critical hits)
     const shipGroup = shipGroupOf(self);
     let flag = false;
     if (self.ionWeaponPower > 0 && isCreature(target)) {
@@ -818,7 +835,7 @@ export function fireWeaponsAtTarget(galaxy: Galaxy, builtObject: BuiltObject, di
         }
         const timeSpan2Ms = tempNow - weapon2.lastFired;
         const num6 = galaxy.rnd.nextDouble() * 800.0 - 400.0;
-        if (timeSpan2Ms >= weapon2.fireRate + num6) {
+        if (timeSpan2Ms >= weapon2.fireRate * critK2 + num6) {
             if (mayModifyDiplomacy && isBuiltObject(target)) modifyDiplomacyFromAttackBuiltObject(galaxy, self, target);
             const r = determineHitTarget(galaxy, self, weapon2, target, distanceToTarget);
             weaponFire(galaxy, weapon2, self, target, distanceToTarget, time, r.willHit, r.hitRangeChance);
@@ -1649,6 +1666,7 @@ function bvrInterceptMissiles(galaxy: Galaxy, ship: BuiltObject, time: number): 
 /** BaconBuiltObject.cs 5032 InterceptMissiles(ship, time, inView). Rnd: Fire draws (NextDouble, Next(0, 2)) per interception. */
 export function interceptMissiles(galaxy: Galaxy, builtObject: BuiltObject, time: number, inView: boolean): void {
     const ship = builtObject;
+    if (galaxy.scenario !== null && decoysOn(galaxy)) decoyDefend(galaxy, ship); // mod layer (Decoys and chaff)
     if (galaxy.scenario !== null && bvrOn(galaxy)) {
         bvrInterceptMissiles(galaxy, ship, time);
         return;

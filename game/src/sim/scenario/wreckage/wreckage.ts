@@ -26,11 +26,14 @@ import { removeGalaxyLocation } from '../../events';
 import { TradeableItem, TradeableItemType, giveTradeableItem } from '../../tradeItems';
 import type { TechNode } from '../../researchSystem';
 import { withinFuelRange } from '../../movement';
+import { DiplomaticRelationType } from '../../diplomacy';
 import { GAME_DAY_LENGTH, registerScenarioEvent, registerScenarioPeriodic, registerScenarioQuery } from '../hooks';
 import { scenarioFlag } from '../state';
+import { c2State, peekC2State, wrecksOn } from '../combat2/common';
 import { scenarioMessage, scenarioText } from '../messages';
 import {
     WRECKAGE_FLAG,
+    wreckageActive,
     createWreckField,
     isSalvageShip,
     peekWreckageState,
@@ -125,6 +128,8 @@ export function recordWreck(galaxy: Galaxy, bo: BuiltObject): WreckRecord | null
     if (field === null) field = createWreckField(galaxy, bo.xpos, bo.ypos);
     field.wrecks.push(record);
     st.stats.wrecks++;
+    // Mod layer (Surrender and wrecks): a system holds at most wreckSystemCap wrecks; the oldest crumble first. Counts the peak.
+    if (wrecksOn(galaxy)) enforceSystemCap(galaxy, field.systemIndex);
     // The owner knows where its ship died; empires watching the system saw the battle.
     const owner = bo.actualEmpire;
     for (const e of allEmpires(galaxy)) {
@@ -134,6 +139,27 @@ export function recordWreck(galaxy: Galaxy, bo: BuiltObject): WreckRecord | null
     // A salvager destroyed on its trip.
     st.jobs = st.jobs.filter((j) => j.ship !== bo);
     return record;
+}
+
+/**
+ * Mod layer (Surrender and wrecks): the wrecks of one system (all its fields) are at most wreckSystemCap (0 = no limit); beyond it the
+ * oldest (earliest star date, then lowest id) are removed, a field left empty leaving the map. Also keeps the peak count in the
+ * combat changes' stats. No Rnd.
+ */
+export function enforceSystemCap(galaxy: Galaxy, systemIndex: number): void {
+    const st = peekWreckageState(galaxy);
+    if (st === null) return;
+    const cap = Math.trunc(wreckParam(galaxy, 'wreckSystemCap'));
+    const all: { w: WreckRecord }[] = [];
+    for (const f of st.fields) if (f.systemIndex === systemIndex) for (const w of f.wrecks) all.push({ w });
+    const c2 = c2State(galaxy);
+    const held = cap > 0 ? Math.min(all.length, cap) : all.length; // the count the system keeps after the cull
+    if (held > c2.stats.wreckPeak) c2.stats.wreckPeak = held;
+    if (cap <= 0 || all.length <= cap) return;
+    all.sort((a, b) => a.w.starDate - b.w.starDate || a.w.id - b.w.id);
+    const drop = all.slice(0, all.length - cap).map((x) => x.w);
+    takeWrecks(galaxy, drop);
+    c2.stats.wrecksCulled += drop.length;
 }
 
 /** Yearly decay: wrecks past wreckDecayYears are gone; empty fields leave the map. */
@@ -175,7 +201,7 @@ function releaseShip(galaxy: Galaxy, ship: BuiltObject): void {
  * star date); the periodic tick does the recovery once it has spent wreckSalvageDays on site. No Rnd.
  */
 export function orderSalvage(galaxy: Galaxy, empire: Empire, ship: BuiltObject | null, fieldId: number, manual = true): boolean {
-    if (!scenarioFlag(galaxy, WRECKAGE_FLAG) || ship === null || ship.hasBeenDestroyed || ship.role === BuiltObjectRole.Base || !isSalvageShip(ship)) return false;
+    if (!wreckageActive(galaxy) || ship === null || ship.hasBeenDestroyed || ship.role === BuiltObjectRole.Base || !isSalvageShip(ship)) return false;
     if (ship.actualEmpire !== empire && ship.empire !== empire) return false;
     const field = wreckFieldById(galaxy, fieldId);
     if (field === null || field.wrecks.length === 0) return false;
@@ -358,6 +384,30 @@ export function salvageJobsTick(galaxy: Galaxy): void {
 // AI / pirates
 // ---------------------------------------------------------------------------------------------------------------
 
+/** Range around a field within which an armed enemy ship makes the salvage unsafe (Surrender and wrecks). */
+const SALVAGE_DANGER_RANGE = 6000;
+
+/**
+ * Mod layer (Surrender and wrecks): true when no armed ship of an empire at war with `empire` (or a pirate, for a non-pirate) is within
+ * SALVAGE_DANGER_RANGE of the field. Looks at the field's index cell only. No Rnd.
+ */
+export function fieldIsSafe(galaxy: Galaxy, empire: Empire, f: WreckField): boolean {
+    const idx = galaxy.resolveIndex(f.x, f.y);
+    const cell = galaxy.builtObjectIndexGrid[idx.x][idx.y];
+    const r2 = SALVAGE_DANGER_RANGE * SALVAGE_DANGER_RANGE;
+    for (let i = 0; i < cell.length; i++) {
+        const b = cell[i];
+        if (b == null || b.hasBeenDestroyed || b.empire === null || b.empire === empire || !(b.firepowerRaw > 0) || b.role === BuiltObjectRole.Freight) continue;
+        const dx = b.xpos - f.x;
+        const dy = b.ypos - f.y;
+        if (dx * dx + dy * dy > r2) continue;
+        if (b.empire.pirateEmpireBaseHabitat !== null && empire.pirateEmpireBaseHabitat === null) return false;
+        if (empire.pirateEmpireBaseHabitat !== null && b.empire.pirateEmpireBaseHabitat === null) return false;
+        if (empire.diplomaticRelations.byEmpire(b.empire)?.type === DiplomaticRelationType.War) return false;
+    }
+    return true;
+}
+
 /**
  * constructionShipIdle (Empire.5.cs 2669 / Empire.1.cs 5116): an idle AI or pirate construction ship salvages the
  * nearest known field worth a trip within wreckAiSalvageRange and its fuel range, one ship per field per empire. No Rnd.
@@ -372,6 +422,7 @@ export function aiSalvageIdleShip(galaxy: Galaxy, empire: Empire, ship: BuiltObj
     for (const f of st.fields) {
         if (f.wrecks.length === 0 || !wreckFieldKnownTo(empire, f)) continue;
         if (st.jobs.some((j) => j.fieldId === f.id && j.empireId === empire.empireId && j.phase === 'travel')) continue;
+        if (wrecksOn(galaxy) && !fieldIsSafe(galaxy, empire, f)) continue; // mod layer (Surrender and wrecks): salvage only when no armed enemy is near
         const d = galaxy.calculateDistance(ship.xpos, ship.ypos, f.x, f.y);
         if (d > range || d >= bestD) continue;
         if (wreckFieldValue(galaxy, f) < minValue || !withinFuelRange(galaxy, ship, f.x, f.y, 0.1)) continue;
@@ -396,6 +447,9 @@ export function nearBigWreckField(galaxy: Galaxy, x: number, y: number): boolean
 // ---------------------------------------------------------------------------------------------------------------
 
 registerScenarioEvent({ id: 'wreckage.destroyed', flag: WRECKAGE_FLAG, event: 'builtObjectDestroyed', run: (g, p) => void recordWreck(g, p.builtObject) });
+// The Surrender and wrecks change runs the same handlers under its own flag (not doubled when the Wreckage & Salvage add-on is on too).
+const wrecksOnly = (g: Galaxy): boolean => !scenarioFlag(g, WRECKAGE_FLAG) && wrecksOn(g);
+registerScenarioEvent({ id: 'wreckage.destroyed.c2', flag: 'surrenderWrecks', event: 'builtObjectDestroyed', run: (g, p) => void (wrecksOnly(g) && recordWreck(g, p.builtObject)) });
 registerScenarioEvent({
     id: 'wreckage.removed',
     flag: WRECKAGE_FLAG,
@@ -406,6 +460,16 @@ registerScenarioEvent({
     },
 });
 registerScenarioEvent({ id: 'wreckage.aiSalvage', flag: WRECKAGE_FLAG, event: 'constructionShipIdle', run: (g, p) => void aiSalvageIdleShip(g, p.empire, p.ship) });
+registerScenarioEvent({ id: 'wreckage.aiSalvage.c2', flag: 'surrenderWrecks', event: 'constructionShipIdle', run: (g, p) => void (wrecksOnly(g) && aiSalvageIdleShip(g, p.empire, p.ship)) });
+registerScenarioEvent({
+    id: 'wreckage.removed.c2',
+    flag: 'surrenderWrecks',
+    event: 'builtObjectRemoved',
+    run: (g, p) => {
+        const st = peekWreckageState(g);
+        if (wrecksOnly(g) && st !== null && st.jobs.some((j) => j.ship === p.builtObject)) st.jobs = st.jobs.filter((j) => j.ship !== p.builtObject);
+    },
+});
 registerScenarioPeriodic({
     id: 'wreckage.tick',
     flag: WRECKAGE_FLAG,
@@ -415,5 +479,17 @@ registerScenarioPeriodic({
         salvageJobsTick(g);
     },
 });
+registerScenarioPeriodic({
+    id: 'wreckage.tick.c2',
+    flag: 'surrenderWrecks',
+    periodDays: 1,
+    run: (g) => {
+        if (!wrecksOnly(g)) return;
+        decayWreckFields(g);
+        salvageJobsTick(g);
+    },
+});
+registerScenarioQuery({ id: 'wreckage.persist.c2', flag: 'surrenderWrecks', query: 'debrisFieldPersists', run: (g, v, a) => v || (wrecksOnly(g) && (peekWreckageState(g)?.fields.some((f) => f.location === a.location) ?? false)) });
+registerScenarioQuery({ id: 'wreckage.raid.c2', flag: 'surrenderWrecks', query: 'raidCountdownRate', run: (g, v, a) => (wrecksOnly(g) && nearBigWreckField(g, a.x, a.y) ? v * wreckParam(g, 'wreckPirateRaidBoost') : v) });
 registerScenarioQuery({ id: 'wreckage.persist', flag: WRECKAGE_FLAG, query: 'debrisFieldPersists', run: (g, v, a) => v || (peekWreckageState(g)?.fields.some((f) => f.location === a.location) ?? false) });
 registerScenarioQuery({ id: 'wreckage.raid', flag: WRECKAGE_FLAG, query: 'raidCountdownRate', run: (g, v, a) => (nearBigWreckField(g, a.x, a.y) ? v * wreckParam(g, 'wreckPirateRaidBoost') : v) });

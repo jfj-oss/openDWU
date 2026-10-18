@@ -81,6 +81,10 @@ import { scenarioEmit, scenarioQuery } from '../scenario/hooks';
 import { humanEmpires, isHumanEmpire } from '../humanEmpires';
 import { noteBuiltObjectEffect } from './effectWatch';
 import { isBvrMissile } from '../scenario/bvr/bvr';
+import { anyCombat2On, criticalsOn, surrenderOn } from '../scenario/combat2/common';
+import { isStruck, surrenderTick } from '../scenario/combat2/surrender';
+import { c2HitPower } from '../scenario/combat2/hits';
+import { critComponentDamaged } from '../scenario/combat2/criticals';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (Galaxy.3.cs SetDefaults)
@@ -1062,6 +1066,8 @@ export function inflictDamageFull(
         const builtObject = abstractTarget;
         if (selfBattleStats !== null) selfBattleStats.weaponHitEnemy(hitPower, weaponDistanceTravelled);
         if (selfGroupStats !== null) selfGroupStats.weaponHitEnemy(hitPower, weaponDistanceTravelled);
+        // Mod layer (Ambush first strike, Armour facing): the hit power after the firer's ambush and the target's facing.
+        if (galaxy.scenario !== null && anyCombat2On(galaxy)) hitPower = c2HitPower(galaxy, self, builtObject, weapon, hitPower, strikeAngle);
         let flag = false;
         let flag2 = false;
         let flag3 = false;
@@ -1251,7 +1257,10 @@ export function inflictDamageFull(
                     if (components[num19].status === ComponentStatus.Damaged) {
                         // RND: _Galaxy.ReseedRandom() (BuiltObject.2.cs 6663 → Galaxy.cs 3033, clock reseed) is not performed (plan §0).
                     }
+                    const wasDamaged = components[num19].status === ComponentStatus.Damaged;
                     components[num19].status = ComponentStatus.Damaged;
+                    // Mod layer (Critical hits): the first damage to an engine, reactor or command part may be critical.
+                    if (galaxy.scenario !== null && !wasDamaged && criticalsOn(galaxy)) critComponentDamaged(galaxy, builtObject, components[num19]);
                     if (builtObject.role !== BuiltObjectRole.Base) {
                         switch (components[num19].type) {
                             case ComponentType.StorageCargo: {
@@ -1301,6 +1310,8 @@ export function inflictDamageFull(
             }
             builtObject.reDefine();
             if (builtObject.role !== BuiltObjectRole.Base && builtObject.damagedComponentCount > 0) builtObject.repairForNextMission = true;
+            // Mod layer (Surrender): a crippled AI ship decides at once whether to strike its colours (scenario/combat2/surrender.ts).
+            if (galaxy.scenario !== null && surrenderOn(galaxy)) surrenderTick(galaxy, builtObject);
             const explosion4 = new Explosion();
             explosion4.explosionStart = galaxyNow(galaxy);
             explosion4.explosionSize = toShort(Math.trunc(Math.sqrt(num18) * (Math.PI / 4.0) * 30.0));
@@ -1887,6 +1898,7 @@ export function checkSelfDestruct(galaxy: Galaxy, builtObject: BuiltObject): voi
         builtObject.dockedAt === null &&
         builtObject.builtAt === null &&
         (mission === null || mission.type !== BuiltObjectMissionType.Repair) &&
+        !(galaxy.scenario !== null && isStruck(galaxy, builtObject)) && // mod layer (Surrender): a ship that has struck its colours is not scuttled, it waits to be taken
         determineScrapDamagedShip(galaxy, builtObject)
     ) {
         const hitPower = Math.max(Math.fround(Math.fround(builtObject.currentShields + Math.fround(builtObject.size)) + 1), 1000.0);

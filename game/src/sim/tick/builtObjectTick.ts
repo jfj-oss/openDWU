@@ -57,6 +57,8 @@ import { reviewSystemVisibilityForPreWarpShip, scanArea, scanForLocations } from
 import { applyLocationEffects, doLocationEffects } from '../events';
 import { baconSettings } from '../data/baconSettings';
 import { MOTHBALL_RESERVE } from '../scenario/mothballing/types';
+import { struckHold } from '../scenario/combat2/surrender';
+import { c2ShipTick } from '../scenario/combat2/shipTick';
 
 /** Galaxy.ConditionCheckLimit (Galaxy.7.cs 569). */
 export function conditionCheckLimit(condition: boolean, maximumIterations: number, counter: { count: number }): boolean {
@@ -160,6 +162,8 @@ export function builtObjectDoTasks(galaxy: Galaxy, builtObject: BuiltObject, tim
     // Galaxy.ConditionCheckLimit(num2 > 0, 50, ref iterationCount) with the counter in a local (no per-call object):
     // at the limit false without counting, else count and return the condition.
     let num2 = num;
+    // Mod layer (Surrender): a ship that has struck its colours is held dead in space (scenario/combat2/surrender.ts).
+    if (galaxy.scenario !== null && struckHold(galaxy, bo)) num2 = 0;
     let iterationCount = 0;
     while (iterationCount < 50 && (iterationCount++, num2 > 0.0)) {
         num2 = executeCommands(galaxy, bo, num2, time, starDate);
@@ -223,6 +227,7 @@ export function builtObjectDoTasks(galaxy: Galaxy, builtObject: BuiltObject, tim
             checkForRandomAttackTargets(galaxy, bo);
         }
         doRepairs(galaxy, bo, timePassed);
+        if (galaxy.scenario !== null) c2ShipTick(galaxy, bo, timePassed); // mod layer (the combat changes): damage control, facing steering, surrender
         processBoardingAssault(galaxy, bo, time, timePassed);
         bo.lastIntermediateTouch = tempNow;
     }

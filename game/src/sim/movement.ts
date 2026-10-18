@@ -37,6 +37,7 @@ import { TurnDirection } from './builtObject';
 import { HabitatCategoryType, HabitatType, planetsOf, type Habitat } from './types';
 import type { Creature } from './creature';
 import { determineAngle } from './creature';
+import { flankHeadingOffset } from './scenario/combat2/facing';
 import type { CargoList } from './cargo';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { BuiltObjectRole } from './data/designSpecifications';
@@ -634,6 +635,11 @@ export function doMovement(
             bo.angle = f(determineAngle(bo.xpos, bo.ypos, parentXPos + parentRelativeX, parentYPos + parentRelativeY));
         } else {
             bo.angle = f(determineAngle(bo.xpos, bo.ypos, targetX, targetY));
+        }
+        // Mod layer (Armour facing): a fast AI ship circling a slower target approaches at an angle (scenario/combat2/facing.ts).
+        if (galaxy.scenario !== null) {
+            const flank = flankHeadingOffset(galaxy, bo);
+            if (flank !== 0) bo.angle = f(bo.angle + flank);
         }
         bo.targetHeading = bo.angle;
     }

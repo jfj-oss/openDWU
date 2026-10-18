@@ -15,6 +15,7 @@
 // Galaxy.Rnd: none in this file.
 
 import { bvrEngagement } from '../scenario/bvr/bvrTactics';
+import { struckSparesTarget } from '../scenario/combat2/surrender';
 import { isAiControlled } from '../missions/playerOrder';
 import { scenarioEmit, scenarioQuery } from '../scenario/hooks';
 import type { Galaxy } from '../galaxy';
@@ -912,6 +913,8 @@ export function shouldAttack(galaxy: Galaxy, bo: BuiltObject, potentialTarget: S
             if (builtObject.pirateEmpireId > 0 && builtObject.pirateEmpireId === bo.pirateEmpireId) {
                 return false;
             }
+            // Mod layer (Surrender): a ship that has struck its colours is not shot at (scenario/combat2/surrender.ts).
+            if (galaxy.scenario !== null && struckSparesTarget(galaxy, builtObject)) return false;
             if (bo.firepowerRaw <= 0 && bo.fighterCapacity <= 0) {
                 return false;
             }

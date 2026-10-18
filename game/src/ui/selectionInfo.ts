@@ -13,6 +13,7 @@ import { interdictionInfoLine } from '../sim/scenario/interdiction/jumpInterdict
 import { mothballStatusText } from '../sim/scenario/mothballing/mothballing';
 import { fleetRetreatStatusText } from '../sim/scenario/fightingRetreats/fightingRetreats';
 import { bvrAmmoText } from '../sim/scenario/bvr/bvr';
+import { combat2StatusLines } from '../sim/scenario/combat2/status';
 import type { Ruin } from '../sim/ruins';
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
@@ -782,6 +783,8 @@ export function builtObjectInfo(ctx: InfoContext, bo: BuiltObject, extended = fa
     if (known && galaxy.scenario !== null) {
         const ammo = bvrAmmoText(galaxy, bo);
         if (ammo !== null) rows.push(label('Magazines', [txt(ammo)]));
+        // Not in the original (the combat changes): "Decoys 2/3", "Critical: engines", "Struck colours".
+        for (const line of combat2StatusLines(galaxy, bo)) rows.push(label(line.label, [txt(line.text)]));
     }
     // Boarding pods (BaconInfoPanel.cs:715-724).
     if (bo.assaultRange > 0 && bo.assaultStrength > 0) {

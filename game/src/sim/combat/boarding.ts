@@ -615,7 +615,7 @@ export function processBoardingAssault(galaxy: Galaxy, builtObject: BuiltObject,
 }
 
 /** ProcessBoardingAssault 3020-3310: the ship falls to the boarders (captured / self-destructs / scrapped / enlisted). */
-function boardingCapture(galaxy: Galaxy, self: BuiltObject, empireById: Empire, time: number): void {
+export function boardingCapture(galaxy: Galaxy, self: BuiltObject, empireById: Empire, time: number): void {
     let description2 = '';
     const actualEmpire2 = self.actualEmpire;
     if (actualEmpire2 !== null) {

@@ -8,9 +8,11 @@
 // CargoBayCapacityMultiplier / IsMyShip.
 // Rnd: none — neither the constructors nor ReDefine draw from Galaxy.Rnd.
 // The runtime subsystems (construction / manufacturing queues, fighters, characters, contracts, missions,
-// movement) live in their own modules; some members here are typed loosely (unknown) to avoid import cycles.
+// movement) live in their own modules; some members here are typed loosely (unknown) to avoid
+// import cycles.
 
 import { updatePosition } from './movement';
+import { reDefineHooks } from './reDefineHooks';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { DockingBay } from './dockingBay';
 import { BuiltObjectComponent, BuiltObjectComponentList, ComponentStatus, csInt, toByte, toShort } from './builtObjectComponent';
@@ -1239,6 +1241,8 @@ export class BuiltObject {
             this.accelerationRate = Math.min(this.accelerationRate, this.topSpeed);
             this.accelerationRate = Math.max(this.accelerationRate, 1);
         }
+        // Mod layer (Critical hits): the lasting engine effect caps the speeds, before the clamp below (scenario/combat2/criticals.ts).
+        if (reDefineHooks.after !== null && this._galaxy.scenario !== null) reDefineHooks.after(this);
         this._fuelHandicapped = false;
         if (this.currentSpeed > this.topSpeed || this.targetSpeed > this.topSpeed || this.preferredSpeed > this.topSpeed) {
             this.targetSpeed = this.topSpeed;

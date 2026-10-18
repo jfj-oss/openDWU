@@ -3,9 +3,9 @@
 import type { Galaxy } from '../../sim/galaxy';
 import type { Empire } from '../../sim/empire';
 import type { BuiltObject } from '../../sim/builtObject';
-import { scenarioFlag, scenarioText } from '../../sim/scenario';
+import { scenarioText } from '../../sim/scenario';
 import {
-    WRECKAGE_FLAG,
+    wreckageActive,
     isSalvageShip,
     salvageJobOf,
     wreckFieldAtPoint,
@@ -22,7 +22,7 @@ export const WRECK_MARKER_COLOR = 0xc87a3c;
 
 /** The fields the player's map shows (known to the player; nothing without the scenario flag). */
 export function visibleWreckFields(galaxy: Galaxy, player: Empire | null): WreckField[] {
-    if (player === null || !scenarioFlag(galaxy, WRECKAGE_FLAG)) return [];
+    if (player === null || !wreckageActive(galaxy)) return [];
     return wreckFields(galaxy).filter((f) => f.wrecks.length > 0 && wreckFieldKnownTo(player, f));
 }
 
@@ -33,7 +33,7 @@ export function wreckMarker(f: WreckField, z: number): { x: number; y: number; r
 
 /** The visible field under the world point (hover / right click), with a 14 px pick slack. */
 export function wreckFieldHit(galaxy: Galaxy, player: Empire | null, x: number, y: number, z: number): WreckField | null {
-    if (player === null || !scenarioFlag(galaxy, WRECKAGE_FLAG)) return null;
+    if (player === null || !wreckageActive(galaxy)) return null;
     const f = wreckFieldAtPoint(galaxy, x, y, 14 / z);
     return f !== null && f.wrecks.length > 0 && wreckFieldKnownTo(player, f) ? f : null;
 }
@@ -46,7 +46,7 @@ export function wreckTooltipText(galaxy: Galaxy, f: WreckField): string {
 
 /** The selected ship that may salvage for the player (own construction / mining ship), else null. */
 export function salvageShipOf(galaxy: Galaxy, player: Empire | null, selected: unknown): BuiltObject | null {
-    if (player === null || !scenarioFlag(galaxy, WRECKAGE_FLAG) || selected === null || typeof selected !== 'object') return null;
+    if (player === null || !wreckageActive(galaxy) || selected === null || typeof selected !== 'object') return null;
     const bo = selected as BuiltObject;
     if (typeof (bo as { builtObjectID?: unknown }).builtObjectID !== 'number' || bo.hasBeenDestroyed) return null;
     if (bo.actualEmpire !== player || !isSalvageShip(bo)) return null;
@@ -74,7 +74,7 @@ export function wreckSalvageMenuItem(galaxy: Galaxy, player: Empire | null, sele
 
 /** The selection panel's "Salvage" row for a ship (its job, or the nearest known field it could salvage). */
 export function wreckSalvageRows(galaxy: Galaxy, bo: BuiltObject, player: Empire | null): { label: string; value: string }[] {
-    if (player === null || !scenarioFlag(galaxy, WRECKAGE_FLAG) || bo.actualEmpire !== player || !isSalvageShip(bo)) return [];
+    if (player === null || !wreckageActive(galaxy) || bo.actualEmpire !== player || !isSalvageShip(bo)) return [];
     const job = salvageJobOf(galaxy, bo);
     if (job !== null) {
         const field = wreckFieldById(galaxy, job.fieldId);

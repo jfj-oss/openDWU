@@ -56,6 +56,8 @@ import { determineThreatLevelFighter, isFighter, type Fighter } from './fighters
 import { formatGameTextNow } from '../textResolver';
 import { isHumanEmpire } from '../humanEmpires';
 import { flagshipThreatFactor, veteranWithdrawFactor } from '../scenario/veterans/veterans';
+import { ambushAiFactor } from '../scenario/combat2/ambush';
+import { critWithdrawFactor } from '../scenario/combat2/criticals';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Galaxy constants (Galaxy.3.cs static ctor 4971-5055)
@@ -1246,6 +1248,7 @@ export function checkBattleOverwhelming(galaxy: Galaxy, bo: BuiltObject, targetT
             const totalThreatLevel = builtObject.totalThreatLevel;
             const totalThreatLevel2 = bo.totalThreatLevel;
             let num = totalThreatLevel2 / totalThreatLevel;
+            if (galaxy.scenario !== null) num /= ambushAiFactor(galaxy, bo, builtObject); // mod layer (Ambush first strike): an ambushing or undetected ship weighs the threats against it lighter
             const num2 = raceAggressionLevel(galaxy, bo.empire.dominantRace!) / 100.0; // Race.AggressionLevel (periodic)
             const num3 = raceCautionLevel(galaxy, bo.empire.dominantRace!) / 100.0; // Race.CautionLevel (periodic)
             let val = num2 / num3;
@@ -1256,6 +1259,7 @@ export function checkBattleOverwhelming(galaxy: Galaxy, bo: BuiltObject, targetT
                 val /= bo.empire.policy.shipBattleCautionFactor;
             }
             if (galaxy.scenario !== null) val /= veteranWithdrawFactor(galaxy, bo); // mod layer (veterans): keep veteran crews alive
+            if (galaxy.scenario !== null) val /= critWithdrawFactor(galaxy, bo); // mod layer (Critical hits): a crippled ship weighs a losing fight more heavily
             if (val < 1.0) {
                 const fleets = checkFleetsTravellingToLocation(galaxy, bo, bo.xpos, bo.ypos);
                 if (fleets.result) {
