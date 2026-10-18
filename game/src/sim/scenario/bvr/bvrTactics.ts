@@ -21,7 +21,8 @@ import type { Galaxy } from '../../galaxy';
 import type { BuiltObject } from '../../builtObject';
 import type { Weapon } from '../../weapon';
 import type { StellarObject } from '../../missions/mission';
-import { isBuiltObject } from '../../missions/mission';
+import { isBuiltObject, BuiltObjectMissionType } from '../../missions/mission';
+import { MAX_SOLAR_SYSTEM_SIZE } from '../../visibility';
 import { BattleTactics } from '../../data/designSpecifications';
 import { ComponentType } from '../../data/components';
 import { isAiControlled } from '../../missions/playerOrder';
@@ -169,3 +170,60 @@ export function bvrEngagement(galaxy: Galaxy, bo: BuiltObject, target: StellarOb
     }
     return null;
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Stand-off arrival: a fleet that attacks (or invades) in another system gathers at a stand-off point, not at the target.
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Mission types whose hyperjump into another system ends at the stand-off point. */
+function isStandoffMission(t: BuiltObjectMissionType): boolean {
+    // (a function: this module is in an import cycle with missions/mission.ts, whose enum is not yet defined at load)
+    return (
+        t === BuiltObjectMissionType.Attack ||
+        t === BuiltObjectMissionType.WaitAndAttack ||
+        t === BuiltObjectMissionType.Raid ||
+        t === BuiltObjectMissionType.Bombard ||
+        t === BuiltObjectMissionType.WaitAndBombard ||
+        t === BuiltObjectMissionType.Capture ||
+        t === BuiltObjectMissionType.Blockade
+    );
+}
+
+/** The longest loaded BVR missile range in the ship's fleet (the ship alone outside one); 0 = no loaded launcher. */
+export function fleetLoadedMissileRange(galaxy: Galaxy, bo: BuiltObject): number {
+    const ships = bo.shipGroup !== null ? (bo.shipGroup as { ships: (BuiltObject | null)[] }).ships : [bo];
+    let r = 0;
+    for (const s of ships) if (s != null && !s.hasBeenDestroyed) r = Math.max(r, loadedMissileRange(galaxy, s));
+    return r;
+}
+
+/**
+ * The distance from its target at which a ship's hyperjump for an attack / invade mission ends (0 = stock arrival): bvrStandoffPct %
+ * of the fleet's longest loaded missile range, so the fleet gathers at the missile band (beyond most guns and torpedoes) and
+ * opens with salvos, then closes under the usual BVR tactics. A fleet with no loaded launcher keeps the stock arrival; so does a
+ * jump that starts in the target's own system. Kept inside the target's solar system. Troop ships of the fleet gather with it
+ * and go in when the stock invasion logic says so. No Rnd.
+ */
+export function bvrStandoffDistance(galaxy: Galaxy, bo: BuiltObject, missionType: BuiltObjectMissionType, targetX: number, targetY: number): number {
+    if (!isStandoffMission(missionType)) return 0;
+    const range = fleetLoadedMissileRange(galaxy, bo);
+    if (range <= 0) return 0;
+    const away = galaxy.calculateDistance(bo.xpos, bo.ypos, targetX, targetY);
+    if (away <= 2 * MAX_SOLAR_SYSTEM_SIZE) return 0; // already in (or at the edge of) the target's system
+    let d = Math.max(500, Math.trunc((range * bvrParam(galaxy, 'bvrStandoffPct')) / 100));
+    const star = galaxy.fastFindNearestSystem(targetX, targetY);
+    if (star !== null && galaxy.calculateDistance(targetX, targetY, star.xpos, star.ypos) <= MAX_SOLAR_SYSTEM_SIZE) {
+        // The approach side of the target; pull the point in until it lies inside the system.
+        const ux = (bo.xpos - targetX) / away;
+        const uy = (bo.ypos - targetY) / away;
+        for (let k = 0; k < 8 && galaxy.calculateDistance(targetX + ux * d, targetY + uy * d, star.xpos, star.ypos) > MAX_SOLAR_SYSTEM_SIZE; k++) d = Math.trunc(d * 0.8);
+    }
+    return d;
+}
+
+registerScenarioQuery({
+    id: 'bvr.standoff',
+    query: 'hyperjumpStandoff',
+    flag: 'bvrCombat', // BVR_FLAG as a literal (import cycle with bvr.ts)
+    run: (galaxy, value, { ship, mission, targetX, targetY }) => (value > 0 ? value : bvrStandoffDistance(galaxy, ship, mission.type, targetX, targetY)),
+});

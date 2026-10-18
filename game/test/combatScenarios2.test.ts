@@ -90,7 +90,7 @@ import { BVR_ADDON_ID, bvrAmmoText, bvrMayFire, bvrNeedsRounds, bvrNoteFired, bv
 import { Design } from '../src/sim/design';
 import { shipGroupAddShipToFleet } from '../src/sim/fleets/shipGroupTasks';
 import { BVR_PROJECT_NAMES, aiResupplyTick, aiRearmTick, bvrFixLaunchers, bvrProjectNodes } from '../src/sim/scenario/bvr/bvrAI';
-import { bvrEngagement, bvrFirepowerFactor } from '../src/sim/scenario/bvr/bvrTactics';
+import { bvrEngagement, bvrFirepowerFactor, bvrStandoffDistance, loadedMissileRange } from '../src/sim/scenario/bvr/bvrTactics';
 import { BattleTactics } from '../src/sim/data/designSpecifications';
 import { C2_DEFAULTS, c2State, peekC2State, type C2Param } from '../src/sim/scenario/combat2/common';
 import { decoyCapacity, decoyDefend, decoyRestockTick, decoyText, decoysLeft, ecmCount } from '../src/sim/scenario/combat2/decoys';
@@ -1818,6 +1818,29 @@ describe('(8) BVR combat add-on', () => {
         expect(hitWeapon.distanceTravelled).toBeLessThan(0);
         params.bvrPdPct = saved.pd;
         params.bvrGunPct = saved.gun;
+    });
+
+    it('stand-off arrival: a fleet with loaded launchers gathers at bvrStandoffPct of its missile range from an attack target in another system; one without keeps the stock arrival', () => {
+        const [a] = aiEmpires();
+        const ship = spawn(a, BuiltObjectSubRole.Frigate);
+        const range = loadedMissileRange(bg, ship);
+        expect(range).toBeGreaterThan(0);
+        // a target in a system far from the ship (the farthest star)
+        const far = bg.systems.map((x) => x.systemStar).sort((p, q) => Math.hypot(q.xpos - ship.xpos, q.ypos - ship.ypos) - Math.hypot(p.xpos - ship.xpos, p.ypos - ship.ypos))[0];
+        const tx = far.xpos + 3000;
+        const ty = far.ypos;
+        const d = bvrStandoffDistance(bg, ship, BuiltObjectMissionType.Attack, tx, ty);
+        expect(d).toBeGreaterThan(0);
+        expect(d).toBeLessThanOrEqual(Math.trunc(range * 0.8));
+        expect(d).toBeGreaterThanOrEqual(500);
+        expect(scenarioQuery(bg, 'hyperjumpStandoff', 0, { ship, mission: { type: BuiltObjectMissionType.Attack } as never, targetX: tx, targetY: ty })).toBe(d);
+        // not an attack mission, or already in the target's system: the stock arrival
+        expect(bvrStandoffDistance(bg, ship, BuiltObjectMissionType.Move, tx, ty)).toBe(0);
+        expect(bvrStandoffDistance(bg, ship, BuiltObjectMissionType.Attack, ship.xpos + 5000, ship.ypos)).toBe(0);
+        // no loaded launcher in the fleet: stock
+        spend(ship);
+        expect(loadedMissileRange(bg, ship)).toBe(0);
+        expect(bvrStandoffDistance(bg, ship, BuiltObjectMissionType.Attack, tx, ty)).toBe(0);
     });
 
     it('tactics: with more loaded missiles and the longer reach the AI ship kites; dry against a missile fleet it rushes; a dry Standoff ship fights with its guns', () => {

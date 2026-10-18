@@ -11,6 +11,7 @@ import type { Habitat } from '../types';
 import type { Weapon } from '../weapon';
 import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
+import type { BuiltObjectMission } from '../missions/mission';
 import type { ShipGroup } from '../fleets/shipGroup';
 import type { Creature } from '../creature';
 import type { GalaxyLocation } from '../galaxyLocation';
@@ -525,6 +526,12 @@ export interface ScenarioQueries {
      * jump started where the ship is now (position-based rules such as jump interdiction apply), else anywhere. Pure.
      */
     hyperjumpSpoolFactor: { value: number; args: { ship: BuiltObject; here: boolean } };
+    /**
+     * The stand-off distance (0 = stock) a ship's hyperjump for an attack / invade / bombard / blockade mission into another system
+     * exits at: cmdHyperTo's first execution (the exit point is `distance` from the target on the side the ship comes from) and
+     * combat/attackAI.ts checkNearTarget (the jump ends at that distance instead of HyperJumpThreshhold). BVR combat (scenario/bvr). No Rnd.
+     */
+    hyperjumpStandoff: { value: number; args: { ship: BuiltObject; mission: BuiltObjectMission; targetX: number; targetY: number } };
     /** pirates/pirateFleets.ts raid choices (Empire.9.cs 1045-1116): the fleet strength a raid at `habitat` (a colony, or a mining station's habitat) needs. */
     raidRequiredStrength: { value: number; args: { empire: Empire; habitat: Habitat } };
     /** industry.ts industrialProcessing (BuiltObject.2.cs 7859 extraction block): true = the extractor mines nothing this pass. */

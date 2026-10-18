@@ -74,6 +74,7 @@ export const BVR_DEFAULTS = {
     bvrRearmRange: 1500,
     bvrRoundCostPct: 12,
     bvrDryPct: 25,
+    bvrStandoffPct: 80,
     bvrAiValuePct: 35,
     bvrFirepowerSeconds: 120,
     bvrCapFrigate: 2,

@@ -1315,7 +1315,13 @@ export function checkNearTarget(galaxy: Galaxy, builtObject: BuiltObject): void 
         }
     }
     const mission2 = builtObjectMission(ship.mission);
-    if (mission2 !== null && galaxy.calculateDistanceSquared(ship.xpos, ship.ypos, x2, y2) <= baconMovementSettings.hyperJumpThreshhold * baconMovementSettings.hyperJumpThreshhold) {
+    // Mod layer (BVR combat stand-off, not in the original): the jump ends at the stand-off distance instead of HyperJumpThreshhold.
+    let threshold = baconMovementSettings.hyperJumpThreshhold;
+    if (mission2 !== null && galaxy.scenario !== null) {
+        const standoff = scenarioQuery(galaxy, 'hyperjumpStandoff', 0, { ship, mission: mission2, targetX: x2, targetY: y2 });
+        if (standoff > 0 && standoff + 300 < threshold) threshold = standoff + 300;
+    }
+    if (mission2 !== null && galaxy.calculateDistanceSquared(ship.xpos, ship.ypos, x2, y2) <= threshold * threshold) {
         mission2.completeCommand();
         const mission3 = builtObjectMission(ship.mission);
         if (mission3 !== null && mission3.target !== null && mission3.fastPeekCurrentCommand()?.action === CommandAction.MoveTo && mission3.showNextCommand()?.action === CommandAction.ConditionalHyperTo) mission3.completeCommand();

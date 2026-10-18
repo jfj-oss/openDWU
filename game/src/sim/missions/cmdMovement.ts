@@ -278,6 +278,17 @@ export const cmdHyperTo: CommandHandler = (ctx) => {
         bo.hyperjumpX = exitPoint.x;
         bo.hyperjumpY = exitPoint.y;
         constructionShipBlackHoleExit(galaxy, bo, num, num2);
+        // Mod layer (BVR combat stand-off, not in the original): the jump exits on the approach side at the stand-off distance.
+        if (galaxy.scenario !== null) {
+            const standoff = scenarioQuery(galaxy, 'hyperjumpStandoff', 0, { ship: bo, mission, targetX: num, targetY: num2 });
+            if (standoff > 0) {
+                const away = Math.hypot(bo.xpos - num, bo.ypos - num2);
+                if (away > 0) {
+                    bo.hyperjumpX = ((bo.xpos - num) / away) * standoff;
+                    bo.hyperjumpY = ((bo.ypos - num2) / away) * standoff;
+                }
+            }
+        }
         bo.lastHyperDistance = 536870911.0;
         bo.lastPositionX = bo.xpos;
         bo.lastPositionY = bo.ypos;
