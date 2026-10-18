@@ -327,7 +327,7 @@ function sample(ctx, g) {
             const tracked = new Set();
             for (const sn of st.seasons) for (const grp of sn.groups) for (const b of [...grp.ships, ...grp.transports]) tracked.add(b);
             for (const r of st.raids) for (const b of r.ships) tracked.add(b);
-            for (const b of [...st.reserve, ...st.guards, ...st.thrallShips]) tracked.add(b);
+            for (const b of [...st.reserve, ...st.guards, ...st.thrallShips, ...(st.watcherFleets ?? []).flatMap((f) => f.ships)]) tracked.add(b);
             for (const w of st.watchers) if (w.ship) tracked.add(w.ship);
             if (st.beacon) tracked.add(st.beacon);
             let orphans = 0;
@@ -464,7 +464,7 @@ function sample(ctx, g) {
             const sh = w.ship;
             const m = sh?.mission ?? null;
             if (sh && !sh.hasBeenDestroyed && faction && sh.actualEmpire !== faction) viol(report, 'Watcher no longer owned by the faction', `watcher${w.index} now ${sh.actualEmpire?.name} (mode ${w.mode}, dead ${w.dead}, faction active ${faction.active}, empire ${sh.empire?.name}, phase ${st.phase}) d${r1((now - startMs) / DAY_MS)}`);
-            stuck(report, `watcher${w.index}`, w.mode, now, { parked: 4000, travel: 1100, return: 300, dwell: 150, sighting: 100, fight: 200 }[w.mode] ?? 600, `watcher ${w.mode}`,
+            stuck(report, `watcher${w.index}`, w.mode, now, { parked: 4000, travel: 1100, return: 300, dwell: 150, sighting: 100, fight: 200, lead: 1e9 }[w.mode] ?? 600, `watcher ${w.mode}`,
                 sh ? `pos ${Math.round(sh.xpos)},${Math.round(sh.ypos)} home ${Math.round(w.homeX)},${Math.round(w.homeY)} galaxy ${g.sizeX}x${g.sizeY} fuel ${Math.round(sh.currentFuel)}/${Math.round(sh.fuelCapacity)} speed ${sh.currentSpeed}/${sh.warpSpeed} mission ${m?.type} target ${w.target?.name ?? '-'} auto ${sh.isAutoControlled}` : '');
         }
         // Cloak: no ordinary empire's ship may be ordered at a cloaked Watcher.
