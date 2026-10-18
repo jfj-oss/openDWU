@@ -147,6 +147,8 @@ export interface BvrState {
     /** Launch attempts refused for want of a track. */
     untracked: number;
     roundsLoaded: number;
+    /** Of them, loaded by a deployed resupply ship (absent in saves from before the counter existed). */
+    roundsViaResupply?: number;
     roundsCost: number;
     /** Rearm trips the AI sent fleets on. */
     aiRearmTrips: number;
@@ -231,6 +233,11 @@ export function bvrNoteHit(galaxy: Galaxy, weapon: Weapon): void {
     const st = bvrState(galaxy);
     if (weapon.component.type === ComponentType.WeaponTorpedo) st.torpedoHits++;
     else st.missileHits++;
+}
+
+/** Counts a launch check refused for want of a track (a ready missile launcher, a target in range that the empire does not track). */
+export function bvrNoteUntracked(galaxy: Galaxy): void {
+    bvrState(galaxy).untracked++;
 }
 
 /** Counts a missile or torpedo shot down by point defence or by guns. */
@@ -503,6 +510,7 @@ export function bvrRearmTick(galaxy: Galaxy): void {
             const cost = loadOneRound(galaxy, bo, m, prices);
             if (cost === -1) break;
             st.roundsLoaded++;
+            if (src.point.subRole === BuiltObjectSubRole.ResupplyShip) st.roundsViaResupply = (st.roundsViaResupply ?? 0) + 1;
             st.roundsCost += cost;
             const owner = src.point.owner ?? src.point.empire;
             const payer = bo.owner ?? bo.empire;

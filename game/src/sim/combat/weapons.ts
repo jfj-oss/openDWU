@@ -65,7 +65,7 @@ import {
 import { baconSettings } from '../data/baconSettings';
 import { noteBuiltObjectEffect } from './effectWatch';
 import { veteranShipBonusOf } from '../scenario/veterans/veterans';
-import { bvrMayFire, bvrMissileHit, bvrNoteDowned, bvrNoteFired, bvrNoteHit, bvrOn, bvrParam, bvrTracked, isBvrMissile, isLimitedLauncher } from '../scenario/bvr/bvr';
+import { bvrMayFire, bvrMissileHit, bvrNoteDowned, bvrNoteFired, bvrNoteUntracked, bvrNoteHit, bvrOn, bvrParam, bvrTracked, isBvrMissile, isLimitedLauncher } from '../scenario/bvr/bvr';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants
@@ -811,7 +811,10 @@ export function fireWeaponsAtTarget(galaxy: Galaxy, builtObject: BuiltObject, di
         const limited = bvr && isLimitedLauncher(weapon2.component);
         if (limited) {
             if (!bvrMayFire(galaxy, self, weapon2)) continue;
-            if (isBvrMissile(weapon2.component) && !bvrTracked(galaxy, self, target)) continue;
+            if (isBvrMissile(weapon2.component) && !bvrTracked(galaxy, self, target)) {
+                bvrNoteUntracked(galaxy);
+                continue;
+            }
         }
         const timeSpan2Ms = tempNow - weapon2.lastFired;
         const num6 = galaxy.rnd.nextDouble() * 800.0 - 400.0;

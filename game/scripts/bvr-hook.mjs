@@ -137,7 +137,7 @@ export function chunk(ctx) {
         dryShips: dry,
         counters: st === null ? null : {
             missilesFired: st.missilesFired, missileHits: st.missileHits, torpedoesFired: st.torpedoesFired, torpedoHits: st.torpedoHits,
-            downedByPd: st.downedByPd, downedByGuns: st.downedByGuns, aiRearmTrips: st.aiRearmTrips, roundsLoaded: st.roundsLoaded, roundsCost: Math.round(st.roundsCost),
+            downedByPd: st.downedByPd, downedByGuns: st.downedByGuns, aiRearmTrips: st.aiRearmTrips, roundsLoaded: st.roundsLoaded, roundsViaResupply: st.roundsViaResupply ?? 0, untrackedChecks: st.untracked, roundsCost: Math.round(st.roundsCost),
             magazinesTracked: st.mags.size,
         },
         designs,

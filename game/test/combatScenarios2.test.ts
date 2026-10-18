@@ -1596,6 +1596,35 @@ describe('(8) BVR combat add-on', () => {
         e.stateMoney = money;
     });
 
+    it('rearming from a deployed resupply ship: slower (35% of a port\'s speed), only while it is deployed', () => {
+        const e = aiEmpires().find((x) => x.designs.some((d) => d.subRole === BuiltObjectSubRole.ResupplyShip))!;
+        const design = e.designs.filter((d) => d.subRole === BuiltObjectSubRole.ResupplyShip).sort((a, b) => b.dateCreated - a.dateCreated)[0];
+        const r = generateBuiltObjectFromDesign(bg, e, design, 'bvrSupply', true, spotX, spotY + 5000);
+        expect(e.resupplyShips).toContain(r);
+        const f = spawn(e, BuiltObjectSubRole.Frigate);
+        spend(f);
+        place(bg, f, r.xpos + 300, r.ypos);
+        e.stateMoney = 100000;
+        const run = (seconds: number): void => {
+            for (let k = 0; k < seconds / 5; k++) {
+                bg.nowMs += 5000;
+                bvrRearmTick(bg);
+            }
+        };
+        bvrRearmTick(bg);
+        run(60); // not deployed: nothing
+        expect(bvrNeedsRounds(bg, f)).toBe(true);
+        const before = bvrState(bg).roundsLoaded;
+        (r as unknown as { _isDeployed: boolean })._isDeployed = true;
+        run(40); // a port would have finished the 8 rounds
+        const part = bvrState(bg).roundsLoaded - before;
+        expect(part).toBeGreaterThanOrEqual(1);
+        expect(part).toBeLessThan(8);
+        run(300);
+        expect(bvrNeedsRounds(bg, f)).toBe(false);
+        expect(bvrState(bg).roundsViaResupply ?? 0).toBeGreaterThanOrEqual(8);
+    });
+
     it('AI rearming: an idle automated warship that has fired its rounds is sent to a rearm point on a Refuel order; a fighting one is not', () => {
         const e = aiEmpires()[0];
         const f = spawn(e, BuiltObjectSubRole.Frigate);
