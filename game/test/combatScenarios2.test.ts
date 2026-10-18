@@ -103,8 +103,11 @@ import { facingTick, facingZone, flankHeadingOffset } from '../src/sim/scenario/
 import { c2StruckSpares, healthPct, isStruck, struckText, surrenderCaptureTick, surrenderTick } from '../src/sim/scenario/combat2/surrender';
 import { combat2StatusLines } from '../src/sim/scenario/combat2/status';
 import { c2ShipTick } from '../src/sim/scenario/combat2/shipTick';
-import { peekWreckageState, wreckFields } from '../src/sim/scenario/wreckage/common';
-import { completeSalvage, orderSalvage, recordWreck } from '../src/sim/scenario/wreckage/wreckage';
+import { createWreckField, peekWreckageState, wreckFields } from '../src/sim/scenario/wreckage/common';
+import { purgeWreckageState } from '../src/sim/scenario/wreckage/wreckage';
+import { purgeSilence } from '../src/sim/scenario/threats/silence';
+import { generateRestrictedZone } from '../src/sim/story/storyStart';
+import { galaxyStarDate } from '../src/sim/tick/simTime';
 
 let gameData: GameData;
 let componentDefs: Map<number, ComponentDefinition>;
@@ -1938,13 +1941,11 @@ describe('(9) the six combat changes (decoys, ambush, critical hits, damage cont
 
     it('flags and params: six independent flags (plus BVR), every param has its manifest default, nothing is created until a hook runs', () => {
         for (const f of C2_FLAGS) expect(cg.scenario!.flags[f]).toBe(true);
-        expect(cg.scenario!.flags.surrenderWrecks).toBe(true);
+        expect(cg.scenario!.flags.surrenderWrecks).toBeUndefined(); // the wreck sub-switch is gone
         for (const k of Object.keys(C2_DEFAULTS) as C2Param[]) {
-            if (k === 'wreckSystemCap') continue;
             expect(cg.scenario!.params[k], k).toBe(C2_DEFAULTS[k]);
         }
-        expect(cg.scenario!.params.wreckSystemCap).toBe(12);
-        expect(cg.scenario!.params.wreckDecayYears).toBe(3);
+        expect(cg.scenario!.params.wreckSystemCap).toBeUndefined();
         for (const id of C2_IDS) expect(scenarioIndexFs().some((m) => m.id === id)).toBe(true);
     });
 
@@ -2303,38 +2304,48 @@ describe('(9) the six combat changes (decoys, ambush, critical hits, damage cont
         cg.nowMs = t0;
     });
 
-    it('wrecks: destroyed ships leave debris-field wrecks, a system holds at most the cap (the oldest crumble first), they decay, construction ships salvage them (resources, a tech chance)', () => {
+    it('no wrecks: with Surrender on, destroyed ships leave no debris fields, wreck records or wreckage state, and no raw wreckage text keys appear', () => {
         const [a, b] = pair();
         const killer = spawnC(a, BuiltObjectSubRole.Cruiser);
         const spot = { x: cspot.x + 62000, y: cspot.y + 62000 };
-        const ships = Array.from({ length: 20 }, (_, i) => spawnAt(b, BuiltObjectSubRole.Frigate, spot.x + (i % 5) * 300, spot.y + Math.trunc(i / 5) * 300, 'wr'));
+        const ships = Array.from({ length: 6 }, (_, i) => spawnAt(b, BuiltObjectSubRole.Frigate, spot.x + (i % 3) * 300, spot.y + Math.trunc(i / 3) * 300, 'wr'));
         for (const s of ships) inflictDamage(cg, killer, s, null, 1e9, cg.nowMs, 0, -Number.MAX_VALUE);
         for (const s of ships) expect(s.hasBeenDestroyed).toBe(true);
-        // The destroyed objects are torn down (and recorded) by the frame; run a few seconds.
         runGameSeconds(cg, 5);
-        const st = peekWreckageState(cg)!;
-        const inSystem = (idx: number) => wreckFields(cg).filter((f) => f.systemIndex === idx).reduce((n, f) => n + f.wrecks.length, 0);
-        const systems = new Set(wreckFields(cg).map((f) => f.systemIndex));
-        expect(st.stats.wrecks).toBeGreaterThanOrEqual(15);
-        for (const idx of systems) expect(inSystem(idx)).toBeLessThanOrEqual(12);
-        expect(c2State(cg).stats.wrecksCulled).toBeGreaterThanOrEqual(1);
-        expect(c2State(cg).stats.wreckPeak).toBeLessThanOrEqual(12);
-        // Salvage: a construction ship of the empire takes up to 3 wrecks' resources.
-        const field = wreckFields(cg).find((f) => f.wrecks.length > 0)!;
-        const rig = a.builtObjects.find((x) => x != null && x.subRole === BuiltObjectSubRole.ConstructionShip && !x.hasBeenDestroyed)!;
-        expect(rig).toBeDefined();
-        const n0 = field.wrecks.length;
-        expect(orderSalvage(cg, a, rig, field.id, false)).toBe(true);
-        const job = st.jobs.find((j) => j.ship === rig)!;
-        const r = completeSalvage(cg, job, field);
-        expect(r.wrecks.length).toBeGreaterThan(0);
-        expect(r.cargo.length).toBeGreaterThan(0);
-        expect(wreckFields(cg).reduce((n, f) => n + f.wrecks.length, 0)).toBeLessThan(n0 + 100);
-        // Decay: with a tiny decay time the long block sweeps the fields away.
-        withParams({ wreckDecayYears: 0.01 }, () => runGameSeconds(cg, 130));
-        const ids = new Set(ships.map((x) => x.builtObjectID));
-        expect(wreckFields(cg).reduce((n, f) => n + f.wrecks.filter((w) => ids.has(w.builtObjectId) && w.name.startsWith('wr')).length, 0)).toBe(0);
+        expect(peekWreckageState(cg)).toBeNull();
+        expect(wreckFields(cg)).toHaveLength(0);
+        expect(cg.galaxyLocations.some((l) => l.name.includes('Scenario Wreckage'))).toBe(false);
     }, 120000);
+
+    it('old saves: a save made with the old wreck switch (debris fields, wreck records, a salvage run) or The Silence loads without them, and the salvager is released', () => {
+        const [a] = pair();
+        const rig = a.builtObjects.find((x) => x != null && x.subRole === BuiltObjectSubRole.ConstructionShip && !x.hasBeenDestroyed)!;
+        const field = createWreckField(cg, cspot.x + 40000, cspot.y + 40000);
+        field.wrecks.push({ id: 1, builtObjectId: -1, name: 'old', designName: 'old', role: 0, subRole: 0, ownerEmpireId: -1, ownerName: '', x: field.x, y: field.y, size: 100, componentIds: [], resources: [], value: 500, starDate: galaxyStarDate(cg) });
+        const zone = generateRestrictedZone(cg, 'Old Zone', 'old', 4000, cspot.x + 50000, cspot.y + 50000, 0);
+        cg.scenario!.flags.surrenderWrecks = true;
+        cg.scenario!.flags.wreckage = true;
+        cg.scenario!.flags.silence = true;
+        cg.scenario!.state.silence = { source: null, zone, radius: 2000, shutdownProgressDays: 0, lastShutdownEmpire: null, sentStages: {}, ended: false };
+        expect(cg.galaxyLocations).toContain(field.location);
+        const time = new GalaxyTime();
+        time.togglePause();
+        const g2 = deserializeGame(serializeGame(cgame, time, defaultStartGameOptions()), cdata).game.galaxy;
+        expect(rig).toBeDefined();
+        expect(wreckFields(g2)).toHaveLength(0);
+        expect(peekWreckageState(g2)).toBeNull();
+        expect(g2.scenario!.flags.wreckage).toBe(false);
+        expect(g2.scenario!.flags.surrenderWrecks).toBe(false);
+        expect(g2.scenario!.state.silence).toBeUndefined();
+        expect(g2.scenario!.flags.silence).toBe(false);
+        expect(g2.galaxyLocations.some((l) => l.name === field.name || l.name === 'Old Zone')).toBe(false);
+        expect(g2.scenario!.flags.surrender).toBe(true); // Surrender itself keeps working
+        runGameSeconds(g2, 5);
+        // Clean the shared fixture.
+        purgeWreckageState(cg);
+        purgeSilence(cg);
+        cg.scenario!.flags.surrender = true;
+    }, 300000);
 
     it('both on with BVR: a staged fight runs, counters move, nothing throws, hits are scaled, the panel shows the new lines', () => {
         const [a, b] = pair();
@@ -2354,7 +2365,7 @@ describe('(9) the six combat changes (decoys, ambush, critical hits, damage cont
         c2ShipTick(cg, left[0], 3);
     }, 300000);
 
-    it('save: decoy pools, critical effects, struck ships and the wreck records survive a save and load, older saves without the state load', () => {
+    it('save: decoy pools, critical effects, struck ships survive a save and load, older saves without the state load', () => {
         const [a, b] = pair();
         const ship = spawnC(a, BuiltObjectSubRole.Cruiser);
         c2State(cg).decoys.set(ship, { spent: 2, nextMs: 0, progress: 0 });
@@ -2368,7 +2379,6 @@ describe('(9) the six combat changes (decoys, ambush, critical hits, damage cont
         c2State(cg).struck.set(stricken, { sinceMs: cg.nowMs, toEmpireId: a.empireId, captor: ship, captureStartMs: 0 });
         const decoys = decoyText(cg, ship);
         const crit = critText(cg, ship);
-        const wrecks = wreckFields(cg).reduce((n, f) => n + f.wrecks.length, 0);
         const time = new GalaxyTime();
         time.togglePause();
         const text = serializeGame(cgame, time, defaultStartGameOptions());
@@ -2379,7 +2389,6 @@ describe('(9) the six combat changes (decoys, ambush, critical hits, damage cont
         expect(critText(g2, find(ship))).toBe(crit);
         expect(find(ship).topSpeed).toBe(ship.topSpeed);
         expect(isStruck(g2, find(stricken))).toBe(true);
-        expect(wreckFields(g2).reduce((n, f) => n + f.wrecks.length, 0)).toBe(wrecks);
         // An older save: the state bag absent, the hooks run on and create it on first use.
         delete g2.scenario!.state.combat2;
         expect(decoyText(g2, find(ship))).toBe(`Decoys ${decoyCapacity(g2, find(ship))}/${decoyCapacity(g2, find(ship))}`);
@@ -2391,7 +2400,7 @@ describe('(9) the six combat changes (decoys, ambush, critical hits, damage cont
     it('toggles off: with all six flags off none of it runs (no state bag, no draws, hits and damage untouched)', () => {
         const g = cachedTickGame(gameData).galaxy;
         const off: Record<string, boolean> = {};
-        for (const f of [...C2_FLAGS, 'surrenderWrecks', 'decoysAI', 'ambushAI', 'facingAI']) off[f] = false;
+        for (const f of [...C2_FLAGS, 'decoysAI', 'ambushAI', 'facingAI']) off[f] = false;
         g.scenario = createGalaxyScenario(loadScenarioOverlayFs(BVR_ADDON_ID).manifest, { flags: { bvrCombat: false } });
         for (const f of Object.keys(off)) g.scenario.flags[f] = false;
         const ship = playerShip(g, BuiltObjectSubRole.Frigate, 0);

@@ -44,7 +44,7 @@ export const EXPANSION_INFO: Readonly<Record<string, ExpansionInfo>> = {
         ],
     },
     economy: {
-        about: 'Colonies gain designations with real trade-offs, private companies settle and trade on charters, and scarcity shocks ripple through the private economy. Battles leave wrecks to salvage, and armed privateers answer pirate raids.',
+        about: 'Colonies gain designations with real trade-offs, private companies settle and trade on charters, and scarcity shocks ripple through the private economy. Armed privateers answer pirate raids.',
         changes: 3,
         difficulty: 0,
         difficultyNote: 'Neutral: new opportunities and new shocks, for you and the AI alike.',
@@ -65,7 +65,7 @@ export const EXPANSION_INFO: Readonly<Record<string, ExpansionInfo>> = {
             { heading: 'The dead probe swarm and archive cores', text: 'Self-replicating probes expand mining stations through the asteroid fields and attack any ship in their systems until their mothercore falls. Archive cores from world ships, the mothercore and ruins give research: study them slowly or seal them for one big payoff.' },
             { heading: 'The Cult and the Time-Bomb', text: 'A creed spreads from governor to governor across borders; ruins hold research with a planet-killing failure mode the cult can trigger.' },
             { heading: 'The Chorus (hive)', text: 'Every independent colony is a node of one hidden mind that declares once enough nodes have been absorbed.' },
-            { heading: 'The Silence and the Grey Tide', text: 'A precursor ruin makes hyperdrives fail in a widening radius; a mining swarm eats extractors and founds nests.' },
+            { heading: 'The Grey Tide', text: 'A mining swarm eats extractors and founds nests. (The Silence, a ruin that makes hyperdrives fail in a widening radius, is temporarily disabled.)' },
             { heading: 'Ghosts, mutiny, doppelgangers, dark farms', text: 'Dead empires return as ghost fleets, robot garrisons rise on a broadcast, lost ships return as sleepers, and overdeveloped colonies grow hidden factories.' },
         ],
     },

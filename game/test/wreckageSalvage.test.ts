@@ -269,28 +269,18 @@ describe('19e-7 wreckage — faithful path, save', () => {
         expect(game.galaxy.rnd.drawCount).toBe(ref.game.galaxy.rnd.drawCount);
     }, 600000);
 
-    it('a save with debris fields and a salvage job resumes identically', () => {
+    it('the add-on is retired: a save with debris fields and a salvage job loads with them removed and the flag off', () => {
         const a = shared;
         const st = peekWreckageState(a.galaxy)!;
         expect(st.fields.length).toBeGreaterThan(0);
         expect(st.jobs.length).toBeGreaterThan(0);
+        const names = st.fields.map((f) => f.name);
         const text = saveText(a);
         const loaded = deserializeGame(text, scenarioGameData(base, SC)).game;
-        const lst = peekWreckageState(loaded.galaxy)!;
-        const summary = (g: Galaxy): string => {
-            const s = peekWreckageState(g)!;
-            return JSON.stringify({
-                fields: s.fields.map((f) => [f.id, f.name, f.x, f.y, f.wrecks.map((w) => [w.id, w.builtObjectId, w.value, w.starDate, w.resources])]),
-                jobs: s.jobs.map((j) => [j.ship.builtObjectID, j.fieldId, j.phase, j.arrivedStarDate]),
-                stats: s.stats,
-            });
-        };
-        expect(summary(loaded.galaxy)).toBe(summary(a.galaxy));
-        for (const f of lst.fields) expect(loaded.galaxy.galaxyLocations).toContain(f.location);
-        for (const j of lst.jobs) expect(loaded.galaxy.builtObjects).toContain(j.ship);
-        runGameSeconds(a.galaxy, 60);
+        expect(peekWreckageState(loaded.galaxy)).toBeNull();
+        expect(loaded.galaxy.scenario!.flags.wreckage).toBe(false);
+        for (const n of names) expect(loaded.galaxy.galaxyLocations.some((l) => l.name === n)).toBe(false);
         runGameSeconds(loaded.galaxy, 60);
-        expect(stateDigest(loaded.galaxy)).toBe(stateDigest(a.galaxy));
-        expect(summary(loaded.galaxy)).toBe(summary(a.galaxy));
+        expect(peekWreckageState(loaded.galaxy)).toBeNull();
     }, 600000);
 });

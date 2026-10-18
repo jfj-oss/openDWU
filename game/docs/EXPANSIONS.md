@@ -63,11 +63,11 @@ Characters travel in person and every colony needs a governor, whose loyalty can
 
 ## Economy
 
-Colonies gain designations with real trade-offs, private companies settle and trade on charters, and scarcity shocks ripple through the private economy. Battles leave wrecks to salvage, and armed privateers answer pirate raids.
+Colonies gain designations with real trade-offs, private companies settle and trade on charters, and scarcity shocks ripple through the private economy. Armed privateers answer pirate raids.
 
 - Changes to the base game: ●●●○○ (3 of 5)
 - Difficulty: Neutral. Neutral: new opportunities and new shocks, for you and the AI alike.
-- Members: colony-economy, exchange, chartered-companies, corporatecoup, privateers, wreckage-salvage
+- Members: colony-economy, exchange, chartered-companies, corporatecoup, privateers
 
 **Colony designations.** Industrial, Trade Hub, Resort World, Mining Hub, Core World or Frontier/Garrison: bonuses and drawbacks through the game's own mechanics.
 
@@ -84,7 +84,7 @@ Threats come from outside and below. Early on, a generation ship arrives to clai
 
 - Changes to the base game: ●●●○○ (3 of 5)
 - Difficulty: Much harder. Much harder: an early crisis tests your fleet, and the late game turns against everyone.
-- Members: generation-ships, probe-swarm, archive-cores, void-whale, cult, hive, silence, greytide, ghostarmada, robotmutiny, timebomb, doppelgangers, darkfarms
+- Members: generation-ships, probe-swarm, archive-cores, void-whale, cult, hive, greytide, ghostarmada, robotmutiny, timebomb, doppelgangers, darkfarms
 
 **Generation ships.** Early in the game a world ship and its escort arrive at the galaxy edge, scout a populated colony and demand it eighteen months later. Pilgrims, Heirs, the Ark Faith or the silent Quiet Ship: cede, offer another world, or fight.
 
@@ -96,7 +96,7 @@ Threats come from outside and below. Early on, a generation ship arrives to clai
 
 **The Chorus (hive).** Every independent colony is a node of one hidden mind that declares once enough nodes have been absorbed.
 
-**The Silence and the Grey Tide.** A precursor ruin makes hyperdrives fail in a widening radius; a mining swarm eats extractors and founds nests.
+**The Grey Tide.** A mining swarm eats extractors and founds nests. (The Silence, a ruin that makes hyperdrives fail in a widening radius, is temporarily disabled.)
 
 **Ghosts, mutiny, doppelgangers, dark farms.** Dead empires return as ghost fleets, robot garrisons rise on a broadcast, lost ships return as sleepers, and overdeveloped colonies grow hidden factories.
 

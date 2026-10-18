@@ -1,10 +1,9 @@
 {
   "id": "surrender-wrecks",
-  "name": "Surrender and wrecks",
-  "description": "Gameplay change (off by default; Other Empires page, Gameplay changes). A badly crippled AI ship (less than 45% of its components working, and no way to run: engines out, or slower than what is shooting at it and unable to jump away) that is outgunned (the ships shooting at it have 1.5 times its own firepower) may strike its colours instead of fighting to the death. The chance each check depends on its people's temper (cautious races give in sooner, aggressive ones fight on). A ship that has struck stops fighting and moving, leaves its fleet and is no longer fired at; the nearest armed enemy puts a prize crew aboard within 20 seconds (reusing the original's boarding capture: the empire's capture policy decides whether the ship is kept, retrofitted or scrapped). Nobody comes: after 120 game days its crew takes it back. Ships that are destroyed leave wrecks (the Wreckage and Salvage add-on's debris fields, with its own settings and map markers): construction and mining ships salvage them for resources and sometimes a technology the wreck's builders had; wrecks decay (3 years by default) and each system holds at most 12, the oldest crumbling first, so long wars do not pile up objects. AI construction ships salvage when no armed enemy is near. Your own ships never surrender on their own.",
+  "name": "Surrender",
+  "description": "Gameplay change (off by default; Other Empires page, Gameplay changes). A badly crippled AI ship (less than 45% of its components working, and no way to run: engines out, or slower than what is shooting at it and unable to jump away) that is outgunned (the ships shooting at it have 1.5 times its own firepower) may strike its colours instead of fighting to the death. The chance each check depends on its people's temper (cautious races give in sooner, aggressive ones fight on). A ship that has struck stops fighting and moving, leaves its fleet and is no longer fired at; the nearest armed enemy puts a prize crew aboard within 20 seconds (reusing the original's boarding capture: the empire's capture policy decides whether the ship is kept, retrofitted or scrapped). Nobody comes: after 120 game days its crew takes it back. Your own ships never surrender on their own.",
   "flags": [
-    { "name": "surrender", "label": "Surrender and capture", "description": "Master switch: crippled AI ships may strike their colours and be captured.", "default": true },
-    { "name": "surrenderWrecks", "label": "Wrecks and salvage", "description": "Destroyed ships leave debris fields that can be salvaged and that decay.", "default": true }
+    { "name": "surrender", "label": "Surrender and capture", "description": "Crippled AI ships may strike their colours and be captured.", "default": true }
   ],
   "params": [
     { "name": "surrenderHealthPct", "label": "A ship may surrender when less than this % of its components work", "default": 45, "min": 5, "max": 90 },
@@ -12,16 +11,6 @@
     { "name": "surrenderChancePct", "label": "Chance per check (after every hit that damages it, and every 3 game seconds) that such a ship surrenders, for a race of average temper (%)", "default": 30, "min": 0, "max": 100 },
     { "name": "surrenderCaptureSeconds", "label": "Game seconds an armed enemy must stay near a ship that struck to take it", "default": 20, "min": 1, "max": 600 },
     { "name": "surrenderCaptureRange", "label": "Distance within which an enemy takes a ship that struck", "default": 900, "min": 100, "max": 20000 },
-    { "name": "surrenderTimeoutDays", "label": "Game days before an uncaptured ship takes its crew back (it will not surrender again for as long)", "default": 120, "min": 1, "max": 720 },
-    { "name": "wreckDecayYears", "label": "Years until a wreck has decayed away", "default": 3, "min": 0.1, "max": 100 },
-    { "name": "wreckSystemCap", "label": "Most wrecks in one system (the oldest crumble first; 0 = no limit)", "default": 12, "min": 0, "max": 500 },
-    { "name": "wreckFieldJoinRadius", "label": "Radius within which a wreck joins an existing field", "default": 4000, "min": 100, "max": 100000 },
-    { "name": "wreckFieldSize", "label": "Debris field extent", "default": 1300, "min": 200, "max": 20000 },
-    { "name": "wreckSalvageFraction", "label": "Fraction of a wreck's build resources recovered", "default": 0.3, "min": 0, "max": 1 },
-    { "name": "wreckSalvageWrecksPerTrip", "label": "Wrecks recovered per salvage trip", "default": 3, "min": 1, "max": 100 },
-    { "name": "wreckSalvageDays", "label": "Days on site to salvage", "default": 30, "min": 0, "max": 360 },
-    { "name": "wreckTechChance", "label": "Chance per salvage trip of recovering a technology of the wreck's builders", "default": 0.2, "min": 0, "max": 1 },
-    { "name": "wreckAiSalvageRange", "label": "AI salvage range (from the construction ship)", "default": 400000, "min": 0, "max": 5000000 },
-    { "name": "wreckAiMinValue", "label": "Smallest field value the AI salvages", "default": 200, "min": 0, "max": 1000000 }
+    { "name": "surrenderTimeoutDays", "label": "Game days before an uncaptured ship takes its crew back (it will not surrender again for as long)", "default": 120, "min": 1, "max": 720 }
   ]
 }

@@ -53,10 +53,10 @@ const SCN = (id, extra = {}) => ({ name: id, seed: 101 + id.length * 7, years: 4
 // Measurement configs (exp-soak): seed 2, 700 stars, 10 empires, default pirates, 20 years; not committed.
 const W = { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 } };
 const P = ['characters-victory', 'internal-security', 'reputation', 'espionage-consequences', 'frontier-autonomy', 'refugees-demographics'];
-const T = ['threat-framework', 'cult', 'hive', 'silence', 'greytide', 'ghostarmada', 'robotmutiny', 'timebomb', 'doppelgangers', 'darkfarms'];
+const T = ['threat-framework', 'cult', 'hive', 'greytide', 'ghostarmada', 'robotmutiny', 'timebomb', 'doppelgangers', 'darkfarms'];
 const L = ['lively-galaxy', 'emergent', 'independents-active', 'colony-defence'];
 const RIM = ['rimTrade', 'rim-frontier', 'rim-fauna', 'rim-herders', 'rim-atmosphere', 'new-fauna'];
-const ECON = ['colony-economy', 'exchange', 'chartered-companies', 'corporatecoup', 'privateers', 'resource-crises', 'wreckage-salvage'];
+const ECON = ['colony-economy', 'exchange', 'chartered-companies', 'corporatecoup', 'privateers', 'resource-crises'];
 const CONFIGS = [
     { name: 'P', seed: 2, years: 20, wizard: W, scenario: P, flags: 'all' },
     { name: 'T', seed: 2, years: 20, wizard: W, scenario: T, flags: 'all' },

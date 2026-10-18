@@ -45,7 +45,6 @@ export const ADDON_STATUS: Readonly<Record<string, string>> = {
     'rim-atmosphere': 'recommended',
     'cult': 'recommended',
     'hive': 'recommended',
-    'silence': 'recommended',
     'doppelgangers': 'recommended',
     'darkfarms': 'recommended',
     'robotmutiny': 'recommended',
@@ -90,7 +89,6 @@ export const ADDON_STATUS: Readonly<Record<string, string>> = {
     'war-crimes': 'recommended',
     'timebomb': 'lightly tested; the AI rarely uses it',
     'ghostarmada': 'lightly tested; the AI rarely uses it',
-    'wreckage-salvage': 'lightly tested; the AI rarely uses it',
     'independents-active': 'lightly tested; the AI rarely uses it',
     'refugees-demographics': 'lightly tested; the AI rarely uses it',
     'llm-layer': 'new; needs a local model',
@@ -181,7 +179,9 @@ const GROUP_OF: Readonly<Record<string, AddonGroup>> = {
 // big-galaxies: its extended palette is now automatic in the base game (empireColors.ts); old saves with the add-on still load.
 // resource-crises: withdrawn from the picker (its per-luxury approval loss stacked to absurd values); saves that use it still load.
 // colony-defence: withdrawn from the picker (the user wants the original's pirate control); saves that use it still load.
-export const HIDDEN_ADDONS: ReadonlySet<string> = new Set(['threat-framework', 'example', 'ai-parity', 'soak-15y', 'resource-crises', 'colony-defence', 'big-galaxies', 'galactic-council', 'themed-names', 'event-log', 'fighting-retreats', 'coordinated-landings', 'bvr-combat', 'decoys-chaff', 'ambush-strike', 'critical-hits', 'damage-control', 'armour-facing', 'surrender-wrecks']);
+// wreckage-salvage: RETIRED (the user: it should not be enableable); saves that had it on load with it off and the debris fields removed (scenario/retired.ts).
+// silence: TEMPORARILY DISABLED (the user; to come back to): code and data stay, a save that had it on loads with it off and its zone removed (scenario/retired.ts).
+export const HIDDEN_ADDONS: ReadonlySet<string> = new Set(['threat-framework', 'example', 'ai-parity', 'soak-15y', 'resource-crises', 'colony-defence', 'big-galaxies', 'galactic-council', 'themed-names', 'event-log', 'fighting-retreats', 'coordinated-landings', 'bvr-combat', 'decoys-chaff', 'ambush-strike', 'critical-hits', 'damage-control', 'armour-facing', 'surrender-wrecks', 'wreckage-salvage', 'silence']);
 
 /**
  * Add-ons set on another wizard page (not listed on the Scenario page, but named in the summaries like any other):
@@ -712,8 +712,8 @@ export interface Expansion {
 export const EXPANSIONS: readonly Expansion[] = [
     { id: 'the-rim', name: 'The Rim', description: 'The frontier beyond the core: rim trade, frontier settlement, wild fauna and herders, the rim atmosphere, and the Voidbloom War.', members: ['rimTrade', 'rim-frontier', 'rim-fauna', 'rim-herders', 'rim-atmosphere', 'new-fauna', 'voidbloom'] },
     { id: 'politics-characters', name: 'Politics & Characters', description: 'Governors, VIPs and the Galactic Council, internal security, reputation, espionage fallout, frontier autonomy, refugees, war crimes remembered and bounty hunters.', members: ['characters-victory', 'internal-security', 'reputation', 'espionage-consequences', 'frontier-autonomy', 'refugees-demographics', 'war-crimes', 'bounty-hunters'] },
-    { id: 'economy', name: 'Economy', description: 'Colony economy, the exchange, chartered companies, corporate coups, privateers and wreckage salvage.', members: ['colony-economy', 'exchange', 'chartered-companies', 'corporatecoup', 'privateers', 'wreckage-salvage'] },
-    { id: 'galactic-threats', name: 'Galactic Threats', description: 'The hidden end-game threats (cult, hive, silence, greytide, ghost armada, robot mutiny, time bomb, doppelgangers, dark farms) and the early ones: generation ships, a dead probe swarm, the archive cores they leave and the Void Whale, plus the mid-game Purifier: an ancient planet destroyer you can hunt.', members: ['threat-framework', 'generation-ships', 'probe-swarm', 'hollow-fleet', 'archive-cores', 'void-whale', 'purifier', 'cult', 'hive', 'silence', 'greytide', 'ghostarmada', 'robotmutiny', 'timebomb', 'doppelgangers', 'darkfarms'] },
+    { id: 'economy', name: 'Economy', description: 'Colony economy, the exchange, chartered companies, corporate coups and privateers.', members: ['colony-economy', 'exchange', 'chartered-companies', 'corporatecoup', 'privateers'] },
+    { id: 'galactic-threats', name: 'Galactic Threats', description: 'The hidden end-game threats (cult, hive, greytide, ghost armada, robot mutiny, time bomb, doppelgangers, dark farms) and the early ones: generation ships, a dead probe swarm, the archive cores they leave and the Void Whale, plus the mid-game Purifier: an ancient planet destroyer you can hunt.', members: ['threat-framework', 'generation-ships', 'probe-swarm', 'hollow-fleet', 'archive-cores', 'void-whale', 'purifier', 'cult', 'hive', 'greytide', 'ghostarmada', 'robotmutiny', 'timebomb', 'doppelgangers', 'darkfarms'] },
     { id: 'giantworks', name: 'Giantworks', description: 'The independents\' Great Work: worlds in three far-apart regions band together and build a gigantic wonder in secret, never known for certain until it is finished. Each wonder it can turn out to be has its own switch in the add-on\'s settings.', members: ['giantworks'] },
     { id: 'living-galaxy', name: 'Living Galaxy', description: 'A galaxy that moves on its own: lively events and active independents.', members: ['lively-galaxy', 'independents-active'] },
 ];

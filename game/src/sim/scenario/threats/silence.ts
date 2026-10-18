@@ -18,6 +18,7 @@ import type { Habitat } from '../../types';
 import type { BuiltObject } from '../../builtObject';
 import { GalaxyLocation } from '../../galaxyLocation';
 import { generateRestrictedZone } from '../../story/storyStart';
+import { removeGalaxyLocation } from '../../events';
 import { getBuiltObjectsAtLocation } from '../../stationPlacement';
 import { BuiltObjectMissionType, builtObjectMission } from '../../missions/mission';
 import { GameEndOutcome } from '../../victory';
@@ -169,6 +170,21 @@ export function silenceShutdownCheck(galaxy: Galaxy, st: SilenceState): void {
     shutdownSilence(galaxy, st);
 }
 
+/**
+ * The Silence is temporarily disabled: a save that had it on loses its zone (the stock RestrictedArea / HyperjumpDisabled location, so
+ * stranded ships can jump again) and its state, quietly (no news, no game end). No Rnd.
+ */
+export function purgeSilence(galaxy: Galaxy): void {
+    const s = galaxy.scenario;
+    if (s === null) return;
+    const st = peekSilenceState(galaxy);
+    if (st !== null && st.zone !== null) removeGalaxyLocation(galaxy, st.zone);
+    delete s.state[SILENCE_KEY];
+    const fw = peekThreatState<{ exists?: Record<string, boolean> }>(galaxy, 'threats');
+    if (fw?.exists !== undefined) delete fw.exists[SILENCE_KEY];
+    s.flags[SILENCE_FLAG] = false;
+}
+
 /** Also used by tests / the player action to force the shutdown. */
 export function shutdownSilence(galaxy: Galaxy, st: SilenceState): void {
     if (st.zone === null || st.ended) return;
@@ -239,9 +255,15 @@ export function silenceKnownSites(galaxy: Galaxy, empire: Empire): KnownThreatSi
 export const SILENCE_HANDLER_IDS = ['silence.yearly', 'silence.periodic'] as const;
 export const SILENCE_QUERY_IDS = ['silence.exempt'] as const;
 
+/**
+ * TEMPORARILY DISABLED (the user, 2026-10-18; come back to it): the add-on is hidden (addons.ts), a save that had it on loads with it off
+ * (scenario/retired.ts) and the Game Editor no longer offers it. Set true (and un-hide the add-on) to bring it back.
+ */
+export const SILENCE_SPAWNABLE = false;
+
 export function registerSilence(): void {
     registerThreatExistence(SILENCE_KEY, SILENCE_FLAG);
-    registerThreatSpawn({ key: SILENCE_KEY, label: 'The Silence', group: 'galactic', addons: ['silence'], note: silenceSpawnNote, spawn: silenceSpawnNow });
+    if (SILENCE_SPAWNABLE) registerThreatSpawn({ key: SILENCE_KEY, label: 'The Silence', group: 'galactic', addons: ['silence'], note: silenceSpawnNote, spawn: silenceSpawnNow });
     registerScenarioYearly({ id: 'silence.yearly', flag: SILENCE_FLAG, order: 10, run: silenceYearly });
     registerScenarioPeriodic({ id: 'silence.periodic', flag: SILENCE_FLAG, order: 10, periodDays: PERIOD_DAYS, run: silencePeriodic });
     registerScenarioQuery({ id: 'silence.exempt', flag: SILENCE_FLAG, query: 'hyperDenyExempt', run: silenceHyperDenyExempt });

@@ -79,7 +79,6 @@ import { tickGameOptions } from './helpers/tickGame';
 import { peekCultState } from '../src/sim/scenario/threats/cult';
 import { peekHiveState } from '../src/sim/scenario/threats/hive';
 import { peekGreyTideState } from '../src/sim/scenario/threats/greyTide';
-import { peekSilenceState } from '../src/sim/scenario/threats/silence';
 import { peekDoppelgangersState } from '../src/sim/scenario/threats/doppelgangers';
 import { peekExchangeState } from '../src/sim/scenario/threats/exchange';
 import { THREAT_TEXTS } from '../src/sim/scenario/threats/threatTexts';
@@ -1525,13 +1524,14 @@ describe('Game Editor: spawn a threat (editorSpawnThreat)', () => {
         const p = game.playerEmpire;
         expect(g.scenario).toBeNull();
         const notes = Object.fromEntries(spawnableThreats(g).map((t) => [t.key, t.note]));
-        expect(Object.keys(notes).sort()).toEqual(['corporateCoup', 'cult', 'darkFarms', 'doppelgangers', 'exchange', 'generationShips', 'giantworks', 'greyTide', 'hive', 'hollowFleet', 'probeSwarm', 'purifier', 'robotMutiny', 'silence', 'timeBomb', 'voidWhale'].concat(Object.keys(notes).filter((k) => k.startsWith('giantworks:'))).sort());
+        expect(Object.keys(notes).sort()).toEqual(['corporateCoup', 'cult', 'darkFarms', 'doppelgangers', 'exchange', 'generationShips', 'giantworks', 'greyTide', 'hive', 'hollowFleet', 'probeSwarm', 'purifier', 'robotMutiny', 'timeBomb', 'voidWhale'].concat(Object.keys(notes).filter((k) => k.startsWith('giantworks:'))).sort());
         expect(notes.darkFarms).toMatch(/add-on on at game start/);
         expect(notes.robotMutiny).toMatch(/add-on on at game start/);
         expect(notes.timeBomb).toMatch(/add-on on at game start/);
         expect(notes.corporateCoup).toMatch(/chartered company/);
         const keys = Object.keys(notes).filter((k) => notes[k] === null && !k.startsWith('giantworks')); // Giantworks has its own tests
-        expect(keys).toHaveLength(11);
+        expect(keys).toHaveLength(10);
+        expect(keys).not.toContain('silence'); // The Silence is temporarily disabled
         for (const key of keys) expect(spawn(g, p, key), key).toBe(true);
         expect(peekPurifierState(g)!.waker).toBe(p);
         expect(peekPurifierState(g)!.hunted).toEqual([p.dominantRace!.raceFamily]);
@@ -1539,7 +1539,6 @@ describe('Game Editor: spawn a threat (editorSpawnThreat)', () => {
         expect(peekCultState(g)!.converted.some((r) => r.character.empire === p)).toBe(true);
         expect(peekHiveState(g)!.faction).not.toBeNull();
         expect(peekGreyTideState(g)!.nests).toHaveLength(1);
-        expect(peekSilenceState(g)!.source).not.toBeNull();
         expect(peekDoppelgangersState(g)!.faction).not.toBeNull();
         expect(peekExchangeState(g)!.faction).not.toBeNull();
         expect(peekHollowFleetState(g)!.phase).toBe('active');

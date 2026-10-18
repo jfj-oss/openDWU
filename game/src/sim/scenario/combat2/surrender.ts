@@ -1,5 +1,4 @@
-// Surrender and wrecks, the surrender half (scenarios/surrender-wrecks, flag surrender; the wreck half is wreckage/wreckage.ts under
-// flag surrenderWrecks). Not a port.
+// Surrender (scenarios/surrender-wrecks, flag surrender; the add-on id keeps its old name so saves stay valid). Not a port.
 //
 // In the original a ship fights until it is destroyed, flees (the design's Flee setting) or is boarded (assault pods, ProcessBoardingAssault
 // → BuiltObject.1.cs 3020 boarding capture, ported in combat/boarding.ts boardingCapture). With the flag on, every 3 game seconds (the ship

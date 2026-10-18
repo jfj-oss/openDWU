@@ -18,7 +18,6 @@ export const DAMAGE_CONTROL_FLAG = 'damageControl';
 export const FACING_FLAG = 'armourFacing';
 export const FACING_AI_FLAG = 'facingAI';
 export const SURRENDER_FLAG = 'surrender';
-export const WRECKS_FLAG = 'surrenderWrecks';
 
 /** Add-on ids (scenarios/<id>). */
 export const DECOYS_ADDON_ID = 'decoys-chaff';
@@ -71,8 +70,6 @@ export const C2_DEFAULTS = {
     surrenderCaptureSeconds: 20,
     surrenderCaptureRange: 900,
     surrenderTimeoutDays: 120,
-    // wrecks (the wreckage package's own params keep their defaults there; wreckSystemCap is new)
-    wreckSystemCap: 12,
 } as const;
 export type C2Param = keyof typeof C2_DEFAULTS;
 
@@ -89,8 +86,6 @@ export const damageControlOn = (g: Galaxy): boolean => g.scenario !== null && sc
 export const facingOn = (g: Galaxy): boolean => g.scenario !== null && scenarioFlag(g, FACING_FLAG);
 export const facingAiOn = (g: Galaxy): boolean => g.scenario !== null && scenarioFlag(g, FACING_FLAG) && scenarioFlag(g, FACING_AI_FLAG);
 export const surrenderOn = (g: Galaxy): boolean => g.scenario !== null && scenarioFlag(g, SURRENDER_FLAG);
-/** Wrecks and salvage of the surrender change (its own sub-switch, under the master). */
-export const wrecksOn = (g: Galaxy): boolean => g.scenario !== null && scenarioFlag(g, SURRENDER_FLAG) && scenarioFlag(g, WRECKS_FLAG);
 /** True when any of the six is on (the cheap guard of the shared hooks). */
 export const anyCombat2On = (g: Galaxy): boolean => {
     const s = g.scenario;
@@ -163,8 +158,6 @@ export interface Combat2Stats {
     struck: number;
     captured: number;
     recovered: number;
-    wrecksCulled: number;
-    wreckPeak: number;
 }
 
 export interface Combat2State {
@@ -188,7 +181,7 @@ function newStats(): Combat2Stats {
         ambushOpened: 0, ambushTurnedHits: 0, ambushDamage: 0,
         critEngine: 0, critReactor: 0, critCommand: 0, critMisses: 0,
         dcRepairs: 0, facingBow: 0, facingFlank: 0, facingRear: 0, facingTurns: 0, flankStarted: 0,
-        struck: 0, captured: 0, recovered: 0, wrecksCulled: 0, wreckPeak: 0,
+        struck: 0, captured: 0, recovered: 0,
     };
 }
 

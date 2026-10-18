@@ -22,13 +22,12 @@ export const WRECKAGE_FLAG = 'wreckage';
 export const WRECKAGE_STATE = 'wreckage';
 
 /**
- * True when the wreck records run: the Wreckage & Salvage add-on, or the Surrender and wrecks change (scenarios/surrender-wrecks: flags
- * surrender + surrenderWrecks), which uses the same records, fields, salvage missions and map markers under its own params.
+ * True when the wreck records run: only the Wreckage & Salvage add-on's flag. That add-on is RETIRED (hidden, not offered; a
+ * save that had it on is cleaned on load, scenario/retired.ts), so this is false in every game; the code stays, unreachable.
  */
 export function wreckageActive(galaxy: Galaxy): boolean {
     const s = galaxy.scenario;
-    if (s === null) return false;
-    return s.flags[WRECKAGE_FLAG] === true || (s.flags['surrender'] === true && s.flags['surrenderWrecks'] === true);
+    return s !== null && s.flags[WRECKAGE_FLAG] === true;
 }
 
 /** Manifest defaults (scenario.json) — the fallbacks of scenarioParam. */
@@ -57,8 +56,6 @@ export const WRECKAGE_PARAM_DEFAULTS = {
     wreckPirateRaidRange: 150000,
     /** Pirates: the raid-countdown recovery multiplier there. */
     wreckPirateRaidBoost: 2,
-    /** Mod layer (Surrender and wrecks): most wrecks one system holds, the oldest crumbling first (0 = no limit, the stock add-on). */
-    wreckSystemCap: 0,
 } as const;
 
 export type WreckageParam = keyof typeof WRECKAGE_PARAM_DEFAULTS;

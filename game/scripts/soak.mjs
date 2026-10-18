@@ -84,13 +84,11 @@ const CONFIGS = [
     SCN('galactic-council', { years: 5 }),
     SCN('chartered-companies', { years: 5, params: { aiCharterChancePct: 100 } }),
     SCN('rimTrade', { years: 5 }),
-    SCN('wreckage-salvage', { years: 5 }),
     SCN('llm-layer', { years: 4 }),
     SCN('exchange', { years: 5, params: { ...early('exchange'), exchangeYear: 1 } }),
     SCN('darkfarms', { years: 5, params: { ...early('darkFarms'), graceYears: 1, spawnChancePerMille: 300, minDevelopment: 0, minPopulationMillions: 0 } }),
     SCN('robotmutiny', { years: 5, params: { ...early('robotMutiny'), mutinyYear: 2, mutinyMinRobots: 1, ...early('darkFarms') } }),
     SCN('timebomb', { years: 5, params: { ...early('timeBomb'), timeBombStartYear: 1, timeBombChancePerMillePerColony: 200, ...early('cult') } }),
-    SCN('silence', { years: 5, params: { ...early('silence'), silenceStartYear: 1 } }),
     SCN('ghostarmada', { years: 5, params: { ...early('ghostArmada'), ghostDelayYears: 0 } }),
     SCN('greytide', { years: 5, params: { ...early('greyTide'), greyTideSeedYear: 1 } }),
     SCN('hive', { years: 5, params: { ...early('hive'), hiveThresholdPct: 5, hiveMinNodes: 1 } }),
@@ -255,7 +253,7 @@ const CONFIGS = [
     // bvr-nai-*: BVR on with its AI switched off (flag bvrAI): the rules and data only, the stock AI designs and tactics.
     ...[1, 2].map((seed) => ({ name: `bvr-noai-s${seed}`, set: 'bvr', seed, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, addons: [], gameplay: ['bvr-combat'], flags: { bvrAI: false } })),
     // `--set combat2` (the six combat changes after BVR; --hook scripts/combat2-hook.mjs): the os-war galaxy (700 stars, 9 empires, aggressive AI, older
-    // galaxy), 20 years, Smarter AI at its defaults: BVR combat plus Decoys, Ambush, Critical hits, Damage control, Armour facing and Surrender and wrecks
+    // galaxy), 20 years, Smarter AI at its defaults: BVR combat plus Decoys, Ambush, Critical hits, Damage control, Armour facing and Surrender
     // ('c2-all-*') against BVR combat alone ('c2-bvr-*'); seeds 1 and 2.
     ...[1, 2].flatMap((seed) => [true, false].map((all) => ({ name: `c2-${all ? 'all' : 'bvr'}-s${seed}`, set: 'combat2', seed, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 9 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, addons: [], gameplay: all ? ['bvr-combat', 'decoys-chaff', 'ambush-strike', 'critical-hits', 'damage-control', 'armour-facing', 'surrender-wrecks'] : ['bvr-combat'] }))),
     // `--set long`: the many-decade runs (not in the default set).
@@ -310,7 +308,7 @@ const CONFIGS_REGRESS = [
     // Baselines for step time / heap: the base game (themed names + event log only), and Smarter AI + Coordinated landings alone (the defaults).
     rg('rg-base-late-s1', { seed: 1, years: 5, late: LATE4, addons: [], smarterAI: false, coordinatedLandings: false, hook: { timing: true, sampleDays: 60 } }),
     rg('rg-smart-late-s1', { seed: 1, years: 5, late: LATE4, addons: [], hook: { timing: true, sampleDays: 60 } }),
-    rg('rg-editor-gal-late-s3', { seed: 3, years: 5, late: LATE4, hook: { spawn: ['probeSwarm', 'voidWhale', 'silence', 'doppelgangers', 'darkFarms', 'robotMutiny', 'hollowFleet', 'greyTide', 'exchange', 'corporateCoup', 'timeBomb'].map((key, i) => ({ key, day: 30 + 25 * i })) }, params: {} }),
+    rg('rg-editor-gal-late-s3', { seed: 3, years: 5, late: LATE4, hook: { spawn: ['probeSwarm', 'voidWhale', 'doppelgangers', 'darkFarms', 'robotMutiny', 'hollowFleet', 'greyTide', 'exchange', 'corporateCoup', 'timeBomb'].map((key, i) => ({ key, day: 30 + 25 * i })) }, params: {} }),
     // Smarter AI step-time ablation (the defaults double the late-game step time from year 3): one sub-option off each; --cpuprof on the lane line.
     ...['designScale', 'designTune', 'weaponFocus', 'designTrim', 'retrofit', 'pirates', 'defence', 'budget', 'colonies', 'independents'].map((k) => rg(`rg-smart-no-${k}-late-s1`, { seed: 1, years: 4, late: LATE4, addons: [], smarterAI: { [k]: false }, hook: { timing: true, sampleDays: 60 } })),
     rg('rg-cl-only-late-s1', { seed: 1, years: 4, late: LATE4, addons: [], smarterAI: false, coordinatedLandings: true, hook: { timing: true, sampleDays: 60 } }),

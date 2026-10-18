@@ -101,6 +101,6 @@ import './bvr/bvrAI'; // BVR combat AI (flag bvrAI): research order, designs, st
 import './combat2/decoys'; // Decoys and chaff (flag decoys): decoy charges against missiles and torpedoes, restocked at ports
 import './combat2/decoysAI'; // Decoys, AI (flag decoysAI): more countermeasures against missile users
 import './combat2/criticals'; // Critical hits (flag criticalHits): lasting engine / reactor / command effects until repaired
-import './combat2/surrender'; // Surrender and wrecks (flag surrender): ships strike their colours and are captured by a prize crew
+import './combat2/surrender'; // Surrender (flag surrender): ships strike their colours and are captured by a prize crew
 import './combat2/shipTick'; // The ship tick of the combat changes (damage control, facing steering, surrender check) and the state pruning
 export {};

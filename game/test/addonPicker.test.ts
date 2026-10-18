@@ -37,6 +37,7 @@ import {
     withFlagAddons,
     forcedFlags,
     EXPANSIONS,
+    expansionMembers,
     toggleExpansion,
     expansionRows,
     activeExpansions,
@@ -219,7 +220,7 @@ describe('games', () => {
     }, 600000);
 
     it('one add-on starts exactly as the old single-scenario start', () => {
-        for (const id of ['timebomb', 'wreckage-salvage']) {
+        for (const id of ['timebomb', 'void-whale']) {
             const choice = addonChoiceFor(cat, [id], { flags: {}, params: {} })!;
             expect(choice.id).toBe(id);
             const overlay = addonStartOverlay(cat, [id], byId)!;
@@ -229,10 +230,6 @@ describe('games', () => {
             runGameSeconds(old, 20);
             expect(saveText(now)).toBe(saveText(old));
         }
-        // With a default-on master, the picker's switches are the old manifest defaults exactly.
-        const gd = scenarioGameData(base, 'wreckage-salvage');
-        const defaults = Object.fromEntries(gd.scenario!.manifest.flags.map((f) => [f.name, f.default]));
-        expect(resolveAddonSwitches(cat, ['wreckage-salvage']).flags).toEqual(defaults);
     }, 600000);
 
     it('the composite of ai-parity’s set runs the same game as ai-parity', () => {
@@ -358,7 +355,20 @@ describe('The six combat changes after BVR (Gameplay changes checkboxes)', () =>
         expect(withCombat2([], { flags: {}, params: {} }, {}).picked).toEqual([]);
         // Sub-switches default on under their masters (the wizard sets only the master).
         const surrender = scenarioIndexFs().find((x) => x.id === 'surrender-wrecks')!;
-        expect(surrender.flags.map((f) => f.name)).toEqual(['surrender', 'surrenderWrecks']);
-        expect(surrender.params.find((p) => p.name === 'wreckSystemCap')!.default).toBe(12);
+        expect(surrender.flags.map((f) => f.name)).toEqual(['surrender']);
+        expect(surrender.params.some((p) => /^wreck/.test(p.name))).toBe(false);
+        expect(surrender.name).toBe('Surrender');
+    });
+});
+
+describe('Retired and disabled add-ons', () => {
+    it('Wreckage & Salvage and The Silence are not offered anywhere in the picker or the expansions', () => {
+        const cat = addonCatalog(scenarioIndexFs());
+        for (const id of ['wreckage-salvage', 'silence']) {
+            expect(cat.byId.get(id)?.hidden, id).toBe(true);
+            expect(HIDDEN_ADDONS.has(id)).toBe(true);
+            for (const e of EXPANSIONS) expect(expansionMembers(cat, e), `${e.id} lists ${id}`).not.toContain(id);
+            for (const e of EXPANSIONS) expect(e.members, `${e.id} members`).not.toContain(id);
+        }
     });
 });
