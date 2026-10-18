@@ -64,6 +64,7 @@ import { LeviathanRig, leviathanTextures, type LeviathanTextures } from './levia
 import { loadLeviathanImages } from './faunaArt';
 import { WATCHER_FORK_ART } from './beaconForkArtData';
 import { CAPITAL_FORK_ART } from './beaconForkCapitalArtData';
+import { FRIGATE_FORK_ART } from './beaconForkFrigateArtData';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Who is who (once per frame)
@@ -337,6 +338,7 @@ export function threatDrawScale(l: ThreatLooks, bo: BuiltObject): number {
     if (watcherFrame === 'reaper' && beaconLooksActive(l) && beaconArtFile(bo, l) === 'capitalship-reaper') return CAPITAL_REAPER_SCALE;
     // the fork look's capital ship: drawn the old capital frame's length (so the fork Watcher stays FORK_VS_CAPITAL x it)
     if (watcherFrame === 'fork' && beaconLooksActive(l) && beaconArtFile(bo, l) === 'capitalship-fork') return CAPITAL_FORK_ART.drawScale;
+    if (watcherFrame === 'fork' && beaconLooksActive(l) && beaconArtFile(bo, l) === 'frigate-fork') return FRIGATE_FORK_ART.drawScale;
     return 1;
 }
 
@@ -570,6 +572,7 @@ export function beaconArtFile(bo: BuiltObject, l: ThreatLooks = looks): string |
     if (isWatcher(bo, l)) return WATCHER_FRAME_FILES[watcherFrame];
     if (!isReclaimerHull(bo, l)) return null;
     const f = bo.isPlanetDestroyer ? 'capitalship' : beaconFileForSubRole(bo.subRole);
+    if (f === 'frigate') return watcherFrame === 'fork' ? 'frigate-fork' : f;
     if (f !== 'capitalship') return f;
     return watcherFrame === 'reaper' ? 'capitalship-reaper' : watcherFrame === 'fork' ? 'capitalship-fork' : f;
 }

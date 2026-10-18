@@ -222,9 +222,11 @@ export class ForkFx {
             }
         }
         if (FORK_FX.lights && px >= FORK_LIGHTS_MIN_PX) {
-            // a small bright point: ~24 frame px (its halo), at least ~14 screen px whatever the zoom
+            // a small bright point: ~24 frame px (its halo), at least ~14 screen px whatever the zoom (less on a ship drawn
+            // small: at most ~16 % of its drawn size, so a frigate's lights stay points)
             const screenPerFrame = px / A.size;
-            const size = Math.max(24, 14 / Math.max(1e-3, screenPerFrame));
+            const minScreen = Math.min(14, Math.max(4, px * 0.16));
+            const size = Math.max(24, minScreen / Math.max(1e-3, screenPerFrame));
             for (let n = 0; n < A.lights.length; n++) {
                 const L = A.lights[n];
                 const b = forkBlink(sec, L.period, L.phase);

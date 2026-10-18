@@ -107,7 +107,7 @@ if (process.env.OLDCHAIN) await page.evaluate(async () => Object.assign((await i
 const plan = await page.evaluate(async (who) => {
     const { galaxy } = window.__dwu;
     const roq = await import('/src/sim/readOnlyQuery.ts');
-    const bo = who === 'watcher' ? window.__bc.w1 : who === 'capital' ? window.__bc.made.find((b) => b.subRole === 5) : window.__bc.made[3];
+    const bo = who === 'watcher' ? window.__bc.w1 : who === 'capital' ? window.__bc.made.find((b) => b.subRole === 5) : who === 'frigate' ? window.__bc.made.find((b) => b.subRole === 2) : window.__bc.made[3];
     window.__warpBo = bo;
     // the fork Watcher is sized against its faction's capital design (as tmp-fork-shots.mjs); it starts at rest
     const cap = window.__bc.made.find((b) => b.subRole === 5);

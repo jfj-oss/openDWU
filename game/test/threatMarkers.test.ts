@@ -45,6 +45,7 @@ import {
 import { BEACON_FRAMES, WATCHER_ART } from '../src/render/beaconArtData';
 import { WATCHER_FORK_ART } from '../src/render/beaconForkArtData';
 import { CAPITAL_FORK_ART } from '../src/render/beaconForkCapitalArtData';
+import { FRIGATE_FORK_ART } from '../src/render/beaconForkFrigateArtData';
 import { FORK_FX_SHIPS_MAX, forkBlink, forkThrust } from '../src/render/beaconForkFx';
 import {
     WATCHER_CLOSE_S,
@@ -405,13 +406,18 @@ describe('the Beacon art', () => {
         const capital = { ...ship(BuiltObjectSubRole.CapitalShip, reclaimers), isPlanetDestroyer: true } as BuiltObject;
         expect(beaconArtFile(capital, l)).toBe('capitalship-fork');
         expect(threatDrawScale(l, capital)).toBeCloseTo(CAPITAL_FORK_ART.drawScale, 9);
+        const frigate = ship(BuiltObjectSubRole.Frigate, reclaimers);
+        expect(beaconArtFile(frigate, l)).toBe('frigate-fork');
+        expect(threatDrawScale(l, frigate)).toBeCloseTo(FRIGATE_FORK_ART.drawScale, 9);
         try {
             setWatcherFrame('carrier');
             expect(beaconArtFile(watcher, l)).toBe('watcher');
             expect(beaconArtFile(capital, l)).toBe('capitalship');
+            expect(beaconArtFile(frigate, l)).toBe('frigate');
             setWatcherFrame('reaper');
             expect(beaconArtFile(watcher, l)).toBe('watcher-reaper');
             expect(beaconArtFile(capital, l)).toBe('capitalship-reaper');
+            expect(beaconArtFile(frigate, l)).toBe('frigate');
         } finally {
             setWatcherFrame(WATCHER_FRAME_DEFAULT);
         }
@@ -481,7 +487,7 @@ describe('the Beacon art', () => {
     });
 
     it('frames: square, the content box centred, light layers inside their atlas, no markers, no opaque black', () => {
-        for (const [f, art] of [...Object.entries(BEACON_FRAMES), ['watcher', WATCHER_ART] as const, ['watcher-fork', WATCHER_FORK_ART] as const, ['capitalship-fork', CAPITAL_FORK_ART] as const]) {
+        for (const [f, art] of [...Object.entries(BEACON_FRAMES), ['watcher', WATCHER_ART] as const, ['watcher-fork', WATCHER_FORK_ART] as const, ['capitalship-fork', CAPITAL_FORK_ART] as const, ['frigate-fork', FRIGATE_FORK_ART] as const]) {
             const img = decodePng(png(f));
             expect(img.width, f).toBe(art.size);
             expect(img.height, f).toBe(art.size);
@@ -512,7 +518,7 @@ describe('the Beacon art', () => {
             expect(Math.abs((y0 + y1) / 2 - art.size / 2), f).toBeLessThanOrEqual(1);
             expect(Math.min(x0, y0, img.width - 1 - x1, img.height - 1 - y1), f).toBeGreaterThanOrEqual(4);
             // every frame carries the faction's cyan light lines; the fork Watcher pink lamps (its plumes are purple)
-            if (f === 'watcher-fork' || f === 'capitalship-fork') expect(pink, `${f} pink`).toBeGreaterThan(5);
+            if (f.endsWith('-fork')) expect(pink, `${f} pink`).toBeGreaterThan(5);
             else expect(cyan, `${f} cyan`).toBeGreaterThan(5);
             const fx = decodePng(png(`${f}-fx`));
             const rects = [art.glow, ...(f === 'watcher' ? [WATCHER_ART.sockets] : [])];

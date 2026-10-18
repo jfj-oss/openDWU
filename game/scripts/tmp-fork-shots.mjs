@@ -108,13 +108,13 @@ await page.evaluate(async () => {
 });
 // SUBJECT=capital: the line-up's capital ship takes the first Watcher's place (the Watcher moved far off) for the
 // close / play stills and the ramp
-if (process.env.SUBJECT === 'capital') await page.evaluate(async () => {
+if (process.env.SUBJECT === 'capital' || process.env.SUBJECT === 'frigate') await page.evaluate(async (sr) => {
     const roq = await import('/src/sim/readOnlyQuery.ts');
     const { made, w1 } = window.__bc;
-    const cap = made.find((b) => b.subRole === 5);
+    const cap = made.find((b) => b.subRole === sr);
     roq.withSimWrites(() => { cap.xpos = w1.xpos; cap.ypos = w1.ypos; w1.xpos += 40000; w1.ypos += 40000; });
     window.__bc.w1 = cap;
-});
+}, process.env.SUBJECT === 'frigate' ? 2 : 5);
 const FRAME = process.env.FRAME || 'fork';
 const SCALE = process.env.SCALE ? Number(process.env.SCALE) : undefined;
 console.log('frame', await page.evaluate(async ([f, sc]) => { const ta = await import('/src/render/threatArt.ts'); ta.setWatcherFrame(f, sc); return [ta.getWatcherFrame(), ta.threatDrawScale(ta.threatLooks(window.__dwu.galaxy), window.__bc.w1)]; }, [FRAME, SCALE]));
@@ -157,7 +157,7 @@ if (process.env.RAMP) {
     process.exit(0);
 }
 await shot(`${tag}-close.png`, at, [1, -1400, 1600], 4000);
-await shot(`${tag}-close2.png`, at, [1.6, -1400, 1600], 3000);
+await shot(`${tag}-close2.png`, at, [Number(process.env.Z2 || 1.6), -1400, 1600], 3000);
 await shot(`${tag}-play.png`, at, [1 / 4, -1400, 1600], 3000);
 await shot(`${tag}-lineup-play.png`, at, [1 / 3, 330, 0], 3000);
 await shot(`${tag}-lineup-close.png`, at, [0.75, 330, 0], 3000);
