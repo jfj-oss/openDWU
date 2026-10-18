@@ -17,7 +17,8 @@
 //   (5) AI retargeting (BuiltObject.1.cs 245 ThreatEvaluation, 207 PerformThreatEvaluation, 390 CheckAssignAttackOnThreat);
 //   (6) repair and retreat (BuiltObject.1.cs 1520 ShouldFleeFrom, Empire.4.cs 4863 AssignRepairMission, BaconBuiltObject.cs
 //       4763 DoRepairs, ConstructionQueue.cs 1142 IdentifyComponentToBuild);
-//   (7) the Fighting retreats add-on; (8) the BVR combat add-on (magazines, sensor lock, seeking, point-defence cover, rearming, AI).
+//   (7) the Fighting retreats add-on; (8) the BVR combat add-on (magazines, sensor lock, seeking, point-defence cover, rearming, AI);
+//   (9) the six combat changes after BVR (decoys, ambush, critical hits, damage control, armour facing, surrender and wrecks).
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { cachedTickGame } from './helpers/gameCache';
@@ -42,7 +43,7 @@ import { calculateCrewLevel, doRepairs } from '../src/sim/construction/repair';
 import { findNearestShipYard } from '../src/sim/construction/empireConstruction';
 import { builtObjectConstructionQueue } from '../src/sim/construction/constructionQueue';
 import { shipGroupRepairBonus } from '../src/sim/fleets/shipGroup';
-import { determineDestroyOrCaptureTarget, empireRaidStrengthFactor } from '../src/sim/combat/attackAI';
+import { determineDestroyOrCaptureTarget, empireRaidStrengthFactor, shouldAttack } from '../src/sim/combat/attackAI';
 import { ShipGroup, shipGroupAssignMission } from '../src/sim/fleets/shipGroup';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import {
@@ -63,6 +64,7 @@ import { EmpireMessageType } from '../src/sim/messages';
 import { Troop, TroopType } from '../src/sim/cargo';
 import type { Empire } from '../src/sim/empire';
 import { DiplomaticRelationType, obtainDiplomaticRelation, obtainEmpireEvaluation } from '../src/sim/diplomacy';
+import { declareWar } from '../src/sim/diplomacyTick';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { galaxyPlagues } from '../src/sim/eventTypes';
 import { canDeployXaraktorVirus } from '../src/sim/player/orderMenu';
@@ -75,7 +77,7 @@ import { PiratePlayStyle, pirateFactionModifiers } from '../src/sim/pirates';
 import { createGalaxyScenario } from '../src/sim/scenario/state';
 import { loadScenarioOverlayFs } from './helpers/scenarioGame';
 import { FIGHTING_RETREATS_ADDON_ID, fightingRetreatsFrame, fightingRetreatsState, fleetBattle, fleetFallbackPoint, fleetRepairPoint, fleetRetreatStatusText } from '../src/sim/scenario/fightingRetreats/fightingRetreats';
-import { comboOverlayFs, createScenarioGame, scenarioGameData } from './helpers/scenarioGame';
+import { comboOverlayFs, createScenarioGame, scenarioGameData, scenarioIndexFs } from './helpers/scenarioGame';
 import type { Game } from '../src/sim/game';
 import { generateBuiltObjectFromDesign } from '../src/sim/exploration';
 import { GalaxyTime } from '../src/sim/galaxyTime';
@@ -89,6 +91,19 @@ import { shipGroupAddShipToFleet } from '../src/sim/fleets/shipGroupTasks';
 import { BVR_PROJECT_NAMES, aiResupplyTick, aiRearmTick, bvrFixLaunchers, bvrProjectNodes } from '../src/sim/scenario/bvr/bvrAI';
 import { bvrEngagement } from '../src/sim/scenario/bvr/bvrTactics';
 import { BattleTactics } from '../src/sim/data/designSpecifications';
+import { C2_DEFAULTS, c2State, peekC2State, type C2Param } from '../src/sim/scenario/combat2/common';
+import { decoyCapacity, decoyDefend, decoyRestockTick, decoyText, decoysLeft, ecmCount } from '../src/sim/scenario/combat2/decoys';
+import { decoyDesignChooser, enemySeekingLaunchers, withEcm, wantedEcm } from '../src/sim/scenario/combat2/decoysAI';
+import { ambushActive, ambushAiFactor, ambushNoteShot } from '../src/sim/scenario/combat2/ambush';
+import { critComponentDamaged, critFireFactor, critMissChance, critText, critTotal, critWithdrawFactor } from '../src/sim/scenario/combat2/criticals';
+import { c2AdjustHit, c2HitPower } from '../src/sim/scenario/combat2/hits';
+import { crewRepairSpeed, damageControlTick } from '../src/sim/scenario/combat2/damageControl';
+import { facingTick, facingZone, flankHeadingOffset } from '../src/sim/scenario/combat2/facing';
+import { c2StruckSpares, healthPct, isStruck, struckText, surrenderCaptureTick, surrenderTick } from '../src/sim/scenario/combat2/surrender';
+import { combat2StatusLines } from '../src/sim/scenario/combat2/status';
+import { c2ShipTick } from '../src/sim/scenario/combat2/shipTick';
+import { peekWreckageState, wreckFields } from '../src/sim/scenario/wreckage/common';
+import { completeSalvage, orderSalvage, recordWreck } from '../src/sim/scenario/wreckage/wreckage';
 
 let gameData: GameData;
 let componentDefs: Map<number, ComponentDefinition>;
@@ -1837,5 +1852,564 @@ describe('(8) BVR combat add-on', () => {
         expect('bvrCombat' in g.scenario.state).toBe(false);
         expect(bvrAmmoText(g, ship)).toBeNull();
         expect(g.rnd.getState()).toEqual(rnd);
+    });
+});
+
+
+// ---------------------------------------------------------------------------------------------------------------
+// (9) The six combat changes after BVR combat (scenarios/decoys-chaff, ambush-strike, critical-hits, damage-control, armour-facing,
+// surrender-wrecks; not in the original), all on together with BVR combat: a late start (tech 4).
+// ---------------------------------------------------------------------------------------------------------------
+
+describe('(9) the six combat changes (decoys, ambush, critical hits, damage control, armour facing, surrender and wrecks)', () => {
+    const C2_IDS = ['decoys-chaff', 'ambush-strike', 'critical-hits', 'damage-control', 'armour-facing', 'surrender-wrecks'];
+    const C2_FLAGS = ['decoys', 'ambush', 'criticalHits', 'damageControl', 'armourFacing', 'surrender'];
+    let cgame: Game;
+    let cdata: GameData;
+    let cg: Galaxy;
+    let cspot = { x: 0, y: 0 };
+    let cslot = 0;
+    const cAis = (): Empire[] => cg.empires.filter((e): e is Empire => e !== null && e !== cg.playerEmpire && e !== cg.independentEmpire && e.pirateEmpireBaseHabitat === null && !e.name.startsWith('Ancient'));
+    /** The two AI empires (at war) that have a design of every hull the tests spawn. */
+    const pair = (): Empire[] => cAis().filter((e) => [BuiltObjectSubRole.Frigate, BuiltObjectSubRole.Destroyer, BuiltObjectSubRole.Cruiser].every((s) => cNewest(e, s) !== undefined));
+    const cNewest = (e: Empire, sub: BuiltObjectSubRole) => e.designs.filter((d) => d.role === BuiltObjectRole.Military && d.subRole === sub && !d.isObsolete).sort((a, b) => b.dateCreated - a.dateCreated)[0];
+    /** A fresh ship of the empire's newest design of the sub-role at (x, y), shields full, automated and idle. */
+    const spawnAt = (e: Empire, sub: BuiltObjectSubRole, x: number, y: number, tag = 'c2'): BuiltObject => {
+        const b = generateBuiltObjectFromDesign(cg, e, cNewest(e, sub), `${tag}${cslot++}`, true, x, y);
+        b.currentShields = b.shieldsCapacity;
+        b.currentEnergy = b.reactorStorageCapacity;
+        b.isAutoControlled = true;
+        return b;
+    };
+    const spawnC = (e: Empire, sub: BuiltObjectSubRole): BuiltObject => spawnAt(e, sub, cspot.x + 700 * cslot, cspot.y);
+    const withParams = (p: Partial<Record<string, number>>, f: () => void): void => {
+        const old: Record<string, number> = {};
+        for (const k of Object.keys(p)) {
+            old[k] = cg.scenario!.params[k];
+            cg.scenario!.params[k] = p[k]!;
+        }
+        try {
+            f();
+        } finally {
+            for (const k of Object.keys(p)) cg.scenario!.params[k] = old[k];
+        }
+    };
+    const withFlags = (p: Record<string, boolean>, f: () => void): void => {
+        const old: Record<string, boolean> = {};
+        for (const k of Object.keys(p)) {
+            old[k] = cg.scenario!.flags[k];
+            cg.scenario!.flags[k] = p[k];
+        }
+        try {
+            f();
+        } finally {
+            for (const k of Object.keys(p)) cg.scenario!.flags[k] = old[k];
+        }
+    };
+    /** Runs f with the clock moved to a time at which `ship`'s decoy scan slice is open (the scan runs on a fifth of the frames). */
+    const atScanSlice = (ship: BuiltObject, f: () => void): void => {
+        const base = cg.nowMs;
+        let t = base;
+        while ((((t / 100) | 0) + ship.builtObjectID) % 5 !== 0) t += 100;
+        cg.nowMs = t;
+        try {
+            f();
+        } finally {
+            cg.nowMs = base;
+        }
+    };
+    /** An AI warship design of the sub-role that carries countermeasures and a BVR missile launcher (the BVR AI puts both on its warships). */
+    const armed = (e: Empire, sub: BuiltObjectSubRole): BuiltObject => spawnC(e, sub);
+
+    beforeAll(() => {
+        const r = createScenarioGame(gameData, {
+            scenario: comboOverlayFs([BVR_ADDON_ID, ...C2_IDS], 'c2-test'),
+            options: (o) => ({ ...o, galaxyAge: 4, player: { ...o.player, age: 4, techLevel: 4 }, aiEmpires: o.aiEmpires.map((e) => ({ ...e, age: 4, techLevel: 4 })) }),
+        });
+        cgame = r.game;
+        cdata = r.gameData;
+        cg = cgame.galaxy;
+        const s = emptySpot(cg);
+        cspot = { x: s.x, y: s.y };
+        const [a, b] = pair();
+        declareWar(cg, a, b, null, true);
+    }, 300000);
+
+    it('flags and params: six independent flags (plus BVR), every param has its manifest default, nothing is created until a hook runs', () => {
+        for (const f of C2_FLAGS) expect(cg.scenario!.flags[f]).toBe(true);
+        expect(cg.scenario!.flags.surrenderWrecks).toBe(true);
+        for (const k of Object.keys(C2_DEFAULTS) as C2Param[]) {
+            if (k === 'wreckSystemCap') continue;
+            expect(cg.scenario!.params[k], k).toBe(C2_DEFAULTS[k]);
+        }
+        expect(cg.scenario!.params.wreckSystemCap).toBe(12);
+        expect(cg.scenario!.params.wreckDecayYears).toBe(3);
+        for (const id of C2_IDS) expect(scenarioIndexFs().some((m) => m.id === id)).toBe(true);
+    });
+
+    it('decoys: capacity from the working ECM components, a launch pulls inbound rounds off (a hit becomes a miss), one launch per cooldown, text "Decoys n/cap"', () => {
+        const [a, b] = pair();
+        let ship = armed(a, BuiltObjectSubRole.Cruiser);
+        for (let k = 0; ecmCount(ship) === 0 && k < 3; k++) ship = armed(a, [BuiltObjectSubRole.Destroyer, BuiltObjectSubRole.CapitalShip, BuiltObjectSubRole.Frigate][k]);
+        expect(ecmCount(ship)).toBeGreaterThan(0);
+        const cap = decoyCapacity(cg, ship);
+        expect(cap).toBe(3 + Math.min(2, ecmCount(ship) - 1));
+        expect(decoyText(cg, ship)).toBe(`Decoys ${cap}/${cap}`);
+        // Two inbound BVR missiles that were going to hit.
+        const attacker = spawnC(b, BuiltObjectSubRole.Cruiser);
+        const rounds = attacker.weapons.filter((w) => isBvrMissile(w.component)).slice(0, 2);
+        expect(rounds.length).toBe(2);
+        for (const w of rounds) {
+            w.target = ship;
+            w.distanceTravelled = 400;
+            w.willHitTarget = true;
+            w.hasMissed = false;
+            w.x = ship.xpos + 300;
+            w.y = ship.ypos;
+        }
+        ship.attackers!.push(attacker);
+        // A ship far from its attackers' rounds launches nothing.
+        for (const w of rounds) w.x = ship.xpos + 100000;
+        atScanSlice(ship, () => decoyDefend(cg, ship));
+        expect(peekC2State(cg)?.decoys.get(ship)).toBeUndefined();
+        for (const w of rounds) w.x = ship.xpos + 300;
+        const rnd = shadowRnd(cg);
+        withParams({ decoyChancePct: 100 }, () => atScanSlice(ship, () => decoyDefend(cg, ship)));
+        expect(rounds.every((w) => !w.willHitTarget)).toBe(true);
+        expect(decoysLeft(cg, ship)).toBe(cap - 1);
+        expect(decoyText(cg, ship)).toBe(`Decoys ${cap - 1}/${cap}`);
+        expect(c2State(cg).stats.decoysDiverted).toBeGreaterThanOrEqual(2);
+        // draws: one per round for the roll plus one for the side it veers to
+        for (let i = 0; i < 4; i++) rnd.nextDouble();
+        // The cooldown: a second salvo right after launches nothing more.
+        for (const w of rounds) w.willHitTarget = true;
+        withParams({ decoyChancePct: 100 }, () => atScanSlice(ship, () => decoyDefend(cg, ship)));
+        expect(decoysLeft(cg, ship)).toBe(cap - 1);
+        // Torpedoes are pulled off at the torpedo share of the chance: none at 0%.
+        ship.attackers!.length = 0;
+        for (const w of rounds) w.reset();
+    });
+
+    it('decoys: reloaded beside an own space port for credits, not away from one', () => {
+        const [a] = pair();
+        let ship = armed(a, BuiltObjectSubRole.Cruiser);
+        for (let k = 0; ecmCount(ship) === 0 && k < 3; k++) ship = armed(a, [BuiltObjectSubRole.Destroyer, BuiltObjectSubRole.CapitalShip, BuiltObjectSubRole.Frigate][k]);
+        const pool = { spent: 2, nextMs: 0, progress: 0 };
+        c2State(cg).decoys.set(ship, pool);
+        decoyRestockTick(cg);
+        cg.nowMs += 20000;
+        decoyRestockTick(cg);
+        expect(decoysLeft(cg, ship)).toBe(decoyCapacity(cg, ship) - 2); // out at the spot: no port in reach
+        const port = a.spacePorts.find((p) => p != null && !p.hasBeenDestroyed && p.isFunctional);
+        expect(port).toBeDefined();
+        place(cg, ship, port!.xpos + 100, port!.ypos);
+        const money = a.stateMoney;
+        decoyRestockTick(cg);
+        cg.nowMs += 20000;
+        decoyRestockTick(cg);
+        expect(decoysLeft(cg, ship)).toBe(decoyCapacity(cg, ship));
+        expect(a.stateMoney).toBeLessThanOrEqual(money);
+        expect(c2State(cg).decoys.has(ship)).toBe(false);
+        expect(c2State(cg).stats.decoysRestocked).toBeGreaterThanOrEqual(2);
+    });
+
+    it('decoys, AI: the design template asks for at least one countermeasures component (one more against enemies with missiles); humans and other flags untouched', () => {
+        const [a] = pair();
+        expect(enemySeekingLaunchers(cg, a)).toBeGreaterThanOrEqual(0);
+        const bare = { componentRules: [], subRole: BuiltObjectSubRole.Cruiser } as unknown as Parameters<typeof withEcm>[0];
+        const raised = withEcm(bare, 2);
+        expect(raised.componentRules.find((r) => r.componentType === ComponentType.ComputerCountermeasures)!.amount).toBe(2);
+        expect(withEcm(raised, 1).componentRules.find((r) => r.componentType === ComponentType.ComputerCountermeasures)!.amount).toBe(2);
+        expect(wantedEcm(cg, a, bare)).toBeGreaterThanOrEqual(1);
+        expect(wantedEcm(cg, a, { ...bare, subRole: BuiltObjectSubRole.ColonyShip } as never)).toBe(0);
+        expect(decoyDesignChooser(cg, cg.playerEmpire!, bare, null)).toBeNull();
+        expect(decoyDesignChooser(cg, a, bare, null)).not.toBeNull();
+        withFlags({ decoysAI: false }, () => expect(decoyDesignChooser(cg, a, bare, null)).toBeNull());
+    });
+
+    it('ambush: an undetected ship that opens fire gets an ambush (a miss turns to a hit, hits do 50% more); a detected one does not; a quiet ship opens a new one', () => {
+        const [a, b] = pair();
+        const hidden = spawnC(a, BuiltObjectSubRole.Cruiser);
+        const target = spawnAt(b, BuiltObjectSubRole.Cruiser, hidden.xpos + 3000, hidden.ypos);
+        const w = hidden.weapons[0];
+        // Seen: every ship of the target's empire sees a ship at 3000 in deep space (the stock reach is 40000 times its stealth).
+        hidden.stealth = 1;
+        expect(ambushNoteShot(cg, hidden, target)).toBe(false);
+        expect(ambushActive(cg, hidden)).toBe(false);
+        // Cloaked: the target's empire sees it only from 400.
+        const quiet = cg.nowMs;
+        cg.nowMs = quiet + 60000;
+        hidden.stealth = 0.01;
+        expect(ambushNoteShot(cg, hidden, target)).toBe(true);
+        expect(ambushActive(cg, hidden)).toBe(true);
+        withFlags({ armourFacing: false }, () => {
+            withParams({ ambushAccuracyPct: 100 }, () => {
+                const r = c2AdjustHit(cg, hidden, w, target, { willHit: false, hitRangeChance: 0.3 });
+                expect(r.willHit).toBe(true);
+                expect(c2HitPower(cg, hidden, target, w, 100, 0)).toBeCloseTo(150, 5);
+            });
+            // The window closes after ambushSeconds (+ the flight slack): no bonus.
+            cg.nowMs += 20000;
+            expect(ambushActive(cg, hidden)).toBe(false);
+            expect(c2HitPower(cg, hidden, target, w, 100, 0)).toBeCloseTo(100, 5);
+            // A ship that keeps firing is not "opening": it stays quiet-less and gets no new window until 20 s pass.
+            expect(ambushNoteShot(cg, hidden, target)).toBe(false);
+        });
+        cg.nowMs = quiet;
+        // AI weighs it: an ambushing ship counts the threats against it lighter; a ship that is not ambushing gets nothing.
+        expect(ambushAiFactor(cg, spawnC(a, BuiltObjectSubRole.Frigate))).toBe(1);
+        withFlags({ ambushAI: false }, () => expect(ambushAiFactor(cg, hidden)).toBe(1));
+    });
+
+    it('critical hits: a damaged engine / reactor / command part may be critical (slow / slow fire / lost hits), the effects stack and clear when repaired', () => {
+        const [a] = pair();
+        const ship = spawnC(a, BuiltObjectSubRole.Cruiser);
+        const base = ship.topSpeedBase;
+        const eng = ship.components.items.find((c) => c.type === ComponentType.EngineMainThrust)!;
+        const reactor = ship.components.items.find((c) => c.type === ComponentType.Reactor)!;
+        const hull = ship.components.items.find((c) => c.type === ComponentType.Armor)!;
+        const before = cg.rnd.getState();
+        // Chance 0: the roll is drawn and fails; a part that is not engine / reactor / command draws nothing.
+        withParams({ critChancePct: 0 }, () => {
+            eng.status = ComponentStatus.Damaged;
+            critComponentDamaged(cg, ship, eng);
+            expect(critTotal(cg, ship)).toBe(0);
+            eng.status = ComponentStatus.Normal;
+        });
+        expect(cg.rnd.getState()).not.toEqual(before);
+        const mid = cg.rnd.getState();
+        hull.status = ComponentStatus.Damaged;
+        critComponentDamaged(cg, ship, hull);
+        expect(cg.rnd.getState()).toEqual(mid);
+        hull.status = ComponentStatus.Normal;
+        withParams({ critChancePct: 100 }, () => {
+            eng.status = ComponentStatus.Damaged;
+            critComponentDamaged(cg, ship, eng);
+            ship.reDefine();
+            expect(ship.topSpeed).toBeLessThanOrEqual(Math.trunc(base * 0.7));
+            expect(critText(cg, ship)).toBe('engines');
+            reactor.status = ComponentStatus.Damaged;
+            critComponentDamaged(cg, ship, reactor);
+            ship.reDefine();
+            expect(critFireFactor(cg, ship)).toBeCloseTo(1.35, 5);
+            expect(critText(cg, ship)).toBe('engines, reactor');
+            expect(critWithdrawFactor(cg, ship)).toBeGreaterThan(1);
+            // Stacks cap at critMaxStack.
+            for (let i = 0; i < 6; i++) critComponentDamaged(cg, ship, eng);
+            expect(critText(cg, ship)).toBe('engines x3, reactor');
+        });
+        // A command part: a share of the ship's hits turn into misses (the draw only when the ship has the effect).
+        const other = spawnC(a, BuiltObjectSubRole.Frigate);
+        const tgt = spawnC(pair()[1], BuiltObjectSubRole.Frigate);
+        const w = other.weapons[0];
+        expect(critMissChance(cg, other)).toBe(0);
+        const rnd2 = cg.rnd.getState();
+        withFlags({ ambush: false }, () => expect(c2AdjustHit(cg, other, w, tgt, { willHit: true, hitRangeChance: 0.5 }).willHit).toBe(true));
+        expect(cg.rnd.getState()).toEqual(rnd2);
+        const cmd = other.components.items.find((c) => c.type === ComponentType.ComputerCommandCenter || c.type === ComponentType.ComputerTargetting);
+        if (cmd !== undefined) {
+            withParams({ critChancePct: 100, critCommandMissPct: 100 }, () => {
+                cmd.status = ComponentStatus.Damaged;
+                critComponentDamaged(cg, other, cmd);
+                expect(critMissChance(cg, other)).toBeCloseTo(0.9, 5);
+            });
+        }
+        // Repair: the engine effect ends when no engine part is damaged any more, the reactor's likewise.
+        for (const c of ship.components.items) c.status = ComponentStatus.Normal;
+        ship.reDefine();
+        expect(critTotal(cg, ship)).toBe(0);
+        expect(ship.topSpeed).toBe(base);
+        expect(critText(cg, ship)).toBeNull();
+    });
+
+    it('damage control: a crew repairs a component per interval in a battle only (critical parts first), faster for better crews, not past the damaged share, no draws', () => {
+        const [a] = pair();
+        const ship = spawnC(a, BuiltObjectSubRole.Cruiser);
+        const items = ship.components.items;
+        for (let i = 0; i < 6; i++) items[i * 2].status = ComponentStatus.Damaged;
+        const eng = items.find((c) => c.type === ComponentType.EngineMainThrust)!;
+        eng.status = ComponentStatus.Damaged;
+        ship.reDefine();
+        const n0 = ship.damagedComponentCount;
+        const critical0 = items.filter((c) => c.status === ComponentStatus.Damaged && [ComponentType.EngineMainThrust, ComponentType.EngineVectoring, ComponentType.Reactor, ComponentType.ComputerCommandCenter, ComponentType.ComputerTargetting, ComponentType.ComputerTargettingFleet].includes(c.type)).length;
+        expect(critical0).toBeGreaterThan(0);
+        expect(crewRepairSpeed(cg, ship)).toBeGreaterThanOrEqual(1);
+        const rnd = cg.rnd.getState();
+        ship.inBattle = false;
+        for (let t = 0; t < 120; t += 3) damageControlTick(cg, ship, 3);
+        expect(ship.damagedComponentCount).toBe(n0); // not in a battle: nothing
+        ship.inBattle = true;
+        withParams({ dcSecondsPerRepair: 60, dcMaxDamagedPct: 100 }, () => {
+            for (let t = 0; t < 57; t += 3) damageControlTick(cg, ship, 3);
+            expect(ship.damagedComponentCount).toBe(n0);
+            damageControlTick(cg, ship, 3);
+            expect(ship.damagedComponentCount).toBe(n0 - 1);
+            expect(items.filter((c) => c.status === ComponentStatus.Damaged && [ComponentType.EngineMainThrust, ComponentType.EngineVectoring, ComponentType.Reactor, ComponentType.ComputerCommandCenter, ComponentType.ComputerTargetting, ComponentType.ComputerTargettingFleet].includes(c.type)).length).toBe(critical0 - 1); // a critical kind first
+        });
+        expect(cg.rnd.getState()).toEqual(rnd);
+        // A ship past the limit is left to its fate.
+        const wreckish = spawnC(a, BuiltObjectSubRole.Frigate);
+        wreckish.components.items.forEach((c, i) => (c.status = i % 5 === 0 ? ComponentStatus.Normal : ComponentStatus.Damaged));
+        wreckish.reDefine();
+        wreckish.inBattle = true;
+        const d0 = wreckish.damagedComponentCount;
+        withParams({ dcSecondsPerRepair: 3, dcMaxDamagedPct: 70 }, () => {
+            for (let t = 0; t < 30; t += 3) damageControlTick(cg, wreckish, 3);
+        });
+        expect(wreckish.damagedComponentCount).toBe(d0);
+        // Veterans' ranks and crew levels speed it up (the stock crew level scale: Bacon's career-damage levels).
+        expect(crewRepairSpeed(cg, ship)).toBeCloseTo(1 + 0, 0);
+    });
+
+    it('armour facing: bow / flank / stern from the angle between the shot and the heading (75% / 110% / 140%), none for bases or blasts, the AI turns a still ship bow-on', () => {
+        const [a, b] = pair();
+        const target = spawnC(b, BuiltObjectSubRole.Cruiser);
+        const attacker = spawnC(a, BuiltObjectSubRole.Cruiser);
+        const w = attacker.weapons.find((x) => x.component.type === ComponentType.WeaponBeam) ?? attacker.weapons[0];
+        target.heading = 0.4;
+        const dmg = (shot: number): number => {
+            let r = 0;
+            withFlags({ ambush: false }, () => {
+                r = c2HitPower(cg, attacker, target, w, 100, shot);
+            });
+            return r;
+        };
+        expect(facingZone(0.4, 0.4 + Math.PI, 60)).toBe('bow');
+        expect(facingZone(0.4, 0.4 + Math.PI - 1.0, 60)).toBe('bow');
+        expect(facingZone(0.4, 0.4 + 1.6, 60)).toBe('flank');
+        expect(facingZone(0.4, 0.4 + 0.2, 60)).toBe('rear');
+        let out = 0;
+        withFlags({ ambush: false }, () => {
+            out = c2HitPower(cg, attacker, target, w, 100, 0.4 + Math.PI);
+        });
+        expect(out).toBeCloseTo(75, 5);
+        expect(dmg(0.4 + Math.PI / 2)).toBeCloseTo(110, 5);
+        expect(dmg(0.4)).toBeCloseTo(140, 5);
+        expect(dmg(-Number.MAX_VALUE)).toBeCloseTo(100, 5);
+        expect(c2HitPower(cg, attacker, target, null, 100, 0.4)).toBeCloseTo(100, 5);
+        // The same hits through the real damage path: the stern loses more of a ship than the bow.
+        const hullHit = (shot: number): number => {
+            const t = spawnC(b, BuiltObjectSubRole.Frigate);
+            t.currentShields = 0;
+            t.heading = 0;
+            const before = t.undamagedComponentSize;
+            withFlags({ ambush: false }, () => inflictDamage(cg, attacker, t, w, 150, cg.nowMs, 100, shot));
+            return before - t.undamagedComponentSize;
+        };
+        const bow = hullHit(Math.PI);
+        const stern = hullHit(0);
+        expect(stern).toBeGreaterThanOrEqual(bow);
+        // AI: a still AI ship in a fight turns its bow toward the nearest enemy; a human's ship does not.
+        const turner = spawnC(a, BuiltObjectSubRole.Frigate);
+        const foe = spawnAt(b, BuiltObjectSubRole.Frigate, turner.xpos, turner.ypos + 2000);
+        place(cg, foe, turner.xpos, turner.ypos + 2000);
+        turner.inBattle = true;
+        turner.heading = 0;
+        turner.targetHeading = 0;
+        turner.currentSpeed = 0;
+        turner.currentTarget = foe;
+        facingTick(cg, turner, 3);
+        expect(turner.targetHeading).toBeCloseTo(Math.PI / 2, 3);
+        expect(turner.heading).toBeGreaterThan(0);
+        // A fast ship circles a slow moving target that is still far away.
+        const fast = spawnC(a, BuiltObjectSubRole.Frigate);
+        const slow = spawnAt(b, BuiltObjectSubRole.CapitalShip, fast.xpos, fast.ypos + 9000);
+        fast.inBattle = true;
+        fast.currentSpeed = 40;
+        fast.currentTarget = slow;
+        fast.topSpeed = 100;
+        slow.topSpeed = 40;
+        slow.heading = 1;
+        facingTick(cg, fast, 3);
+        expect(Math.abs(flankHeadingOffset(cg, fast))).toBeCloseTo(0.5, 5);
+        expect(c2State(cg).stats.flankStarted).toBeGreaterThanOrEqual(1);
+        withFlags({ facingAI: false }, () => expect(Math.abs(flankHeadingOffset(cg, fast))).toBeGreaterThan(0)); // the offset is data; the AI switch gates only new ones
+    });
+
+    it('surrender: a crippled, trapped, outgunned AI ship strikes (leaves its fleet, holds, is not shot at, not scuttled), is captured by a prize crew, a ship nobody takes takes its crew back', () => {
+        const [a, b] = pair();
+        const victim = spawnAt(b, BuiltObjectSubRole.Cruiser, cspot.x + 41000, cspot.y + 200);
+        const raiders = [0, 1, 2].map((i) => spawnAt(a, BuiltObjectSubRole.Cruiser, victim.xpos + 300, victim.ypos + 150 * i));
+        const items = victim.components.items;
+        items.forEach((c, i) => {
+            if (c.type !== ComponentType.Armor && i % 10 < 8) c.status = ComponentStatus.Damaged;
+        });
+        for (const c of items) if (c.type === ComponentType.EngineMainThrust || c.type === ComponentType.EngineVectoring) c.status = ComponentStatus.Damaged;
+        victim.reDefine();
+        expect(healthPct(victim)).toBeLessThan(45);
+        for (const r of raiders) victim.attackers!.push(r);
+        // Chance 0: never. Chance 100: now.
+        withParams({ surrenderChancePct: 0 }, () => surrenderTick(cg, victim));
+        expect(isStruck(cg, victim)).toBe(false);
+        // A human's ship, a ship that can still run and one that is not outgunned never strike.
+        const rnd = cg.rnd.getState();
+        withParams({ surrenderChancePct: 100 }, () => {
+            const keep = victim.topSpeed;
+            victim.topSpeed = 0;
+            const human = spawnC(cg.playerEmpire!, BuiltObjectSubRole.Cruiser);
+            human.components.items.forEach((c) => (c.status = ComponentStatus.Damaged));
+            human.reDefine();
+            human.attackers!.push(raiders[0]);
+            surrenderTick(cg, human);
+            expect(isStruck(cg, human)).toBe(false);
+            victim.topSpeed = keep;
+        });
+        expect(cg.rnd.getState()).toEqual(rnd);
+        withParams({ surrenderChancePct: 100 }, () => surrenderTick(cg, victim));
+        expect(isStruck(cg, victim)).toBe(true);
+        expect(struckText(cg, victim)).toContain('Struck colours');
+        expect(combat2StatusLines(cg, victim).some((l) => l.text.includes('Struck colours'))).toBe(true);
+        expect(victim.shipGroup).toBeNull();
+        expect(victim.currentSpeed).toBe(0);
+        // Nobody fires at it or from it; the AI does not pick it as a target.
+        expect(c2StruckSpares(cg, raiders[0], victim)).toBe(true);
+        expect(c2StruckSpares(cg, victim, raiders[0])).toBe(true);
+        expect(shouldAttack(cg, raiders[0], victim, cg.nowMs)).toBe(false);
+        // A prize crew within range for the capture time takes it (the stock boarding capture).
+        const t0 = cg.nowMs;
+        surrenderCaptureTick(cg);
+        expect(isStruck(cg, victim)).toBe(true);
+        cg.nowMs = t0 + 21000;
+        surrenderCaptureTick(cg);
+        expect(isStruck(cg, victim)).toBe(false);
+        expect(victim.empire).toBe(a);
+        expect(c2State(cg).stats.captured).toBe(1);
+        cg.nowMs = t0;
+        // Nobody comes: the crew takes it back after the timeout and will not surrender again for as long.
+        const lonely = spawnAt(b, BuiltObjectSubRole.Cruiser, cspot.x + 42000, cspot.y + 2000);
+        lonely.components.items.forEach((c, i) => (c.status = i % 10 < 8 && c.type !== ComponentType.Armor ? ComponentStatus.Damaged : c.status));
+        lonely.reDefine();
+        lonely.topSpeed = 0;
+        for (const r of raiders) lonely.attackers!.push(r);
+        withParams({ surrenderChancePct: 100 }, () => surrenderTick(cg, lonely));
+        expect(isStruck(cg, lonely)).toBe(true);
+        for (const r of raiders) place(cg, r, cspot.x + 90000, cspot.y + 90000);
+        cg.nowMs = t0 + 400000;
+        surrenderCaptureTick(cg);
+        expect(isStruck(cg, lonely)).toBe(false);
+        expect(lonely.empire).toBe(b);
+        expect(c2State(cg).stats.recovered).toBe(1);
+        withParams({ surrenderChancePct: 100 }, () => surrenderTick(cg, lonely));
+        expect(isStruck(cg, lonely)).toBe(false); // calm
+        cg.nowMs = t0;
+    });
+
+    it('wrecks: destroyed ships leave debris-field wrecks, a system holds at most the cap (the oldest crumble first), they decay, construction ships salvage them (resources, a tech chance)', () => {
+        const [a, b] = pair();
+        const killer = spawnC(a, BuiltObjectSubRole.Cruiser);
+        const spot = { x: cspot.x + 62000, y: cspot.y + 62000 };
+        const ships = Array.from({ length: 20 }, (_, i) => spawnAt(b, BuiltObjectSubRole.Frigate, spot.x + (i % 5) * 300, spot.y + Math.trunc(i / 5) * 300, 'wr'));
+        for (const s of ships) inflictDamage(cg, killer, s, null, 1e9, cg.nowMs, 0, -Number.MAX_VALUE);
+        for (const s of ships) expect(s.hasBeenDestroyed).toBe(true);
+        // The destroyed objects are torn down (and recorded) by the frame; run a few seconds.
+        runGameSeconds(cg, 5);
+        const st = peekWreckageState(cg)!;
+        const inSystem = (idx: number) => wreckFields(cg).filter((f) => f.systemIndex === idx).reduce((n, f) => n + f.wrecks.length, 0);
+        const systems = new Set(wreckFields(cg).map((f) => f.systemIndex));
+        expect(st.stats.wrecks).toBeGreaterThanOrEqual(15);
+        for (const idx of systems) expect(inSystem(idx)).toBeLessThanOrEqual(12);
+        expect(c2State(cg).stats.wrecksCulled).toBeGreaterThanOrEqual(1);
+        expect(c2State(cg).stats.wreckPeak).toBeLessThanOrEqual(12);
+        // Salvage: a construction ship of the empire takes up to 3 wrecks' resources.
+        const field = wreckFields(cg).find((f) => f.wrecks.length > 0)!;
+        const rig = a.builtObjects.find((x) => x != null && x.subRole === BuiltObjectSubRole.ConstructionShip && !x.hasBeenDestroyed)!;
+        expect(rig).toBeDefined();
+        const n0 = field.wrecks.length;
+        expect(orderSalvage(cg, a, rig, field.id, false)).toBe(true);
+        const job = st.jobs.find((j) => j.ship === rig)!;
+        const r = completeSalvage(cg, job, field);
+        expect(r.wrecks.length).toBeGreaterThan(0);
+        expect(r.cargo.length).toBeGreaterThan(0);
+        expect(wreckFields(cg).reduce((n, f) => n + f.wrecks.length, 0)).toBeLessThan(n0 + 100);
+        // Decay: with a tiny decay time the long block sweeps the fields away.
+        withParams({ wreckDecayYears: 0.01 }, () => runGameSeconds(cg, 130));
+        const ids = new Set(ships.map((x) => x.builtObjectID));
+        expect(wreckFields(cg).reduce((n, f) => n + f.wrecks.filter((w) => ids.has(w.builtObjectId) && w.name.startsWith('wr')).length, 0)).toBe(0);
+    }, 120000);
+
+    it('both on with BVR: a staged fight runs, counters move, nothing throws, hits are scaled, the panel shows the new lines', () => {
+        const [a, b] = pair();
+        const spot = { x: cspot.x + 120000, y: cspot.y + 3000 };
+        const left = [0, 1, 2, 3].map((i) => spawnAt(a, BuiltObjectSubRole.Cruiser, spot.x, spot.y + 120 * i, 'fa'));
+        const right = [0, 1, 2, 3].map((i) => spawnAt(b, BuiltObjectSubRole.Cruiser, spot.x + 3500, spot.y + 120 * i, 'fb'));
+        for (const s of left) assignMission(cg, s, BuiltObjectMissionType.Attack, right[0], null, BuiltObjectMissionPriority.High);
+        for (const s of right) assignMission(cg, s, BuiltObjectMissionType.Attack, left[0], null, BuiltObjectMissionPriority.High);
+        const before = JSON.stringify(c2State(cg).stats);
+        runGameSeconds(cg, 40);
+        const s = c2State(cg).stats;
+        expect(JSON.stringify(s)).not.toBe(before);
+        expect(s.facingBow + s.facingFlank + s.facingRear).toBeGreaterThan(0);
+        expect(peekBvrState(cg)!.missilesFired).toBeGreaterThan(0);
+        const lines = [...left, ...right].filter((x) => !x.hasBeenDestroyed).flatMap((x) => combat2StatusLines(cg, x));
+        expect(lines.some((l) => l.label === 'Countermeasures' && /^Decoys \d+\/\d+$/.test(l.text))).toBe(true);
+        c2ShipTick(cg, left[0], 3);
+    }, 300000);
+
+    it('save: decoy pools, critical effects, struck ships and the wreck records survive a save and load, older saves without the state load', () => {
+        const [a, b] = pair();
+        const ship = spawnC(a, BuiltObjectSubRole.Cruiser);
+        c2State(cg).decoys.set(ship, { spent: 2, nextMs: 0, progress: 0 });
+        const eng = ship.components.items.find((c) => c.type === ComponentType.EngineMainThrust)!;
+        withParams({ critChancePct: 100 }, () => {
+            eng.status = ComponentStatus.Damaged;
+            critComponentDamaged(cg, ship, eng);
+            ship.reDefine();
+        });
+        const stricken = spawnC(b, BuiltObjectSubRole.Frigate);
+        c2State(cg).struck.set(stricken, { sinceMs: cg.nowMs, toEmpireId: a.empireId, captor: ship, captureStartMs: 0 });
+        const decoys = decoyText(cg, ship);
+        const crit = critText(cg, ship);
+        const wrecks = wreckFields(cg).reduce((n, f) => n + f.wrecks.length, 0);
+        const time = new GalaxyTime();
+        time.togglePause();
+        const text = serializeGame(cgame, time, defaultStartGameOptions());
+        const restored = deserializeGame(text, cdata);
+        const g2 = restored.game.galaxy;
+        const find = (o: BuiltObject): BuiltObject => g2.builtObjects.find((x): x is BuiltObject => x !== null && x.builtObjectID === o.builtObjectID)!;
+        expect(decoyText(g2, find(ship))).toBe(decoys);
+        expect(critText(g2, find(ship))).toBe(crit);
+        expect(find(ship).topSpeed).toBe(ship.topSpeed);
+        expect(isStruck(g2, find(stricken))).toBe(true);
+        expect(wreckFields(g2).reduce((n, f) => n + f.wrecks.length, 0)).toBe(wrecks);
+        // An older save: the state bag absent, the hooks run on and create it on first use.
+        delete g2.scenario!.state.combat2;
+        expect(decoyText(g2, find(ship))).toBe(`Decoys ${decoyCapacity(g2, find(ship))}/${decoyCapacity(g2, find(ship))}`);
+        expect(critText(g2, find(ship))).toBeNull();
+        expect(isStruck(g2, find(stricken))).toBe(false);
+        c2State(cg).struck.delete(stricken);
+    }, 300000);
+
+    it('toggles off: with all six flags off none of it runs (no state bag, no draws, hits and damage untouched)', () => {
+        const g = cachedTickGame(gameData).galaxy;
+        const off: Record<string, boolean> = {};
+        for (const f of [...C2_FLAGS, 'surrenderWrecks', 'decoysAI', 'ambushAI', 'facingAI']) off[f] = false;
+        g.scenario = createGalaxyScenario(loadScenarioOverlayFs(BVR_ADDON_ID).manifest, { flags: { bvrCombat: false } });
+        for (const f of Object.keys(off)) g.scenario.flags[f] = false;
+        const ship = playerShip(g, BuiltObjectSubRole.Frigate, 0);
+        const foe = playerShip(g, BuiltObjectSubRole.Frigate, 1);
+        const w = ship.weapons[0];
+        const rnd = g.rnd.getState();
+        expect(c2AdjustHit(g, ship, w, foe, { willHit: false, hitRangeChance: 0.2 })).toEqual({ willHit: false, hitRangeChance: 0.2 });
+        expect(c2HitPower(g, ship, foe, w, 100, 0)).toBe(100);
+        decoyDefend(g, ship);
+        c2ShipTick(g, ship, 3);
+        surrenderTick(g, ship);
+        decoyRestockTick(g);
+        surrenderCaptureTick(g);
+        for (const c of ship.components.items.slice(0, 5)) {
+            c.status = ComponentStatus.Damaged;
+            critComponentDamaged(g, ship, c);
+        }
+        expect('combat2' in g.scenario.state).toBe(false);
+        expect(combat2StatusLines(g, ship)).toEqual([]);
+        expect(isStruck(g, ship)).toBe(false);
+        expect(ambushActive(g, ship)).toBe(false);
+        expect(g.rnd.getState()).toEqual(rnd);
+        // A game without a scenario at all: the hooks are no-ops too.
+        const g0 = cachedTickGame(gameData).galaxy;
+        expect(g0.scenario).toBeNull();
+        const s0 = playerShip(g0, BuiltObjectSubRole.Frigate, 0);
+        expect(combat2StatusLines(g0, s0)).toEqual([]);
+        expect(c2HitPower(g0, s0, s0, null, 77, 0)).toBe(77);
     });
 });

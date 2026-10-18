@@ -30,6 +30,8 @@ import {
     scenarioOverlayFor,
     toggleAddon,
     withBvrCombat,
+    withCombat2,
+    COMBAT2_ADDONS,
     HIDDEN_ADDONS,
     ELSEWHERE_ADDONS,
     withFlagAddons,
@@ -330,5 +332,33 @@ describe('BVR combat (a Gameplay changes checkbox)', () => {
         const m = scenarioIndexFs().find((x) => x.id === 'bvr-combat')!;
         expect(m.conflicts ?? []).toEqual([]); // its ids are allocated after the time bomb's (scenario/overlay.ts finalizeDynamicIds)
         expect(m.flags.map((f) => f.name)).toEqual(['bvrCombat', 'bvrAI']);
+    });
+});
+
+describe('The six combat changes after BVR (Gameplay changes checkboxes)', () => {
+    const ids = ['decoys-chaff', 'ambush-strike', 'critical-hits', 'damage-control', 'armour-facing', 'surrender-wrecks'];
+    it('are folded in by withCombat2 one by one, hidden from the picker, allowed in Classic, off by default and compatible with BVR combat', async () => {
+        const { CLASSIC_ADDONS } = await import('../scripts/scenarioIndex.mjs');
+        expect(COMBAT2_ADDONS.map((a) => a.id)).toEqual(ids);
+        for (const a of COMBAT2_ADDONS) {
+            const on = withCombat2([], { flags: {}, params: {} }, { [a.key]: true });
+            expect(on.picked).toEqual([a.id]);
+            expect(on.overrides.flags[a.flag]).toBe(true);
+            expect(withCombat2(on.picked, on.overrides, { [a.key]: false }).picked).toEqual([]);
+            expect(HIDDEN_ADDONS.has(a.id)).toBe(true);
+            expect(ELSEWHERE_ADDONS.has(a.id)).toBe(true);
+            expect(CLASSIC_ADDONS).toContain(a.id);
+            const m = scenarioIndexFs().find((x) => x.id === a.id)!;
+            expect(m.flags[0].name).toBe(a.flag); // the master flag is the first
+            expect(m.conflicts ?? []).toEqual([]);
+        }
+        const all = withCombat2(withBvrCombat([], { flags: {}, params: {} }, true).picked, { flags: {}, params: {} }, { decoys: true, ambushStrike: true, criticalHits: true, damageControl: true, armourFacing: true, surrenderWrecks: true });
+        expect([...all.picked].sort()).toEqual(['bvr-combat', ...ids].sort());
+        expect(withCombat2([], { flags: {}, params: {} }, undefined).picked).toEqual([]);
+        expect(withCombat2([], { flags: {}, params: {} }, {}).picked).toEqual([]);
+        // Sub-switches default on under their masters (the wizard sets only the master).
+        const surrender = scenarioIndexFs().find((x) => x.id === 'surrender-wrecks')!;
+        expect(surrender.flags.map((f) => f.name)).toEqual(['surrender', 'surrenderWrecks']);
+        expect(surrender.params.find((p) => p.name === 'wreckSystemCap')!.default).toBe(12);
     });
 });
