@@ -53,6 +53,7 @@ import { BEACON_BEAM, BEACON_RELAY } from '../src/render/beaconArtData';
 import { COOLDOWN_DAYS, LAUNCH_FRESH_DAYS, beaconCountdown, beaconLaunchIsFirst, beaconLaunchKey, beaconSpinRate, stepLaunchClock } from '../src/render/beaconLaunch';
 import {
     BEAM_FLASH_CAP,
+    EMBERS,
     LAUNCH,
     LAUNCH_SPIN,
     beaconDamageTier,
@@ -750,6 +751,10 @@ describe('the Beacon relay and its launch', () => {
         expect(LAUNCH.fade - LAUNCH.ignite).toBeGreaterThan(5); // several seconds
         for (let t = 0; t < LAUNCH.end; t += 0.05) expect(beamFlashAlpha(t)).toBeLessThanOrEqual(BEAM_FLASH_CAP + 1e-9);
         expect(BEAM_FLASH_CAP).toBeLessThanOrEqual(0.4);
+        // the embers: mostly bright, the few dark ones soft (no hard black punching holes in the light)
+        expect(EMBERS.bright).toBeGreaterThan(0.5);
+        expect(EMBERS.darkAlpha).toBeLessThan(0.6);
+        expect(EMBERS.dark).not.toBe(0);
         expect(pulseProgress(LAUNCH.pulse0 - 0.01, 0)).toBe(-1);
         expect(pulseProgress(LAUNCH.pulse0 + LAUNCH.pulseRun / 2, 0)).toBeCloseTo(0.5, 9);
         expect(pulseProgress(LAUNCH.pulse0 + (LAUNCH.pulses - 1) * LAUNCH.pulseGap + LAUNCH.pulseRun, LAUNCH.pulses - 1)).toBe(1);

@@ -186,7 +186,7 @@ export const BEACON_RELAY: BeaconRelayArt = {
 };
 
 /** The launch beam's textures in beacon-beam.png (additive light, but the ash and the smoke: normal). */
-export const BEACON_BEAM: Readonly<Record<'disc' | 'swirl' | 'swirl2' | 'ring' | 'bloom' | 'bloomGreen' | 'streak' | 'ember0' | 'ember1' | 'ash0' | 'ash1' | 'ash2' | 'ash3' | 'spark' | 'smoke0' | 'smoke1' | 'smoke2' | 'pulse', BeaconFxRect>> = {
+export const BEACON_BEAM: Readonly<Record<'disc' | 'swirl' | 'swirl2' | 'ring' | 'bloom' | 'bloomGreen' | 'streak' | 'arc0' | 'arc0Core' | 'arc1' | 'arc1Core' | 'ash0' | 'ash1' | 'ash2' | 'ash3' | 'spark' | 'smoke0' | 'smoke1' | 'smoke2' | 'pulse', BeaconFxRect>> = {
     disc: { x: 0, y: 0, w: 384, h: 384, dx: 0, dy: 0 },
     swirl: { x: 0, y: 386, w: 384, h: 384, dx: 0, dy: 0 },
     swirl2: { x: 0, y: 772, w: 384, h: 384, dx: 0, dy: 0 },
@@ -194,17 +194,19 @@ export const BEACON_BEAM: Readonly<Record<'disc' | 'swirl' | 'swirl2' | 'ring' |
     bloom: { x: 0, y: 1544, w: 256, h: 256, dx: 0, dy: 0 },
     bloomGreen: { x: 0, y: 1802, w: 256, h: 256, dx: 0, dy: 0 },
     streak: { x: 0, y: 2060, w: 128, h: 16, dx: 0, dy: 0 },
-    ember0: { x: 0, y: 2078, w: 32, h: 8, dx: 0, dy: 0 },
-    ember1: { x: 0, y: 2088, w: 12, h: 12, dx: 0, dy: 0 },
-    ash0: { x: 0, y: 2102, w: 48, h: 24, dx: 0, dy: 0 },
-    ash1: { x: 0, y: 2128, w: 48, h: 24, dx: 0, dy: 0 },
-    ash2: { x: 0, y: 2154, w: 48, h: 24, dx: 0, dy: 0 },
-    ash3: { x: 0, y: 2180, w: 48, h: 24, dx: 0, dy: 0 },
-    spark: { x: 0, y: 2206, w: 24, h: 6, dx: 0, dy: 0 },
-    smoke0: { x: 0, y: 2214, w: 64, h: 64, dx: 0, dy: 0 },
-    smoke1: { x: 0, y: 2280, w: 64, h: 64, dx: 0, dy: 0 },
-    smoke2: { x: 0, y: 2346, w: 64, h: 64, dx: 0, dy: 0 },
-    pulse: { x: 0, y: 2412, w: 64, h: 64, dx: 0, dy: 0 },
+    arc0: { x: 0, y: 2078, w: 64, h: 16, dx: 0, dy: 0 },
+    arc0Core: { x: 0, y: 2096, w: 64, h: 16, dx: 0, dy: 0 },
+    arc1: { x: 0, y: 2114, w: 64, h: 24, dx: 0, dy: 0 },
+    arc1Core: { x: 0, y: 2140, w: 64, h: 24, dx: 0, dy: 0 },
+    ash0: { x: 0, y: 2166, w: 48, h: 24, dx: 0, dy: 0 },
+    ash1: { x: 0, y: 2192, w: 48, h: 24, dx: 0, dy: 0 },
+    ash2: { x: 0, y: 2218, w: 48, h: 24, dx: 0, dy: 0 },
+    ash3: { x: 0, y: 2244, w: 48, h: 24, dx: 0, dy: 0 },
+    spark: { x: 0, y: 2270, w: 24, h: 6, dx: 0, dy: 0 },
+    smoke0: { x: 0, y: 2278, w: 64, h: 64, dx: 0, dy: 0 },
+    smoke1: { x: 0, y: 2344, w: 64, h: 64, dx: 0, dy: 0 },
+    smoke2: { x: 0, y: 2410, w: 64, h: 64, dx: 0, dy: 0 },
+    pulse: { x: 0, y: 2476, w: 64, h: 64, dx: 0, dy: 0 },
 };
 
 /** The core's heat colours (0 cold .. 1 white-hot at launch): dim wine red, wine red, red, red-orange, orange, pale yellow, white. */

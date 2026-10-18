@@ -14,8 +14,8 @@
 // the core, the gyros spin to a full blur, a ring collapses on the core, then the MEGA BEAM fires straight up from it —
 // end-on to the camera: a white disc with a green contour fading fast into white and turning spiral fringes, two
 // counter-turning swirls, rising rings, streaks, a lot of bloom (stacked additive layers, its flash capped at
-// BEAM_FLASH_CAP: one soft rise, never a strobe), and hundreds of fine dark embers (white-hot cores in black rims,
-// drawn out along their motion) thrown out from its base and swirling outward, a few rising in front of the glare.
+// BEAM_FLASH_CAP: one soft rise, never a strobe), and hundreds of embers thrown out from its base along the vortex's
+// spiral: mostly bright flecks, white-hot cooling to orange, a few deep wine-grey ones (EMBERS).
 //
 // Damage (the station's damaged components over its components, beaconDamageTier): light — sparks along the seams and
 // round the ring, the lines flicker; heavy — pitted, cracked plating, the lower prong snapped at its break and bent, the
@@ -48,6 +48,28 @@ export const BLUR_FROM = 10;
 export const BLUR_FULL = 34;
 /** The flash's cap (alpha of the whole flash bloom): one soft rise, never a strobe. */
 export const BEAM_FLASH_CAP = 0.35;
+/**
+ * The beam's embers (the user's pick): mostly bright flecks, white-hot cooling to orange (additive), a few deep wine-grey
+ * ones (low opacity); each a tapered, soft-edged arc bowed along its path, which follows the vortex's spiral (every
+ * ember runs with the swirl, none across it), a faint hot core of its own.
+ */
+export const EMBERS = {
+    /** Per second at full beam; their life (s); their length (frame px, skewed small). */
+    rate: 300,
+    life: [0.9, 2.6] as const,
+    len: [12, 36] as const,
+    lenPow: 2,
+    thick: 1,
+    /** The flow's angle off the radial (rad, clockwise as the swirl turns). */
+    spiral: 0.95,
+    /** Share drawn with the tighter curve; share bright. */
+    tight: 0.4,
+    bright: 0.85,
+    dark: 0x3d2a33,
+    darkAlpha: 0.45,
+    coreAlpha: 0.9,
+} as const;
+
 /** No relay detail under this drawn size (px): the ship layer's whole frame (beacon.png) instead. */
 export const RELAY_MIN_PX = 14;
 
@@ -187,7 +209,6 @@ function sub(base: Texture, r: BeaconFxRect, half = -1): Texture {
 
 // Particle pools (frame px about the core; fixed capacity).
 const ASH_N = 1200;
-const FLAKE_N = 160;
 const STREAK_N = 96;
 const RING_N = 8;
 const SPARK_N = 72;
@@ -268,7 +289,6 @@ class RelayRun {
     serial = 0;
     rnd = 1;
     ash = new Particles(ASH_N);
-    flakes = new Particles(FLAKE_N);
     streaks = new Particles(STREAK_N);
     rings = new Particles(RING_N);
     sparks = new Particles(SPARK_N);
@@ -396,7 +416,7 @@ export class BeaconRelayFx {
         // the launch this run plays (a new serial starts it; particles from the last are dropped)
         if (frame.serial !== run.serial && frame.launchT !== null) {
             run.serial = frame.serial;
-            run.ash.n = run.flakes.n = run.streaks.n = run.rings.n = 0;
+            run.ash.n = run.streaks.n = run.rings.n = 0;
             run.ringTimer = 0;
         }
         const t = frame.launchT !== null && frame.launchT <= LAUNCH.end ? frame.launchT : null;
@@ -604,24 +624,19 @@ export class BeaconRelayFx {
             this.dot(B.ring, cx, cy, ((1 - c) * 2.4 + 0.15) * Rb * 1.1 / (BEACON_BEAM.ring.w / 2), 0.9 * c, 'add');
         }
         const e = beamEnvelope(t);
-        // the embers: many fine dark sparks with white-hot cores, thrown out from the beam's base and swirling outward
-        // (sizes skewed small, speeds varied); a few rise toward the viewer, growing as they come
-        const rate = 320 * e + (t > LAUNCH.hold && t < LAUNCH.fade + 1 ? 90 * (1 - e) : 0);
+        // the embers: thrown out from the beam's base, turning with the vortex (a streak's path curls with the swirl)
+        const look = EMBERS;
+        const rate = look.rate * e + (t > LAUNCH.hold && t < LAUNCH.fade + 1 ? look.rate * 0.28 * (1 - e) : 0);
         run.acc[0] += rate * dt;
         while (run.acc[0] >= 1) {
             run.acc[0] -= 1;
             const a = run.r() * Math.PI * 2;
             const r0 = (0.5 + 0.3 * run.r()) * Rb;
-            const sp = (0.3 + 1.4 * Math.pow(run.r(), 1.5)) * Rb;
-            const size = 6 + 22 * Math.pow(run.r(), 2.5);
-            run.ash.spawn(r0 * Math.cos(a), r0 * Math.sin(a), sp * Math.cos(a) - 0.5 * sp * Math.sin(a), sp * Math.sin(a) + 0.5 * sp * Math.cos(a), 1 + 2.2 * run.r(), size, 0, 0, run.r() < 0.7 ? 0 : 1);
-        }
-        run.acc[1] += 40 * e * dt;
-        while (run.acc[1] >= 1) {
-            run.acc[1] -= 1;
-            const a = run.r() * Math.PI * 2;
-            const sp = (0.25 + 0.6 * run.r()) * Rb;
-            run.flakes.spawn(0, 0, sp * Math.cos(a), sp * Math.sin(a), 1.1 + 0.9 * run.r(), 5 + 9 * Math.pow(run.r(), 2), 0, 0, run.r() < 0.6 ? 0 : 1);
+            const sp = (0.6 + 1.4 * Math.pow(run.r(), 1.5)) * Rb;
+            const len = look.len[0] + (look.len[1] - look.len[0]) * Math.pow(run.r(), look.lenPow);
+            // k: bit 0 the tighter arc, bit 1 a bright ember (variant c)
+            const k = (run.r() < look.tight ? 1 : 0) | (run.r() < look.bright ? 2 : 0);
+            run.ash.spawn(r0 * Math.cos(a), r0 * Math.sin(a), sp, 0, look.life[0] + (look.life[1] - look.life[0]) * run.r(), len, 0, 0, k);
         }
         run.acc[2] += 35 * e * dt;
         while (run.acc[2] >= 1) {
@@ -636,8 +651,31 @@ export class BeaconRelayFx {
                 run.rings.spawn(0, 0, 0, 0, 1.3, 0, 0, 0, 0);
             }
         }
-        run.ash.step(dt, 0.55);
-        run.flakes.step(dt, 0.55);
+        // the flow: each streak keeps its speed (vx; dragged) and heads along the vortex's spiral at its place
+        // (vy: its heading, for the draw), so every streak runs with the swirl, none across it
+        const spiral = EMBERS.spiral;
+        const drag = Math.exp(-0.3 * dt);
+        for (let i = 0; i < run.ash.n; ) {
+            run.ash.age[i] += dt;
+            if (run.ash.age[i] >= run.ash.life[i]) {
+                const j = --run.ash.n;
+                run.ash.x[i] = run.ash.x[j];
+                run.ash.y[i] = run.ash.y[j];
+                run.ash.vx[i] = run.ash.vx[j];
+                run.ash.vy[i] = run.ash.vy[j];
+                run.ash.age[i] = run.ash.age[j];
+                run.ash.life[i] = run.ash.life[j];
+                run.ash.s0[i] = run.ash.s0[j];
+                run.ash.k[i] = run.ash.k[j];
+                continue;
+            }
+            const h = Math.atan2(run.ash.y[i], run.ash.x[i]) + spiral;
+            run.ash.vy[i] = h;
+            run.ash.x[i] += run.ash.vx[i] * Math.cos(h) * dt;
+            run.ash.y[i] += run.ash.vx[i] * Math.sin(h) * dt;
+            run.ash.vx[i] *= drag;
+            i++;
+        }
         run.rings.step(dt, 0);
         // streaks move by hand (polar)
         for (let i = 0; i < run.streaks.n; ) {
@@ -682,22 +720,29 @@ export class BeaconRelayFx {
                 this.dot(B.streak, cx + r * Math.cos(a), cy + r * Math.sin(a), Rb * 0.0026 * (1 + 1.5 * q), 0.7 * e * (1 - q), 'add', WHITE, a + 0.5, 1.6 * 4, run.streaks.s0[i] * 4);
             }
         }
-        // the embers over the glare: crisp dark rims round white-hot cores, drawn out along their motion
-        const embers = [B.ember0, B.ember1];
-        const ew = [BEACON_BEAM.ember0.w, BEACON_BEAM.ember1.w];
+        // the embers: tapered arcs along their spiral paths, mostly bright (white-hot cooling to orange), a few deep
+        // wine-grey at low opacity, each with a faint hot core
+        const arcs = [B.arc0, B.arc1];
+        const cores = [B.arc0Core, B.arc1Core];
+        const aw = BEACON_BEAM.arc0.w;
         for (let i = 0; i < run.ash.n; i++) {
             const q = run.ash.age[i] / run.ash.life[i];
             const k = run.ash.k[i];
-            const vx = run.ash.vx[i];
-            const vy = run.ash.vy[i];
-            const stretch = k === 0 ? 1 + Math.min(3, (2 * Math.hypot(vx, vy)) / Rb) : 1;
-            this.dot(embers[k], cx + run.ash.x[i], cy + run.ash.y[i], run.ash.s0[i] / ew[k], Math.pow(1 - q, 0.8) * smoothstep(0, 0.05, q), 'normal', WHITE, Math.atan2(vy, vx), stretch, 1);
-        }
-        for (let i = 0; i < run.flakes.n; i++) {
-            const q = run.flakes.age[i] / run.flakes.life[i];
-            const k = run.flakes.k[i];
-            const g = 1 + 1.5 * q;
-            this.dot(embers[k], cx + run.flakes.x[i] * g, cy + run.flakes.y[i] * g, (run.flakes.s0[i] * (1 + 2 * q)) / ew[k], Math.pow(1 - q, 0.7) * smoothstep(0, 0.1, q), 'normal', WHITE, Math.atan2(run.flakes.vy[i], run.flakes.vx[i]), k === 0 ? 2 : 1, 1);
+            const tight = k & 1;
+            const bright = (k & 2) !== 0;
+            const fade = Math.pow(1 - q, 0.9) * smoothstep(0, 0.08, q);
+            const rot = run.ash.vy[i];
+            const len = run.ash.s0[i] * (0.8 + 0.4 * q);
+            const px = cx + run.ash.x[i];
+            const py = cy + run.ash.y[i];
+            if (bright) {
+                const col = mix(0xffffff, 0xff8a3a, smoothstep(0, 0.7, q));
+                this.dot(arcs[tight], px, py, look.thick, 0.75 * fade, 'add', col, rot, len / aw, 1);
+                this.dot(cores[tight], px, py, look.thick, look.coreAlpha * fade, 'add', 0xffffff, rot, len / aw, 1);
+            } else {
+                this.dot(arcs[tight], px, py, look.thick, look.darkAlpha * fade, 'normal', look.dark, rot, len / aw, 1);
+                this.dot(cores[tight], px, py, look.thick, look.coreAlpha * fade * 0.6, 'add', 0xffd9b0, rot, len / aw, 1);
+            }
         }
     }
 

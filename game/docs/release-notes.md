@@ -41,3 +41,518 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 - **The Purifier: war-forged escorts and a ruined dock.** The Purifier's escorts and guards (escort, frigate, destroyer, cruiser, capital ship, carrier, troop transport) have new art in the planet destroyer's own colours (silver and champagne plating, pale-gold and copper trim, dark steel machinery), so they read as its fleet. Each is two to four existing hulls fused into one ship, keeping their detailed paintwork, so none looks like an existing race's ship. They are long, lean warships with their hulls joined end to end, tapering bows and broad flared engine sections, larger on screen than the ordinary warships of their class (the capital ship the longest, with heavy sponsons amidships), and the carrier is a banana-curved hull with its landing deck (landing lanes, landing lights, hangar lifts) running along the curve. Like the destroyer's spikes, thin antennas, whips, small dishes and fins stick out all round them, each mounted on the hull, with blinking lights on some of the tips. They are battered by ages of fighting: missing hull plates showing the ribbed frame inside, gouges, impact craters, scorch, melted edges, gunmetal and steel plates welded over old holes and chipped edges. Brighter edges, darker recesses and a thin dark outline keep them readable at normal zoom and against nebulae. Its dock is now a half-ruined shipyard in the same metal, with masts and lights of its own: an empty cradle ring where the Purifier slept, clamp arms reaching in (one snapped off and drifting), broken gantries and scaffold arms, and debris floating around it; its other stations match. The Purifier itself is now half-built: a crescent of its familiar sphere, solid on the left and curving round top and bottom, and to the right of it a yard in the middle of construction that slowly thins out across the ship (dense scaffolding, gantries, cranes lifting plates, panels being fitted and work lights next to the hull, fewer and fewer girders further right until only a few girder ends reach into empty space), all of one piece, its core glowing through the framework, with blinking lights on girder tips; it is drawn larger than before so it stays the most imposing ship of its fleet. Looks only: nothing in the game rules changes.
 - **Giantworks, the Beacon: art for the Reclaimers, the Watchers and the Beacon** (shown once the Beacon's game side lands). The machine faction now looks like the Reapers of the Mass Effect 4 Mod for DWU: the two Watchers are that mod's great Reaper carrier itself, and the Reclaimers' warships (escort, frigate, destroyer, cruiser, capital ship, carrier, troop transport, utility ship) and the finished Beacon are new ships assembled from the mod's Reaper parts, all in its dark gunmetal with dashed cyan light lines. Their light lines breathe slowly, each ship on its own rhythm and the big ones slower. The warships are long and slim, their legs laid back along their bodies (the smallest have none); the capital ship is the biggest and heaviest, ending in the Watcher's own tapering tail. When a Watcher is sighted, it sounds a long, low, distorted horn (a synthesised call of our own, heard by its place on screen at the Effects volume, at most once per opening), its legs spread, its horns part, the plates along its flanks lift over a ribbed cavity, and its light lines burn from cyan to red-orange; it cools back to cyan as it folds shut again when it leaves. Credits: built from the Mass Effect 4 Mod for DWU (original Mass Effect Mod by Kalthaniell + Team for Legends, modified for Shadows by dostillevi, for Universe by Demonius, compiled and assembled (ME4) by Tyrador, using some of the Prothean Cycle mod's assets). Looks only.
 - **Giantworks, the Beacon: the Beacon station becomes a relay, and launch day becomes an event** (presentation only; shown once the Beacon's game side lands). The finished Beacon is now a massive relay in the Mass Effect style, assembled from the same mod's Reaper parts: a great plated ring housing its core, two long parallel prongs of stacked hull segments reaching out of one side, antenna masts on its back, with wine-red seam lines and deep teal markings. In its core three gyroscope rings turn all the time, faster and faster as the Reclaimers' preparation counts down to the next offensive (a blur on its eve), and the core heats from a dim wine red through orange to white-hot; it winds down and cools after the offensive. On launch day, when the strike groups are called out, every human player's camera is sent to the Beacon (the game is not paused; Escape returns to where you were, and any camera input hands control back): charge pulses race down both prongs into the core, and a blinding beam fires straight up out of it, a swirling white vortex with a green rim, rings rising, hundreds of fine dark embers with white-hot cores thrown out of its base, to a long, deep blast of our own synthesis (at the Effects volume). The flash is capped so it never strobes. A minute after the first launch an event appears: "The End Times". Damage shows on the station: light damage sparks and flickers; heavy damage pits the plating, snaps and bends a prong, sheds debris and smoke; near death the core sputters and the gyros stutter. Every Great Work's station (the scaffolds, the finished wonders, the Beacon; not the Ark Engine) is now drawn even under fog of war (the structure only, not the ships around it; it cannot be selected until seen).
+- **Giantworks, the Beacon: the Beacon station becomes a relay, and launch day becomes an event** (presentation only; shown once the Beacon's game side lands). The finished Beacon is now a massive relay in the Mass Effect style, assembled from the same mod's Reaper parts: a great plated ring housing its core, two long parallel prongs of stacked hull segments reaching out of one side, antenna masts on its back, with wine-red seam lines and deep teal markings. In its core three gyroscope rings turn all the time, faster and faster as the Reclaimers' preparation counts down to the next offensive (a blur on its eve), and the core heats from a dim wine red through orange to white-hot; it winds down and cools after the offensive. On launch day, when the strike groups are called out, every human player's camera is sent to the Beacon (the game is not paused; Escape returns to where you were, and any camera input hands control back): charge pulses race down both prongs into the core, and a blinding beam fires straight up out of it, a swirling white vortex with a green rim, rings rising, hundreds of embers, white-hot cooling to orange, spiralling out of its base with the vortex, to a long, deep blast of our own synthesis (at the Effects volume). The flash is capped so it never strobes. A minute after the first launch an event appears: "The End Times". Damage shows on the station: light damage sparks and flickers; heavy damage pits the plating, snaps and bends a prong, sheds debris and smoke; near death the core sputters and the gyros stutter. Every Great Work's station (the scaffolds, the finished wonders, the Beacon; not the Ark Engine) is now drawn even under fog of war (the structure only, not the ships around it; it cannot be selected until seen).
+- **Giantworks (new add-on in Galactic Threats, off by default, recommended): the independents' Great Work.** Early on, independent worlds in three far-apart regions (three groups of up to three; a small pilgrim colony is founded for a region without independents) quietly band together as the Founders' Compact, and around year 5 to 10 a rumour of their secret meetings reaches every empire. In year 15 to 30 (or as soon as the empires' average tech reaches 4) the Compact, a new neutral faction that never colonises or declares war, raises a scaffold at the empty star system nearest the middle of the three, and every founding world sends convoys of 3 to 6 stock freighters (plus an armed escort) every 180 days; each delivered freighter builds the work, undisturbed about 5 years, in five stages (Foundations, Frame, Superstructure, Fitting, Complete). What it will be is rolled in secret and **never certain before it is finished**: convoys carry cargo that hints at it (shared between wonders, now and then misleading), an empire that has seen two different cargoes suspects a Great Work and sees a shortlist of what it could be, and spies, investigations (the Intelligence screen's Investigate) and the Diet's inspection only narrow it down. **Protect** it (warships on station for a year earn the Compact's regard), **sabotage** it (the stock Destroy Base and Sabotage Construction missions set it back; a caught saboteur loses standing everywhere), or **destroy** it: a war crime ('destroying a Great Work', with War crimes remembered) unless the Interstellar Diet has passed Authorise demolition, and the Compact never forgets; attacking convoys counts as an attack on the independents. A finished wonder pays the empire whose territory holds it (less the Compact's fifth) unless the Diet internationalises it. New Diet motions: Inspect, Protect, Authorise demolition, Internationalise. Smarter AI empires protect, spy on or attack the site by what their hints, their personality and their reach say. The number of Great Works (automatic: one, or two in galaxies of more than 1400 stars) and every timing are settings of the add-on; the Game Editor can start one now. This release ships the framework; the wonders (the Gilded Orbit, the Ultramind, the Leviathan Sanctuary, the Beacon) come with their own entries.
+- **Giantworks, the Gilded Orbit: the resort and casino wonder.** One of the things the Great Work can turn out to be (its cargo hints are luxury goods, reinforced glass and ice, and neon and gaming tables; the glass and the luxuries are shared with the aquarium, so they prove nothing). Finished, it is a huge resort: every ten days it pays the empire whose territory holds it (or that seized it by boarding; the Compact keeps its fifth) a share of an average empire's yearly tax revenue (50 % by default), booked as the stock resort and tourism income. The holder's colonies within two sectors are happier and become tourist destinations, and its colonies within four sectors draw immigrants. **The twist (50 % of the time): smugglers take it over.** It opens honest; three to six years later the dice are rolled, and half the time a smuggling empire takes it over then and there: a new pirate faction, the Gilded Syndicate, fortifies the system with **three huge pirate bases** and a fleet of warships built at the best tech level any empire has reached (together about 45 % of the strongest navy's strength, never fewer than a dozen ships and kept from growing beyond a third more), two thirds of them on guard at the bases. The resort's income and bonuses stop, destroying or seizing it is no crime, and fighting the Syndicate counts as helping against a crisis. Every month it plants a stock Criminal Network on a colony within six sectors (up to ten, spread over the empires nearby, unless colony defence protects the colony): the network's corruption cuts that colony's income until it is rooted out. Its raiders hunt private freighters near its bases. Smarter AI empires strike the weakest standing base when one of their fleets is strong enough for the whole garrison (the resort itself is spared, so the purge can end in a renovation). **Purge:** destroy (or capture) all three bases and the faction breaks, its fleets are dismissed and its networks vanish; the casino closes for six months of renovation, then reopens at 80 % of its old benefit. Everything is a setting of the add-on (the chance of the front, the timings, the income, the bonuses, the strength of the bases and fleet, the networks).
+- **Mothball slot: left-click opens the port list.** On the selection panel, clicking Mothball now lists your space ports (best one first, marked ★) instead of sending the force straight to the best port, as the Fleets and Ships screens already did. Reactivate and Cancel still act at once.
+- **Crisis interactions: reputation, opportunists, the council, Purifier refugees.** The loose crisis factions (the Purifier, the Cult, the Hive, Generation Ships, and the Grey Tide, Ghost Armada, Dark Farms, Robot Mutiny, Hollow Fleet and Probe Swarm) now draw reactions from the rest of the galaxy, with no new screens: (1) *Reputation* (needs the Reputation add-on): an empire that fights a crisis (kills its ships, loses ships to it, keeps shooting at it) earns a small, once-only +3 regard from every empire that has met it and is not at war with it; an empire that sits a crisis out for two years (once the faction has hurt someone) while it is within three sectors of its colonies loses 2 with the same empires; both fade by 1 a year, and a human empire is told. (2) *Opportunists*: when a crisis hits an empire (a colony risen to the faction, invaded or destroyed) and a rival that was not already at war with it declares war on it within 180 days, both empires get a message ("X takes advantage of the Cult rising in Y"), the whole galaxy gets a news line (so the event log has it), and, with Reputation on, the victim's regard for the rival drops by 3. It only reports what the stock AI does. (3) *The Galactic Council* (and the Interstellar Diet) can table, through its existing motion kinds, declaring a loose crisis faction a threat to the galaxy (the joint defence; once passed, AI members that have met a non-pirate faction declare war on it, a joint war), sanctioning it (non-pirate factions), and condemning an empire seen helping it (the exposed waker of the Purifier, or a treaty partner of the faction). Only in a game with a council. (4) *Purifier refugees*: when the Purifier destroys a populated colony, 20% of each race survives and flees to the nearest colonies (the owner's own first, then neighbours not at war with it): as ordinary refugee convoys when Refugees & Demographics is on, otherwise at once. Receiving colonies keep the people as extra population and take a crowding hit on approval (up to -4, fading over 18 months).
+- **Void Whale: the Leviathan's fins and flukes join its body cleanly.** The dark notch and the black strip along the body's edge under the pectoral fins are gone (the edge there was filled with keyed-out background), and the hard straight seam where each fin met the body is now a soft join: the flank's hide runs into the fin's base and swells over it, matching in texture, colour, lighting and weathering. The fins carry a deeper strip of hide under their roots, so no gap or dark sliver opens as they row forward and back, and the flukes' stalk now matches the body's shading where they join and stays inside the stalk through the whole tail stroke. The harpoons and wounds are unchanged. Art only (regenerated by scripts/leviathan-parts.py).
+- **Coordinated landings (new Gameplay change, "Land together" on the Other Empires page; on by default whenever Smarter AI is on):** troop ships invading the same planet now land together. A transport that reaches the planet holds in orbit with its troops aboard until every other transport of its empire attacking that planet has arrived (or 25 game days after the first one), then they all unload at once instead of trickling onto the planet one by one. It applies to every empire, you included; pirate raids and pirate troops are never held, and transports that are destroyed, retreat or are given other orders drop out of the group. With the box unticked (or Smarter AI off and the box never ticked) the original behaviour is unchanged; ticking or unticking it yourself overrides the Smarter AI default. Also in the Gameplay changes master switch.
+- **Game Editor: spawn threats.** The Game Editor window now has a "Spawn a threat against your empire" list (The Purifier: it wakes now and hunts your race; Generation Ships: the first world ship arrives now aimed at one of your colonies; The Cult: it converts the governors of enough of your colonies, creating governors where you have none, so the theocracy rises within a couple of months) and a "Spawn a galactic threat" list (Hive, Grey Tide, Silence, Doppelgangers, Exchange, Hollow Fleet, Dead Probe Swarm, Void Whale, Corporate Coup, and, when the add-on's data was loaded at game start, Dark Farms, Robot Mutiny and Time Bomb). Galactic ones start now and are placed near your empire where they have a choice. It works even if the add-on was off when the game started (it is switched on from then on, and its message texts are loaded, also when you load the save). A threat that is already running or over shows a short note instead of a button; Dark Farms, Robot Mutiny and Time Bomb need their add-on on at game start (they need its race / research data), and Corporate Coup needs a chartered company. It is a journaled command, so it works in multiplayer and replays.
+- **Scorched earth moved to work in progress.** It is no longer part of the Living Galaxy pack and is listed under Work in progress on the add-on page.
+- **Generation Ships: a better approach, a real landing and a lasting fleet.** The fleet still starts at the galaxy edge but now sails to a staging system near the empire it covets: a free system (no colony in it) outside every empire's territory, preferably by the empire's mining stations. The world ship waits there and is no longer left to wander off. The mothership has far more armour and shields. The troop landing used to wait for "no defending warship near the world", which never happened because the threatened empire parks its whole navy there; the transports now go in once the escort holds the world in strength, and the war clock starts when the escort arrives. After a world ship settles, the new empire gets money, the ship-size research (not weapons, armour or shields), a free space port and keeps building big, slow, low-tech warships.
+- **The Cult and the Hive hold their worlds.** Every world the Cult or the Hive owns is garrisoned to about 2,000,000 ground defence strength at no upkeep (a world new to them starts at the full strength; a garrison worn down by a siege recovers gradually, an empty one in 2 years, and not at all while enemy troops are on the ground or an invasion fleet is closing in), and each colony that rises for the Cult now does so with an 800,000-strong force. Their fleets go and defend any world that is under attack (enemy warships in the system, an invasion fleet closing, troops landing) and go on the offensive against their enemies' nearby targets when none is. The Cult rises with a starting fleet of 50% of its host empire's military, and that fleet first secures its home: it holds and defends its worlds (no offensive) until they have been clear of enemy warships and troops for 60 days, or for at most a year (new hidden settings cultNavyPct, cultSecureHomeClearDays, cultSecureHomeMaxDays).
+- **The Cult keeps spreading once it has risen.** It used to stall at its first colony: the creed only passed between characters in the same place, the governors who carried it left with their colonies, and a further cult-held colony still had to meet the 2 to 4 colony bar. Now, once the theocracy exists, every cult-held colony rises on its own (no bar), with a force backed by the theocracy that is sized to beat the colony's defence (24 times the defenders, between 800,000 and 10,000,000), and its world joins the theocracy. And every cult-held colony and every theocracy world has a 7% chance each 60 days to spread the creed to one colony within 1,000,000 units: its governor is converted (Logical and Lawful governors resist half the time, Spiritual ones never; counter-intelligence can still find the convert), or, where the colony has no governor, a believer takes the post. The theocracy's own people are never converted. In test runs it takes a few new colonies over 5 to 8 years rather than spreading across the galaxy (new hidden settings cultWorldSpreadPct, cultWorldSpreadRange, cultWorldSpreadNewGovernors, cultRisingOverkill, cultRisingMaxStrength).
+- **The Cult and the Hive rebuild their fleets and found mining stations.** The stock AI built almost no warships for them: a port lost in the fighting was never replaced (and a faction with no shipyard builds and repairs nothing), the Cult's mining stations were lost in the same wars, and its money sat unused. Now each month they get a destroyed space port back, buy up to 3 warships of their current designs at their safest port world (the one with the least enemy warship strength nearby; when every port world is threatened the purchases are banked and released together as one fleet once a world is clear or the bank reaches 10) (paid from their treasury, no upkeep) while their navy is below a share of the other empires' average military (50% for the Cult, 100% for the Hive, never more warships than the largest empire has, at least 30), and found up to 1 mining or gas station at their best free resource body (up to 20 stations). New hidden settings: cult/hive PumpPerMonth, PumpThreatRadiusMult, PumpThreatPct, PumpBankMax, PumpPct, PumpCapPct, PumpMinShips, PumpMaxShips (fixed cap override), StationsPerMonth, StationMax, GarrisonRefillYears.
+- **Generation Ships: no hopeless landings; they retarget and come back.** When the fleet has beaten the navy over its target but its troops could not win the ground war (the stock ground-war sums, defender bonuses, troops being recruited and nearby reinforcing troop ships included, with a 200% margin that grows 25 points, up to +100, for each failed landing at the same world; hidden settings genShipsAssaultMarginPct, genShipsAssaultFailStepPct, genShipsAssaultFailCapPct), it no longer lands them to die. It sails against another world of the same empire that it can beat, nearest to the original target and preferring weaker defence; the world ship lands there, its sleepers join, and the faction gets its usual money, hull research, port and big slow ships, but stays at war. From that colony it makes troops of its own race for free every month, keeps a garrison, buys more troop transports as needed, and when its stockpile beats the original target's current defence it loads up and invades it again with every warship it has, repeating until the world falls or the faction is destroyed. The war timer no longer ends the arc while it builds up (15 years cap). The defender's emergency levy during the war now follows the troops actually en route, so it cannot run away from troops still waiting at the staging system or being made at the new colony. With no beatable world of that empire the fleet holds over the target as before.
+- **Generation Ships: their own shipset, "the old colony fleet".** The world ship, its escorts and warships (escort, frigate, destroyer, cruiser, capital ship, carrier), troop transports, scouts, colony, construction and civilian ships no longer use the plain Human ships: they have their own art, built for a one-way voyage centuries ago and showing it, in weathered gunmetal grey with rust streaks and blooms at the seams and rivets, mismatched replacement plates, scorch marks and grime, fuel tanks strapped on, blunt stepped armoured prows with narrow bunker-style viewing slits that follow the bow's shape, and plain round engine bells mounted on heavy thrust frames. The warships are told apart by shape: a squat, wide escort, a long needle frigate, an H-shaped destroyer with tanks on outrigger beams, a broad cruiser with double tank racks. The world ship is a long spine with two rotating habitat rings, dim green garden domes at the bow, racks of cryo pods and a big tank section, and is clearly the biggest thing on screen; the troop transports are fat carriers lined with landing capsules. Small red positional lights blink at the hull extremities (bow, wingtips, stern, ring edges), each ship on its own rhythm. Ships the faction builds after it settles use the same art. Looks only: nothing in the game rules changes.
+
+## 0.1.32
+
+- **Generation Ships: the world ship is the fleet's base.** It has infinite fuel and refuels the escorts and troop transports near it; while the fleet is not on a raid or a landing it patrols around the world ship (the transports stay close beside it) instead of sitting still at the galaxy edge.
+- **Emergent Galaxy (character loyalty and ambition, plots and coups) is switched off for now** while it is reworked: it moves to Work in progress and leaves the Living Galaxy pack, and Internal Security and Reputation no longer turn it on. Old saves that used it still load.
+- **The Interstellar Diet screen now looks like the rest of the game.** Flags and colours for every empire, a session header with the stage, dates and a countdown, one card per motion with a for/against bar and Yes / No / Abstain, the Regent's veto and powers in one bar, and grids for measures, history and members; the composer keeps its choice between refreshes and your queued motion stays visible during a session.
+- **Dead Probe Swarm: new look.** Its Mothercore, warships, probes and mining stations now have their own dark-slate derelict shipset (new silhouettes per role, built from pieces of the original ship art, with dense plating, scuffs and wear); the glowing spider eyes are gone. The Mothercore is now a dense, spiked machine cube whose seams glow a dim red, with orange positional lights blinking at its corners. Its galaxy-map presence discs are slate instead of brown.
+- Fixed a rare crash: a ship wrecked down to no working reactor or engines got an invalid speed and position, which crashed the game on its next jump.
+- **Fighting retreats (gameplay change) now works for coalitions and falls back before it repairs:** ships of any empire you are not at war with, fighting the same enemy in the system, now count on a fleet's side, so allied fleets no longer each retreat as if they fought alone. A fleet that is merely outgunned falls back to its home base (or the nearest own colony or base outside the battle) and only goes to a repair yard when more than 30% of its ships in the fight are damaged (new setting).
+- **The Purifier (new Galactic Threat, off by default):** a mid-game hunt. An ancient planet destroyer and its escort sleep at a hidden repair station in a remote gas cloud; an explorer wakes them. Nobody controls it: it destroys the colonies of the race families it was told to hunt (preprogrammed, or the waker chooses; you by a pop-up), one world at a time, then jumps into deep space and hides. Find it by its last known position, shadow it, cripple its hyperdrive, and strike its station while it is docked and helpless. The waker is exposed later at a small reputation cost; the killer gets salvage money and reputation. See docs/NEW_THREATS.md.
+- **Void Whale:** the Leviathan now looks like an old, hunted animal: a weathered hide (scuffs, scrapes, old scars, worn patches, chipped fins and flukes) and nine old harpoons stuck in it, some broken off, some trailing frayed lines that sway as it swims.
+- Crash reports were never sent: the crash reporter failed to start in every release since it was added. Fixed.
+- Crash reports and play sessions now carry a random install id, so we can count how many people play each version (README privacy section).
+- **Deep Azure is now the default galaxy backdrop** for new games (navy and steel-blue dust). Players still on the old default (Deep) switch to it; any other pick is kept, and Game Options or the new-game wizard can change it.
+- **Smarter AI is now on by default** for new games, with all of its options, including the four ship design ones (Mod-style designs, One weapon type, Bigger warships, Trim by priority) that used to start off. Untick it on the Other Empires page for the stock AI.
+- **The Cult can rise without the Characters add-on:** it needed 4 cult-held (governed) colonies in one empire, which a stock game, with few governors, rarely has. The bar now drops to the empire's number of governed colonies, but never below 2 (new setting).
+- **The Cult and the Hive now rise with a real economy and navy:** research at the galaxy average (re-synced yearly), 1M state / 10M private money and a 50k monthly income floor, free space ports (medium plus small), a free starting fleet (30% of the host empire's military for the Cult, the empires' average for the Hive) in defence fleets, free troop upkeep, and the host empire's nearest mining stations (new settings on both add-ons).
+- Crash reports no longer let Sentry store the sender's IP address (it kept it before, despite the privacy note); only the country is kept.
+
+## 0.1.31
+
+- **Mothballing (new Gameplay change, off by default; Other Empires page):** put a fleet or warship into reserve at
+  one of your space ports — the selection panel's **Mothball** button (also on the Fleets screen and the Ships and Bases
+  screen) picks the safest interior port with room; right-click lists every port with distance, ETA and ships in
+  reserve against its capacity (6 / 12 / 24 for small / medium / large ports). The ships park in even rings around the port, facing it, drawn greyer while in reserve
+  at 15% upkeep — immobile, weapons cold, ignored by automation, the AI and Intercept / Defend; a fleet stays the same
+  fleet. **Reactivate** takes 240 days for a mid-sized ship (120–480 by size) at full upkeep. A reserve is vulnerable: a
+  destroyed port forces an emergency reactivation, a captured port takes the reserve ships with it. AI empires mothball
+  up to 30% of their navy after 5 years of peace on a tight budget, reactivate at the first war warning, and see a
+  mothballed rival as weaker. Every number is a parameter.
+- **Fighting retreats (new gameplay change, off by default; Other Empires page):** a fleet that is outgunned (the
+  enemies it is fighting have 1.5 times its firepower or more, for 5 seconds) withdraws together to the nearest
+  friendly repair point, then resumes its duties (automated) or waits for orders ("3rd Fleet withdrew from Sol to repair
+  at …"). AI fleets follow the same rule; ships keep the original's per-design Flee setting, and a fleet set to Flee:
+  never fights on. The numbers are add-on parameters.
+- **Veterans (new gameplay change, off by default):** a "Gameplay changes" checkbox on the Other Empires page (also in
+  openDWU Classic; included in the heading's master switch). Warships and troop units that survive battles gain experience
+  and rise from Green to Regular, Veteran and Elite: ships +5% weapon damage, targeting and evasion per rank (at most +15%),
+  troops +10% attack and defence per rank ("Veteran troops" on the Colony invasion screen). Experience dies with the ship or
+  unit (and leaves a captured ship); refits and troop transfers keep it. Shown on the ship's selection panel ("Crew: Veteran
+  (3 battles)") and in the troop lists. A ship reaching Veteran with only a generic name (a design name and a number) is
+  given a ship name and a short service record (battles, kills, years in service, notable battles) on its selection panel
+  and the Ships screen tooltip; when it is destroyed you get a message ("SSS Gallant Ranger was lost at Aldebaran after 14
+  battles"). Every fleet of two or more warships has a flagship (its best ship, or the one you pick with **Make flagship**
+  in the selection panel's action slots): ships near it get +3%, and if it is destroyed the whole fleet fights at -10% for
+  30 days while it reforms. The flagship is marked on the fleet's panel and the Fleets screen. Damaged AI veterans and
+  flagships break off hopeless fights a little sooner, enemy flagships weigh 15% more as targets, and AI invasion plans count
+  troop ranks (never more cautious than the original).
+- **Generation ships are always Human:** every world ship and its fleet (and a pirate faction left after a lost war) is Human,
+  instead of a random race no empire uses.
+- **Generation ships: slow, efficient, fuel-heavy:** their warships use the most fuel-efficient hyperdrive up to tech 4
+  (Calista-Dal WarpDrive: 15,000 speed, the lowest energy use) and are about 50% bigger, all of the extra room fuel
+  storage (the battleship: size 1,061, fuel 6,500 instead of 600; slower in normal space).
+- **Void Whale: the Leviathan redrawn and animated:** a true giant (2-3x a New Fauna void whale on screen), seen from above like every creature: an alien humpback-like whale with very long swept-back pectoral fins and broad notched flukes, rows of softly glowing dots in a V on its head and glowing beads down its spine (Leviathan art from the user-supplied reference, toned down to sit in dark space, at about a large space port's pixel count). It swims: its body flexes in a slow travelling wave, the flukes sweep side to side, the long fins row, and the glows pulse in a ripple from snout to tail; its mouth never opens. Damage shows as a battered hide: fine scuffs, scrapes and nicks that multiply with damage, thin tapering cuts and a few deeper dark gashes of dried maroon, healing to thin pale-grey scars. Its hyperjumps play the original game's hyperjump flares (out and in); a matching whale icon at galaxy zoom.
+
+- **Generation ships are really low-tech now:** apart from reactors, fuel storage and their (efficient tech-4) hyperdrive,
+  every part of their warships is outdated, including special weapons, targeting, ECM, countermeasures, repair systems,
+  tractor beams and sensors; they no longer mount the planetary Giant Ion Cannon.
+- **Mothballing: choose the port:** in the Fleets and Ships screens, Mothball now opens the list of your space ports
+  (★ the best one: interior, with room; distance, arrival time and how full each is) to pick from.
+
+- **New threat: Void Whale** (Galactic Threats, work in progress): from about year 5 one unique giant scarred beast, the Leviathan, hunts and swallows lightly defended stations (galaxy-wide news each time), hyper-lunges away to rest in a quiet system, and repeats. Its wounds persist, show on its hide and heal slowly; badly hurt it flees to deep space and returns for the empire that hurt it most. The killing blow earns a bounty, goodwill from every other empire and a carcass salvage field. AI empires fortify where it fed and send hunting fleets. Has its own art (see the Leviathan entry) and a Galactopedia article.
+- **Bounty hunters (new add-on, Politics & Characters, work in progress):** an empire whose civility rating sinks to Evil (-30) gets a bounty pooled by the empires that dislike it, announced galaxy-wide. A mercenary pirate faction then sets up at the edge of its territory and hunts its ships, stations and trade (never colonies), paid per kill out of the bounty. The target can pay the bounty off (a decision), destroy hunters for a little reputation, or recover to -15 civility, which withdraws the bounty. The Diplomacy screen shows "Bounty: N credits". AI empires are hunted too.
+- **New threat: The Hollow Fleet** (Galactic Threats add-on, Hidden threats, still in progress): from year 8 a fleet of ancient automated warships wakes at a remote anchorage and patrols a fixed route of 6 systems on a repeating schedule, attacking only what is in the system it is in. Empires that see it learn its route and dates (Threats & Leads on the Intelligence screen, a faint dashed route on the Freight Flows map); destroy every ship for a money bounty.
+- **Dead Probe Swarm scales with the galaxy:** it adds a mining station every 75 days in a 300-star galaxy and
+  proportionally faster in bigger ones (600 stars: every 37 days, 1,400 stars: every 16 days; never under 10 days), and its income cap is 300,000 a year (was 250,000).
+- **Generation Ships, reworked:** one world ship per six empires in the game (at least 1, at most 4; 24 empires bring 4), the first at the usual trigger, each further one 2-4 years later and aimed at a different empire. The escort is now 1.7x the target's military firepower (floor 700) and is big and old: battleships, cruisers and carriers plus destroyers and frigates as screens, built with weapons, shields, armour and engines about 2 tech levels behind the target's (never below the start tech) but with top-tier reactors and fuel storage and an efficient tech-4 hyperdrive. When the ultimatum runs out, Heirs / Ark Faith / Quiet Ship first raid the target's gas mining stations within reach (to cripple its fuel), then every fleet regroups and attacks the colony together; Pilgrims go straight to the assault. A fleet that loses, or fights two years without winning, no longer scatters: the survivors become a pirate faction on a gas giant near the world ship whose gas is their reactors' fuel, keep their ships upkeep-free and raid the empire they were aimed at. The Galactopedia article is updated.
+- **Guarantee a threat against you:** in the new-game add-on list, right-click Generation Ships (or The Cult) to guarantee it comes and aims at your empire; a blue check marks it. Stored with the game's start options, so multiplayer peers agree.
+- **Fix: ships no longer fly past their warp exit and snap back:** on a short jump the drawn ship was still catching up from its warp-entry easing when the sim put it at the exit, and carried that speed through the exit point (up to several thousand units past it) before returning. The easing now stops at the exit. Drawing only - the simulation already stopped the ship exactly at the exit.
+- **Ancient Guardians keep their name:** themed empire names no longer rename the story empires — the Ancient Guardians
+  (and the Shakturi / Erutkah Refugees) are always called what the original calls them.
+- **Fix: no Mechanoid / Shakturi natives outside the story:** a player who picks one of these story races no longer finds independent colonies of that race next to their start (they were seeded in the player race's region, e.g. "Utopia 2"); those natives are now a normal race. Normal-race games are unchanged.
+- **Backdrop animation now visible:** the animated dust, glow cells and godrays of the Deep galaxy backdrops moved too
+  little to notice. The moving layer now carries more of the dust, runs 2.5x faster, and has brighter, more frequent
+  glows and stronger godrays; stars stay brighter than the dust. "Animate backdrop" was already on by default.
+- **Slower hyperdrive (new gameplay change, off by default):** a "Gameplay changes" checkbox, "Slower hyperdrive ×" with
+  a number box (1–10, default 3): every ship's hyperdrive takes that many times as long to spool up before a jump, for
+  all empires, pirates and the player. Interdicted ships spool 5× the original in total. Jumps themselves are unchanged.
+- **Gameplay changes are all off by default** (Longer ground battles was ticked for new games in 0.1.30). The
+  "Gameplay changes" heading is now a switch that turns them all on (except Slower hyperdrive) or all off.
+- **Rendering:** the engine flame of a ship in a hyperjump no longer disappears or flickers when you zoom in on it with the follow camera (the flame is drawn at full length at warp speed and no longer culled on the ship's pre-warp position).
+- **Galaxy Map:** double-clicking a planet in the system picture selects it and shows it in the info panel, as in the original.
+- **Crash reports:** the desktop app now sends crash reports (error, stack, app version, OS, graphics card; no IP address, saves or personal files, and your user name and home folder are replaced by "~") to Sentry to help fix bugs. It has no setting.
+- **More crash-report data:** in about 1 % of sessions the app sends a once-a-minute performance summary (average fps, slowest frames and sim tick, galaxy size, graphics card); a multiplayer desync sends the frame, the two checksums and the differing parts (no save). New **Report a Bug** button in the Esc menu: you write what happened and it sends that with a screenshot of the game, the recent log, your version and graphics card, but no saved games.
+- **UI polish:** column headers shrink to fit before they are cut off, hot-key and Bacon Mod Settings descriptions wrap in full, the new-game track bar caption clears its tick label, the credits roll is clipped to its window, and aborted help-page loads and the optional BaconSettings.txt no longer log errors on stock installs.
+
+- **Anonymous usage statistics** (Aptabase, EU): the desktop app now sends app version/OS/graphics vendor and the setup of games you start or load (no names, paths or saves), minutes played, and which screens were opened. See the README's Privacy section. It has no setting.
+- **Automatic updates** for the Windows setup (.exe) and the Linux AppImage: the new version downloads in the background (checked against the release's .sha256, paused while a multiplayer game runs) and installs when you quit; a one-line notice tells you it is ready, and Check for Updates offers Restart now. macOS, the Windows zip and the Linux tar.gz keep the Download offer. `"checkForUpdates": false` still turns it all off.
+
+## 0.1.30
+
+- **Game menu:** "Save Game As" is gone — Save Game opens the same save window, where you can type a new name.
+- **Layout fixes from a full UI audit** (docs/windows-ui-audit.md): the Local model window's Test / Apply buttons are
+  inside the window again, the Research screen's instructions no longer run into the tabs, the Improvements
+  descriptions and the wizard's galaxy-shape description are no longer cut off.
+- **New games start again** when the sim runs in its own process / worker (the default): an import-order bug in the
+  Orbital superiority add-on stopped the sim from starting ("Cannot access 'ORBITAL_SUPERIORITY_FLAG' before
+  initialization").
+- **Hot seat hidden:** the new-game wizard no longer offers "Human Players..." (several humans sharing one PC); LAN and
+  Internet multiplayer are unchanged. A hot-seat list remembered from older settings is dropped.
+- **Fullscreen** is now a checkbox in Game Options → Display Settings (remembered between launches); F11, Alt+Enter and
+  Ctrl+F toggle it too (laptop F11 keys often need Fn).
+- **Graphics:** Game Options shows which GPU the game runs on ("Graphics: NVIDIA GeForce RTX 5080 (D3D11)"), or says so
+  when it runs without WebGL; the desktop app prefers the high-performance GPU on hybrid PCs, ignores Chromium's GPU
+  blocklist on Windows and writes what it got to gpu-log.txt. Without WebGL the orbit rings no longer wash the whole
+  system view out.
+- **Blank map after a GPU reset fixed:** if the graphics driver resets and the map's WebGL context does not come back,
+  the game now rebuilds the map by itself (no more save and reload); Chromium no longer blocks WebGL for the game after
+  GPU crashes, and the losses are logged in crash-log.txt.
+- **Colony plates on the map:** zoomed right in, populated colonies show the original's plate: name in the empire's
+  colour (capital icon), race, population / development bars and known resources.
+- **Double-click the selection panel** to open the selection's screen, as in the original: your colony → Colonies,
+  another planet → Galaxy Map, a ship or base → Ships and Bases, your fleet → Fleets.
+- **No more white text backgrounds:** dark empire names in the Diplomacy list no longer get the white 1 px shadow that
+  read as a white box behind them (the selection panel had the same fix); a double-click or drag no longer paints the browser's selection highlight behind
+  panel text (selection panel, Diplomacy, ...), and unstyled form controls are dark everywhere.
+- **Windows / stock installs: the right font and the missing pictures.** The game's font (Forgotten Futurist) and the
+  pictures the original keeps inside DistantWorlds.exe (the new-game wizard's Playstyle buttons and page pictures, the
+  map zoom buttons, the game-menu header, the expansion planner picture) were read from a folder only the developer's
+  install had, so on a normal install every window used Arial (much wider: text overflowed and overlapped everywhere)
+  and those pictures were blank. Both now ship with the game. Verdana text falls back to DejaVu Sans where Verdana is
+  not installed (Linux).
+- **Threats & Leads (Characters / Intelligence screen):** with any Galactic Threat add-on or Internal Security on, a
+  **Threats & Leads** button under the Galactopedia link switches the screen to a list of every threat site and
+  security lead your empire knows: what it is, where, suspected or confirmed, when it was found and what is being done.
+  **Go to** (or a double-click) centres the map on it; **Investigate** puts one of your idle or counter-intelligence
+  agents on a suspected site for about three months — it now works without Internal Security too, and a successful
+  investigation confirms the site. With Internal Security on, confirmed leads also offer its arrest / exile / purge /
+  amnesty / quarantine / martial law / recall fleet / scrap ship actions here. The separate Internal Security window
+  and its link are gone (everything it did is in this section).
+- **Fewer add-on menus:** the Interstellar Diet is no longer in the top bar's ••• menu (open it from the Diplomacy
+  screen's Diet block). `docs/addon-ui-inventory.md` lists every add-on window, tab, link and HUD extra with the merges
+  proposed next.
+- **Diplomacy screen firepower (also wrong in the original):** the figure dropped a whole warship as soon as its engines
+  were knocked out or any component was unbuilt, so a battered fleet read as a fraction of itself. The empire panel now
+  has a live **Firepower** row (and pirates show "operational firepower") counting every finished warship at the weapons
+  it has working right now; ships in construction or refit stay out. It refreshes every second. Display only; the AI's
+  own figures are unchanged.
+- **Return of the Shakturi can no longer stall (also true of the original):** the Beacon of Shaktur is now placed by the
+  forced date plus ten years even if the Ancient Guardians were never met (from your position, as the original's
+  fallback does); a Beacon nobody explores is marked on your charts and later investigated by the nearest AI empire; a
+  Beacon is no longer used up when no start world for the Shakturi can be found (it stays for the next try); and with the
+  Guardians gone, the invasion starts 12 years after the Shakturi enrage, aimed at your capital. Games where the story
+  already runs are unchanged.
+- **Local model fix (desktop app):** Ollama refused every request from the app (it rejects the app's `dwu://` page
+  origin with 403), so Refresh, Test and all local-model features failed unless `OLLAMA_ORIGINS` was set. The app now
+  allows its requests to model servers on this machine (localhost only); no Ollama setup is needed.
+- **Intercept (new command):** select a ship, fleet, base or space creature that is not yours and an **Intercept**
+  button (crosshair) appears in a free slot of the selection panel's action buttons; its hover message names the force
+  it sends, e.g. "Intercept: 1st Fleet (ETA 101 d)" — the best free fleet (or, failing one, a single warship) strong
+  enough to win (1.5× its strength), in fuel range, weighing travel time, spare strength (the smallest force that will
+  do), fuel and damage. Right-click the button to pick another eligible force (listed in score order) or to select the
+  chosen one. A moving target is met where it is going (its course and hyperjump are predicted, re-checked every few
+  seconds) instead of chased from behind; in range the force attacks as normal. The order ends when the target is
+  destroyed, or after the force reaches the last known point of a target it lost sight of. Empires only at war;
+  pirates unless you have an agreement. When no force can go, the button is greyed and its hover message says why.
+- **Defend (new command):** with a star system selected, a **Defend** button (shield) sends the best free force (strong
+  enough for the hostiles you can see there) to patrol the system; right-click works the same way.
+- **Watch system (new fleet toggle):** for your own fleet a **Watch <system>** button (eye; in the More menu when all
+  eight action slots are taken, as they usually are for a fleet): with the fleet's automation off it stays there defending it, flies off
+  to the best refuel point when low on fuel and comes back by itself. The selection panel shows "Watching <system>"; a
+  new order to the fleet or turning its automation on ends the watch.
+- **Orbital superiority (new gameplay change, off by default):** a "Gameplay changes" checkbox on the new game's Other
+  Empires page (also in openDWU Classic). During a ground invasion, who holds the orbit decides more than the original's
+  flat +25%: attackers holding it get +50%; a contested orbit costs the invaders -35% to -50% and a little strength
+  every day ("Supply lines disrupted"); a defender-held orbit costs them -50%, heavier losses and any further landings
+  ("Supply lines cut"). AI empires invade where they can hold the orbit, keep troops aboard until they do, keep their
+  fleet over the planet, send relief fleets to invaded colonies and withdraw from orbits they cannot win.
+- **Defensive jump interdiction (new gameplay change, off by default):** a third "Gameplay changes" checkbox on the new
+  game's Other Empires page (also in openDWU Classic). Armed defensive bases and space ports project an interdiction
+  field (4,000 to 6,000 units with their firepower): enemy ships starting a hyperjump inside it spool five times as long
+  as in the original (in total, also with the slower spool) before they can jump out, unless they cruise out of the field first. Jumping in is unchanged. The ship's panel shows
+  "Interdicted by <base>", a base's panel its field. Pirates raid defended systems only with fleets strong enough to
+  kill the bases first; AI empires at war favour a defensive base at the border colony facing the enemy; their strikes and invasions are unchanged.
+  ("Supply lines cut"). AI empires fight for the orbit when they (with the fleets they can gather) at least match the
+  defenders there, keep their troops aboard while they are losing it, send more fleets while it is undecided, send relief
+  fleets to their invaded colonies and withdraw only from orbits they cannot match.
+- **Longer ground battles (new gameplay change, on by default for new games):** a second "Gameplay changes" checkbox,
+  "Longer ground battles (2×)": ground battles take twice as long (both sides lose troops at half the rate); who wins is
+  decided as before. Untick it for the original pace.
+- **Blockades that bite (new gameplay change, off by default):** a third "Gameplay changes" checkbox (also in openDWU
+  Classic). A colony whose orbit is held by an enemy at war with it (more than 1.5 times the owner's armed ships and bases
+  within 2,000, the Orbital superiority measure; or by an empire that declared a blockade of it) is blockaded: it loses
+  the trade half of its taxes, its space ports earn no trade income, construction and population growth there stop and
+  its approval falls slowly (0.1 a day, at most 15). It ends when the orbit is free; both sides get a message, and the
+  colony panel shows "Blockaded by X". AI empires blockade their enemies' richest colonies before invading and send
+  their nearest strong enough fleet to break a blockade of their own.
+- **Galaxy Backdrop picker:** new **Dimmed Original** (the original's colours, darkened halfway toward Deep, faint grey
+  dust), **Deep Azure** (navy and steel-blue dust, teal accents), **Deep Ember** (crimson and ember dust, the odd dull
+  gold) and **Deep Violet** (purple and magenta dust, blue accents), all built like Deep from the original image. Galactic
+  Core, Golden Spiral, Eerie and Nebula are gone (saves and settings with them load as Deep), and so is the Storm flashes
+  option. The 2D galaxy maps and the picker thumbnails now show the Deep-style backdrops too.
+- **Influence borders:** where two empires meet, only the darker empire's side gets the dark band (the "Both darker"
+  option is gone; that setting loads as Darker side).
+- **Galactopedia:** clicking an open group's header closes it again.
+- **Empire colours in big galaxies:** with more than 20 empires your own colour (standard or custom) is kept exactly,
+  no other empire gets a colour close to it, and up to 101 empires now get distinct colours (100 extra colours, was 40).
+- **Colony Defence add-on withdrawn:** pirate control of colonies works as in the original again. The add-on is no longer
+  in the picker or the Living Galaxy preset; saves that use it still load.
+
+## 0.1.29
+
+- **Multiplayer host wizard fix:** Game Settings from the host lobby (LAN or Internet) opened the new-game wizard behind the
+  multiplayer screen, so nothing in it could be clicked; the multiplayer screen now properly hides while the wizard is open.
+- **Multiplayer menus:** the Host / Join screen now uses the stock glass buttons, window colours and HUD scale, shows one section
+  at a time with a single highlighted main action, and takes Enter (main action) and Esc (back); the invite-code dialog too.
+
+- **Update check on every launch:** the desktop app now asks GitHub for a newer release each time it opens (it was at
+  most once a day). "Skip This Version" and the checkForUpdates switch in config.json still apply.
+- **AI rulers remember negotiations:** with the diary on, an AI ruler now notes a fair deal, a generous offer or an insulting offer from you (refusals leave no trace).
+- **Add-on picker:** the new threats, Privateers, Characters, Diet & Victory, the Voidbloom War, Slavery and War Crimes
+  are now Recommended; the Work in progress section is folded until you open it (or one of its add-ons is ticked).
+- **The local model layer brings in war goals:** switching on the Local LLM Layer now also switches on Lively Galaxy's War goals & peace terms (the peace talks need them) and nothing else of Lively Galaxy unless you tick it; in the add-on settings that option shows as required.
+- **Add-on picker reorganised:** a "Recommended" section on top and a "Work in progress" section below (WIP rows carry a tag and a hover reason), each keeping the topic groups. The Event Log is now part of the base game in every new game (no row; it no longer pulls in Internal Security). The Galactic Council is no longer a row: it runs inside Characters, Diet & Victory (renamed) and follows its Interstellar Diet option.
+- **Real diplomatic negotiation (new `llmNegotiation` option of the Local LLM Layer add-on):** a Speak freely box on the Diplomacy screen turns your words into a legal proposal card (trade items, money, and treaties such as free trade or a mutual defence pact, now tradeable as part of a package), the game's own trade code decides, and a refusal comes with up to 3 counter-offers (also on the trade screen, no model needed); between human players your words go with the offer. Off by default.
+- **Local model settings window:** Game Options, Local model... has endpoint presets for Ollama / LM Studio / llama-server, a list of the installed models, a Thinking switch (forced off on OpenAI-compatible servers too) and a Test button.
+- **Rulers' memory turns Reputation on:** switching on the Local LLM Layer's rulers' memory option now also switches on the Reputation add-on and its ledger, which the attitude nudge needs (add-on options can now name the add-ons they need).
+- **Rulers' memory (new `llmMemory` option of the Local LLM Layer add-on):** each AI ruler keeps a short dated diary of what other empires did to or for them (wars, peace, treaties, gifts, colonies, pirates driven off); the lines and a mood word feed the model prompts, and a small capped, fading attitude nudge (only for things the original game does not already count; turns the Reputation ledger on) follows. Off by default.
+- **openDWU Classic (second edition per platform):** base game + Bacon + our base-game changes + the new-game wizard, with only Themed Names (always on), Smarter AI (the Other Empires page) and the Event Log (always on, Galactic History). No add-on picker. Own app id and profile folder, so it installs next to the full openDWU; it can host or join multiplayer games with the full edition when the game uses only those add-ons. A save that needs other add-ons says "This save needs add-ons from the full edition".
+- **Big-galaxy colours are built in:** with more than 20 empires the extended 40-colour palette is used automatically (display only, nothing in the simulation changes); the Big Galaxies add-on is gone from the picker (old saves that have it still load).
+- **Peace talks in plain words:** with the local model on, the peace-terms panel has a words box ("give me Kygnos and 2,000 a year for five years") that fills in the real terms for you to edit and offer, a live line saying whether the other empire would accept, and offers of peace come with a voiced cover letter. Without a model the panel works as before.
+- **LLM multiplayer fixes:** with several humans, each empire's strategic moves are no longer repeated twice in a year, the
+  AI's strategic planning runs on the host only, and peace terms offered to a human now raise a decision for them to answer.
+- **War objectives scale with galaxy size:** an empire at war now looks for enemy colonies and bases to capture within a
+  range that grows with the galaxy past the biggest stock size (15 sectors): the original 1.5 / 1.0 sectors become about
+  4.4 / 2.9 at 26 sectors and about 8 / 5.3 at 40. Stock-size galaxies are unchanged.
+- **Potential Colonies shows future sites:** the Galaxy Map's Potential Colonies view and the map overlay now also show habitable planets you cannot colonise yet. They are drawn in blue (a dashed ring on the map), say which colonisation technology they need, and help you plan your research. Yellow still means colonisable now; colony ship targeting is unchanged.
+- **Colony link lines:** the lines joining an empire's systems on the galaxy map. With the new influence borders on they are
+  thick, pale, slightly faded dashes with rounded ends, 5 px wide on screen, static (the travelling pulses are gone), and
+  they keep their screen size while you zoom in; zoomed far out past the galaxy scale they shrink with the map (to 30% at
+  most) so they don't swamp it. With the new borders off they stay the classic thin 1 px dashed lines, now antialiased with
+  no stair-stepping on near-vertical links.
+- **Shared border edges:** with influence borders on, where two empires' regions touch, each side gets a darker edge of its
+  own colour: thin continuous bands (about 3 screen px) that sit side by side on the shared line. Game Options ->
+  Advanced Display -> Map Display -> Shared border edges: Both darker / Darker only (only the darker empire's edge) / Off.
+- **Galaxy nebula clouds:** the galaxy map draws its nebula clouds from the original nebula art again. On the Original
+  backdrop they have the original's lighter grey patches; on Deep they show as faint smoke. Switching backdrop mid-game
+  updates them.
+- **Galaxy backdrops centred:** the backdrop structure is centred and scaled on the galaxy's own layout, so it sits
+  behind the map rather than at a fixed spot.
+- **Map markers:** the Waypoints & Known Locations overlay and the minimap no longer mark black holes (their Pull and Event
+  Horizon, the wormholes and gravity wells), supernovas, or the location hints that point at them. The remaining
+  known-location diamonds are light purple and a little smaller.
+- **Treasure fleet beacon:** the galaxy map's ring around the Concord treasure fleet is smaller, thinner and dark purple,
+  a little stronger, with a soft fading halo, so it no longer dominates the map.
+- **VIP shuttle rings:** the rings around VIP shuttles are a thin, translucent dark orange and stay smooth at maximum zoom.
+- **VIP shuttles:** no crash when the trip shuttles cannot be named, and a VIP trip is never started in a read-only galaxy.
+- **Follow camera while warping:** the followed ship stays visible when zoomed in, even mid-warp, and its hyperjump flash
+  is drawn where the ship is shown. The camera's motion is steadier when the simulation delivers its steps in bursts.
+- **Main menu Multiplayer buttons:** on hover, focus or press they get the stock treatment: a teal band that fades in from
+  the left, with a gold label (no planet icon). Their letters have a soft edge like the stock art instead of a halo, and the
+  multiplayer submenu's Resume Multiplayer Game is just Resume.
+- **Selection panel buttons:** the eight icon buttons under the selection panel look and behave like the original again:
+  original glass colours, icon-only with the build count centred, and the hint shown as the yellow message above the panel
+  (disabled buttons too) instead of a tooltip. The mercenary smuggling icon is fixed, and our own extras (fleet settings,
+  dispatch orders, charter) sit behind a "More" button left of the strip.
+- **Build buttons:** a build button whose yard lacks resources the design needs shows the original warning overlay (the
+  exclamation icon beside the ship), and its hint gains " (RESOURCE SHORTAGE: <resources>)".
+- **Station orders give feedback at once:** ordering a station or base from the selection panel (or the More menu's dispatch
+  build slots) shows "Construction queued: <design> at <planet>" immediately, with a pending "Awaiting construction ship" row
+  in the Build Queue and Construction Yards job lists until the job is on the board. The job only starts building when a
+  construction ship arrives, which can be a long trip in a late-game galaxy.
+- **Playable Mechanoid and Shakturi:** the new-game wizard (and the multiplayer and hot-seat race pickers) now offer the
+  Mechanoid and Shakturi races for your own empire. AI empires still never get them, and the story's Ancient Guardians and
+  Shakturi lookups skip your empire, so it is never mistaken for or absorbed as the Guardians.
+- **Galactopedia:** the Mechanoid and Shakturi race pages say they are playable for the player, and the Emperor bid article
+  is rewritten for the year-65 rules and the locked uprising.
+- **Robot Mutiny rework:** the Broadcast's beacon fleet is sized to the strongest normal empire's military: about 1.3 times
+  its firepower in the first year, rising 0.1 times a year (to 1.8 times) while the transmitter stands, with losses
+  replaced and nothing more. At the rising every BattleBot garrison defects at tech level 5 and is at war with everyone
+  for good. Usually it takes an eighth of the Ancient Guardians' fleet, 30 troop transports and three founded worlds, and
+  attacks the weakest-garrisoned colonies near the transmitter. One time in five it absorbs the whole of the Ancient
+  Guardians and turtles: it defends its worlds and sends no fleets beyond them.
+- **Diet enforcers never hold a colony:** the Interstellar Diet's enforcers cannot capture, colonise or peacefully take over
+  a colony, and in saves made before this a colony they held goes to the independents.
+- **Emperor bids are a late-game endgame:** the Interstellar Diet's Emperor bid cannot start before year 65. AI Regents bid
+  only when overwhelmingly ahead (2.5x the next empire's score, 40% of the galaxy) and then only rarely. When any empire
+  bids, nearly every other major empire declares a locked war on it; the bidder must hold its capital for 10 years to win (a failed bid ends the wars' lock). The Diet screen shows
+  the countdown, and the yearly ticker keeps count.
+- **Emperor bid uprising:** when an Emperor bid starts, the uprising empires' idle attack fleets are refuelled and sent
+  straight at the bidder's nearest colony, and re-sent every 10 days, instead of sitting out of range.
+- **VIP shuttle crash fix:** a VIP trip could crash the game while naming its shuttle when it was started from a read of the
+  game outside a sim update; such reads now never start a trip. Nothing changes in a normal game.
+
+## 0.1.28
+
+- **Diet notifications:** every motion and every result (with the tally) now reaches the message log and ticker, also for
+  empires outside the Diet; results that hit you or your allies, and major ones, pop up.
+
+## 0.1.27
+
+- **VIP shuttles say who they carry:** "VIP Shuttle — <name>, <role>" (Governor of <colony>, Diet delegate, Leader,
+  Admiral, …) on the map and in the selection panel. The ruler's decoys carry the same label as the real one.
+
+## 0.1.26
+
+- **Interstellar Diet: History tab** listing the motions passed, by year (who proposed them, the vote and the target), with
+  an option to also show failed and vetoed motions.
+
+## 0.1.25
+
+- **Fix:** construction ships arriving in their build system no longer get sent back out to the edge of the star's
+  gravity well (they turned back towards home instead of building).
+
+## 0.1.24
+
+- **Resource Crises fully switched off,** including in saves that had it on: no more depleting deposits ("resources
+  being drained") and no more "Shortages" unrest from it.
+
+## 0.1.23
+
+- **Fix: colonies at −70 approval from "Shortages".** Resource Crises was still switched on behind the scenes by Internal
+  Security and Reputation (Politics & Characters). They no longer include it, and its shortage penalty is now capped at
+  −12, which also fixes existing saves.
+
+## 0.1.22
+
+- **Resource Crises withdrawn:** removed from the add-on picker and the Economy expansion, because its approval loss per
+  missing luxury could stack far too high. Saves that already use it still load.
+
+## 0.1.21
+
+- **Fix:** removed the influence-border edge shading added in 0.1.20, which could crash the game.
+
+## 0.1.20
+
+- **Notifications volume:** a new slider in Options → Sound Volume for the message and alert sounds (new message,
+  event, alarm), on top of Effects.
+- **Influence borders:** empire names in a serif font (Source Serif 4, bundled), and each region darkens softly
+  towards its edges.
+
+## 0.1.19
+
+- **The treasure fleet no longer gives away the Concord's homeworld.** Until you have met the Concord it follows normal
+  fog of war: no map marker, route or selection lines for systems you haven't explored, and no treasure-fleet news
+  naming its home. After contact it behaves as before.
+
+## 0.1.18
+
+- **Construction ships no longer die at black holes.** Builds there used the star's centre instead of the safe parking
+  point, and ships came out of hyperspace inside the pull; both are fixed.
+- **Construction priority list** on the Build Order screen (F9): rank research and resort bases, mining stations and
+  everything else for your automated construction ships (new games default to that order; "Original order" restores
+  the stock one).
+- **Fewer map markers:** black holes and supernovae are only marked when they carry a real research or scenery bonus.
+- **Slavery is now a standalone add-on.** Off, the original game's enslavement works exactly as before; on, it takes over
+  the stock Enslave policy and penal colonies with output up to 6× and tax up to 2× by staffing, garrisons, revolts and
+  labour convoys.
+- **Rim Atmosphere's galaxy-map haze fixed:** it no longer shows as a tilted square past the map edge; it is now dark,
+  soft storm clouds that fill the rim to the map's edges.
+
+## 0.1.17
+
+### The Voidbloom War (new add-on in The Rim)
+
+- An Opium-War-style arc around the Oranthi Concord. Voidbloom, a narcotic spore, grows only on deadly rim worlds worked
+  by forced labour and held down by garrisons, and is smuggled into the Concord's closed market. Addiction spreads, the
+  Concord's treasury bleeds and its commissioner cracks down with blockades, raids, burned fields, freed workers,
+  freighter hunts and occupations. Tolerate it or go to war: a late war can end in an unequal treaty (ceded worlds,
+  indemnities, treaty ports, legal Voidbloom), followed by one of five aftermaths. The Interstellar Diet can ban it,
+  sanction either side or force the Concord's ports open.
+
+### The Rim
+
+- **A wild rim:** the AI rarely settles it, its planets are poorer, rim pirates are many and strong, and derelict
+  high-tech warships wait to be claimed.
+- **Concord patrols** around its colonies and stations, escorts for its construction ships, new listening posts.
+- **Faster, deadlier creatures** that can catch ships, and about 2.5× more wildlife in the rim.
+- **Rim Herders** earn money from their goods plus a small yearly stipend.
+- **Ordinary empires no longer start inside the rim**, and that check no longer stalls "Founding empires".
+
+### Galactic Threats
+
+- **Generation Ships:** an early-game crisis. A world ship and a fleet about 1.3× its target's strength arrive at the
+  galaxy edge, make contact and, 18 months later, demand a world: Pilgrims, Heirs, Ark Faith or the silent Quiet Ship.
+- **Archive Cores:** lost tech to study (four yearly boosts) or seal for one large payoff.
+- **The Dead Probe Swarm:** self-replicating machines that mine outward from their Mothercore and attack any ship in
+  their systems, shown as a dark-brown presence on the map.
+
+### Dark themes
+
+- **Slavery:** penal colonies worked by enslaved peoples, with output up to 6× and tax up to 2× by staffing, at the price
+  of garrisons, revolts and reputation; AI use depends on species and government.
+- **Scorched earth** (Living Galaxy) and **War crimes remembered** (Politics & Characters) add-ons.
+
+### Map, look and menus
+
+- **Deep (DW2-style) backdrop,** the new default for new games: the original image darkened, with slowly drifting rust and
+  teal dust, glows and faint godrays.
+- **Influence borders** (Advanced Display Settings): angular empire regions from colonies and stations, optional empire
+  names, and pulses flowing out from each capital along the link lines.
+- **One Multiplayer entry** on the main menu, with Host, Join and Resume inside.
+- The Diet map icon stays sharp at any zoom.
+
+### Options
+
+- **Arrival** (new-game wizard): Early / Normal / Late for the Return of the Shakturi refugees.
+- **Auto-rebuild lost ships / stations** on the Build Order screen (off by default).
+
+### Multiplayer
+
+- **Join a game in progress.** A new player can join a running LAN or Internet game: the host offers a free empire and
+  you take control at the next frame.
+- **Multiplayer saves and Resume.** Multiplayer saves are marked in the load list (with a "Multiplayer saves only"
+  filter), and "Resume Multiplayer Game" on the main menu reopens the lobby on the save; players get their empires
+  back. The last 100 chat lines are saved with the game.
+- **Host migration.** If the host leaves or crashes, the next player takes over without a restart, and the old host can
+  rejoin. Two-player games wait with Reconnect / Take Over instead of playing on alone.
+- **Host on the Internet, join by code.** Invite and reply codes connect players directly (WebRTC, no server).
+- **Diplomacy and chat with other humans.** Offers to another human can be accepted, rejected, countered or withdrawn
+  ("Your offers"). Chat in the lobby and in game, with mute per player.
+- **Pop-ups no longer pause the game** for everyone in a LAN or Internet game (single player and hot seat unchanged).
+- **Deeper sync check** that names the part of the game that went out of sync and resyncs once.
+- **Compact multiplayer status row** beside the selection panel; the full status shows on hover or click.
+
+### Expansions and add-ons
+
+- **Expansions.** The add-on picker groups the add-ons into five expansions with one switch each: The Rim, Politics &
+  Characters, Economy, Galactic Threats and Living Galaxy. Each has an About fold with "Changes" and "Difficulty"
+  meters, and a Galactopedia article with a field guide (64 new articles on the creatures, factions, goods, ships and
+  mechanics they add). Individual add-ons can still be switched under "Advanced".
+- **Calmer add-on UI.** Add-on screens match the stock look, and only big moments pop up (a new Message Settings box);
+  the rest goes to the message log.
+- **Characters & Victory.** VIP shuttles carry characters between worlds, with escorts. Every colony has a governor; a
+  vacant post has a one-year grace.
+- **The Interstellar Diet** (Galactic Council): sessions at a host world, delegates who travel there, weighted votes,
+  enforcer blockades, a Regent and Emperor bids. Opened from Diplomacy or the top bar's ••• menu. The Ancient
+  Guardians are not members.
+- **Frontier Autonomy** no longer switches on Court & Dynasties.
+
+### Colony Economy
+
+- **Colony designations** (Mining Hub, Core World, …) with private facilities (42 in all), bonds, a colony Economy tab,
+  a Designation column in the Colonies list and badges on the map and in the selection panel.
+- **The refinement chain.** Refineries turn raw resources into refined goods that ships need, more of them the higher
+  the component tech: missing goods slow builds at tech 3–4 and stop them at tech 5+. Refinery-only slots, a Fund
+  button to pay for a refinery from the treasury, supply alerts, and a Precision Components good for the top tier.
+
+### The Rim
+
+- **Rim Trade.** The treasure fleet keeps calling at ports until its holds are empty, its route shows when you select
+  it, its escort is smaller, and rare goods cost less standing. You can request a stop.
+- **Rim Herders.** Herds regrow, mature and stampede; herders can become protectorates and pay tribute; their standing
+  is capped and fades; AI conquest stages its troops first; herder colonies can't be taken over peacefully.
+- **New fauna.** A hull grazer that rides on ships until it's shot off or scraped at a port, void whales that roam the
+  whole galaxy, and wildlife that recovers over time.
+- **Rim Atmosphere** only shows once you zoom halfway to a system (never at galaxy view), adds faint wind in rim
+  systems, and gives the rim on the galaxy map a slowly drifting dust haze.
+- **Ordinary empires no longer start inside the rim** when a Rim add-on is on.
+
+### Music & Mood
+
+- Options → Sound Volume → **Music & Mood...**: a background mood (Off by default, **Rim only**, or the new **Deep
+  Space** bed: sparse wind, an underwater rumble and the odd distant creature call or hull creak, synthesised, everywhere
+  in the game) and the music source (**Original**, **Off** or **your own playlists** with Shuffle and Next Track). The
+  desktop app reads playlists from a `Music` folder next to your saves (one subfolder per playlist; mp3, ogg, flac,
+  wav, m4a/aac). See the README's "Music & mood".
+
+### Game rules
+
+- **Attacking an independent colony** now costs reputation and angers the territory owner, as in the original game.
+
+### Fixes
+
+- **Saves** made with some add-on combinations now reload exactly (a −0 value was saved differently).
+- **Destroyed or scrapped private ships** no longer linger in their owner's lists.
+- **An invasion of a colony with no defender** no longer crashes the game.
+- **Camera:** no more repeated "reading 'NaN'" render error.
+- **Sector grid lines** on the galaxy map are fainter.
+- **Autosave** runs one save at a time; **range rings** draw only on screen (fixes a late-game out-of-memory crash);
+  **restarts** no longer keep the old game running; **espionage** no longer crashes when an agent has no empire.
+
+### Compatibility
+
+- **Leaner, faster saves.** Saves use a new compact format (save format 3): the same late-game galaxy is about a third
+  of the text (449 MB → 152 MB; 42 MB → 34 MB compressed), saves about twice as fast and loads with about half the
+  memory. Every older save and `.dwusave` file still loads exactly as before; saves made with this version cannot be
+  opened by older versions (0.1.15 and earlier).
+- **Multiplayer needs the same version** of the app on every machine. Windows, Mac and Linux are bit-identical.
+
+## 0.1.15
+
+- **Galaxy Backdrop picker.** New-game wizard (galaxy page) and Game Options → Advanced Display Settings. Choose
+  Original (the game's own image, default), **Golden Spiral**, **Galactic Core**, **Nebula** or **Eerie**. The new
+  backdrops are generated from your galaxy's own star layout, animate slowly, and can show storm flashes. Both can be
+  switched off ("Animate backdrop", "Storm flashes"). The choice is saved with the game.
+- **Sector grid like the original.** Faint grid lines at full zoom-out and A/B/C… / 1/2/3… sector labels along the map
+  edges.
+- **Saves are compressed.** In-game saves, autosaves and exported `.dwusave` files are now gzip-compressed: a late-game
+  save of 450 MB takes about 45 MB. The save itself is unchanged inside; it loads as before.
+- **Compatibility:** saves made with this version (including exported `.dwusave` files) **cannot be opened by older
+  versions of the app**. This version still opens every older save and `.dwusave` file (uncompressed ones are recognised
+  automatically).
+- **Performance.** About 5% faster simulation on big late games, overlays only redraw when something changed, and a
+  cheaper galaxy-zoom update. New option: Game Options → Performance → "Off-screen update rate" (Original by default).
+- **Fixes.** Less shimmer on small, zoomed-out art (mipmaps); a wrong backdrop thumbnail; old destroyed-ship
+  references pruned from pirate and independent empires.
+- **Multiplayer groundwork.** Mac and Linux now run bit-identical games; orders name their targets by stable ids; a
+  lockstep networking core is in place (not in the menus yet). The hot-seat "Human Players…" option in the wizard is
+  not finished in this release; games still start with one human player.

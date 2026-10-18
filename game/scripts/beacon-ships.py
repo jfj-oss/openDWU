@@ -1256,7 +1256,8 @@ def _contour(r, a, b):
 def beam_textures():
     """The beam's layers (additive light, float RGB) and its particles (straight RGBA): the end-on column's disc (white,
     its green contour fading fast into white, spiral fringes), two swirls, the rising ring, the bloom (white, and a green
-    aura), a streak, the embers (fine, white-hot cores in dark rims), the debris chips, a spark, smoke, the charge's pulse."""
+    aura), a streak, the embers' tapered arcs (white, tinted in the game) and their cores, the debris chips, a spark,
+    smoke, the charge's pulse."""
     out = {}
     S = 384
     r, th = _radial(S)
@@ -1293,16 +1294,22 @@ def beam_textures():
         rgba[..., :3] = 0.012
         rgba[..., 3] = a
         out['ash%d' % i] = ('rgba', rgba)
-    # the beam's dark embers: fine, a white-hot core fading to a near-black rim (crisp on the glare and on space); a
-    # streak (drawn out along its motion) and a speck
-    for name, (W, H) in (('ember0', (32, 8)), ('ember1', (12, 12))):
+    # the swirl's streaks: tapered arcs (bowed as a path turning clockwise on screen: their ends toward +y), soft-edged,
+    # white (tinted in the game), with a thin core of their own; a gentle and a tighter curve
+    for name, (W, H, sag) in (('arc0', (64, 16, 0.10)), ('arc1', (64, 24, 0.22))):
         Y, X = np.mgrid[0:H, 0:W].astype(F32) + 0.5
-        d = np.hypot((X - W / 2) / (W / 2), (Y - H / 2) / (H / 2))
-        core = 1 - smoothstep(0.08, 0.36, d)
-        rgba = np.zeros((H, W, 4), F32)
-        rgba[..., :3] = (0.025 + 0.975 * core)[..., None] * np.array([1.0, 0.97, 0.92], F32)[None, None]
-        rgba[..., 3] = 1 - smoothstep(0.72, 1.0, d)
-        out[name] = ('rgba', rgba)
+        u = (X - W / 2) / (W / 2)
+        yc = H / 2 - sag * W / 2 * (1 - u * u) + sag * W / 4
+        tt = np.clip((u + 1) / 2, 0, 1)
+        wdt = 2.2 * np.sin(np.pi * tt) ** 0.7 * (0.75 + 0.25 * tt)
+        dist = np.abs(Y - yc)
+        body = np.exp(-(dist / np.maximum(wdt, 0.25)) ** 2) * (np.abs(u) < 1)
+        core = np.exp(-(dist / np.maximum(wdt * 0.38, 0.2)) ** 2) * np.sin(np.pi * tt) ** 1.5 * (np.abs(u) < 1)
+        for key, a in ((name, body), (name + 'Core', core)):
+            rgba = np.zeros((H, W, 4), F32)
+            rgba[..., :3] = 1.0
+            rgba[..., 3] = np.clip(a, 0, 1)
+            out[key] = ('rgba', rgba)
     Y, X = np.mgrid[0:6, 0:24].astype(F32) + 0.5
     I = np.exp(-(((Y - 3) / 3) / 0.5) ** 2) * np.sin(np.clip(X / 24, 0, 1) * math.pi)
     out['spark'] = ('add', np.array([1.0, 0.75, 0.4], F32)[None, None] * I[..., None])
@@ -1320,7 +1327,7 @@ def beam_textures():
     return out
 
 
-BEAM_KEYS = ('disc', 'swirl', 'swirl2', 'ring', 'bloom', 'bloomGreen', 'streak', 'ember0', 'ember1', 'ash0', 'ash1', 'ash2', 'ash3', 'spark', 'smoke0', 'smoke1', 'smoke2', 'pulse')
+BEAM_KEYS = ('disc', 'swirl', 'swirl2', 'ring', 'bloom', 'bloomGreen', 'streak', 'arc0', 'arc0Core', 'arc1', 'arc1Core', 'ash0', 'ash1', 'ash2', 'ash3', 'spark', 'smoke0', 'smoke1', 'smoke2', 'pulse')
 
 
 def no_faint(img, below=4):
