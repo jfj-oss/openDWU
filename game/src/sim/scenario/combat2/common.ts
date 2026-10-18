@@ -217,6 +217,10 @@ export function c2Prune(galaxy: Galaxy): void {
     for (const m of [st.decoys, st.ambush, st.crits, st.dc, st.struck, st.calm, st.flank] as Map<BuiltObject, unknown>[]) {
         for (const bo of m.keys()) if (bo.hasBeenDestroyed) m.delete(bo);
     }
+    // An ambush record of a ship that has been quiet for twice the opening quiet time (and whose window is over) is dropped: a new shot would
+    // open a fresh ambush anyway, so only ships that fired lately stay in the map (it would otherwise hold every ship that ever fought).
+    const quiet = c2Param(galaxy, 'ambushQuietSeconds') * 2000;
+    for (const [bo, rec] of st.ambush) if (galaxy.nowMs > rec.until + 3000 && galaxy.nowMs - rec.lastFire > quiet) st.ambush.delete(bo);
     // A ship that was captured or scrapped is no longer one that struck (its owner changed): drop a struck mark whose ship left the war.
     for (const [bo, rec] of st.struck) if (rec.captor !== null && rec.captor.hasBeenDestroyed) rec.captor = null;
 }
