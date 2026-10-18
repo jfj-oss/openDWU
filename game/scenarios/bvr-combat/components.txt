@@ -1,15 +1,15 @@
 'BVR combat (scenarios/bvr-combat): component overlay. Generated; edit scenarios/bvr-combat/README in the sim notes, not by hand.
 '1. The stock torpedoes (Epsilon, FireStorm, Velocity Shard, Shockwave, Plasma Thunderbolt) become close-range, slow, concentrated hitters:
-'   about 0.5x range, 0.85x speed, 1.4x fire interval, and 11-25x damage, tuned so TWO torpedo hits kill a frigate of the matching tech era.
+'   the stock range (x1.25 at run time by bvrRangeTorpedoPct), 0.85x speed, 1.4x fire interval, and 11-25x damage, tuned so TWO torpedo hits kill a frigate of the matching tech era.
 '   Value5 (damage loss per 100 range) is 0: BVR torpedoes keep their punch over their short flight (combat/weapons.ts).
 '2. Four new missile launcher tiers (dynamic ids from 10000, renumbered after the other add-ons' fixed ids; type WeaponMissile): super long range, very fast, seeking, 4 missiles each,
 '   tuned so FOUR missile hits kill a frigate of the matching tech era. The sim indexes by id, so the placeholders become the next dense ids (scenario/overlay.ts finalizeDynamicIds).
 
-5, Epsilon Torpedo, 5, 0, torpedo_small.wav, 60, 15, 0, 255, 150, 30, 51, 0, 4100, 0, 1, 2, 4, 4, 14, 3, 12, 7,
-6, Velocity Shard, 6, 1, torpedo_medium.wav, 60, 11, 0, 380, 320, 44, 102, 0, 4600, 0, 0, 2, 6, 4, 15, 5, 12, 9,
-7, Shockwave Torpedo, 7, 2, torpedo_medium.wav, 60, 12, 0, 440, 220, 60, 64, 0, 5300, 0, 2, 2, 5, 4, 14, 4, 12, 8,
-8, Plasma Thunderbolt, 8, 3, torpedo_large.wav, 60, 12, 0, 540, 350, 64, 106, 0, 4500, 0, 3, 3, 7, 3, 15, 3, 12, 8,
-9, Shaktur FireStorm, 9, 1, torpedo_large.wav, 60, 12, 0, 285, 150, 52, 55, 0, 4100, 6, 3, 4, 7, 4, 15, 4, 12, 10,
+5, Epsilon Torpedo, 5, 0, torpedo_small.wav, 60, 15, 0, 255, 300, 30, 51, 0, 4100, 0, 1, 2, 4, 4, 14, 3, 12, 7,
+6, Velocity Shard, 6, 1, torpedo_medium.wav, 60, 11, 0, 380, 630, 44, 102, 0, 4600, 0, 0, 2, 6, 4, 15, 5, 12, 9,
+7, Shockwave Torpedo, 7, 2, torpedo_medium.wav, 60, 12, 0, 440, 430, 60, 64, 0, 5300, 0, 2, 2, 5, 4, 14, 4, 12, 8,
+8, Plasma Thunderbolt, 8, 3, torpedo_large.wav, 60, 12, 0, 540, 690, 64, 106, 0, 4500, 0, 3, 3, 7, 3, 15, 3, 12, 8,
+9, Shaktur FireStorm, 9, 1, torpedo_large.wav, 60, 12, 0, 285, 295, 52, 55, 0, 4100, 6, 3, 4, 7, 4, 15, 4, 12, 10,
 10000, Javelin Missile Launcher, 128, 6, missile_launch.wav, 54, 9, 0, 140, 1800, 20, 420, 0, 4400, 0, 11, 4, 17, 3, 6, 6,
 10001, Longbow Missile Launcher, 10, 6, missile_launch.wav, 54, 10, 0, 240, 2300, 26, 470, 0, 4000, 0, 11, 5, 17, 4, 6, 8,
 10002, Stormspear Missile Launcher, 108, 7, missile_launch_massive.wav, 54, 11, 0, 280, 2900, 32, 530, 0, 3600, 0, 11, 6, 17, 5, 6, 10,

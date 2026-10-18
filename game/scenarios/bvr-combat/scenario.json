@@ -1,7 +1,7 @@
 {
   "id": "bvr-combat",
   "name": "BVR combat",
-  "description": "Beyond-visual-range combat (work in progress). A new family of missile launchers (four tiers in the tech tree) fires very fast, very accurate missiles from far beyond gun range, but only at targets your sensors actually track, and each launcher carries only 4 missiles. Torpedoes become close-range, slow, hard hitters with 6 torpedoes per launcher. Four missile hits kill a frigate of the matching era, two torpedo hits do. Point defence and guns can shoot missiles and torpedoes down, countermeasures spoil missile locks, and an empty magazine is rearmed at your own or an ally's space ports and bases with a dock, or from deployed resupply ships (slower), for credits. AI empires research and design launchers, open fights with missile salvos or keep their distance when they out-range the enemy, go and rearm after a fight, and field more point defence against missile fleets. A fleet ordered to attack or invade in another system with loaded launchers gathers at a stand-off point (80% of its missile range from the target) and opens with salvos before closing. Six more combat changes come with it as sub-options, all on by default and each switchable in its settings panel: decoys and chaff, ambush first strike, critical hits, damage control in battle, armour facing and surrender.",
+  "description": "Beyond-visual-range combat (work in progress). A new family of missile launchers (four tiers in the tech tree) fires very fast, very accurate missiles from far beyond gun range, but only at targets your sensors actually track, and each launcher carries only 4 missiles. Torpedoes become close-range, slow, hard hitters with 6 torpedoes per launcher. Four missile hits kill a frigate of the matching era, two torpedo hits do. Point defence and guns can shoot missiles and torpedoes down, countermeasures spoil missile locks, and an empty magazine is rearmed at your own or an ally's space ports and bases with a dock, or from deployed resupply ships (slower), for credits. AI empires research and design launchers, open fights with missile salvos or keep their distance when they out-range the enemy, go and rearm after a fight, and field more point defence against missile fleets. With BVR combat on, weapon ranges grow (missile launchers x3, torpedoes x1.25 of the original range, beams and rail guns x1.5, ion x1.25, point defence x1.5, for ships, bases and planet defences) and sensor ranges double (long-range scanners, proximity arrays, trace scanners, the missile lock range); ships share sensors, so a ship further back may fire on a target that a friendly ship nearer it tracks. A fleet ordered to attack or invade in another system with loaded launchers gathers at a stand-off point (80% of its missile range from the target) and opens with salvos before closing. Six more combat changes come with it as sub-options, all on by default and each switchable in its settings panel: decoys and chaff, ambush first strike, critical hits, damage control in battle, armour facing and surrender.",
   "include": ["decoys-chaff", "ambush-strike", "critical-hits", "damage-control", "armour-facing", "surrender-wrecks"],
   "flags": [
     {
@@ -20,7 +20,7 @@
   "params": [
     { "name": "bvrMissileRounds", "label": "Missiles per launcher", "default": 4, "min": 1, "max": 12 },
     { "name": "bvrTorpedoRounds", "label": "Torpedoes per torpedo launcher", "default": 6, "min": 1, "max": 12 },
-    { "name": "bvrTrackRange", "label": "Missiles can be fired at a target this far from one of your sensor ships (units; stealth and jamming shorten it, long-range scanners and proximity arrays extend it)", "default": 2400, "min": 300, "max": 40000 },
+    { "name": "bvrTrackRange", "label": "Missiles can be fired at a target this far from one of your sensor ships (units; stealth and jamming shorten it, long-range scanners and proximity arrays extend it)", "default": 4800, "min": 300, "max": 80000 },
     { "name": "bvrSensorPct", "label": "Share (%) of a ship's long-range scanner / proximity array range added to its tracking range", "default": 10, "min": 0, "max": 100 },
     { "name": "bvrSeekPct", "label": "Base chance a missile locks on and hits (%, before countermeasures and targeting)", "default": 85, "min": 10, "max": 100 },
     { "name": "bvrEcmWeightPct", "label": "How strongly countermeasures count against missiles (%)", "default": 130, "min": 0, "max": 400 },
@@ -38,6 +38,14 @@
     { "name": "bvrCapCruiser", "label": "Most missile launchers on an AI cruiser", "default": 5, "min": 0, "max": 40 },
     { "name": "bvrCapCapital", "label": "Most missile launchers on an AI capital ship (torpedo launchers: 60% of the cap above frigates)", "default": 7, "min": 0, "max": 40 },
     { "name": "bvrStandoffPct", "label": "A fleet ordered to attack or invade in another system gathers at this % of its longest loaded missile range from the target (0 loaded launchers: the stock arrival)", "default": 80, "min": 20, "max": 100 },
+    { "name": "bvrRangeBeamPct", "label": "Range of lasers, phasers and every other beam weapon, with BVR combat on (% of the original; ships, bases and planet defences)", "default": 150, "min": 50, "max": 500 },
+    { "name": "bvrRangeRailPct", "label": "Range of rail guns and other kinetic weapons (%)", "default": 150, "min": 50, "max": 500 },
+    { "name": "bvrRangeTorpedoPct", "label": "Range of torpedoes (% of the ORIGINAL range; the add-on keeps its own damage, speed and rate of fire)", "default": 125, "min": 50, "max": 500 },
+    { "name": "bvrRangeMissilePct", "label": "Range of the BVR missile launchers (% of their base 1800 / 2300 / 2900 / 3600)", "default": 300, "min": 50, "max": 1000 },
+    { "name": "bvrRangeIonPct", "label": "Range of ion weapons (%)", "default": 125, "min": 50, "max": 500 },
+    { "name": "bvrRangePdPct", "label": "Range of point defence (%)", "default": 150, "min": 50, "max": 500 },
+    { "name": "bvrSensorRangePct", "label": "Range of long-range scanners, proximity arrays and trace scanners (%)", "default": 200, "min": 50, "max": 500 },
+    { "name": "bvrDatalinkRange", "label": "Shared sensors: a friendly ship (your own empire's or a mutual-defence ally's) within this distance of the shooter that tracks a target lets the shooter fire at it (units; 0 = off)", "default": 9600, "min": 0, "max": 200000 },
     { "name": "bvrDryPct", "label": "AI fleets go and rearm when their magazines fall below this % (and they are not fighting)", "default": 25, "min": 0, "max": 100 }
   ]
 }

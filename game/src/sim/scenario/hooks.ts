@@ -527,6 +527,12 @@ export interface ScenarioQueries {
      */
     hyperjumpSpoolFactor: { value: number; args: { ship: BuiltObject; here: boolean } };
     /**
+     * Once per game (scenario/componentScale.ts, at galaxy creation and again after a load / replica build, which rebuild the static
+     * component tables): the percentage (100 = stock) to scale a component's Value1 and Value2 by, in the static definitions and in
+     * every research improvement of it. BVR combat's weapon and sensor ranges (scenario/bvr/bvrRanges.ts). Pure, no Rnd.
+     */
+    componentValueScale: { value: { value1: number; value2: number }; args: { component: { type: number; name: string } } };
+    /**
      * The stand-off distance (0 = stock) a ship's hyperjump for an attack / invade / bombard / blockade mission into another system
      * exits at: cmdHyperTo's first execution (the exit point is `distance` from the target on the side the ship comes from) and
      * combat/attackAI.ts checkNearTarget (the jump ends at that distance instead of HyperJumpThreshhold). BVR combat (scenario/bvr). No Rnd.

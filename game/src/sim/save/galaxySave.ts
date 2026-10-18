@@ -21,6 +21,7 @@ import { cloneGalaxyRaces, raceScalarFields } from '../data/races';
 import { buildResourceSystem } from '../resourceSystem';
 import { buildResearchStatic, ResearchSystem } from '../researchSystem';
 import { buildComponentStatic } from '../componentStatic';
+import { applyScenarioComponentScale } from '../scenario/componentScale';
 import { GraphDecoder, GraphEncoder, type Encoded, type ExternalRef, type GraphCodecOptions, type ShapeTable } from './graphCodec';
 import { ByteWriter, CompactDecoder, CompactEncoder, compactField } from './compactCodec';
 // Model classes (registry below), one import per module, sorted by module path.
@@ -791,6 +792,7 @@ export function replicaStatics(gameData: GameData, baseTechCost: number): { byRe
             g.stepOrder = [];
             g.stepOrderDirty = true;
             wireReplicaVisibility(galaxy);
+            applyScenarioComponentScale(galaxy);
         },
     };
 }
@@ -851,6 +853,9 @@ export function galaxyFromJSON(obj: GalaxySaveJSON, gameData: GameData, codec: {
         if (Object.prototype.hasOwnProperty.call(g, field)) g[field] = tables[field];
         else Object.defineProperty(g, field, { value: tables[field], writable: true, enumerable: true, configurable: true });
     }
+
+    // Mod layer (BVR combat ranges): the rebuilt static tables get the scenario's scaling again (the graph holds what it used).
+    applyScenarioComponentScale(galaxy);
 
     // --- State kept outside the graph (after the static tables: the price getters read them).
     if (sideTables !== undefined) restoreSideTables(galaxy, sideTables);

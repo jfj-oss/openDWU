@@ -1478,7 +1478,7 @@ describe('(8) BVR combat add-on', () => {
         // Torpedoes: short range (the BVR missiles out-range them 5x or more), no damage loss, much more damage than stock (36 for FireStorm).
         for (const id of [5, 6, 7, 8, 9]) {
             expect(defs[id].type).toBe(ComponentType.WeaponTorpedo);
-            expect(defs[id].value2).toBeLessThanOrEqual(350);
+            expect(defs[id].value2).toBe(Math.round(gameData.components.find((c) => c.componentId === id)!.value2 * 1.25)); // the stock range x1.25 (bvrRangeTorpedoPct)
             expect(defs[id].value5).toBe(0);
             expect(defs[id].value1).toBeGreaterThan(200);
         }
@@ -1616,7 +1616,7 @@ describe('(8) BVR combat add-on', () => {
         place(bg, y, x.xpos + 90000, x.ypos);
         expect(bvrTracked(bg, x, y)).toBe(false);
         place(bg, y, x.xpos + 1500, x.ypos);
-        y.stealth = 0.1; // a cloak: 10% of the range
+        y.stealth = 0.05; // a cloak: 5% of the range
         expect(bvrTracked(bg, x, y)).toBe(false);
         x.sensorLongRange = 450000; // a long-range scanner aboard the fleet
         expect(bvrTracked(bg, x, y)).toBe(true);
@@ -1624,6 +1624,71 @@ describe('(8) BVR combat add-on', () => {
         y.stealth = 1;
         // Planets need no lock.
         expect(bvrTracked(bg, x, bg.habitats[0])).toBe(true);
+    });
+
+    it('shared sensors (datalink): a rear ship may fire on a target only a forward ship of its empire (or an ally) tracks; none within the datalink range, no lock', () => {
+        const [a, b] = aiEmpires();
+        const rear = spawn(a, BuiltObjectSubRole.Frigate);
+        const forward = spawn(a, BuiltObjectSubRole.Escort);
+        const foe = spawn(b, BuiltObjectSubRole.Frigate);
+        const params = bg.scenario!.params;
+        const saved = params.bvrDatalinkRange;
+        for (const sh of [rear, forward, foe]) {
+            sh.sensorLongRange = 0;
+            sh.sensorProximityArrayRange = 0;
+        }
+        // (a quiet spot, away from any scanner station of the empire)
+        const at = (sh: BuiltObject, dx: number): void => place(bg, sh, spotX + dx, spotY);
+        try {
+            at(rear, 0);
+            at(forward, 6000);
+            at(foe, 9000); // 9000 from the rear ship, 3000 from the forward one (track range 4800)
+            params.bvrDatalinkRange = 0;
+            expect(bvrTracked(bg, rear, foe)).toBe(false);
+            expect(bvrTracked(bg, forward, foe)).toBe(true);
+            params.bvrDatalinkRange = 9600;
+            expect(bvrTracked(bg, rear, foe)).toBe(true);
+            // the forward ship too far from the shooter for the datalink
+            at(forward, 12000);
+            at(foe, 15000);
+            expect(bvrTracked(bg, rear, foe)).toBe(false);
+            // a forward ship of ANOTHER empire at war does not help
+            const other = spawn(b, BuiltObjectSubRole.Escort);
+            other.sensorLongRange = 0;
+            other.sensorProximityArrayRange = 0;
+            at(other, 6000);
+            at(forward, 90000);
+            at(foe, 9000);
+            expect(bvrTracked(bg, rear, foe)).toBe(false);
+        } finally {
+            params.bvrDatalinkRange = saved;
+        }
+    });
+
+    it('range multipliers: with BVR on the static component tables carry the scaled ranges; with it off nothing changes', () => {
+        const byId = bg.researchStatic!.componentStatic!.byId;
+        const stock = (id: number) => gameData.components.find((c) => c.componentId === id)!;
+        const ratio = (id: number, field: 'value1' | 'value2') => byId.get(id)![field] / stock(id)[field];
+        // Shatterforce Laser (1) beam x1.5, Point Defense Cannon (13) x1.5, Ion Cannon (15) x1.25, Epsilon Torpedo (5) stock x1.25
+        expect(ratio(1, 'value2')).toBeCloseTo(1.5, 1);
+        expect(ratio(13, 'value2')).toBeCloseTo(1.5, 1);
+        expect(ratio(15, 'value2')).toBeCloseTo(1.25, 1);
+        expect(byId.get(5)!.value2).toBe(Math.round(stock(5).value2 * 1.25)); // the BVR torpedo keeps the stock range, x1.25
+        const jav = [...byId.values()].find((d) => d.name === 'Javelin Missile Launcher')!;
+        expect(jav.value2).toBe(1800 * 3);
+        expect([...byId.values()].find((d) => d.name === 'Skyfire Missile Launcher')!.value2).toBe(3600 * 3);
+        // sensors x2
+        const scanner = [...byId.values()].find((d) => d.type === ComponentType.SensorLongRange)!;
+        expect(scanner.value1).toBe(stock(scanner.componentId).value1 * 2);
+        // area weapons, tractor and gravity beams are unchanged
+        for (const d of byId.values()) {
+            if (d.type === ComponentType.WeaponAreaDestruction || d.type === ComponentType.WeaponTractorBeam || d.type === ComponentType.WeaponGravityBeam) expect(d.value2).toBe(stock(d.componentId).value2);
+        }
+        // BVR off: an ordinary galaxy of the same data has the stock tables
+        const plain = createScenarioGame(gameData, { scenario: BVR_ADDON_ID, flags: { bvrCombat: false } }).game.galaxy;
+        const pb = plain.researchStatic!.componentStatic!.byId;
+        expect(pb.get(1)!.value2).toBe(stock(1).value2);
+        expect(pb.get(13)!.value2).toBe(stock(13).value2);
     });
 
     it('rearming: in range of an own space port a spent magazine is reloaded for credits, out of range it is not; a docked ship on a Refuel order is held until full', () => {
@@ -2258,7 +2323,7 @@ describe('(9) the six combat changes (decoys, ambush, critical hits, damage cont
         expect(turner.heading).toBeGreaterThan(0);
         // A fast ship circles a slow moving target that is still far away.
         const fast = spawnC(a, BuiltObjectSubRole.Frigate);
-        const slow = spawnAt(b, BuiltObjectSubRole.CapitalShip, fast.xpos, fast.ypos + 9000);
+        const slow = spawnAt(b, BuiltObjectSubRole.CapitalShip, fast.xpos, fast.ypos + Math.max(300, fast.maximumWeaponsRange) * 3);
         fast.inBattle = true;
         fast.currentSpeed = 40;
         fast.currentTarget = slow;

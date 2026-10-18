@@ -44,6 +44,7 @@ import { galaxyComponentCurrentPrices } from '../../design';
 import { baconSettings } from '../../data/baconSettings';
 import { DiplomaticRelationType } from '../../diplomacy';
 import { isObjectVisibleToThisEmpire } from '../../independentTraders';
+import { builtObjectCellsAtLocation } from '../../stationPlacement';
 import { registerScenarioFramePeriodic } from '../hooks';
 import { scenarioFlag, scenarioParam, scenarioState } from '../state';
 
@@ -62,7 +63,7 @@ const RACE_EVENT_TYPE_PREDICTIVE_HISTORY = 28;
 export const BVR_DEFAULTS = {
     bvrMissileRounds: 4,
     bvrTorpedoRounds: 6,
-    bvrTrackRange: 2400,
+    bvrTrackRange: 4800,
     bvrSensorPct: 10,
     bvrSeekPct: 85,
     bvrEcmWeightPct: 130,
@@ -75,6 +76,14 @@ export const BVR_DEFAULTS = {
     bvrRoundCostPct: 12,
     bvrDryPct: 25,
     bvrStandoffPct: 80,
+    bvrRangeBeamPct: 150,
+    bvrRangeRailPct: 150,
+    bvrRangeTorpedoPct: 125,
+    bvrRangeMissilePct: 300,
+    bvrRangeIonPct: 125,
+    bvrRangePdPct: 150,
+    bvrSensorRangePct: 200,
+    bvrDatalinkRange: 9600,
     bvrAiValuePct: 35,
     bvrFirepowerSeconds: 120,
     bvrCapFrigate: 2,
@@ -322,6 +331,28 @@ function trackReach(galaxy: Galaxy, s: BuiltObject, jam: number): number {
     return r;
 }
 
+/** Whether a friendly ship near the firer (within bvrDatalinkRange) tracks the target (`within`: that ship's own reach test). */
+function datalinkTracks(galaxy: Galaxy, firer: BuiltObject, empire: Empire, within: (s: BuiltObject) => boolean): boolean {
+    const link = bvrParam(galaxy, 'bvrDatalinkRange');
+    if (link <= 0) return false;
+    const link2 = link * link;
+    const cells = builtObjectCellsAtLocation(galaxy, firer.xpos, firer.ypos, link);
+    for (let c = 0; c < cells.length; c++) {
+        const cell = cells[c];
+        for (let i = 0; i < cell.length; i++) {
+            const s = cell[i];
+            if (s === firer || s.hasBeenDestroyed) continue;
+            const e = s.actualEmpire;
+            if (e === null || (e !== empire && !isAllyOf(empire, e))) continue;
+            const dx = s.xpos - firer.xpos;
+            const dy = s.ypos - firer.ypos;
+            if (dx * dx + dy * dy > link2) continue;
+            if (within(s)) return true;
+        }
+    }
+    return false;
+}
+
 /**
  * Whether the firing ship's empire tracks `target` well enough to fire a missile at it. Ships and bases need a lock (see the
  * header); anything else (planets, creatures, fighters) is fired at by range alone.
@@ -354,6 +385,9 @@ export function bvrTracked(galaxy: Galaxy, firer: BuiltObject, target: StellarOb
             if (s != null && s.sensorLongRange > 0 && within(s)) ok = true;
         }
     }
+    // Shared sensors (datalink): a friendly ship (the empire's own or a mutual-defence ally's) within bvrDatalinkRange of the firer
+    // that tracks the target lets the firer shoot at it, fleet or not. Looks at the objects in the firer's index cells only.
+    if (!ok) ok = datalinkTracks(galaxy, firer, empire, within);
     if (!ok) return false;
     return isObjectVisibleToThisEmpire(galaxy, empire, target);
 }

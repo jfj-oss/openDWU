@@ -97,6 +97,7 @@ import './interdiction/jumpInterdiction'; // Defensive jump interdiction (flag j
 import './mothballing/mothballing'; // Mothballing: fleets / warships in reserve at a space port (flags mothballing + mothballingAI; a Gameplay change)
 import './veterans/veterans'; // Veterans (flag veterans): ship / troop battle experience and ranks
 import './bvr/bvr'; // BVR combat (flag bvrCombat): magazines, sensor targeting, seeking missiles, point-defence cover, rearming
+import './bvr/bvrRanges'; // BVR combat ranges (flag bvrCombat): weapon and sensor range scaling of the static component tables
 import './bvr/bvrAI'; // BVR combat AI (flag bvrAI): research order, designs, standoff tactics, rearm trips
 import './combat2/decoys'; // Decoys and chaff (flag decoys): decoy charges against missiles and torpedoes, restocked at ports
 import './combat2/decoysAI'; // Decoys, AI (flag decoysAI): more countermeasures against missile users

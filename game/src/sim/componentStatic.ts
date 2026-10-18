@@ -614,6 +614,32 @@ export interface BuildComponentStaticOptions {
     baseTechCost?: number;
 }
 
+/** (Re)generates the ordered component lists of a ComponentStatic from its current definitions (GenerateOrderedComponentLists, Galaxy.3.cs:2229). */
+export function rebuildOrderedComponentLists(componentStatic: ComponentStatic): void {
+    const definitions = componentStatic.definitions;
+    const C = ComponentCategoryType;
+    const T = ComponentType;
+
+    componentStatic.componentsWeaponBeamOrderedByRange = generateOrderedComponentListByCategory(definitions, C.WeaponBeam, 2);
+    componentStatic.componentsWeaponTorpedoOrderedByRange = generateOrderedComponentListByCategory(definitions, C.WeaponTorpedo, 2);
+    componentStatic.componentsWeaponAreaOrderedByRange = generateOrderedComponentListByType(definitions, T.WeaponAreaDestruction, 2);
+    componentStatic.componentsWeaponBeamOrderedByPower = generateOrderedComponentListByCategory(definitions, C.WeaponBeam, 1);
+    componentStatic.componentsWeaponTorpedoOrderedByPower = generateOrderedComponentListByCategory(definitions, C.WeaponTorpedo, 1);
+    componentStatic.componentsWeaponAreaOrderedByPower = generateOrderedComponentListByType(definitions, T.WeaponAreaDestruction, 1);
+    // C#: GenerateOrderedComponentList(Reactor, 3, 2) is already highest-to-lowest
+    // (the ratio overload always reverses internally); the extra .Reverse() call in
+    // GenerateOrderedComponentLists flips it back to ascending (lowest-efficiency-first).
+    componentStatic.componentsReactorOrderedByEfficiency = generateOrderedComponentListByCategoryRatio(definitions, C.Reactor, 3, 2).reverse();
+    componentStatic.componentsReactorOrderedByPower = generateOrderedComponentListByCategory(definitions, C.Reactor, 1);
+    componentStatic.componentsEngineMainThrustOrderedByPower = generateOrderedComponentListByType(definitions, T.EngineMainThrust, 1);
+    componentStatic.componentsEngineVectoringOrderedByPower = generateOrderedComponentListByType(definitions, T.EngineVectoring, 1);
+    componentStatic.componentsEngineMainThrustOrderedByEfficiency = generateOrderedComponentListByTypeRatio(definitions, T.EngineMainThrust, 1, 2);
+    componentStatic.componentsEngineVectoringOrderedByEfficiency = generateOrderedComponentListByTypeRatio(definitions, T.EngineVectoring, 1, 2);
+    componentStatic.componentsHyperdriveOrderedByPower = generateOrderedComponentListByCategory(definitions, C.HyperDrive, 1);
+    componentStatic.componentsHyperdriveOrderedByEfficiency = generateOrderedComponentListByCategoryRatio(definitions, C.HyperDrive, 1, 2);
+    componentStatic.componentsHyperdriveOrderedByJumpInitiation = generateOrderedComponentListByCategory(definitions, C.HyperDrive, 3, false);
+}
+
 // Port of the InitializeData (Galaxy.3.cs:4868) / SetHyperDriveSpeeds (Galaxy.3.cs:5735)
 // order of operations: build component definitions, assign research tech levels and
 // costs, apply the hyperdrive speed multiplier, then build the ordered component lists
@@ -653,27 +679,7 @@ export function buildComponentStatic(gameData: GameData, opts: BuildComponentSta
 
     applyHyperDriveSpeedMultiplier(componentStatic, multiplier);
 
-    const C = ComponentCategoryType;
-    const T = ComponentType;
-
-    componentStatic.componentsWeaponBeamOrderedByRange = generateOrderedComponentListByCategory(definitions, C.WeaponBeam, 2);
-    componentStatic.componentsWeaponTorpedoOrderedByRange = generateOrderedComponentListByCategory(definitions, C.WeaponTorpedo, 2);
-    componentStatic.componentsWeaponAreaOrderedByRange = generateOrderedComponentListByType(definitions, T.WeaponAreaDestruction, 2);
-    componentStatic.componentsWeaponBeamOrderedByPower = generateOrderedComponentListByCategory(definitions, C.WeaponBeam, 1);
-    componentStatic.componentsWeaponTorpedoOrderedByPower = generateOrderedComponentListByCategory(definitions, C.WeaponTorpedo, 1);
-    componentStatic.componentsWeaponAreaOrderedByPower = generateOrderedComponentListByType(definitions, T.WeaponAreaDestruction, 1);
-    // C#: GenerateOrderedComponentList(Reactor, 3, 2) is already highest-to-lowest
-    // (the ratio overload always reverses internally); the extra .Reverse() call in
-    // GenerateOrderedComponentLists flips it back to ascending (lowest-efficiency-first).
-    componentStatic.componentsReactorOrderedByEfficiency = generateOrderedComponentListByCategoryRatio(definitions, C.Reactor, 3, 2).reverse();
-    componentStatic.componentsReactorOrderedByPower = generateOrderedComponentListByCategory(definitions, C.Reactor, 1);
-    componentStatic.componentsEngineMainThrustOrderedByPower = generateOrderedComponentListByType(definitions, T.EngineMainThrust, 1);
-    componentStatic.componentsEngineVectoringOrderedByPower = generateOrderedComponentListByType(definitions, T.EngineVectoring, 1);
-    componentStatic.componentsEngineMainThrustOrderedByEfficiency = generateOrderedComponentListByTypeRatio(definitions, T.EngineMainThrust, 1, 2);
-    componentStatic.componentsEngineVectoringOrderedByEfficiency = generateOrderedComponentListByTypeRatio(definitions, T.EngineVectoring, 1, 2);
-    componentStatic.componentsHyperdriveOrderedByPower = generateOrderedComponentListByCategory(definitions, C.HyperDrive, 1);
-    componentStatic.componentsHyperdriveOrderedByEfficiency = generateOrderedComponentListByCategoryRatio(definitions, C.HyperDrive, 1, 2);
-    componentStatic.componentsHyperdriveOrderedByJumpInitiation = generateOrderedComponentListByCategory(definitions, C.HyperDrive, 3, false);
+    rebuildOrderedComponentLists(componentStatic);
 
     return componentStatic;
 }

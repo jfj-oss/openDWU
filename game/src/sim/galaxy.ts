@@ -39,6 +39,7 @@ import { SystemVisibilityStatus, type GalaxyResourceMap } from './visibility';
 import { EmpireTerritory, strategicValue } from './territory';
 import { buildResearchStatic, type ResearchStatic } from './researchSystem';
 import { buildComponentStatic } from './componentStatic';
+import { applyScenarioComponentScale } from './scenario/componentScale';
 import { ensureHabitatManufacturingQueue } from './manufacturingQueue';
 import { createHabitatDockingBays, createPopulatedHabitatDockingBays } from './logistics/dockingBays';
 
@@ -5184,6 +5185,8 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
     // galaxy.baseTechCost for the tech points).
     galaxy.baseTechCost = Math.trunc(options.baseTechCost ?? galaxy.baseTechCost);
     galaxy.researchStatic = gameData ? buildResearchStatic(gameData.research, gameData.components, races, gameData.policies, gameData.piratePolicies, buildComponentStatic(gameData, { baseTechCost: galaxy.baseTechCost }), gameData.facilities, gameData.fighters, gameData.plagues) : null;
+    // Mod layer (BVR combat weapon / sensor ranges, not in the original): a scenario may scale the static component tables.
+    if (galaxy.scenario !== null) applyScenarioComponentScale(galaxy);
     galaxy.designSpecificationTexts = gameData?.designSpecificationTexts ?? new Map();
     galaxy.designNames = gameData?.designNames ?? [];
     // Port of Galaxy.cs Races (Galaxy.4.cs 2132, loaded per galaxy in the ctor).
