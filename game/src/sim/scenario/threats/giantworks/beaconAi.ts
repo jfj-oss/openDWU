@@ -44,7 +44,7 @@ import { GAME_DAY_LENGTH, registerScenarioPeriodic } from '../../hooks';
 import { scenarioText as T } from '../../messages';
 import { KNOWLEDGE_CONFIRMED, arcNews, knowledgeLevel, normalEmpires, revealTo } from '../framework';
 import { BEACON_FLAG, P, SYSTEM_RADIUS, aliveShips, cloakLapsedFor, peekBeaconState, type BeaconState, type StrikeGroup } from './beaconState';
-import { eliminatedPct, travelDays } from './beaconFleet';
+import { eliminatedPct, travelDays, watcherFleetStrengthOf } from './beaconFleet';
 import { cattleOf, liveCores } from './beaconHarvest';
 import { isObjectVisibleToThisEmpire } from '../../../independentTraders';
 import { WarObjective, obtainDiplomaticRelation } from '../../../diplomacy';
@@ -429,7 +429,8 @@ function watchers(p: Pass): number {
         if (w.dead || ship === null || ship.hasBeenDestroyed) continue;
         // the coalition shares sightings: it can act if the cloak has lapsed for ANY member
         if (!p.members.some((e) => cloakLapsedFor(ship, e, now))) continue;
-        const enemy = strengthOf(ship);
+        // a Watcher leading a fleet (from the Reclamation on) comes with its escorts: the coalition sizes up the whole fleet
+        const enemy = Math.max(strengthOf(ship), watcherFleetStrengthOf(st, ship) ?? 0);
         const got = pick(p, ship.xpos, ship.ypos, (enemy * P.aiWatcherRatioPct(galaxy) * (1 - 0.3 * p.urg)) / 100, P.aiReachSectors(galaxy) * galaxy.sectorSize, 40);
         if (got === null) continue;
         let ok = 0;

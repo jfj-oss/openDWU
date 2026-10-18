@@ -218,7 +218,7 @@ import { SystemVisibilityStatus } from '../src/sim/visibility';
 import { completeWork, greatWorkIsHostile, greatWorkKind, type GreatWorkSite } from '../src/sim/scenario/threats/giantworks/framework';
 import { beaconBuildRate, beaconComplete, beaconEndCheck, beaconKind, beaconKnownSites, beaconLooks, beaconRolled, beaconShipRole, beaconSuppliers, cloakLapsedFor, corrupt, corruptCandidates, watchersPeriodic } from '../src/sim/scenario/threats/giantworks/beacon';
 import { peekBeaconState, salvageStepsOf, type BeaconState } from '../src/sim/scenario/threats/giantworks/beaconState';
-import { beginSeason, designFor, groupCarryRegiments, scriptedBudget, seasonBudget, landingPlan, lossCheck, noticedGathering, planetStrike, reclamationMonthly, reclamationPeriodic, spawnShip, supplyTroops, targetCandidates } from '../src/sim/scenario/threats/giantworks/beaconFleet';
+import { beginSeason, driveWatcherFleets, watcherTargetValue, designFor, groupCarryRegiments, scriptedBudget, seasonBudget, landingPlan, lossCheck, noticedGathering, planetStrike, reclamationMonthly, reclamationPeriodic, spawnShip, supplyTroops, targetCandidates } from '../src/sim/scenario/threats/giantworks/beaconFleet';
 import { coalitionMembers, coalitionPass } from '../src/sim/scenario/threats/giantworks/beaconAi';
 import { beaconArtInfo, cattleDesign, cattleOf, coreCountFor, coreTarget, coresOf, freeShare, fuelOf, harvestMonthly, harvestPeriodic, liveCores, pickCore, rescueCattle } from '../src/sim/scenario/threats/giantworks/beaconHarvest';
 import { kindTaken } from '../src/sim/scenario/threats/giantworks/founders';
@@ -4472,7 +4472,7 @@ describe('the Beacon (Giantworks wonder)', () => {
         expect(purgeCorruption(g, st, rec, owner)).toBe(false);
     }, 900000);
 
-    it('a sighting: the Watcher shows itself over a colony, passive, then slips away cloaked; attacked, it is at locked war with the attacker only', () => {
+    it('a sighting: the Watcher shows itself over a colony, passive, then slips away cloaked; attacked, it defends itself against the attackers only and goes to war with no one', () => {
         const { g, st } = rolled();
         const w = st.watchers[0];
         const ship = w.ship!;
@@ -4493,12 +4493,19 @@ describe('the Beacon (Giantworks wonder)', () => {
         // the owner heard of it, the galaxy had a news line
         expect(empireMessages(a).some((m) => m.description.includes('unknown make'))).toBe(true);
         expect(empireMessages(b).some((m) => m.description.includes('unidentified vessel'))).toBe(true);
-        // attacked by a: war with a only, cloak stays down while it fights
-        scenarioEmit(g, 'builtObjectAttacked', { builtObject: ship, attacker: null, attackingEmpire: a });
+        // attacked by a: self-defence only. No war is declared or locked with anyone, the cloak stays down while it fights
+        const hunter0 = a.builtObjects.find((o) => !o.hasBeenDestroyed && o.role === BuiltObjectRole.Military && o.topSpeed > 0 && o.shipGroup === null)!;
+        scenarioEmit(g, 'builtObjectAttacked', { builtObject: ship, attacker: hunter0, attackingEmpire: a });
         expect(w.mode).toBe('fight');
-        expect(atWarWith(a, st.faction!)).toBe(true);
-        expect(atWarWith(b, st.faction!)).toBe(false);
-        expect(obtainDiplomaticRelation(st.faction!, a).locked).toBe(true);
+        expect(ship.cloaked).toBe(false);
+        for (const e of normalsOf(g)) expect(atWarWith(e, st.faction!)).toBe(false);
+        expect(obtainDiplomaticRelation(st.faction!, a).locked).toBeFalsy();
+        expect(obtainDiplomaticRelation(a, st.faction!).locked).toBeFalsy();
+        expect(w.attackedBy).toEqual([a.empireId]);
+        // nobody may declare war on the Watchers (or they on anyone) before the Reclamation
+        expect(scenarioQuery(g, 'declareWarBlocked', false, { empire: a, target: st.faction! })).toBe(true);
+        expect(scenarioQuery(g, 'declareWarBlocked', false, { empire: st.faction!, target: b })).toBe(true);
+        expect(scenarioQuery(g, 'declareWarBlocked', false, { empire: a, target: b })).toBe(false);
         // pirates and monsters do not change it
         const w2 = st.watchers[1];
         scenarioEmit(g, 'builtObjectAttacked', { builtObject: w2.ship!, attacker: null, attackingEmpire: g.pirateEmpires[0] ?? null });
@@ -4507,15 +4514,77 @@ describe('the Beacon (Giantworks wonder)', () => {
         const hunter = a.builtObjects.find((o) => !o.hasBeenDestroyed && o.role === BuiltObjectRole.Military && o.topSpeed > 0 && o.shipGroup === null)!;
         assignMission(g, hunter, BuiltObjectMissionType.Attack, ship, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
         expect(builtObjectMission(hunter.mission)?.targetBuiltObject).toBe(ship);
-        // with no attacker near, it slips away after 15 days and cloaks
+        // with no attacker near and no hit for 15 days it breaks off and goes back to what it was doing (the sighting), then slips away and cloaks
         ship.xpos = 1;
         ship.ypos = 1;
         g.nowMs += 20 * GAME_DAY_LENGTH;
         watchersPeriodic(g);
+        expect(w.mode).toBe('sighting');
+        expect(w.attackerShips ?? []).toEqual([]);
+        g.nowMs += 4 * GAME_DAY_LENGTH;
+        watchersPeriodic(g);
         expect(w.mode).toBe('return');
         expect(ship.cloaked).toBe(true);
         expect(builtObjectMission(hunter.mission)?.targetBuiltObject ?? null).not.toBe(ship);
+        for (const e of normalsOf(g)) expect(atWarWith(e, st.faction!)).toBe(false);
     }, 900000);
+
+    it('self-defence: an attacked Watcher may fire only at the ships that attacked it and their fleets; it breaks off, resumes its dwell and cloaks, with no war', () => {
+        const { g, st } = rolled();
+        const w = st.watchers[0];
+        const ship = w.ship!;
+        const [a, b] = normalsOf(g);
+        const target = a.colonies[0];
+        ship.xpos = target.xpos + 1000;
+        ship.ypos = target.ypos + 1000;
+        w.target = target;
+        w.mode = 'travel';
+        w.until = 0;
+        watchersPeriodic(g);
+        expect(w.mode).toBe('dwell');
+        const ships = a.builtObjects.filter((o) => !o.hasBeenDestroyed && o.role === BuiltObjectRole.Military && o.topSpeed > 0);
+        expect(ships.length).toBeGreaterThanOrEqual(2);
+        const [culprit, other] = ships;
+        const bShip = b.builtObjects.find((o) => !o.hasBeenDestroyed && o.role === BuiltObjectRole.Military && o.topSpeed > 0)!;
+        const mayFire = (victim: BuiltObject): boolean => scenarioQuery(g, 'attackWithoutWar', false, { empire: st.faction!, target: victim.empire!, attacker: ship, victim });
+        // not attacked: it fires at no one
+        expect(mayFire(culprit)).toBe(false);
+        scenarioEmit(g, 'builtObjectAttacked', { builtObject: ship, attacker: culprit, attackingEmpire: a });
+        expect(w.mode).toBe('fight');
+        expect(w.prevMode).toBe('dwell');
+        // only the attacker (and a ship sailing with it) is a target: not another ship of the same empire, nor any ship of another empire
+        expect(mayFire(culprit)).toBe(true);
+        expect(mayFire(other)).toBe(false);
+        expect(mayFire(bShip)).toBe(false);
+        const fleetmate = other;
+        const sg = { ships: [culprit, fleetmate] };
+        const old = (fleetmate as { shipGroup: unknown }).shipGroup;
+        (fleetmate as { shipGroup: unknown }).shipGroup = sg;
+        expect(mayFire(fleetmate)).toBe(true);
+        (fleetmate as { shipGroup: unknown }).shipGroup = old;
+        // an attacker from another empire joins the list; the other empire's bystanders stay safe
+        scenarioEmit(g, 'builtObjectAttacked', { builtObject: ship, attacker: bShip, attackingEmpire: b });
+        expect(mayFire(bShip)).toBe(true);
+        for (const e of normalsOf(g)) expect(atWarWith(e, st.faction!)).toBe(false);
+        // the fight ends 15 days after the last hit with no attacker near: back to the dwell, cloaked again, the attackers forgotten
+        ship.xpos = 1;
+        ship.ypos = 1;
+        g.nowMs += 20 * GAME_DAY_LENGTH;
+        watchersPeriodic(g);
+        expect(w.mode).toBe('dwell');
+        expect(ship.cloaked).toBe(true);
+        expect(mayFire(culprit)).toBe(false);
+        expect(w.target).toBe(target);
+        for (const e of normalsOf(g)) expect(atWarWith(e, st.faction!)).toBe(false);
+        // after the Reclamation nothing changes: the faction is at war with everyone and the Watcher keeps its fleet
+        const r = completed();
+        const rw = r.st.watchers[0];
+        expect(rw.mode).toBe('lead');
+        scenarioEmit(r.g, 'builtObjectAttacked', { builtObject: rw.ship!, attacker: null, attackingEmpire: normalsOf(r.g)[0] });
+        expect(rw.mode).toBe('lead');
+        for (const e of normalsOf(r.g)) expect(atWarWith(e, r.st.faction!)).toBe(true);
+    }, 1800000);
+
 
     it('detection: a ship of an empire close to a cloaked Watcher may spot it; the cloak lapses for that empire only, and the Watcher shows in its Threats & Leads', () => {
         const { g, st } = rolled();
@@ -4640,6 +4709,119 @@ describe('the Beacon (Giantworks wonder)', () => {
             expect(grp.ships.length).toBeGreaterThan(0);
         }
         expect(st.stats.spawned).toBeGreaterThan(0);
+    }, 1800000);
+
+    it('Watcher fleets: each Watcher leads the escorts of one of the two biggest strike groups, defends the cores, and goes on an offensive only every 3 to 4 years; a dead Watcher\'s fleet reverts', () => {
+        const { g, st } = completed();
+        const f = st.faction!;
+        f.stateMoney = 1e9;
+        g.scenario!.params.beaconFundingModel = 1;
+        g.scenario!.params.beaconGroups = 4;
+        const t0 = galaxyStarDate(g);
+        // the Reclamation made them flagships: no routine of their own, uncloaked, the first offensive 3 to 4 years away
+        expect(st.watcherFleets).toHaveLength(2);
+        for (const w of st.watchers) {
+            expect(w.mode).toBe('lead');
+            expect(w.ship!.cloaked).toBe(false);
+        }
+        for (const fl of st.watcherFleets!) {
+            expect(fl.mode).toBe('defence');
+            expect(fl.nextOffensive).toBeGreaterThanOrEqual(t0 + 3 * 360 * GAME_DAY_LENGTH - 1);
+            expect(fl.nextOffensive).toBeLessThanOrEqual(t0 + 4 * 360 * GAME_DAY_LENGTH + 1);
+        }
+        // season 1: at the departure the two biggest groups become the Watcher fleets' escorts and stay; the rest depart as before
+        expect(beginSeason(g, st, 1)).toBe(true);
+        const season = st.season!;
+        expect(season.groups.length).toBeGreaterThanOrEqual(3);
+        const calc = calculateOverallStrengthFactorWithoutShields;
+        let snap: { grp: (typeof season.groups)[number]; ships: BuiltObject[]; s: number }[] = [];
+        for (let i = 0; i < 160 && season.phase === 'prep'; i++) {
+            snap = season.groups.map((grp) => ({ grp, ships: [...grp.ships], s: grp.ships.reduce((a, b) => a + (b.hasBeenDestroyed ? 0 : Math.max(0, calc(b))), 0) }));
+            g.nowMs += 5 * GAME_DAY_LENGTH;
+            reclamationPeriodic(g);
+        }
+        expect(season.phase).toBe('offensive');
+        const top2 = [...snap].sort((x, y) => y.s - x.s).slice(0, 2);
+        for (const fl of st.watcherFleets!) {
+            expect(fl.ships.length).toBeGreaterThan(0);
+            expect(top2.some((t) => fl.ships.every((b) => t.ships.includes(b)))).toBe(true);
+        }
+        expect(top2.map((t) => t.grp.state)).toEqual(['done', 'done']);
+        expect(season.groups.some((x) => x.state === 'travel')).toBe(true);
+        expect(st.stats.wfFormed).toBe(2);
+        // DEFENCE: they patrol the Beacon's star until a core exists, then the cores (one each, the Watcher with its escorts)
+        const [f0, f1] = st.watcherFleets!;
+        const w0 = st.watchers[0].ship!;
+        driveWatcherFleets(g, st, galaxyStarDate(g));
+        expect(f0.post).toBe(st.site!.system.systemStar);
+        for (const b of [w0, ...f0.ships]) {
+            const m = builtObjectMission(b.mission);
+            expect(m?.type).toBe(BuiltObjectMissionType.Patrol);
+            expect(m?.targetHabitat).toBe(f0.post);
+        }
+        const victim = normalsOf(g)[0];
+        const [first, second] = victim.colonies.filter((c) => c !== victim.capital && c.population.totalAmount > 0).slice(0, 2);
+        takeOwnershipOfColonyFull(g, victim, first, f, false, false);
+        takeOwnershipOfColonyFull(g, victim, second, f, false, false);
+        harvestPeriodic(g, st);
+        expect(liveCores(st).length).toBeGreaterThanOrEqual(1);
+        driveWatcherFleets(g, st, galaxyStarDate(g));
+        expect(f0.post).toBe(liveCores(st)[0].colony);
+        expect(builtObjectMission(w0.mission)?.targetHabitat).toBe(f0.post);
+        // an enemy warship near a core draws the nearest fleet there
+        const intruder = victim.builtObjects.find((o) => !o.hasBeenDestroyed && o.role === BuiltObjectRole.Military && o.topSpeed > 0)!;
+        const coreWorld = liveCores(st)[0].colony;
+        intruder.xpos = coreWorld.xpos + 2000;
+        intruder.ypos = coreWorld.ypos + 2000;
+        const responses = st.stats.wfResponses ?? 0;
+        driveWatcherFleets(g, st, galaxyStarDate(g));
+        expect([f0.post, f1.post]).toContain(coreWorld);
+        expect(st.stats.wfResponses ?? 0).toBeGreaterThanOrEqual(responses);
+        intruder.xpos = 1;
+        intruder.ypos = 1;
+        // NO OFFENSIVE before the date, whatever the targets: they keep to their cores
+        g.scenario!.params.beaconWatcherFleetMinTargetValue = 0;
+        g.scenario!.params.beaconWatcherFleetRatioPct = 0;
+        g.scenario!.params.beaconWatcherFleetReachSectors = 100000;
+        g.nowMs = f0.nextOffensive - 2 * GAME_DAY_LENGTH;
+        driveWatcherFleets(g, st, galaxyStarDate(g));
+        expect(f0.mode).toBe('defence');
+        expect(f1.mode).toBe('defence');
+        expect(st.stats.wfOffensives ?? 0).toBe(0);
+        // ... and once the date has come the fleet goes after the most valuable world within reach, once. (Not while enemy warships are at the core it holds.)
+        g.nowMs = Math.max(f0.nextOffensive, f1.nextOffensive) + GAME_DAY_LENGTH;
+        const near = (fl: typeof f0): number => enemyNear(fl.post!);
+        const enemyNear = (h: Habitat): number => normalsOf(g).reduce((n, e) => n + e.builtObjects.filter((o) => !o.hasBeenDestroyed && o.role === BuiltObjectRole.Military && g.calculateDistance(o.xpos, o.ypos, h.xpos, h.ypos) < 45000).length, 0);
+        const guarded = near(f0) > 0 || near(f1) > 0;
+        driveWatcherFleets(g, st, galaxyStarDate(g));
+        if (guarded) expect([f0, f1].filter((x) => near(x) > 0).every((x) => x.mode === 'defence')).toBe(true);
+        for (const e of normalsOf(g)) for (const o of e.builtObjects) if (!o.hasBeenDestroyed && o.role === BuiltObjectRole.Military) { o.xpos = 1; o.ypos = 1; }
+        driveWatcherFleets(g, st, galaxyStarDate(g));
+        const went = [f0, f1].filter((x) => x.mode === 'offensive');
+        expect(went.length).toBeGreaterThanOrEqual(1);
+        const off = went[0];
+        expect(off.target).not.toBeNull();
+        expect(off.target!.empire).not.toBe(f);
+        expect(builtObjectMission(st.watchers[off.index].ship!.mission)?.type).toBe(BuiltObjectMissionType.Attack);
+        expect(off.offensives).toBe(1);
+        expect(watcherTargetValue(g, st, off.target!)).toBeGreaterThanOrEqual(0);
+        // it ends after the offensive cap; the next one is 3 to 4 years later and the fleet is back on defence
+        const end = galaxyStarDate(g) + 250 * GAME_DAY_LENGTH;
+        g.nowMs += 250 * GAME_DAY_LENGTH;
+        driveWatcherFleets(g, st, galaxyStarDate(g));
+        expect(off.mode).toBe('defence');
+        expect(off.nextOffensive).toBeGreaterThanOrEqual(end + 3 * 360 * GAME_DAY_LENGTH - 1);
+        expect(off.nextOffensive).toBeLessThanOrEqual(end + 4 * 360 * GAME_DAY_LENGTH + 1);
+        // a dead Watcher: its fleet is a normal fleet again (home, then the next season's groups)
+        const dying = st.watchers[f1.index];
+        const escorts = [...f1.ships];
+        dying.ship!.hasBeenDestroyed = true;
+        watchersPeriodic(g);
+        expect(dying.dead).toBe(true);
+        driveWatcherFleets(g, st, galaxyStarDate(g));
+        expect(st.watcherFleets).toHaveLength(1);
+        for (const b of escorts) if (!b.hasBeenDestroyed) expect(st.reserve).toContain(b);
+        expect(st.stats.wfReverted).toBe(1);
     }, 1800000);
 
     it('the harvest: the first conquest becomes a core with a harvester; the other held worlds send their people in cattle ships to its pens; processing makes biofuel and counts as eliminated', () => {

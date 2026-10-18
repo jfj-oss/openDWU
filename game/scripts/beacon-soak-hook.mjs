@@ -282,6 +282,8 @@ function sample(ctx, g) {
         s.cor = st.corrupted.filter((c) => c.ended === null).length;
         s.wStr = st.watchers.map((w) => (w.dead || !w.ship || w.ship.hasBeenDestroyed ? 0 : Math.round(M.thr.calculateOverallStrengthFactor(w.ship))));
         s.elim = r1(M.bf.eliminatedPct(st));
+        // the Watcher fleets: mode (d defence / o offensive), live escorts, strength (Watcher and escorts), the world held
+        s.wf = (st.watcherFleets ?? []).map((f) => [f.mode[0], f.ships.filter((b) => !b.hasBeenDestroyed).length, Math.round(M.bf.watcherFleetStrength(st, f)), f.post ? f.post.name : null]);
         s.proc = M.bf.processingWorlds(st).length;
         s.rec = st.reclamationDate > 0 ? r2((now - st.reclamationDate) / 600_000) : null;
         s.beacon = st.beacon ? (st.beacon.hasBeenDestroyed ? 'destroyed' : 'alive') : null;

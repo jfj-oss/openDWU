@@ -81,9 +81,11 @@ import {
     type Season,
     type StagingPoint,
     type StrikeGroup,
+    type WatcherFleet,
+    type WatcherRec,
 } from './beaconState';
 import { scenarioText as T } from '../../messages';
-import { freeShare, fuelOf, harvestMonthly, harvestPeriodic, onCattleKilled, onCoreRetaken, onHarvesterLost, payFleet, payTroops, troopSourceCore, troopsAffordable } from './beaconHarvest';
+import { freeShare, fuelOf, harvestMonthly, liveCores, harvestPeriodic, onCattleKilled, onCoreRetaken, onHarvesterLost, payFleet, payTroops, troopSourceCore, troopsAffordable } from './beaconHarvest';
 
 const TAG = 'Beacon';
 /** A fleet this close to a target is "on station"; defenders this close block a landing. */
@@ -833,6 +835,8 @@ function depart(galaxy: Galaxy, st: BeaconState, season: Season): void {
         }
         departing.push(g);
     }
+    // The Watchers lead the biggest groups' escorts, which stay home as Watcher fleets (they depart only on their own, rarer offensives).
+    claimForWatcherFleets(galaxy, st, departing);
     for (const g of departing) {
         g.state = 'travel';
         g.departDate = now;
@@ -1386,11 +1390,273 @@ function reclamationPass(galaxy: Galaxy, st: BeaconState, now: number): void {
     // Groups of every recent season go on until they are done (a siege runs past its season's end).
     for (const s of st.seasons) for (const g of s.groups) if (g.state !== 'gather' && g.state !== 'done') driveGroup(galaxy, st, g);
     drivePlanetDestroyers(galaxy, st);
+    driveWatcherFleets(galaxy, st, now);
     if (!st.beaconDestroyed && now - (st.guardDate ?? 0) >= days(60)) {
         st.guardDate = now;
         topUpGuard(galaxy, st);
     }
     void faction;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The Watcher fleets: each living Watcher leads the escorts of one of the two biggest strike groups, defensively
+// ---------------------------------------------------------------------------------------------------------------
+
+const YEAR_DAYS = 360;
+
+function watcherOfFleet(st: BeaconState, f: WatcherFleet): WatcherRec | undefined {
+    return st.watchers.find((w) => w.index === f.index);
+}
+
+function liveWatcherShip(st: BeaconState, f: WatcherFleet): BuiltObject | null {
+    const w = watcherOfFleet(st, f);
+    if (w === undefined || w.dead || w.ship === null || w.ship.hasBeenDestroyed || w.ship.actualEmpire !== st.faction) return null;
+    return w.ship;
+}
+
+/** The strength of a Watcher fleet: the Watcher and its live escorts. */
+export function watcherFleetStrength(st: BeaconState, f: WatcherFleet): number {
+    let s = 0;
+    const ws = liveWatcherShip(st, f);
+    if (ws !== null) s += strengthOf(ws);
+    for (const b of f.ships) if (!b.hasBeenDestroyed) s += strengthOf(b);
+    return s;
+}
+
+/** The Watcher fleet `ship` leads or belongs to (null when it is none's): the strength of its Watcher and escorts together, for the coalition's odds. */
+export function watcherFleetStrengthOf(st: BeaconState, ship: BuiltObject): number | null {
+    for (const f of st.watcherFleets ?? []) if (watcherOfFleet(st, f)?.ship === ship) return watcherFleetStrength(st, f);
+    return null;
+}
+
+/** The next offensive's date: 3 to 4 years from `now` (beaconWatcherFleetOffMinYears..MaxYears), drawn with the Beacon's private Random. */
+function nextOffensiveDate(galaxy: Galaxy, st: BeaconState, now: number): number {
+    const lo = P.wfOffMinYears(galaxy);
+    const hi = P.wfOffMaxYears(galaxy);
+    const rnd = beaconRandom(galaxy, st, 301);
+    return now + days((lo + rnd.nextDouble() * (hi - lo)) * YEAR_DAYS);
+}
+
+/**
+ * The Reclamation begins: every living Watcher becomes the flagship of a Watcher fleet. It has no escorts yet (the first season's two biggest
+ * strike groups give them at the departure, claimForWatcherFleets): until then it holds the Beacon. No more corruption trips or sightings.
+ */
+export function startWatcherFleets(galaxy: Galaxy, st: BeaconState): void {
+    if (!P.wfEnabled(galaxy) || st.faction === null) return;
+    st.watcherFleets ??= [];
+    const now = galaxyStarDate(galaxy);
+    const star = st.site?.system.systemStar ?? null;
+    for (const w of st.watchers) {
+        if (w.dead || w.ship === null || w.ship.hasBeenDestroyed || w.ship.actualEmpire !== st.faction) continue;
+        if (st.watcherFleets.some((f) => f.index === w.index)) continue;
+        w.mode = 'lead';
+        w.modeDate = now;
+        w.target = null;
+        w.attackerShips = [];
+        w.prevMode = undefined;
+        w.ship.cloaked = false;
+        st.watcherFleets.push({ index: w.index, ships: [], mode: 'defence', modeDate: now, nextOffensive: nextOffensiveDate(galaxy, st, now), post: star, target: null, offensives: 0, formed: 0 });
+    }
+}
+
+/**
+ * At a season's departure: each Watcher fleet short of escorts takes the biggest group still departing (its warships; the transports go to
+ * the reserve, a later season uses them). The group is done. At least one group always departs. Mutates `departing`.
+ */
+export function claimForWatcherFleets(galaxy: Galaxy, st: BeaconState, departing: StrikeGroup[]): void {
+    const fleets = st.watcherFleets ?? [];
+    for (const f of fleets) {
+        if (departing.length <= 1) return;
+        if (liveWatcherShip(st, f) === null) continue;
+        let big: StrikeGroup | null = null;
+        let bs = -1;
+        for (const g of departing) {
+            const s = groupStrength(g);
+            if (s > bs) {
+                bs = s;
+                big = g;
+            }
+        }
+        if (big === null) return;
+        const have = f.ships.reduce((a, b) => a + (b.hasBeenDestroyed ? 0 : strengthOf(b)), 0);
+        if (f.ships.length > 0 && have >= (bs * P.wfTopUpPct(galaxy)) / 100) continue; // strong enough: it keeps what it has
+        departing.splice(departing.indexOf(big), 1);
+        for (const b of big.ships) if (!b.hasBeenDestroyed) f.ships.push(b);
+        for (const b of big.transports) if (!b.hasBeenDestroyed) st.reserve.push(b);
+        big.ships = [];
+        big.transports = [];
+        big.state = 'done';
+        f.formed = f.formed > 0 ? f.formed : galaxyStarDate(galaxy);
+        st.stats.wfFormed = (st.stats.wfFormed ?? 0) + 1;
+    }
+}
+
+/** Enemy (non-Reclaimer, normal empire) warship strength within `range` of a point. Pure. */
+function enemyStrengthNear(galaxy: Galaxy, st: BeaconState, x: number, y: number, range: number): number {
+    let s = 0;
+    for (const e of normalEmpires(galaxy, st.faction)) {
+        for (const b of e.builtObjects) {
+            if (b.hasBeenDestroyed || b.role !== BuiltObjectRole.Military || b.topSpeed <= 0 || b.subRole === BuiltObjectSubRole.TroopTransport) continue;
+            if (galaxy.calculateDistance(b.xpos, b.ypos, x, y) <= range) s += strengthOf(b);
+        }
+    }
+    return s;
+}
+
+/** The worlds a Watcher fleet defends, the default first: the live harvest cores (most people first), else the Beacon's star, else a world the Reclaimers hold. */
+function defencePosts(galaxy: Galaxy, st: BeaconState): Habitat[] {
+    const cores = [...liveCores(st)].sort((a, b) => b.waiting + b.received - (a.waiting + a.received) || a.colony.habitatIndex - b.colony.habitatIndex).map((c) => c.colony);
+    if (cores.length > 0) return cores;
+    const star = st.site?.system.systemStar ?? null;
+    if (star !== null && !st.beaconDestroyed) return [star];
+    return processingWorlds(st).map((r) => r.colony);
+}
+
+/** What a world is worth to an offensive: its people (to the beaconTargetPopPct power, in millions) plus its defenders' strength (in 5 % of the reference military). Pure. */
+export function watcherTargetValue(galaxy: Galaxy, st: BeaconState, h: Habitat): number {
+    const unit = Math.max(1, referenceMilitary(galaxy, st.faction) * 0.05);
+    return Math.pow(1 + h.population.totalAmount / 1e6, P.targetPopPct(galaxy) / 100) + defenceOf(galaxy, h) / unit;
+}
+
+/** The most valuable world within reach that is worth the offensive and whose defence the fleet outweighs by beaconWatcherFleetRatioPct %. Pure. */
+export function pickWatcherTarget(galaxy: Galaxy, st: BeaconState, f: WatcherFleet, now: number): Habitat | null {
+    const ws = liveWatcherShip(st, f);
+    if (ws === null) return null;
+    const strength = watcherFleetStrength(st, f);
+    const reach = P.wfReachSectors(galaxy) * galaxy.sectorSize;
+    const taken = new Set<Habitat>();
+    for (const o of st.watcherFleets ?? []) if (o !== f && o.target !== null) taken.add(o.target);
+    for (const s of st.seasons) for (const g of s.groups) if (g.state !== 'done' && g.target !== null) taken.add(g.target);
+    let best: Habitat | null = null;
+    let bv = -1;
+    for (const h of targetCandidates(galaxy, st, now)) {
+        if (taken.has(h) || galaxy.calculateDistance(ws.xpos, ws.ypos, h.xpos, h.ypos) > reach) continue;
+        const value = watcherTargetValue(galaxy, st, h);
+        if (value < P.wfMinTargetValue(galaxy) || strength * 100 < defenceOf(galaxy, h) * P.wfRatioPct(galaxy)) continue;
+        if (value > bv) {
+            bv = value;
+            best = h;
+        }
+    }
+    return best;
+}
+
+function fleetUnits(st: BeaconState, f: WatcherFleet): BuiltObject[] {
+    const ws = liveWatcherShip(st, f);
+    return ws === null ? f.ships : [ws, ...f.ships];
+}
+
+function endOffensive(galaxy: Galaxy, st: BeaconState, f: WatcherFleet, now: number): void {
+    st.stats.wfOffensiveDays = (st.stats.wfOffensiveDays ?? 0) + Math.round((now - f.modeDate) / GAME_DAY_LENGTH);
+    f.mode = 'defence';
+    f.modeDate = now;
+    f.target = null;
+    f.arrived = 0;
+    f.nextOffensive = nextOffensiveDate(galaxy, st, now);
+}
+
+/** A Watcher fleet whose Watcher is gone is a normal fleet again: its escorts go home and join the next season's groups. */
+function revertWatcherFleet(galaxy: Galaxy, st: BeaconState, f: WatcherFleet): void {
+    const home = beaconPosition(st);
+    for (const b of f.ships) {
+        if (b.hasBeenDestroyed) continue;
+        if (home !== null) move(galaxy, b, home.x, home.y);
+        st.reserve.push(b);
+    }
+    f.ships = [];
+    st.stats.wfReverted = (st.stats.wfReverted ?? 0) + 1;
+}
+
+/** Every pass: each Watcher fleet defends (Patrol) a core, goes to a core an enemy fleet threatens, and now and then goes on an offensive. */
+export function driveWatcherFleets(galaxy: Galaxy, st: BeaconState, now: number): void {
+    const fleets = st.watcherFleets;
+    const faction = st.faction;
+    if (fleets === undefined || faction === null || fleets.length === 0) return;
+    const posts = defencePosts(galaxy, st);
+    const range = P.wfCoreRange(galaxy);
+    const worlds = new Map<Habitat, number>();
+    const threatened: Habitat[] = [];
+    for (const h of posts) {
+        const e = enemyStrengthNear(galaxy, st, h.xpos, h.ypos, range);
+        worlds.set(h, e);
+        if (e > 0) threatened.push(h);
+    }
+    const covered = new Set<Habitat>();
+    for (let i = fleets.length - 1; i >= 0; i--) {
+        const f = fleets[i];
+        const ws = liveWatcherShip(st, f);
+        const before = f.ships.length;
+        f.ships = aliveShips(f.ships, faction);
+        st.stats.wfShipsLost = (st.stats.wfShipsLost ?? 0) + (before - f.ships.length);
+        if (ws === null) {
+            revertWatcherFleet(galaxy, st, f);
+            fleets.splice(i, 1);
+            continue;
+        }
+        const w = watcherOfFleet(st, f)!;
+        if (w.mode !== 'lead') {
+            w.mode = 'lead';
+            w.attackerShips = [];
+        }
+        ws.cloaked = false;
+    }
+    fleets.forEach((f, i) => {
+        const ws = liveWatcherShip(st, f)!;
+        const units = fleetUnits(st, f);
+        if (f.mode === 'offensive') {
+            const t = f.target;
+            const strength = watcherFleetStrength(st, f);
+            const done =
+                t === null ||
+                t.hasBeenDestroyed ||
+                t.empire === faction ||
+                now - f.modeDate > days(P.wfOffDays(galaxy)) ||
+                strength < (f.startStrength ?? 0) * (1 - P.wfMaxLossPct(galaxy) / 100) ||
+                (f.arrived !== undefined && f.arrived > 0 && now - f.arrived > days(15) && defendersNear(galaxy, t.empire, t) <= 0);
+            if (done) {
+                endOffensive(galaxy, st, f, now);
+            } else {
+                if ((f.arrived ?? 0) <= 0 && distTo(galaxy, ws, t.xpos, t.ypos) <= ENGAGE_RANGE) f.arrived = now;
+                const sg = new Set<ShipGroup>();
+                for (const b of units) attackOrder(galaxy, b, t, sg);
+                return;
+            }
+        }
+        // DEFENCE: a core an enemy fleet is near (the nearest one nobody else is covering), else the fleet's own core
+        let post: Habitat | null = null;
+        let bd = Infinity;
+        for (const h of threatened) {
+            if (covered.has(h)) continue;
+            const d = distTo(galaxy, ws, h.xpos, h.ypos);
+            if (d < bd) {
+                bd = d;
+                post = h;
+            }
+        }
+        if (post !== null) {
+            if (f.post !== post) st.stats.wfResponses = (st.stats.wfResponses ?? 0) + 1;
+        } else if (posts.length > 0) post = posts[i % posts.length];
+        if (post === null) post = f.post;
+        if (post !== null) covered.add(post);
+        f.post = post;
+        if (post !== null) for (const b of units) patrol(galaxy, b, post);
+        // The offensive: every 3 to 4 years, at the most valuable world within reach that is worth it (else it keeps waiting and looking each pass).
+        if (now >= f.nextOffensive && f.ships.length > 0 && !(worlds.get(post as Habitat) ?? 0)) {
+            const t = pickWatcherTarget(galaxy, st, f, now);
+            if (t !== null) {
+                f.mode = 'offensive';
+                f.modeDate = now;
+                f.target = t;
+                f.arrived = 0;
+                f.offensives++;
+                f.startStrength = watcherFleetStrength(st, f);
+                st.stats.wfOffensives = (st.stats.wfOffensives ?? 0) + 1;
+                const sg = new Set<ShipGroup>();
+                for (const b of units) attackOrder(galaxy, b, t, sg);
+                arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Watcher Offensive', onceKey: `WatcherOffensive${f.index}:${f.offensives}`, textTag: `${TAG} Watcher Offensive News`, args: [t.name] });
+            }
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------------------------------------------

@@ -32,7 +32,8 @@ export const SYSTEM_RADIUS = 23000;
 // State
 // ---------------------------------------------------------------------------------------------------------------
 
-export type WatcherMode = 'parked' | 'travel' | 'dwell' | 'sighting' | 'return' | 'fight' | 'dead';
+/** 'lead': from the Reclamation on, the Watcher is the flagship of a Watcher fleet (beaconFleet.ts) and has no routine of its own. */
+export type WatcherMode = 'parked' | 'travel' | 'dwell' | 'sighting' | 'return' | 'fight' | 'lead' | 'dead';
 
 export interface WatcherRec {
     index: number;
@@ -48,11 +49,42 @@ export interface WatcherRec {
     /** Sighting: the star date it slips away. */
     until: number;
     dead: boolean;
-    /** Empires that attacked it (it is at locked war with them). */
+    /** Empires that attacked it (a record only: attacked, it defends itself against the attackers and goes to war with no one). */
     attackedBy: number[];
     /** Per-empire knowledge of the Watcher (Rumour: a cloaked vessel was detected; Suspected: seen more than once). */
     knowledge: ThreatKnowledge[];
     detections: number;
+    /** Self-defence (mode 'fight'): the ships that attacked it (builtObjectID) and the star date of the last hit on it; its guns may open fire on these ships and their fleets only. */
+    attackerShips?: number[];
+    lastHit?: number;
+    /** The mode and sighting date it was in when it was attacked: it goes back to them when the fight is over. */
+    prevMode?: WatcherMode;
+    prevUntil?: number;
+    prevModeDate?: number;
+}
+
+/**
+ * A Watcher fleet (from the Reclamation on): the Watcher leads the escorts of one of the two biggest strike groups of the first season(s).
+ * It defends the harvest cores (and the Beacon) and goes on one offensive only every beaconWatcherFleetOffMinYears..MaxYears.
+ */
+export interface WatcherFleet {
+    /** The Watcher leading it (WatcherRec.index). */
+    index: number;
+    /** The escorts (warships); the Watcher itself is not in the list. */
+    ships: BuiltObject[];
+    mode: 'defence' | 'offensive';
+    modeDate: number;
+    /** Star date from which the next offensive may be launched (when a big enough target exists). */
+    nextOffensive: number;
+    /** Defence: the world it holds (a core, else the Beacon's star). */
+    post: Habitat | null;
+    /** Offensive: the target. */
+    target: Habitat | null;
+    offensives: number;
+    formed: number;
+    /** Offensive: the strength (Watcher and escorts) it set out with, and the date it came within range of the target (0 before). */
+    startStrength?: number;
+    arrived?: number;
 }
 
 export interface CorruptRec {
@@ -277,6 +309,13 @@ export interface BeaconStats {
     stagingKills?: number;
     /** Watchers whose return home took over 150 days and were given a nearer home point. */
     watcherRehomed?: number;
+    /** Watcher fleets (beaconFleet.ts): formed / topped up from a strike group; offensives launched and days spent on them; defence moves to a threatened core; escorts lost; the sum of their strength before/after (the soak's loss measure). */
+    wfFormed?: number;
+    wfOffensives?: number;
+    wfOffensiveDays?: number;
+    wfResponses?: number;
+    wfShipsLost?: number;
+    wfReverted?: number;
     /** The harvest (beaconHarvest.ts): cores designated / retaken / broken (harvester destroyed) / lost; cattle ships launched / docked / destroyed
      *  (with their captives) / boarded; people killed on them, freed from the pens, rescued from boarded ships, processed; biofuel made, spent
      *  on warships and troops; troop regiments raised by the troop pass; the AI's cattle interceptions, harvester strikes and retake orders. */
@@ -313,6 +352,8 @@ export interface BeaconState {
     /** The colonies that were independent at the start (the Watchers corrupt only these). */
     formerIndependents: Habitat[];
     watchers: WatcherRec[];
+    /** The Watcher fleets (absent before the Reclamation and in older saves). */
+    watcherFleets?: WatcherFleet[];
     /** The Watchers currently uncloaked (sighting or fighting), refreshed every pass; the art reads it (render/threatArt.ts). */
     sighted: BuiltObject[];
     corrupted: CorruptRec[];
@@ -460,6 +501,25 @@ export const P = {
     guardGroups: (g: Galaxy) => p(g, 'beaconGuardGroups', 2),
     guardCapPct: (g: Galaxy) => p(g, 'beaconGuardCapPct', 20),
     guardRampDays: (g: Galaxy) => p(g, 'beaconGuardRampDays', 720),
+    // The Watcher fleets (from the Reclamation on; beaconFleet.ts)
+    /** 1: the two Watchers lead the two biggest strike groups' escorts, defensively (0: they keep their old routine, no fleets). */
+    wfEnabled: (g: Galaxy) => p(g, 'beaconWatcherFleets', 1) > 0,
+    /** A Watcher fleet goes on an offensive every this many years (drawn between min and max with the Beacon's private Random). */
+    wfOffMinYears: (g: Galaxy) => p(g, 'beaconWatcherFleetOffMinYears', 3),
+    wfOffMaxYears: (g: Galaxy) => Math.max(p(g, 'beaconWatcherFleetOffMinYears', 3), p(g, 'beaconWatcherFleetOffMaxYears', 4)),
+    /** The least a target is worth for an offensive (its population in millions to the beaconTargetPopPct power, plus its defenders' strength in units of 5 % of the reference military). */
+    wfMinTargetValue: (g: Galaxy) => p(g, 'beaconWatcherFleetMinTargetValue', 25),
+    /** The offensive is launched only at a target whose defence the fleet outweighs by this %. */
+    wfRatioPct: (g: Galaxy) => p(g, 'beaconWatcherFleetRatioPct', 150),
+    /** An offensive ends after this many days (its travel included) or when the fleet has lost this % of its strength. */
+    wfOffDays: (g: Galaxy) => p(g, 'beaconWatcherFleetOffensiveDays', 240),
+    wfMaxLossPct: (g: Galaxy) => p(g, 'beaconWatcherFleetMaxLossPct', 40),
+    /** The targets an offensive may pick lie within this many sectors of the fleet's post. */
+    wfReachSectors: (g: Galaxy) => p(g, 'beaconWatcherFleetReachSectors', 14),
+    /** An enemy warship this close to a core (or the Beacon) draws the nearest Watcher fleet. */
+    wfCoreRange: (g: Galaxy) => p(g, 'beaconWatcherFleetCoreRange', 45000),
+    /** A Watcher fleet is topped up from the biggest strike group when its escorts fall below this % of that group. */
+    wfTopUpPct: (g: Galaxy) => p(g, 'beaconWatcherFleetTopUpPct', 50),
     /** A target's pull grows with its population to this power (x 100: 50 = the square root, 100 = linearly). */
     targetPopPct: (g: Galaxy) => p(g, 'beaconTargetPopPct', 50),
     /** Season strength: % of the reference military (mean of the three strongest empires), season 1, growth per season, per processing world, cap. */

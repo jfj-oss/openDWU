@@ -117,11 +117,12 @@ Beacon Sighting Gone News;The unidentified vessel over {0} has vanished, as if i
 Beacon Detect Title;Something in the dark
 Beacon Detect;Our sensors near {0} brushed something huge and cold, moving in the dark. It was gone before we could be sure.
 Beacon Watcher Row;A vast cloaked vessel (last known near {0})
-Beacon Watcher Status;It is passive unless attacked. It is very hard to kill.
+Beacon Watcher Status;It is passive unless attacked, and then it fights only the ships that attacked it. It is very hard to kill.
 Beacon Watcher Killed News;One of the vast machine vessels has been destroyed by {0}.
 Beacon Watcher Killed Title;A giant destroyed
 Beacon Watcher Killed;Our forces destroyed one of the vast unidentified vessels. Whatever it was doing, it will do it more slowly now.
 Beacon Watcher Fight News;{0} has attacked one of the vast unidentified vessels, and it is fighting back.
+Beacon Watcher Offensive News;One of the great machine flagships has left its guard of the harvest worlds, with its fleet, and is bearing down on {0}.
 'Corruption
 Beacon Corrupt Row;{0} serves a hidden master
 Beacon Corrupt Status;Its people work for something else. Purging it costs {0}.

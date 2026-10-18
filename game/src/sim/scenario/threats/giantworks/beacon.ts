@@ -7,9 +7,11 @@
 // CORRUPTS it (the Cult's conversion: the governor and the people quietly serve the Beacon). Corrupted worlds speed the build up
 // (buildRateMultiplier) and send freighters to the site even when an empire owns them (extraSuppliers). Now and then a Watcher
 // SHOWS ITSELF: it drops its cloak over a colony for a few days, passive (it is at war with no one; the AI never targets it),
-// then slips away and cloaks again; it fights only if attacked (then it is at locked war with the attacker). Very hard to kill;
+// then slips away and cloaks again; attacked, it only DEFENDS ITSELF: it fires back at the ships that attacked it (and their fleets) until they are
+// destroyed or gone, then goes back to what it was doing and cloaks; it goes to war with no one. Very hard to kill;
 // killing one slows the build sharply.
-// When the Beacon is finished the Reclamation begins (beaconFleet.ts). The Watchers go on corrupting and showing themselves.
+// When the Beacon is finished the Reclamation begins (beaconFleet.ts). The Watchers then lead the Watcher fleets (the flagships of the two
+// biggest strike groups' escorts), which defend the harvest cores and go on an offensive only every few years.
 //
 // Cloak: a built object with `cloaked` set is not seen by any other empire (independentTraders.ts isObjectVisibleToThisEmpire,
 // the fog layer), unless its empire is listed in `cloakSeenBy` (a ship or base of that empire spotted it: detectCloaked).
@@ -97,6 +99,7 @@ import {
     reclamationPeriodic,
     referenceMilitary,
     spawnShip,
+    startWatcherFleets,
     syncReclaimerTech,
 } from './beaconFleet';
 import { registerBeaconAi } from './beaconAi';
@@ -377,6 +380,31 @@ function goHome(galaxy: Galaxy, st: BeaconState, w: WatcherRec, now: number): vo
     void st;
 }
 
+/** The fight is over: forget the attackers and go back to the mode it was in (a trip, a dwell, a sighting) or home, and cloak again. */
+function endFight(galaxy: Galaxy, st: BeaconState, w: WatcherRec, now: number): void {
+    const ship = w.ship!;
+    const prev = w.prevMode;
+    const t = w.target;
+    const resumable = (prev === 'travel' || prev === 'dwell' || prev === 'sighting') && t !== null && !t.hasBeenDestroyed;
+    w.attackerShips = [];
+    w.prevMode = undefined;
+    if (!resumable) {
+        goHome(galaxy, st, w, now);
+        return;
+    }
+    const fightStart = w.until; // (marks when the fight began)
+    // the time spent fighting does not count against a dwell: it picks up where it stopped
+    setMode(w, prev!, now - Math.max(0, fightStart - (w.prevModeDate ?? fightStart)));
+    w.until = w.prevUntil ?? 0;
+    if (prev === 'sighting') {
+        w.until = Math.max(w.until, now + days(1)); // (still over the colony, uncloaked)
+        return;
+    }
+    if (st.faction !== null && ship.cloaked !== true) loseTrack(galaxy, st.faction, ship, null);
+    ship.cloaked = true;
+    if (prev === 'travel') sendTo(galaxy, ship, t!.xpos, t!.ypos, t);
+}
+
 /** After a job it does not sail back to the rim: it slips away from the colony into the nearest deep space and rests there, cloaked. */
 function goRest(galaxy: Galaxy, st: BeaconState, w: WatcherRec, from: { xpos: number; ypos: number }, now: number): void {
     const cx = galaxy.sizeX / 2;
@@ -398,8 +426,14 @@ function driveWatcher(galaxy: Galaxy, st: BeaconState, w: WatcherRec, sightingOp
     if (ship.hasBeenDestroyed) return false;
     const now = galaxyStarDate(galaxy);
     if (ship.fuelCapacity > 0) ship.currentFuel = ship.fuelCapacity;
+    if (w.mode === 'lead') {
+        // The flagship of a Watcher fleet (beaconFleet.ts moves it with the fleet): uncloaked, no routine of its own.
+        ship.cloaked = false;
+        return false;
+    }
     if (w.mode === 'fight') {
-        // Cloak down while it fights; it slips away once no attacker is near for 15 days.
+        // Cloak down while it fights (self-defence against the attackers and their fleets only; it is at war with no one). Once no attacker is near
+        // and none has hit it for 15 days it breaks off and goes back to what it was doing.
         ship.cloaked = false;
         let near = false;
         for (const id of w.attackedBy) {
@@ -407,9 +441,9 @@ function driveWatcher(galaxy: Galaxy, st: BeaconState, w: WatcherRec, sightingOp
             if (e === undefined || e === null) continue;
             for (const b of e.builtObjects) if (!b.hasBeenDestroyed && b.role === BuiltObjectRole.Military && galaxy.calculateDistance(b.xpos, b.ypos, ship.xpos, ship.ypos) < 60000) near = true;
         }
-        // (w.until marks when the fight began: it breaks off, and cloaks, after 45 days however near its enemies still are)
+        // (w.until marks when the fight began: it breaks off after 45 days however near its enemies still are, and is drawn back in if they hit it again)
         if (near && now - w.until < days(45)) w.modeDate = now;
-        else if (now - w.modeDate > days(15) || now - w.until >= days(45)) goHome(galaxy, st, w, now);
+        else if (now - Math.max(w.modeDate, w.lastHit ?? 0) > days(15) || now - w.until >= days(45)) endFight(galaxy, st, w, now);
         return false;
     }
     if (w.mode === 'parked' || w.mode === 'return') {
@@ -562,7 +596,7 @@ function watcherOf(st: BeaconState, bo: BuiltObject): WatcherRec | undefined {
     return st.watchers.find((w) => w.ship === bo);
 }
 
-function onAttacked(galaxy: Galaxy, bo: BuiltObject, attackingEmpire: Empire | null): void {
+function onAttacked(galaxy: Galaxy, bo: BuiltObject, attacker: unknown, attackingEmpire: Empire | null): void {
     const st = peekBeaconState(galaxy);
     if (st === null || st.faction === null) return;
     const w = watcherOf(st, bo);
@@ -571,16 +605,52 @@ function onAttacked(galaxy: Galaxy, bo: BuiltObject, attackingEmpire: Empire | n
         return;
     }
     if (attackingEmpire === null || attackingEmpire === st.faction || !isNormalAttacker(galaxy, attackingEmpire)) return; // pirates and monsters get no reaction
+    // The Reclamation has begun: the faction is at war with everyone, and the Watcher leads its fleet (beaconFleet.ts); nothing changes.
+    if (st.phase !== 'watching' || w.mode === 'lead') return;
+    // SELF-DEFENCE, not war: the cloak drops and the Watcher's guns may open fire on the ships that attacked it and their fleets (attackWithoutWar,
+    // watcherMayFire) until they are destroyed or gone. No war is declared or locked, and no relation changes.
+    const now = galaxyStarDate(galaxy);
     bo.cloaked = false;
     if (w.mode !== 'fight') {
-        setMode(w, 'fight', galaxyStarDate(galaxy));
-        w.until = galaxyStarDate(galaxy);
+        w.prevMode = w.mode;
+        w.prevUntil = w.until;
+        w.prevModeDate = w.modeDate;
+        setMode(w, 'fight', now);
+        w.until = now; // marks when the fight began
         arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Watcher Fight', onceKey: `WatcherFight${w.index}:${attackingEmpire.empireId}`, textTag: `${TAG} Watcher Fight News`, args: [attackingEmpire.name] });
     }
-    if (!w.attackedBy.includes(attackingEmpire.empireId)) {
-        w.attackedBy.push(attackingEmpire.empireId);
-        lockWar(galaxy, st.faction, attackingEmpire);
+    w.lastHit = now;
+    const ship = attackerShipOf(attacker);
+    if (ship !== null) {
+        w.attackerShips ??= [];
+        if (!w.attackerShips.includes(ship.builtObjectID)) w.attackerShips.push(ship.builtObjectID);
     }
+    if (!w.attackedBy.includes(attackingEmpire.empireId)) w.attackedBy.push(attackingEmpire.empireId);
+}
+
+/** The ship behind an attack (a ship, or the carrier of a fighter); null for a creature or a base-less source. */
+function attackerShipOf(attacker: unknown): BuiltObject | null {
+    if (attacker === null || typeof attacker !== 'object') return null;
+    const a = attacker as { builtObjectID?: number; parentBuiltObject?: BuiltObject | null };
+    if (typeof a.builtObjectID === 'number') return attacker as BuiltObject;
+    return a.parentBuiltObject ?? null;
+}
+
+/**
+ * attackWithoutWar: a Watcher in a fight (before the Reclamation) may fire at `victim` only when it is one of the ships that attacked it
+ * or sails in the same fleet as one of them. The stock combat code does the rest: a victim that is hit has the Watcher among its
+ * attackers, so its empire's other ships near it join in against the Watcher the way they would against anyone who attacks them. Pure.
+ */
+export function watcherMayFire(galaxy: Galaxy, attacker: BuiltObject | undefined, victim: BuiltObject | undefined): boolean {
+    if (attacker === undefined || victim === undefined) return false;
+    const st = peekBeaconState(galaxy);
+    if (st === null || st.faction === null || st.phase !== 'watching') return false;
+    const w = watcherOf(st, attacker);
+    if (w === undefined || w.dead || w.mode !== 'fight' || w.attackerShips === undefined) return false;
+    if (w.attackerShips.includes(victim.builtObjectID)) return true;
+    const sg = victim.shipGroup as { ships?: readonly BuiltObject[] } | null | undefined;
+    if (sg === null || sg === undefined || sg.ships === undefined) return false;
+    return sg.ships.some((b) => !b.hasBeenDestroyed && w.attackerShips!.includes(b.builtObjectID));
 }
 
 function isNormalAttacker(galaxy: Galaxy, e: Empire): boolean {
@@ -649,6 +719,7 @@ export function beaconComplete(galaxy: Galaxy, site: GreatWorkSite): void {
     st.popBaseline = galaxyPopulation(galaxy, faction);
     initHarvest(galaxy, st);
     for (const e of normalEmpires(galaxy, faction)) lockWar(galaxy, faction, e);
+    startWatcherFleets(galaxy, st); // the Watchers lead the Watcher fleets from now on
     st.nextOfferDate = now + days(P.offerFirstDays(galaxy));
     arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Awakens', textTag: `${TAG} Awakens News`, args: [site.system.systemStar.name] });
     for (const e of normalEmpires(galaxy, faction)) {
@@ -892,7 +963,7 @@ export const beaconKind: GreatWorkKind = {
     onDestroyed: beaconDestroyedEarly,
 };
 
-export const BEACON_HANDLER_IDS = ['beacon.watchers', 'beacon.reclaim', 'beacon.monthly', 'beacon.attacked', 'beacon.killed', 'beacon.owner', 'beacon.destroyed', 'beacon.boarded', 'beacon.repair', 'beacon.troops', 'beacon.counter', 'beacon.ai', 'beacon.cloakTarget', 'beacon.cloakSpares', 'beacon.cattleSpool'] as const;
+export const BEACON_HANDLER_IDS = ['beacon.watchers', 'beacon.reclaim', 'beacon.monthly', 'beacon.attacked', 'beacon.killed', 'beacon.owner', 'beacon.destroyed', 'beacon.boarded', 'beacon.repair', 'beacon.troops', 'beacon.counter', 'beacon.ai', 'beacon.cloakTarget', 'beacon.cloakSpares', 'beacon.cattleSpool', 'beacon.selfDefence', 'beacon.noWar'] as const;
 
 export function registerBeacon(): void {
     registerGreatWork(beaconKind);
@@ -918,7 +989,7 @@ export function registerBeacon(): void {
         },
     });
     registerScenarioPeriodic({ id: 'beacon.counter', flag: BEACON_FLAG, order: 23, periodDays: 60, run: (g) => counterIntelligencePass(g) });
-    registerScenarioEvent({ id: 'beacon.attacked', flag: BEACON_FLAG, event: 'builtObjectAttacked', run: (g, e) => onAttacked(g, e.builtObject, e.attackingEmpire) });
+    registerScenarioEvent({ id: 'beacon.attacked', flag: BEACON_FLAG, event: 'builtObjectAttacked', run: (g, e) => onAttacked(g, e.builtObject, e.attacker, e.attackingEmpire) });
     registerScenarioEvent({ id: 'beacon.killed', flag: BEACON_FLAG, event: 'builtObjectKilledBy', run: (g, e) => onKilledBy(g, e.builtObject, e.destroyer) });
     registerScenarioEvent({
         id: 'beacon.owner',
@@ -988,6 +1059,19 @@ export function registerBeacon(): void {
             const t = a.target;
             if (t.cloaked !== true || a.builtObject.empire === null || a.builtObject.empire === t.empire) return v;
             return !cloakLapsedFor(t, a.builtObject.empire, galaxyStarDate(g));
+        },
+    });
+    // Self-defence, not war: an attacked Watcher fires back at the ships that attacked it (and their fleets) without a war (stock combat asks this
+    // right before the diplomatic relation test), and until the Reclamation nobody, the Reclaimers included, may declare war on the other.
+    registerScenarioQuery({ id: 'beacon.selfDefence', flag: BEACON_FLAG, query: 'attackWithoutWar', run: (g, v, a) => v || watcherMayFire(g, a.attacker, a.victim) });
+    registerScenarioQuery({
+        id: 'beacon.noWar',
+        flag: BEACON_FLAG,
+        query: 'declareWarBlocked',
+        run: (g, v, a) => {
+            if (v) return v;
+            const st = peekBeaconState(g);
+            return st !== null && st.faction !== null && st.phase === 'watching' && (a.empire === st.faction || a.target === st.faction);
         },
     });
     registerThreatKnownSites(BEACON_KEY, beaconKnownSites);

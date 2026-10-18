@@ -612,8 +612,10 @@ export interface ScenarioQueries {
      * combat/attackAI.ts shouldAttack (BuiltObject.1.cs ShouldAttack), stance AttackEnemies, right before the diplomatic
      * relation test (War → attack; otherwise only a ship's own Attack-mission target): true lets `empire`'s ship engage
      * `target`'s ships and bases without a war, as pirates do. Stock false. 19a tit-for-tat strikes. Never draws.
+     * `attacker` / `victim` (the Beacon's Watchers): the very ship that would open fire and the ship or base it would fire at, for a
+     * handler that allows only certain targets (a self-defence against the ships that attacked it).
      */
-    attackWithoutWar: { value: boolean; args: { empire: Empire; target: Empire } };
+    attackWithoutWar: { value: boolean; args: { empire: Empire; target: Empire; attacker?: BuiltObject; victim?: BuiltObject } };
     /**
      * combat/attackAI.ts shouldAttack: true = `builtObject` does not open fire on the stationary `target` unless it was
      * attacked by it first (the Dead Probe Swarm leaves colony defences alone). Stock false. Never draws.
