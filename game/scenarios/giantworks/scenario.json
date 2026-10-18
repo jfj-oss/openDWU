@@ -58,6 +58,7 @@
     {"name": "beaconWatcherGuns", "label": "Beacon: extra guns on a Watcher (times the capital-ship template's weapons)", "default": 2, "min": 0, "max": 1000},
     {"name": "beaconWatcherArmourPct", "label": "Beacon: Watcher armour plating (% of its hull size)", "default": 350, "min": 0, "max": 35000},
     {"name": "beaconWatcherShieldPct", "label": "Beacon: Watcher shield plating (% of its hull size)", "default": 200, "min": 0, "max": 20000},
+    {"name": "beaconTechMax", "label": "Beacon: the Reclaimers' ships and bases use the best technology the game has (0 = the galaxy average + 1, the Watchers a little more)", "default": 1, "min": 0, "max": 1},
     {"name": "beaconWatcherTechBonus", "label": "Beacon: Watchers' tech levels above the galaxy average", "default": 2, "min": 0, "max": 1000},
     {"name": "beaconCorruptMinDays", "label": "Beacon: fewest days between a Watcher's corruptions", "default": 80, "min": 0, "max": 8000},
     {"name": "beaconCorruptMaxDays", "label": "Beacon: most days between a Watcher's corruptions", "default": 160, "min": 0, "max": 16000},

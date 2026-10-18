@@ -109,10 +109,12 @@ export function machineRace(galaxy: Galaxy): Race | null {
     return galaxy.races.find((r) => r !== null && r.name === 'Mechanoid') ?? galaxy.races.find((r) => r !== null) ?? null;
 }
 
-/** Tech of the Reclaimers' ships: the galaxy's average + 1 (the Watchers: + beaconWatcherTechBonus), within the generator's range. */
+/** Tech of the Reclaimers' ships: the generator's maximum (beaconTechMax, the default), else the galaxy's average + 1 (the Watchers: + beaconWatcherTechBonus), within the generator's range. */
 export function reclaimerLevel(galaxy: Galaxy, faction: Empire | null, bonus = 1): number {
-    const avg = faction !== null ? averageTechLevel(galaxy, faction) : 1;
     const max = maxDesignTechLevel(galaxy);
+    // beaconTechMax: every Reclaimer design (Watchers, warships, cattle ships, harvesters, the Beacon's defences) is made at the generator's top tech level
+    if (P.techMax(galaxy) && max > 0) return max;
+    const avg = faction !== null ? averageTechLevel(galaxy, faction) : 1;
     const lvl = Math.max(1, Math.trunc(avg + bonus));
     return max > 0 ? Math.min(lvl, max) : lvl;
 }
