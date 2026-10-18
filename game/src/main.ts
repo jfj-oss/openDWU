@@ -83,6 +83,7 @@ import { createTutorialsScreen, openTutorialWindow } from './ui/screens/tutorial
 import { createCreditsScreen } from './ui/screens/credits';
 import { startMusic } from './audio/musicPlayer';
 // [audio] begin
+import { installBeaconLaunchCall } from './ui/beaconLaunchCall';
 import { installGameAudio } from './audio/gameAudio';
 import { installUiClickSounds } from './audio/uiClicks';
 import { soundRequestStats } from './audio/effectsPlayer';
@@ -1311,6 +1312,9 @@ export async function startGameView(
     // G opens the Galaxy Map screen (original UI_KeyboardCommands); the HUD's
     // "Galaxy" view row still zooms the Main View out.
     keyHandlers.galaxyMap = () => galaxyMap.toggle();
+    // Giantworks, the Beacon: the launch-day call sends the camera to the Beacon (Escape skips back) and, a minute after
+    // the first, shows "The End Times" (ui/beaconLaunchCall.ts; presentation only).
+    const beaconCall = installBeaconLaunchCall({ galaxy, camera, followState: view.followState });
     const keydownHandler = (e: KeyboardEvent): void => {
         if (galaxyMap.isOpen && e.key === 'Escape') {
             e.preventDefault();
@@ -1324,6 +1328,10 @@ export async function startGameView(
             return;
         }
         // [fix6ui] end
+        if (beaconCall.onKey(e)) {
+            e.preventDefault();
+            return;
+        }
         // F1 is the Galactopedia binding (dispatchKey), not the overlay.
         if (e.key === '?') {
             e.preventDefault();
@@ -1351,6 +1359,7 @@ export async function startGameView(
     app.ticker.add(() => {
         simLoop.tick(app.ticker.elapsedMS);
         shipKeys?.frame();
+        renderGuard(() => beaconCall.frame());
         renderGuard(() => view.update(simLoop.renderTime));
         renderGuard(() => gameAudio.frame()); // [audio]
     });

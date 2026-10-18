@@ -908,7 +908,9 @@ Mass Effect Mod by Kalthaniell + Team for Legends, modified for Shadows by
 dostillevi, for Universe by Demonius, compiled and assembled (ME4) by Tyrador,
 using some of the Prothean Cycle mod's assets. The Watchers are that mod's Reaper
 carrier; the other frames are composites of its Reaper ship set
-(`game/scripts/beacon-ships.py`).
+(`game/scripts/beacon-ships.py`); the Beacon station's layout follows the mod's
+Mass Relay picture. The launch beam's textures and the Beacon's sounds are our
+own (`beacon-ships.py`, `beacon-horn.py`, `beacon-blast.py`).
 
 **Fonts.** *Forgotten Futurist* (the original's UI font; © 1999 Ray Larabie,
 freeware, Larabie Fonts / Typodermic, www.typodermic.com) is bundled unmodified

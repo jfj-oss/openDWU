@@ -16,13 +16,16 @@
 // on the body and on each moving part; its swell turns red-orange too), and cool back as it closes; closed it is the
 // reference. A Watcher that starts opening while drawn leaves a cue for its horn (takeWatcherHornCues; the sound is
 // src/audio/beaconHorn.ts).
+//
+// The Beacon station itself (the relay) is beaconRelayFx.ts's: its core and gyros, its damage, the launch's beam.
 
 import { Container, Rectangle, Texture, type Sprite } from 'pixi.js';
 import type { BuiltObject } from '../sim/builtObject';
 import { SpritePool } from './fxCommon';
 import { loadShipArt } from './shipArt';
-import { BEACON_FRAMES, WATCHER_ART, type BeaconFrameArt, type BeaconFxRect } from './beaconArtData';
+import { BEACON_FRAMES, BEACON_RELAY, WATCHER_ART, type BeaconFrameArt, type BeaconFxRect } from './beaconArtData';
 import { BEACON_ART_DIR } from './threatArt';
+import { BeaconRelayFx, type RelayFrame } from './beaconRelayFx';
 
 /** No light layers under this drawn size (px). */
 export const BEACON_FX_MIN_PX = 14;
@@ -109,11 +112,15 @@ function sub(base: Texture, r: BeaconFxRect): Texture {
     return new Texture({ source: base.source, frame: new Rectangle(r.x, r.y, r.w, r.h) });
 }
 
-/** The frame data of a Beacon file (a Reclaimer frame, 'beacon' or 'watcher'), or null. */
+/** The frame data of a Beacon file (a Reclaimer frame, 'beacon' (the relay) or 'watcher'), or null. */
 export function beaconFrameArt(file: string): BeaconFrameArt | null {
     if (file === 'watcher') return WATCHER_ART;
+    if (file === 'beacon') return BEACON_RELAY_FRAME;
     return Object.hasOwn(BEACON_FRAMES, file) ? BEACON_FRAMES[file] : null;
 }
+
+/** The relay as a frame (its size, its lines' breath; its swell is drawn by beaconRelayFx.ts). */
+const BEACON_RELAY_FRAME: BeaconFrameArt = { size: BEACON_RELAY.size, breath: BEACON_RELAY.breath, glow: BEACON_RELAY.glow };
 
 interface Unfold {
     u: number;
@@ -128,6 +135,8 @@ export class BeaconFxLayer {
     private watcherTex: WatcherTextures | null = null;
     private watcherLoading = false;
     private unfold = new Map<BuiltObject, Unfold>();
+    private relay = new BeaconRelayFx(this.pool);
+    private relayFrame: RelayFrame = { countdown: 0, launchT: null, serial: 0 };
     // The transform of the sprite being decorated (set per draw; no closures per frame).
     private x = 0;
     private y = 0;
@@ -142,12 +151,19 @@ export class BeaconFxLayer {
         this.root.eventMode = 'none';
     }
 
-    begin(): void {
+    /** `relay`: this frame's countdown and launch (beaconLaunch.ts), for the Beacon station. */
+    begin(relay?: RelayFrame): void {
         this.pool.begin();
+        if (relay !== undefined) {
+            this.relayFrame.countdown = relay.countdown;
+            this.relayFrame.launchT = relay.launchT;
+            this.relayFrame.serial = relay.serial;
+        }
     }
 
     end(): void {
         this.pool.end();
+        this.relay.prune();
         if (this.unfold.size > 4) for (const bo of this.unfold.keys()) if (bo.hasBeenDestroyed) this.unfold.delete(bo);
     }
 
@@ -235,6 +251,10 @@ export class BeaconFxLayer {
     draw(file: string, bo: BuiltObject, open: boolean, x: number, y: number, rotation: number, scale: number, ax: number, ay: number, tw: number, th: number, px: number, sec: number): Texture | null {
         const art = beaconFrameArt(file);
         if (art === null) return null;
+        if (file === 'beacon') {
+            const breath = beaconBreath(sec, art.breath, beaconPhase(bo.builtObjectID, art.breath));
+            return this.relay.draw(bo, this.relayFrame, x, y, rotation, scale, ax, ay, tw, th, px, sec, breath);
+        }
         let u = 0;
         if (file === 'watcher') {
             let st = this.unfold.get(bo);

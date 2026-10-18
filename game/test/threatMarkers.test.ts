@@ -49,6 +49,25 @@ import {
     watcherUnfoldStep,
 } from '../src/render/beaconFx';
 import { HORN_COOLDOWN_S, HORN_SAME_WATCHER_S, HORN_URL, hornAllowed, hornLevel } from '../src/audio/beaconHorn';
+import { BEACON_BEAM, BEACON_RELAY } from '../src/render/beaconArtData';
+import { COOLDOWN_DAYS, LAUNCH_FRESH_DAYS, beaconCountdown, beaconLaunchIsFirst, beaconLaunchKey, beaconSpinRate, stepLaunchClock } from '../src/render/beaconLaunch';
+import {
+    BEAM_FLASH_CAP,
+    LAUNCH,
+    LAUNCH_SPIN,
+    beaconDamageTier,
+    beamEnvelope,
+    beamFlashAlpha,
+    coreSputter,
+    gyroAngles,
+    gyroBlur,
+    heatColour,
+    launchHeat,
+    launchSpin,
+    pulseProgress,
+} from '../src/render/beaconRelayFx';
+import { BLAST_AT_S, BLAST_HIT_S, BLAST_URL, blastStart } from '../src/audio/beaconBlast';
+import { CALL_GLIDE_S, END_TIMES_DELAY_MS, END_TIMES_TEXT_TAG, END_TIMES_TITLE_TAG, endTimesTexts, glideView } from '../src/ui/beaconLaunchCall';
 import { readFileSync } from 'node:fs';
 import type { Galaxy } from '../src/sim/galaxy';
 import {
@@ -90,6 +109,8 @@ import {
     ULTRAMIND_CUBE_COVER,
     sanctuaryWhaleCount,
     sanctuaryWhalePose,
+    greatWorkSeenThroughFog,
+    GREAT_WORK_FOG_EXCLUDED,
     type GreatWorkArtSite,
     ARK_STATE_KEY,
     arkRecordOf,
@@ -609,6 +630,210 @@ describe('the Beacon art', () => {
 
 // threatArt.ts: Giantworks — the Great Work's scaffold stages and finished wonders (public/art/giantworks/,
 // scripts/giantworks-art.py), its lights, the Sanctuary's whales, and the map glyphs (threatMarkers.ts).
+// beaconRelayFx.ts / beaconLaunch.ts: the Beacon station (the relay) and its launch-day call (render / audio / UI only).
+describe('the Beacon relay and its launch', () => {
+    const png = (f: string): string => resolve(__dirname, '../public', `${BEACON_ART_DIR.slice(1)}${f}.png`);
+    const DAY = 1000;
+
+    it('the relay: its frame and body on one square canvas, the content centred, no markers, wine-red lines, every atlas rect inside its atlas', () => {
+        const R = BEACON_RELAY;
+        for (const f of ['beacon', 'beacon-body']) {
+            const img = decodePng(png(f));
+            expect(img.width, f).toBe(R.size);
+            expect(img.height, f).toBe(R.size);
+            let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, blue = 0, yellow = 0, black = 0, wine = 0;
+            const d = img.data;
+            for (let y = 0; y < img.height; y++) {
+                for (let x = 0; x < img.width; x++) {
+                    const i = (y * img.width + x) * 4;
+                    const r = d[i], g = d[i + 1], b = d[i + 2], a = d[i + 3];
+                    if (a === 0) continue;
+                    // no faint pixels a premultiplied read could turn into a marker colour (but the balance pixels)
+                    if (a > 1) expect(a, `${f} faint`).toBeGreaterThanOrEqual(4);
+                    x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+                    if (r === 0 && g === 0 && b === 255) blue++;
+                    if (r === 255 && g === 255 && b === 0) yellow++;
+                    if (a === 255 && r === 0 && g === 0 && b === 0) black++;
+                    if (a > 200 && r > 110 && r > g + 60 && r > b + 50) wine++;
+                }
+            }
+            expect([blue, yellow, black], f).toEqual([0, 0, 0]);
+            expect(Math.abs((x0 + x1) / 2 - R.size / 2), f).toBeLessThanOrEqual(1);
+            expect(Math.abs((y0 + y1) / 2 - R.size / 2), f).toBeLessThanOrEqual(1);
+            expect(wine, `${f} wine-red lines`).toBeGreaterThan(200);
+        }
+        const inAtlas = (file: string, rects: { x: number; y: number; w: number; h: number }[]): void => {
+            const a = decodePng(png(file));
+            for (const r of rects) {
+                expect(r.x + r.w, file).toBeLessThanOrEqual(a.width);
+                expect(r.y + r.h, file).toBeLessThanOrEqual(a.height);
+            }
+        };
+        inAtlas('beacon-parts', [R.tip, R.pits, ...R.gyros.flatMap((g) => [g.ring, g.ticks, g.blur])]);
+        inAtlas('beacon-fx', [R.glow, R.well, R.rims, R.orb, R.halo]);
+        inAtlas('beacon-beam', Object.values(BEACON_BEAM));
+        // the core in the ring, the gyros inside the well, square and even (split into halves)
+        expect(R.ringIn).toBeLessThan(R.ringOut);
+        for (const g of R.gyros) {
+            expect(g.r + g.w / 2).toBeLessThan(R.ringIn);
+            expect(g.ring.w).toBe(g.ring.h);
+            expect(g.ring.h % 2).toBe(0);
+            expect([g.ticks.w, g.ticks.h]).toEqual([g.ring.w, g.ring.h]);
+        }
+        for (const p of [R.core, R.hinge, ...R.breaks, ...R.vents, ...R.seams.flat()]) {
+            expect(p[0]).toBeGreaterThan(0);
+            expect(p[1]).toBeGreaterThan(0);
+            expect(p[0]).toBeLessThan(R.size);
+            expect(p[1]).toBeLessThan(R.size);
+        }
+        // each seam runs from a prong's tip into the core
+        for (const path of R.seams) {
+            const end = path[path.length - 1];
+            expect(Math.hypot(end[0] - R.core[0], end[1] - R.core[1])).toBeLessThan(R.ringOut);
+            expect(Math.hypot(path[0][0] - R.core[0], path[0][1] - R.core[1])).toBeGreaterThan(R.ringOut * 2);
+        }
+    });
+
+    it('the countdown: 0 in the quiet year, rising through the preparation to 1 at the launch, cooling after the call', () => {
+        expect(beaconCountdown(null, 5)).toBe(0);
+        expect(beaconCountdown({ phase: 'quiet', start: 0, end: 100 }, 50)).toBe(0);
+        const prep = { phase: 'prep', start: 0, end: 100 * DAY, prepStart: 0, launchAt: 100 * DAY };
+        let last = -1;
+        for (let d = 0; d <= 110; d += 5) {
+            const c = beaconCountdown(prep, d * DAY, DAY);
+            expect(c).toBeGreaterThanOrEqual(last);
+            last = c;
+        }
+        expect(beaconCountdown(prep, 0, DAY)).toBe(0);
+        expect(beaconCountdown(prep, 50 * DAY, DAY)).toBeCloseTo(0.5, 9);
+        expect(beaconCountdown(prep, 120 * DAY, DAY)).toBe(1); // a late departure holds the eve
+        // the sim's own fields only (start / end) still count down
+        expect(beaconCountdown({ phase: 'prep', start: 0, end: 10 * DAY }, 5 * DAY, DAY)).toBeCloseTo(0.5, 9);
+        const off = { phase: 'offensive', start: 0, end: 300 * DAY, departed: 0 };
+        expect(beaconCountdown(off, 0, DAY)).toBe(1);
+        expect(beaconCountdown(off, COOLDOWN_DAYS * DAY, DAY)).toBe(0);
+        // the spin: a slow turn, faster and faster to the eve
+        expect(beaconSpinRate(0)).toBeLessThan(0.5);
+        expect(beaconSpinRate(1)).toBeGreaterThan(15);
+        expect(beaconSpinRate(0.5)).toBeGreaterThan(beaconSpinRate(0.25));
+    });
+
+    it('the launch clock fires once per call, never replays an old launch on the first read, and knows the first', () => {
+        const st = (launches: number | undefined, last: number | undefined, season: object | null = null) => ({ launches, lastLaunchDate: last, season }) as never;
+        expect(beaconLaunchKey(st(0, undefined))).toBeNull();
+        expect(beaconLaunchKey(st(2, 10))).toBe('L2');
+        expect(beaconLaunchKey(st(undefined, undefined, { n: 3, departed: 77 }))).toBe('S3:77');
+        expect(beaconLaunchIsFirst(st(1, 0))).toBe(true);
+        expect(beaconLaunchIsFirst(st(2, 0))).toBe(false);
+        expect(beaconLaunchIsFirst(st(undefined, undefined, { n: 1, departed: 5 }))).toBe(true);
+        // first read of an old launch (a loaded save): recorded, not fired
+        let c = stepLaunchClock(null, st(1, 0), 100 * DAY, 1000, DAY);
+        expect(c.serial).toBe(0);
+        c = stepLaunchClock(c, st(1, 0), 101 * DAY, 2000, DAY);
+        expect(c.serial).toBe(0);
+        // the next call fires, once
+        c = stepLaunchClock(c, st(2, 200 * DAY), 200 * DAY, 3000, DAY);
+        expect([c.serial, c.atMs, c.first]).toEqual([1, 3000, false]);
+        c = stepLaunchClock(c, st(2, 200 * DAY), 200.5 * DAY, 4000, DAY);
+        expect(c.serial).toBe(1);
+        // a launch fresh on the first read (a client joining at that moment) still fires
+        const fresh = stepLaunchClock(null, st(1, 10 * DAY), (10 + LAUNCH_FRESH_DAYS / 2) * DAY, 50, DAY);
+        expect([fresh.serial, fresh.first]).toEqual([1, true]);
+        // no launch yet: nothing
+        expect(stepLaunchClock(null, null, 0, 0, DAY).serial).toBe(0);
+    });
+
+    it('the launch sequence: pulses down the prongs, the gyros spun to a blur, the beam fires, holds and decays; the flash capped', () => {
+        expect(beamEnvelope(LAUNCH.ignite - 0.01)).toBe(0);
+        expect(beamEnvelope((LAUNCH.ignite + LAUNCH.hold) / 2)).toBe(1);
+        expect(beamEnvelope(LAUNCH.fade + 0.01)).toBe(0);
+        expect(LAUNCH.fade - LAUNCH.ignite).toBeGreaterThan(5); // several seconds
+        for (let t = 0; t < LAUNCH.end; t += 0.05) expect(beamFlashAlpha(t)).toBeLessThanOrEqual(BEAM_FLASH_CAP + 1e-9);
+        expect(BEAM_FLASH_CAP).toBeLessThanOrEqual(0.4);
+        expect(pulseProgress(LAUNCH.pulse0 - 0.01, 0)).toBe(-1);
+        expect(pulseProgress(LAUNCH.pulse0 + LAUNCH.pulseRun / 2, 0)).toBeCloseTo(0.5, 9);
+        expect(pulseProgress(LAUNCH.pulse0 + (LAUNCH.pulses - 1) * LAUNCH.pulseGap + LAUNCH.pulseRun, LAUNCH.pulses - 1)).toBe(1);
+        expect(LAUNCH.pulse0 + (LAUNCH.pulses - 1) * LAUNCH.pulseGap + LAUNCH.pulseRun).toBeLessThanOrEqual(LAUNCH.ignite);
+        expect(launchSpin(null, 2)).toBe(2);
+        expect(launchSpin(LAUNCH.charge, 2)).toBe(LAUNCH_SPIN);
+        expect(gyroBlur(launchSpin(LAUNCH.ignite, 2))).toBe(1);
+        expect(gyroBlur(beaconSpinRate(0))).toBe(0);
+        expect(launchSpin(LAUNCH.end - 0.01, 2)).toBeLessThan(LAUNCH_SPIN / 2);
+        expect(launchHeat(LAUNCH.ignite, 0.2)).toBe(1);
+        expect(launchHeat(null, 0.2)).toBe(0.2);
+        // the heat: dim wine red cold, white-hot at the launch
+        const c0 = heatColour(0);
+        expect(c0 >> 16).toBeGreaterThan(((c0 >> 8) & 255) + 40);
+        expect(c0 >> 16).toBeLessThan(140);
+        expect(heatColour(1)).toBe(0xffffff);
+        const g: [number, number] = [0, 0];
+        gyroAngles(0, 0, g);
+        expect(g[0]).toBeCloseTo(BEACON_RELAY.gyros[0].axis, 1);
+    });
+
+    it('damage tiers from the share of damaged components; near death the core sputters', () => {
+        expect(beaconDamageTier(0)).toBe(0);
+        expect(beaconDamageTier(0.1)).toBe(1);
+        expect(beaconDamageTier(0.45)).toBe(2);
+        expect(beaconDamageTier(0.9)).toBe(3);
+        let out = 0, lit = 0;
+        for (let s = 0; s < 60; s += 0.05) {
+            const v = coreSputter(s);
+            expect(v).toBeGreaterThan(0);
+            expect(v).toBeLessThanOrEqual(1);
+            if (v < 0.1) out++;
+            if (v === 1) lit++;
+        }
+        expect(out).toBeGreaterThan(10);
+        expect(lit).toBeGreaterThan(out);
+    });
+
+    it('the blast lands on the ignition; a late call is joined part way, a very late one not played', () => {
+        expect(BLAST_URL).toBe('/audio/beacon/beacon-blast.ogg');
+        expect(existsSync(resolve(__dirname, '../public/audio/beacon/beacon-blast.ogg'))).toBe(true);
+        expect(BLAST_AT_S + BLAST_HIT_S).toBeCloseTo(LAUNCH.ignite, 6);
+        expect(blastStart(0)).toEqual({ offset: 0, delay: BLAST_AT_S });
+        const late = blastStart(BLAST_AT_S + 1)!;
+        expect(late.offset).toBeCloseTo(1, 9);
+        expect(late.delay).toBe(0);
+        expect(blastStart(BLAST_AT_S + 10)).toBeNull();
+    });
+
+    it('the call: the camera glides in; "The End Times" a minute after the first, from the Giantworks GameText', () => {
+        const a = { x: 0, y: 0, zoom: 0.01 };
+        const b = { x: 100, y: -50, zoom: 1 };
+        expect(glideView(a, b, 0).x).toBe(0);
+        expect(glideView(a, b, 0).zoom).toBeCloseTo(0.01, 12);
+        const end = glideView(a, b, 1);
+        expect(end.x).toBeCloseTo(100, 9);
+        expect(end.zoom).toBeCloseTo(1, 9);
+        expect(glideView(a, b, 0.5).zoom).toBeCloseTo(0.1, 6); // log-space zoom
+        expect(CALL_GLIDE_S).toBeLessThan(3);
+        expect(END_TIMES_DELAY_MS).toBe(60_000);
+        expect(endTimesTexts().title).toBe('The End Times');
+        const gt = readFileSync(resolve(__dirname, '../scenarios/giantworks/GameText.txt'), 'utf8');
+        expect(gt).toContain(`${END_TIMES_TITLE_TAG};The End Times`);
+        expect(gt).toContain(`${END_TIMES_TEXT_TAG};`);
+    });
+
+    it('every Great Work station is seen through the fog but the Ark Engine; nothing else is', () => {
+        const base = (id: number) => ({ builtObjectID: id, hasBeenDestroyed: false }) as unknown as BuiltObject;
+        const casino = base(1), ark = base(2), beacon = base(3), scaffold = base(4), ship = base(5);
+        const sites = new Map<BuiltObject, GreatWorkArtSite>([
+            [casino, { base: casino, stage: 4, wonder: 'casino', habitat: null }],
+            [ark, { base: ark, stage: 4, wonder: GREAT_WORK_FOG_EXCLUDED, habitat: null }],
+            [scaffold, { base: scaffold, stage: 1, wonder: 'riftGate', habitat: null }],
+        ]);
+        const l = { genFactions: [], worldShips: [], swarmFaction: null, mothercore: null, purifierFaction: null, purifierDock: null, greatWorks: sites, beacon } as ThreatLooks;
+        expect(greatWorkSeenThroughFog(casino, l)).toBe(true);
+        expect(greatWorkSeenThroughFog(scaffold, l)).toBe(true);
+        expect(greatWorkSeenThroughFog(beacon, l)).toBe(true);
+        expect(greatWorkSeenThroughFog(ark, l)).toBe(false);
+        expect(greatWorkSeenThroughFog(ship, l)).toBe(false);
+        expect(GREAT_WORK_FOG_EXCLUDED).toBe('ark');
+    });
+});
+
 describe('giantworks art', () => {
     const png = (f: string): string => resolve(__dirname, '../public', `${GW_ART_DIR.slice(1)}${f}.png`);
     const FRAMES = ['scaffold_0', 'scaffold_1', 'scaffold_2', 'scaffold_3', 'casino', 'casino-pirate', 'ultramind', 'ultramind-awake', 'ultramind-node', 'ultramind-node-awake', 'sanctuary'];

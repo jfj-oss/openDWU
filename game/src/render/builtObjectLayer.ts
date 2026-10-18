@@ -29,8 +29,10 @@ import { CONCORD_LIMBS_MIN_PX, ConcordFxLayer, concordArtEmpire, concordShipArt,
 import { ConstructionOverlays, DamageOverlays, shipConstructionSubject, shipDamageSubject } from './shipOverlays';
 import { artBundleFlag } from './artBundleFlags';
 import { LiveryOverlays } from './liveryLayer';
-import { ANCIENT_TINT, ANCIENT_WEAR, GenShipsFxLayer, GreatWorkFxLayer, SwarmFxLayer, arkRecordOf, beaconArtFile, beaconLooksActive, genShipsArtFile, greatWorkDrawPxOf, greatWorkDrawnFrame, isAncientHull, threatArtUrl, threatDrawScale, threatLooks, watcherOpenTarget } from './threatArt';
+import { ANCIENT_TINT, ANCIENT_WEAR, GenShipsFxLayer, GreatWorkFxLayer, SwarmFxLayer, arkRecordOf, beaconArtFile, beaconLooksActive, genShipsArtFile, greatWorkDrawPxOf, greatWorkDrawnFrame, greatWorkSeenThroughFog, isAncientHull, threatArtUrl, threatDrawScale, threatLooks, watcherOpenTarget } from './threatArt';
 import { ArkFxLayer, arkDrawScale } from './arkFx';
+import { beaconCountdownNow, pollBeaconLaunch } from './beaconLaunch';
+import type { RelayFrame } from './beaconRelayFx';
 import { BeaconFxLayer } from './beaconFx';
 import { fogOf } from './fog';
 import { Galaxy } from '../sim/galaxy';
@@ -544,6 +546,8 @@ export class BuiltObjectLayer {
     private genFx = new GenShipsFxLayer();
     /** beaconFx.ts: the Beacon's light lines breathing, the Watchers' legs and plates opening (pooled; above the ships). */
     private beaconFx = new BeaconFxLayer();
+    /** The Beacon station's countdown and launch this frame (beaconLaunch.ts; reused). */
+    private relayFrame: RelayFrame = { countdown: 0, launchT: null, serial: 0 };
     /** threatArt.ts: a Great Work's lights, glows and the Sanctuary's whales (above the ships). */
     private gwFx = new GreatWorkFxLayer();
     /** arkFx.ts: the Ark Engines, drawn whole in their own layer UNDER the ships (fleets fly over them, as over planets). */
@@ -647,8 +651,17 @@ export class BuiltObjectLayer {
         if (liveryPass) this.liveries.begin();
         this.swarmFx.begin();
         this.genFx.begin();
-        this.beaconFx.begin();
         const beaconOn = beaconLooksActive(looks);
+        if (beaconOn && looks.beacon !== undefined && looks.beacon !== null) {
+            const clock = pollBeaconLaunch(this.galaxy, performance.now());
+            this.relayFrame.countdown = beaconCountdownNow(this.galaxy);
+            this.relayFrame.serial = clock.serial;
+            this.relayFrame.launchT = clock.serial > 0 ? (performance.now() - clock.atMs) / 1000 : null;
+        } else {
+            this.relayFrame.countdown = 0;
+            this.relayFrame.launchT = null;
+        }
+        this.beaconFx.begin(this.relayFrame);
         this.gwFx.begin();
         this.arkFx.begin();
         this.arkFx.setScreenScale(z);
@@ -694,7 +707,10 @@ export class BuiltObjectLayer {
                 this.drawnPx.delete(bo);
                 continue;
             }
-            if (!fog.builtObject(bo)) {
+            // threatArt.ts greatWorkSeenThroughFog: a Great Work's station (not the Ark Engine) is drawn through the fog
+            // (render only), but stays unpickable while unseen (no drawn size).
+            const fogged = !fog.builtObject(bo);
+            if (fogged && !greatWorkSeenThroughFog(bo, looks)) {
                 if (sprite !== undefined) sprite.visible = false;
                 this.drawnPx.delete(bo);
                 continue;
@@ -772,8 +788,9 @@ export class BuiltObjectLayer {
                 : gwFrame !== null
                   ? greatWorkDrawPxOf(gwSite!, gwFrame, f)
                   : builtObjectSizePx(bo.size, metrics.areaRatio, f, bo.design?.imageScalingType ?? DesignImageScalingMode.None, bo.design?.imageScalingFactor ?? 1) * tScale;
-            this.drawnPx.set(bo, px);
-            if (bars) {
+            if (fogged) this.drawnPx.delete(bo);
+            else this.drawnPx.set(bo, px);
+            if (bars && !fogged) {
                 // PrepareBuiltObjectImageNEW(..., 1.0): the image at zoom factor 1 (DetermineBuiltObjectSizeNEW).
                 const unitPx = isArk
                     ? builtObjectSizePx(bo.size, metrics.areaRatio, 1, DesignImageScalingMode.None, 1) * arkDrawScale(bo.size)
@@ -823,7 +840,7 @@ export class BuiltObjectLayer {
             // threatArt.ts: a Great Work keeps its frame's own orientation (its light from the upper left, every stage
             // in register), whatever its base's heading.
             const trueHeading = heading;
-            if (gwFrame !== null) heading = -Math.PI / 2;
+            if (gwFrame !== null || (beaconOn && bo === looks.beacon)) heading = -Math.PI / 2;
             sprite.rotation = heading + Math.PI / 2;
             sprite.scale.set(px / metrics.cropSide / z);
             sprite.alpha = this.overlays.fadeCivilianShips && bo.owner === null ? 144 / 255 : 1;
@@ -858,7 +875,8 @@ export class BuiltObjectLayer {
             if (ancient && !this.liveries.forced.has(bo)) this.liveries.forced.set(bo, ANCIENT_WEAR);
             if ((liveries || ancient) && shipArtRecord !== null) this.liveries.draw(bo, shipArtRecord, px, z, sprite.alpha, x, y, heading);
             // 19r: MainView.cs 3253 method_73 → Main.Part12.cs 4988 method_106 while DamagedComponentCount > 0.
-            if (bo.damagedComponentCount > 0 && shipArtRecord !== null) {
+            // (The Beacon station shows its damage its own way: beaconRelayFx.ts.)
+            if (bo.damagedComponentCount > 0 && shipArtRecord !== null && !(beaconOn && bo === looks.beacon)) {
                 const subject = shipDamageSubject(bo);
                 if (subject !== null) this.damage.draw(bo, subject, shipArtRecord, x, y, heading, px, z, damageFx, sprite.alpha);
             }

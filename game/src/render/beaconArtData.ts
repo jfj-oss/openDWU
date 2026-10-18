@@ -62,11 +62,6 @@ export const BEACON_FRAMES: Readonly<Record<string, BeaconFrameArt>> = {
         breath: 5.60,
         glow: { x: 0, y: 0, w: 86, h: 220, dx: 173, dy: 85 },
     },
-    beacon: {
-        size: 876,
-        breath: 9.00,
-        glow: { x: 0, y: 0, w: 580, h: 639, dx: 158, dy: 106 },
-    },
 };
 
 export interface WatcherPartArt {
@@ -114,3 +109,108 @@ export const WATCHER_ART: WatcherArt = {
         { rect: { x: 0, y: 632, w: 31, h: 50, dx: 296, dy: 307 }, hinge: [302.5, 308.5], swing: -0.1600, delay: 0.600, hot: { x: 0, y: 877, w: 31, h: 50, dx: 296, dy: 307 } },
     ],
 };
+
+export interface BeaconGyroArt {
+    /** Radius and width (frame px). */
+    readonly r: number;
+    readonly w: number;
+    /** In beacon-parts.png: the ring (metal), its light ticks (a white mask, tinted), its blur (spun); each square, the ring centred. */
+    readonly ring: BeaconFxRect;
+    readonly ticks: BeaconFxRect;
+    readonly blur: BeaconFxRect;
+    /** Its axis of turn (screen angle, rad) and its rate relative to the spin. */
+    readonly axis: number;
+    readonly rate: number;
+}
+
+export interface BeaconRelayArt {
+    /** Frame side (beacon.png and beacon-body.png, px) and the lines' breathing period (s). */
+    readonly size: number;
+    readonly breath: number;
+    /** The core (frame px), the ring's inner and outer radius, the core's radius. */
+    readonly core: readonly [number, number];
+    readonly ringIn: number;
+    readonly ringOut: number;
+    readonly coreR: number;
+    /** In beacon-fx.png (additive): the lines' swell, the well's light (white, tinted by the heat), the pits' lit rims, the orb, its halo. */
+    readonly glow: BeaconFxRect;
+    readonly well: BeaconFxRect;
+    readonly rims: BeaconFxRect;
+    readonly orb: BeaconFxRect;
+    readonly halo: BeaconFxRect;
+    /** In beacon-parts.png: the lower prong's tip (at dx, dy on the frame); it snaps at the hinge (frame px), turning tipBend rad and sliding tipSlide px. */
+    readonly tip: BeaconFxRect;
+    readonly hinge: readonly [number, number];
+    readonly tipBend: number;
+    readonly tipSlide: readonly [number, number];
+    readonly gyros: readonly BeaconGyroArt[];
+    /** In beacon-parts.png: the heavy damage's pits and cracks (dark, at dx, dy on the frame). */
+    readonly pits: BeaconFxRect;
+    /** The charge's paths down the prongs' seams, tip to core (frame px); the break's raw edge; where smoke vents. */
+    readonly seams: readonly (readonly (readonly [number, number])[])[];
+    readonly breaks: readonly (readonly [number, number])[];
+    readonly vents: readonly (readonly [number, number])[];
+    /** The beam's scale: its disc's reference radius (frame px). */
+    readonly beamR: number;
+}
+
+export const BEACON_RELAY: BeaconRelayArt = {
+    size: 922,
+    breath: 9.00,
+    core: [275.6, 409.1],
+    ringIn: 92.0,
+    ringOut: 152.0,
+    coreR: 21.0,
+    glow: { x: 0, y: 0, w: 798, h: 444, dx: 94, dy: 261 },
+    well: { x: 0, y: 446, w: 194, h: 194, dx: 179, dy: 312 },
+    rims: { x: 0, y: 642, w: 769, h: 444, dx: 85, dy: 258 },
+    orb: { x: 0, y: 1088, w: 64, h: 64, dx: 0, dy: 0 },
+    halo: { x: 0, y: 1154, w: 128, h: 128, dx: 0, dy: 0 },
+    tip: { x: 0, y: 0, w: 201, h: 117, dx: 670, dy: 602 },
+    hinge: [689.6, 638.9],
+    tipBend: 0.160,
+    tipSlide: [6.0, 10.0],
+    gyros: [
+        { r: 79.0, w: 10.0, ring: { x: 0, y: 119, w: 186, h: 186, dx: 0, dy: 0 }, ticks: { x: 0, y: 307, w: 186, h: 186, dx: 0, dy: 0 }, blur: { x: 0, y: 495, w: 186, h: 186, dx: 0, dy: 0 }, axis: 0.300, rate: 1.000 },
+        { r: 63.0, w: 9.0, ring: { x: 0, y: 683, w: 152, h: 152, dx: 0, dy: 0 }, ticks: { x: 0, y: 837, w: 152, h: 152, dx: 0, dy: 0 }, blur: { x: 0, y: 991, w: 152, h: 152, dx: 0, dy: 0 }, axis: 1.350, rate: -1.310 },
+        { r: 47.0, w: 8.0, ring: { x: 0, y: 1145, w: 118, h: 118, dx: 0, dy: 0 }, ticks: { x: 0, y: 1265, w: 118, h: 118, dx: 0, dy: 0 }, blur: { x: 0, y: 1385, w: 118, h: 118, dx: 0, dy: 0 }, axis: 2.400, rate: 1.730 },
+    ],
+    pits: { x: 0, y: 1505, w: 763, h: 455, dx: 88, dy: 259 },
+    seams: [
+        [[890.7, 595.1], [779.4, 550.1], [575.4, 467.7], [442.3, 418.2], [379.6, 408.0]],
+        [[847.2, 702.6], [736.0, 657.7], [532.0, 575.2], [401.8, 518.3], [349.6, 482.1]],
+    ],
+    breaks: [[697.9, 618.5], [694.1, 627.8], [690.7, 636.1], [687.4, 644.5]],
+    vents: [[695.2, 641.2], [494.0, 402.4], [138.1, 429.0]],
+    beamR: 262.0,
+};
+
+/** The launch beam's textures in beacon-beam.png (additive light, but the ash and the smoke: normal). */
+export const BEACON_BEAM: Readonly<Record<'disc' | 'swirl' | 'swirl2' | 'ring' | 'bloom' | 'bloomGreen' | 'streak' | 'ember0' | 'ember1' | 'ash0' | 'ash1' | 'ash2' | 'ash3' | 'spark' | 'smoke0' | 'smoke1' | 'smoke2' | 'pulse', BeaconFxRect>> = {
+    disc: { x: 0, y: 0, w: 384, h: 384, dx: 0, dy: 0 },
+    swirl: { x: 0, y: 386, w: 384, h: 384, dx: 0, dy: 0 },
+    swirl2: { x: 0, y: 772, w: 384, h: 384, dx: 0, dy: 0 },
+    ring: { x: 0, y: 1158, w: 384, h: 384, dx: 0, dy: 0 },
+    bloom: { x: 0, y: 1544, w: 256, h: 256, dx: 0, dy: 0 },
+    bloomGreen: { x: 0, y: 1802, w: 256, h: 256, dx: 0, dy: 0 },
+    streak: { x: 0, y: 2060, w: 128, h: 16, dx: 0, dy: 0 },
+    ember0: { x: 0, y: 2078, w: 32, h: 8, dx: 0, dy: 0 },
+    ember1: { x: 0, y: 2088, w: 12, h: 12, dx: 0, dy: 0 },
+    ash0: { x: 0, y: 2102, w: 48, h: 24, dx: 0, dy: 0 },
+    ash1: { x: 0, y: 2128, w: 48, h: 24, dx: 0, dy: 0 },
+    ash2: { x: 0, y: 2154, w: 48, h: 24, dx: 0, dy: 0 },
+    ash3: { x: 0, y: 2180, w: 48, h: 24, dx: 0, dy: 0 },
+    spark: { x: 0, y: 2206, w: 24, h: 6, dx: 0, dy: 0 },
+    smoke0: { x: 0, y: 2214, w: 64, h: 64, dx: 0, dy: 0 },
+    smoke1: { x: 0, y: 2280, w: 64, h: 64, dx: 0, dy: 0 },
+    smoke2: { x: 0, y: 2346, w: 64, h: 64, dx: 0, dy: 0 },
+    pulse: { x: 0, y: 2412, w: 64, h: 64, dx: 0, dy: 0 },
+};
+
+/** The core's heat colours (0 cold .. 1 white-hot at launch): dim wine red, wine red, red, red-orange, orange, pale yellow, white. */
+export const BEACON_HEAT_X: readonly number[] = [0.00, 0.22, 0.38, 0.55, 0.78, 0.93, 1.00];
+export const BEACON_HEAT_C: readonly (readonly [number, number, number])[] = [[0.34, 0.04, 0.08], [0.50, 0.06, 0.10], [0.80, 0.12, 0.06], [1.00, 0.30, 0.06], [1.00, 0.58, 0.16], [1.00, 0.88, 0.62], [1.00, 1.00, 1.00]];
+/** The faction's light (the lines at rest): wine red. */
+export const BEACON_LINE_RGB: readonly [number, number, number] = [0.62, 0.08, 0.10];
+/** The gyros' rest phase (as beacon.png bakes them). */
+export const BEACON_REST_PHASE = 0.80;

@@ -882,6 +882,21 @@ export function greatWorkAt(target: object, l: ThreatLooks = looks): GreatWorkAr
     return null;
 }
 
+/** The wonder whose station is not seen through the fog: the Ark Engine moves (it is a ship more than a station). */
+export const GREAT_WORK_FOG_EXCLUDED = 'ark';
+
+/**
+ * Drawn through the fog (render only: the sim's visibility, knowledge and AI are untouched): every Great Work's station —
+ * its scaffold stages, the finished wonders, the Beacon — is seen at all times, the structure and its look, not the ships
+ * round it. Not the Ark Engine (a mobile wonder). Not pickable while unseen (the ship layer gives it no drawn size).
+ */
+export function greatWorkSeenThroughFog(bo: BuiltObject, l: ThreatLooks = looks): boolean {
+    if (l.beacon !== undefined && l.beacon !== null && bo === l.beacon) return true;
+    if (l.greatWorks === undefined || l.greatWorks.size === 0) return false;
+    const site = l.greatWorks.get(bo);
+    return site !== undefined && site.wonder !== GREAT_WORK_FOG_EXCLUDED;
+}
+
 /** The art URL of a Great Work's base (null for everything else). */
 export function greatWorkArtUrl(bo: BuiltObject, l: ThreatLooks = looks): string | null {
     const site = greatWorkSiteOf(bo, l);
