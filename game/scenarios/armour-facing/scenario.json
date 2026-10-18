@@ -1,0 +1,17 @@
+{
+  "id": "armour-facing",
+  "name": "Armour facing",
+  "description": "Gameplay change (off by default; Other Empires page, Gameplay changes). A ship's armour is thickest at the bow: a hit from ahead does 25% less damage, a hit from the side 10% more, and a hit from behind 40% more (the bow and stern arcs are 60 degrees to either side of the ship's heading). Bases and fixed targets have no facing. AI fleets turn a stationary ship's bow to the nearest enemy, and fast ships (30% or more faster than their target) circle to hit slower ships from the flank or rear instead of charging straight in.",
+  "flags": [
+    { "name": "armourFacing", "label": "Armour facing", "description": "Master switch.", "default": true },
+    { "name": "facingAI", "label": "AI fleets turn their bows to the enemy and fast ships flank", "description": "Off: the AI steers as usual (only the damage rule changes).", "default": true }
+  ],
+  "params": [
+    { "name": "facingBowPct", "label": "Damage of a hit on the bow (%)", "default": 75, "min": 10, "max": 100 },
+    { "name": "facingFlankPct", "label": "Damage of a hit on the side (%)", "default": 110, "min": 100, "max": 300 },
+    { "name": "facingRearPct", "label": "Damage of a hit on the stern (%)", "default": 140, "min": 100, "max": 400 },
+    { "name": "facingArcDegrees", "label": "Half-width of the bow and stern arcs (degrees)", "default": 60, "min": 10, "max": 89 },
+    { "name": "facingFlankSpeedPct", "label": "AI: a ship flanks a target it is this % as fast as, or faster", "default": 130, "min": 100, "max": 500 },
+    { "name": "facingFlankSeconds", "label": "AI: longest a ship circles for a flank attack (game seconds)", "default": 25, "min": 3, "max": 300 }
+  ]
+}

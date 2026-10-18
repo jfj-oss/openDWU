@@ -1,0 +1,16 @@
+{
+  "id": "critical-hits",
+  "name": "Critical hits",
+  "description": "Gameplay change (off by default; Other Empires page, Gameplay changes). A hit that damages an engine, a reactor or a command centre / targeting computer has a chance (30% by default) to be critical, with a lasting effect on that ship until it is repaired: a critical engine hit slows the ship (30% a hit), a critical reactor hit makes every weapon fire more slowly (+35% between shots a hit), a critical command hit spoils its aim (20% of its hits a hit turn to misses). Effects stack up to 3 times. They end when the damaged part is repaired (or the whole ship is, at a dock). The ship panel shows 'Critical: engines, reactor'. A ship that is hurt weighs a losing fight more heavily: AI fleets withdraw sooner and send crippled ships to repair first.",
+  "flags": [
+    { "name": "criticalHits", "label": "Critical hits", "description": "Master switch.", "default": true }
+  ],
+  "params": [
+    { "name": "critChancePct", "label": "Chance a hit that damages an engine, reactor or command part is critical (%)", "default": 30, "min": 0, "max": 100 },
+    { "name": "critEngineSlowPct", "label": "Top speed lost for each critical engine hit (%)", "default": 30, "min": 0, "max": 90 },
+    { "name": "critReactorSlowPct", "label": "Time between a ship's shots grows by this % for each critical reactor hit", "default": 35, "min": 0, "max": 300 },
+    { "name": "critCommandMissPct", "label": "Chance a hit turns into a miss for each critical command hit (%)", "default": 20, "min": 0, "max": 90 },
+    { "name": "critMaxStack", "label": "Most critical hits of one kind on a ship", "default": 3, "min": 1, "max": 10 },
+    { "name": "critAiCautionPct", "label": "AI: a ship weighs a losing fight this % more heavily for each critical hit it carries", "default": 12, "min": 0, "max": 100 }
+  ]
+}

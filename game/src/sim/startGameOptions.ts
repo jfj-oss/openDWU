@@ -205,6 +205,17 @@ export interface StartGameOptions {
      */
     bvrCombat?: boolean;
     /**
+     * The Other Empires page's six combat checkboxes under "Gameplay changes" (scenarios/decoys-chaff, ambush-strike,
+     * critical-hits, damage-control, armour-facing, surrender-wrecks). Folded into `scenario` (addons.ts withCombat2);
+     * absent / false = off.
+     */
+    decoys?: boolean;
+    ambushStrike?: boolean;
+    criticalHits?: boolean;
+    damageControl?: boolean;
+    armourFacing?: boolean;
+    surrenderWrecks?: boolean;
+    /**
      * The Other Empires page's "Gameplay changes: Coordinated landings" checkbox (scenarios/coordinated-landings; addons.ts
      * coordinatedLandingsChoice). Absent = follows Smarter AI (on when it is on); an explicit true / false wins.
      */

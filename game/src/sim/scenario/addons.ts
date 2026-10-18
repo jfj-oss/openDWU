@@ -80,6 +80,12 @@ export const ADDON_STATUS: Readonly<Record<string, string>> = {
     'slow-hyperdrive': 'new',
     veterans: 'new',
     'bvr-combat': 'new',
+    'decoys-chaff': 'new',
+    'ambush-strike': 'new',
+    'critical-hits': 'new',
+    'damage-control': 'new',
+    'armour-facing': 'new',
+    'surrender-wrecks': 'new',
     'coordinated-landings': 'new',
     'war-crimes': 'recommended',
     'timebomb': 'lightly tested; the AI rarely uses it',
@@ -149,6 +155,12 @@ const GROUP_OF: Readonly<Record<string, AddonGroup>> = {
     'slow-hyperdrive': 'Other',
     veterans: 'Other',
     'bvr-combat': 'Other',
+    'decoys-chaff': 'Other',
+    'ambush-strike': 'Other',
+    'critical-hits': 'Other',
+    'damage-control': 'Other',
+    'armour-facing': 'Other',
+    'surrender-wrecks': 'Other',
     'coordinated-landings': 'Other',
     slavery: 'Economy & factions',
     exchange: 'Economy & factions',
@@ -169,13 +181,13 @@ const GROUP_OF: Readonly<Record<string, AddonGroup>> = {
 // big-galaxies: its extended palette is now automatic in the base game (empireColors.ts); old saves with the add-on still load.
 // resource-crises: withdrawn from the picker (its per-luxury approval loss stacked to absurd values); saves that use it still load.
 // colony-defence: withdrawn from the picker (the user wants the original's pirate control); saves that use it still load.
-export const HIDDEN_ADDONS: ReadonlySet<string> = new Set(['threat-framework', 'example', 'ai-parity', 'soak-15y', 'resource-crises', 'colony-defence', 'big-galaxies', 'galactic-council', 'themed-names', 'event-log', 'fighting-retreats', 'coordinated-landings', 'bvr-combat']);
+export const HIDDEN_ADDONS: ReadonlySet<string> = new Set(['threat-framework', 'example', 'ai-parity', 'soak-15y', 'resource-crises', 'colony-defence', 'big-galaxies', 'galactic-council', 'themed-names', 'event-log', 'fighting-retreats', 'coordinated-landings', 'bvr-combat', 'decoys-chaff', 'ambush-strike', 'critical-hits', 'damage-control', 'armour-facing', 'surrender-wrecks']);
 
 /**
  * Add-ons set on another wizard page (not listed on the Scenario page, but named in the summaries like any other):
  * Smarter AI and Orbital superiority live on the Other Empires page (withSmarterAI / withOrbitalSuperiority below).
  */
-export const ELSEWHERE_ADDONS: ReadonlySet<string> = new Set(['smarter-ai', 'orbital-superiority', 'longer-ground-combat', 'jump-interdiction', 'blockades-bite', 'mothballing', 'slow-hyperdrive', 'fighting-retreats', 'veterans', 'coordinated-landings', 'bvr-combat']);
+export const ELSEWHERE_ADDONS: ReadonlySet<string> = new Set(['smarter-ai', 'orbital-superiority', 'longer-ground-combat', 'jump-interdiction', 'blockades-bite', 'mothballing', 'slow-hyperdrive', 'fighting-retreats', 'veterans', 'coordinated-landings', 'bvr-combat', 'decoys-chaff', 'ambush-strike', 'critical-hits', 'damage-control', 'armour-facing', 'surrender-wrecks']);
 
 /** openDWU Classic: add-ons every game starts with (treated as base game: no picker). Smarter AI stays the Other Empires page's toggle. */
 export const CLASSIC_BASE_ADDONS: readonly string[] = ['themed-names', 'event-log'];
@@ -331,6 +343,28 @@ export const BVR_COMBAT_ADDON_ID = 'bvr-combat';
 /** The picks with the Other Empires page's BVR combat checkbox folded in (StartGameOptions.bvrCombat). Pure. */
 export function withBvrCombat(picked: readonly string[], overrides: AddonOverrides, on: boolean | null | undefined): { picked: string[]; overrides: AddonOverrides } {
     return withToggleAddon(picked, overrides, BVR_COMBAT_ADDON_ID, 'bvrCombat', on);
+}
+
+/**
+ * The six combat gameplay changes after BVR combat (scenarios/<id>; each its own checkbox under "Gameplay changes" on the Other
+ * Empires page, off by default): the StartGameOptions key, the add-on id and the master flag of each.
+ */
+export const COMBAT2_ADDONS = [
+    { key: 'decoys', id: 'decoys-chaff', flag: 'decoys' },
+    { key: 'ambushStrike', id: 'ambush-strike', flag: 'ambush' },
+    { key: 'criticalHits', id: 'critical-hits', flag: 'criticalHits' },
+    { key: 'damageControl', id: 'damage-control', flag: 'damageControl' },
+    { key: 'armourFacing', id: 'armour-facing', flag: 'armourFacing' },
+    { key: 'surrenderWrecks', id: 'surrender-wrecks', flag: 'surrender' },
+] as const;
+export type Combat2Key = (typeof COMBAT2_ADDONS)[number]['key'];
+export type Combat2Choice = { readonly [K in Combat2Key]?: boolean | null };
+
+/** The picks with the Other Empires page's six combat checkboxes folded in (StartGameOptions decoys ... surrenderWrecks). Pure. */
+export function withCombat2(picked: readonly string[], overrides: AddonOverrides, choice: Combat2Choice | null | undefined): { picked: string[]; overrides: AddonOverrides } {
+    let w = { picked: [...picked], overrides };
+    for (const a of COMBAT2_ADDONS) w = withToggleAddon(w.picked, w.overrides, a.id, a.flag, choice?.[a.key]);
+    return w;
 }
 
 /** The Coordinated landings gameplay change (scenarios/coordinated-landings; also under "Gameplay changes"). */

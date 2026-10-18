@@ -1,0 +1,19 @@
+{
+  "id": "decoys-chaff",
+  "name": "Decoys and chaff",
+  "description": "Gameplay change (off by default; Other Empires page, Gameplay changes). Ships with a countermeasures (ECM) component carry a few decoy charges (3 by default; 1 more for each further ECM component, up to 2 more). When missiles or torpedoes (the BVR launchers' and the stock ones) are inbound on such a ship, it launches a decoy: every missile in flight at it has a chance (50%) to be pulled off target (torpedoes half as often). A ship can launch one decoy every few seconds, so a big salvo is a cat-and-mouse game: the defender wants decoys left for the second wave and the attacker wants to stagger its volleys. Decoys are reloaded at your own or an ally's space ports and bases with a dock, or from a deployed resupply ship, for a small price in credits. It works with or without BVR combat. AI empires fit more countermeasures to their warships when enemies field missiles, and weigh a decoy-equipped ship's defence a little higher. The ship panel shows 'Decoys 2/3'.",
+  "flags": [
+    { "name": "decoys", "label": "Decoys and chaff", "description": "Master switch.", "default": true },
+    { "name": "decoysAI", "label": "AI empires fit extra countermeasures against missile users", "description": "Off: the AI keeps its stock designs (only the rules change).", "default": true }
+  ],
+  "params": [
+    { "name": "decoyCharges", "label": "Decoy charges on a ship with countermeasures (one more for each further ECM component, up to two more)", "default": 3, "min": 1, "max": 12 },
+    { "name": "decoyChancePct", "label": "Chance a missile in flight at a ship that launches a decoy is pulled off target (%)", "default": 50, "min": 0, "max": 100 },
+    { "name": "decoyTorpedoPct", "label": "A torpedo is pulled off at this % of that chance", "default": 50, "min": 0, "max": 100 },
+    { "name": "decoyCooldownSeconds", "label": "A ship can launch a decoy this often (game seconds)", "default": 5, "min": 1, "max": 60 },
+    { "name": "decoyRange", "label": "A decoy is launched when an inbound missile is this close (units)", "default": 1600, "min": 200, "max": 20000 },
+    { "name": "decoyRestockSeconds", "label": "Game seconds to reload one decoy at a port, base or resupply ship", "default": 4, "min": 0, "max": 120 },
+    { "name": "decoyCostPct", "label": "Credits to reload one decoy, as % of the countermeasures component's price", "default": 6, "min": 0, "max": 100 },
+    { "name": "decoyAiExtraEcm", "label": "AI warships: extra countermeasures components against enemies with missiles (at least 1 on every warship)", "default": 1, "min": 0, "max": 4 }
+  ]
+}

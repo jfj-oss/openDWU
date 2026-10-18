@@ -538,7 +538,8 @@ async function runOne(name) {
             const w1 = A.withSmarterAI([...A.BASE_ADDONS, ...ids], { flags: { ...(cfg.flags ?? {}) }, params: { ...(cfg.params ?? {}) } }, smart);
             // cfg.gameplay: the other "Gameplay changes" checkboxes by add-on id.
             const gp = { 'orbital-superiority': A.withOrbitalSuperiority, 'longer-ground-combat': A.withLongerGroundCombat, 'jump-interdiction': A.withJumpInterdiction, 'blockades-bite': A.withBlockadesBite,
-                mothballing: A.withMothballing, 'slow-hyperdrive': A.withSlowHyperdrive, 'fighting-retreats': A.withFightingRetreats, veterans: A.withVeterans, 'bvr-combat': A.withBvrCombat };
+                mothballing: A.withMothballing, 'slow-hyperdrive': A.withSlowHyperdrive, 'fighting-retreats': A.withFightingRetreats, veterans: A.withVeterans, 'bvr-combat': A.withBvrCombat,
+                ...Object.fromEntries(A.COMBAT2_ADDONS.map((a) => [a.id, (picked, overrides, on) => A.withCombat2(picked, overrides, { [a.key]: on })])) };
             let wg = w1;
             for (const id of cfg.gameplay ?? []) wg = gp[id](wg.picked, wg.overrides, true);
             const w2 = A.withCoordinatedLandings(wg.picked, wg.overrides, cfg.coordinatedLandings ?? A.coordinatedLandingsChoice(undefined, smart));

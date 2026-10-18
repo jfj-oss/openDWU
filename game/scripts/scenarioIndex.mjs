@@ -22,7 +22,7 @@ export function listScenarioFiles(dir, rel = '') {
  * buildScenarioIndex drops every `include` / `requires` outside the allow-list. The event log itself (scenario/eventLog)
  * and the Galactic History screen read only its own `eventLog` flag and the typed log, so it works standalone.
  */
-export const CLASSIC_ADDONS = ['themed-names', 'smarter-ai', 'event-log', 'orbital-superiority', 'longer-ground-combat', 'jump-interdiction', 'blockades-bite', 'mothballing', 'slow-hyperdrive', 'fighting-retreats', 'veterans', 'coordinated-landings', 'bvr-combat'];
+export const CLASSIC_ADDONS = ['themed-names', 'smarter-ai', 'event-log', 'orbital-superiority', 'longer-ground-combat', 'jump-interdiction', 'blockades-bite', 'mothballing', 'slow-hyperdrive', 'fighting-retreats', 'veterans', 'coordinated-landings', 'bvr-combat', 'decoys-chaff', 'ambush-strike', 'critical-hits', 'damage-control', 'armour-facing', 'surrender-wrecks'];
 
 /** Scenario ids a build ships: null = all (full edition), else the allow-list. */
 export function editionAllowlist(edition) {

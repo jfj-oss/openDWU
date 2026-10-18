@@ -1,0 +1,16 @@
+{
+  "id": "ambush-strike",
+  "name": "Ambush first strike",
+  "description": "Gameplay change (off by default; Other Empires page, Gameplay changes). A ship that opens fire on a ship of an empire that has not detected it (by the stock visibility rules: not in the target empire's sensor or long-range scanner reach, not hidden by stealth) gets an ambush for its opening seconds (10 by default): shots that would miss turn into hits 35% of the time and every hit does 50% more damage. A ship that has not fired for 20 seconds opens a new ambush if it is still undetected. This rewards stealth, scouts and sensor range: the side that sees first, and is not seen, wins the opening exchange. AI empires count their ambush when they weigh an attack on an enemy that cannot see them, and fleets with stealth hold for it. Every number is a parameter.",
+  "flags": [
+    { "name": "ambush", "label": "Ambush first strike", "description": "Master switch.", "default": true },
+    { "name": "ambushAI", "label": "AI empires count an ambush when they weigh an attack", "description": "Off: the AI weighs attacks as usual.", "default": true }
+  ],
+  "params": [
+    { "name": "ambushSeconds", "label": "Length of the ambush after the opening shot (game seconds)", "default": 10, "min": 1, "max": 120 },
+    { "name": "ambushQuietSeconds", "label": "A ship that has not fired for this long opens a new ambush (game seconds)", "default": 20, "min": 1, "max": 600 },
+    { "name": "ambushAccuracyPct", "label": "Chance a shot that would miss hits instead during an ambush (%)", "default": 35, "min": 0, "max": 100 },
+    { "name": "ambushDamagePct", "label": "Extra damage of every hit during an ambush (%)", "default": 50, "min": 0, "max": 500 },
+    { "name": "ambushAiOddsPct", "label": "AI: firepower of an undetected fleet counts this % higher in its attack odds", "default": 25, "min": 0, "max": 200 }
+  ]
+}
