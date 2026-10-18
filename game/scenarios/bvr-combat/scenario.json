@@ -2,7 +2,6 @@
   "id": "bvr-combat",
   "name": "BVR combat",
   "description": "Gameplay change: beyond-visual-range combat. A new family of missile launchers (four tiers in the tech tree) fires very fast, very accurate missiles from far beyond gun range, but only at targets your sensors actually track, and each launcher carries only 4 missiles. Torpedoes become close-range, slow, hard hitters with 6 torpedoes per launcher. Four missile hits kill a frigate of the matching era, two torpedo hits do. Point defence and guns can shoot missiles and torpedoes down, countermeasures spoil missile locks, and an empty magazine is rearmed at your own or an ally's space ports and bases with a dock, or from deployed resupply ships (slower), for credits. AI empires research and design launchers, open fights with missile salvos or keep their distance when they out-range the enemy, go and rearm after a fight, and field more point defence against missile fleets. Set on the new-game wizard's Other Empires page.",
-  "conflicts": ["timebomb"],
   "flags": [
     {
       "name": "bvrCombat",
@@ -32,6 +31,10 @@
     { "name": "bvrRearmRange", "label": "A ship is rearmed within this distance of the port, base or resupply ship (units)", "default": 1500, "min": 100, "max": 20000 },
     { "name": "bvrRoundCostPct", "label": "Credits to load one round, as % of the launcher's price", "default": 12, "min": 0, "max": 100 },
     { "name": "bvrAiValuePct", "label": "How much of a loaded launcher's damage rate counts in the AI's strength estimates (%; the magazine is finite)", "default": 35, "min": 5, "max": 100 },
+    { "name": "bvrCapFrigate", "label": "Most missile launchers on an AI frigate (and carrier); the space of any more goes to armour, point defence and guns", "default": 2, "min": 0, "max": 40 },
+    { "name": "bvrCapDestroyer", "label": "Most missile launchers on an AI destroyer", "default": 3, "min": 0, "max": 40 },
+    { "name": "bvrCapCruiser", "label": "Most missile launchers on an AI cruiser", "default": 5, "min": 0, "max": 40 },
+    { "name": "bvrCapCapital", "label": "Most missile launchers on an AI capital ship (torpedo launchers: 60% of the cap above frigates)", "default": 7, "min": 0, "max": 40 },
     { "name": "bvrDryPct", "label": "AI fleets go and rearm when their magazines fall below this % (and they are not fighting)", "default": 25, "min": 0, "max": 100 }
   ]
 }

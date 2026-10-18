@@ -43,7 +43,7 @@ import { findNearestShipYard } from '../src/sim/construction/empireConstruction'
 import { builtObjectConstructionQueue } from '../src/sim/construction/constructionQueue';
 import { shipGroupRepairBonus } from '../src/sim/fleets/shipGroup';
 import { determineDestroyOrCaptureTarget, empireRaidStrengthFactor } from '../src/sim/combat/attackAI';
-import type { ShipGroup } from '../src/sim/fleets/shipGroup';
+import { ShipGroup, shipGroupAssignMission } from '../src/sim/fleets/shipGroup';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import {
     bombardTarget,
@@ -75,7 +75,7 @@ import { PiratePlayStyle, pirateFactionModifiers } from '../src/sim/pirates';
 import { createGalaxyScenario } from '../src/sim/scenario/state';
 import { loadScenarioOverlayFs } from './helpers/scenarioGame';
 import { FIGHTING_RETREATS_ADDON_ID, fightingRetreatsFrame, fightingRetreatsState, fleetBattle, fleetFallbackPoint, fleetRepairPoint, fleetRetreatStatusText } from '../src/sim/scenario/fightingRetreats/fightingRetreats';
-import { createScenarioGame } from './helpers/scenarioGame';
+import { comboOverlayFs, createScenarioGame, scenarioGameData } from './helpers/scenarioGame';
 import type { Game } from '../src/sim/game';
 import { generateBuiltObjectFromDesign } from '../src/sim/exploration';
 import { GalaxyTime } from '../src/sim/galaxyTime';
@@ -84,7 +84,9 @@ import { defaultStartGameOptions } from '../src/sim/startGameOptions';
 import { scenarioQuery } from '../src/sim/scenario/hooks';
 import { IndustryType } from '../src/sim/types';
 import { BVR_ADDON_ID, bvrAmmoText, bvrMayFire, bvrNeedsRounds, bvrNoteFired, bvrOn, bvrRearmTick, bvrState, bvrTracked, isBvrMissile, peekBvrState } from '../src/sim/scenario/bvr/bvr';
-import { BVR_PROJECTS, aiRearmTick } from '../src/sim/scenario/bvr/bvrAI';
+import { Design } from '../src/sim/design';
+import { shipGroupAddShipToFleet } from '../src/sim/fleets/shipGroupTasks';
+import { BVR_PROJECT_NAMES, aiResupplyTick, aiRearmTick, bvrFixLaunchers, bvrProjectNodes } from '../src/sim/scenario/bvr/bvrAI';
 import { bvrEngagement } from '../src/sim/scenario/bvr/bvrTactics';
 import { BattleTactics } from '../src/sim/data/designSpecifications';
 
@@ -1442,12 +1444,13 @@ describe('(8) BVR combat add-on', () => {
         spotY = s.y;
     }, 300000);
 
-    it('data: four launcher tiers (ids 129-132, WeaponMissile) in a dense component table, rebuilt close-range torpedoes, seven new weapons projects', () => {
+    it('data: four launcher tiers (WeaponMissile, ids allocated after the stock ones) in a dense component table, rebuilt close-range torpedoes, seven new weapons projects', () => {
         const defs = bg.researchStatic!.componentStatic!.definitions;
         for (let id = 0; id < defs.length; id++) expect(defs[id].componentId).toBe(id);
-        for (const id of [129, 130, 131, 132]) {
+        const launcherIds = defs.filter((d) => isBvrMissile(d)).map((d) => d.componentId);
+        expect(launcherIds).toEqual([129, 130, 131, 132]);
+        for (const id of launcherIds) {
             expect(defs[id].type).toBe(ComponentType.WeaponMissile);
-            expect(isBvrMissile(defs[id])).toBe(true);
             expect(defs[id].value2).toBeGreaterThanOrEqual(1800); // far beyond any gun
             expect(defs[id].value4).toBeGreaterThanOrEqual(420); // very fast
         }
@@ -1462,11 +1465,32 @@ describe('(8) BVR combat add-on', () => {
         }
         // The torpedoes concentrate more damage per component size than the missiles (the best of each).
         const density = (ids: number[]) => Math.max(...ids.map((id) => defs[id].value1 / defs[id].size));
-        expect(density([5, 6, 7, 8, 9])).toBeGreaterThan(density([129, 130, 131, 132]));
+        expect(density([5, 6, 7, 8, 9])).toBeGreaterThan(density(launcherIds));
         const tree = bg.playerEmpire!.research.techTree;
         for (let i = 0; i < tree.length; i++) expect(tree[i].def.projectId).toBe(i);
-        for (const id of BVR_PROJECTS) expect(tree[id].def.name).not.toBe('');
+        const line = bvrProjectNodes(tree);
+        expect(line.map((n) => n.def.name)).toEqual([...BVR_PROJECT_NAMES]);
+        expect(line.map((n) => n.def.projectId)).toEqual([372, 373, 374, 375, 376, 377, 378]);
         expect(bdata.scenario!.warnings).toEqual([]);
+    });
+
+    it('ids with other add-ons: the Time-Bomb\'s fixed project ids keep 372-374 and BVR combat takes the ids after them, in either order, all dense', () => {
+        for (const order of [['bvr-combat', 'timebomb'], ['timebomb', 'bvr-combat']]) {
+            const gd = scenarioGameData(gameData, comboOverlayFs(order));
+            gd.components.forEach((c, i) => expect(c.componentId).toBe(i));
+            gd.research.forEach((r, i) => expect(r.projectId).toBe(i));
+            const byName = (n: string) => gd.research.find((r) => r.name === n)!;
+            expect(byName('Precursor Lattice Drive').projectId).toBe(372);
+            expect(byName('Deep Resonance Manufacturing').projectId).toBe(374);
+            const first = byName('Long-Range Missile Launchers');
+            expect(first.projectId).toBe(375);
+            expect(byName('Orbital-Range Missile Launchers').projectId).toBe(381);
+            const javelin = gd.components.find((c) => c.name === 'Javelin Missile Launcher')!;
+            expect(first.components).toEqual([javelin.componentId]);
+            expect(byName('Terminal Seekers').componentImprovements[0].componentId).toBe(javelin.componentId);
+            expect(byName('Terminal Seekers').parents[0].parentProjectId).toBe(first.projectId);
+            expect(first.parents[0].parentProjectId).toBe(369);
+        }
     });
 
     it('lethality: about four launcher hits kill the AI frigate of the era (median 3-6 over the empires, races differ in shields), about two torpedo hits do (2-4); armour does not halve the BVR missile', () => {
@@ -1515,8 +1539,9 @@ describe('(8) BVR combat add-on', () => {
     it('AI research: the next launcher project goes to the front of the weapons order once the empire is within a level of it', () => {
         const e = aiEmpires()[0];
         const order = scenarioQuery(bg, 'researchProjectOrder', [], { empire: e, industry: IndustryType.Weapon });
-        const next = BVR_PROJECTS.find((id) => !e.research.techTree[id].isResearched);
-        if (next !== undefined) expect(BVR_PROJECTS).toContain(order.find((id) => BVR_PROJECTS.includes(id)) ?? -1);
+        const line = bvrProjectNodes(e.research.techTree);
+        const ids = line.map((n) => n.def.projectId);
+        if (line.some((n) => !n.isResearched)) expect(ids).toContain(order.find((id) => ids.includes(id)) ?? -1);
         // Human empires keep their own research.
         expect(scenarioQuery(bg, 'researchProjectOrder', [], { empire: bg.playerEmpire!, industry: IndustryType.Weapon })).toEqual([]);
     });
@@ -1623,6 +1648,59 @@ describe('(8) BVR combat add-on', () => {
         run(300);
         expect(bvrNeedsRounds(bg, f)).toBe(false);
         expect(bvrState(bg).roundsViaResupply ?? 0).toBeGreaterThanOrEqual(8);
+    });
+
+    it('AI design caps: launchers above the hull\'s cap (the capital-ship size-up pass multiplies them) are swapped for armour, point defence and guns', () => {
+        const e = aiEmpires()[0];
+        const base = newest(e, BuiltObjectSubRole.CapitalShip);
+        const launcher = base.components.find((c) => isBvrMissile(c))!;
+        const torpedo = e.research.researchedComponents.find((c) => c.type === ComponentType.WeaponTorpedo)!;
+        const d = new Design('bvr cap test');
+        d.role = base.role;
+        d.subRole = BuiltObjectSubRole.CapitalShip;
+        d.components = [...base.components, ...new Array<typeof launcher>(14).fill(launcher), ...new Array<typeof torpedo>(8).fill(torpedo)];
+        const before = d.components.reduce((n, c) => n + c.size, 0);
+        const count = (f: (c: typeof launcher) => boolean) => d.components.filter(f).length;
+        expect(count((c) => isBvrMissile(c))).toBeGreaterThan(14);
+        const fixed = bvrFixLaunchers(bg, e, d, 100000)!;
+        expect(fixed).not.toBeNull();
+        expect(count((c) => isBvrMissile(c))).toBe(7);
+        expect(count((c) => c.type === ComponentType.WeaponTorpedo)).toBe(4); // 60% of 7
+        const after = d.components.reduce((n, c) => n + c.size, 0);
+        expect(after).toBeLessThanOrEqual(before + 10); // (the swap to the best torpedo changes sizes a little)
+        expect(after).toBeGreaterThan(before - 60); // the space went into other components, not away
+    });
+
+    it('AI resupply ships: an idle resupply ship is sent to deploy with a major launcher fleet on a field mission, once, and released when the fleet is gone', () => {
+        const e = aiEmpires().find((x) => x.designs.some((d) => d.subRole === BuiltObjectSubRole.ResupplyShip))!;
+        const design = e.designs.filter((d) => d.subRole === BuiltObjectSubRole.ResupplyShip).sort((a, b) => b.dateCreated - a.dateCreated)[0];
+        const r = generateBuiltObjectFromDesign(bg, e, design, 'bvrSupply2', true, spotX, spotY + 9000);
+        r.isAutoControlled = true;
+        const fleet = new ShipGroup(bg);
+        fleet.name = 'BVR test fleet';
+        fleet.empire = e;
+        (e.shipGroups as ShipGroup[]).push(fleet);
+        for (let k = 0; k < 6; k++) {
+            const f = spawn(e, BuiltObjectSubRole.Frigate);
+            place(bg, f, e.capital!.xpos + 500 + 50 * k, e.capital!.ypos);
+            shipGroupAddShipToFleet(bg, fleet, f);
+        }
+        const target = bg.habitats.find((h) => h.empire !== e)!;
+        expect(shipGroupAssignMission(bg, fleet, BuiltObjectMissionType.Patrol, target, null, BuiltObjectMissionPriority.Normal, false)).toBe(true);
+        const before = peekBvrState(bg)?.aiResupplyDeploys ?? 0;
+        aiResupplyTick(bg);
+        // The empire's nearest idle resupply ship (maybe not the one built above) is sent.
+        const sent = [...(peekBvrState(bg)!.escorts as Map<BuiltObject, unknown>)].filter(([, f]) => f === fleet).map(([ship]) => ship);
+        expect(sent).toHaveLength(1);
+        expect(builtObjectMission(sent[0].mission)?.type).toBe(BuiltObjectMissionType.Deploy);
+        expect(peekBvrState(bg)!.aiResupplyDeploys).toBe(before + 1);
+        aiResupplyTick(bg); // not sent twice
+        expect(peekBvrState(bg)!.aiResupplyDeploys).toBe(before + 1);
+        // The fleet goes away: the ship is released.
+        (e.shipGroups as ShipGroup[]).splice((e.shipGroups as ShipGroup[]).indexOf(fleet), 1);
+        aiResupplyTick(bg);
+        expect(peekBvrState(bg)!.escorts!.has(sent[0])).toBe(false);
+        void r;
     });
 
     it('AI rearming: an idle automated warship that has fired its rounds is sent to a rearm point on a Refuel order; a fighting one is not', () => {

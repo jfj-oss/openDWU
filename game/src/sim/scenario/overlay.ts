@@ -157,6 +157,46 @@ const RECORD_FILES = ['resources.txt', 'components.txt', 'facilities.txt', 'figh
  * (plus `scenario`).
  */
 export function applyScenarioOverlay(base: GameData, overlay: ScenarioOverlay): GameData {
+    return finalizeDynamicIds(applyScenarioOverlayRaw(base, overlay));
+}
+
+/**
+ * Records of components.txt / research.txt may take a dynamic id: any id of DYNAMIC_ID_BASE or more is a placeholder. After every overlay
+ * of a start is applied, the placeholder records get the next ids after the highest fixed id, in file order (so they stay dense and
+ * the id equals the list position, which the sim relies on), and every reference to them is remapped: a research project's
+ * components, component improvements and parents. That lets an add-on's data sit after whatever fixed ids the other active add-ons
+ * use, in any order (BVR combat and the Time-Bomb's fixed project ids 372-374). Nothing changes without placeholders.
+ */
+export const DYNAMIC_ID_BASE = 10000;
+
+export function finalizeDynamicIds(gd: GameData): GameData {
+    const dynComp = gd.components.some((c) => c.componentId >= DYNAMIC_ID_BASE);
+    const dynProj = gd.research.some((r) => r.projectId >= DYNAMIC_ID_BASE);
+    if (!dynComp && !dynProj) return gd;
+    const remap = (ids: number[], isDyn: (id: number) => boolean): Map<number, number> => {
+        let next = Math.max(-1, ...ids.filter((id) => !isDyn(id))) + 1;
+        const m = new Map<number, number>();
+        for (const id of ids) if (isDyn(id)) m.set(id, next++);
+        return m;
+    };
+    const cmap = remap(gd.components.map((c) => c.componentId), (id) => id >= DYNAMIC_ID_BASE);
+    const pmap = remap(gd.research.map((r) => r.projectId), (id) => id >= DYNAMIC_ID_BASE);
+    const c = (id: number): number => cmap.get(id) ?? id;
+    const p = (id: number): number => pmap.get(id) ?? id;
+    const components = gd.components.map((x) => (cmap.has(x.componentId) ? { ...x, componentId: c(x.componentId) } : x)).sort((a, b) => a.componentId - b.componentId);
+    const research = gd.research
+        .map((r) => ({
+            ...r,
+            projectId: p(r.projectId),
+            components: r.components.map(c),
+            componentImprovements: r.componentImprovements.map((i) => ({ ...i, componentId: c(i.componentId) })),
+            parents: r.parents.map((q) => ({ ...q, parentProjectId: p(q.parentProjectId) })),
+        }))
+        .sort((a, b) => a.projectId - b.projectId);
+    return { ...gd, components, research };
+}
+
+function applyScenarioOverlayRaw(base: GameData, overlay: ScenarioOverlay): GameData {
     if (overlay.includes === undefined || overlay.includes.length === 0) {
         if (overlay.manifest.include.length > 0) throw new Error(`scenario ${overlay.manifest.id}: includes not resolved (resolveScenarioIncludes)`);
         return applyOneOverlay(base, overlay);
@@ -167,7 +207,7 @@ export function applyScenarioOverlay(base: GameData, overlay: ScenarioOverlay): 
     const warnings: string[] = [];
     const manifests: ScenarioManifest[] = [];
     for (const inc of overlay.includes) {
-        gd = applyScenarioOverlay(gd, inc);
+        gd = applyScenarioOverlayRaw(gd, inc);
         files.push(...gd.scenario!.files.map((f) => (f.includes(':') ? f : `${inc.manifest.id}:${f}`)));
         warnings.push(...gd.scenario!.warnings);
         manifests.push(gd.scenario!.manifest);

@@ -317,7 +317,7 @@ describe('picker sections, base add-ons, council follows the Diet', () => {
 });
 
 describe('BVR combat (a Gameplay changes checkbox)', () => {
-    it('is folded in by withBvrCombat, hidden from the picker, allowed in Classic, off by default and not combined with the time bomb', async () => {
+    it('is folded in by withBvrCombat, hidden from the picker, allowed in Classic, off by default and compatible with the time bomb', async () => {
         const { CLASSIC_ADDONS } = await import('../scripts/scenarioIndex.mjs');
         const on = withBvrCombat([], { flags: {}, params: {} }, true);
         expect(on.picked).toEqual(['bvr-combat']);
@@ -328,7 +328,7 @@ describe('BVR combat (a Gameplay changes checkbox)', () => {
         expect(ELSEWHERE_ADDONS.has('bvr-combat')).toBe(true);
         expect(CLASSIC_ADDONS).toContain('bvr-combat');
         const m = scenarioIndexFs().find((x) => x.id === 'bvr-combat')!;
-        expect(m.conflicts).toEqual(['timebomb']); // the same research project ids
+        expect(m.conflicts ?? []).toEqual([]); // its ids are allocated after the time bomb's (scenario/overlay.ts finalizeDynamicIds)
         expect(m.flags.map((f) => f.name)).toEqual(['bvrCombat', 'bvrAI']);
     });
 });

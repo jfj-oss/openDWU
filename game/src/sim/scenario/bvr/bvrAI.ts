@@ -2,7 +2,7 @@
 // independents), so galaxy setup and the player are untouched. No Rnd of its own.
 //
 // What it does (each piece is a scenario query / handler of the stock AI, answered only with the flag on):
-//   - Research (query researchProjectOrder, weapons industry): the next project of the BVR launcher line (372-378) goes first once the
+//   - Research (query researchProjectOrder, weapons industry): the next project of the BVR launcher line (seven projects, found by name) goes first once the
 //     empire's weapons research is within one tech level of it, so the AI gets launchers at about the pace of its other weapons.
 //   - Ship design (query aiDesignTweak, before Smarter AI's chooser, which it replaces for warships: Smarter AI's one-weapon-type merge
 //     and fill passes were built for beams and torpedoes and would trade the guns away): warship templates are rewritten for the BVR
@@ -13,6 +13,9 @@
 //   - Rearming (aiRearmTick, every third game day): an idle AI fleet (or loose warship) whose magazines are below bvrDryPct goes to the
 //     nearest own or allied space port / base with a dock or deployed resupply ship on a Refuel order (stock order; the ship stays docked
 //     until it is loaded, cmdDocking.ts); one already beside such a point is held there until full. A fleet in a fight is never pulled out.
+//   - Resupply ships (aiResupplyTick, every sixth game day): a major fleet (6 or more ships; a second ship from 14) on a strike or
+//     patrol mission gets an idle resupply ship sent to deploy at the nearest star to it, a field rearm point; the ship follows the
+//     fleet (undeploys and redeploys) while the fleet stays in the empire's war, and is released when the fleet is gone.
 //   - Tactics (kite / rush) and the strength valuation of a half-empty magazine are in bvrTactics.ts.
 
 import type { Galaxy } from '../../galaxy';
@@ -32,7 +35,7 @@ import type { BuiltObject } from '../../builtObject';
 import type { ShipGroup } from '../../fleets/shipGroup';
 import { shipGroupAssignMission } from '../../fleets/shipGroup';
 import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission } from '../../missions/mission';
-import { assignMission } from '../../missions/assign';
+import { assignMission, initiateUndeploy } from '../../missions/assign';
 import { isAiControlled } from '../../missions/playerOrder';
 import { BuiltObjectRole } from '../../data/designSpecifications';
 
@@ -42,7 +45,25 @@ import { BuiltObjectRole } from '../../data/designSpecifications';
 const BVR_FLAG = 'bvrCombat';
 const BVR_AI_FLAG = 'bvrAI';
 
-export const BVR_PROJECTS: readonly number[] = [372, 373, 374, 375, 376, 377, 378];
+export const BVR_PROJECT_NAMES: readonly string[] = [
+    'Long-Range Missile Launchers',
+    'Terminal Seekers',
+    'Extended-Range Missile Launchers',
+    'Multi-Spectral Seekers',
+    'Hypersonic Missile Launchers',
+    'Adaptive Seekers',
+    'Orbital-Range Missile Launchers',
+];
+/** The line's nodes in a tech tree, in order (found by name: the project ids are allocated when the game starts). */
+export function bvrProjectNodes<T extends { def: { name: string } }>(tree: readonly T[]): T[] {
+    const out: T[] = [];
+    for (const name of BVR_PROJECT_NAMES) {
+        const n = tree.find((x) => x.def.name === name);
+        if (n !== undefined) out.push(n);
+    }
+    return out;
+}
+
 const MISSILE_ROOT_PROJECT = 369;
 
 /** An AI empire this package acts for: not a human seat, not a pirate faction, not the independents. */
@@ -68,16 +89,15 @@ registerScenarioQuery({
         // The weapons-industry level the empire is working at: the lowest tech level among its other available projects.
         let lowest = 99;
         for (const n of rs.nextProjects) {
-            if (n.def.industry !== IndustryType.Weapon || n.isResearched || BVR_PROJECTS.includes(n.def.projectId)) continue;
+            if (n.def.industry !== IndustryType.Weapon || n.isResearched || BVR_PROJECT_NAMES.includes(n.def.name)) continue;
             if (n.def.techLevel < lowest) lowest = n.def.techLevel;
         }
         if (lowest === 99) lowest = 8;
         const root = tree.find((n) => n.def.projectId === MISSILE_ROOT_PROJECT) ?? null;
-        for (const id of BVR_PROJECTS) {
-            const n = tree.find((x) => x.def.projectId === id) ?? null;
-            if (n === null || n.isResearched) continue;
+        for (const n of bvrProjectNodes(tree)) {
+            if (n.isResearched) continue;
             if (n.def.techLevel > lowest + 1) break;
-            const front = root !== null && !root.isResearched ? [MISSILE_ROOT_PROJECT, id] : [id];
+            const front = root !== null && !root.isResearched ? [MISSILE_ROOT_PROJECT, n.def.projectId] : [n.def.projectId];
             return [...front, ...value];
         }
         return value;
@@ -178,7 +198,7 @@ export function bvrSpec(galaxy: Galaxy, empire: Empire, spec: DesignSpecificatio
  * component that is not a BVR launcher is swapped for the empire's best researched BVR launcher, every torpedo for its best torpedo.
  * Returns the design (changed in place) or null when the swap does not fit `maxShipSize`.
  */
-export function bvrFixLaunchers(empire: Empire, design: Design, maxShipSize: number): Design | null {
+export function bvrFixLaunchers(galaxy: Galaxy, empire: Empire, design: Design, maxShipSize: number): Design | null {
     const researched = empire.research.researchedComponents;
     let bestMissile = null as (typeof researched)[number] | null;
     let bestTorpedo = null as (typeof researched)[number] | null;
@@ -204,9 +224,80 @@ export function bvrFixLaunchers(empire: Empire, design: Design, maxShipSize: num
             changed = true;
         }
     }
+    if (capLaunchers(galaxy, empire, design)) changed = true;
     if (!changed) return design;
     design.size = design.quickCalculateSize();
     return design.size > maxShipSize ? null : design;
+}
+
+/** The most BVR launchers a hull carries (params bvrCap*; the size-up pass of capital ships and carriers would multiply them), and torpedo launchers (60% of that, at least 1 above frigates). */
+export function launcherCap(galaxy: Galaxy, subRole: BuiltObjectSubRole): { missiles: number; torpedoes: number } | null {
+    let m: number;
+    switch (subRole) {
+        case BuiltObjectSubRole.Escort: return { missiles: 0, torpedoes: 0 };
+        case BuiltObjectSubRole.Frigate: m = bvrParam(galaxy, 'bvrCapFrigate'); return { missiles: m, torpedoes: 0 };
+        case BuiltObjectSubRole.Destroyer: m = bvrParam(galaxy, 'bvrCapDestroyer'); break;
+        case BuiltObjectSubRole.Cruiser: m = bvrParam(galaxy, 'bvrCapCruiser'); break;
+        case BuiltObjectSubRole.CapitalShip: m = bvrParam(galaxy, 'bvrCapCapital'); break;
+        case BuiltObjectSubRole.Carrier: m = bvrParam(galaxy, 'bvrCapFrigate'); break;
+        default: return null;
+    }
+    return { missiles: m, torpedoes: Math.max(1, Math.round(m * 0.6)) };
+}
+
+/**
+ * Takes the launchers and torpedo launchers above the hull's cap out of the design and puts the freed space into armour, point defence and
+ * guns (the design's own gun type), in turn, one component at a time while it fits. Returns true when anything changed.
+ */
+function capLaunchers(galaxy: Galaxy, empire: Empire, design: Design): boolean {
+    const cap = launcherCap(galaxy, design.subRole);
+    if (cap === null) return false;
+    let missiles = 0;
+    let torpedoes = 0;
+    for (const c of design.components) {
+        if (isBvrMissile(c)) missiles++;
+        else if (c.type === ComponentType.WeaponTorpedo) torpedoes++;
+    }
+    let dropM = Math.max(0, missiles - cap.missiles);
+    let dropT = Math.max(0, torpedoes - cap.torpedoes);
+    if (dropM === 0 && dropT === 0) return false;
+    let freed = 0;
+    for (let i = design.components.length - 1; i >= 0 && (dropM > 0 || dropT > 0); i--) {
+        const c = design.components[i];
+        if (dropM > 0 && isBvrMissile(c)) {
+            design.components.splice(i, 1);
+            dropM--;
+            freed += c.size;
+        } else if (dropT > 0 && c.type === ComponentType.WeaponTorpedo) {
+            design.components.splice(i, 1);
+            dropT--;
+            freed += c.size;
+        }
+    }
+    const research = empire.research;
+    let armor = null as (typeof design.components)[number] | null;
+    let pd = null as (typeof design.components)[number] | null;
+    for (const c of research.researchedComponents) {
+        if (c.type === ComponentType.Armor && (armor === null || research.resolveImprovedComponentValues(c).value1 / c.size > research.resolveImprovedComponentValues(armor).value1 / armor.size)) armor = c;
+        if (c.type === ComponentType.WeaponPointDefense && (pd === null || research.resolveImprovedComponentValues(c).value1 > research.resolveImprovedComponentValues(pd).value1)) pd = c;
+    }
+    const gunCount = new Map<(typeof design.components)[number], number>();
+    for (const c of design.components) if (GUN_TYPES.includes(c.type)) gunCount.set(c, (gunCount.get(c) ?? 0) + 1);
+    let gun = null as (typeof design.components)[number] | null;
+    let best = 0;
+    for (const [c, n] of gunCount) if (n > best) { best = n; gun = c; }
+    const order = [armor, pd, gun, armor].filter((c): c is NonNullable<typeof c> => c !== null);
+    for (let guard = 0; guard < 200 && order.length > 0; guard++) {
+        const c = order[guard % order.length];
+        if (c.size > freed) {
+            const smallest = Math.min(...order.map((x) => x.size));
+            if (smallest > freed) break;
+            continue;
+        }
+        design.components.push(c);
+        freed -= c.size;
+    }
+    return true;
 }
 
 /** The chooser for one warship review: the BVR doctrine spec placed by the stock placement (like the Concord AI's chooser). */
@@ -217,7 +308,7 @@ export function bvrDesignChooser(galaxy: Galaxy, empire: Empire, spec: DesignSpe
             const s = bvrSpec(galaxy, empire, spec);
             const share = spec.subRole === BuiltObjectSubRole.CapitalShip || spec.subRole === BuiltObjectSubRole.Carrier ? 1 : 0;
             const d = place(s, { spec: s, scaleShare: share, trimOrder: null } as DesignPlacementTweak);
-            return d === null ? null : bvrFixLaunchers(empire, d, maxShipSize);
+            return d === null ? null : bvrFixLaunchers(galaxy, empire, d, maxShipSize);
         },
     };
 }
@@ -342,4 +433,91 @@ registerScenarioQuery({
     query: 'forceStructureResupply',
     flag: BVR_AI_FLAG,
     run: (galaxy, value, { empire }) => bvrResupplyShips(galaxy, empire, value),
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Resupply ships with the fleets
+// ---------------------------------------------------------------------------------------------------------------
+
+const MAJOR_FLEET_SHIPS = 6;
+const SECOND_SUPPLY_FLEET_SHIPS = 14;
+/** A deployed resupply ship further than this from the fleet it serves packs up and follows. */
+const FOLLOW_RANGE = 9000;
+
+let fieldTypes: ReadonlySet<BuiltObjectMissionType> | null = null;
+
+function onField(fleet: ShipGroup): boolean {
+    fieldTypes ??= new Set([BuiltObjectMissionType.Attack, BuiltObjectMissionType.WaitAndAttack, BuiltObjectMissionType.Bombard, BuiltObjectMissionType.WaitAndBombard, BuiltObjectMissionType.Capture, BuiltObjectMissionType.Blockade, BuiltObjectMissionType.Patrol, BuiltObjectMissionType.Raid]);
+    return fleet.mission !== null && fieldTypes.has(fleet.mission.type);
+}
+
+function launcherFleet(galaxy: Galaxy, ships: readonly BuiltObject[]): boolean {
+    for (const s of ships) if (bvrAmmoSummary(galaxy, s) !== null) return true;
+    return false;
+}
+
+/** Sends the empire's idle resupply ships to deploy with its major launcher fleets and keeps them with them (see the header). */
+export function aiResupplyTick(galaxy: Galaxy): void {
+    const st = bvrState(galaxy);
+    st.escorts ??= new Map();
+    const escorts = st.escorts as Map<BuiltObject, ShipGroup>;
+    for (const [ship, fleet] of escorts) {
+        if (ship.hasBeenDestroyed || !(ship.empire?.shipGroups as (ShipGroup | null)[] | undefined)?.includes(fleet) || fleet.ships.length < MAJOR_FLEET_SHIPS - 2 || fleet.leadShip === null) escorts.delete(ship);
+    }
+    for (const e of galaxy.empires) {
+        if (e === null || !e.active || !isBvrAiEmpire(galaxy, e)) continue;
+        const supplies = (e.resupplyShips as BuiltObject[]).filter((r) => r != null && !r.hasBeenDestroyed && r.isFunctional && r.builtAt === null && isAiControlled(r) && r.unbuiltOrDamagedComponentCount === 0);
+        if (supplies.length === 0) continue;
+        const fleets = (e.shipGroups as (ShipGroup | null)[]).filter((f): f is ShipGroup => f != null && f.leadShip !== null && f.ships.length >= MAJOR_FLEET_SHIPS && onField(f) && isAiControlled(f.leadShip));
+        const served = new Map<ShipGroup, number>();
+        for (const [r, f] of escorts) if (r.empire === e) served.set(f, (served.get(f) ?? 0) + 1);
+        // Escorting ships follow their fleet.
+        for (const [r, f] of escorts) {
+            if (r.empire !== e || f.leadShip === null) continue;
+            const dx = r.xpos - f.leadShip.xpos;
+            const dy = r.ypos - f.leadShip.ypos;
+            const far = dx * dx + dy * dy > FOLLOW_RANGE * FOLLOW_RANGE;
+            const m = builtObjectMission(r.mission);
+            if (!far || (m !== null && m.type !== BuiltObjectMissionType.Undefined)) continue;
+            if (r.isDeployed) {
+                if (r.attackers === null || r.attackers.length === 0) initiateUndeploy(galaxy, r);
+            } else if (r.deployProgress === 0) {
+                const star = galaxy.fastFindNearestSystem(f.leadShip.xpos, f.leadShip.ypos);
+                if (star !== null) assignMission(galaxy, r, BuiltObjectMissionType.Deploy, star, null, BuiltObjectMissionPriority.High);
+            }
+        }
+        // Idle ships go to fleets that have none (a second one for the biggest).
+        for (const r of supplies) {
+            if (escorts.has(r) || r.isDeployed || r.deployProgress !== 0) continue;
+            const m = builtObjectMission(r.mission);
+            if (m !== null && m.type !== BuiltObjectMissionType.Undefined) continue;
+            let best: ShipGroup | null = null;
+            let bd = Number.MAX_VALUE;
+            for (const f of fleets) {
+                const have = served.get(f) ?? 0;
+                if (have >= (f.ships.length >= SECOND_SUPPLY_FLEET_SHIPS ? 2 : 1) || !launcherFleet(galaxy, f.ships as BuiltObject[])) continue;
+                const dx = f.leadShip!.xpos - r.xpos;
+                const dy = f.leadShip!.ypos - r.ypos;
+                const d = dx * dx + dy * dy;
+                if (d < bd) {
+                    bd = d;
+                    best = f;
+                }
+            }
+            if (best === null) continue;
+            const star = galaxy.fastFindNearestSystem(best.leadShip!.xpos, best.leadShip!.ypos);
+            if (star === null) continue;
+            assignMission(galaxy, r, BuiltObjectMissionType.Deploy, star, null, BuiltObjectMissionPriority.High);
+            escorts.set(r, best);
+            served.set(best, (served.get(best) ?? 0) + 1);
+            st.aiResupplyDeploys = (st.aiResupplyDeploys ?? 0) + 1;
+        }
+    }
+}
+
+registerScenarioFramePeriodic({
+    id: 'bvr.aiResupply',
+    flag: BVR_AI_FLAG,
+    periodDays: 6,
+    run: (galaxy) => aiResupplyTick(galaxy),
 });

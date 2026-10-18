@@ -7,7 +7,7 @@
 // (WeaponMissile only) down with certainty. Targets are picked from the empire's system threat lists.
 //
 // With the flag on (the data side is the scenario's components.txt / research.txt overlay: four tiers of a new missile
-// launcher family, ids 129-132, and the stock torpedoes rebuilt as close-range, slow, concentrated hitters; see the
+// launcher family (dynamic ids, found by name), and the stock torpedoes rebuilt as close-range, slow, concentrated hitters; see the
 // scenario folder), this package adds the rules around them:
 //   - Magazines: a BVR missile launcher carries bvrMissileRounds (4) missiles, a torpedo launcher bvrTorpedoRounds (6). The
 //     magazine is a pool per component id on a ship (scenario.state.bvrCombat.mags, a Map keyed by the ship that holds only
@@ -51,12 +51,10 @@ export const BVR_FLAG = 'bvrCombat';
 export const BVR_AI_FLAG = 'bvrAI';
 export const BVR_ADDON_ID = 'bvr-combat';
 /**
- * The BVR missile launchers are components 129-132 of the scenario's components.txt (type WeaponMissile): the ids follow the
- * stock components 0-128 because the sim indexes its component arrays by id (design.ts galaxyComponentCurrentPrices), so
- * they must stay dense. Research projects 372-378 likewise follow the stock 0-371 (the same ids as the time-bomb add-on's, so the two conflict).
+ * The BVR missile launchers are found by name: their ids are allocated after the other active add-ons' fixed ids when a game starts
+ * (scenario/overlay.ts finalizeDynamicIds), so no id is known at compile time.
  */
-export const BVR_FIRST_COMPONENT_ID = 129;
-export const BVR_LAST_COMPONENT_ID = 132;
+export const BVR_MISSILE_NAMES: ReadonlySet<string> = new Set(['Javelin Missile Launcher', 'Longbow Missile Launcher', 'Stormspear Missile Launcher', 'Skyfire Missile Launcher']);
 /** Race event type PredictiveHistory (weapons.ts RACE_EVENT_TYPE_PREDICTIVE_HISTORY). */
 const RACE_EVENT_TYPE_PREDICTIVE_HISTORY = 28;
 
@@ -77,6 +75,10 @@ export const BVR_DEFAULTS = {
     bvrRoundCostPct: 12,
     bvrDryPct: 25,
     bvrAiValuePct: 35,
+    bvrCapFrigate: 2,
+    bvrCapDestroyer: 3,
+    bvrCapCruiser: 5,
+    bvrCapCapital: 7,
 } as const;
 export type BvrParam = keyof typeof BVR_DEFAULTS;
 
@@ -101,11 +103,14 @@ export function bvrAiOn(galaxy: Galaxy): boolean {
 interface DefLike {
     readonly type: ComponentType;
     readonly componentId: number;
+    /** A ComponentDefinition has a name; a BuiltObjectComponent (a ship's component, a weapon's) reaches it through `def`. */
+    readonly name?: string;
+    readonly def?: { readonly name: string };
 }
 
-/** A BVR missile launcher (WeaponMissile, id 129-132). */
+/** A BVR missile launcher (a WeaponMissile of the add-on's four tiers). */
 export function isBvrMissile(def: DefLike): boolean {
-    return def.type === ComponentType.WeaponMissile && def.componentId >= BVR_FIRST_COMPONENT_ID && def.componentId <= BVR_LAST_COMPONENT_ID;
+    return def.type === ComponentType.WeaponMissile && BVR_MISSILE_NAMES.has(def.name ?? def.def?.name ?? '');
 }
 
 /** A launcher with a magazine: a BVR missile launcher or a torpedo launcher (the stock missiles and super weapons are unlimited). */
@@ -152,6 +157,10 @@ export interface BvrState {
     roundsCost: number;
     /** Rearm trips the AI sent fleets on. */
     aiRearmTrips: number;
+    /** The AI's resupply ships sent to deploy with a fleet (ship -> fleet). Absent in saves from before it existed. */
+    escorts?: Map<BuiltObject, unknown>;
+    /** Deployments the AI ordered for them. */
+    aiResupplyDeploys?: number;
 }
 
 export function bvrState(galaxy: Galaxy): BvrState {

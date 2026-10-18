@@ -10,9 +10,8 @@ const MILITARY = 1; // BuiltObjectRole.Military
 const PD = 5; // ComponentType.WeaponPointDefense
 const MISSILE = 4;
 const TORPEDO = 2;
-const BVR_FIRST = 129;
-const BVR_LAST = 132;
-const isBvrMissile = (c) => c.type === MISSILE && c.componentId >= BVR_FIRST && c.componentId <= BVR_LAST;
+const BVR_NAMES = new Set(['Javelin Missile Launcher', 'Longbow Missile Launcher', 'Stormspear Missile Launcher', 'Skyfire Missile Launcher']);
+const isBvrMissile = (c) => c.type === MISSILE && BVR_NAMES.has(c.name ?? c.def?.name ?? '');
 let live = new Map();
 let lost = 0;
 const lostBy = new Map();
@@ -137,7 +136,7 @@ export function chunk(ctx) {
         dryShips: dry,
         counters: st === null ? null : {
             missilesFired: st.missilesFired, missileHits: st.missileHits, torpedoesFired: st.torpedoesFired, torpedoHits: st.torpedoHits,
-            downedByPd: st.downedByPd, downedByGuns: st.downedByGuns, aiRearmTrips: st.aiRearmTrips, roundsLoaded: st.roundsLoaded, roundsViaResupply: st.roundsViaResupply ?? 0, untrackedChecks: st.untracked, roundsCost: Math.round(st.roundsCost),
+            downedByPd: st.downedByPd, downedByGuns: st.downedByGuns, aiRearmTrips: st.aiRearmTrips, roundsLoaded: st.roundsLoaded, roundsViaResupply: st.roundsViaResupply ?? 0, aiResupplyDeploys: st.aiResupplyDeploys ?? 0, escortingSupplyShips: st.escorts?.size ?? 0, deployedSupplyShips: g.empires.reduce((n, e) => n + (e?.resupplyShips?.filter((r) => r.isDeployed).length ?? 0), 0), supplyShips: g.empires.reduce((n, e) => n + (e?.resupplyShips?.length ?? 0), 0), untrackedChecks: st.untracked, roundsCost: Math.round(st.roundsCost),
             magazinesTracked: st.mags.size,
         },
         designs,

@@ -1,6 +1,6 @@
 'BVR combat (scenarios/bvr-combat): research overlay. Generated.
 '1. The stock torpedo projects with their improvements rebuilt for the close-range BVR torpedoes (same ids, tree positions and parents).
-'2. Seven new projects (372-378, weapons industry, row 37) for the four BVR missile launchers and their seeker upgrades.
+'2. Seven new projects (placeholder ids 10000-10006, weapons industry, row 37) for the four BVR missile launchers and their seeker upgrades.
 
 PROJECT			;28, Plasma Focussing, 4, 14, 		0, 25, 0, 0.0, 
 COMPONENT IMPROVEMENTS	;9, 4, 520, 190, 52, 70, 0, 3200, 8,
@@ -42,30 +42,30 @@ PROJECT			;41, Extreme Energy Vortexes, 6, 17, 		0, 25, 0, 0.0,
 COMPONENT IMPROVEMENTS	;7, 6, 655, 330, 60, 92, 0, 5300, 0,
 PARENTS			;40, N
 
-PROJECT			;372, Long-Range Missile Launchers, 1, 37, 		0, 25, 0, 0.0, 
-COMPONENTS		;129
+PROJECT			;10000, Long-Range Missile Launchers, 1, 37, 		0, 25, 0, 0.0, 
+COMPONENTS		;10000
 PARENTS			;369, N
 
-PROJECT			;373, Terminal Seekers, 2, 37, 		0, 25, 0, 0.0, 
-COMPONENT IMPROVEMENTS	;129, 2, 150, 1900, 20, 440, 0, 4200, 0,
-PARENTS			;372, N
+PROJECT			;10001, Terminal Seekers, 2, 37, 		0, 25, 0, 0.0, 
+COMPONENT IMPROVEMENTS	;10000, 2, 150, 1900, 20, 440, 0, 4200, 0,
+PARENTS			;10000, N
 
-PROJECT			;374, Extended-Range Missile Launchers, 3, 37, 		0, 25, 0, 0.0, 
-COMPONENTS		;130
-PARENTS			;373, N
+PROJECT			;10002, Extended-Range Missile Launchers, 3, 37, 		0, 25, 0, 0.0, 
+COMPONENTS		;10001
+PARENTS			;10001, N
 
-PROJECT			;375, Multi-Spectral Seekers, 4, 37, 		0, 25, 0, 0.0, 
-COMPONENT IMPROVEMENTS	;130, 4, 260, 2450, 26, 500, 0, 3800, 0,
-PARENTS			;374, N
+PROJECT			;10003, Multi-Spectral Seekers, 4, 37, 		0, 25, 0, 0.0, 
+COMPONENT IMPROVEMENTS	;10001, 4, 260, 2450, 26, 500, 0, 3800, 0,
+PARENTS			;10002, N
 
-PROJECT			;376, Hypersonic Missile Launchers, 5, 37, 		0, 25, 0, 0.0, 
-COMPONENTS		;131
-PARENTS			;375, N
+PROJECT			;10004, Hypersonic Missile Launchers, 5, 37, 		0, 25, 0, 0.0, 
+COMPONENTS		;10002
+PARENTS			;10003, N
 
-PROJECT			;377, Adaptive Seekers, 6, 37, 		0, 25, 0, 0.0, 
-COMPONENT IMPROVEMENTS	;131, 6, 330, 3100, 32, 560, 0, 3400, 0,
-PARENTS			;376, N
+PROJECT			;10005, Adaptive Seekers, 6, 37, 		0, 25, 0, 0.0, 
+COMPONENT IMPROVEMENTS	;10002, 6, 330, 3100, 32, 560, 0, 3400, 0,
+PARENTS			;10004, N
 
-PROJECT			;378, Orbital-Range Missile Launchers, 7, 37, 		0, 25, 0, 0.0, 
-COMPONENTS		;132
-PARENTS			;377, N
+PROJECT			;10006, Orbital-Range Missile Launchers, 7, 37, 		0, 25, 0, 0.0, 
+COMPONENTS		;10003
+PARENTS			;10005, N
