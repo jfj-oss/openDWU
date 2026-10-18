@@ -1064,6 +1064,8 @@ export function inflictDamageFull(
         }
     } else if (isBuiltObject(abstractTarget)) {
         const builtObject = abstractTarget;
+        // Mod layer (Surrender): a ship that has struck its colours takes no weapon damage from anyone else (rounds already in flight, area blasts, base guns).
+        if (galaxy.scenario !== null && weapon !== null && self !== builtObject && isStruck(galaxy, builtObject)) return false;
         if (selfBattleStats !== null) selfBattleStats.weaponHitEnemy(hitPower, weaponDistanceTravelled);
         if (selfGroupStats !== null) selfGroupStats.weaponHitEnemy(hitPower, weaponDistanceTravelled);
         // Mod layer (Ambush first strike, Armour facing): the hit power after the firer's ambush and the target's facing.
