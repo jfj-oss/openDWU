@@ -26,6 +26,9 @@ import { loadShipArt } from './shipArt';
 import { BEACON_FRAMES, BEACON_RELAY, WATCHER_ART, type BeaconFrameArt, type BeaconFxRect } from './beaconArtData';
 import { BEACON_ART_DIR } from './threatArt';
 import { BeaconRelayFx, type RelayFrame } from './beaconRelayFx';
+import { BeaconWarpLayer } from './beaconWarp';
+import { ReaperFx } from './beaconReaperFx';
+import { ReaperMotionFx } from './beaconReaperMotion';
 
 /** No light layers under this drawn size (px). */
 export const BEACON_FX_MIN_PX = 14;
@@ -130,6 +133,12 @@ interface Unfold {
 export class BeaconFxLayer {
     readonly root = new Container();
     private pool = new SpritePool(this.root);
+    /** The Beacon's own warp (beaconWarp.ts), drawn on each ship's sprite transform. */
+    private warp = new BeaconWarpLayer((file) => `${BEACON_ART_DIR}${file}.png`);
+    /** The alternative (Reaper) Watcher's chain and eye-line runs (beaconReaperFx.ts). */
+    private reaper = new ReaperFx(this.root);
+    /** Its moving-effect previews (beaconReaperMotion.ts, off by default). */
+    private motion = new ReaperMotionFx(this.root);
     private fx = new Map<string, FxSet | null>();
     private fxLoading = new Set<string>();
     private watcherTex: WatcherTextures | null = null;
@@ -149,6 +158,7 @@ export class BeaconFxLayer {
 
     constructor() {
         this.root.eventMode = 'none';
+        this.root.addChild(this.warp.root);
     }
 
     /** `relay`: this frame's countdown and launch (beaconLaunch.ts), for the Beacon station. */
@@ -159,11 +169,17 @@ export class BeaconFxLayer {
             this.relayFrame.launchT = relay.launchT;
             this.relayFrame.serial = relay.serial;
         }
+        this.warp.begin();
+        this.reaper.begin();
+        this.motion.begin();
     }
 
     end(): void {
         this.pool.end();
         this.relay.prune();
+        this.warp.end();
+        this.reaper.end();
+        this.motion.end();
         if (this.unfold.size > 4) for (const bo of this.unfold.keys()) if (bo.hasBeenDestroyed) this.unfold.delete(bo);
     }
 
@@ -249,6 +265,16 @@ export class BeaconFxLayer {
      * draw instead of the frame (a Watcher's body while it opens), or null.
      */
     draw(file: string, bo: BuiltObject, open: boolean, x: number, y: number, rotation: number, scale: number, ax: number, ay: number, tw: number, th: number, px: number, sec: number): Texture | null {
+        // the warp (every Beacon frame), on the ship's sprite transform
+        this.warp.ship(file, bo, x, y, rotation, scale, ax * tw, ay * th, px);
+        if (file === 'watcher-reaper') {
+            // its chain (lagging, swinging with its moves and turns) and its eye-lines' runs (light along them). It has no opening
+            // yet: when it gets one, its unfold's heat goes in as `heat` (the runs then quicker and redder).
+            this.reaper.draw(bo, x, y, rotation, scale, ax * tw, ay * th, px, sec, 0);
+            const cruise = Math.max(1, bo.cruiseSpeed > 0 ? bo.cruiseSpeed : bo.topSpeed);
+            this.motion.draw(bo, x, y, rotation, scale, ax * tw, ay * th, px, sec, bo.currentSpeed / cruise);
+            return null;
+        }
         const art = beaconFrameArt(file);
         if (art === null) return null;
         if (file === 'beacon') {

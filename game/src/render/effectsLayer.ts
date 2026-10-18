@@ -61,6 +61,8 @@ import { fighterDrawnSizePx } from './fighterLayer';
 import { fogOf } from './fog';
 import { LightningTextures, ionStrikeAlpha, ionStrikeSeed, ionStrikeSizePx, ionStrikeVisible } from './lightning';
 import { explosionShakeAmplitude } from './screenShake';
+import { noteWarpBurst, noteWarpSpool } from './beaconWarp';
+import { beaconArtFile } from './threatArt';
 
 const IMG = '/assets/dwu/images';
 /** The original rotates weapon / hyper art 90° clockwise at load (RotateFlip(Rotate90FlipNone)); drawing the raw
@@ -1075,7 +1077,9 @@ export class EffectsLayer {
         // strike records make candidates too (strikeBos); its hyper records need no such pass: a recorded exit flag
         // matters again only when the sim sets or clears the ship's hyper flags, which it notes.
         this.tracker.refresh(nowMs, this.strikeBos, (bo) => {
-            const need = this.needsEffects(bo, nowMs, starDate);
+            // A Beacon ship's drive spooling: its warp crackles round it the whole spool (beaconWarp.ts), not just the
+            // stock flare's last 800 ms.
+            const need = this.needsEffects(bo, nowMs, starDate) || (EffectsLayer.hyperEnterAhead(bo, starDate) && beaconArtFile(bo) !== null);
             const carrier = hasLaunchedFighter(bo);
             if (need) {
                 bos.push(bo);
@@ -1373,6 +1377,9 @@ export class EffectsLayer {
     private checkHyper(bo: BuiltObject, starDate: number, nowMs: number): void {
         const enterDue = hyperEnterDue(bo.hyperjumpCountdown, starDate, bo.hyperEnterStartAnimation, bo.canHyperJump);
         const exitFlag = bo.hyperExitStartAnimation;
+        // The Beacon's ships (Reclaimers, Watchers): their own red, crackling warp (beaconWarp.ts) for the stock flares.
+        const beacon = beaconArtFile(bo) !== null;
+        if (beacon && bo.hyperEnterStartAnimation && bo.canHyperJump && bo.hyperjumpCountdown - starDate > 0) noteWarpSpool(bo, bo.hyperjumpCountdown, starDate);
         let st = this.hyper.get(bo);
         if (!enterDue && !exitFlag && !bo.hyperjumpJustExited) {
             if (st !== undefined) {
@@ -1393,13 +1400,19 @@ export class EffectsLayer {
         if (enterDue && st.enteredCountdown !== bo.hyperjumpCountdown) {
             st.enteredCountdown = bo.hyperjumpCountdown;
             const frames = this.hyperEnter[idx] ?? this.hyperEnter[0];
-            if (onScreen && frames !== undefined) this.addHyper(frames, bo, nowMs);
+            // (a Beacon ship's always: the warp draws it only if the ship is drawn within moments, so an arrival from
+            // out of sight, its first drawn frame still to come, is not missed)
+            if (beacon) noteWarpBurst('enter', bo);
+            else if (onScreen && frames !== undefined) this.addHyper(frames, bo, nowMs);
         }
         const newExit = exitFlag && ((bo.hyperjumpJustExited && !st.exitLatched) || !st.exitFlag);
         if (newExit) {
             st.exitLatched = true;
             const frames = this.hyperExit[idx] ?? this.hyperExit[0];
-            if (onScreen && frames !== undefined) this.addHyper(frames, bo, nowMs);
+            // (a Beacon ship's always: the warp draws it only if the ship is drawn within moments, so an arrival from
+            // out of sight, its first drawn frame still to come, is not missed)
+            if (beacon) noteWarpBurst('exit', bo);
+            else if (onScreen && frames !== undefined) this.addHyper(frames, bo, nowMs);
         }
         if (!bo.hyperjumpJustExited) st.exitLatched = false;
         st.exitFlag = exitFlag;
@@ -1431,6 +1444,7 @@ export class EffectsLayer {
         this.lightning.clear();
     }
 }
+
 
 function setStrike(map: WeakMap<BuiltObject, StrikeRecord>, bo: BuiltObject, time: number, direction: number): void {
     const r = map.get(bo);

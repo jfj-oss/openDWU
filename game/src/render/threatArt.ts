@@ -320,8 +320,9 @@ export function threatDrawScale(l: ThreatLooks, bo: BuiltObject): number {
     if (l.worldShips.includes(bo)) return WORLD_SHIP_VISUAL_SCALE;
     if (bo === l.mothercore) return MOTHERCORE_VISUAL_SCALE;
     if (bo.isPlanetDestroyer && l.purifierFaction !== null && bo.actualEmpire === l.purifierFaction) return PURIFIER_VISUAL_SCALE;
-    if (l.watchers !== undefined && l.watchers.length > 0 && l.watchers.includes(bo)) return minimumSizeScale(bo.size, WATCHER_REF_SIZE, WATCHER_VISUAL_SCALE);
+    if (l.watchers !== undefined && l.watchers.length > 0 && l.watchers.includes(bo)) return minimumSizeScale(bo.size, WATCHER_REF_SIZE, WATCHER_VISUAL_SCALE) * watcherFrameScale;
     if (l.beacon !== undefined && l.beacon !== null && bo === l.beacon) return minimumSizeScale(bo.size, BEACON_REF_SIZE, BEACON_VISUAL_SCALE);
+    if (watcherFrame === 'reaper' && beaconLooksActive(l) && beaconArtFile(bo, l) === 'capitalship-reaper') return CAPITAL_REAPER_SCALE;
     return 1;
 }
 
@@ -487,13 +488,40 @@ export function isWatcher(bo: BuiltObject, l: ThreatLooks = looks): boolean {
     return l.watchers !== undefined && l.watchers.length > 0 && l.watchers.includes(bo);
 }
 
-/** The Beacon frame of an object ('watcher', 'beacon' or a Reclaimer frame), or null (not the Beacon's / stock art). */
+/** The Watchers' frame: 'carrier' (watcher.png, the Mass Effect 4 Mod's carrier as it is; it opens when sighted) or
+ * 'reaper' (watcher-reaper.png, the Reaper from the user's image, scripts/beacon-ships.py; a static frame). */
+export type WatcherFrame = 'carrier' | 'reaper';
+export const WATCHER_FRAME_FILES: Readonly<Record<WatcherFrame, string>> = { carrier: 'watcher', reaper: 'watcher-reaper' };
+/** The Watchers' frame drawn (WatcherFrame). */
+export const WATCHER_FRAME_DEFAULT: WatcherFrame = 'carrier';
+/** Each frame's draw scale on top of WATCHER_VISUAL_SCALE. The game sizes a frame by its opaque area (builtObjectSizePx's
+ * areaRatio): the Reaper's broader frame is scaled so it draws about as long as the carrier. */
+export const WATCHER_FRAME_SCALE: Readonly<Record<WatcherFrame, number>> = { carrier: 1, reaper: 1.262 };
+let watcherFrame: WatcherFrame = WATCHER_FRAME_DEFAULT;
+/** With the Reaper look, the Reclaimers' capital ship draws the Reaper frame too (capitalship-reaper.png, the Watcher's
+ * art at concept 16's Watcher proportions), scaled to keep the old capital frame's drawn length (the game sizes by opaque area). */
+export const CAPITAL_REAPER_SCALE = 1.067;
+let watcherFrameScale = WATCHER_FRAME_SCALE[WATCHER_FRAME_DEFAULT];
+
+/** The Watchers' frame drawn now. */
+export function getWatcherFrame(): WatcherFrame {
+    return watcherFrame;
+}
+
+/** Switches the Watchers' frame (render only; the captures use it to show both). */
+export function setWatcherFrame(f: WatcherFrame, scale: number = WATCHER_FRAME_SCALE[f]): void {
+    watcherFrame = f;
+    watcherFrameScale = scale;
+}
+
+/** The Beacon frame of an object ('watcher' / 'watcher-reaper', 'beacon' or a Reclaimer frame), or null (not the
+ * Beacon's / stock art). */
 export function beaconArtFile(bo: BuiltObject, l: ThreatLooks = looks): string | null {
     if (l.beacon !== undefined && l.beacon !== null && bo === l.beacon) return 'beacon';
-    if (isWatcher(bo, l)) return 'watcher';
+    if (isWatcher(bo, l)) return WATCHER_FRAME_FILES[watcherFrame];
     if (!isReclaimerHull(bo, l)) return null;
-    if (bo.isPlanetDestroyer) return 'capitalship';
-    return beaconFileForSubRole(bo.subRole);
+    const f = bo.isPlanetDestroyer ? 'capitalship' : beaconFileForSubRole(bo.subRole);
+    return f === 'capitalship' && watcherFrame === 'reaper' ? 'capitalship-reaper' : f;
 }
 
 /** The art URL of a Reclaimer hull, a Watcher (closed) or the Beacon (null: stock art). `l` defaults to the
