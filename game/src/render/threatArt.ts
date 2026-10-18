@@ -63,6 +63,7 @@ import { GW_CASINO_LOOKS, GW_CASINO_SPR, GW_LIGHTS, GW_LIGHT_KINDS, GW_SANCTUARY
 import { LeviathanRig, leviathanTextures, type LeviathanTextures } from './leviathanRig';
 import { loadLeviathanImages } from './faunaArt';
 import { WATCHER_FORK_ART } from './beaconForkArtData';
+import { CAPITAL_FORK_ART } from './beaconForkCapitalArtData';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Who is who (once per frame)
@@ -334,6 +335,8 @@ export function threatDrawScale(l: ThreatLooks, bo: BuiltObject): number {
     }
     if (l.beacon !== undefined && l.beacon !== null && bo === l.beacon) return minimumSizeScale(bo.size, BEACON_REF_SIZE, BEACON_VISUAL_SCALE);
     if (watcherFrame === 'reaper' && beaconLooksActive(l) && beaconArtFile(bo, l) === 'capitalship-reaper') return CAPITAL_REAPER_SCALE;
+    // the fork look's capital ship: drawn the old capital frame's length (so the fork Watcher stays FORK_VS_CAPITAL x it)
+    if (watcherFrame === 'fork' && beaconLooksActive(l) && beaconArtFile(bo, l) === 'capitalship-fork') return CAPITAL_FORK_ART.drawScale;
     return 1;
 }
 
@@ -567,7 +570,8 @@ export function beaconArtFile(bo: BuiltObject, l: ThreatLooks = looks): string |
     if (isWatcher(bo, l)) return WATCHER_FRAME_FILES[watcherFrame];
     if (!isReclaimerHull(bo, l)) return null;
     const f = bo.isPlanetDestroyer ? 'capitalship' : beaconFileForSubRole(bo.subRole);
-    return f === 'capitalship' && watcherFrame === 'reaper' ? 'capitalship-reaper' : f;
+    if (f !== 'capitalship') return f;
+    return watcherFrame === 'reaper' ? 'capitalship-reaper' : watcherFrame === 'fork' ? 'capitalship-fork' : f;
 }
 
 /** The art URL of a Reclaimer hull, a Watcher (closed) or the Beacon (null: stock art). `l` defaults to the

@@ -25,6 +25,7 @@ import { SpritePool } from './fxCommon';
 import { loadShipArt } from './shipArt';
 import { BEACON_FRAMES, BEACON_RELAY, WATCHER_ART, type BeaconFrameArt, type BeaconFxRect } from './beaconArtData';
 import { WATCHER_FORK_ART } from './beaconForkArtData';
+import { CAPITAL_FORK_ART } from './beaconForkCapitalArtData';
 import { BEACON_ART_DIR } from './threatArt';
 import { BeaconRelayFx, type RelayFrame } from './beaconRelayFx';
 import { BeaconWarpLayer } from './beaconWarp';
@@ -121,6 +122,7 @@ function sub(base: Texture, r: BeaconFxRect): Texture {
 export function beaconFrameArt(file: string): BeaconFrameArt | null {
     if (file === 'watcher') return WATCHER_ART;
     if (file === 'watcher-fork') return WATCHER_FORK_ART;
+    if (file === 'capitalship-fork') return CAPITAL_FORK_ART;
     if (file === 'beacon') return BEACON_RELAY_FRAME;
     return Object.hasOwn(BEACON_FRAMES, file) ? BEACON_FRAMES[file] : null;
 }
@@ -282,10 +284,10 @@ export class BeaconFxLayer {
             this.motion.draw(bo, x, y, rotation, scale, ax * tw, ay * th, px, sec, bo.currentSpeed / cruise);
             return null;
         }
-        if (file === 'watcher-fork') {
+        if (file === 'watcher-fork' || file === 'capitalship-fork') {
             // its engines' plumes (by its speed) and its blinking navigation lights; its lamps' swell below
             const cruise = Math.max(1, bo.cruiseSpeed > 0 ? bo.cruiseSpeed : bo.topSpeed);
-            this.fork.draw(bo, x, y, rotation, scale, ax * tw, ay * th, px, sec, bo.currentSpeed / cruise);
+            this.fork.draw(file === 'watcher-fork' ? WATCHER_FORK_ART : CAPITAL_FORK_ART, bo, x, y, rotation, scale, ax * tw, ay * th, px, sec, bo.currentSpeed / cruise);
         }
         const art = beaconFrameArt(file);
         if (art === null) return null;

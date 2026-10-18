@@ -2,12 +2,13 @@
 // (threatArt.ts WATCHER_FRAME_FILES 'fork', watcher-fork.png) has two wide engine banks at its stern, one a side from
 // the notch out to the side horns (the notch has none): each gets one wide plume, short (a little under the stock
 // exhaust's length for a ship this size), by the ship's speed (smoothed; none at rest). The plume is the stock engine
-// exhaust art (effects/enginethrusters/1.png, the pink flame; a theme's own if one is active), drawn as ambientLayer.ts
+// exhaust art (effects/enginethrusters/3.png, the Vortex engine's pink-lilac flame the Ancient Guardians' ships draw; a theme's own if one is active), drawn as ambientLayer.ts
 // draws a ship's exhaust (untinted, normal blend). Small pink navigation lights across the hull (the prong fronts and
 // outer edges, the rear hump, the side horns' tips, the stern corners) blink, each on its own period and phase (a small
 // texture made once, a pixel buffer, no canvas). Pooled; drawn only for the FORK_FX_SHIPS_MAX biggest such ships on
 // screen (ranked by drawn size, a frame behind) and only from a drawn size up. Where the banks and lights sit comes from
-// beaconForkArtData.ts (the art build).
+// beaconForkArtData.ts / beaconForkCapitalArtData.ts (the art builds). The fork capital ship (capitalship-fork.png)
+// gets the same, from its own data.
 
 import { Container, type Texture } from 'pixi.js';
 import type { BuiltObject } from '../sim/builtObject';
@@ -15,7 +16,7 @@ import { SpritePool } from './fxCommon';
 import { textureFromRgbaPixels } from './textureCanvas';
 import { engineThrusterUrls } from './effectFrames';
 import { loadRgba } from '../ui/empireEmblem';
-import { WATCHER_FORK_ART, type ForkArt } from './beaconForkArtData';
+import type { ForkArt } from './beaconForkArtData';
 
 /** The plumes and the lights on / off (render only; mutable so a preview can switch them). */
 export const FORK_FX = { plumes: true, lights: true };
@@ -24,8 +25,8 @@ export const FORK_FX_SHIPS_MAX = 4;
 /** No plumes under this drawn size (px); no lights under FORK_LIGHTS_MIN_PX. */
 export const FORK_PLUMES_MIN_PX = 20;
 export const FORK_LIGHTS_MIN_PX = 28;
-/** The plumes' art: enginethrusters/<i>.png (1: the stock pink Quantum-drive flame). */
-export const FORK_PLUME_ART = 1;
+/** The plumes' art: enginethrusters/<i>.png (3: the Vortex engine's pink-lilac flame, the one the Ancient Guardians' ships draw). */
+export const FORK_PLUME_ART = 3;
 /** A plume's length against the stock exhaust's for a ship this size (a little under). */
 export const FORK_PLUME_LEN = 0.9;
 /** Each band is this many stock flames side by side; each drawn this many times its share of the span wide (the stock
@@ -87,7 +88,7 @@ export class ForkFx {
     private pool = new SpritePool(this.c);
     private tex: { light: Texture } | null = null;
     private texFailed = false;
-    /** The stock pink engine exhaust (enginethrusters/1.png), loaded once; null until then or if it failed. */
+    /** The stock exhaust (enginethrusters/FORK_PLUME_ART.png), loaded once; null until then or if it failed. */
     private plume: Texture | null = null;
     private plumeLoading = false;
     private tracks = new Map<BuiltObject, Track>();
@@ -108,7 +109,7 @@ export class ForkFx {
     private ox = 0;
     private oy = 0;
 
-    constructor(parent: Container, private art: ForkArt = WATCHER_FORK_ART) {
+    constructor(parent: Container) {
         this.c.eventMode = 'none';
         parent.addChild(this.c);
     }
@@ -168,10 +169,10 @@ export class ForkFx {
     }
 
     /**
-     * The fork Watcher drawn at (x, y), turned `rotation`, `scale` world units per frame px, its anchor (ox, oy) frame
+     * A fork-look ship (the Watcher or the capital ship: `art` its frame data) drawn at (x, y), turned `rotation`, `scale` world units per frame px, its anchor (ox, oy) frame
      * px; `px` its drawn size; `sec` the wall clock; `speed` its speed over its cruise speed (0..).
      */
-    draw(bo: BuiltObject, x: number, y: number, rotation: number, scale: number, ox: number, oy: number, px: number, sec: number, speed: number): void {
+    draw(art: ForkArt, bo: BuiltObject, x: number, y: number, rotation: number, scale: number, ox: number, oy: number, px: number, sec: number, speed: number): void {
         const dt = Math.max(0, Math.min(0.25, sec - this.clock));
         this.clock = sec;
         let tr = this.tracks.get(bo);
@@ -197,7 +198,7 @@ export class ForkFx {
         this.sc = scale;
         this.ox = ox;
         this.oy = oy;
-        const A = this.art;
+        const A = art;
         const plume = this.plume;
         if (FORK_FX.plumes && plume !== null && tr.k > 0.01) {
             const k = tr.k;

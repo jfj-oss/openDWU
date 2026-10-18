@@ -106,6 +106,15 @@ await page.evaluate(async () => {
     const cap = made.find((b) => b.subRole === 5);
     roq.withSimWrites(() => { if (cap && !w1.actualEmpire.designs.includes(cap.design)) w1.actualEmpire.designs.push(cap.design); });
 });
+// SUBJECT=capital: the line-up's capital ship takes the first Watcher's place (the Watcher moved far off) for the
+// close / play stills and the ramp
+if (process.env.SUBJECT === 'capital') await page.evaluate(async () => {
+    const roq = await import('/src/sim/readOnlyQuery.ts');
+    const { made, w1 } = window.__bc;
+    const cap = made.find((b) => b.subRole === 5);
+    roq.withSimWrites(() => { cap.xpos = w1.xpos; cap.ypos = w1.ypos; w1.xpos += 40000; w1.ypos += 40000; });
+    window.__bc.w1 = cap;
+});
 const FRAME = process.env.FRAME || 'fork';
 const SCALE = process.env.SCALE ? Number(process.env.SCALE) : undefined;
 console.log('frame', await page.evaluate(async ([f, sc]) => { const ta = await import('/src/render/threatArt.ts'); ta.setWatcherFrame(f, sc); return [ta.getWatcherFrame(), ta.threatDrawScale(ta.threatLooks(window.__dwu.galaxy), window.__bc.w1)]; }, [FRAME, SCALE]));
