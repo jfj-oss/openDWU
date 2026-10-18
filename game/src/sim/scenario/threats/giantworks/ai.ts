@@ -189,6 +189,7 @@ export function aiStep(galaxy: Galaxy): void {
         if (!live || w.base === null) continue;
         for (const e of ordinaryEmpires(galaxy)) {
             if (isHumanEmpire(galaxy, e) || !isSmarterAIStrategist(galaxy, e)) continue;
+            if (w.phase === 'complete' && w.hostile && greatWorkKind(w.wonder)?.aiAbstains?.(galaxy, w, e) === true) continue; // it has a deal with the wonder
             if (w.phase === 'building' && workLevel(w, e) < KNOWLEDGE_SUSPECTED) continue;
             const next = w.aiNext[e.empireId];
             if (next !== undefined && next > now) continue;

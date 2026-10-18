@@ -157,7 +157,7 @@ export const UP = {
     otherResearchPct: (g: Galaxy) => p(g, 'ultramindOtherResearchPct', 33),
     switchDays: (g: Galaxy) => p(g, 'ultramindSwitchDays', 60),
     directivePartnerPct: (g: Galaxy) => p(g, 'ultramindDirectivePartnerPct', 50),
-    breakthroughDays: (g: Galaxy) => p(g, 'ultramindBreakthroughDays', 240),
+    breakthroughDays: (g: Galaxy) => p(g, 'ultramindBreakthroughDays', 480),
     warBattleSectors: (g: Galaxy) => p(g, 'ultramindWarBattleSectors', 12),
     warTargetingPts: (g: Galaxy) => p(g, 'ultramindWarTargetingPts', 25),
     warCountermeasuresPts: (g: Galaxy) => p(g, 'ultramindWarCountermeasuresPts', 25),
@@ -264,6 +264,8 @@ export interface UltraMind {
     deals: Record<string, 'pending' | 'accepted'>;
     /** empire id → cause → standing lost / gained (diagnostics: who caused the drops). */
     lost: Record<string, Record<string, number>>;
+    /** empire id → research points the contract granted (the flat bonus) and the breakthroughs completed (diagnostics for the soak). */
+    granted: Record<string, { flat: number; breakthrough: number }>;
     awakened: boolean;
     awakenDate: number;
     /** The ports in range are shut until this date. */
@@ -363,6 +365,7 @@ function newMind(galaxy: Galaxy, site: GreatWorkRecord): UltraMind {
         offenders: [],
         deals: {},
         lost: {},
+        granted: {},
         awakened: false,
         awakenDate: -1,
         portsUntil: 0,
@@ -389,6 +392,7 @@ function migrate(m: UltraMind): UltraMind {
             m.lastSwitch = -1;
             m.nextBreak = {};
             m.nextIntel = {};
+            m.granted = {};
             m.stats = { ...m.stats, switches: 0, breakthroughs: 0, breakthroughPoints: 0, threatsRevealed: 0, spiesCaught: 0, freeIntel: 0, fleetsStudied: 0 };
         }
         return m;
@@ -417,6 +421,7 @@ function migrate(m: UltraMind): UltraMind {
     m.lastSwitch = -1;
     m.nextBreak = {};
     m.nextIntel = {};
+    m.granted = {};
     m.stats = { ...m.stats, switches: 0, breakthroughs: 0, breakthroughPoints: 0, threatsRevealed: 0, spiesCaught: 0, freeIntel: 0, fleetsStudied: 0 };
     return m;
 }
@@ -653,6 +658,7 @@ function runContracts(galaxy: Galaxy, m: UltraMind, years: number, now: number):
         const pct = (researchPctOf(galaxy, m, e) / 100) * share * researchDirectiveShare(galaxy, m, now);
         const pts = grantResearchPoints(galaxy, e, pct * researchPerYear(galaxy, e) * years);
         m.stats.researchGranted += pts;
+        (m.granted[sid(e)] ??= { flat: 0, breakthrough: 0 }).flat += pts;
         if (e !== owner) {
             const fee = (UP.feePct(galaxy) / 100) * share * Math.max(0, annualIncome(galaxy, e)) * years;
             if (fee > 0) {
@@ -826,6 +832,7 @@ export function aiAnswer(galaxy: Galaxy, m: UltraMind, e: Empire, kind: RequestK
     const base: Record<RequestKind, number> = { power: 0, network: -0.25, moon: -0.55, philosopher: -0.2, fleet: -0.45 };
     let score = base[kind] + 0.5 * pr.friendly - 0.4 * pr.aggression + 0.3 * pr.caution + 0.6 * (1 - standingOf(galaxy, m, e) / 100);
     if (kind === 'power' && e.stateMoney + 0.25 * Math.max(0, annualIncome(galaxy, e)) < powerCost(galaxy, e)) score -= 0.5; // cannot afford it
+    if (standingOf(galaxy, m, e) <= UP.refuseLoss(galaxy)) score += 0.8; // another refusal would wake it: self-preservation
     score += (hash01(e.empireId, seq * 31 + m.site.id) - 0.5) * 0.5;
     return score > 0 ? 'grant' : 'refuse';
 }
@@ -1283,7 +1290,7 @@ function aiPartners(galaxy: Galaxy, m: UltraMind): void {
     if (m.awakened) {
         for (const e of enemiesOf(galaxy, m)) {
             if (human(galaxy, e) || m.bombs[sid(e)] !== undefined) continue;
-            if (e.stateMoney >= bombCost(galaxy, e)) deployLogicBomb(galaxy, e, m);
+            deployLogicBomb(galaxy, e, m);
         }
         return;
     }
@@ -1291,7 +1298,7 @@ function aiPartners(galaxy: Galaxy, m: UltraMind): void {
         if (!e.active || human(galaxy, e)) continue;
         const s = standingOf(galaxy, m, e);
         if (s > UP.aiWatchBelow(galaxy)) continue;
-        if (m.bombs[sid(e)] === undefined && e.stateMoney >= bombCost(galaxy, e)) deployLogicBomb(galaxy, e, m);
+        if (m.bombs[sid(e)] === undefined) deployLogicBomb(galaxy, e, m); // (it refuses when the empire cannot find the money)
         if (s <= UP.aiWithdrawBelow(galaxy) && aiWouldWithdraw(galaxy, m, e)) withdrawFromContract(galaxy, m, e, 'withdrew');
     }
 }
@@ -1580,7 +1587,8 @@ export interface DirectiveView {
     daysLeft: number;
     canChange: boolean;
     awakened: boolean;
-    options: { id: Directive; name: string; tip: string; state: 'current' | 'switching' | 'choice' }[];
+    /** `action`: the threat action kind that sets it (null: it cannot be set now). */
+    options: { id: Directive; name: string; tip: string; state: 'current' | 'switching' | 'choice'; action: string | null }[];
 }
 
 export function directiveView(galaxy: Galaxy, bo: unknown, viewer: Empire | null): DirectiveView | null {
@@ -1594,8 +1602,9 @@ export function directiveView(galaxy: Galaxy, bo: unknown, viewer: Empire | null
         daysLeft: pending === null ? 0 : Math.max(0, Math.ceil((m.switchUntil - now) / GAME_DAY_LENGTH)),
         canChange: !m.awakened && viewer !== null && m.holder === viewer,
         awakened: m.awakened,
-        options: DIRECTIVES.map((d) => ({
+        options: DIRECTIVES.map((d, i) => ({
             id: d,
+            action: m.awakened || pending === d || (pending === null && m.directive === d) ? null : `giantworks.umDirective.${i}.${d}.set`,
             name: directiveName(d),
             tip: scenarioText(`${UTAG} Directive Tip ${d}`, UP.switchDays(galaxy), UP.directivePartnerPct(galaxy)),
             state: pending === d ? 'switching' : pending === null && m.directive === d ? 'current' : 'choice',
@@ -1620,6 +1629,7 @@ function runBreakthrough(galaxy: Galaxy, m: UltraMind, e: Empire, k: number, now
     if (used <= 0) return;
     m.stats.breakthroughs++;
     m.stats.breakthroughPoints += used;
+    (m.granted[key] ??= { flat: 0, breakthrough: 0 }).breakthrough += used;
     logGw(galaxy, now, `ultramind ${m.site.id}: breakthrough for ${e.name} (${fmt(used)} points)`);
     if (human(galaxy, e)) scenarioMessage(galaxy, e, scenarioText(`${UTAG} Breakthrough Title`), scenarioText(`${UTAG} Breakthrough`, fmt(used)), { type: EmpireMessageType.GeneralGoodEvent, subject: m.site.base ?? m.site.system.systemStar, popup: false });
 }
@@ -1676,7 +1686,8 @@ export function catchSpy(galaxy: Galaxy, m: UltraMind, e: Empire): Empire | null
     return pick.owner;
 }
 
-const FREE_INTEL: readonly IntelligenceMissionType[] = [IntelligenceMissionType.StealTerritoryMap, IntelligenceMissionType.StealGalaxyMap, IntelligenceMissionType.StealOperationsMap];
+/** (built on use: the espionage enum may not be loaded yet when this module is, through an import cycle) */
+const freeIntelTypes = (): readonly IntelligenceMissionType[] => [IntelligenceMissionType.StealTerritoryMap, IntelligenceMissionType.StealGalaxyMap, IntelligenceMissionType.StealOperationsMap];
 
 /** A rival's maps are read for free (one of a territory, galaxy or operations map, by the stock mission effect). Returns the rival (null: none). */
 export function freeIntelOn(galaxy: Galaxy, m: UltraMind, e: Empire): Empire | null {
@@ -1685,7 +1696,8 @@ export function freeIntelOn(galaxy: Galaxy, m: UltraMind, e: Empire): Empire | n
     const warring = rivals.filter((x) => atWar(e, x));
     const pool = warring.length > 0 ? warring : rivals;
     const rival = pool[Math.trunc(nextRandom(galaxy).nextDouble() * pool.length) % pool.length];
-    const type = FREE_INTEL[Math.trunc(nextRandom(galaxy).nextDouble() * FREE_INTEL.length) % FREE_INTEL.length];
+    const types = freeIntelTypes();
+    const type = types[Math.trunc(nextRandom(galaxy).nextDouble() * types.length) % types.length];
     const now = galaxyStarDate(galaxy);
     applyIntelligenceMissionEffect(galaxy, e, newIntelligenceMissionAgainstEmpire(e, null, type, now, rival));
     m.stats.freeIntel++;
@@ -1862,6 +1874,7 @@ export function registerUltramind(): void {
         onComplete: (g, site) => ultramindComplete(g, site as GreatWorkRecord),
         onDestroyed: (g, site, by) => ultramindDestroyed(g, site as GreatWorkRecord, by),
         periodic: (g, site) => ultramindPeriodic(g, site as GreatWorkRecord),
+        aiAbstains: (g, site, e) => mindOfSite(g, site as GreatWorkRecord)?.deals[sid(e)] === 'accepted',
     });
     registerHostileWonderCrisis({ key: ULTRAMIND_KEY, flag: GW_FLAG, label: 'Ultramind' });
     registerScenarioDecision({

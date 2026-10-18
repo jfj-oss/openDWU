@@ -97,7 +97,7 @@ import { purchaseAtYard, removeFromYardQueue, scrapBuiltObjects, scrapShipUnderC
 import { investigateRuins } from '../exploration';
 import { cancelIntelligenceMission, characterMission } from '../espionage';
 import { scenarioFlag } from '../scenario/state';
-import { spawnThreatNow } from '../scenario/threats/framework';
+import { runThreatAction, spawnThreatNow } from '../scenario/threats/framework';
 import { issueMothball, issueReactivate } from '../scenario/mothballing/mothballing';
 import { issueMakeFlagship } from '../scenario/veterans/veterans';
 import { ESPIONAGE_FLAG } from '../scenario/emergent/espionageHooks';
@@ -628,6 +628,8 @@ export const PLAYER_OPS = {
     // [threats] begin — framework site investigation (scenario/threats/investigate.ts; refuses unless a threat add-on is on)
     /** "Investigate" a suspected threat site from the Intelligence screen's Threats & Leads section. */
     threatInvestigate: (galaxy: Galaxy, empire: Empire, threat: string, target: Habitat | BuiltObject, agent: Character) => startThreatInvestigation(galaxy, empire, threat, target, agent),
+    /** A scenario threat's player action on a site (Giantworks: the Ultramind's directive, withdrawing, the Logic Bomb); refused unless the action is offered. */
+    threatAction: (galaxy: Galaxy, empire: Empire, kind: string, target: Habitat | BuiltObject) => runThreatAction(galaxy, empire, kind, target),
     // [threats] end
     // [court] begin — scenario 19n court & dynasties (scenario/court/court.ts; flag-gated inside)
     /** Appoint a character to a council seat (null vacates it). */

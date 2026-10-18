@@ -171,6 +171,7 @@ export const COMMAND_FAILURE: FailureTable = {
     securityInvestigate: refused,
     securityAction: refused,
     threatInvestigate: refused,
+    threatAction: no,
     courtAppoint: refused,
     courtScheme: refused,
     courtHook: refused,

@@ -2096,6 +2096,12 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             if (src) openConstructionYards({ ...constructionYardsOptions(src.empire), site: t.target, tab: 'supply' });
             return;
         }
+        // Not in the original: a scenario threat action on a base (the Ultramind's directive buttons), through the command queue.
+        if (t.kind === 'threatAction') {
+            const player = localViewerEmpire(wiring.galaxy) ?? null;
+            if (player !== null && wiring.galaxy) issuePlayerCommand(wiring.galaxy, player, 'threatAction', [t.action, t.target], () => refresh());
+            return;
+        }
         // Not in the original: a fleet's "Template" row opens the Fleets screen on the fleet (fleetRefillControls.ts).
         if (t.kind === 'fleetTemplate') {
             closeFleetsList();

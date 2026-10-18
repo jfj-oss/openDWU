@@ -142,6 +142,35 @@ async function select(kind) {
                 hud.selectHabitat(sys.systemStar, false);
                 return sys.systemStar.name;
             }
+            case 'ultramind':
+            case 'ultramindSwitching':
+            case 'ultramindOther': {
+                // Giantworks: a finished Ultramind (needs ?scenario=giantworks&simWorker=0): its holder the player ('ultramind', 'ultramindSwitching' with
+                // a switch to War under way) or an AI empire ('ultramindOther': read-only); selects its base.
+                const fw = await import('/src/sim/scenario/threats/framework.ts');
+                const gwf = await import('/src/sim/scenario/threats/giantworks/framework.ts');
+                const um = await import('/src/sim/scenario/threats/giantworks/ultramind.ts');
+                const roq = await import('/src/sim/readOnlyQuery.ts');
+                return roq.withSimWrites(() => {
+                    let w = gwf.greatWorks(galaxy)[0];
+                    if (w === undefined) {
+                        fw.spawnThreatNow(galaxy, player, 'giantworks:ultramind');
+                        w = gwf.greatWorks(galaxy)[0];
+                    }
+                    if (w === undefined) return null;
+                    if (w.phase !== 'complete') {
+                        w.wonder = 'ultramind';
+                        w.gatherDate = 0;
+                        gwf.giantworksPeriodic(galaxy);
+                        w.holder = kind === 'ultramindOther' ? (gwf.ordinaryEmpires(galaxy).find((e) => e !== player) ?? player) : player;
+                        gwf.completeWork(galaxy, w);
+                    }
+                    const m = um.mindOfSite(galaxy, w);
+                    if (kind === 'ultramindSwitching' && m && m.holder) um.setDirective(galaxy, m, m.holder, 'war');
+                    // show it: the viewer sees everything in this capture
+                    return pick(w.base);
+                });
+            }
             case 'none':
                 hud.setSelection(null);
                 return 'none';
@@ -160,9 +189,29 @@ for (const kind of kinds) {
         continue;
     }
     await page.waitForTimeout(1500);
+    if (process.env.CLICK) {
+        // Click the panel's glass button of that label (the command queue runs it at the next frame boundary), run a moment, report.
+        const clicked = await page.evaluate((label) => {
+            const b = [...document.querySelectorAll('.sel-buttons .ow-glass')].find((x) => x.textContent === label);
+            b?.click();
+            return b !== undefined;
+        }, process.env.CLICK);
+        await page.evaluate(() => { window.__dwu.time.paused = false; });
+        await page.waitForTimeout(1500);
+        await page.evaluate(() => { window.__dwu.time.paused = true; });
+        console.log(`${kind}: clicked ${process.env.CLICK}: ${clicked}`);
+    }
     const path = `${outDir}/selpanel-${kind}.png`;
     await page.screenshot({ path, clip: { x: 0, y: +h - frameH, width: frameW, height: frameH } });
     console.log(`${kind}: ${name} -> ${path}`);
+    if (process.env.DUMP) {
+        // The panel's text and its glass buttons (label, toggled, enabled by a click handler), for a text-only check.
+        console.log(await page.evaluate(() => {
+            const sc = document.querySelector('.sel-scroll');
+            const btns = [...document.querySelectorAll('.sel-buttons .ow-glass')].map((b) => `[${b.textContent}${b.classList.contains('ow-glass-on') ? '*' : ''}${b.classList.contains('sel-glass-fixed') ? ' fixed' : ''}${b.classList.contains('sel-glass-pending') ? ' pending' : ''}] ${b.title.slice(0, 60)}`);
+            return `${sc?.innerText}\n${btns.join('\n')}`;
+        }));
+    }
     if (kind === 'ship') await page.screenshot({ path: `${outDir}/selpanel-full.png` });
     // The "More…" slot opens the overflow popup (dispatch orders beyond the empty action slots).
     const clickMore = () => page.evaluate(() => {

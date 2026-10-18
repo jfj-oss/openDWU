@@ -2876,6 +2876,9 @@ describe('giantworks', () => {
         expect(answerScenarioDecision(g, d.id, 'contain')).toBe(true);
         expect(m.deals[sidOf(p)]).toBe('accepted');
         expect(m.partners).toContain(p);
+        // A partner with a deal is not struck at by its own Smarter AI (the offenders' and the others' are).
+        expect(greatWorkKind('ultramind')!.aiAbstains!(g, w, p)).toBe(true);
+        expect(greatWorkKind('ultramind')!.aiAbstains!(g, w, offender)).toBe(false);
         const cap = m.partners.reduce((t, x) => t + (m.deals[sidOf(x)] === 'accepted' ? researchPctOf(g, m, x) * 0.5 * researchPerYear(g, x) / 100 : 0), 0);
         const granted = m.stats.researchGranted;
         m.lastTick -= YEAR_LENGTH;
@@ -3040,6 +3043,16 @@ describe('giantworks', () => {
         expect(runThreatAction(g, e!, 'giantworks.umDirective.2.economy.set', w.base)).toBe(true);
         expect(runThreatAction(g, e!, 'giantworks.umDirective.1.war.current', w.base)).toBe(false);
         expect(labels(e!)).toEqual(['Directive: Research', 'Directive: War', 'Directive: Economy (switching)', 'Directive: Intelligence']);
+        // The selection panel's buttons go through the 'threatAction' player command (multiplayer- and replay-safe): the holder's works, others' is refused.
+        m.switchTo = null;
+        m.directive = 'research';
+        runPlayerCommand(g, e!, 'threatAction', ['giantworks.umDirective.3.intelligence.set', w.base!]);
+        expect(m.switchTo).toBe('intelligence');
+        if (other !== undefined) {
+            runPlayerCommand(g, other, 'threatAction', ['giantworks.umDirective.1.war.set', w.base!]);
+            expect(m.switchTo).toBe('intelligence');
+        }
+        m.switchTo = null;
         // The AI holder reviews by situation: a war raises War and lowers Research.
         const s0 = aiDirectiveScores(g, m, e!);
         const foe = actors(g).find((x) => x !== e)!;

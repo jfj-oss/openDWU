@@ -618,3 +618,24 @@ span.sel-corner.sel-text {
 .sel-frame .sel-ic-list .sel-more-on .ow-ts-label {
     color: #ffd700;
 }
+
+/* Not in the original: the Ultramind's directive buttons (Giantworks), small GlassButtons (originalWindow.css .ow-glass) in a row under the
+   Directive line; the current directive drawn toggled on, the one being switched to dim, the others hot only for the empire that can change it. */
+.sel-buttons {
+    gap: 2px;
+    margin-top: 1px;
+    margin-bottom: 2px;
+}
+.sel-buttons .ow-glass.sel-glass {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 17px;
+    padding: 0 4px;
+    line-height: 15px;
+}
+.sel-buttons .ow-glass.sel-glass-fixed {
+    cursor: default;
+}
+.sel-buttons .ow-glass.sel-glass-pending {
+    opacity: 0.6;
+}

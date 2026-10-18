@@ -49,6 +49,8 @@ import { yardProgress } from './screens/constructionYards';
 import type { ConstructionQueue } from '../sim/construction/constructionQueue';
 import { builtObjectImageUrl, resolveDrawPictureRef } from '../render/builtObjectLayer';
 import { threatArtUrl } from '../render/threatArt';
+import { availableThreatActions } from '../sim/scenario/threats/framework';
+import { directiveView } from '../sim/scenario/threats/giantworks/ultramind';
 import { fighterImageUrl } from '../render/fighterLayer';
 import { FighterMissionType, Fighter, captainFightersBonus } from '../sim/combat/fighters';
 import { CharacterRole, CharacterSkillType } from '../sim/characters';
@@ -158,7 +160,9 @@ export type InfoTarget =
     | { kind: 'supply'; target: Habitat | BuiltObject }
     /** Not in the original: the player's fleet's "Template" row (fleetRefill.ts) opens the Fleets screen on the fleet,
      *  where its template, auto-refill and Replenish are. */
-    | { kind: 'fleetTemplate'; fleet: ShipGroup };
+    | { kind: 'fleetTemplate'; fleet: ShipGroup }
+    /** Not in the original: a scenario threat action on a base (Giantworks: the Ultramind's directive buttons), sent as the 'threatAction' player command. */
+    | { kind: 'threatAction'; action: string; target: BuiltObject };
 // (The same target serves the resource and race hotspots: Main.Part4.cs 3598-3607, method_456(resource / race Name).)
 
 /** One run of a row: text, an image, an empire flag, or a troop icon. */
@@ -203,7 +207,9 @@ export type InfoRow =
     /** DrawSystemColoniesSummary. */
     | { kind: 'colonies'; items: ColonySummaryItem[]; more: boolean }
     /** DrawShipGroup / DrawBuiltObjectSelection ship image grid (27 px cells, a green fuel bar on the right). */
-    | { kind: 'grid'; indent: number; cells: ShipCell[] };
+    | { kind: 'grid'; indent: number; cells: ShipCell[] }
+    /** Not in the original: a row of small glass buttons (Giantworks: the Ultramind's directives). `on` marks the current one, `pending` the one being switched to. */
+    | { kind: 'buttons'; buttons: { text: string; title: string; on: boolean; pending: boolean; target?: InfoTarget }[] };
 
 export interface ColonySummaryItem {
     habitat: Habitat;
@@ -486,6 +492,33 @@ function waitingRows(ctx: InfoContext, target: Habitat | BuiltObject): InfoRow[]
     });
     if (items.length > 3) rows.push(label('', [txt(`+${items.length - 3} more ships short of resources`, SUPPLY_SHORT)], { title, target: goTo }));
     return rows;
+}
+
+/** The Ultramind's directive: the current one (and the days a switch has left) and the four choices as buttons, for its holder to click. Not in the original. */
+function directiveRows(galaxy: Galaxy, bo: BuiltObject, viewer: Empire): InfoRow[] {
+    const v = galaxy.scenario === null ? null : directiveView(galaxy, bo, viewer);
+    if (v === null || v.awakened) return [];
+    const now = v.options.find((o) => o.state === 'current')?.name ?? v.options.find((o) => o.id === v.current)!.name;
+    const state = v.switchingTo !== null ? `${now}, switching to ${v.options.find((o) => o.id === v.switchingTo)!.name} (${v.daysLeft} days left)` : now;
+    const who = v.canChange ? 'click to change' : 'set by the empire whose territory holds it';
+    // The other actions the order menu does not reach for a base: the Logic Bomb, withdrawing from the contract.
+    const SHORT: Record<string, string> = { 'giantworks.logicBomb': 'Logic Bomb', 'giantworks.ultramindWithdraw': 'Withdraw' };
+    const acts = availableThreatActions(galaxy, viewer, bo).filter((a) => !a.kind.startsWith('giantworks.umDirective'));
+    const actRow: InfoRow[] = acts.length === 0 ? [] : [{ kind: 'buttons', buttons: acts.map((a) => ({ text: SHORT[a.kind] ?? a.label, title: a.label, on: false, pending: false, target: { kind: 'threatAction', action: a.kind, target: bo } as InfoTarget })) }];
+    return [
+        label('Directive', [txt(state)], { title: `The Ultramind works on one directive at a time (${who}).` }),
+        {
+            kind: 'buttons',
+            buttons: v.options.map((o) => ({
+                text: o.name,
+                title: `${o.tip}${v.canChange ? '' : '\n(Only the empire whose territory holds the Ultramind can change it.)'}`,
+                on: o.state === 'current',
+                pending: o.state === 'switching',
+                target: v.canChange && o.action !== null ? ({ kind: 'threatAction', action: o.action, target: bo } as InfoTarget) : undefined,
+            })),
+        },
+        ...actRow,
+    ];
 }
 
 /** A player colony short of luxuries: its luxury count against what development needs, and what is not coming. */
@@ -787,6 +820,7 @@ export function builtObjectInfo(ctx: InfoContext, bo: BuiltObject, extended = fa
         }
     }
     for (const r of threatRows(bo, player)) rows.push(label(r.label, [txt(r.value)]));
+    rows.push(...directiveRows(galaxy, bo, player)); // Giantworks: the Ultramind's directive
     // [veterans] the crew's rank and battles survived (only with the add-on: the record exists only then).
     const vet = known ? veteranShipLabel(galaxy, bo) : null;
     if (vet !== null) {

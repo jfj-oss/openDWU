@@ -241,7 +241,7 @@
     { "name": "ultramindDroneBuyDays", "label": "The Ultramind: days between new drones", "default": 20, "min": 1, "max": 720 },
     { "name": "ultramindSwitchDays", "label": "The Ultramind: days a change of directive takes (no directive works meanwhile)", "default": 60, "min": 1, "max": 3600 },
     { "name": "ultramindDirectivePartnerPct", "label": "The Ultramind: share of a directive's effects the partners (not the holder) get (%)", "default": 50, "min": 0, "max": 100 },
-    { "name": "ultramindBreakthroughDays", "label": "Research directive: days between breakthroughs (a project completed outright)", "default": 240, "min": 10, "max": 3600 },
+    { "name": "ultramindBreakthroughDays", "label": "Research directive: days between breakthroughs (a project completed outright)", "default": 480, "min": 10, "max": 3600 },
     { "name": "ultramindWarBattleSectors", "label": "War directive: warships within this many sectors of the Ultramind get the battle bonuses", "default": 12, "min": 1, "max": 100 },
     { "name": "ultramindWarTargetingPts", "label": "War directive: targeting bonus points (100 = none)", "default": 25, "min": 0, "max": 100 },
     { "name": "ultramindWarCountermeasuresPts", "label": "War directive: countermeasures bonus points (100 = none)", "default": 25, "min": 0, "max": 100 },
