@@ -4,6 +4,8 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **Beacon cattle ships are persistent fleets.** Each Reclaimer core keeps its own cattle ships (one per feeder world, at most 20 a core). They shuttle: fly to the most overdue world, load for 3 days, haul the people back under escort, unload into the pens and go again. Damaged ships return and mend at the core; destroyed ones are rebuilt from the fleet's biofuel after 60 days. Escape pods and boarding work as before. Old saves convert their cattle ships into the new pools. Only with the Beacon on.
+
 ## 0.1.33
 
 - **Guarantee the Beacon (Giantworks option).** A new-game option under Giantworks, off by default: when on (and The Beacon is enabled), the first Great Work is certain to be the Beacon, ignoring the six-empire minimum, so the Beacon arc always happens. Off, nothing changes.
