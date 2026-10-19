@@ -4,6 +4,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **The whole Rim expansion is now in Work in progress.** New Fauna and the Voidbloom War join the other Rim add-ons there (the Voidbloom War needs Rim Trade, already in progress); the Rim group no longer shows under Recommended.
 - **A new, heavier sound for the Beacon's mega beam.** Four mechanical slams on the charge pulses, a crack on ignition, a darker roar and scream while the beam burns, and digital corruption and crackle through it; it now runs the full 17.6 s of the launch.
 - **A Great Work stays a mystery until it is finished.** Messages, the selection panel and the Intelligence screen no longer list what it could be ("It could be: ...", "Probably", "One of"); it reads "Purpose unknown" until completion. Cargo manifests still give clues.
 - **Beacon cattle ships are persistent fleets.** Each Reclaimer core keeps its own cattle ships (one per feeder world, at most 30 a core, the whole pool at once as soon as a core starts harvesting). They shuttle: fly to the most overdue world, load for 3 days, haul the people back under escort, unload into the pens and go again. Damaged ships return and mend at the core; destroyed ones are rebuilt from the fleet's biofuel after 60 days. Escape pods and boarding work as before. Old saves convert their cattle ships into the new pools. Only with the Beacon on.
