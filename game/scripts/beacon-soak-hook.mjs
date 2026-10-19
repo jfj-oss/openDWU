@@ -37,6 +37,7 @@ const phaseSince = {}; // key → { value, since }
 let reportRef = null;
 const seenFaction = new Set();
 let factionLost = 0;
+let completedYear = null;
 
 const r1 = (x) => Math.round(x * 10) / 10;
 const r2 = (x) => Math.round(x * 100) / 100;
@@ -278,8 +279,14 @@ function sample(ctx, g) {
     }
     if (st) {
         s.ph = st.phase;
+        if (completedYear === null && st.phase !== 'watching') completedYear = s.y;
         s.w = st.watchers.map((w) => (w.dead ? 'X' : w.mode[0] + (w.ship?.cloaked ? '' : '!'))).join('');
         s.cor = st.corrupted.filter((c) => c.ended === null).length;
+        // the siphon (the Beacon's completion gate), purges in progress, the cattle interception counts, the research moratorium
+        if (st.siphon) s.siph = { total: Math.round(st.siphon.total), rate: r1(st.siphon.rate), gate: st.siphon.gateDate > 0 };
+        s.purging = st.corrupted.filter((c) => c.purge !== undefined).length;
+        s.icpt = (st.intercepts ?? []).map((r) => r1(r.n));
+        if (st.moratorium) s.mor = { until: Math.round(st.moratorium.until), breakers: st.moratorium.breakers.length, sanctioned: st.moratorium.sanctioned.length };
         s.wStr = st.watchers.map((w) => (w.dead || !w.ship || w.ship.hasBeenDestroyed ? 0 : Math.round(M.thr.calculateOverallStrengthFactor(w.ship))));
         s.elim = r1(M.bf.eliminatedPct(st));
         // the Watcher fleets: mode (d defence / o offensive), live escorts, strength (Watcher and escorts), the world held
@@ -512,6 +519,9 @@ function sample(ctx, g) {
                     fuel: { fleet: Math.round(fuel.fleet ?? 0), troops: Math.round(fuel.troops ?? 0), income: Math.round(fuel.income ?? 0), ships: Math.round(fuel.spentShips ?? 0), troopsSpent: Math.round(fuel.spentTroops ?? 0), start: Math.round(fuel.startGrant ?? 0) },
                     launches: st.launches ?? 0 };
             })() : null,
+            siphon: st.siphon ? { total: Math.round(st.siphon.total), gateDate: st.siphon.gateDate, byEmpire: st.siphon.byEmpire } : null,
+            completedYear: completedYear,
+            moratoriumVotes: ((g.scenario?.state?.interstellarDiet ?? g.scenario?.state?.diet)?.history ?? []).filter((h) => h.kind === 'beaconMoratorium').map((h) => [h.result, h.yes, h.no]),
             corruptedEver: st.stats.corrupted, lostBy: st.lostBy, beaconLaunches: st.ai?.launches ?? 0, guards: st.guards.filter((b) => !b.hasBeenDestroyed).length };
     }
     report.beacon.samples.push(s);
