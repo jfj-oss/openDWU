@@ -1,7 +1,7 @@
 // Giantworks: what each empire knows. Not a port. The threat framework's levels (framework.ts revealTo / knowledgeLevel):
 //   1 rumour    - the empire has heard of the Founders' Compact (a message, from the rumour year; a faint emblem on the founding worlds it has met);
 //   2 suspected - the empire has read enough cargo manifests (giantworksHintsToSuspect different hints), or it watches the Fitting stage:
-//                 it sees a shortlist of the wonders the hints fit;
+//                 it has a shortlist of the wonders the hints fit (the AI weighs it; the player is never shown it);
 //   3 confirmed - never before completion. A Diet inspection only narrows the shortlist; a spy, an investigation or a deep-cover
 //                 mission yields one more hint. The wonder's identity is proven only by the finished wonder.
 // Hints are discrete tags (kind.hintTags, shared tags are red herrings): every convoy carries one (early convoys the general
@@ -84,8 +84,7 @@ function human(galaxy: Galaxy, e: Empire): boolean {
 function suspectedNow(galaxy: Galaxy, work: GreatWorkRecord, e: Empire): void {
     if (!revealTo(galaxy, work, e, KNOWLEDGE_SUSPECTED)) return;
     if (human(galaxy, e)) {
-        const names = shortlist(galaxy, work, e).map(kindName).join(', ');
-        scenarioMessage(galaxy, e, scenarioText(`${TAG} Suspected Title`), scenarioText(`${TAG} Suspected`, work.system.systemStar.name, names), { type: EmpireMessageType.GeneralWarning, subject: work.base ?? work.system.systemStar, popup: false });
+        scenarioMessage(galaxy, e, scenarioText(`${TAG} Suspected Title`), scenarioText(`${TAG} Suspected`, work.system.systemStar.name), { type: EmpireMessageType.GeneralWarning, subject: work.base ?? work.system.systemStar, popup: false });
     }
 }
 
@@ -261,16 +260,16 @@ export function siteTexts(galaxy: Galaxy, work: GreatWorkRecord, e: Empire): { l
         const name = kindName(work.wonder);
         return { label: scenarioText(`${TAG} Label Complete`, name), status: scenarioText(`${TAG} Status Complete`, name), level: Math.max(level, KNOWLEDGE_CONFIRMED) };
     }
-    const list = shortlist(galaxy, work, e).map(kindName);
     const stage = scenarioText(`${TAG} Stage ${work.stage}`);
-    const purpose = list.length === 0 ? scenarioText(`${TAG} Purpose Unknown`) : list.length === 1 ? scenarioText(`${TAG} Purpose One`, list[0]) : scenarioText(`${TAG} Purpose Some`, list.join(', '));
+    // What it might be is never shown before it is finished (the user: keep it a mystery); the shortlist still guides the AI.
+    const purpose = scenarioText(`${TAG} Purpose Unknown`);
     return { label: scenarioText(`${TAG} Label Building`, progressPct(work), purpose), status: scenarioText(`${TAG} Status Building`, stage, progressPct(work), purpose), level };
 }
 
 /**
  * Known-site rows for `e` (threat key `giantworks`): the scaffold / wonder base, from Rumour level on once `e` has seen it (the
  * Intelligence screen and the generic markers list only suspected and confirmed rows; the station art draws the rest). Level 2 or 3
- * come with the shortlist text.
+ * show "purpose unknown" until it is finished.
  */
 export function giantworksKnownSites(galaxy: Galaxy, e: Empire): KnownThreatSite[] {
     const st = peekGwState(galaxy);

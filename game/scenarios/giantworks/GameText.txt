@@ -18,13 +18,11 @@ Giantworks Hint Title;Cargo manifest
 Giantworks Hint;Our observers at {1} have read a convoy's manifest: {0}
 Giantworks Hint Unknown;Unusual cargo ({0}).
 Giantworks Suspected Title;A Great Work
-Giantworks Suspected;The cargoes leave little doubt: the Founders' Compact is raising a Great Work at {0}. It could be: {1}. We cannot be certain of anything until it is finished.
+Giantworks Suspected;The cargoes leave little doubt: the Founders' Compact is raising a Great Work at {0}. What it is for, nobody can say until it is finished.
 Giantworks Stage Title;The Great Work grows
 Giantworks Stage Reached;The Great Work at {0} has reached its {1} stage.
 Giantworks Label Building;Great Work, {0}%. {1}
 Giantworks Purpose Unknown;Purpose unknown.
-Giantworks Purpose One;Probably: {0} (not proven).
-Giantworks Purpose Some;One of: {0}.
 Giantworks Label Complete;Great Work: {0}
 Giantworks Status Building;{0}, {1}%. {2}
 Giantworks Status Complete;Finished: {0}
@@ -43,7 +41,7 @@ Giantworks Wreckage Title;What the wreckage showed
 Giantworks Wreckage;Analysts have sifted the wreckage of the Great Work at {0}: it was to be {1}.
 Giantworks Seized News;{0} has seized {1}.
 Giantworks Diet Inspect;Inspect the Great Work
-Giantworks Diet Inspect News;The Interstellar Diet's inspectors have reported on the Great Work. The members now agree on fewer possibilities, but not on the truth.
+Giantworks Diet Inspect News;The Interstellar Diet's inspectors have reported on the Great Work. Their findings are sealed, and the members still do not agree on what it is.
 Giantworks Diet Protect;Protect the Great Work
 Giantworks Diet Protect News;The Interstellar Diet has placed the Great Work and its convoys under its protection.
 Giantworks Diet Demolish;Authorise the demolition of the Great Work
