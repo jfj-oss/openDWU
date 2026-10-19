@@ -4424,6 +4424,14 @@ describe('the Beacon (Giantworks wonder)', () => {
             const outside = b.xpos < 0 || b.ypos < 0 || b.xpos > g.sizeX || b.ypos > g.sizeY || g.systems.every((sys) => sys === null || g.calculateDistance(b.xpos, b.ypos, sys.systemStar.xpos, sys.systemStar.ypos) > 40000);
             expect(outside).toBe(true);
             expect(calculateOverallStrengthFactorWithoutShields(b)).toBeGreaterThan(0);
+            // real engines: about 20 top speed and 12 cruise (the template's 18 engines gave 5 / 3), the turn rate kept (0.117)
+            expect(b.design!.topSpeed).toBeGreaterThanOrEqual(20);
+            expect(b.design!.topSpeed).toBeLessThanOrEqual(22);
+            expect(b.design!.cruiseSpeed).toBeGreaterThanOrEqual(12);
+            expect(b.design!.cruiseSpeed).toBeLessThanOrEqual(14);
+            expect(b.design!.turnRate).toBeGreaterThan(0.115);
+            expect(b.design!.turnRate).toBeLessThan(0.13);
+            expect(b.design!.components.filter((c) => c.type === ComponentType.EngineMainThrust).length).toBeGreaterThan(60);
         }
         // at war with no one
         for (const e of normalsOf(g)) expect(atWarWith(e, st.faction!)).toBe(false);

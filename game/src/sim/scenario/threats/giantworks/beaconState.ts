@@ -560,6 +560,9 @@ export const P = {
     watcherCount: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'beaconWatchers', 2))),
     /** A Watcher's guns: this many times the capital-ship template's weapons are added (1 = double). */
     watcherGuns: (g: Galaxy) => p(g, 'beaconWatcherGuns', 2),
+    /** The Watcher's speeds: extra main engines (with reactors and fuel) are added until the design reaches these (0 top speed: the template's engines). */
+    watcherTopSpeed: (g: Galaxy) => p(g, 'beaconWatcherTopSpeed', 20),
+    watcherCruiseSpeed: (g: Galaxy) => p(g, 'beaconWatcherCruiseSpeed', 12),
     watcherArmourPct: (g: Galaxy) => p(g, 'beaconWatcherArmourPct', 350),
     watcherShieldPct: (g: Galaxy) => p(g, 'beaconWatcherShieldPct', 200),
     /** 1: every Reclaimer design uses the maximum tech level the design generator supports (0: the galaxy average + 1, the Watchers + beaconWatcherTechBonus). */

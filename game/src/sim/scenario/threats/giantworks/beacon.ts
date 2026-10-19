@@ -138,6 +138,50 @@ function boostWeapons(d: import('../../../design').Design, extra: number): void 
     if (n > 0) d.reDefine();
 }
 
+/**
+ * Real engines for the Watcher: adds copies of the design's own main engines (Vortex at max tech), with the reactors and fuel cells to power
+ * and feed them, until the design's own speed maths (Design.reDefine) reaches `top` / `cruise`; then maneuvering thrusters until the turn rate is
+ * what it was. Pure apart from `d`. Returns the number of engines added.
+ */
+export function boostEngines(d: import('../../../design').Design, top: number, cruise: number): number {
+    const engine = d.components.find((c) => c.type === ComponentType.EngineMainThrust);
+    const reactor = d.components.find((c) => c.type === ComponentType.Reactor);
+    const fuel = d.components.find((c) => c.type === ComponentType.StorageFuel);
+    const vector = d.components.find((c) => c.type === ComponentType.EngineVectoring);
+    if (engine === undefined || !(top > 0)) return 0;
+    const turn0 = d.turnRate;
+    const rangeDays0 = d.fuelCapacity / Math.max(1, d.topSpeedFuelBurn);
+    let added = 0;
+    for (let i = 0; i < 100 && (d.topSpeed < top || d.cruiseSpeed < cruise); i++) {
+        for (let k = 0; k < 2; k++) d.components.push(engine);
+        added += 2;
+        // one reactor per 26 engines, and fuel cells to keep the range (fuel capacity per unit of burn) it had
+        if (reactor !== undefined && added % 26 === 0) d.components.push(reactor);
+        d.reDefine();
+        if (fuel !== undefined && fuel.value1 > 0) {
+            let guard = 0;
+            while (d.fuelCapacity / Math.max(1, d.topSpeedFuelBurn) < rangeDays0 && guard++ < 40) {
+                d.components.push(fuel);
+                d.reDefine();
+            }
+        }
+    }
+    if (reactor !== undefined) {
+        // the fuel burn must be powered with room to spare: reactors until the net power covers the burn twice over
+        for (let g = 0; g < 10 && (d.reactorPowerOutput - d.staticEnergyConsumption) < 2 * d.topSpeedFuelBurn; g++) {
+            d.components.push(reactor);
+            d.reDefine();
+        }
+    }
+    if (vector !== undefined) {
+        for (let g = 0; g < 200 && d.turnRate < turn0 - 0.0002; g++) {
+            d.components.push(vector);
+            d.reDefine();
+        }
+    }
+    return added;
+}
+
 function watcherDesign(galaxy: Galaxy, faction: Empire, lvl: number): import('../../../design').Design | null {
     const spec = faction.designSpecifications.find((s) => s !== null && s.subRole === BuiltObjectSubRole.CapitalShip) ?? galaxyDesignSpecificationBySubRole(BuiltObjectSubRole.CapitalShip);
     if (spec === null || spec === undefined) return null;
@@ -146,6 +190,7 @@ function watcherDesign(galaxy: Galaxy, faction: Empire, lvl: number): import('..
         if (d === null) return null;
         addPlating(d, [d], P.watcherArmourPct(galaxy), P.watcherShieldPct(galaxy));
         boostWeapons(d, P.watcherGuns(galaxy));
+        boostEngines(d, P.watcherTopSpeed(galaxy), P.watcherCruiseSpeed(galaxy));
         d.name = T('Beacon Watcher Name', '');
         d.isObsolete = true; // never an AI build
         faction.designs.push(d);
