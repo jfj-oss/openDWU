@@ -30,6 +30,8 @@ export const BEACON_WARP_JUMP_AT_MS = 800;
 export const BEACON_WARP_EXIT_MS = 4400;
 /** The arrival's flare and droplets (ms); the steam after them runs to BEACON_WARP_EXIT_MS. */
 export const BEACON_WARP_ARRIVE_MS = 1900;
+/** A Watcher's cloak veil (veil()): the share of its reveal over which the dark mass swells (then it drains). */
+export const BEACON_VEIL_SWELL = 0.35;
 /** How many warping ships get the full dark-matter metaballs at once (the rest: the wisps). */
 export const BEACON_WARP_METABALL_SLOTS = 4;
 /** Metaballs and steam only from this drawn size (px). */
@@ -862,8 +864,8 @@ export class BeaconWarpLayer {
         }
     }
 
-    /** Slow sparks: `slots` of them, each born on its own beat, lingering `life` ms and fading. */
-    private sparks(sh: WarpShape, id: number, slots: number, ms: number, period: number, alpha: number): void {
+    /** Slow sparks: `slots` of them, each born on its own beat, lingering `life` ms and fading (`tint`: recoloured). */
+    private sparks(sh: WarpShape, id: number, slots: number, ms: number, period: number, alpha: number, tint?: number): void {
         for (let k = 0; k < slots; k++) {
             const per = period * (0.8 + 0.5 * warpHash(id, k, 1));
             const ph = warpHash(id, k, 2) * per;
@@ -874,7 +876,8 @@ export class BeaconWarpLayer {
             const v = u / live;
             const env = smooth01(0, 0.06, v) * (1 - v) * (0.85 + 0.15 * Math.sin(ms * 0.012 + k));
             const sp = sh.sparks[Math.floor(warpHash(id, k, cyc + 11) * sh.sparks.length) % sh.sparks.length];
-            this.put(sp.tex, sp.dx, sp.dy, 0, 0, sp.tex.width, sp.tex.height, 0, alpha * env, 'add');
+            const s = this.put(sp.tex, sp.dx, sp.dy, 0, 0, sp.tex.width, sp.tex.height, 0, alpha * env, 'add');
+            if (s !== null && tint !== undefined) s.tint = tint;
         }
     }
 
@@ -972,6 +975,34 @@ export class BeaconWarpLayer {
         return n;
     }
 
+    /** The veil's blobs: in from the outline in two layers (so they fill the silhouette, whatever its shape), swelling
+     * with `swell`, wobbling slowly so they merge and split like a lava lamp; draining, they shrink and slide out along
+     * the outline's normals, off the hull's edges. Returns the count written. */
+    private veilBlobs(sh: WarpShape, id: number, swell: number, drain: number, ms: number): number {
+        const B = this.blobBuf;
+        const big = Math.max(sh.w, sh.h);
+        const np = sh.px.length;
+        const per = Math.max(1, Math.floor(np / 56));
+        let n = 0;
+        for (let i = 0, k = 0; i < np && n < 124; i += per, k++) {
+            for (let layer = 0; layer < 2 && n < 124; layer++) {
+                const depth = big * (layer === 0 ? 0.03 : 0.085) * (0.8 + 0.4 * warpHash(id, k, 30 + layer));
+                const lag = warpHash(id, k, 33 + layer) * 0.35;
+                const d = Math.max(0, Math.min(1, (drain - lag) / (1 - lag)));
+                const slide = big * 0.16 * d * d;
+                const wob = Math.sin(ms * 0.0009 + k * 1.7 + layer * 2.3);
+                const wob2 = Math.cos(ms * 0.0007 + k * 0.9 + layer);
+                const tx = -sh.ny[i];
+                const ty = sh.nx[i];
+                B[n * 3] = sh.px[i] - sh.nx[i] * (depth - slide) + tx * wob * big * 0.012;
+                B[n * 3 + 1] = sh.py[i] - sh.ny[i] * (depth - slide) + ty * wob * big * 0.012;
+                B[n * 3 + 2] = big * (0.045 + 0.02 * warpHash(id, k, 36 + layer)) * swell * (0.85 + 0.2 * wob2) * Math.max(0, 1 - d * 1.15);
+                n++;
+            }
+        }
+        return n;
+    }
+
     /** The steam of an arrival (t ms after it): pale vapour venting from the seams and the trailing edges, billowing,
      * drifting aft, thinning and fading. */
     private steam(sh: WarpShape, id: number, t: number): void {
@@ -1041,6 +1072,37 @@ export class BeaconWarpLayer {
         const reach = Math.max(sh.w, sh.h) * 0.07;
         this.motes(sh, id, Math.round(6 + (MOTES_MAX - 6) * c), ms, 1700 - 600 * c, true, reach, 0.5 + 0.4 * c, Math.max(sh.w, sh.h) * 0.075);
         this.sparks(sh, id, 1 + Math.round(c * (SPARK_SLOTS - 1)), ms, 2300 - 700 * c, 0.6 + 0.4 * c);
+    }
+
+    /**
+     * A Watcher's cloak veil (beaconCloakFx.ts), in the warp's own dark-matter language, as a function of its reveal r
+     * (0 cloaked .. 1 shown; a re-cloak runs it backward): over r 0..VEIL_SWELL dark blobs swell up over the silhouette
+     * and merge into one mass; past it the mass splits into droplets that peel back and drain off the hull's edges (the
+     * hull fading in beneath), fine dark motes drift off and slow violet sparks crawl along the edges and linger. Called
+     * after ship() (its transform); the metaballs share the warp's slots and ranking (the biggest drawn ships).
+     */
+    veil(file: string, bo: BuiltObject, r: number, px: number): void {
+        if (r <= 0.002 || r >= 0.998 || px < BEACON_WARP_MIN_PX) return;
+        const xf = this.last.get(bo);
+        if (xf === undefined) return;
+        const sh = this.shape(file);
+        if (sh === null) return;
+        this.use(xf);
+        const ms = warpClockMs();
+        const id = bo.builtObjectID + 31;
+        const big = Math.max(sh.w, sh.h);
+        const swell = smooth01(0, BEACON_VEIL_SWELL, r);
+        const drain = r <= BEACON_VEIL_SWELL ? 0 : (r - BEACON_VEIL_SWELL) / (1 - BEACON_VEIL_SWELL);
+        const fade = 1 - smooth01(0.82, 1, r);
+        this.whole(sh.shroud, sh, 1.03 + 0.02 * Math.sin(ms * 0.0011), 0.5 * swell * fade, 'normal');
+        const m = this.wantsFull(bo, px) ? this.slot() : null;
+        if (m !== null) {
+            this.metaballs(m, sh, this.veilBlobs(sh, id, swell, drain, ms), ms, 0.95 * fade * (0.35 + 0.65 * swell), 0.5);
+        } else {
+            this.motes(sh, id, Math.round(MOTES_MAX * swell * (1 - drain)), ms, 1500, drain <= 0, big * 0.09, 0.85 * fade, big * 0.08);
+        }
+        if (drain > 0) this.motes(sh, id + 5, Math.round(MOTES_MAX * (1 - drain)), ms, 1600, false, big * 0.14, 0.6 * (1 - drain), big * 0.045);
+        this.sparks(sh, id + 9, SPARK_SLOTS, ms, 2700, (0.45 + 0.55 * Math.sin(Math.PI * r)) * fade, 0xc68cff);
     }
 
     private drawBurst(b: Burst, t: number, ms: number): void {

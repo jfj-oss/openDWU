@@ -1,17 +1,19 @@
 // The Watchers' cloak, seen (Giantworks add-on, the Beacon; render only). The sim (beacon.ts) sets `bo.cloaked` on a
 // Watcher and lists in `cloakSeenBy` the empires that spotted it (detectCloaked); the fog layer hides a cloaked Watcher
 // from everyone else. This draws what is left to see:
-// - CLOAKED (drawn, so the viewer detected it): no hull, only a faint heat-shimmer silhouette that bends the stars
-//   behind it (StarLens: a displacement filter on the deep starfield, its map the ship's silhouette filled with noise,
-//   wobbling; and a faint rim).
-// - DECLOAK (`cloaked` goes false): a shimmer ripples outward from the skull, the hull fades in from its edges inward
-//   (CLOAK_STEPS precomputed reveal frames of the ship's own art), its engines and lamps come up and the navigation
-//   lights flicker on last; CLOAK_TRANSITION_S in all. RE-CLOAK reverses it; a Watcher the viewer has not detected
-//   stays drawn (cloakFading, read by fog.ts) until it has faded out.
+// - CLOAKED (drawn, so the viewer detected it): no hull, only a faint dark-purple outline breathing slowly and the stars
+//   behind it bent (StarLens: a displacement filter on the deep starfield, its map the ship's silhouette filled with
+//   noise, a slow calm wobble of several seconds a cycle).
+// - DECLOAK (`cloaked` goes false; CLOAK_TRANSITION_S): in the Beacon warp's own dark-matter language (beaconWarp.ts
+//   veil, the same metaballs, motes and sparks, pooled and limited the same way): dark blobs swell up over the
+//   silhouette and merge, then peel back and drain off the hull's edges as the hull fades in beneath, fine dark motes
+//   drifting off, slow violet sparks crawling along the edges; the starfield bends throughout; the engines come up and
+//   the pink navigation lights flicker on last. RE-CLOAK runs it backward (the blobs swallow the ship from its edges
+//   in); a Watcher the viewer has not detected stays drawn (cloakFading, read by fog.ts) until it has gone.
 // - SIGHTED markers (watcherSightings, drawn by artBundleLayer.ts): where the viewer last detected a cloaked Watcher,
 //   fading over the seen-through days (beaconDetectSeenDays).
-// Pooled; the rim and ripple for at most CLOAK_SHIMMER_SLOTS Watchers a frame, the starfield lens for the biggest one;
-// reveal frames made once per frame file, on the first transition. Works for any Watcher frame (fork, Reaper, carrier).
+// The outline for at most CLOAK_SHIMMER_SLOTS Watchers a frame, the starfield lens for the biggest one; the fade frames
+// made once per frame file, on the first transition. Works for any Watcher frame (fork, Reaper, carrier).
 
 import { Container, DisplacementFilter, Rectangle, Sprite, Texture } from 'pixi.js';
 import type { BuiltObject } from '../sim/builtObject';
@@ -22,14 +24,14 @@ import { loadRgba } from '../ui/empireEmblem';
 
 export const CLOAK_FX = { on: true };
 /** A decloak or re-cloak (s). */
-export const CLOAK_TRANSITION_S = 2.0;
+export const CLOAK_TRANSITION_S = 3.0;
 /** How many reveal frames (the hull from its edges inward). */
 export const CLOAK_STEPS = 10;
 /** At most this many shimmering Watchers a frame. */
 export const CLOAK_SHIMMER_SLOTS = 4;
-/** The ripple: its share of the decloak (it runs first), and how far it spreads (frame sizes). */
-const RIPPLE_SHARE = 0.55;
-const RIPPLE_REACH = 0.75;
+/** The shimmer's slow breath (s per cycle) and the hull's fade-in under the dark mass (reveal span). */
+const BREATH_S = 5.5;
+const HULL_IN: readonly [number, number] = [0.32, 0.62];
 
 /** The reveal 0..1 one step on toward `target` (dt s). Pure. */
 export function cloakStep(r: number, target: number, dt: number): number {
@@ -55,8 +57,6 @@ interface Track {
     r: number;
     t: number;
     cloaked: boolean;
-    /** When the last decloak started (s), for the ripple. */
-    decloakAt: number;
     /** The last time it was drawn (s), and when it last cloaked while drawn (for the fog's grace). */
     drawn: number;
     cloakedAt: number;
@@ -142,22 +142,6 @@ export function watcherSightings(watchers: readonly BuiltObject[], viewer: Empir
     return n;
 }
 
-/** A soft ring (the ripple), white. */
-function ringTexture(): Texture {
-    const s = 128;
-    const px = new Uint8ClampedArray(s * s * 4);
-    for (let y = 0; y < s; y++) {
-        for (let x = 0; x < s; x++) {
-            const d = Math.hypot((x + 0.5) / s - 0.5, (y + 0.5) / s - 0.5) * 2;
-            const a = Math.exp(-(((d - 0.82) / 0.09) ** 2)) * (d < 1 ? 1 : 0);
-            const i = (y * s + x) * 4;
-            px[i] = px[i + 1] = px[i + 2] = 255;
-            px[i + 3] = a * 255;
-        }
-    }
-    return textureFromRgbaPixels(px, s, s, false, 'cloak-ring');
-}
-
 /** The reveal frames of a ship's art: step k (1..CLOAK_STEPS) shows the hull from its edges in to depth k/STEPS (the
  * front a little lit), step 0 none; and the white silhouette. From its pixels, once. */
 function makeReveal(data: Uint8ClampedArray | Uint8Array, w: number, h: number): Reveal {
@@ -190,23 +174,16 @@ function makeReveal(data: Uint8ClampedArray | Uint8Array, w: number, h: number):
             }
         }
     }
+    // the hull's fade-in frames (it comes up under the dark mass of the veil): its own pixels at k / CLOAK_STEPS alpha
     const steps: Texture[] = [];
     const out = new Uint8ClampedArray(n * 4);
     for (let k = 0; k <= CLOAK_STEPS; k++) {
-        const th = 1 - k / CLOAK_STEPS;
+        const f = k / CLOAK_STEPS;
         for (let i = 0; i < n; i++) {
-            const al = data[i * 4 + 3];
-            let wgt = 0;
-            if (k > 0 && al > 0) {
-                const e = Math.min(1, Math.max(0, (1 - b[i]) * 2.2));
-                wgt = Math.max(0, Math.min(1, (e - th) / 0.16 + 1));
-            }
-            const front = k < CLOAK_STEPS ? wgt * (1 - wgt) * 4 : 0;
-            const lift = 1 + 0.35 * front;
-            out[i * 4] = Math.min(255, data[i * 4] * lift + 18 * front);
-            out[i * 4 + 1] = Math.min(255, data[i * 4 + 1] * lift + 12 * front);
-            out[i * 4 + 2] = Math.min(255, data[i * 4 + 2] * lift + 20 * front);
-            out[i * 4 + 3] = al * wgt;
+            out[i * 4] = data[i * 4];
+            out[i * 4 + 1] = data[i * 4 + 1];
+            out[i * 4 + 2] = data[i * 4 + 2];
+            out[i * 4 + 3] = data[i * 4 + 3] * f;
         }
         steps.push(textureFromRgbaPixels(out, w, h, false, `cloak-reveal-${k}`));
     }
@@ -285,17 +262,18 @@ export class StarLens {
         // the map at the ship (its frame px x2: the map is half size), turned with it, a slight wobble
         const cos = Math.cos(lens.rot);
         const sin = Math.sin(lens.rot);
-        const jx = Math.sin(sec * 1.7) * 3;
-        const jy = Math.cos(sec * 1.3) * 3;
+        const jx = Math.sin((sec * 2 * Math.PI) / 7.3) * 3;
+        const jy = Math.cos((sec * 2 * Math.PI) / 9.1) * 3;
         const lx = (jx - lens.ox) * lens.sc;
         const ly = (jy - lens.oy) * lens.sc;
         this.sprite.position.set(lens.x + lx * cos - ly * sin, lens.y + lx * sin + ly * cos);
         this.sprite.rotation = lens.rot;
         this.sprite.scale.set(lens.sc * 2);
         // a few screen px of bend, by the ship's drawn size, swelling and ebbing
-        const amp = Math.min(16, Math.max(3, lens.px * 0.03)) * lens.strength * (0.75 + 0.25 * Math.sin(sec * 2.2));
+        // a slow, calm breath (BREATH_S per cycle)
+        const amp = Math.min(16, Math.max(3, lens.px * 0.03)) * lens.strength * (0.7 + 0.3 * Math.sin((sec * 2 * Math.PI) / BREATH_S));
         this.filter.scale.x = amp;
-        this.filter.scale.y = amp * (0.8 + 0.2 * Math.cos(sec * 1.6));
+        this.filter.scale.y = amp * (0.85 + 0.15 * Math.cos((sec * 2 * Math.PI) / (BREATH_S * 1.3)));
         cloakLensDebug.applied = true;
         cloakLensDebug.amp = amp;
         cloakLensDebug.px = lens.px;
@@ -312,7 +290,6 @@ export class CloakFx {
     readonly root = new Container();
     private pool = new SpritePool(this.root);
     private reveals = new Map<string, Reveal | null>();
-    private ring: Texture | null = null;
     private shimmerN = 0;
 
     constructor(private urlOf: (file: string) => string) {
@@ -354,12 +331,11 @@ export class CloakFx {
             const cloaked = bo.cloaked === true;
             let t = tracks.get(bo);
             if (t === undefined) {
-                t = { r: cloaked ? 0 : 1, t: sec, cloaked, decloakAt: -99, drawn: -99, cloakedAt: -99 };
+                t = { r: cloaked ? 0 : 1, t: sec, cloaked, drawn: -99, cloakedAt: -99 };
                 tracks.set(bo, t);
             }
             if (cloaked !== t.cloaked) {
-                if (!cloaked) t.decloakAt = sec;
-                else t.cloakedAt = sec;
+                if (cloaked) t.cloakedAt = sec;
                 t.cloaked = cloaked;
             }
             t.r = CLOAK_FX.on ? cloakStep(t.r, cloaked ? 0 : 1, dt) : cloaked ? 0 : 1;
@@ -374,66 +350,54 @@ export class CloakFx {
 
     /**
      * A Watcher drawn this frame (`file` its frame, its sprite transform: (x, y), rotation, world units per frame px,
-     * the anchor (ox, oy) frame px; `px` its drawn size; `skull` its skull's frame px, the ripple's centre; `sec` the
+     * the anchor (ox, oy) frame px; `px` its drawn size; `sec` the
      * wall clock). Returns its reveal 0..1 (1: the plain hull) and, while it is not fully revealed, the frame to draw in
      * place of its art (a reveal step; null while those are still being made: the hull is hidden then).
      */
-    draw(file: string, bo: BuiltObject, x: number, y: number, rotation: number, scale: number, ox: number, oy: number, px: number, skull: readonly [number, number], sec: number): { r: number; tex: Texture | null } {
+    draw(file: string, bo: BuiltObject, x: number, y: number, rotation: number, scale: number, ox: number, oy: number, px: number, sec: number): { r: number; tex: Texture | null } {
         const t = tracks.get(bo);
         if (t === undefined) return { r: 1, tex: null };
         t.drawn = sec;
-        const cloaked = t.cloaked;
         const r = t.r;
         if (r >= 0.999) return { r: 1, tex: null };
         const rv = this.reveal(file);
-        const step = rv === null ? null : rv.steps[Math.max(0, Math.min(CLOAK_STEPS, Math.round(r * CLOAK_STEPS)))];
-        // the shimmer: strongest fully cloaked, fading as the hull comes in; the ripple from the skull on a decloak
-        const shimmer = 1 - r;
-        const since = sec - t.decloakAt;
-        const ripple = !cloaked && since >= 0 && since < CLOAK_TRANSITION_S * RIPPLE_SHARE ? since / (CLOAK_TRANSITION_S * RIPPLE_SHARE) : -1;
-        if (rv !== null && px >= 12 && this.shimmerN < CLOAK_SHIMMER_SLOTS && (shimmer > 0.02 || ripple >= 0)) {
+        const hull = Math.max(0, Math.min(1, (r - HULL_IN[0]) / (HULL_IN[1] - HULL_IN[0])));
+        const step = rv === null ? null : rv.steps[Math.max(0, Math.min(CLOAK_STEPS, Math.round(hull * hull * (3 - 2 * hull) * CLOAK_STEPS)))];
+        // the shimmer (cloaked, and the start of a decloak / the end of a re-cloak); the starfield bends through the
+        // whole transition
+        const shimmer = 1 - Math.max(0, Math.min(1, r / HULL_IN[0]));
+        const bend = Math.max(shimmer, 0.7 * Math.sin(Math.PI * r));
+        const breath = 0.5 + 0.5 * Math.sin((sec * 2 * Math.PI) / BREATH_S + bo.builtObjectID);
+        if (rv !== null && px >= 12 && this.shimmerN < CLOAK_SHIMMER_SLOTS && bend > 0.02) {
             this.shimmerN++;
-            const cos = Math.cos(rotation);
-            const sin = Math.sin(rotation);
-            const place = (sp: Sprite, fx: number, fy: number): void => {
-                const lx = (fx - ox) * scale;
-                const ly = (fy - oy) * scale;
-                sp.position.set(x + lx * cos - ly * sin, y + lx * sin + ly * cos);
-                sp.rotation = rotation;
-            };
             if (shimmer > 0.02) {
-                // the faint rim, flickering a little
+                // the faint dark-purple outline, breathing slowly
                 const rm = this.pool.acquire(rv.rim);
                 rm.anchor.set(0, 0);
-                place(rm, 0, 0);
+                const cos = Math.cos(rotation);
+                const sin = Math.sin(rotation);
+                const lx = -ox * scale;
+                const ly = -oy * scale;
+                rm.position.set(x + lx * cos - ly * sin, y + lx * sin + ly * cos);
+                rm.rotation = rotation;
                 rm.scale.set(scale);
-                rm.tint = 0xd8d0e8;
-                rm.alpha = shimmer * (0.1 + 0.05 * Math.sin(sec * 7.3 + bo.builtObjectID));
-                rm.blendMode = 'add';
-                // the starfield lens: the biggest drawn of the shimmering Watchers
-                if (px > this.lensPx) {
-                    this.lensPx = px;
-                    lens.on = true;
-                    lens.map = rv.map;
-                    lens.x = x;
-                    lens.y = y;
-                    lens.rot = rotation;
-                    lens.sc = scale;
-                    lens.ox = ox;
-                    lens.oy = oy;
-                    lens.px = px;
-                    lens.strength = shimmer;
-                }
+                rm.tint = 0x3c1866;
+                rm.alpha = shimmer * (0.42 + 0.18 * breath);
+                rm.blendMode = 'normal';
             }
-            if (ripple >= 0) {
-                if (this.ring === null) this.ring = ringTexture();
-                const rg = this.pool.acquire(this.ring);
-                place(rg, skull[0], skull[1]);
-                const side = Math.max(rv.w, rv.h) * RIPPLE_REACH * 2 * (0.08 + 0.92 * ripple);
-                rg.scale.set((side * scale) / this.ring.width);
-                rg.tint = 0xe6d8ff;
-                rg.alpha = 0.45 * (1 - ripple) * (0.4 + 0.6 * Math.min(1, ripple * 5));
-                rg.blendMode = 'add';
+            // the starfield lens: the biggest drawn of them
+            if (px > this.lensPx) {
+                this.lensPx = px;
+                lens.on = true;
+                lens.map = rv.map;
+                lens.x = x;
+                lens.y = y;
+                lens.rot = rotation;
+                lens.sc = scale;
+                lens.ox = ox;
+                lens.oy = oy;
+                lens.px = px;
+                lens.strength = bend;
             }
         }
         return { r, tex: step };

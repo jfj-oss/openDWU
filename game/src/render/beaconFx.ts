@@ -293,8 +293,10 @@ export class BeaconFxLayer {
         let reveal = 1;
         let cloakTex: Texture | null = null;
         if (file === 'watcher-fork' || file === 'watcher-reaper' || file === 'watcher') {
-            const c = this.cloak.draw(file, bo, x, y, rotation, scale, ax * tw, ay * th, px, [tw / 2, th * (file === 'watcher-fork' ? 0.6 : 0.5)], sec);
+            const c = this.cloak.draw(file, bo, x, y, rotation, scale, ax * tw, ay * th, px, sec);
             reveal = c.r;
+            // the veil: the warp's dark matter swelling over it and draining off (beaconWarp.ts)
+            this.warp.veil(file, bo, reveal, px);
             if (reveal < 0.999) cloakTex = c.tex ?? Texture.EMPTY;
         }
         if (cloakTex !== null) {

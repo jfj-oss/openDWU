@@ -6,8 +6,8 @@ import type { Empire } from '../src/sim/empire';
 
 describe('the Watchers\' cloak (render only)', () => {
     it('a decloak / re-cloak takes CLOAK_TRANSITION_S; the engines come up late, the lights last', () => {
-        expect(CLOAK_TRANSITION_S).toBeGreaterThanOrEqual(1.5);
-        expect(CLOAK_TRANSITION_S).toBeLessThanOrEqual(2.5);
+        expect(CLOAK_TRANSITION_S).toBeGreaterThanOrEqual(2.5);
+        expect(CLOAK_TRANSITION_S).toBeLessThanOrEqual(3.5);
         let r = 0;
         let t = 0;
         while (r < 1 && t < 10) {

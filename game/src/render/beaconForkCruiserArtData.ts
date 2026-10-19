@@ -9,12 +9,12 @@ import type { ForkArt } from './beaconForkArtData';
 export const CRUISER_FORK_ART: ForkArt & { readonly drawScale: number } = {
     size: 392,
     breath: 6.40,
-    glow: { x: 0, y: 0, w: 231, h: 277, dx: 80, dy: 43 },
+    glow: { x: 0, y: 0, w: 227, h: 277, dx: 84, dy: 43 },
     capitalLength: 1,
-    drawScale: 1.3182,
+    drawScale: 1.3263,
     nozzles: [
-        { x: 89.0, y: 339.0, w: 52.0 },
-        { x: 305.0, y: 339.5, w: 52.0 },
+        { x: 89.0, y: 340.0, w: 52.0 },
+        { x: 305.0, y: 340.0, w: 52.0 },
         { x: 197.0, y: 314.5, w: 60.0 },
     ],
     lights: [
@@ -23,7 +23,7 @@ export const CRUISER_FORK_ART: ForkArt & { readonly drawScale: number } = {
         { x: 257.5, y: 136.1, phase: 0.646, period: 1.86 },
         { x: 175.5, y: 240.0, phase: 0.768, period: 2.35 },
         { x: 223.5, y: 254.9, phase: 0.313, period: 2.49 },
-        { x: 53.5, y: 329.1, phase: 0.987, period: 2.49 },
-        { x: 338.5, y: 336.5, phase: 0.082, period: 2.36 },
+        { x: 57.5, y: 329.1, phase: 0.987, period: 2.49 },
+        { x: 334.5, y: 336.5, phase: 0.082, period: 2.36 },
     ],
 };

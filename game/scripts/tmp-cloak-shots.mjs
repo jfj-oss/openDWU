@@ -122,12 +122,12 @@ await page.evaluate(at, [Z, W.x, W.y]);
 await setCloak(true, SPAN);
 await page.waitForTimeout(3500);
 console.log('lens', JSON.stringify(await page.evaluate(async () => { const c = await import('/src/render/beaconCloakFx.ts'); return { ...c.cloakLensDebug }; })));
-for (let k = 0; k < 24; k++) { await snap('cloaked'); await page.waitForTimeout(100); }
+for (let k = 0; k < 40; k++) { await snap('cloaked'); await page.waitForTimeout(150); }
 await setCloak(false, SPAN);
-for (let k = 0; k < 34; k++) { await snap('decloak'); await page.waitForTimeout(90); }
+for (let k = 0; k < 44; k++) { await snap('decloak'); await page.waitForTimeout(80); }
 for (let k = 0; k < 6; k++) { await snap('open'); await page.waitForTimeout(150); }
 await setCloak(true, 0);
-for (let k = 0; k < 34; k++) { await snap('recloak'); await page.waitForTimeout(90); }
+for (let k = 0; k < 44; k++) { await snap('recloak'); await page.waitForTimeout(80); }
 // the sighted marker where it was detected, at play zoom: the Watcher slips away (moved far off), the earlier
 // sighting stands where it was seen
 await page.evaluate(async () => { const roq = await import('/src/sim/readOnlyQuery.ts'); const w = window.__bc.w1; roq.withSimWrites(() => { w.xpos += 90000; }); });
