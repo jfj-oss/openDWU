@@ -521,6 +521,7 @@ function sample(ctx, g) {
             })() : null,
             siphon: st.siphon ? { total: Math.round(st.siphon.total), gateDate: st.siphon.gateDate, byEmpire: st.siphon.byEmpire } : null,
             completedYear: completedYear,
+            diet: (() => { const d = g.scenario?.state?.interstellarDiet; return d ? { sessions: d.counters?.sessions, proposed: d.counters?.proposed, passed: d.counters?.passed, members: d.members?.length } : null; })(),
             moratoriumVotes: ((g.scenario?.state?.interstellarDiet ?? g.scenario?.state?.diet)?.history ?? []).filter((h) => h.kind === 'beaconMoratorium').map((h) => [h.result, h.yes, h.no]),
             corruptedEver: st.stats.corrupted, lostBy: st.lostBy, beaconLaunches: st.ai?.launches ?? 0, guards: st.guards.filter((b) => !b.hasBeenDestroyed).length };
     }
