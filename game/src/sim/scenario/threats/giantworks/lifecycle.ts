@@ -420,6 +420,7 @@ function renameScaffold(work: GreatWorkRecord): void {
 export function addProgress(galaxy: Galaxy, work: GreatWorkRecord, delta: number): void {
     if (work.phase !== 'building') return;
     work.progress = Math.max(0, Math.min(1, work.progress + delta));
+    if (work.progress >= 1 && greatWorkKind(work.wonder)?.canComplete?.(galaxy, work) === false) work.progress = 0.999; // (the Beacon waits for its siphoned knowledge)
     const stage = stageOf(work.progress);
     if (stage >= 4) {
         completeWork(galaxy, work);

@@ -5,10 +5,10 @@
 //     (the drain, the pools, the transports as real ships, the staging fleets as real ships);
 //   - SALVAGE: every Reclaimer ship an empire destroys, and every hull it boards and captures, earns it salvage points; at 4,
 //     12, 24 and 40 points a counter-tech step unlocks: (1) the next free shields breakthrough, (2) the next free armour and
-//     weapons breakthroughs, (3) corruption resistance (counter-intelligence twice as sharp, purges half price), (4) the
+//     weapons breakthroughs, (3) corruption resistance (counter-intelligence twice as sharp, the rebels of a purge half as strong), (4) the
 //     Beacon's signal traced (every staging point is known to it as it forms);
 //   - COUNTER-INTELLIGENCE: an empire's counter-intelligence agents find corrupted worlds (the Cult's discovery); a found world
-//     can be purged (threat action beaconPurge; the AI purges at once);
+//     can be purged (threat action beaconPurge; the AI purges when its garrison is strong enough);
 //   - THE DARK BARGAIN: a Watcher privately offers an empire under pressure a deal through the stock decision pop-up: (a) give up
 //     a colony and be spared for beaconSpareDays; (b) become the Reclaimers' protectorate and join their side of the war until,
 //     beaconProtectorateYears later, they liquify it. Both are secret; any other empire may discover it (a chance each season,
@@ -42,6 +42,7 @@ import {
     registerThreatAction,
     revealTo,
 } from '../framework';
+import { aiMayPurge, startPurge } from './beaconSiphon';
 import { BEACON_FLAG, P, beaconRandom, peekBeaconState, salvageStepsOf, type BargainRec, type BeaconState, type CorruptRec, type SalvageRec } from './beaconState';
 
 const TAG = 'Beacon';
@@ -145,7 +146,7 @@ function applySalvageStep(galaxy: Galaxy, st: BeaconState, e: Empire, step: numb
     scenarioMessage(galaxy, e, T(`${TAG} Salvage Title`), body, { type: EmpireMessageType.GeneralGoodEvent, popup: false });
 }
 
-/** Factor on `empire`'s purge cost and (inverted) on its counter-intelligence: 0.5 once the corruption-resistance step is unlocked. Pure. */
+/** Factor on `empire`'s purge rebels' strength and (inverted) on its counter-intelligence: 0.5 once the corruption-resistance step is unlocked. Pure. */
 export function resistanceFactor(st: BeaconState, empire: Empire): number {
     return salvageStepsOf(st, empire) >= 3 ? 0.5 : 1;
 }
@@ -160,20 +161,9 @@ function agentIsCounterIntel(c: import('../../../characters').Character): boolea
     return m !== null && m.type === COUNTER_INTELLIGENCE;
 }
 
-function purgeCostFor(galaxy: Galaxy, st: BeaconState, e: Empire): number {
-    return Math.round(P.purgeCost(galaxy) * resistanceFactor(st, e));
-}
-
-/** Purges `rec`'s corruption for `by` (its owner): pays the cost. Returns false when it cannot be afforded. */
+/** Begins the purge of `rec` for `by` (its owner): the world rebels and `by` must win the ground battle. False when it cannot start. */
 export function purgeCorruption(galaxy: Galaxy, st: BeaconState, rec: CorruptRec, by: Empire): boolean {
-    const cost = purgeCostFor(galaxy, st, by);
-    if (rec.ended !== null || by.stateMoney < cost) return false;
-    by.stateMoney -= cost;
-    rec.ended = 'purged';
-    rec.endDate = galaxyStarDate(galaxy);
-    st.stats.purged++;
-    if (isHumanEmpire(galaxy, by)) scenarioMessage(galaxy, by, T(`${TAG} Purged Title`, rec.colony.name), T(`${TAG} Purged`, rec.colony.name, cost.toLocaleString('en-US')), { type: EmpireMessageType.GeneralGoodEvent, popup: false, subject: rec.colony });
-    return true;
+    return startPurge(galaxy, st, rec, by, resistanceFactor(st, by));
 }
 
 function corruptionOf(st: BeaconState, colony: Habitat): CorruptRec | undefined {
@@ -200,7 +190,7 @@ export function counterIntelligencePass(galaxy: Galaxy): void {
             }
         }
         // the AI purges what it knows
-        if (!isHumanEmpire(galaxy, e)) for (const rec of st.corrupted) if (rec.ended === null && rec.colony.empire === e && knowledgeLevel({ knowledge: rec.knowledge }, e) >= KNOWLEDGE_CONFIRMED) purgeCorruption(galaxy, st, rec, e);
+        if (!isHumanEmpire(galaxy, e)) for (const rec of st.corrupted) if (rec.ended === null && rec.colony.empire === e && knowledgeLevel({ knowledge: rec.knowledge }, e) >= KNOWLEDGE_CONFIRMED && aiMayPurge(galaxy, rec, resistanceFactor(st, e))) purgeCorruption(galaxy, st, rec, e);
     }
     discoverBargains(galaxy, st, rnd);
 }
@@ -403,7 +393,7 @@ export function registerCounterplay(): void {
             const st = peekBeaconState(g);
             if (st === null || st.faction === null || target === null || typeof target !== 'object' || !('population' in (target as object))) return false;
             const rec = corruptionOf(st, target as Habitat);
-            return rec !== undefined && rec.colony.empire === empire && knowledgeLevel({ knowledge: rec.knowledge }, empire) >= KNOWLEDGE_CONFIRMED && empire.stateMoney >= purgeCostFor(g, st, empire);
+            return rec !== undefined && rec.colony.empire === empire && rec.purge === undefined && knowledgeLevel({ knowledge: rec.knowledge }, empire) >= KNOWLEDGE_CONFIRMED;
         },
         run: (g, empire, target) => {
             const st = peekBeaconState(g);

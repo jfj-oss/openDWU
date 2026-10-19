@@ -32,6 +32,7 @@ export interface GreatWorkKind {
     onRolled?(g: Galaxy, site: GreatWorkSite): void; // secretly chosen at game start (Beacon: spawn the Watchers)
     buildRateMultiplier?(g: Galaxy, site: GreatWorkSite): number; // e.g. the Beacon's corrupted worlds speed it up
     extraSuppliers?(g: Galaxy, site: GreatWorkSite): Habitat[]; // e.g. corrupted worlds also send freighters
+    canComplete?(g: Galaxy, site: GreatWorkSite): boolean; // false: the work waits at 99.9 % (the Beacon needs enough siphoned knowledge)
     onComplete(g: Galaxy, site: GreatWorkSite): void; // the wonder activates
     onDestroyed?(g: Galaxy, site: GreatWorkSite, by: Empire | null): void;
     periodic?(g: Galaxy, site: GreatWorkSite): void; // after completion

@@ -61,6 +61,8 @@ export interface WatcherRec {
     prevMode?: WatcherMode;
     prevUntil?: number;
     prevModeDate?: number;
+    /** Dwell: days it hangs over the target before corrupting it (set on arrival from the world's population). */
+    dwellDays?: number;
 }
 
 /**
@@ -97,6 +99,39 @@ export interface CorruptRec {
     /** Set when it rose, was purged or the world was lost: kept for the record, no longer counted. */
     ended: 'rose' | 'purged' | 'failed' | 'lost' | null;
     endDate: number;
+    /** Tech-5 knowledge siphoned through this world so far (absent in older saves). */
+    siphoned?: number;
+    /** A purge under way: the rebels have risen on the world and the owner must win the ground battle (absent: none). */
+    purge?: PurgeRec;
+}
+
+/** A purge attempt: the empire that ordered it, when, the rebels' ground strength and the defenders' strength at the start. */
+export interface PurgeRec {
+    by: number;
+    start: number;
+    strength: number;
+    defence: number;
+}
+
+/** The siphon of tech-5 knowledge through the corrupted worlds (the gate of the Beacon's completion). */
+export interface SiphonRec {
+    total: number;
+    /** Star date of the last credit. */
+    last: number;
+    /** Empire id to knowledge taken from it. */
+    byEmpire: Record<string, number>;
+    /** Star date the required total was reached (0 before). */
+    gateDate: number;
+    /** The rate at the last credit (points a month, all worlds), for the soak. */
+    rate: number;
+}
+
+/** Interceptions of cattle ships from one held world (destroyed or boarded), slowly decaying. */
+export interface InterceptRec {
+    colony: Habitat;
+    n: number;
+    /** Star date of the last decay step. */
+    date: number;
 }
 
 export type GroupState = 'gather' | 'travel' | 'siege' | 'landed' | 'done';
@@ -338,6 +373,20 @@ export interface BeaconStats {
     aiCattle?: number;
     aiCore?: number;
     aiRetake?: number;
+    /** Siphon and purge: tech-5 knowledge siphoned in all; purges attempted / won / lost; dwells restarted after an attack. */
+    siphoned?: number;
+    purgeTried?: number;
+    purgeFailed?: number;
+    dwellResets?: number;
+    /** Research moratorium motions passed; breaches sanctioned. */
+    moratoriums?: number;
+    moratoriumBreaches?: number;
+    /** Escorts assigned to cattle ships by tier (light / destroyer / cruiser), built for them, and cattle ships whose escort fell. */
+    escortLight?: number;
+    escortMid?: number;
+    escortHeavy?: number;
+    escortBuilt?: number;
+    escortLost?: number;
 }
 
 export interface BeaconState {
@@ -392,6 +441,12 @@ export interface BeaconState {
     salvage: SalvageRec[];
     /** The Reclamation began (star date, 0 before). */
     reclamationDate: number;
+    /** The siphon (created on first use: absent in older saves, where it starts at the share the build had made). */
+    siphon?: SiphonRec;
+    /** Cattle interceptions per held world (beaconHarvest.ts escorts). */
+    intercepts?: InterceptRec[];
+    /** The research moratorium in force: until this star date (0: none) and who proposed it. */
+    moratoriumUntil?: number;
     stats: BeaconStats;
     ended: boolean;
     /** Spawned from the Game Editor / a test: the existence-year gates are skipped. */
@@ -427,6 +482,7 @@ export function newStats(): BeaconStats {
         stagingSeen: 0, retaken: 0, aiStrikes: 0, aiRelief: 0, stagingKills: 0, watcherRehomed: 0,
         coresDesignated: 0, coresRetaken: 0, coresBroken: 0, coresLost: 0, cattleLaunched: 0, cattleArrived: 0, cattleKilled: 0, cattleBoarded: 0, captivesKilled: 0, captivesFreed: 0, captivesRescued: 0,
         processed: 0, fuelIncome: 0, fuelShips: 0, fuelTroops: 0, troopRegiments: 0, aiCattle: 0, aiCore: 0, aiRetake: 0,
+        siphoned: 0, purgeTried: 0, purgeFailed: 0, dwellResets: 0, moratoriums: 0, moratoriumBreaches: 0, escortLight: 0, escortMid: 0, escortHeavy: 0, escortBuilt: 0, escortLost: 0,
     };
 }
 
@@ -438,12 +494,37 @@ function newState(): BeaconState {
     };
 }
 
+/** Fills what an older save lacks (withDefaults-style migration). Idempotent. */
+function withDefaults(st: BeaconState): BeaconState {
+    if (st.stats.escortLost !== undefined) return st;
+    const fresh = newStats();
+    const rec = st.stats as unknown as Record<string, number | undefined>;
+    for (const [k, v] of Object.entries(fresh)) if (rec[k] === undefined) rec[k] = v;
+    return st;
+}
+
 export function beaconState(galaxy: Galaxy): BeaconState {
-    return threatState(galaxy, BEACON_KEY, newState);
+    return withDefaults(threatState(galaxy, BEACON_KEY, newState));
 }
 
 export function peekBeaconState(galaxy: Galaxy): BeaconState | null {
-    return peekThreatState<BeaconState>(galaxy, BEACON_KEY);
+    const st = peekThreatState<BeaconState>(galaxy, BEACON_KEY);
+    return st === null ? null : withDefaults(st);
+}
+
+/** The siphon record; an older save's starts at the share of the total the build had reached. */
+export function siphonOf(galaxy: Galaxy, st: BeaconState): SiphonRec {
+    if (st.siphon === undefined) {
+        const need = P.siphonRequired(galaxy);
+        const done = st.phase === 'watching' ? need * Math.max(0, Math.min(1, (st.site as { progress?: number } | null)?.progress ?? 0)) : need;
+        st.siphon = { total: done, last: -1, byEmpire: {}, gateDate: 0, rate: 0 };
+    }
+    return st.siphon;
+}
+
+/** The Beacon may be completed: enough tech-5 knowledge has been siphoned (always once the Reclamation has begun). Pure but for the lazy record. */
+export function siphonGateOpen(galaxy: Galaxy, st: BeaconState): boolean {
+    return st.phase !== 'watching' || siphonOf(galaxy, st).total >= P.siphonRequired(galaxy);
 }
 
 /** A private Random for one decision (never galaxy.rnd): seeded from the galaxy seed, a salt and the state's counter. */
@@ -473,7 +554,19 @@ export const P = {
     /** Days between a Watcher's corruption trips (min / max). */
     corruptMinDays: (g: Galaxy) => p(g, 'beaconCorruptMinDays', 80),
     corruptMaxDays: (g: Galaxy) => p(g, 'beaconCorruptMaxDays', 160),
+    /** The dwell over a world grows with its population: this many days for a small colony (beaconDwellPopLow, millions) up to beaconDwellMaxDays for a big one (beaconDwellPopHigh). */
     dwellDays: (g: Galaxy) => p(g, 'beaconDwellDays', 30),
+    dwellMaxDays: (g: Galaxy) => Math.max(p(g, 'beaconDwellDays', 30), p(g, 'beaconDwellMaxDays', 150)),
+    dwellPopLow: (g: Galaxy) => Math.max(0.1, p(g, 'beaconDwellPopLow', 10)) * 1e6,
+    dwellPopHigh: (g: Galaxy) => Math.max(p(g, 'beaconDwellPopLow', 10) * 1.01, p(g, 'beaconDwellPopHigh', 2000)) * 1e6,
+    /** The siphon: knowledge needed before the Beacon can be completed, and points a month per tech-5 technology of the donor empire, per corrupted world. */
+    siphonRequired: (g: Galaxy) => Math.max(0, p(g, 'beaconSiphonRequired', 3000)),
+    siphonRate: (g: Galaxy) => Math.max(0, p(g, 'beaconSiphonRate', 0.5)),
+    /** Purge: the rebels' ground strength, and the least (%) of it the owner's defenders must outweigh before the AI tries; days a purged world is left alone by the Watchers. */
+    purgeRebelStrength: (g: Galaxy) => p(g, 'beaconPurgeRebelStrength', 1200000),
+    purgeRebelRegiments: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'beaconPurgeRebelRegiments', 12))),
+    aiPurgeMarginPct: (g: Galaxy) => p(g, 'beaconAiPurgeMarginPct', 130),
+    reseedDays: (g: Galaxy) => p(g, 'beaconReseedDays', 120),
     /** Build speed: +this % per corrupted world (up to the cap %); a dead Watcher multiplies it by the factor %. */
     buildBoostPct: (g: Galaxy) => p(g, 'beaconBuildBoostPct', 9),
     buildBoostCapPct: (g: Galaxy) => p(g, 'beaconBuildBoostCapPct', 150),
@@ -487,7 +580,6 @@ export const P = {
     detectSeenDays: (g: Galaxy) => p(g, 'beaconDetectSeenDays', 20),
     /** A corrupted world's chance (%) per month to rise, once the Reclamation has begun; the strength of the rising force. */
     riseStrength: (g: Galaxy) => p(g, 'beaconRiseStrength', 900000),
-    purgeCost: (g: Galaxy) => p(g, 'beaconPurgeCost', 250000),
     // The Reclamation
     startDelayDays: (g: Galaxy) => p(g, 'beaconStartDelayDays', 90),
     prepMinDays: (g: Galaxy) => p(g, 'beaconPrepMinDays', 120),

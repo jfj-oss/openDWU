@@ -78,6 +78,7 @@ import {
     galaxyPopulation,
     liveWatchers,
     peekBeaconState,
+    siphonGateOpen,
     watcherShips,
     type BeaconState,
     type CorruptRec,
@@ -103,6 +104,8 @@ import {
     syncReclaimerTech,
 } from './beaconFleet';
 import { registerBeaconAi } from './beaconAi';
+import { dwellDaysFor, purgePass, recentlyPurged, siphonPass, siphonStatus } from './beaconSiphon';
+import { addProgress } from './lifecycle';
 import { counterIntelligencePass, counterMonthly, onBoarded, onKilledForSalvage, registerCounterplay, resistanceFactor } from './beaconCounter';
 import { beaconArtInfo, cattleOf, initHarvest, liveCores, registerHarvest, releaseCaptives, rescueCattle } from './beaconHarvest';
 import type { BeaconArtInfo } from './beaconState';
@@ -323,7 +326,7 @@ function placeName(galaxy: Galaxy, o: { xpos: number; ypos: number }): string {
 /** Former-independent colonies a Watcher may corrupt: alive, populated, not already corrupted, not in the Reclaimers' hands. Pure. */
 export function corruptCandidates(_galaxy: Galaxy, st: BeaconState): Habitat[] {
     const taken = new Set<Habitat>(st.corrupted.filter((c) => c.ended === null).map((c) => c.colony));
-    return st.formerIndependents.filter((c) => !c.hasBeenDestroyed && c.population.totalAmount > 0 && !taken.has(c) && c.empire !== st.faction);
+    return st.formerIndependents.filter((c) => !c.hasBeenDestroyed && c.population.totalAmount > 0 && !taken.has(c) && c.empire !== st.faction && !recentlyPurged(_galaxy, st, c));
 }
 
 /** Corrupts `colony` now: its governor (a new one if it has none) and people quietly serve the Beacon. Draws galaxy.rnd only through governor creation. */
@@ -509,12 +512,15 @@ function driveWatcher(galaxy: Galaxy, st: BeaconState, w: WatcherRec, sightingOp
                 setMode(w, 'sighting', now);
                 w.until = now + days(P.sightingDays(galaxy));
                 sightingStarts(galaxy, st, w, t);
-            } else setMode(w, 'dwell', now);
+            } else {
+                setMode(w, 'dwell', now);
+                w.dwellDays = dwellDaysFor(galaxy, t.population?.totalAmount ?? 0);
+            }
         } else sendTo(galaxy, ship, t.xpos, t.ypos, t);
         return w.until === -1;
     }
     if (w.mode === 'dwell') {
-        if (now - w.modeDate >= days(P.dwellDays(galaxy))) {
+        if (now - w.modeDate >= days(w.dwellDays ?? P.dwellDays(galaxy))) {
             corrupt(galaxy, st, t);
             const rnd = beaconRandom(galaxy, st, 91 + w.index);
             w.nextCorruptDate = now + days(P.corruptMinDays(galaxy) + rnd.nextDouble() * (P.corruptMaxDays(galaxy) - P.corruptMinDays(galaxy)));
@@ -621,6 +627,11 @@ export function watchersPeriodic(galaxy: Galaxy): void {
         detectCloaked(galaxy, st, w);
     }
     st.sighted = st.watchers.filter((w) => !w.dead && w.ship !== null && !w.ship.hasBeenDestroyed && w.ship.cloaked !== true).map((w) => w.ship!);
+    siphonPass(galaxy, st);
+    purgePass(galaxy, st);
+    // the siphon is complete and the work waits at the last stage: the next delivery (or this nudge) finishes it
+    const gw = st.site as (GreatWorkSite & { phase?: string }) | null;
+    if (st.phase === 'watching' && gw !== null && gw.phase === 'building' && gw.progress >= 0.999 && siphonGateOpen(galaxy, st)) addProgress(galaxy, gw as never, 1);
     // corrupted worlds that no longer exist are gone
     for (const c of st.corrupted) if (c.ended === null && c.colony.hasBeenDestroyed) {
         c.ended = 'lost';
@@ -663,6 +674,11 @@ function onAttacked(galaxy: Galaxy, bo: BuiltObject, attacker: unknown, attackin
         w.prevMode = w.mode;
         w.prevUntil = w.until;
         w.prevModeDate = w.modeDate;
+        if (w.mode === 'dwell') {
+            // it leaves the world to defend itself: the corruption's progress on that world is lost (it starts the dwell again)
+            w.prevModeDate = now;
+            st.stats.dwellResets = (st.stats.dwellResets ?? 0) + 1;
+        }
         setMode(w, 'fight', now);
         w.until = now; // marks when the fight began
         for (const e of humanEmpires(galaxy)) watcherMessage(galaxy, st, 'attack', e, [attackingEmpire.name, placeName(galaxy, bo)], bo, EmpireMessageType.GalacticNewsNet, true);
@@ -885,7 +901,7 @@ export function beaconKnownSites(galaxy: Galaxy, empire: Empire): KnownThreatSit
     for (const c of st.corrupted) {
         if (c.ended !== null || c.colony.empire !== empire) continue;
         if (knowledgeLevel({ knowledge: c.knowledge }, empire) < KNOWLEDGE_CONFIRMED) continue;
-        out.push({ threat: BEACON_KEY, kind: 'colony', target: c.colony, level: KNOWLEDGE_CONFIRMED, site: { knowledge: c.knowledge }, label: T(`${TAG} Corrupt Row`, c.colony.name), status: T(`${TAG} Corrupt Status`, Math.round(P.purgeCost(galaxy) * resistanceFactor(st, empire)).toLocaleString('en-US')) });
+        out.push({ threat: BEACON_KEY, kind: 'colony', target: c.colony, level: KNOWLEDGE_CONFIRMED, site: { knowledge: c.knowledge }, label: T(`${TAG} Corrupt Row`, c.colony.name), status: T(`${TAG} Corrupt Status`, Math.round(P.purgeRebelStrength(galaxy) * resistanceFactor(st, empire)).toLocaleString('en-US'), c.purge !== undefined ? T(`${TAG} Corrupt Purging`) : siphonStatus(galaxy, st, c)) });
     }
     if (st.phase === 'reclamation' && st.beacon !== null && !st.beacon.hasBeenDestroyed) {
         out.push({ threat: BEACON_KEY, kind: 'ship', target: st.beacon, level: KNOWLEDGE_CONFIRMED, site: { knowledge: st.beaconKnowledge }, label: T(`${TAG} Beacon Row`, placeName(galaxy, st.beacon)), status: T(`${TAG} Beacon Status`, st.stats.conquests, Math.round(eliminatedPct(st))) });
@@ -1007,6 +1023,10 @@ export const beaconKind: GreatWorkKind = {
     onRolled: beaconRolled,
     buildRateMultiplier: beaconBuildRate,
     extraSuppliers: beaconSuppliers,
+    canComplete: (g) => {
+        const st = peekBeaconState(g);
+        return st === null || siphonGateOpen(g, st);
+    },
     onComplete: beaconComplete,
     onDestroyed: beaconDestroyedEarly,
 };

@@ -143,12 +143,19 @@ Beacon Watcher Killed News;One of the vast machine vessels has been destroyed by
 Beacon Watcher Offensive News;One of the great machine flagships has left its guard of the harvest worlds, with its fleet, and is bearing down on {0}.
 'Corruption
 Beacon Corrupt Row;{0} serves a hidden master
-Beacon Corrupt Status;Its people work for something else. Purging it costs {0}.
+Beacon Corrupt Status;Its people work for something else. A purge makes it rebel: {0} rebels. {1}
 Beacon Corrupt Found Title;Corruption found
 Beacon Corrupt Found;Counter-intelligence has found that the governor and people of {0} have been quietly serving something outside the empire: freighters bound for the Great Work, orders from nowhere. The colony can be purged.
 Beacon Purged Title;{0} purged
-Beacon Purged;The corruption at {0} has been rooted out at a cost of {1}.
-Beacon Purge Action;Purge corruption
+Beacon Purged;The rebels at {0} are beaten and the corruption has been rooted out. Whatever sent it will have to come back to try again.
+Beacon Purge Action;Purge corruption (the world rebels)
+Beacon Corrupt Purging;The rebels are fighting the garrison.
+Beacon Siphon Status;Knowledge siphoned through this world: {0}. All corrupted worlds: {1} % of the {3} the Beacon needs ({2} so far).
+Beacon Rebels Name;Beacon rebels
+Beacon Purge Started Title;{0} rebels
+Beacon Purge Started;The purge has made {0} rebel: {1} strength of rebels against our {2} on the ground. Win the ground battle and the corruption ends; lose it and the world is lost.
+Beacon Purge Failed Title;Purge of {0} failed
+Beacon Purge Failed;The rebels have taken {0}. It is still corrupted.
 'The Beacon and the Reclamation
 Beacon Awakens Title;The Beacon has awakened
 Beacon Awakens;The Great Work is finished, and it is a Beacon. Something has answered it. Machine ships are forming in the dark around it.
@@ -222,7 +229,7 @@ Beacon Exposed Self;Our bargain with the Reclaimers has been exposed. The galaxy
 Beacon Salvage Title;Reclaimer technology
 Beacon Salvage 1;Study of the wreckage has taught us to tune our shields against the Reclaimers' weapons: {0}
 Beacon Salvage 2;Study of the wreckage has improved our weapons and armour: {0}
-Beacon Salvage 3;Study of the wreckage shows how the Watchers touch a world. Our counter-intelligence finds corruption twice as often, and a purge costs half as much.
+Beacon Salvage 3;Study of the wreckage shows how the Watchers touch a world. Our counter-intelligence finds corruption twice as often, and the rebels of a purge are half as strong.
 Beacon Salvage 4;Study of the wreckage has traced the Beacon's signal. We now know where the Reclaimers gather.
 Beacon Salvage Tech;a free breakthrough in {0}
 Beacon Salvage Tech None;nothing left to learn

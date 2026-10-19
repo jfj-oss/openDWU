@@ -218,12 +218,15 @@ import { SystemVisibilityStatus } from '../src/sim/visibility';
 import { completeWork, greatWorkIsHostile, greatWorkKind, type GreatWorkSite } from '../src/sim/scenario/threats/giantworks/framework';
 import { defaultMessageOptions, routeEmpireMessage } from '../src/sim/messageRouting';
 import { watcherVariant, beaconBuildRate, beaconComplete, beaconEndCheck, beaconKind, beaconKnownSites, beaconLooks, beaconRolled, beaconShipRole, beaconSuppliers, cloakLapsedFor, corrupt, corruptCandidates, watchersPeriodic } from '../src/sim/scenario/threats/giantworks/beacon';
-import { peekBeaconState, salvageStepsOf, type BeaconState } from '../src/sim/scenario/threats/giantworks/beaconState';
+import { peekBeaconState, salvageStepsOf, siphonOf, type BeaconState } from '../src/sim/scenario/threats/giantworks/beaconState';
 import { beginSeason, driveWatcherFleets, watcherTargetValue, designFor, groupCarryRegiments, scriptedBudget, seasonBudget, landingPlan, lossCheck, noticedGathering, planetStrike, reclamationMonthly, reclamationPeriodic, spawnShip, supplyTroops, targetCandidates } from '../src/sim/scenario/threats/giantworks/beaconFleet';
 import { coalitionMembers, coalitionPass } from '../src/sim/scenario/threats/giantworks/beaconAi';
 import { beaconArtInfo, cattleDesign, cattleOf, coreCountFor, coreTarget, coresOf, freeShare, fuelOf, harvestMonthly, harvestPeriodic, liveCores, pickCore, rescueCattle } from '../src/sim/scenario/threats/giantworks/beaconHarvest';
 import { kindTaken } from '../src/sim/scenario/threats/giantworks/founders';
 import { isHumanEmpire } from '../src/sim/humanEmpires';
+import { aiMayPurge, dwellDaysFor, garrisonStrength, purgePass, rebelsOn, siphonDonor, siphonPass, siphonRateOf, startPurge, tech5Count } from '../src/sim/scenario/threats/giantworks/beaconSiphon';
+import { makeTroopsSplit } from '../src/sim/scenario/threats/factionNavy';
+import { resolveInvasionBattles } from '../src/sim/combat/invasion';
 import { addSalvage, aiBargainChoice, colonyToCede, counterMonthly, expose, offerCandidates, purgeCorruption, resistanceFactor, resolveBargain } from '../src/sim/scenario/threats/giantworks/beaconCounter';
 import { builtObjectCompleteTeardown } from '../src/sim/combat/teardown';
 import { builtObjectVisibility, isObjectVisibleToThisEmpire, isObjectVisibleToThisEmpireImprecise } from '../src/sim/independentTraders';
@@ -4467,17 +4470,173 @@ describe('the Beacon (Giantworks wonder)', () => {
         expect(beaconBuildRate(g, site)).toBeCloseTo(full * 0.4, 5);
         st.watchers[1].dead = true;
         expect(beaconBuildRate(g, site)).toBeCloseTo(full * 0.16, 5);
-        // purge: needs the owner and the money
+        // purge: needs the owner; no credit cost; the world rebels (the battle is tested in 'the purge')
         const owner = normalsOf(g)[0];
         const rec = st.corrupted[0];
         rec.colony.empire = owner;
         owner.stateMoney = 10_000_000;
         const before = owner.stateMoney;
         expect(purgeCorruption(g, st, rec, owner)).toBe(true);
-        expect(owner.stateMoney).toBe(before - 250000);
+        expect(owner.stateMoney).toBe(before);
+        expect(rec.purge).toBeDefined();
+        expect(purgeCorruption(g, st, rec, owner)).toBe(false); // a battle is on
+    }, 900000);
+
+    // helper: a corrupted world owned by a normal empire
+    function corruptedOwned(g: Galaxy, st: BeaconState, owner: Empire, idx = 1) {
+        const colony = owner.colonies.filter((c) => c !== owner.capital)[idx] ?? owner.colonies[idx];
+        if (!st.formerIndependents.includes(colony)) st.formerIndependents.push(colony);
+        return corrupt(g, st, colony)!;
+    }
+    const setTech5 = (e: Empire, n: number): void => {
+        let k = 0;
+        for (const t of e.research.techTree) if (t.def.techLevel === 5) t.isResearched = k++ < n;
+    };
+
+    it('the siphon: a corrupted world siphons tech-5 knowledge of its owner (the nearest empire when independent), faster with more tech-5 techs, none with none; completion waits for the total', () => {
+        const { g, site, st } = rolled();
+        const [a, b] = normalsOf(g);
+        const ra = corruptedOwned(g, st, a, 0);
+        const total5 = a.research.techTree.filter((t) => t.def.techLevel === 5).length;
+        expect(total5).toBeGreaterThan(4);
+        const month = 30 * GAME_DAY_LENGTH;
+        const credit = (): number => {
+            const before = st.siphon?.total ?? 0;
+            siphonPass(g, st); // (opens the record)
+            st.siphon!.last = galaxyStarDate(g);
+            g.nowMs += month;
+            siphonPass(g, st);
+            return st.siphon!.total - before;
+        };
+        setTech5(a, 0);
+        siphonPass(g, st);
+        expect(credit()).toBe(0);
+        setTech5(a, 2);
+        const two = credit();
+        expect(two).toBeCloseTo(2 * 0.5, 5);
+        setTech5(a, 4);
+        expect(credit()).toBeCloseTo(2 * two, 5);
+        expect(ra.siphoned).toBeCloseTo(0 + 1 + 2, 5);
+        // an independent corrupted world drains the nearest empire
+        const indep = st.formerIndependents.find((c) => c.empire === g.independentEmpire && !st.corrupted.some((r) => r.colony === c));
+        if (indep !== undefined) {
+            const r2 = corrupt(g, st, indep)!;
+            const donor = siphonDonor(g, st, indep)!;
+            expect(donor).not.toBe(g.independentEmpire);
+            expect(siphonRateOf(g, st, r2)).toBeCloseTo(0.5 * tech5Count(donor), 5);
+        }
+        // the gate: the work waits at 99.9 % until enough has been siphoned
+        const need = 3000;
+        st.siphon!.total = need - 1;
+        expect(beaconKind.canComplete!(g, site)).toBe(false);
+        const work = { ...site, phase: 'building', wonder: 'beacon', convoys: [], delivered: 0, seenBy: [], knowledge: [] } as unknown as Parameters<typeof addProgress>[1];
+        work.progress = 0.98;
+        addProgress(g, work, 0.05);
+        expect(work.progress).toBeCloseTo(0.999, 5);
+        expect(work.phase).toBe('building');
+        st.siphon!.total = need;
+        expect(beaconKind.canComplete!(g, site)).toBe(true);
+        // an older save (no record) starts at the share the build had made
+        delete st.siphon;
+        site.progress = 0.5;
+        expect(siphonOf(g, st).total).toBe(1500);
+        void b;
+    }, 900000);
+
+    it('the dwell grows with the world\'s population (30 to 150 days), a restarted dwell after the Watcher defends itself, and the gap starts after the dwell', () => {
+        const { g, st } = rolled();
+        expect(dwellDaysFor(g, 1e6)).toBe(30);
+        expect(dwellDaysFor(g, 1e11)).toBe(150);
+        const mid = dwellDaysFor(g, 1.4e8);
+        expect(mid).toBeGreaterThan(60);
+        expect(mid).toBeLessThan(120);
+        expect(dwellDaysFor(g, 5e8)).toBeGreaterThan(mid);
+        const w = st.watchers[0];
+        const ship = w.ship!;
+        const [a] = normalsOf(g);
+        const target = a.colonies[0];
+        if (!st.formerIndependents.includes(target)) st.formerIndependents.push(target);
+        ship.xpos = target.xpos + 1000;
+        ship.ypos = target.ypos + 1000;
+        w.target = target;
+        w.mode = 'travel';
+        w.until = 0;
+        watchersPeriodic(g);
+        expect(w.mode).toBe('dwell');
+        expect(w.dwellDays).toBeCloseTo(dwellDaysFor(g, target.population.totalAmount), 5);
+        const dwell = w.dwellDays!;
+        const gap0 = w.nextCorruptDate;
+        // 20 days in, it is attacked and defends itself: the progress on that world is lost
+        g.nowMs += 20 * GAME_DAY_LENGTH;
+        const hunter = a.builtObjects.find((o) => !o.hasBeenDestroyed && o.role === BuiltObjectRole.Military && o.topSpeed > 0 && o.shipGroup === null)!;
+        scenarioEmit(g, 'builtObjectAttacked', { builtObject: ship, attacker: hunter, attackingEmpire: a });
+        expect(w.mode).toBe('fight');
+        expect(st.stats.dwellResets).toBe(1);
+        ship.xpos = 1;
+        ship.ypos = 1;
+        g.nowMs += 20 * GAME_DAY_LENGTH;
+        watchersPeriodic(g);
+        expect(w.mode).toBe('dwell');
+        const resumedAt = w.modeDate;
+        // it needs the whole dwell again from the end of the fight
+        ship.xpos = target.xpos + 1000;
+        ship.ypos = target.ypos + 1000;
+        g.nowMs += (dwell - 1) * GAME_DAY_LENGTH;
+        watchersPeriodic(g);
+        expect(st.corrupted.some((c) => c.colony === target)).toBe(false);
+        g.nowMs += 2 * GAME_DAY_LENGTH;
+        watchersPeriodic(g);
+        expect(st.corrupted.some((c) => c.colony === target)).toBe(true);
+        expect(resumedAt).toBeGreaterThan(0);
+        // the 80-160 day gap starts after the dwell finished
+        const gap = (w.nextCorruptDate - galaxyStarDate(g)) / GAME_DAY_LENGTH;
+        expect(gap).toBeGreaterThanOrEqual(79);
+        expect(gap).toBeLessThanOrEqual(161);
+        expect(gap0).toBeLessThan(w.nextCorruptDate);
+    }, 900000);
+
+    it('the purge: the world rebels (stock rebellion), the owner must win the ground battle; a win ends the corruption and the Watchers must re-seed it; a loss leaves it corrupted', () => {
+        const { g, st } = rolled();
+        const [a, b] = normalsOf(g);
+        const rec = corruptedOwned(g, st, a, 1);
+        const h = rec.colony;
+        const m = (h.troops?.items.length ?? 0);
+        void m;
+        expect(startPurge(g, st, rec, b, 1)).toBe(false); // not the owner's
+        expect(aiMayPurge(g, rec, 1)).toBe(garrisonStrength(h) >= 1200000 * 1.3);
+        expect(startPurge(g, st, rec, a, 1)).toBe(true);
+        expect(h.rebelling).toBe(true);
+        expect(rebelsOn(g, h)).toBe(12);
+        const strength = h.invadingTroops!.totalAttackStrength;
+        expect(strength).toBeGreaterThan(1_000_000);
+        expect(strength).toBeLessThan(1_400_000);
+        expect(st.stats.purgeTried).toBe(1);
+        // the stock ground battle, with an overwhelming garrison
+        if (h.troops === null) h.troops = new TroopList();
+        for (const t of makeTroopsSplit(g, a, 60_000_000, 30, 'Test garrison', null)) {
+            t.colony = h;
+            h.troops.add(t);
+        }
+        for (let i = 0; i < 400 && rebelsOn(g, h) > 0; i++) resolveInvasionBattles(g, h, 20);
+        expect(rebelsOn(g, h)).toBe(0);
+        expect(h.empire).toBe(a);
+        purgePass(g, st);
         expect(rec.ended).toBe('purged');
-        expect(beaconSuppliers(g, site)).not.toContain(rec.colony);
-        expect(purgeCorruption(g, st, rec, owner)).toBe(false);
+        expect(st.stats.purged).toBe(1);
+        expect(h.rebelling).toBe(false);
+        // the Watchers leave it alone for a while, then it can be re-seeded with a new full dwell
+        expect(corruptCandidates(g, st)).not.toContain(h);
+        g.nowMs += 121 * GAME_DAY_LENGTH;
+        expect(corruptCandidates(g, st)).toContain(h);
+        expect(corrupt(g, st, h)).not.toBeNull();
+        // a lost battle: the world secedes, the corruption stays
+        const rec2 = st.corrupted[st.corrupted.length - 1];
+        expect(startPurge(g, st, rec2, a, 1)).toBe(true);
+        h.empire = g.independentEmpire;
+        purgePass(g, st);
+        expect(rec2.ended).toBeNull();
+        expect(rec2.purge).toBeUndefined();
+        expect(st.stats.purgeFailed).toBe(1);
     }, 900000);
 
     it('a sighting: the Watcher shows itself over a colony, passive, then slips away cloaked; attacked, it defends itself against the attackers only and goes to war with no one', () => {
