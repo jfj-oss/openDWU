@@ -58,6 +58,7 @@ import {
     lockWar,
     normalEmpires,
     registerThreatKnownSites,
+    registerThreatSpawn,
     revealTo,
     threatGameEnd,
     type KnownThreatSite,
@@ -65,7 +66,8 @@ import {
 import { genShipsSpawnPoint } from '../generationShips';
 import { registerCrisisHelpers } from '../crisis';
 import { refitInPlace } from '../framework';
-import { greatWorkProtectors, markGreatWorkHostile, registerGreatWork, registerHostileWonderCrisis } from './framework';
+import { completeWork, greatWorkProtectors, greatWorks, GW_KEY, markGreatWorkHostile, registerGreatWork, registerHostileWonderCrisis, spawnGreatWork, spawnNote } from './framework';
+import { kindTaken } from './founders';
 import type { GreatWorkKind, GreatWorkSite } from './types';
 import {
     BEACON_CODE_DESTROYED,
@@ -1215,6 +1217,29 @@ export function beaconShipRole(st: BeaconState, bo: BuiltObject): BeaconShipRole
 // Registration
 // ---------------------------------------------------------------------------------------------------------------
 
+/** The Game Editor entry that places the Beacon already finished (registerBeacon). */
+export const BEACON_FINISHED_SPAWN = `${GW_KEY}:${BEACON_KIND}-finished`;
+
+/**
+ * Game Editor: the Beacon, already COMPLETE. The site and scaffold are made as for any Great Work (the Watchers come with the roll), then the real completion
+ * path runs (completeWork -> beaconComplete): the Reclamation begins, the Watchers muster cloaked (here already at their places round the Beacon, not flying in
+ * from the rim) and the first mega beam is beaconBeamDelayDays (10) away. A failed spawn leaves no work behind.
+ */
+export function spawnFinishedBeacon(galaxy: Galaxy): boolean {
+    if (!spawnGreatWork(galaxy, BEACON_KIND)) return false;
+    const work = greatWorks(galaxy).find((w) => w.wonder === BEACON_KIND && w.phase === 'building');
+    if (work === undefined) return false;
+    completeWork(galaxy, work);
+    const st = beaconState(galaxy);
+    for (const w of st.watchers) {
+        const at = w.ship !== null && !w.ship.hasBeenDestroyed ? musterPoint(st, w) : null;
+        if (w.ship === null || at === null) continue;
+        w.ship.xpos = at.x;
+        w.ship.ypos = at.y;
+    }
+    return st.phase === 'reclamation';
+}
+
 export const beaconKind: GreatWorkKind = {
     id: BEACON_KIND,
     flag: BEACON_FLAG,
@@ -1236,6 +1261,14 @@ export const BEACON_HANDLER_IDS = ['beacon.watchers', 'beacon.reclaim', 'beacon.
 
 export function registerBeacon(): void {
     registerGreatWork(beaconKind);
+    registerThreatSpawn({
+        key: BEACON_FINISHED_SPAWN,
+        label: 'Great Work: beacon (finished)',
+        group: 'galactic',
+        addons: [GW_KEY],
+        note: (g) => spawnNote(g) ?? (kindTaken(g, BEACON_KIND) ? 'Already under way (one per galaxy)' : null),
+        spawn: (g) => spawnFinishedBeacon(g),
+    });
     registerScenarioPeriodic({ id: 'beacon.watchers', flag: BEACON_FLAG, order: 20, periodDays: WATCHER_DAYS, run: (g) => watchersPeriodic(g) });
     registerScenarioPeriodic({
         id: 'beacon.reclaim',

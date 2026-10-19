@@ -46,7 +46,7 @@ export async function start(ctx) {
     const { load, g, report } = ctx;
     reportRef = report;
     M = {
-        bs: await load('beaconState'), bf: await load('beaconFleet'), bc: await load('beaconCounter'), bh: await load('beaconHarvest').catch(() => null), beacon: await load('beacon'),
+        bs: await load('beaconState'), bf: await load('beaconFleet'), bc: await load('beaconCounter'), bh: await load('beaconHarvest').catch(() => null), br: await load('beaconResponse').catch(() => null), beacon: await load('beacon'),
         thr: await load('threats'), hooks: await load('scnHooks'), own: await load('ownership').catch(() => null), gw: await load('gwState'), gwf: await load('gwFramework'), life: await load('gwLifecycle'), tf: await load('thFramework'), dip: await load('diplomacyTick'), mis: await load('missions'),
     };
     if (process.env.BEACON_TIMING === '1') {
@@ -289,6 +289,8 @@ function sample(ctx, g) {
         if (st.moratorium) s.mor = { until: Math.round(st.moratorium.until), breakers: st.moratorium.breakers.length, sanctioned: st.moratorium.sanctioned.length };
         s.wStr = st.watchers.map((w) => (w.dead || !w.ship || w.ship.hasBeenDestroyed ? 0 : Math.round(M.thr.calculateOverallStrengthFactor(w.ship))));
         s.elim = r1(M.bf.eliminatedPct(st));
+        // the response fleets and patrols (beaconResponse.ts; absent on a build without them)
+        if (M.br) s.resp = M.br.responseSummary(st);
         // the Watcher fleets: mode (d defence / o offensive), live escorts, strength (Watcher and escorts), the world held
         s.wf = (st.watcherFleets ?? []).map((f) => [f.mode[0], f.ships.filter((b) => !b.hasBeenDestroyed).length, Math.round(M.bf.watcherFleetStrength(st, f)), f.post ? f.post.name : null]);
         s.proc = M.bf.processingWorlds(st).length;
@@ -341,6 +343,7 @@ function sample(ctx, g) {
             for (const r of st.raids) for (const b of r.ships) tracked.add(b);
             for (const b of [...st.reserve, ...st.guards, ...st.thrallShips, ...(st.watcherFleets ?? []).flatMap((f) => f.ships)]) tracked.add(b);
             for (const w of st.watchers) if (w.ship) tracked.add(w.ship);
+            for (const b of M.br ? M.br.responseShips(st) : []) tracked.add(b);
             if (st.beacon) tracked.add(st.beacon);
             let orphans = 0;
             for (const b of faction.builtObjects) {
@@ -511,7 +514,7 @@ function sample(ctx, g) {
         }
         s.ai = ai;
         if (st.ended) s.ended = true;
-        report.beacon.final = { y: s.y, phase: st.phase, ended: st.ended, elim: s.elim, stats: { ...st.stats }, seasons: st.stats.seasons, salvage: st.salvage.map((x) => [x.empireId, x.points, x.steps]),
+        report.beacon.final = { response: M.br ? M.br.responseSummary(st) : null, y: s.y, phase: st.phase, ended: st.ended, elim: s.elim, stats: { ...st.stats }, seasons: st.stats.seasons, salvage: st.salvage.map((x) => [x.empireId, x.points, x.steps]),
             bargains: st.bargains.map((b) => [b.empireId, b.kind, b.discovered, b.ended]), watchersDead: st.watchers.filter((w) => w.dead).length, beaconDestroyed: st.beaconDestroyed, processingNow: s.proc,
             harvest: M.bh ? (() => {
                 const sect = g.sectorSize;

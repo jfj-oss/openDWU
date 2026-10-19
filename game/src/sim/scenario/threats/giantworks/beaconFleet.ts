@@ -91,13 +91,14 @@ import {
     warOn,
 } from './beaconState';
 import { scenarioText as T } from '../../messages';
+import { allotResponse, driveResponse } from './beaconResponse';
 import { freeShare, fuelOf, harvestMonthly, liveCores, harvestPeriodic, onCattleKilled, onCoreRetaken, onHarvesterLost, payFleet, payTroops, troopSourceCore, troopsAffordable } from './beaconHarvest';
 
 const TAG = 'Beacon';
 /** A fleet this close to a target is "on station"; defenders this close block a landing. */
 const STATION_RANGE = 8000;
 /** Warships engage from their weapons range: a group this close to its target has arrived and counts as on station. */
-const ENGAGE_RANGE = 24000;
+export const ENGAGE_RANGE = 24000;
 /** Transports this close to the target land. */
 const LANDING_RANGE = 3000;
 /** Staging gather radius. */
@@ -192,7 +193,7 @@ export function spawnShip(galaxy: Galaxy, faction: Empire, design: Design, x: nu
     return bo;
 }
 
-function strengthOf(bo: BuiltObject): number {
+export function strengthOf(bo: BuiltObject): number {
     return Math.max(0, calculateOverallStrengthFactorWithoutShields(bo));
 }
 
@@ -227,14 +228,14 @@ function attackOrder(galaxy: Galaxy, bo: BuiltObject, target: Habitat, done: Set
     }
 }
 
-function patrol(galaxy: Galaxy, bo: BuiltObject, where: Habitat): void {
+export function patrol(galaxy: Galaxy, bo: BuiltObject, where: Habitat): void {
     const m = builtObjectMission(bo.mission);
     if (m !== null && m.type === BuiltObjectMissionType.Patrol && m.targetHabitat === where) return;
     bo.isAutoControlled = false;
     assignMission(galaxy, bo, BuiltObjectMissionType.Patrol, where, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
 }
 
-function distTo(galaxy: Galaxy, bo: { xpos: number; ypos: number }, x: number, y: number): number {
+export function distTo(galaxy: Galaxy, bo: { xpos: number; ypos: number }, x: number, y: number): number {
     return galaxy.calculateDistance(bo.xpos, bo.ypos, x, y);
 }
 
@@ -541,7 +542,7 @@ function days(n: number): number {
     return n * GAME_DAY_LENGTH;
 }
 
-function groupCountFor(galaxy: Galaxy, st: BeaconState, n: number): number {
+export function groupCountFor(galaxy: Galaxy, st: BeaconState, n: number): number {
     // one more group every two seasons, and more for a bigger galaxy: one per beaconGroupColonies colonies of the empires and independents
     // (0: one per eight empires, the original rule), so a big galaxy has more worlds struck at once
     const per = P.groupColonies(galaxy);
@@ -576,12 +577,14 @@ export function beginSeason(galaxy: Galaxy, st: BeaconState, n: number): boolean
     const rnd = beaconRandom(galaxy, st, 21);
     const targets = pickTargets(galaxy, st, k, budget, now);
     if (targets.length === 0) return false;
+    // the response fleets' and patrols' share is taken from the strike groups' (beaconResponse.ts)
+    const strikeBudget = allotResponse(galaxy, st, budget);
     const staged = stagingPointsFor(galaxy, st, targets.map((t) => t.habitat), P.stagingPoints(galaxy));
     const staging: StagingPoint[] = staged.points.map((pt, i) => ({ index: i, x: pt.x, y: pt.y, name: stagingName(i), knowledge: [], strength: 0, startStrength: 0 }));
     const prep = P.prepMinDays(galaxy) + rnd.nextDouble() * Math.max(0, P.prepMaxDays(galaxy) - P.prepMinDays(galaxy));
     const season: Season = {
-        n, phase: 'prep', start: now, end: now + days(prep), staging, groups: [], budget, spawned: 0, departed: 0, departures: [], plannedTravelDays: 0, prepStart: now, launchAt: now + days(prep),
-        freeLeft: Math.min(budget, P.fundingModel(galaxy) === 1 ? budget : scripted * freeShare(galaxy)),
+        n, phase: 'prep', start: now, end: now + days(prep), staging, groups: [], budget: strikeBudget, spawned: 0, departed: 0, departures: [], plannedTravelDays: 0, prepStart: now, launchAt: now + days(prep),
+        freeLeft: Math.min(strikeBudget, P.fundingModel(galaxy) === 1 ? strikeBudget : (scripted * freeShare(galaxy) * strikeBudget) / Math.max(1, budget)),
     };
     targets.forEach((t, i) => {
         season.groups.push({
@@ -615,7 +618,7 @@ export function beginSeason(galaxy: Galaxy, st: BeaconState, n: number): boolean
 }
 
 /** Warship roles of a wave, in order (the cycle after the flagship): heavy and medium hulls with a carrier and screens. */
-const WAVE_CYCLE: readonly BuiltObjectSubRole[] = [
+export const WAVE_CYCLE: readonly BuiltObjectSubRole[] = [
     BuiltObjectSubRole.Cruiser,
     BuiltObjectSubRole.CapitalShip,
     BuiltObjectSubRole.Cruiser,
@@ -963,16 +966,19 @@ export function fireBeam(galaxy: Galaxy, st: BeaconState, season: Season): void 
     const first = st.warStarted === false;
     startWar(galaxy, st);
     const n = season.n;
-    const budget = seasonBudget(galaxy, st, n);
+    const fullBudget = seasonBudget(galaxy, st, n);
+    let budget = fullBudget;
     const scripted = scriptedBudget(galaxy, st, n);
     const kFull = groupCountFor(galaxy, st, n);
     const affordable = P.fundingModel(galaxy) === 1 || budget >= P.minSeasonStrength(galaxy);
+    // the response fleets' and patrols' share is taken from the strike groups' (beaconResponse.ts)
+    if (affordable) budget = allotResponse(galaxy, st, fullBudget);
     const k = P.fundingModel(galaxy) === 1 ? kFull : Math.max(1, Math.min(kFull, Math.round(budget / Math.max(1, scripted / kFull))));
     const claimants = affordable ? escortClaimants(st, k) : [];
     const targets = affordable ? pickTargets(galaxy, st, k - claimants.length, budget, now) : [];
     season.budget = budget;
     season.spawned = 0;
-    season.freeLeft = Math.min(budget, P.fundingModel(galaxy) === 1 ? budget : scripted * freeShare(galaxy));
+    season.freeLeft = Math.min(budget, P.fundingModel(galaxy) === 1 ? budget : (scripted * freeShare(galaxy) * budget) / Math.max(1, fullBudget));
     const groups = targets.map((t) => newGroup(st, season, t.habitat));
     const escorts = claimants.map(() => newGroup(st, season, null));
     const pos = beaconPosition(st)!;
@@ -1648,6 +1654,7 @@ function reclamationPass(galaxy: Galaxy, st: BeaconState, now: number): void {
     for (const s of st.seasons) for (const g of s.groups) if (g.state !== 'gather' && g.state !== 'done') driveGroup(galaxy, st, g);
     drivePlanetDestroyers(galaxy, st);
     driveWatcherFleets(galaxy, st, now);
+    driveResponse(galaxy, st, now);
     if (!st.beaconDestroyed && now - (st.guardDate ?? 0) >= days(60)) {
         st.guardDate = now;
         topUpGuard(galaxy, st);
@@ -1758,7 +1765,7 @@ export function claimForWatcherFleets(galaxy: Galaxy, st: BeaconState, departing
 }
 
 /** Enemy (non-Reclaimer, normal empire) warship strength within `range` of a point. Pure. */
-function enemyStrengthNear(galaxy: Galaxy, st: BeaconState, x: number, y: number, range: number): number {
+export function enemyStrengthNear(galaxy: Galaxy, st: BeaconState, x: number, y: number, range: number): number {
     let s = 0;
     for (const e of normalEmpires(galaxy, st.faction)) {
         for (const b of e.builtObjects) {
@@ -1770,7 +1777,7 @@ function enemyStrengthNear(galaxy: Galaxy, st: BeaconState, x: number, y: number
 }
 
 /** The worlds a Watcher fleet defends, the default first: the live harvest cores (most people first), else the Beacon's star, else a world the Reclaimers hold. */
-function defencePosts(galaxy: Galaxy, st: BeaconState): Habitat[] {
+export function defencePosts(galaxy: Galaxy, st: BeaconState): Habitat[] {
     const cores = [...liveCores(st)].sort((a, b) => b.waiting + b.received - (a.waiting + a.received) || a.colony.habitatIndex - b.colony.habitatIndex).map((c) => c.colony);
     if (cores.length > 0) return cores;
     const star = st.site?.system.systemStar ?? null;

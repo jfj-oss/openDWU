@@ -56,6 +56,7 @@ import { makeTroopsSplit } from '../factionNavy';
 import { arcMessage, arcNews, normalEmpires } from '../framework';
 import { BEACON_FLAG, P, peekBeaconState, type BeaconArtInfo, type BeaconState, type Captive, type CattleOrder, type CattlePhase, type CattleRec, type CoreRec, type FuelRec, type InterceptRec, type ProcessRec } from './beaconState';
 import { addPlating, designFor, processingWorlds, referenceMilitary, scriptedBudget, spawnShip } from './beaconFleet';
+import { responseShips } from './beaconResponse';
 
 const TAG = 'Beacon';
 /** A cattle ship this close to its core docks. */
@@ -964,6 +965,7 @@ function freeWarships(galaxy: Galaxy, st: BeaconState, sub: BuiltObjectSubRole):
     for (const s of st.seasons) for (const g of s.groups) for (const b of [...g.ships, ...g.transports, ...(g.destroyer !== null ? [g.destroyer] : [])]) busy.add(b);
     for (const f of st.watcherFleets ?? []) for (const b of f.ships) busy.add(b);
     for (const b of st.guards) busy.add(b);
+    for (const b of responseShips(st)) busy.add(b);
     for (const r of st.raids) for (const b of r.ships) busy.add(b);
     for (const b of st.thrallShips) busy.add(b);
     for (const c of cattleOf(st)) for (const b of c.escorts ?? []) busy.add(b);

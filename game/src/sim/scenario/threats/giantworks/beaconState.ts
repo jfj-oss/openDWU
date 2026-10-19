@@ -94,6 +94,45 @@ export interface WatcherFleet {
     arrived?: number;
 }
 
+/**
+ * A response fleet or patrol of the Reclaimers (beaconResponse.ts). A 'reserve' waits at its post near a core and goes to a held world that is invaded,
+ * blockaded or besieged (mode 'respond'), then returns ('return'); a 'patrol' keeps moving along its route of nearby held worlds.
+ */
+export interface ResponseFleet {
+    id: number;
+    kind: 'reserve' | 'patrol';
+    ships: BuiltObject[];
+    /** Reserve: the world it waits at. */
+    post: Habitat | null;
+    mode: 'post' | 'respond' | 'return';
+    /** Respond: the world it defends. */
+    target: Habitat | null;
+    modeDate: number;
+    /** Respond: its strength when it set out. */
+    startStrength: number;
+    /** Respond: the star date the threat was last seen at the target (the fleet returns after beaconResponseCalmDays without it). */
+    threatSeen: number;
+    /** Patrol: the route (held worlds), the leg being flown, and the star date it got there (0 on the way). */
+    route: Habitat[];
+    leg: number;
+    arrivedAt: number;
+    /** Patrol: it is in contact with an enemy now (an encounter is counted when it begins). */
+    engaged: boolean;
+}
+
+export interface ResponseRec {
+    fleets: ResponseFleet[];
+    nextId: number;
+    /** Strength still to be built for the reserves / the patrols (their share of the seasons' budgets, banked). */
+    reserveAllow: number;
+    patrolAllow: number;
+    /** A patrol met a superior force near a held world (it reports it: the reserves may answer). */
+    alerts: { world: Habitat; date: number; enemy: number }[];
+    /** Worlds whose threat the reserves judged hopeless now (counted once each time it begins). */
+    hopeless: Habitat[];
+    stats: Record<string, number>;
+}
+
 export interface CorruptRec {
     colony: Habitat;
     /** The governor the corruption works through, when the colony has one (a corrupted character, as the Cult's convert). */
@@ -515,6 +554,8 @@ export interface BeaconState {
     /** Spawned from the Game Editor / a test: the existence-year gates are skipped. */
     forced?: boolean;
     /** The AI coalition's standing operations (beaconAi.ts), by key ('beacon', 'staging:<season>:<point>'): the rally star's system index (-1 none) and whether the force has gone in; launches counts the Beacon assaults. */
+    /** The response fleets and patrols (beaconResponse.ts; absent before they first ran and in older saves). */
+    response?: ResponseRec;
     /** The harvest (beaconHarvest.ts; absent before it first ran): cores (live and ended, the last 40 kept), cattle ships in flight, worlds
      *  that may not be made a core again before a date (their harvester was destroyed), the biofuel accounts. */
     cores?: CoreRec[];
@@ -719,6 +760,32 @@ export const P = {
     wfCoreRange: (g: Galaxy) => p(g, 'beaconWatcherFleetCoreRange', 45000),
     /** A Watcher fleet is topped up from the biggest strike group when its escorts fall below this % of that group. */
     wfTopUpPct: (g: Galaxy) => p(g, 'beaconWatcherFleetTopUpPct', 50),
+    // The response fleets and patrols (beaconResponse.ts)
+    /** 1: reserve fleets answer threatened held worlds and patrols walk between them (0: neither, the season keeps the whole budget). */
+    respOn: (g: Galaxy) => p(g, 'beaconResponseOn', 1) > 0,
+    /** The share (%) of each season's budget put to the reserve fleets / the patrols (the strike groups get the rest). */
+    respSharePct: (g: Galaxy) => Math.max(0, Math.min(40, p(g, 'beaconResponseSharePct', 12))),
+    patrolSharePct: (g: Galaxy) => Math.max(0, Math.min(40, p(g, 'beaconPatrolSharePct', 6))),
+    /** One reserve fleet per this many held worlds (at least one); a patrol per beaconPatrolWorldsPer held worlds (from three held worlds), at most beaconPatrolMax. */
+    respWorldsPer: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'beaconResponseWorldsPer', 8))),
+    patrolWorldsPer: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'beaconPatrolWorldsPer', 6))),
+    patrolMax: (g: Galaxy) => Math.max(0, Math.trunc(p(g, 'beaconPatrolMax', 6))),
+    /** A reserve fleet's / a patrol's strength, in % of one strike group's quota of the scripted season strength. */
+    respFleetPct: (g: Galaxy) => p(g, 'beaconResponseFleetPct', 60),
+    patrolFleetPct: (g: Galaxy) => p(g, 'beaconPatrolFleetPct', 25),
+    /** A reserve goes only when it and the ships already there outweigh the enemy by this %; it turns back when it has lost this % of its strength. */
+    respRatioPct: (g: Galaxy) => p(g, 'beaconResponseRatioPct', 120),
+    respMaxLossPct: (g: Galaxy) => p(g, 'beaconResponseMaxLossPct', 60),
+    /** Enemy warships this close to a held world (units) threaten it; reserves answer within this many sectors; they return after this many calm days. */
+    respThreatRange: (g: Galaxy) => p(g, 'beaconResponseThreatRange', 30000),
+    respReachSectors: (g: Galaxy) => p(g, 'beaconResponseReachSectors', 14),
+    respCalmDays: (g: Galaxy) => p(g, 'beaconResponseCalmDays', 10),
+    /** A patrol stays this many days at a world before it flies on; its route has at most this many worlds, each within this many sectors of the last. */
+    patrolDwellDays: (g: Galaxy) => p(g, 'beaconPatrolDwellDays', 15),
+    patrolRouteLen: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'beaconPatrolRouteLen', 4))),
+    /** A patrol reports a force this % of its own strength (or more) to the reserves. */
+    patrolReportPct: (g: Galaxy) => p(g, 'beaconPatrolReportPct', 120),
+    patrolHopSectors: (g: Galaxy) => p(g, 'beaconPatrolHopSectors', 6),
     /** A target's pull grows with its population to this power (x 100: 50 = the square root, 100 = linearly). */
     targetPopPct: (g: Galaxy) => p(g, 'beaconTargetPopPct', 50),
     /** Season strength: % of the reference military (mean of the three strongest empires), season 1, growth per season, per processing world, cap. */
