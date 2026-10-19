@@ -29,6 +29,7 @@ import type { Creature } from '../sim/creature';
 import type { Empire } from '../sim/empire';
 import type { Galaxy } from '../sim/galaxy';
 import type { Fighter } from '../sim/combat/fighters';
+import { cloakFading } from './beaconCloakFx';
 import { cloakHides, findShipOutsideSystemWithScanRange, isObjectVisibleToThisEmpire, isObjectVisibleToThisEmpireImprecise } from '../sim/independentTraders';
 import { empiresSharedVisibility } from '../sim/exploration';
 import { scenarioQuery } from '../sim/scenario/hooks';
@@ -205,7 +206,7 @@ export class FogOfWar {
     private visibleToPlayer(player: Empire, o: BuiltObject | Fighter, stealth: number): boolean {
         const g = this.galaxy;
         if (g.scenario !== null && scenarioQuery(g, 'objectVisibleToAll', false, { empire: player, object: o as BuiltObject })) return true;
-        if ((o as BuiltObject).cloaked === true && o.empire !== player && cloakHides(g, player, o as BuiltObject)) return false; // Giantworks' Beacon: the Watchers' cloak
+        if ((o as BuiltObject).cloaked === true && o.empire !== player && cloakHides(g, player, o as BuiltObject) && !cloakFading(o as BuiltObject)) return false; // Giantworks' Beacon: the Watchers' cloak (drawn while a re-cloak it was seen in fades: beaconCloakFx.ts)
         if (isObjectVisibleToThisEmpireImprecise(g, player, o)) return true;
         const x = Math.trunc(o.xpos);
         const y = Math.trunc(o.ypos);

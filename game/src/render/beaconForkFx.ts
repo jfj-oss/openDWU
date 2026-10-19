@@ -17,6 +17,7 @@ import { textureFromRgbaPixels } from './textureCanvas';
 import { engineThrusterUrls } from './effectFrames';
 import { loadRgba } from '../ui/empireEmblem';
 import type { ForkArt } from './beaconForkArtData';
+import { cloakGlow, cloakLightGate } from './beaconCloakFx';
 
 /** The plumes and the lights on / off (render only; mutable so a preview can switch them). */
 export const FORK_FX = { plumes: true, lights: true };
@@ -172,7 +173,7 @@ export class ForkFx {
      * A fork-look ship (the Watcher or the capital ship: `art` its frame data) drawn at (x, y), turned `rotation`, `scale` world units per frame px, its anchor (ox, oy) frame
      * px; `px` its drawn size; `sec` the wall clock; `speed` its speed over its cruise speed (0..).
      */
-    draw(art: ForkArt, bo: BuiltObject, x: number, y: number, rotation: number, scale: number, ox: number, oy: number, px: number, sec: number, speed: number): void {
+    draw(art: ForkArt, bo: BuiltObject, x: number, y: number, rotation: number, scale: number, ox: number, oy: number, px: number, sec: number, speed: number, reveal = 1): void {
         const dt = Math.max(0, Math.min(0.25, sec - this.clock));
         this.clock = sec;
         let tr = this.tracks.get(bo);
@@ -217,7 +218,7 @@ export class ForkFx {
                     this.put(s, z.x - z.w / 2 + step * (i + 0.5), z.y, 0.5, 0.1);
                     const wob = 1 + 0.05 * Math.sin(sec * 9 + i * 2.1 + n);
                     s.scale.set((step * FORK_PLUME_SPREAD * scale) / plume.width, (len * wob * scale) / plume.height);
-                    s.alpha = Math.min(1, k * 4);
+                    s.alpha = Math.min(1, k * 4) * cloakGlow(reveal);
                 }
             }
         }
@@ -229,7 +230,7 @@ export class ForkFx {
             const size = Math.max(24, minScreen / Math.max(1e-3, screenPerFrame));
             for (let n = 0; n < A.lights.length; n++) {
                 const L = A.lights[n];
-                const b = forkBlink(sec, L.period, L.phase);
+                const b = forkBlink(sec, L.period, L.phase) * cloakLightGate(reveal, sec, n);
                 if (b <= 0.01) continue;
                 const s = this.pool.acquire(tex.light);
                 s.blendMode = 'add';

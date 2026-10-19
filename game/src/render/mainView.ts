@@ -65,6 +65,7 @@ import {
     type GasCloudFrameBudget,
 } from './stellarFx';
 import { DeepStarfield, deepStarfieldAlpha, systemPatchZoomAlpha, type PatchSystem } from './deepStarfield';
+import { StarLens } from './beaconCloakFx';
 import { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
 import { GalaxyLocation, GalaxyLocationType } from '../sim/galaxyLocation';
@@ -1401,6 +1402,8 @@ export class MainView {
     private sectorLabels = new SectorLabelLayer(MAP_FONT_FAMILY);
     /** Screen-space deep starfield behind the world (deepStarfield.ts; port of the original's close-zoom stars). */
     private deepStarfield!: DeepStarfield;
+    /** The cloaked Watchers' bend of the deep starfield (beaconCloakFx.ts). */
+    private starLens: StarLens | null = null;
     /** Systems for the deep starfield's per-system colour patches (flat, reused every frame). */
     private patchSystems: PatchSystem[] = [];
     /** Coloured per-system nebula haze at system zoom (systemNebula.ts), world-space just below the system roots. */
@@ -1841,6 +1844,7 @@ export class MainView {
         // resolution — the galaxy backdrop is a 2000 px image and cannot stay sharp when magnified (HiDPI fix).
         this.deepStarfield = new DeepStarfield(this.galaxy.randomSeed);
         this.app.stage.addChildAt(this.deepStarfield.root, 0);
+        this.starLens = new StarLens(this.deepStarfield.root, this.world);
         const flareFiles = manifestFiles('mapstars/flares') ?? [];
         void this.deepStarfield
             .load(
@@ -2213,6 +2217,8 @@ export class MainView {
         // the container order, not this one): it samples the render-interpolated ship positions (this.motion) that the
         // overlays, ambient effects, selection ring, etc. read later this frame.
         this.builtObjectLayer.update(z, cam);
+        // Giantworks' Beacon: a detected, cloaked Watcher bends the deep starfield behind it (beaconCloakFx.ts)
+        this.starLens?.update(Date.now() / 1000, this.app.screen.width, this.app.screen.height);
         // Task M2e: empire ownership overlays (colony rings at system zoom;
         // owned-system markers + territory discs at galaxy/sector zoom).
         this.empireLayer.update(z, cam);

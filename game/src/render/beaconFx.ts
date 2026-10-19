@@ -32,6 +32,7 @@ import { BeaconWarpLayer } from './beaconWarp';
 import { ReaperFx } from './beaconReaperFx';
 import { ReaperMotionFx } from './beaconReaperMotion';
 import { ForkFx } from './beaconForkFx';
+import { CloakFx } from './beaconCloakFx';
 
 /** No light layers under this drawn size (px). */
 export const BEACON_FX_MIN_PX = 14;
@@ -147,6 +148,8 @@ export class BeaconFxLayer {
     private motion = new ReaperMotionFx(this.root);
     /** The fork Watcher's engine plumes and blinking navigation lights (beaconForkFx.ts). */
     private fork = new ForkFx(this.root);
+    /** The Watchers' cloak: the shimmer while cloaked but detected, the decloak / re-cloak (beaconCloakFx.ts). */
+    private cloak = new CloakFx((file) => `${BEACON_ART_DIR}${file}.png`);
     private fx = new Map<string, FxSet | null>();
     private fxLoading = new Set<string>();
     private watcherTex: WatcherTextures | null = null;
@@ -167,6 +170,7 @@ export class BeaconFxLayer {
     constructor() {
         this.root.eventMode = 'none';
         this.root.addChild(this.warp.root);
+        this.root.addChild(this.cloak.root);
     }
 
     /** `relay`: this frame's countdown and launch (beaconLaunch.ts), for the Beacon station. */
@@ -181,6 +185,7 @@ export class BeaconFxLayer {
         this.reaper.begin();
         this.motion.begin();
         this.fork.begin();
+        this.cloak.begin();
     }
 
     end(): void {
@@ -190,7 +195,13 @@ export class BeaconFxLayer {
         this.reaper.end();
         this.motion.end();
         this.fork.end();
+        this.cloak.end();
         if (this.unfold.size > 4) for (const bo of this.unfold.keys()) if (bo.hasBeenDestroyed) this.unfold.delete(bo);
+    }
+
+    /** Every Watcher, each frame before the ships are drawn (and before the fog is asked): their cloaks' transitions. */
+    observeWatchers(watchers: readonly BuiltObject[], sec: number): void {
+        if (watchers.length > 0) this.cloak.observe(watchers, sec);
     }
 
     /** The light layers of `file` (loaded once, on first use; null until then or if it failed). */
@@ -277,6 +288,23 @@ export class BeaconFxLayer {
     draw(file: string, bo: BuiltObject, open: boolean, x: number, y: number, rotation: number, scale: number, ax: number, ay: number, tw: number, th: number, px: number, sec: number): Texture | null {
         // the warp (every Beacon frame), on the ship's sprite transform
         this.warp.ship(file, bo, x, y, rotation, scale, ax * tw, ay * th, px);
+        // a Watcher's cloak: while not fully revealed, its frame is a reveal step (the hull in from the edges; nothing
+        // while those are being made) over the shimmer, its engines and lights damped, no opening
+        let reveal = 1;
+        let cloakTex: Texture | null = null;
+        if (file === 'watcher-fork' || file === 'watcher-reaper' || file === 'watcher') {
+            const c = this.cloak.draw(file, bo, x, y, rotation, scale, ax * tw, ay * th, px, [tw / 2, th * (file === 'watcher-fork' ? 0.6 : 0.5)], sec);
+            reveal = c.r;
+            if (reveal < 0.999) cloakTex = c.tex ?? Texture.EMPTY;
+        }
+        if (cloakTex !== null) {
+            const forkArt0 = file === 'watcher-fork' ? WATCHER_FORK_ART : null;
+            if (forkArt0 !== null && reveal > 0.5) {
+                const cruise = Math.max(1, bo.cruiseSpeed > 0 ? bo.cruiseSpeed : bo.topSpeed);
+                this.fork.draw(forkArt0, bo, x, y, rotation, scale, ax * tw, ay * th, px, sec, bo.currentSpeed / cruise, reveal);
+            }
+            return cloakTex;
+        }
         if (file === 'watcher-reaper') {
             // its chain (lagging, swinging with its moves and turns) and its eye-lines' runs (light along them). It has no opening
             // yet: when it gets one, its unfold's heat goes in as `heat` (the runs then quicker and redder).

@@ -666,6 +666,9 @@ export class BuiltObjectLayer {
         this.arkFx.begin();
         this.arkFx.setScreenScale(z);
         const sec = nowMs / 1000;
+        // the Beacon's Watchers' cloaks (beaconCloakFx.ts): their transitions run whether or not they are on screen, before
+        // the fog is asked (a re-cloaking Watcher stays drawn while it fades)
+        if (beaconOn && looks.watchers !== undefined) this.beaconFx.observeWatchers(looks.watchers, sec);
         // Camera.worldToScreen, inlined (no allocation per ship per frame).
         const camX = cam.x;
         const camY = cam.y;

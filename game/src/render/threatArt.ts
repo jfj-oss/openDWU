@@ -182,6 +182,11 @@ export interface BeaconArtState {
 const WATCHER_OPEN_MODES: ReadonlySet<string> = new Set(['sighting', 'fight']);
 const sightedScratch: BuiltObject[] = [];
 
+/** The record the last threatLooks call refreshed (read only; the layers drawn after the ships use it). */
+export function lastThreatLooks(): ThreatLooks {
+    return looks;
+}
+
 /** The threat factions / flagships this frame (a shared record, refreshed in place). */
 export function threatLooks(galaxy: Galaxy): ThreatLooks {
     looks.genFactions.length = 0;

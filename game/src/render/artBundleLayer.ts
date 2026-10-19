@@ -13,7 +13,9 @@ import type { BuiltObject } from '../sim/builtObject';
 import { HabitatCategoryType, type Habitat } from '../sim/types';
 import { moonDotPx, planetSpritePx, starSpritePx } from './mainView';
 import { KNOWLEDGE_RUMOUR, drawThreatMarker, threatMarkerStyle, type ThreatMarkerStyle } from './threatMarkers';
-import { greatWorkAt, greatWorkDrawPx, greatWorkFrame } from './threatArt';
+import { greatWorkAt, greatWorkDrawPx, greatWorkFrame, lastThreatLooks } from './threatArt';
+import { watcherSightings } from './beaconCloakFx';
+import { KNOWLEDGE_SUSPECTED } from './threatMarkers';
 import { Texture } from 'pixi.js';
 import { SpritePool } from './fxCommon';
 import { circleAtScreenRes } from './screenCircle';
@@ -181,6 +183,10 @@ export class ArtBundleLayer {
     /** Fields / fragments / lit pods drawn this frame (captures). */
     wreckStats = { fields: 0, fragments: 0, pods: 0 };
     private sites: { site: KnownThreatSiteShape; style: ThreatMarkerStyle; seed: number }[] = [];
+    /** The Beacon's Watchers' sightings (beaconCloakFx.ts watcherSightings: where the viewer last detected a cloaked
+     * Watcher, fading over the seen-through days) and their marker style (the threat ship marker, uncertain). */
+    private sightings: { x: number; y: number; fade: number }[] = [];
+    private sightingStyle: ThreatMarkerStyle | null = threatMarkerStyle('beacon', KNOWLEDGE_SUSPECTED, 'ship');
     private frame = 0;
     /** Render interpolation between sim steps (renderInterp.ts; set by MainView): camps sit on the drawn station,
      * league pennants / seat rings / boundaries on the drawn (orbit-interpolated) colonies. */
@@ -463,7 +469,9 @@ export class ArtBundleLayer {
                 if (style !== null) this.sites.push({ site, style, seed: k++ * 7 + site.threat.length });
             }
         }
-        if (this.sites.length === 0) {
+        const wl = lastThreatLooks().watchers;
+        const nSight = wl !== undefined && wl.length > 0 ? watcherSightings(wl, localViewerEmpire(this.galaxy), galaxyStarDate(this.galaxy), this.sightings) : 0;
+        if (this.sites.length === 0 && nSight === 0) {
             if (g.visible) {
                 g.clear();
                 g.visible = false;
@@ -488,6 +496,19 @@ export class ArtBundleLayer {
             }
             if (Math.abs(x - cam.x) > halfW + r * 3 || Math.abs(y - cam.y) > halfH + r * 3) continue;
             drawThreatMarker(g, s.style, x, y, r, z, t, s.seed);
+        }
+        // the Watchers' last sighted positions: the uncertain threat ship marker, fading out over the seen-through days
+        const ss = this.sightingStyle;
+        if (ss !== null) {
+            const base = ss.alpha;
+            for (let i = 0; i < nSight; i++) {
+                const p = this.sightings[i];
+                const r = 18 / z;
+                if (Math.abs(p.x - cam.x) > halfW + r * 3 || Math.abs(p.y - cam.y) > halfH + r * 3) continue;
+                ss.alpha = base * (0.25 + 0.75 * p.fade);
+                drawThreatMarker(g, ss, p.x, p.y, r, z, t, 11 + i);
+            }
+            ss.alpha = base;
         }
     }
 }
