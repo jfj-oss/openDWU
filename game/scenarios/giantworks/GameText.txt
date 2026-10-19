@@ -372,3 +372,4 @@ Beacon Diet Moratorium;Research moratorium
 Beacon Diet Moratorium Effect;Research is slowed in every empire for a long while, so that nobody races ahead while the threat is not understood. Members who break it are called to account and, if they go on, sanctioned.
 Beacon Diet Moratorium News;The Interstellar Diet has passed a research moratorium: research is slowed by {0} % in every empire for {1} months. Any member that breaks it will answer to the Diet.
 Beacon Diet Moratorium Broken;it broke the research moratorium
+Beacon Pods News;Escape pods from the destroyed vessel reached {0}: {1} million people taken from {2} are free.

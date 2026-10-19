@@ -222,7 +222,7 @@ import { watcherVariant, beaconBuildRate, beaconComplete, beaconEndCheck, beacon
 import { peekBeaconState, salvageStepsOf, siphonOf, type BeaconState, type CattleRec } from '../src/sim/scenario/threats/giantworks/beaconState';
 import { beginSeason, driveWatcherFleets, watcherTargetValue, designFor, groupCarryRegiments, scriptedBudget, seasonBudget, landingPlan, lossCheck, noticedGathering, planetStrike, reclamationMonthly, reclamationPeriodic, spawnShip, supplyTroops, targetCandidates } from '../src/sim/scenario/threats/giantworks/beaconFleet';
 import { coalitionMembers, coalitionPass } from '../src/sim/scenario/threats/giantworks/beaconAi';
-import { assignEscorts, escortPlan, interceptsAt, noteIntercept, beaconArtInfo, cattleDesign, cattleOf, coreCountFor, coreTarget, coresOf, freeShare, fuelOf, harvestMonthly, harvestPeriodic, liveCores, pickCore, rescueCattle } from '../src/sim/scenario/threats/giantworks/beaconHarvest';
+import { podWorld, assignEscorts, escortPlan, interceptsAt, noteIntercept, beaconArtInfo, cattleDesign, cattleOf, coreCountFor, coreTarget, coresOf, freeShare, fuelOf, harvestMonthly, harvestPeriodic, liveCores, pickCore, rescueCattle } from '../src/sim/scenario/threats/giantworks/beaconHarvest';
 import { kindTaken } from '../src/sim/scenario/threats/giantworks/founders';
 import { isHumanEmpire } from '../src/sim/humanEmpires';
 import { aiMayPurge, dwellDaysFor, garrisonStrength, purgePass, purgeRebelStrength, rebelsOn, siphonDonor, siphonPass, siphonRateOf, startPurge, tech5Count } from '../src/sim/scenario/threats/giantworks/beaconSiphon';
@@ -5332,18 +5332,26 @@ describe('the Beacon (Giantworks wonder)', () => {
         scenarioEmit(g, 'builtObjectKilledBy', { builtObject: c1.ship, destroyer: other });
         expect(st.popEliminated).toBe(elim); // the interceptors killed them, not the Reclaimers (beaconCattleDeadCountPct 0)
         expect(st.stats.cattleKilled).toBe(1);
-        expect(st.stats.captivesKilled).toBe(c1.total);
+        // 70 % of the captives escape in pods (to the world they came from, which the Reclaimers hold: the nearest free colony), the rest die
+        expect(st.stats.captivesRescued).toBeGreaterThan(0.6 * c1.total);
+        expect(st.stats.captivesRescued).toBeLessThanOrEqual(0.7 * c1.total + 1);
+        expect(st.stats.captivesKilled! + st.stats.captivesRescued!).toBeCloseTo(c1.total, 0);
+        expect(podWorld(g, st, c1, c1.ship)!.empire).not.toBe(f);
+        const heldBy = c1.from.empire;
+        c1.from.empire = other; // a world of origin that is not held by the Reclaimers gets its people back
+        expect(podWorld(g, st, c1, c1.ship)).toBe(c1.from);
+        c1.from.empire = heldBy;
         if (c3 !== undefined) {
             g.scenario!.params.beaconCattleDeadCountPct = 100; // counted, when the setting says so
             scenarioEmit(g, 'builtObjectKilledBy', { builtObject: c3.ship, destroyer: other });
-            expect(st.popEliminated).toBe(elim + c3.total);
+            expect(st.popEliminated).toBeCloseTo(elim + 0.3 * c3.total, -1);
             delete g.scenario!.params.beaconCattleDeadCountPct;
         }
         // a cattle ship boarded: its captives are freed to the taker's worlds (the capture hook)
         const otherPop = other.colonies.reduce((a, c) => a + c.population.totalAmount, 0);
         expect(rescueCattle(g, st, c2.ship, other)).toBeGreaterThan(0);
         expect(other.colonies.reduce((a, c) => a + c.population.totalAmount, 0)).toBeGreaterThan(otherPop);
-        expect(st.stats.captivesRescued).toBe(c2.total);
+        expect(st.stats.captivesRescued!).toBeGreaterThanOrEqual(c2.total);
         // retaking the core: the pens go home with the world, and another held world becomes the core
         const pop = core.colony.population.totalAmount;
         takeOwnershipOfColonyFull(g, f, core.colony, victim, false, false);

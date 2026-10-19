@@ -721,6 +721,8 @@ export const P = {
     /** The captives killed with a destroyed cattle ship: this % of them count toward the Reclaimers' eliminated people (the loss measure; 0: the
      *  interceptors killed them, not the Reclaimers; they are gone from the galaxy all the same). */
     cattleDeadCountPct: (g: Galaxy) => p(g, 'beaconCattleDeadCountPct', 0),
+    /** A destroyed cattle ship: this % of its captives escape in pods (to their world of origin, else the nearest free colony); the rest die. */
+    cattleSurvivePct: (g: Galaxy) => Math.max(0, Math.min(100, p(g, 'beaconCattleSurvivePct', 70))),
     garrisonStrength: (g: Galaxy) => p(g, 'beaconGarrison', 150000),
     /** A siege this long (days) against a world the landing cannot take ends in a planet strike (chance %). */
     siegeDays: (g: Galaxy) => p(g, 'beaconSiegeDays', 150),

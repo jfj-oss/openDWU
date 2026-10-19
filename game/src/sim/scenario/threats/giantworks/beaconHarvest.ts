@@ -45,7 +45,7 @@ import { recalculateEmpirePopulation } from '../../../taxes';
 import { TroopList } from '../../../cargo';
 import { isHumanEmpire } from '../../../humanEmpires';
 import { GAME_DAY_LENGTH, registerScenarioQuery } from '../../hooks';
-import { scenarioText as T } from '../../messages';
+import { scenarioNews, scenarioText as T } from '../../messages';
 import { empireTechLevel } from '../robotMutiny';
 import { makeTroopsSplit } from '../factionNavy';
 import { arcMessage, arcNews, normalEmpires } from '../framework';
@@ -511,10 +511,57 @@ export function onCattleKilled(galaxy: Galaxy, st: BeaconState, bo: BuiltObject)
     list.splice(i, 1);
     noteIntercept(galaxy, st, c.from);
     releaseEscorts(galaxy, st, c, true);
-    st.popEliminated += (c.total * P.cattleDeadCountPct(galaxy)) / 100;
+    cattleDestroyed(galaxy, st, c, bo);
     st.stats.cattleKilled = (st.stats.cattleKilled ?? 0) + 1;
-    st.stats.captivesKilled = (st.stats.captivesKilled ?? 0) + c.total;
     return true;
+}
+
+/**
+ * The world the escape pods of a destroyed cattle ship reach: the world the people were taken from when it is not held by the Reclaimers, else
+ * the nearest non-Reclaimer colony of their (largest) race, else the nearest non-Reclaimer colony of any race. Pure.
+ */
+export function podWorld(galaxy: Galaxy, st: BeaconState, c: CattleRec, near: { xpos: number; ypos: number }): Habitat | null {
+    const ok = (h: Habitat): boolean => !h.hasBeenDestroyed && h.empire !== null && h.empire !== st.faction && h.empire.active;
+    if (ok(c.from)) return c.from;
+    const top = c.load.reduce<Captive | null>((b, x) => (b === null || x.amount > b.amount ? x : b), null);
+    let race: Habitat | null = null;
+    let any: Habitat | null = null;
+    let rd = Infinity;
+    let ad = Infinity;
+    const all: Habitat[] = [];
+    for (const e of normalEmpires(galaxy, st.faction)) for (const h of e.colonies) if (ok(h)) all.push(h);
+    for (const h of galaxy.independentColonies) if (ok(h) && h.empire === galaxy.independentEmpire) all.push(h);
+    for (const h of all) {
+        const d = galaxy.calculateDistance(h.xpos, h.ypos, near.xpos, near.ypos);
+        if (d < ad) {
+            ad = d;
+            any = h;
+        }
+        if (top !== null && h.population?.dominantRace?.name === top.race && d < rd) {
+            rd = d;
+            race = h;
+        }
+    }
+    return race ?? any;
+}
+
+/**
+ * A cattle ship was destroyed: beaconCattleSurvivePct % of its captives escape in pods to a world (podWorld) and count as rescued; the rest die
+ * (beaconCattleDeadCountPct % of those count as eliminated by the Reclaimers). The destroyer loses no reputation.
+ */
+function cattleDestroyed(galaxy: Galaxy, st: BeaconState, c: CattleRec, near: { xpos: number; ypos: number }): void {
+    const frac = Math.max(0, Math.min(1, P.cattleSurvivePct(galaxy) / 100));
+    const world = frac > 0 ? podWorld(galaxy, st, c, near) : null;
+    let saved = 0;
+    if (world !== null) {
+        const pods = c.load.map((x) => ({ race: x.race, amount: x.amount * frac }));
+        saved = releaseCaptives(galaxy, st, pods, near, null, world);
+    }
+    const dead = Math.max(0, c.total - saved);
+    st.popEliminated += (dead * P.cattleDeadCountPct(galaxy)) / 100;
+    st.stats.captivesKilled = (st.stats.captivesKilled ?? 0) + dead;
+    st.stats.captivesRescued = (st.stats.captivesRescued ?? 0) + saved;
+    if (world !== null && saved > 0) scenarioNews(galaxy, null, T('Beacon Pods News', world.name, Math.max(1, Math.round(saved / 1e6)).toLocaleString('en-US'), c.from.name), (e) => isHumanEmpire(galaxy, e), world);
 }
 
 /**
@@ -704,9 +751,8 @@ function driveCattle(galaxy: Galaxy, st: BeaconState): void {
             // destroyed without a kill event (a collision, a teardown): the captives are lost all the same
             noteIntercept(galaxy, st, c.from);
             releaseEscorts(galaxy, st, c, true);
-            st.popEliminated += (c.total * P.cattleDeadCountPct(galaxy)) / 100;
+            cattleDestroyed(galaxy, st, c, bo);
             st.stats.cattleKilled = (st.stats.cattleKilled ?? 0) + 1;
-            st.stats.captivesKilled = (st.stats.captivesKilled ?? 0) + c.total;
             continue;
         }
         if (bo.actualEmpire !== faction) {
