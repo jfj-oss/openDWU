@@ -9,14 +9,19 @@ Needs Python 3 with numpy; ffmpeg (libvorbis) for the .ogg (without it only the 
 fixed seed; ffmpeg runs bit-exact with no metadata). src/audio/beaconBlast.ts plays it, BLAST_AT_S into the launch
 sequence (src/render/beaconRelayFx.ts LAUNCH: the file starts with the charge pulses, its blast lands on the ignition).
 
-The sound (44.1 kHz stereo, about 15 s with the tail):
+The sound (44.1 kHz stereo, 17.6 s with the tail, ending with the visuals at LAUNCH.end):
 - The charge (0 - 2.9 s): a sub rumble swelling up from 28 Hz, a cluster of detuned buzzing partials sweeping up from
-  110 Hz to 880 Hz under a tremolo that speeds up (the pulses racing down the prongs), crackle growing denser, a last
-  rising hiss sucked in, then 70 ms of near silence before the hit.
-- The blast (2.9 s): a noise burst and a kick that drops from 90 Hz to 28 Hz; then the blare, a low distorted brass
-  chord on D1 / A1 / D2 (36.7, 55, 73.4 Hz; additive saws through two bell formants) that holds and sags as the beam
-  burns, a lowpassed roar turning at about 3 Hz (the vortex), inharmonic metal ringing; it all decays from about 8.8 s.
-- A soft clip, then a long, dark convolution reverb (about 5 s to -60 dB).
+  70 Hz under a tremolo that speeds up, four heavy mechanical slams on the charge pulses (0, 0.5, 1.0, 1.5 s: a deep
+  thump, a metal-plate ring, a hiss of venting gas, each heavier), crackle growing denser, a rising hiss sucked in,
+  then 70 ms of near silence before the hit.
+- The blast (2.9 s): a wideband crack, a noise burst and a kick that drops from 90 Hz to 28 Hz; the blare, a low
+  distorted brass chord on D1 / A1 / D2 that holds and sags as the beam burns, a darker scream on D2 / A2 / D3 above it,
+  a sizzle and a lowpassed roar turning at about 3 Hz (the vortex), inharmonic metal ringing; it all decays from about
+  8.8 s.
+- Digital corruption across the charge and the burn: 2-bit sample-held noise in stutter bursts, square-wave data blips
+  and dense crackle, densest at the hit, thinning as the beam decays.
+- A soft clip, a shorter dark convolution reverb, a 32 Hz highpass and a soft limiter (user, 2026-10-19: "more
+  intense", "not gamey or high pitched", "add digital noise/crackling", charge pulses as mechanical slams).
 """
 import argparse
 import math
@@ -31,7 +36,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 GAME = os.path.dirname(HERE)
 SR = 44100
 F64 = np.float64
-DUR = 12.5          # the dry sound (s); the reverb's tail follows
+DUR = 14.6          # the dry sound (s); the reverb's tail follows
 HIT = 2.9           # the blast (s into the file)
 
 
@@ -107,7 +112,7 @@ def charge(rng, t, side):
     sub = np.sin(2 * math.pi * np.cumsum(fsub) / SR) * (0.15 + 0.6 * k ** 2)
     rum = lowpass(rng.standard_normal(len(t)), 120) * (0.2 + 1.4 * k ** 2) * 0.6
     # the sweep: detuned buzzing partials, 110 Hz -> 880 Hz
-    f0 = 110 * 2 ** (3 * k ** 1.6)
+    f0 = 70 * 2 ** (2.3 * k ** 1.6)
     sweep = np.zeros(len(t))
     for dc in (-18.0, -7.0, 0.0, 6.0, 13.0, 21.0):
         f = f0 * 2 ** ((dc + side * 3) / 1200)
@@ -126,7 +131,24 @@ def charge(rng, t, side):
     # the suck: a hiss rising over the last 0.4 s
     hk = np.clip((t - (HIT - 0.45)) / 0.38, 0, 1)
     hiss = highpass(rng.standard_normal(len(t)), 1500) * hk ** 2 * 0.35
-    out = (sub + rum + sweep + crackle + hiss) * pre
+    # the four charge pulses racing down the prongs (0, 0.5, 1.0, 1.5 s into the file): rising zaps, each brighter
+    # the four charge pulses (0, 0.5, 1.0, 1.5 s): heavy mechanical slams, a capacitor bank locking in: a deep thump, a
+    # short metal-plate resonance and a hiss of venting gas, each heavier than the last
+    zap = np.zeros(len(t))
+    for i in range(4):
+        uz = t - 0.5 * i
+        onz = uz >= 0
+        uzc = np.maximum(uz, 0)
+        g = 0.6 + 0.18 * i
+        fk = 38 + 70 * np.exp(-uzc / 0.05)
+        thump = np.sin(2 * math.pi * np.cumsum(fk * onz) / SR) * np.exp(-uzc / 0.22) * onz
+        plate = np.zeros(len(t))
+        for (f, d) in ((97.0, 0.35), (163.0, 0.25), (251.0, 0.18), (389.0, 0.12)):
+            plate += np.sin(2 * math.pi * (f * (1 - 0.04 * i)) * uzc + rng.uniform(0, 6.28)) * np.exp(-uzc / d)
+        plate *= onz * np.clip(uzc / 0.003, 0, 1) * 0.28
+        vent = bandpass(rng.standard_normal(len(t)), 500, 2800) * np.exp(-np.maximum(uzc - 0.03, 0) / 0.18) * np.clip((uzc - 0.02) / 0.03, 0, 1) * onz * 0.22
+        zap += (thump * 1.3 + plate + vent) * g
+    out = (sub * 0.7 + rum * 0.6 + sweep * 2.2 + crackle * 1.4 + hiss * 2.0 + zap) * pre
     # the gap before the hit
     gap = np.clip((HIT - 0.07 - t) / 0.02, 0, 1)
     return out * gap
@@ -166,7 +188,39 @@ def blast(rng, t, side):
     for (f, d) in ((36.71 * 3.17, 2.5), (36.71 * 5.43, 1.6), (36.71 * 8.9, 1.1)):
         metal += np.sin(2 * math.pi * f * uu + rng.uniform(0, 6.28)) * np.exp(-uu / d)
     metal *= on * 0.12
-    return burst + kick + blare + roar + metal
+    # the crack: a wideband transient on the ignition, and the beam's sizzle while it burns
+    crack = highpass(rng.standard_normal(len(t)), 1800) * np.exp(-uu / 0.09) * np.clip(uu / 0.002, 0, 1) * on * 1.8
+    hold = env(u, [(-1, 0), (0, 0), (0.15, 1.0), (5.9, 0.85), (8.9, 0.2), (9.6, 0.0)]) * on
+    sizzle = bandpass(rng.standard_normal(len(t)), 900, 3800) * hold * (0.7 + 0.3 * np.sin(2 * math.pi * 7.3 * u + side)) * 0.3
+    # a scream an octave and two above the blare (D3 / A3), distorted: the beam's voice, audible on small speakers
+    scream = np.zeros(len(t))
+    for (f, g) in ((73.42, 1.0), (110.0, 0.75), (146.83, 0.4)):
+        for dc in (-14.0, 0.0, 12.0):
+            fi = f * 2 ** ((sag + dc + side * 4) / 1200)
+            ph = 2 * math.pi * np.cumsum(fi) / SR + rng.uniform(0, 6.28)
+            scream += saw(ph, fi, nh=40, tilt=1.25) * g / 3
+    scream = lowpass(np.tanh(1.8 * scream), 1600) * hold * 0.6
+    # digital corruption: bit-crushed, sample-held noise in bursts, data blips and stutter gates, densest at the hit and
+    # through the burn, thinning as the beam decays; across the charge it grows with it
+    dk = np.where(on, hold, np.clip(t / HIT, 0, 1) ** 2 * 0.45)
+    held = np.repeat(rng.uniform(-1, 1, len(t) // 37 + 1), 37)[:len(t)]          # ~1.2 kHz sample-and-hold
+    crushed = np.round(held * 3) / 3                                             # 2-bit
+    gate = np.repeat(rng.random(len(t) // 1100 + 1) < 0.35, 1100)[:len(t)]       # 25 ms stutter cells
+    glitch = crushed * gate * dk
+    blips = np.zeros(len(t))
+    for _ in range(140):
+        t0 = rng.uniform(0.3, HIT + 8.5)
+        i0 = int(t0 * SR); n0 = int(rng.uniform(0.004, 0.03) * SR)
+        f = rng.choice([180.0, 240.0, 330.0, 470.0, 620.0])
+        seg = np.sign(np.sin(2 * math.pi * f * np.arange(n0) / SR)) * rng.uniform(0.3, 1.0)
+        if i0 + n0 < len(t): blips[i0:i0 + n0] += seg
+    blips = lowpass(blips, 3500) * dk
+    dcrack = np.zeros(len(t))
+    hits = rng.random(len(t)) < (40 + 900 * dk) / SR
+    dcrack[hits] = rng.choice([-1.0, 1.0], hits.sum())
+    dcrack = bandpass(dcrack, 700, 5000) * 2.2 * (0.3 + dk)
+    digital = lowpass(glitch, 5000) * 0.32 + blips * 0.18 + dcrack * 0.5
+    return burst * 1.3 + kick * 1.3 + blare * 1.0 + roar * 0.75 + metal * 1.6 + crack * 0.8 + sizzle + scream + digital
 
 
 def impulse(rng, length_s=5.5, rt60=5.0):
@@ -194,7 +248,7 @@ def build():
     dry = []
     for side in (-1, 1):
         x = charge(rng, t, side) + blast(rng, t, side)
-        drive = 1.8
+        drive = 2.6
         x = np.tanh(drive * x * 0.6 + 0.05 * x * x) / math.tanh(drive)
         dry.append(x)
     irs = impulse(rng)
@@ -203,14 +257,17 @@ def build():
     for c in range(2):
         d = np.concatenate([dry[c], np.zeros(tail)])
         wet = fft_convolve(d, irs[c])[:len(d)]
-        out.append(d * 0.7 + wet * 0.6)
+        out.append(d * 0.85 + wet * 0.4)
     st = np.stack(out, -1)
     m = st.shape[0]
     fade = np.ones(m)
     k = int(SR * 1.0)
     fade[-k:] = np.linspace(1, 0, k) ** 2
     st *= fade[:, None]
-    st = np.stack([one_pole_lp(st[:, c], 11000) for c in range(2)], -1)
+    st = np.stack([one_pole_lp(st[:, c], 14000) for c in range(2)], -1)
+    # tame the sub mud under 35 Hz, keep it loud: a gentle highpass then a soft limiter
+    st = np.stack([highpass(st[:, c], 32, order=1) for c in range(2)], -1)
+    st = np.tanh(1.6 * st / np.max(np.abs(st))) / math.tanh(1.6)
     st *= 10 ** (-1 / 20) / np.max(np.abs(st))
     return st
 
