@@ -278,7 +278,9 @@ export interface CattleRec {
     total: number;
     launched: number;
     phase?: CattlePhase;
-    /** The star date the loading at `from` is done. */
+    /** Set on a ship from a save before the shuttle (no `phase`): a ship beyond its pool's size is retired once it has docked and unloaded. */
+    legacy?: boolean;
+    /** The star date the loading at `from` is done; for a laden ship at its core, the star date the unloading is (beaconCattleUnloadDays). */
     loadUntil?: number;
     /** Warships escorting it (beaconHarvest.ts assignEscorts), and those of them built for it (they join the reserve when it docks). */
     escorts?: BuiltObject[];
@@ -404,6 +406,7 @@ export interface BeaconStats {
     cattleSpawned?: number;
     cattleOrdered?: number;
     cattleRebuilt?: number;
+    cattleRetired?: number;
     cattleRunsAborted?: number;
     captivesKilled?: number;
     captivesFreed?: number;
@@ -765,6 +768,8 @@ export const P = {
     cattlePoolWorldsPer: (g: Galaxy) => Math.max(1, p(g, 'beaconCattlePoolWorldsPer', 1)),
     cattlePoolMax: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'beaconCattlePoolMax', 30))),
     cattleLoadDays: (g: Galaxy) => Math.max(0, p(g, 'beaconCattleLoadDays', 3)),
+    /** A laden ship docked at its core unloads this many game days later (it sits at the harvester meanwhile). */
+    cattleUnloadDays: (g: Galaxy) => Math.max(0, p(g, 'beaconCattleUnloadDays', 3)),
     cattleRepairDamagePct: (g: Galaxy) => Math.max(0, Math.min(100, p(g, 'beaconCattleRepairDamagePct', 20))),
     cattleRepairFactor: (g: Galaxy) => Math.max(0.01, p(g, 'beaconCattleRepairFactor', 1)),
     cattleFieldRepairFactor: (g: Galaxy) => Math.max(0.01, p(g, 'beaconCattleFieldRepairFactor', 0.1)),

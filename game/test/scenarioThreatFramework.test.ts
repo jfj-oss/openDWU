@@ -5378,6 +5378,13 @@ describe('the Beacon (Giantworks wonder)', () => {
         cattle.ship.xpos = first.xpos + 1000;
         cattle.ship.ypos = first.ypos;
         harvestPeriodic(g, st);
+        // it sits at the harvester for beaconCattleUnloadDays first: the people are still aboard
+        expect(cattle.phase).toBe('in');
+        expect(cattle.total).toBe(carried);
+        expect(core.waiting).toBe(0);
+        expect(cattle.loadUntil).toBeCloseTo(galaxyStarDate(g) + 3 * GAME_DAY_LENGTH, -2);
+        g.nowMs += 3 * GAME_DAY_LENGTH;
+        harvestPeriodic(g, st);
         // ... and the ship stays: a pool ship of the core, empty, waiting for its next run
         expect(cattleOf(st).includes(cattle)).toBe(true);
         expect(cattle.ship.hasBeenDestroyed).toBe(false);
@@ -5606,6 +5613,9 @@ describe('the Beacon (Giantworks wonder)', () => {
         old.ship.xpos = first.xpos + 1000;
         old.ship.ypos = first.ypos;
         cattleStep(g, st);
+        expect(old.phase).toBe('in'); // unloading (beaconCattleUnloadDays)
+        g.nowMs += 3 * GAME_DAY_LENGTH;
+        cattleStep(g, st);
         expect(core.waiting).toBe(waiting + 3_000_000);
         expect(old.phase).toBe('idle');
         expect(old.total).toBe(0);
@@ -5645,6 +5655,41 @@ describe('the Beacon (Giantworks wonder)', () => {
         lg.nowMs += 3 * GAME_DAY_LENGTH;
         cattleStep(lg, ls);
         expect(cattleOf(ls)).toContain(lo);
+    }, 900000);
+
+    it('cattle old saves: the surplus of the old one-ship-per-run model (more ships than the pool size) is retired after it unloads; the people are penned all the same; none vanishes laden', () => {
+        const { g, st } = completed();
+        const [first, second] = heldWorlds(g, st, 1);
+        const core = liveCores(st)[0];
+        const f = st.faction!;
+        expect(poolTarget(g, 1)).toBe(1);
+        const race = second.population.dominantRace!.name;
+        const old: CattleRec[] = [];
+        for (let i = 0; i < 4; i++) {
+            const ship = spawnShip(g, f, cattleDesign(g, f)!, first.xpos + 3000, first.ypos);
+            old.push({ ship, from: second, core: first, load: [{ race, amount: 1_000_000 }], total: 1_000_000, launched: galaxyStarDate(g) });
+        }
+        st.cattle = [...old];
+        delete st.cattleOrders;
+        const waiting = core.waiting;
+        for (let i = 0; i < 3; i++) {
+            cattleStep(g, st);
+            g.nowMs += 3 * GAME_DAY_LENGTH;
+            // a laden ship is always either still flying, unloading, or docked and empty: never gone with its people
+            for (const c of old) if (!c.ship.hasBeenDestroyed && c.total > 0) expect(cattleOf(st)).toContain(c);
+        }
+        cattleStep(g, st);
+        expect(core.waiting).toBe(waiting + 4_000_000); // every ship's people reached the pens
+        expect(poolOf(st, first)).toHaveLength(1);
+        expect(st.stats.cattleArrived).toBe(4);
+        expect(st.stats.cattleRetired).toBe(3);
+        expect(old.filter((c) => c.ship.hasBeenDestroyed)).toHaveLength(3);
+        const kept = old.find((c) => !c.ship.hasBeenDestroyed)!;
+        expect(cattleOf(st)).toEqual([kept]);
+        expect(kept.phase).toBe('idle');
+        expect(kept.legacy).toBeUndefined();
+        // and no order was made for the retired ones
+        expect(st.cattleOrders ?? []).toHaveLength(0);
     }, 900000);
 
     it('cattle escorts: free warships (the reserve) are ordered to escort, else escorts are built from the biofuel; the world with the most interceptions gets destroyers, then cruisers; the counts decay; the escorts return to patrol when the ship docks', () => {
@@ -5712,6 +5757,8 @@ describe('the Beacon (Giantworks wonder)', () => {
         const escorts = [...c1.escorts!];
         c1.ship.xpos = c1.core.xpos + 1000;
         c1.ship.ypos = c1.core.ypos;
+        harvestPeriodic(g, st);
+        g.nowMs += 3 * GAME_DAY_LENGTH; // (unloading, beaconCattleUnloadDays)
         harvestPeriodic(g, st);
         expect(c1.escorts).toEqual([]);
         for (const e of escorts) {

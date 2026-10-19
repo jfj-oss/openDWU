@@ -7,12 +7,12 @@
 //   CATTLE SHIPS: each core keeps a POOL of huge armoured freighters (one per beaconCattlePoolWorldsPer of the held worlds that feed it, at most
 //     beaconCattlePoolMax) that shuttle: an idle, mended ship flies to the most overdue feeder world (each is due a collection every
 //     beaconCattleDays), loads beaconCattleLoadPct % of the people it had when taken over beaconCattleLoadDays, flies them to the core (spool,
-//     escorts, escape pods), unloads into the pens and goes back for the next run. A damaged ship stays at its core to mend (slowly: away from
+//     escorts, escape pods), sits at the harvester beaconCattleUnloadDays, unloads into the pens and goes back for the next run. A damaged ship stays at its core to mend (slowly: away from
 //     it the mending is slower still). A cattle ship destroyed kills its captives but for the escape pods (no reputation is lost for it); one boarded
 //     and taken frees them all (rescueCattle, the hook for a future shared capture feature) to the taker's nearest worlds; either way the pool is a
 //     ship short until a replacement, paid from the fleet biofuel, is built beaconCattleBuildDays later at the core. The shuttle steps every
-//     2 days (CATTLE_STEP_DAYS, a frame periodic) and with each reclamation pass. Saves from before the shuttle: a ship in flight becomes a
-//     pool ship of its target core and joins the loop once it has docked.
+//     2 days (CATTLE_STEP_DAYS, a frame periodic) and with each reclamation pass. Saves from before the shuttle (one ship per run, scrapped at the dock): a ship in
+//     flight becomes a pool ship of its target core and joins the loop once it has docked; those beyond the pool's size are retired after unloading.
 //   PROCESSING (monthly): once its harvester is built (beaconCoreBuildDays), a core renders beaconCoreProcessPct % of its pens, and its own people over beaconCoreDrainMonths, into BIOFUEL:
 //     beaconFuelPerBillionPct % of the reference military in fleet strength per billion people. Processed people are eliminated
 //     (the 80 % loss measure). A core whose harvester is destroyed is BROKEN, and one retaken is lost: either way its pens are freed and
@@ -605,6 +605,7 @@ function loadShip(galaxy: Galaxy, st: BeaconState, c: CattleRec, rec: ProcessRec
     c.total = n;
     c.launched = now;
     c.phase = 'in';
+    c.loadUntil = undefined;
     rec.drained += n;
     st.stats.cattleLaunched = (st.stats.cattleLaunched ?? 0) + 1;
     if ((h.population?.totalAmount ?? 0) <= floor * 1.05) rec.done = true;
@@ -621,8 +622,26 @@ function unloadShip(galaxy: Galaxy, st: BeaconState, c: CattleRec, core: CoreRec
     releaseEscorts(galaxy, st, c, false);
     c.load = [];
     c.total = 0;
+    c.loadUntil = undefined;
     c.phase = 'idle';
     c.from = core.colony;
+}
+
+/**
+ * A ship from a save before the shuttle (the old model made one ship per run and scrapped it at the dock) is kept as a pool ship, but only up to
+ * the size of its core's pool: the surplus is retired once it has unloaded (as it was before), instead of idling at the core for ever.
+ * True when the ship was retired (removed from the pool and torn down).
+ */
+function retireSurplus(galaxy: Galaxy, st: BeaconState, c: CattleRec, core: CoreRec): boolean {
+    if (c.legacy !== true) return false;
+    c.legacy = undefined;
+    const target = poolTarget(galaxy, feedersOf(galaxy, st).get(core.colony)?.length ?? 0);
+    if (poolOf(st, core.colony).length <= target) return false;
+    const list = cattleOf(st);
+    list.splice(list.indexOf(c), 1);
+    builtObjectCompleteTeardown(galaxy, c.ship);
+    st.stats.cattleRetired = (st.stats.cattleRetired ?? 0) + 1;
+    return true;
 }
 
 /** No core is left: a ship with people aboard takes them back to the nearest held world's population (or frees them when none is held); an empty one waits. */
@@ -670,8 +689,15 @@ function driveShip(galaxy: Galaxy, st: BeaconState, c: CattleRec, now: number): 
     let ph = phaseOf(c);
     c.phase = ph;
     if (ph === 'in') {
-        if (atCore) unloadShip(galaxy, st, c, core);
-        else {
+        if (atCore) {
+            // docked: it sits at the harvester beaconCattleUnloadDays, then the people are penned
+            c.loadUntil ??= now + days(P.cattleUnloadDays(galaxy));
+            if (now >= c.loadUntil) {
+                unloadShip(galaxy, st, c, core);
+                retireSurplus(galaxy, st, c, core);
+            } else sail(galaxy, bo, home);
+        } else {
+            c.loadUntil = undefined;
             sail(galaxy, bo, home);
             driveEscorts(galaxy, c);
         }
@@ -716,13 +742,14 @@ export function cattleStep(galaxy: Galaxy, st: BeaconState): void {
     // the lost and the taken (the kill / board events do this at once; a ship lost without an event is found here); old saves get their phase
     const alive: CattleRec[] = [];
     for (const c of cattleOf(st)) {
+        if (c.phase === undefined) c.legacy = true;
         c.phase = phaseOf(c);
         if (c.ship.hasBeenDestroyed) cattleLost(galaxy, st, c);
         else if (c.ship.actualEmpire !== faction) cattleTaken(galaxy, st, c, c.ship.actualEmpire);
         else alive.push(c);
     }
     st.cattle = alive;
-    for (const c of alive) driveShip(galaxy, st, c, now);
+    for (const c of [...alive]) driveShip(galaxy, st, c, now); // (a surplus old-save ship may leave the pool as it docks)
     // replacements: paid when the fleet biofuel allows (the build clock starts then), then built at the core
     const cores = liveCores(st);
     const orders = orderOf(st);

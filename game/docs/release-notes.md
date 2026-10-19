@@ -4,6 +4,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **Beacon cattle ships dock and unload visibly.** A laden cattle ship now sits at the harvester for 3 days before its people are penned (it used to unload the moment it arrived and, in saves from before the fleets, was scrapped at once, so it looked as if the ships vanished with their cargo). Old-save cattle ships beyond a core's pool size are retired after they unload instead of piling up idle. Only with the Beacon on.
 - **The whole Rim expansion is now in Work in progress.** New Fauna and the Voidbloom War join the other Rim add-ons there (the Voidbloom War needs Rim Trade, already in progress); the Rim group no longer shows under Recommended.
 - **A new, heavier sound for the Beacon's mega beam.** Four mechanical slams on the charge pulses, a crack on ignition, a darker roar and scream while the beam burns, and digital corruption and crackle through it; it now runs the full 17.6 s of the launch.
 - **The Beacon can be destroyed, and its guard patrols.** The station's armour plates no longer shrug off every weak hit (beams lose damage with range and fell below the plates' reactive rating, so a fleet of ordinary beams could never hurt it once its shields were down). Its guard ships now roam the Beacon's system, one in three holding the station and the rest taking the worlds in turn, and strays are called back. Only with the Beacon on.
