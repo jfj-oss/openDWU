@@ -152,6 +152,7 @@ const GROUP_OF: Readonly<Record<string, AddonGroup>> = {
     mothballing: 'Other',
     'slow-hyperdrive': 'Other',
     veterans: 'Other',
+    beaching: 'Other',
     'bvr-combat': 'Other',
     'decoys-chaff': 'Other',
     'ambush-strike': 'Other',
@@ -187,7 +188,7 @@ export const HIDDEN_ADDONS: ReadonlySet<string> = new Set(['threat-framework', '
  * Add-ons set on another wizard page (not listed on the Scenario page, but named in the summaries like any other):
  * Smarter AI and Orbital superiority live on the Other Empires page (withSmarterAI / withOrbitalSuperiority below).
  */
-export const ELSEWHERE_ADDONS: ReadonlySet<string> = new Set(['smarter-ai', 'orbital-superiority', 'longer-ground-combat', 'jump-interdiction', 'blockades-bite', 'mothballing', 'slow-hyperdrive', 'fighting-retreats', 'veterans', 'coordinated-landings']);
+export const ELSEWHERE_ADDONS: ReadonlySet<string> = new Set(['smarter-ai', 'orbital-superiority', 'longer-ground-combat', 'jump-interdiction', 'blockades-bite', 'mothballing', 'slow-hyperdrive', 'fighting-retreats', 'veterans', 'beaching', 'coordinated-landings']);
 
 /** openDWU Classic: add-ons every game starts with (treated as base game: no picker). Smarter AI stays the Other Empires page's toggle. */
 export const CLASSIC_BASE_ADDONS: readonly string[] = ['themed-names', 'event-log'];
@@ -335,6 +336,14 @@ export const VETERANS_ADDON_ID = 'veterans';
 /** The picks with the Other Empires page's Veterans checkbox folded in (StartGameOptions.veterans). Pure. */
 export function withVeterans(picked: readonly string[], overrides: AddonOverrides, on: boolean | null | undefined): { picked: string[]; overrides: AddonOverrides } {
     return withToggleAddon(picked, overrides, VETERANS_ADDON_ID, 'veterans', on);
+}
+
+/** The Beached ships gameplay change (scenarios/beaching; also under "Gameplay changes"). */
+export const BEACHING_ADDON_ID = 'beaching';
+
+/** The picks with the Other Empires page's Beached ships checkbox folded in (StartGameOptions.beaching). Pure. */
+export function withBeaching(picked: readonly string[], overrides: AddonOverrides, on: boolean | null | undefined): { picked: string[]; overrides: AddonOverrides } {
+    return withToggleAddon(picked, overrides, BEACHING_ADDON_ID, 'beaching', on);
 }
 
 /** The BVR combat gameplay change (scenarios/bvr-combat; also under "Gameplay changes"). */

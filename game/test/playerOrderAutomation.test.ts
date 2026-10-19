@@ -19,6 +19,20 @@ import { militaryPotency } from '../src/sim/diplomacyTick';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../src/sim/diplomacy';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
 import { YEAR_LENGTH } from '../src/sim/galaxyTime';
+import { BEACH_ACTION, CLEANUP_ACTION, beachingState, aiBeachChoice, beachCrewStrength, beachLossPct, beachShip, beachedAt, beachedInfoLine, beachedMayFire, cleanupCost, cleanupProgress, cleanupUnavailableReason, peekBeachingState, reviewBeachingEmpire, scarOf, scarPct, startCleanup } from '../src/sim/scenario/beaching/beaching';
+import { Troop, TroopList, TroopType } from '../src/sim/cargo';
+import { calculateForceStrengths } from '../src/sim/combat/invasion';
+import { declareWar } from '../src/sim/diplomacyTick';
+import { leaveShipGroup } from '../src/sim/fleets/shipGroup';
+import { buildActionMenu, type OrderMenuContext } from '../src/sim/player/orderMenu';
+import { disbandTroops, setTroopsGarrisoned } from '../src/sim/player/playerOrders';
+import { reviewColonyTroopGarrisonWith } from '../src/sim/troops';
+import { updateIndexesForMovement } from '../src/sim/movement';
+import { availableThreatActions, runThreatAction } from '../src/sim/scenario/threats/framework';
+import { planetaryFacilityDefinitionsStatic } from '../src/sim/construction/facilities';
+import { PlanetaryFacilityType, facilityType } from '../src/sim/researchSystem';
+import type { Empire } from '../src/sim/empire';
+import type { Galaxy } from '../src/sim/galaxy';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Game } from '../src/sim/game';
 import type { BuiltObject } from '../src/sim/builtObject';
@@ -964,5 +978,500 @@ describe('Veterans add-on: the Make flagship order', () => {
         // no add-on, no slot
         const stock = cachedTickGame(gameData, { seconds: 60 });
         expect(flagshipSlot(stock.galaxy, stock.playerEmpire, { builtObject: other })).toBeNull();
+    }, 300000);
+});
+
+describe('Beached ships add-on: a warship crash-landed on its colony', () => {
+    function warships(e: Empire): BuiltObject[] {
+        return e.builtObjects.filter((b) => b.role === BuiltObjectRole.Military && b.builtAt === null && b.topSpeed > 0 && b.firepowerRaw > 0 && !b.hasBeenDestroyed);
+    }
+    /** Another empire with at least `n` warships. */
+    function aiWithShips(g: Galaxy, player: Empire, n: number): Empire {
+        const e = g.empires.find((x) => x && x !== player && x !== g.independentEmpire && x.active && x.pirateEmpireBaseHabitat === null && warships(x).length >= n);
+        expect(e).toBeDefined();
+        return e!;
+    }
+    /** The fired-at time of a ship's newest shot (rises while it fires). */
+    const lastShot = (b: BuiltObject): number => Math.max(...b.weapons.map((w) => w.lastFired));
+    /** Puts a ship at a point, and in the galaxy's spatial index there. */
+    function place(g: Galaxy, b: BuiltObject, x: number, y: number): void {
+        const ix = g.resolveIndexX(b.xpos);
+        const iy = g.resolveIndexY(b.ypos);
+        b.xpos = x;
+        b.ypos = y;
+        updateIndexesForMovement(g, b, ix, iy, false);
+    }
+    function giveTerraforming(g: Galaxy, e: Empire): void {
+        const def = planetaryFacilityDefinitionsStatic(g).find((f) => f != null && facilityType(f) === PlanetaryFacilityType.TerraformingFacility);
+        expect(def).toBeDefined();
+        if (!e.research!.buildablePlanetaryFacilities.includes(def!)) e.research!.buildablePlanetaryFacilities.push(def!);
+    }
+
+    it('the order: menu entry for an own warship at its colony, none without the add-on; the ship leaves its fleet, takes no orders, joins the garrison', () => {
+        const run = cachedScenarioGameRun(gameData, { scenario: 'beaching' });
+        const g = run.game.galaxy;
+        const p = run.game.playerEmpire;
+        const cap = p.capital!;
+        const [ship, other] = warships(p);
+        const ctx = (sel: BuiltObject | ShipGroup): OrderMenuContext => ({ galaxy: g, empire: p, selected: sel, cursorX: Math.trunc(cap.xpos), cursorY: Math.trunc(cap.ypos), zoomFactor: 1, pickAt: () => cap });
+        const item = buildActionMenu(ctx(ship)).find((i) => i.key === BEACH_ACTION);
+        expect(item).toBeDefined();
+        expect(item!.label).toBe('Beach on colony');
+        expect(item!.action!.actionType).toBe(ShipActionType.ScenarioThreatAction);
+        expect(item!.hint).toContain('quality');
+        // a fleet offers it for its lead ship
+        const fleet = executeShipAction(g, p, [ship, other], createShipAction(ShipActionType.CreateNewFleet, null), true).select as ShipGroup;
+        const fleetItem = buildActionMenu(ctx(fleet)).find((i) => i.key === BEACH_ACTION);
+        expect(fleetItem).toBeDefined();
+        expect(fleetItem!.action!.target).toBe(fleet.leadShip);
+        // too far from any colony: no entry
+        const lead = fleet.leadShip!;
+        const x0 = lead.xpos;
+        lead.xpos += 90000;
+        expect(buildActionMenu(ctx(lead)).some((i) => i.key === BEACH_ACTION)).toBe(false);
+        lead.xpos = x0;
+        // run it as the order does (the executor)
+        const defend0 = cap.troops!.totalDefendStrength;
+        const q0 = cap.baseQuality;
+        executeShipAction(g, p, fleet, fleetItem!.action!, true);
+        const beached = lead;
+        expect(beached.beached?.colony).toBe(cap);
+        expect(beached.shipGroup).toBeNull();
+        expect(beachedAt(g, cap)).toEqual([beached]);
+        expect(isAiControlled(beached)).toBe(false);
+        // no mission can be given any more
+        const before = beached.mission;
+        executeShipAction(g, p, beached, createMissionShipActionAt(BuiltObjectMissionType.Move, null, beached.xpos + 4000, beached.ypos), true);
+        expect(beached.mission).toBe(before);
+        expect(buildActionMenu(ctx(beached)).some((i) => i.key === BEACH_ACTION || i.key.startsWith('Move'))).toBe(false);
+        // the crew is a real, un-pick-up-able garrison unit
+        const crew = beached.beached!.crew!;
+        expect(crew.beached).toBe(true);
+        expect(crew.garrisoned).toBe(true);
+        expect(cap.troops!.contains(crew)).toBe(true);
+        expect(p.troops.contains(crew)).toBe(true);
+        expect(cap.troops!.totalDefendStrength).toBe(defend0 + crew.defendStrength * 100);
+        reviewColonyTroopGarrisonWith(p, cap, 100, 100); // a garrison review keeps it
+        expect(crew.garrisoned).toBe(true);
+        expect(setTroopsGarrisoned(p, [crew], false)).toBe(0);
+        expect(disbandTroops(p, [crew])).toBeDefined();
+        expect(cap.troops!.contains(crew)).toBe(true);
+        // the scar, and the info line
+        expect(cap.baseQuality).toBeLessThan(q0);
+        expect(scarPct(g, cap)).toBeCloseTo(beachLossPct(g, beached.size), 5);
+        expect(beachedInfoLine(g, cap, p)).toMatch(/^Beached: 1 ship \(−\d+% quality\)/);
+        // it sits by the planet and follows it, stopped
+        runGameSeconds(run.game, 30);
+        expect(Math.hypot(beached.xpos - cap.xpos, beached.ypos - cap.ypos)).toBeLessThan(cap.diameter + 200);
+        expect(beached.currentSpeed).toBe(0);
+        // a second beaching of the same ship is refused; the stock game offers nothing
+        expect(beachShip(g, p, beached, cap, 'human').ok).toBe(false);
+        const stock = cachedTickGame(gameData, { seconds: 60 });
+        const sp = stock.playerEmpire;
+        const sctx: OrderMenuContext = { galaxy: stock.galaxy, empire: sp, selected: warships(sp)[0], cursorX: 0, cursorY: 0, zoomFactor: 1, pickAt: () => sp.capital };
+        expect(buildActionMenu(sctx).some((i) => i.key === BEACH_ACTION)).toBe(false);
+    }, 300000);
+
+    it('defence: the crew adds to the stock ground maths, by hull size, armour and crew level; the hull fights on as a base', () => {
+        const run = cachedScenarioGameRun(gameData, { scenario: 'beaching' });
+        const g = run.game.galaxy;
+        const p = run.game.playerEmpire;
+        const cap = p.capital!;
+        const ships = warships(p).sort((a, b) => a.size - b.size);
+        expect(ships.length).toBeGreaterThanOrEqual(3);
+        const [small, , big] = ships;
+        expect(big.size).toBeGreaterThan(small.size);
+        // by size and armour (the defaults 0.35 / 0.5)
+        const str = (b: BuiltObject): number => beachCrewStrength(g, b);
+        expect(str(big)).toBeGreaterThan(str(small));
+        expect(str(small)).toBe(Math.trunc((small.size * 0.35 + small.armor * 0.5) * 0.88)); // a new crew is green: one step (12%) below average
+        // crew level: green below average, veteran above
+        const stats = { weaponsDamageToEnemy: 0, damageToUs: 0 };
+        small.careerBattleStats = stats;
+        const green = str(small);
+        stats.weaponsDamageToEnemy = 100;
+        const average = str(small);
+        stats.weaponsDamageToEnemy = 9000;
+        const vet = str(small);
+        expect(average).toBe(Math.trunc(small.size * 0.35 + small.armor * 0.5));
+        expect(green).toBeLessThan(average);
+        expect(vet).toBeGreaterThan(average);
+        small.careerBattleStats = null;
+        // the stock force maths: the defenders' strength rises by the crew's
+        const foe = aiWithShips(g, p, 1);
+        const raiders = new TroopList();
+        raiders.add(new Troop('r', TroopType.Infantry, 120, 120, 100, 100, foe, foe.dominantRace));
+        const before = calculateForceStrengths(g, cap, p, foe, cap.troops!, null, raiders, null).defendingStrength;
+        beachShip(g, p, big, cap, 'human');
+        const after = calculateForceStrengths(g, cap, p, foe, cap.troops!, null, raiders, null).defendingStrength;
+        expect(after).toBeGreaterThan(before);
+        // a damaged hull puts less ashore
+        const hurt = warships(p).find((b) => b !== big)!;
+        const full = str(hurt);
+        hurt.damagedComponentCount = hurt.components.items.length;
+        expect(str(hurt)).toBeLessThan(full);
+        hurt.damagedComponentCount = 0;
+    }, 300000);
+
+    it('guns: the beached ship fires at hostile ships in orbit, but not while troops are fighting on its colony; they resume when it is clear', () => {
+        const run = cachedScenarioGameRun(gameData, { scenario: 'beaching' });
+        const game = run.game;
+        const g = game.galaxy;
+        const p = game.playerEmpire;
+        const cap = p.capital!;
+        const ship = warships(p)[2];
+        beachShip(g, p, ship, cap, 'human');
+        const foeE = aiWithShips(g, p, 2);
+        declareWar(g, foeE, p);
+        const foes = warships(foeE).slice(0, 2);
+        for (const f of foes) {
+            f.isAutoControlled = false;
+            if (f.shipGroup !== null) leaveShipGroup(g, f);
+            f.topSpeed = 0;
+            f.canHyperJump = false;
+        }
+        const stage = (): void => {
+            for (const f of foes) {
+                f.xpos = ship.xpos + 150;
+                f.ypos = ship.ypos + 100;
+                f.currentShields = 1000;
+                if (!ship.attackers!.includes(f)) ship.attackers!.push(f);
+            }
+        };
+        const step = (n: number): void => {
+            for (let i = 0; i < n; i++) {
+                stage();
+                runGameSeconds(game, 1);
+            }
+        };
+        step(2);
+        let shot = lastShot(ship);
+        step(3);
+        expect(lastShot(ship)).toBeGreaterThan(shot); // an open orbit: it fires
+        // troops landed: the crew is on the ground, the guns are cold
+        const t = new Troop('invader', TroopType.Infantry, 100000, 100, 100, 100, foeE, foeE.dominantRace);
+        cap.invadingTroops = new TroopList();
+        cap.invadingTroops.add(t);
+        expect(beachedMayFire(ship)).toBe(false);
+        shot = lastShot(ship);
+        step(3);
+        expect(lastShot(ship)).toBe(shot);
+        // the battle is over (the colony holds): it fires again
+        cap.invadingTroops = null;
+        expect(beachedMayFire(ship)).toBe(true);
+        step(3);
+        expect(lastShot(ship)).toBeGreaterThan(shot);
+    }, 300000);
+
+    it('guns: it engages hostile ships in orbit that are not shooting at it (a base\'s defence), until a ground battle starts', () => {
+        const run = cachedScenarioGameRun(gameData, { scenario: 'beaching' });
+        const game = run.game;
+        const g = game.galaxy;
+        const p = game.playerEmpire;
+        const cap = p.capital!;
+        const ship = warships(p)[2];
+        beachShip(g, p, ship, cap, 'human');
+        const foeE = aiWithShips(g, p, 2);
+        declareWar(g, foeE, p);
+        const foes = warships(foeE).slice(0, 3);
+        for (const f of foes) {
+            f.isAutoControlled = false;
+            if (f.shipGroup !== null) leaveShipGroup(g, f);
+            f.topSpeed = 0;
+            f.canHyperJump = false;
+            f.weapons.length = 0; // unarmed in fact: they never shoot, so the ship has no attacker to answer
+        }
+        const stage = (): void => {
+            for (const f of foes) {
+                place(g, f, ship.xpos + 200, ship.ypos + 100);
+                f.nearestSystemStar = ship.nearestSystemStar;
+                f.currentShields = 1000;
+            }
+        };
+        const step = (n: number): void => {
+            for (let i = 0; i < n; i++) {
+                stage();
+                runGameSeconds(game, 1);
+            }
+        };
+        const shot0 = lastShot(ship);
+        step(10);
+        expect(ship.attackers!.length).toBe(0);
+        expect(lastShot(ship)).toBeGreaterThan(shot0); // it fired on ships that were only there
+        expect(foes.some((f) => f.currentShields < 1000)).toBe(true);
+        // a ground battle: cold
+        const t = new Troop('invader', TroopType.Infantry, 100000, 100, 100, 100, foeE, foeE.dominantRace);
+        cap.invadingTroops = new TroopList();
+        cap.invadingTroops.add(t);
+        const shot = lastShot(ship);
+        for (let i = 0; i < 5; i++) {
+            if (cap.invadingTroops === null || cap.invadingTroops.count === 0) {
+                cap.invadingTroops = new TroopList();
+                cap.invadingTroops.add(t);
+            }
+            stage();
+            runGameSeconds(game, 0.2);
+            expect(lastShot(ship)).toBe(shot);
+        }
+    }, 300000);
+
+    it('quality loss by size (2% to 8%), at most 4 ships and the 20% cap; the scar outlives a destroyed hull', () => {
+        const run = cachedScenarioGameRun(gameData, { scenario: 'beaching' });
+        const g = run.game.galaxy;
+        const p = run.game.playerEmpire;
+        // the size scale
+        expect(beachLossPct(g, 100)).toBe(2);
+        expect(beachLossPct(g, 150)).toBe(2);
+        expect(beachLossPct(g, 525)).toBeCloseTo(5, 6);
+        expect(beachLossPct(g, 900)).toBe(8);
+        expect(beachLossPct(g, 3000)).toBe(8);
+        // a colony with many warships: the AI with the most
+        const e = g.empires.filter((x) => x && x !== p && x !== g.independentEmpire && x.active && x.pirateEmpireBaseHabitat === null).sort((a, b) => warships(b!).length - warships(a!).length)[0]!;
+        const col = e.capital!;
+        const ships = warships(e);
+        expect(ships.length).toBeGreaterThanOrEqual(5);
+        for (const s of ships) {
+            s.xpos = col.xpos + 100;
+            s.ypos = col.ypos;
+            if (s.shipGroup !== null) leaveShipGroup(g, s);
+        }
+        const q0 = col.baseQuality;
+        const res = ships.slice(0, 5).map((s) => beachShip(g, e, s, col, 'human'));
+        expect(res.map((r) => r.ok)).toEqual([true, true, true, true, false]); // four at most
+        expect(beachedAt(g, col).length).toBe(4);
+        const expected = ships.slice(0, 4).reduce((a, s) => a + beachLossPct(g, s.size), 0);
+        expect(scarPct(g, col)).toBeCloseTo(Math.min(20, expected), 3);
+        expect(col.baseQuality / q0).toBeCloseTo(1 - Math.min(20, expected) / 100, 4);
+        // the slots are distinct
+        expect(new Set(beachedAt(g, col).map((b) => b.beached!.slot)).size).toBe(4);
+        // destroyed hull: the crew is gone, the scar stays
+        const victim = beachedAt(g, col)[0];
+        const crew = victim.beached!.crew!;
+        const lost = scarPct(g, col);
+        victim.hasBeenDestroyed = true;
+        runGameSeconds(run.game, 10);
+        expect(col.troops!.contains(crew)).toBe(false);
+        expect(beachedAt(g, col).length).toBe(3);
+        expect(scarPct(g, col)).toBeCloseTo(lost, 6);
+        expect(beachedInfoLine(g, col, e)).toMatch(/^Beached: 3 ships/);
+    }, 300000);
+
+    it('the loss cap clamps the scar', () => {
+        const run = cachedScenarioGameRun(gameData, { scenario: 'beaching' });
+        const g = run.game.galaxy;
+        const p = run.game.playerEmpire;
+        const col = p.capital!;
+        const ships = warships(p);
+        g.scenario!.params.beachMaxLossPct = 3;
+        const q0 = col.baseQuality;
+        for (const s of ships) expect(beachShip(g, p, s, col, 'human').ok).toBe(true);
+        // two 2.0..2.6% ships against a 3% cap: the scar stops at 3%
+        expect(scarPct(g, col)).toBeCloseTo(3, 3);
+        expect(col.baseQuality / q0).toBeCloseTo(0.97, 4);
+        expect(beachedAt(g, col).length).toBe(ships.length);
+        g.scenario!.params.beachMaxLossPct = 20;
+    }, 300000);
+
+    it('cleanup: needs terraforming technology and money, restores the quality evenly, costs per point, the wrecks stay; the AI cleans up when quiet and affordable', () => {
+        const run = cachedScenarioGameRun(gameData, { scenario: 'beaching' });
+        const game = run.game;
+        const g = game.galaxy;
+        const p = game.playerEmpire;
+        const col = p.capital!;
+        const [a, b] = warships(p);
+        beachShip(g, p, a, col, 'human');
+        beachShip(g, p, b, col, 'human');
+        const q1 = col.baseQuality;
+        const pct = scarPct(g, col);
+        expect(pct).toBeGreaterThan(3);
+        // menu entry only with the scar and the tech's order; refused without the technology
+        expect(cleanupUnavailableReason(g, p, col)).toMatch(/terraforming/);
+        expect(runThreatAction(g, p, CLEANUP_ACTION, col)).toBe(false);
+        giveTerraforming(g, p);
+        p.stateMoney = 0;
+        expect(cleanupUnavailableReason(g, p, col)).toMatch(/Not enough money/);
+        const cost = cleanupCost(g, col);
+        expect(cost).toBe(Math.round(25000 * pct));
+        p.stateMoney = cost + 5;
+        expect(availableThreatActions(g, p, col).some((t) => t.kind === CLEANUP_ACTION)).toBe(true);
+        g.scenario!.params.beachCleanupDays = 20; // 20 game days (about 35 s) instead of a year
+        expect(runThreatAction(g, p, CLEANUP_ACTION, col)).toBe(true);
+        expect(p.stateMoney).toBeCloseTo(5, 6);
+        expect(availableThreatActions(g, p, col).some((t) => t.kind === CLEANUP_ACTION)).toBe(false);
+        expect(cleanupProgress(g, col)).toBe(0);
+        runGameSeconds(game, 17);
+        const mid = cleanupProgress(g, col)!;
+        expect(mid).toBeGreaterThan(0.2);
+        expect(mid).toBeLessThan(0.9);
+        expect(beachedInfoLine(g, col, p)).toMatch(new RegExp(`cleanup ${Math.round(mid * 100)}%`));
+        expect(col.baseQuality).toBeGreaterThan(q1);
+        runGameSeconds(game, 40);
+        expect(cleanupProgress(g, col)).toBeNull();
+        expect(scarPct(g, col)).toBeCloseTo(0, 6);
+        expect(col.baseQuality).toBeCloseTo(q1 + (q1 / (1 - pct / 100)) * (pct / 100), 4);
+        // the wrecks stay and keep their crews
+        expect(beachedAt(g, col).length).toBe(2);
+        expect(beachedInfoLine(g, col, p)).toBe('Beached: 2 ships');
+        // an AI empire starts the cleanup by itself once it is quiet and can afford 3 times the cost
+        const e = aiWithShips(g, p, 1);
+        const ec = e.capital!;
+        const es = warships(e)[0];
+        es.xpos = ec.xpos + 50;
+        es.ypos = ec.ypos;
+        if (es.shipGroup !== null) leaveShipGroup(g, es);
+        beachShip(g, e, es, ec, 'ai');
+        giveTerraforming(g, e);
+        const st = peekBeachingState(g)!;
+        e.stateMoney = 1;
+        reviewBeachingEmpire(g, st, e, galaxyStarDate(g));
+        expect(scarOf(g, ec)!.cleanup).toBeUndefined(); // cannot afford it
+        e.stateMoney = cleanupCost(g, ec) * 4;
+        reviewBeachingEmpire(g, st, e, galaxyStarDate(g));
+        expect(scarOf(g, ec)!.cleanup).toBeDefined();
+        expect(st.stats.aiCleanups).toBe(1);
+    }, 300000);
+
+    it('AI: a very last resort only (valuable colony, overwhelming invasion, orbit certain to fall, a trapped or damaged ship), one ship, a small loss', () => {
+        const run = cachedScenarioGameRun(gameData, { scenario: 'beaching' });
+        const g = run.game.galaxy;
+        const p = run.game.playerEmpire;
+        const e = aiWithShips(g, p, 2);
+        const foe = g.empires.find((x) => x && x !== e && x !== p && x !== g.independentEmpire && x.active && x.pirateEmpireBaseHabitat === null && warships(x).length >= 2)!;
+        expect(foe).toBeDefined();
+        declareWar(g, foe, e);
+        declareWar(g, e, foe);
+        const col = e.capital!;
+        const now = galaxyStarDate(g);
+        const own = warships(e);
+        for (const s of own) {
+            place(g, s, col.xpos + 100, col.ypos);
+            if (s.shipGroup !== null) leaveShipGroup(g, s);
+        }
+        const st = beachingState(g);
+        expect(aiBeachChoice(g, e, col, st, now)).toEqual([]); // peace of mind: no invasion
+        // an overwhelming invasion: troops landed
+        const invaders = new TroopList();
+        invaders.add(new Troop('landed', TroopType.Infantry, 500, 100, 100, 100, foe, foe.dominantRace));
+        col.invadingTroops = invaders;
+        expect(aiBeachChoice(g, e, col, st, now)).toEqual([]); // ...but no hostile fleet above: the orbit is not lost
+        // hostile warships above, far stronger than ours
+        const raiders = warships(foe).slice(0, 2);
+        const stageFoes = (fp: number): void => {
+            for (const r of raiders) {
+                place(g, r, col.xpos + 800, col.ypos);
+                r.firepowerRaw = fp;
+            }
+        };
+        stageFoes(100000);
+        expect(aiBeachChoice(g, e, col, st, now)).toEqual([]); // every ship of ours can escape and is whole
+        // a trapped ship (no hyperdrive) is the candidate; the smallest first
+        const sorted = own.slice().sort((a, b) => a.size - b.size);
+        sorted[0].canHyperJump = false;
+        sorted[1].canHyperJump = false;
+        let choice = aiBeachChoice(g, e, col, st, now);
+        expect(choice).toEqual([sorted[0]]); // one only
+        // the capital against more than twice its defence may give a second ship
+        invaders.items[0].setAttackStrength(1500);
+        expect(aiBeachChoice(g, e, col, st, now)).toEqual([sorted[0], sorted[1]]);
+        invaders.items[0].setAttackStrength(500);
+        // a badly damaged ship also counts
+        sorted[0].canHyperJump = true;
+        sorted[1].canHyperJump = true;
+        sorted[2].damagedComponentCount = Math.ceil(sorted[2].components.items.length * 0.6);
+        choice = aiBeachChoice(g, e, col, st, now);
+        expect(choice).toEqual([sorted[2]]);
+        // our own orbit is strong enough: nothing
+        stageFoes(1);
+        expect(aiBeachChoice(g, e, col, st, now)).toEqual([]);
+        stageFoes(100000);
+        // not enough troops to matter
+        col.invadingTroops = new TroopList();
+        col.invadingTroops.add(new Troop('few', TroopType.Infantry, 1, 1, 100, 100, foe, foe.dominantRace));
+        expect(aiBeachChoice(g, e, col, st, now)).toEqual([]);
+        col.invadingTroops = invaders;
+        // a colony that is not valuable is never beached on
+        const cap = e.capital;
+        e.capital = p.capital; // (any other colony: `col` is not its capital for the test)
+        g.scenario!.params.beachAIValuePct = 150;
+        expect(aiBeachChoice(g, e, col, st, now)).toEqual([]);
+        g.scenario!.params.beachAIValuePct = 12;
+        e.capital = cap;
+        // the full review beaches exactly one ship, once, and not again within the cooldown
+        reviewBeachingEmpire(g, st, e, now);
+        const s2 = peekBeachingState(g)!;
+        expect(beachedAt(g, col).length).toBe(1);
+        expect(s2.stats.ai).toBe(1);
+        expect(s2.stats.aiCapital).toBe(1);
+        expect(scarPct(g, col)).toBeLessThanOrEqual(16);
+        reviewBeachingEmpire(g, s2, e, now + GAME_DAY_LENGTH);
+        expect(beachedAt(g, col).length).toBe(1);
+        expect(JSON.stringify(s2.stats.reviews)).toContain('cooldown');
+        // the loss limit: a non-capital colony tops out at 10% (a 2nd ship of 8% would pass it), the capital at 16%
+        g.scenario!.params.beachAIMaxLossPct = 1;
+        g.scenario!.params.beachAIMaxLossCapitalPct = 1;
+        g.scenario!.params.beachAICooldownDays = 0;
+        sorted[3].canHyperJump = false; // a trapped candidate remains, but the scar is past the limit
+        const room = beachedAt(g, col).length;
+        reviewBeachingEmpire(g, s2, e, now + 3 * GAME_DAY_LENGTH);
+        expect(beachedAt(g, col).length).toBe(room); // the scar is already past 1%: no more
+        expect(s2.stats.reviews.lossCap).toBeGreaterThan(0);
+    }, 300000);
+
+    it('save / load keeps the beached ship, its crew, the scar and the cleanup under way', () => {
+        const run = cachedScenarioGameRun(gameData, { scenario: 'beaching' });
+        const game = run.game;
+        const g = game.galaxy;
+        const p = game.playerEmpire;
+        const col = p.capital!;
+        const ship = warships(p)[1];
+        const name = ship.name;
+        beachShip(g, p, ship, col, 'human');
+        giveTerraforming(g, p);
+        p.stateMoney = 1e9;
+        g.scenario!.params.beachCleanupDays = 40;
+        startCleanup(g, p, col, 'human');
+        runGameSeconds(game, 10);
+        const progress = cleanupProgress(g, col)!;
+        const start = { ...defaultStartGameOptions(), seed: 1, scenario: { id: 'beaching', flags: {}, params: {} } };
+        const loaded = deserializeGame(serializeGame(game, new GalaxyTime(), start), run.gameData).game;
+        const lg = loaded.galaxy;
+        const lp = loaded.playerEmpire;
+        const lcol = lp.capital!;
+        const lship = lp.builtObjects.find((b) => b.name === name)!;
+        expect(lship.beached?.colony).toBe(lcol);
+        expect(lship.beached?.slot).toBe(ship.beached!.slot);
+        expect(lship.shipGroup).toBeNull();
+        const lcrew = lship.beached!.crew!;
+        expect(lcrew.beached).toBe(true);
+        expect(lcrew.defendStrength).toBe(ship.beached!.crew!.defendStrength);
+        expect(lcol.troops!.contains(lcrew)).toBe(true);
+        expect(lcol.baseQuality).toBeCloseTo(col.baseQuality, 6);
+        expect(scarPct(lg, lcol)).toBeCloseTo(scarPct(g, col), 6);
+        expect(cleanupProgress(lg, lcol)).toBeCloseTo(progress, 6);
+        expect(beachedAt(lg, lcol)).toEqual([lship]);
+        expect(beachedInfoLine(lg, lcol, lp)).toBe(beachedInfoLine(g, col, p));
+        // the loaded game goes on: the cleanup finishes
+        runGameSeconds(loaded, 90);
+        expect(cleanupProgress(lg, lcol)).toBeNull();
+    }, 300000);
+
+    it('a conquered colony takes its beached hulks with it', () => {
+        const run = cachedScenarioGameRun(gameData, { scenario: 'beaching' });
+        const game = run.game;
+        const g = game.galaxy;
+        const p = game.playerEmpire;
+        const col = p.capital!;
+        const ship = warships(p)[0];
+        beachShip(g, p, ship, col, 'human');
+        const crew = ship.beached!.crew!;
+        const foe = aiWithShips(g, p, 1);
+        // the colony changes hands (set directly: the capital's loss would end the empire)
+        col.empire = foe;
+        col.owner = foe;
+        runGameSeconds(game, 10);
+        expect(ship.beached).toBeUndefined();
+        expect(p.builtObjects.includes(ship)).toBe(false);
+        expect(col.troops!.contains(crew)).toBe(false);
+        expect(peekBeachingState(g)!.stats.conquered).toBe(1);
     }, 300000);
 });

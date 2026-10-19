@@ -109,7 +109,7 @@ export function disbandTroops(player: Empire, selected: readonly Troop[]): numbe
         num--;
     }
     for (const troop of selected) {
-        if (troop == null || troop.empire !== player) continue;
+        if (troop == null || troop.empire !== player || troop.beached === true) continue; // beaching add-on: a beached ship's crew stays
         const colony = troop.colony as Habitat | null;
         if (colony !== null && colony.troops !== null && colony.troopsToRecruit !== null) {
             if (colony.troops.contains(troop)) colony.troops.remove(troop);
@@ -132,7 +132,7 @@ export function setTroopsGarrisoned(player: Empire, selected: readonly Troop[], 
     let changed = 0;
     for (const troop of selected) {
         const colony = troop?.colony as Habitat | null;
-        if (troop != null && troop.atColony && colony !== null && colony.empire === player) {
+        if (troop != null && troop.beached !== true && troop.atColony && colony !== null && colony.empire === player) {
             troop.garrisoned = garrisoned;
             changed++;
         }

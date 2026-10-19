@@ -200,6 +200,11 @@ export interface StartGameOptions {
      */
     veterans?: boolean;
     /**
+     * The Other Empires page's "Gameplay changes: Beached ships" checkbox (scenarios/beaching). Folded into `scenario`
+     * (addons.ts withBeaching); absent / false = off.
+     */
+    beaching?: boolean;
+    /**
      * LEGACY (kept so old settings and scripts still map): BVR combat was a "Gameplay changes" checkbox; it is now an add-on of the
      * Scenario page's Work in progress list. The wizard folds this key and the six below into the add-on picks and sub-options
      * (newGameWizard.ts legacyBvrChoice) and clears them; addons.ts withBvrCombat still reads it.

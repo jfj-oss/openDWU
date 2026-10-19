@@ -41,7 +41,7 @@ function parseArgs(argv) {
 
 const args = parseArgs(process.argv);
 const { platform, arch } = args;
-// openDWU Classic (--edition=classic or DWU_EDITION=classic): same code, only the themed-names, smarter-ai, event-log, orbital-superiority, longer-ground-combat, jump-interdiction, blockades-bite slow-hyperdrive, fighting-retreats, veterans and coordinated-landings
+// openDWU Classic (--edition=classic or DWU_EDITION=classic): same code, only the themed-names, smarter-ai, event-log, orbital-superiority, longer-ground-combat, jump-interdiction, blockades-bite slow-hyperdrive, fighting-retreats, veterans, beaching and coordinated-landings
 // add-ons, its own app id / product name / userData folder / file names, so both editions install side by side.
 const classic = (args.edition ?? process.env.DWU_EDITION) === 'classic';
 const exeName = classic ? 'dwu-classic' : 'dwu';

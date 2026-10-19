@@ -1521,7 +1521,8 @@ export function defendBase(galaxy: Galaxy, builtObject: BuiltObject, time: numbe
     const self = builtObject;
     let hyperDenyActive = false;
     let flag = false;
-    if (self.role !== BuiltObjectRole.Base && (self.subRole !== BuiltObjectSubRole.ResupplyShip || !self.isDeployed)) return;
+    // Mod layer (beaching): a beached ship defends its colony's orbit like a base (absent field = stock).
+    if (self.role !== BuiltObjectRole.Base && (self.subRole !== BuiltObjectSubRole.ResupplyShip || !self.isDeployed) && self.beached === undefined) return;
     const threats = (self.threats ?? []) as (StellarObject | FighterTargetLike | null)[];
     if ((self.firepowerRaw > 0 || self.fighterCapacity > 0) && self.threats !== null && threats.length > 0) {
         let allWeaponsAssigned = false;

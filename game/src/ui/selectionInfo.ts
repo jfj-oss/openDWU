@@ -11,6 +11,8 @@
 import { interceptOrderOf, watchStatusText } from '../sim/player/intercept';
 import { interdictionInfoLine } from '../sim/scenario/interdiction/jumpInterdiction';
 import { mothballStatusText } from '../sim/scenario/mothballing/mothballing';
+import { beachedInfoLine } from '../sim/scenario/beaching/beaching';
+import { groundBattleOn } from '../sim/scenario/beaching/types';
 import { fleetRetreatStatusText } from '../sim/scenario/fightingRetreats/fightingRetreats';
 import { bvrAmmoText } from '../sim/scenario/bvr/bvr';
 import { combat2StatusLines } from '../sim/scenario/combat2/status';
@@ -643,6 +645,8 @@ export function builtObjectInfo(ctx: InfoContext, bo: BuiltObject, extended = fa
             // Mothballing add-on: the ship's reserve state.
             const reserve = bo.mothball !== undefined ? mothballStatusText(galaxy, bo) : '';
             if (reserve !== '') rows.push({ kind: 'line', segs: [txt(reserve, QUEUED_COLOR)] });
+            // Beached ships add-on: the grounded fortress.
+            if (bo.beached !== undefined) rows.push({ kind: 'line', segs: [txt(`Beached on ${bo.beached.colony.name}${groundBattleOn(bo.beached.colony) ? ' (guns cold: ground battle)' : ''}`, QUEUED_COLOR)] });
             if (!extended) {
                 const queued = queuedMissionsText(bo.subsequentMissions as BuiltObjectMission[], actual ?? galaxy.independentEmpire);
                 if (queued !== null) rows.push({ kind: 'line', segs: [txt(queued, QUEUED_COLOR)], wrap: true });
@@ -1374,6 +1378,9 @@ export function habitatInfo(ctx: InfoContext, h: Habitat): InfoModel {
                 // Mod layer (blockades-bite): "Blockaded by X" under the tax line while the orbit is held.
                 const bite = blockadeInfo(galaxy, h);
                 if (bite !== null) rows.push(label('', [{ ...txt(`${bite.line} (${Math.floor(bite.days)} days, approval ${bite.approval.toFixed(1)})`, 0xff6040), title: 'Blockaded: the trade share of its taxes, space port trade income, construction and population growth have stopped until the orbit is free.' }]));
+                // Mod layer (beaching): "Beached: 2 ships (-9% quality), cleanup 40%".
+                const beached = galaxy.scenario !== null ? beachedInfoLine(galaxy, h, player) : null;
+                if (beached !== null) rows.push(label('', [{ ...txt(beached, 0xd0a060), title: 'Ships beached on this colony: each lowers its quality for good unless cleaned up (terraforming technology, the colony\'s Clean up order).' }]));
                 rows.push({ kind: 'gap', h: 4 });
             }
             // Facilities.

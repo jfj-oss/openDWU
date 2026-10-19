@@ -27,6 +27,7 @@ import { ORBITAL_GUARD_REASON, orbitalGuardBase } from '../combat/orbitalGuard';
 import { markNewOrders, snapshotOrders } from '../missions/playerOrder';
 import { availableThreatActions } from '../scenario/threats/framework';
 import { scenarioQuery } from '../scenario/hooks';
+import { BEACH_ACTION, beachColonyFor, beachPreviewPct, beachUnavailableReason, beachingOn } from '../scenario/beaching/beaching';
 import { isPrivateer } from '../scenario/privateers/privateers';
 import type { Galaxy } from '../galaxy';
 import { galaxyNow, spanSeconds } from '../tick/simTime';
@@ -1567,6 +1568,7 @@ function fleetActionMenu(ctx: OrderMenuContext, shipGroup: ShipGroup, items: Ord
         if (yard !== null) retrofit.children.push(targetItem(ctx, 'At nearest ship yard', T('At nearest ship yard'), base11, yard));
         if (retrofit.children.length > 0) items.push(retrofit);
     }
+    pushIf(items, beachMenuItem(ctx, lead)); // mod layer (beaching): the fleet's lead ship
     items.push(item310(ctx, 'Disband Fleet', T('Disband Fleet'), createShipAction(ShipActionType.DisbandShipGroup, shipGroup), true));
     const back = m315(ctx, BuiltObjectMissionType.Move, shipGroup.gatherPoint);
     back.position = { x: 0, y: 0 };
@@ -1954,6 +1956,7 @@ function builtObjectActionMenu(ctx: OrderMenuContext, builtObject6: BuiltObject,
 
 /** Main.Part8.cs 4133-4943: one of the player's ships is selected. */
 function shipActionMenu(ctx: OrderMenuContext, builtObject6: BuiltObject, items: OrderMenuItem[]): void {
+    if (builtObject6.beached !== undefined) return; // mod layer (beaching): a grounded fortress takes no orders
     const player = ctx.empire;
     const empire = builtObject6.empire!;
     const obj3 = ctx.pickAt(ctx.cursorX, ctx.cursorY, true);
@@ -2175,6 +2178,23 @@ function shipActionMenu(ctx: OrderMenuContext, builtObject6: BuiltObject, items:
         automate.actionType = ShipActionType.AutomateShip;
         items.push(item310(ctx, 'Automate', T('Automate'), automate, true));
     }
+    pushIf(items, beachMenuItem(ctx, builtObject6)); // mod layer (beaching)
+}
+
+/**
+ * Mod layer (beaching): "Beach on colony" for one of the player's warships at an own colony (null without the add-on, or when
+ * the ship cannot be beached). It runs as a ScenarioThreatAction on the ship (scenario/beaching/beaching.ts).
+ */
+function beachMenuItem(ctx: OrderMenuContext, ship: BuiltObject): OrderMenuItem | null {
+    const galaxy = ctx.galaxy;
+    if (galaxy.scenario === null || !beachingOn(galaxy) || ship.empire !== ctx.empire) return null;
+    const colony = beachColonyFor(galaxy, ctx.empire, ship);
+    if (colony === null || beachUnavailableReason(galaxy, ctx.empire, ship, colony) !== null) return null;
+    const a = createShipAction(ShipActionType.ScenarioThreatAction, ship);
+    a.extraData = BEACH_ACTION;
+    const pct = beachPreviewPct(galaxy, colony, ship);
+    a.hint = `Crash-land ${ship.name} on ${colony.name} as a fortress, for good: its crew joins the garrison, its guns defend the orbit until a ground battle starts; ${colony.name} loses ${pct.toFixed(1)}% quality.`;
+    return leaf(BEACH_ACTION, 'Beach on colony', a);
 }
 
 /** Main.Part8.cs 4480-4551: a pirate's construction ship over a habitat — "Build at X" (space ports, mining, generic bases, planet destroyers). */

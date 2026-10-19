@@ -935,7 +935,7 @@ export function reviewColonyTroopGarrisonWith(empire: Empire, colony: Habitat, r
     for (let l = 0; l < troops.count; l++) {
         const troop4 = troops.items[l];
         if (troop4 != null) {
-            troop4.garrisoned = troopList.contains(troop4);
+            troop4.garrisoned = troopList.contains(troop4) || troop4.beached === true; // beaching add-on: a beached ship's crew stays
         }
     }
 }

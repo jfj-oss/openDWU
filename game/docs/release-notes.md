@@ -92,6 +92,17 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
   friendly repair point, then resumes its duties (automated) or waits for orders ("3rd Fleet withdrew from Sol to repair
   at …"). AI fleets follow the same rule; ships keep the original's per-design Flee setting, and a fleet set to Flee:
   never fights on. The numbers are add-on parameters.
+- **Beached ships (new gameplay change, off by default):** a "Gameplay changes" checkbox on the Other Empires page (also in
+  the master switch, and allowed in openDWU Classic). A warship at one of your own colonies can be beached from the order
+  menu (select the ship or its fleet, right-click, Beach on colony): it crash-lands and becomes a grounded fortress for good,
+  never refloated. Its crew joins the colony's garrison as a troop unit (defend strength from the hull's size, armour and the
+  crew level), and its guns keep firing at hostile ships in orbit like a defensive base's, but only until a ground battle
+  starts on the colony (they fire again once it holds; a conquered colony takes its hulks with it). Each beached ship lowers
+  the colony's quality for good: 2% (small frigate) to 8% (big capital) by size, at most 4 ships and 20% in all; the colony
+  panel shows "Beached: 2 ships (−9% quality), cleanup 40%". With the terraforming technology a Clean up beaching damage
+  order on the colony restores the quality over a year for a fee (25,000 credits per percent); AI empires clean up by
+  themselves. AI empires beach a ship only as a very last resort (a valuable colony about to be overrun, its orbital forces
+  certain to be wiped out, a trapped or badly damaged ship), usually one ship and under 10% total loss. Off: nothing changes.
 - **Veterans (new gameplay change, off by default):** a "Gameplay changes" checkbox on the Other Empires page (also in
   openDWU Classic; included in the heading's master switch). Warships and troop units that survive battles gain experience
   and rise from Green to Regular, Veteran and Elite: ships +5% weapon damage, targeting and evasion per rank (at most +15%),

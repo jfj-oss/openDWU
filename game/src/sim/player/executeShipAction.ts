@@ -1134,6 +1134,12 @@ function executeForShipGroup(ctx: Ctx, shipGroup4: ShipGroup, action: ShipAction
     const { galaxy } = ctx;
     if (action.actionType !== ShipActionType.Undefined) {
         switch (action.actionType) {
+            case ShipActionType.ScenarioThreatAction:
+                // Mod layer (beaching): the fleet's lead ship is beached (the order names it).
+                if (galaxy.scenario !== null && action.extraData !== null && action.extraData !== undefined && isBuiltObject(action.target) && shipGroup4.ships.includes(action.target)) {
+                    runThreatAction(galaxy, ctx.empire, action.extraData, action.target);
+                }
+                return ctx.result;
             case ShipActionType.AssignShipGroupHomeColony:
                 if (isHabitat(action.target)) {
                     const habitat6 = action.target;

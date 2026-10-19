@@ -96,6 +96,7 @@ import './hyperdrive/slowHyperdrive'; // Slower hyperdrive spool (flag slowHyper
 import './interdiction/jumpInterdiction'; // Defensive jump interdiction (flag jumpInterdiction; armed bases lengthen hostile ships' jump spool)
 import './mothballing/mothballing'; // Mothballing: fleets / warships in reserve at a space port (flags mothballing + mothballingAI; a Gameplay change)
 import './veterans/veterans'; // Veterans (flag veterans): ship / troop battle experience and ranks
+import './beaching/beaching'; // Beached ships (flags beaching + beachingAI): a warship crash-lands on its colony as a fortress
 import './bvr/bvr'; // BVR combat (flag bvrCombat): magazines, sensor targeting, seeking missiles, point-defence cover, rearming
 import './bvr/bvrRanges'; // BVR combat ranges (flag bvrCombat): weapon and sensor range scaling of the static component tables
 import './bvr/bvrAI'; // BVR combat AI (flag bvrAI): research order, designs, standoff tactics, rearm trips

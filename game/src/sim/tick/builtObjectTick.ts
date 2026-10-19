@@ -57,6 +57,7 @@ import { reviewSystemVisibilityForPreWarpShip, scanArea, scanForLocations } from
 import { applyLocationEffects, doLocationEffects } from '../events';
 import { baconSettings } from '../data/baconSettings';
 import { MOTHBALL_RESERVE } from '../scenario/mothballing/types';
+import { beachedMayFire } from '../scenario/beaching/types';
 import { struckHold } from '../scenario/combat2/surrender';
 import { c2ShipTick } from '../scenario/combat2/shipTick';
 
@@ -173,7 +174,8 @@ export function builtObjectDoTasks(galaxy: Galaxy, builtObject: BuiltObject, tim
     }
     // 3706-3710
     // Mod layer (mothballing): a ship in reserve has its weapons cold (absent field = stock).
-    if (bo.empire !== null && (bo.mothball === undefined || bo.mothball.phase !== MOTHBALL_RESERVE)) {
+    // Mod layer (beaching): a beached ship's guns are cold while a ground battle runs on its colony (absent field = stock).
+    if (bo.empire !== null && (bo.mothball === undefined || bo.mothball.phase !== MOTHBALL_RESERVE) && (bo.beached === undefined || beachedMayFire(bo))) {
         handleWeaponsFiringBuiltObject(galaxy, bo, num, time);
         handleAssaultPodMovement(galaxy, bo, num);
     }
@@ -275,7 +277,8 @@ export function builtObjectDoTasks(galaxy: Galaxy, builtObject: BuiltObject, tim
         bo.lastLongTouch = tempNow;
     }
     // 3814-3822
-    if (bo.empire !== null) {
+    // Mod layer (beaching): a beached ship defends like a base, but not during a ground battle on its colony (absent field = stock).
+    if (bo.empire !== null && (bo.beached === undefined || beachedMayFire(bo))) {
         defendBase(galaxy, bo, time);
         defendShipFromAttackers(galaxy, bo, time);
         fireAtAssaultPods(galaxy, bo, time, inView);

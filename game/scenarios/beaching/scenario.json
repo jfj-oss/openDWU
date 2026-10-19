@@ -1,0 +1,35 @@
+{
+  "id": "beaching",
+  "name": "Beached ships",
+  "description": "A gameplay change (off by default; set on the new-game wizard's Other Empires page). A warship at one of your own colonies can be ordered to Beach on colony (right-click it, or its fleet). It crash-lands and stays on the planet as a grounded fortress for good: it cannot be refloated. Its crew joins the colony's garrison (a defend strength from the hull's size and armour and the crew's level), and its guns keep firing at hostile ships in orbit like a base's, but only while no ground battle runs on the colony (the crew is fighting on the ground); they fire again once the colony holds. Each beached ship scars the colony: its quality falls by 2% (a small frigate) to 8% (a big capital), at most 4 ships and 20% in all. An empire with the terraforming technology can clean the scars up over about a year, for a fee (the colony's Clean up order). AI empires beach a ship only as a very last resort: a valuable colony about to be overrun, its orbital forces certain to be wiped out, and a ship that cannot get away or is badly damaged.",
+  "include": [],
+  "flags": [
+    { "name": "beaching", "label": "Beached ships", "description": "Master switch.", "default": true },
+    { "name": "beachingAI", "label": "AI empires beach ships as a last resort and clean up", "description": "AI empires beach a damaged or trapped warship on a valuable colony that is about to be overrun, and clean up the damage when it is quiet and they can afford it.", "default": true }
+  ],
+  "params": [
+    { "name": "beachMaxShips", "label": "Most beached ships on one colony", "default": 4, "min": 1, "max": 4 },
+    { "name": "beachMaxLossPct", "label": "Most quality a colony loses to beaching in all (% of its quality before the first beaching)", "default": 20, "min": 1, "max": 90 },
+    { "name": "beachLossSmallPct", "label": "Quality lost to a beached small ship (% of the colony's quality)", "default": 2, "min": 0, "max": 50 },
+    { "name": "beachLossLargePct", "label": "Quality lost to a beached big ship (%)", "default": 8, "min": 0, "max": 50 },
+    { "name": "beachSizeSmall", "label": "Ship size at or below which the small-ship loss applies", "default": 150, "min": 1, "max": 5000 },
+    { "name": "beachSizeLarge", "label": "Ship size at or above which the big-ship loss applies (linear between)", "default": 900, "min": 2, "max": 10000 },
+    { "name": "beachRange", "label": "A ship can be beached on an own colony within this distance", "default": 1500, "min": 100, "max": 20000 },
+    { "name": "beachDefendPerSize", "label": "Crew defend strength per unit of hull size", "default": 0.35, "min": 0, "max": 10 },
+    { "name": "beachDefendPerArmor", "label": "Crew defend strength per point of armour", "default": 0.5, "min": 0, "max": 10 },
+    { "name": "beachCrewStepPct", "label": "Crew strength change per crew level above average (green is one step below), %", "default": 12, "min": 0, "max": 50 },
+    { "name": "beachUpkeepPct", "label": "Upkeep of a beached ship (% of normal)", "default": 50, "min": 0, "max": 100 },
+    { "name": "beachCleanupDays", "label": "A cleanup restores the lost quality over this many game days", "default": 360, "min": 1, "max": 3600 },
+    { "name": "beachCleanupCostPerPct", "label": "Cleanup cost, credits per percentage point of lost quality (paid when it starts)", "default": 25000, "min": 0, "max": 100000000 },
+    { "name": "beachAIReviewDays", "label": "AI empires review their threatened colonies every this many game days", "default": 5, "min": 1, "max": 360 },
+    { "name": "beachAIRange", "label": "AI: hostile troop ships and warships within this distance of a colony count as arriving", "default": 8000, "min": 1000, "max": 100000 },
+    { "name": "beachAIValuePct", "label": "AI: a colony is valuable when it is the capital or holds at least this % of the empire's population", "default": 12, "min": 0, "max": 100 },
+    { "name": "beachAITroopPct", "label": "AI: the invaders' troops must reach this % of the colony's defending strength", "default": 70, "min": 0, "max": 1000 },
+    { "name": "beachAIOrbitRatio", "label": "AI: the hostile ships' firepower must be this many times the empire's own in orbit (its orbital forces would be wiped out)", "default": 3, "min": 1, "max": 100 },
+    { "name": "beachAIDamagedPct", "label": "AI: a ship that can still escape is beached only with at least this % of its parts damaged", "default": 40, "min": 0, "max": 100 },
+    { "name": "beachAIMaxLossPct", "label": "AI: most total quality loss it accepts on a colony (%)", "default": 10, "min": 0, "max": 90 },
+    { "name": "beachAIMaxLossCapitalPct", "label": "AI: ...on its capital (%)", "default": 16, "min": 0, "max": 90 },
+    { "name": "beachAICooldownDays", "label": "AI: days to wait between beachings on one colony", "default": 30, "min": 0, "max": 3600 },
+    { "name": "beachAICleanupFundsFactor", "label": "AI: starts a cleanup when its treasury holds this many times its cost", "default": 3, "min": 1, "max": 100 }
+  ]
+}

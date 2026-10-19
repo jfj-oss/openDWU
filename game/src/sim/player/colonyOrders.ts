@@ -136,6 +136,7 @@ export function transferToTransport(galaxy: Galaxy, empire: Empire, h: Habitat, 
         const troop = item;
         if (transport.empire !== empire) return false;
         if (h.empire !== empire || h.troops === null || !h.troops.contains(troop) || transport.troopCapacityRemaining < troop.size) return false;
+        if (troop.beached === true) return false; // beaching add-on: a beached ship's crew never leaves
         if (troop.garrisoned) troop.garrisoned = false;
         h.troops.remove(troop);
         transport.troops.add(troop);

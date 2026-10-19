@@ -23,7 +23,7 @@ export function listScenarioFiles(dir, rel = '') {
  * and the Galactic History screen read only its own `eventLog` flag and the typed log, so it works standalone.
  */
 // BVR combat (and its six combat sub-options) is a Work in progress add-on of the full edition only: Classic has no picker.
-export const CLASSIC_ADDONS = ['themed-names', 'smarter-ai', 'event-log', 'orbital-superiority', 'longer-ground-combat', 'jump-interdiction', 'blockades-bite', 'mothballing', 'slow-hyperdrive', 'fighting-retreats', 'veterans', 'coordinated-landings'];
+export const CLASSIC_ADDONS = ['themed-names', 'smarter-ai', 'event-log', 'orbital-superiority', 'longer-ground-combat', 'jump-interdiction', 'blockades-bite', 'mothballing', 'slow-hyperdrive', 'fighting-retreats', 'veterans', 'beaching', 'coordinated-landings'];
 
 /** Scenario ids a build ships: null = all (full edition), else the allow-list. */
 export function editionAllowlist(edition) {

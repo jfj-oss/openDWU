@@ -29,6 +29,7 @@ import {
     resolveAddonSwitches,
     scenarioOverlayFor,
     toggleAddon,
+    withBeaching,
     withBvrCombat,
     withCombat2,
     COMBAT2_ADDONS,
@@ -357,6 +358,20 @@ describe('BVR combat: one Work in progress add-on with the six combat changes as
         const ch = addonChoiceFor(cat, ['bvr-combat'], { flags: {}, params: {} })!;
         expect(ch.addons).toEqual(['bvr-combat']);
         expect(ch.flags).toMatchObject({ bvrCombat: true, decoys: true, ambush: true, criticalHits: true, damageControl: true, armourFacing: true, surrender: true });
+    });
+    it('Beached ships: the Gameplay changes checkbox folds into the scenario (off by default, hidden from the picker, allowed in Classic)', async () => {
+        expect(addonChoiceFor(cat, [], { flags: {}, params: {} })?.addons ?? []).not.toContain('beaching');
+        const c = addonChoiceFor(cat, [], { flags: {}, params: {} }, null, false, false, false, false, false, false, undefined, false, false, undefined, false, {}, true)!;
+        expect(c.addons).toContain('beaching');
+        expect(c.flags).toMatchObject({ beaching: true, beachingAI: true });
+        const w = withBeaching([], { flags: {}, params: {} }, true);
+        expect(w.picked).toEqual(['beaching']);
+        expect(withBeaching(w.picked, w.overrides, false).picked).toEqual([]);
+        expect(ELSEWHERE_ADDONS.has('beaching')).toBe(true);
+        const m = scenarioIndexFs().find((x) => x.id === 'beaching')!;
+        expect(m.flags[0].name).toBe('beaching'); // the master flag is the first
+        const { CLASSIC_ADDONS } = await import('../scripts/scenarioIndex.mjs');
+        expect(CLASSIC_ADDONS).toContain('beaching');
     });
     it('old options map: any of the seven on gives the add-on with exactly those sub-options on; the old fold functions still work', () => {
         expect(legacyBvrChoice({} as never)).toBeNull();

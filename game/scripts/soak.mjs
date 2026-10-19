@@ -210,6 +210,10 @@ const CONFIGS = [
     // galaxy, 20 years): share of ranked warships / troops over time, ships lost, invasions won / lost.
     // vet-war-nocaution-s1: on, without the AI's veteran caution (veteranAiCautionPerRank 0); -s7: a second galaxy.
     ...[['vet-war-on-s1', 1, true, {}], ['vet-war-off-s1', 1, false, {}], ['vet-war-nocaution-s1', 1, true, { veteranAiCautionPerRank: 0 }], ['vet-war-on-s7', 7, true, {}], ['vet-war-off-s7', 7, false, {}]].map(([name, seed, on, params]) => SCN('veterans', { name, set: 'veterans', seed, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, flags: { veterans: on }, params })),
+    // `--set beaching` (--hook scripts/beaching-soak-hook.mjs): Beached ships on / off on the os-war galaxy (aggressive AI, older galaxy,
+    // 20 years) in three galaxies: how often AIs beach (the last resort), the quality scars, and whether invasions of beached
+    // colonies fail more often.
+    ...[['bch-war-on-s1', 1, true], ['bch-war-off-s1', 1, false], ['bch-war-on-s7', 7, true], ['bch-war-off-s7', 7, false], ['bch-war-on-s3', 3, true], ['bch-war-off-s3', 3, false]].map(([name, seed, on]) => SCN('beaching', { name, set: 'beaching', seed, years: 20, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, difficultyIndex: 4, aggressionIndex: 4, galaxyExpansionIndex: 3, empireExpansionIndex: 3 }, flags: { beaching: on } })),
     // `--set beacon-short|beacon-med|beacon-long` (scripts/beacon-soak-hook.mjs; BEACON_MODE=natural|force|complete): the Beacon (Giantworks
     // wonder) with the add-ons that interact (Smarter AI + Coordinated landings by default, Reputation, Characters & Victory with the Diet,
     // War crimes), the Beacon the only wonder. Short runs start late (older galaxy, bigger empires, higher tech) with the Beacon forced through
@@ -543,7 +547,7 @@ async function runOne(name) {
             const w1 = A.withSmarterAI([...A.BASE_ADDONS, ...ids], { flags: { ...(cfg.flags ?? {}) }, params: { ...(cfg.params ?? {}) } }, smart);
             // cfg.gameplay: the other "Gameplay changes" checkboxes by add-on id.
             const gp = { 'orbital-superiority': A.withOrbitalSuperiority, 'longer-ground-combat': A.withLongerGroundCombat, 'jump-interdiction': A.withJumpInterdiction, 'blockades-bite': A.withBlockadesBite,
-                mothballing: A.withMothballing, 'slow-hyperdrive': A.withSlowHyperdrive, 'fighting-retreats': A.withFightingRetreats, veterans: A.withVeterans, 'bvr-combat': A.withBvrCombat,
+                mothballing: A.withMothballing, 'slow-hyperdrive': A.withSlowHyperdrive, 'fighting-retreats': A.withFightingRetreats, veterans: A.withVeterans, beaching: A.withBeaching, 'bvr-combat': A.withBvrCombat,
                 ...Object.fromEntries(A.COMBAT2_ADDONS.map((a) => [a.id, (picked, overrides, on) => A.withCombat2(picked, overrides, Object.fromEntries(A.COMBAT2_ADDONS.map((b) => [b.key, b.id === a.id ? on : picked.includes(b.id)])))])) };
             let wg = w1;
             for (const id of cfg.gameplay ?? []) wg = gp[id](wg.picked, wg.overrides, true);
