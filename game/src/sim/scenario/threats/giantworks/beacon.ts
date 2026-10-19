@@ -957,8 +957,7 @@ function setupBeacon(galaxy: Galaxy, st: BeaconState, site: GreatWorkSite, facti
         const spec = faction.designSpecifications.find((s) => s !== null && s.subRole === BuiltObjectSubRole.DefensiveBase) ?? galaxyDesignSpecificationBySubRole(BuiltObjectSubRole.DefensiveBase);
         const fort = spec !== null && spec !== undefined ? generateDesignFromSpec(galaxy, faction, spec, Math.max(1, reclaimerLevel(galaxy, faction, 1)), galaxyStarDate(galaxy)) : null;
         const d = fort ?? base;
-        addPlating(d, [d], 600, 400);
-        boostWeapons(d, 1.5);
+        addPlating(d, [d], 300, 200); // (user 2026-10-19: was 600 / 400 with guns x1.5 — no coalition could break it)
         d.isObsolete = true;
         faction.designs.push(d);
         if (site.base !== null && !site.base.hasBeenDestroyed) {
@@ -1251,7 +1250,7 @@ export function registerBeacon(): void {
     });
     // Machines mend themselves in the field (the stock AI would send a damaged warship home to a port the Reclaimers do not have).
     registerScenarioQuery({ id: 'beacon.repair', flag: BEACON_FLAG, query: 'repairRateFactor', run: (g, v, a) => (peekBeaconState(g)?.faction === a.builtObject.actualEmpire ? v * (cattleRepairFactor(g, a.builtObject) ?? 4) : v) });
-    registerScenarioQuery({ id: 'beacon.armour', flag: BEACON_FLAG, query: 'armorReactivityFactor', run: (g, v, a) => { const st = peekBeaconState(g); return st !== null && st.beacon === a.builtObject ? (v * P.stationReactivePct(g)) / 100 : v; } });
+    registerScenarioQuery({ id: 'beacon.armour', flag: BEACON_FLAG, query: 'armorReactivityFactor', run: (g, v, a) => { const st = peekBeaconState(g); if (st === null) return v; if (st.beacon === a.builtObject) return (v * P.stationReactivePct(g)) / 100; return st.faction !== null && a.builtObject.actualEmpire === st.faction ? (v * P.fleetReactivePct(g)) / 100 : v; } });
     registerScenarioQuery({ id: 'beacon.troops', flag: BEACON_FLAG, query: 'troopMaintenanceFactor', run: (g, v, a) => (peekBeaconState(g)?.faction === a.empire ? 0 : v) });
     // The AI never targets a cloaked Watcher: no mission (of any empire but the faction's own) may name a ship whose cloak still hides it
     // from the ship's empire. (The stock fog already keeps its AI from picking one; story factions that pick targets without the fog,
