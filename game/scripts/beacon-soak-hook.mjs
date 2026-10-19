@@ -292,6 +292,11 @@ function sample(ctx, g) {
         // the Watcher fleets: mode (d defence / o offensive), live escorts, strength (Watcher and escorts), the world held
         s.wf = (st.watcherFleets ?? []).map((f) => [f.mode[0], f.ships.filter((b) => !b.hasBeenDestroyed).length, Math.round(M.bf.watcherFleetStrength(st, f)), f.post ? f.post.name : null]);
         s.proc = M.bf.processingWorlds(st).length;
+        if (st.beacon) {
+            // how far the held worlds lie from the Beacon (sectors): the conquest spread
+            const pd = M.bf.processingWorlds(st).map((r) => Math.hypot(r.colony.xpos - st.beacon.xpos, r.colony.ypos - st.beacon.ypos) / g.sectorSize);
+            s.procDist = pd.length ? [r1(pd.reduce((x, y) => x + y, 0) / pd.length), r1(Math.max(...pd))] : null;
+        }
         s.rec = st.reclamationDate > 0 ? r2((now - st.reclamationDate) / 600_000) : null;
         s.beacon = st.beacon ? (st.beacon.hasBeenDestroyed ? 'destroyed' : 'alive') : null;
         if (st.beacon && !st.beacon.hasBeenDestroyed) {
@@ -453,7 +458,9 @@ function sample(ctx, g) {
                     }
                     return { x: Math.round(p.x), y: Math.round(p.y), nearestSectors: r1(near), empires: within.map((t) => t.size) };
                 });
-                const rec = { y: r2(years), n: season.n, phase: season.phase, staging: stagingGeo, galaxySize: [g.sizeX, g.sizeY, sect], groups: season.groups.length, budget: Math.round(season.budget), spawned: Math.round(season.spawned), planned: r1(season.plannedTravelDays), departed: season.departed > 0 ? r2((season.departed - startMs) / 600_000) : null,
+                const bpos = st.beacon ? { x: st.beacon.xpos, y: st.beacon.ypos } : null;
+                const tdist = season.groups.map((x) => (bpos && x.target ? r1(Math.hypot(x.target.xpos - bpos.x, x.target.ypos - bpos.y) / sect) : null));
+                const rec = { y: r2(years), n: season.n, phase: season.phase, tdist, staging: stagingGeo, galaxySize: [g.sizeX, g.sizeY, sect], groups: season.groups.length, budget: Math.round(season.budget), spawned: Math.round(season.spawned), planned: r1(season.plannedTravelDays), departed: season.departed > 0 ? r2((season.departed - startMs) / 600_000) : null,
                     targets: season.groups.map((x) => `${x.target?.name ?? '?'}@${x.target?.empire?.name ?? 'ind'}`), ships: season.groups.map((x) => x.ships.length), transports: season.groups.map((x) => x.transports.length),
                     regiments: season.groups.map((x) => x.transports.reduce((n, b) => n + (b.troops?.count ?? 0), 0)), troopCap: season.groups.flatMap((x) => x.transports.map((b) => b.troopCapacity))[0] ?? null,
                     defRegs: season.groups.map((x) => x.target?.troops?.count ?? 0), defStr: season.groups.map((x) => Math.round(x.target?.troops?.totalDefendStrength ?? 0)) };

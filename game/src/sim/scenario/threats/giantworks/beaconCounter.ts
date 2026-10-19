@@ -43,7 +43,7 @@ import {
     revealTo,
 } from '../framework';
 import { aiMayPurge, startPurge } from './beaconSiphon';
-import { BEACON_FLAG, P, beaconRandom, peekBeaconState, salvageStepsOf, type BargainRec, type BeaconState, type CorruptRec, type SalvageRec } from './beaconState';
+import { BEACON_FLAG, P, beaconRandom, peekBeaconState, salvageStepsOf, warOn, type BargainRec, type BeaconState, type CorruptRec, type SalvageRec } from './beaconState';
 
 const TAG = 'Beacon';
 const DECISION_KIND = 'beacon.bargain';
@@ -320,7 +320,7 @@ export function counterMonthly(galaxy: Galaxy): void {
         if (isHumanEmpire(galaxy, e)) scenarioMessage(galaxy, e, T(`${TAG} ${b.kind === 'cede' ? 'Spare Ended' : 'Betrayed'} Title`), T(`${TAG} ${b.kind === 'cede' ? 'Spare Ended' : 'Betrayed'}`), { type: EmpireMessageType.GeneralBadEvent, popup: false });
         if (b.kind === 'protectorate') arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Betrayed', onceKey: `Betrayed:${b.empireId}`, textTag: `${TAG} Betrayed News`, args: [e.name] });
     }
-    if (now >= st.nextOfferDate && st.season !== null) {
+    if (now >= st.nextOfferDate && st.season !== null && warOn(st)) {
         const rnd = beaconRandom(galaxy, st, 111);
         st.nextOfferDate = now + days(P.offerEveryDays(galaxy) * (0.7 + 0.6 * rnd.nextDouble()));
         const c = offerCandidates(galaxy, st, now);

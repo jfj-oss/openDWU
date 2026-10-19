@@ -1,6 +1,10 @@
 // The Beacon, part 2: the Reclamation (Giantworks wonder, flag gwBeacon). Not a port: new scenario behaviour composed of ported
 // functions (each composed step cites its stock analogue). Registered from beacon.ts; every handler is gated by the gwBeacon flag.
 //
+// FIRST SEASON: the Great Work's completion starts a 10-day countdown, not a war: the Watchers gather, cloaked, round the Beacon. Then the first MEGA
+// BEAM (fireBeam): the war is declared, the Watchers decloak and lead Watcher fleets (escorts made at the Beacon), and season 1's strike groups arrive
+// through the beam just outside their targets' systems at full strength (no spawning at the Beacon, no staging). Later seasons are as below.
+//
 // When the Beacon is finished (beacon.ts onComplete → startReclamation) the machine faction (one empire: "the Watchers" before,
 // "the Reclaimers" from now on) wages campaign SEASONS:
 //   PREPARATION (4-6 months): waves spawn at the Beacon and fly to 2-3 deep-space STAGING POINTS, one strike group per target
@@ -83,6 +87,8 @@ import {
     type StrikeGroup,
     type WatcherFleet,
     type WatcherRec,
+    isBeamCountdown,
+    warOn,
 } from './beaconState';
 import { scenarioText as T } from '../../messages';
 import { freeShare, fuelOf, harvestMonthly, liveCores, harvestPeriodic, onCattleKilled, onCoreRetaken, onHarvesterLost, payFleet, payTroops, troopSourceCore, troopsAffordable } from './beaconHarvest';
@@ -372,22 +378,31 @@ export function pickTargets(galaxy: Galaxy, st: BeaconState, k: number, budget: 
     const cands = targetCandidates(galaxy, st, now);
     if (cands.length === 0) return [];
     const share = budget / Math.max(1, k);
-    const scored = cands.map((h) => {
+    // ONE WAVE ROLLING OUT FROM THE BEACON: only the nearest ring of worlds (about twice the groups, at least six) is considered, the weight falls
+    // steeply with the distance beyond the nearest one, and each pick after the first favours worlds near the first, so a season's groups strike one region.
+    const sector = Math.max(1, galaxy.sectorSize);
+    const byDist = cands.map((h) => ({ h, d: galaxy.calculateDistance(pos.x, pos.y, h.xpos, h.ypos) })).sort((a, b) => a.d - b.d || a.h.habitatIndex - b.h.habitatIndex);
+    const ring = byDist.slice(0, Math.max(6, 2 * k + 2));
+    const d0 = ring[0].d;
+    const scored = ring.map(({ h, d }) => {
         const def = defenceOf(galaxy, h);
-        const d = galaxy.calculateDistance(pos.x, pos.y, h.xpos, h.ypos);
-        const w = Math.pow(1 + h.population.totalAmount / 1e6, P.targetPopPct(galaxy) / 100) * (1 / (1 + d / 6e6)) * (1 / (1 + def / Math.max(1, share * 1.5)));
+        const near = 1 / (1 + Math.pow(Math.max(0, d - d0) / (1.5 * sector), 2));
+        const w = Math.pow(1 + h.population.totalAmount / 1e6, P.targetPopPct(galaxy) / 100) * near * (1 / (1 + def / Math.max(1, share * 1.5)));
         return { habitat: h, defence: def, w };
     });
     const picked: PickedTarget[] = [];
     const usedOwners = new Set<Empire | null>();
-    for (let pass = 0; pass < 2 && picked.length < k; pass++) {
+    for (let pass = 1; pass < 2 && picked.length < k; pass++) { // (one pass: the owners are NOT spread, the wave takes what lies nearest the Beacon, whoever holds it)
         const pool = scored.filter((s) => !picked.some((p) => p.habitat === s.habitat) && (pass === 1 || !usedOwners.has(s.habitat.empire)));
         while (picked.length < k && pool.length > 0) {
-            const total = pool.reduce((a, s) => a + s.w, 0);
+            // later picks cluster round the first one (within a few sectors of it)
+            const f = picked.length > 0 ? picked[0].habitat : null;
+            const cw = (s: { habitat: Habitat; w: number }): number => (f === null ? s.w : s.w / (1 + Math.pow(galaxy.calculateDistance(f.xpos, f.ypos, s.habitat.xpos, s.habitat.ypos) / (3 * sector), 2)));
+            const total = pool.reduce((a, s) => a + cw(s), 0);
             let r = rnd.nextDouble() * total;
             let idx = 0;
             for (; idx < pool.length - 1; idx++) {
-                r -= pool[idx].w;
+                r -= cw(pool[idx]);
                 if (r <= 0) break;
             }
             const s = pool.splice(idx, 1)[0];
@@ -446,6 +461,20 @@ export function stagingPointsFor(galaxy: Galaxy, st: BeaconState, targets: reado
         points.push({ x, y });
     }
     return { points, of };
+}
+
+/** How far from its target's world a group comes out of the beam: outside the system (SYSTEM_RADIUS), clear of the transports' holding point. */
+const BEAM_STANDOFF = 70000;
+
+/** Where a group arrives through the beam: BEAM_STANDOFF from its target on the side of the Beacon, inside the galaxy. Pure. */
+export function arrivalPoint(galaxy: Galaxy, st: BeaconState, target: Habitat): { x: number; y: number } {
+    const pos = beaconPosition(st);
+    let dx = pos !== null ? pos.x - target.xpos : 1;
+    let dy = pos !== null ? pos.y - target.ypos : 0;
+    const len = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+    dx /= len;
+    dy /= len;
+    return { x: Math.min(galaxy.sizeX - 1000, Math.max(1000, target.xpos + dx * BEAM_STANDOFF)), y: Math.min(galaxy.sizeY - 1000, Math.max(1000, target.ypos + dy * BEAM_STANDOFF)) };
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -655,9 +684,10 @@ function spawnWave(galaxy: Galaxy, st: BeaconState, season: Season, until: numbe
  * enough regiments, landingPlan) minus what the group already carries. First the troops biofuel pays for: Thrall regiments raised at the
  * nearest harvest core, on transports that fly from the core to `(destX, destY)` (the ones a player can intercept), or drones made at the
  * Beacon while no core works. Then free BattleBots from the Beacon for the funding model's free share of what is still missing (model 1:
- * all of it; model 0: none). Returns the strength added.
+ * all of it; model 0: none). The Beacon's own (drones, BattleBots) are made at `madeAt` when given (the beam brought them in beside the group),
+ * else at the Beacon. Returns the strength added.
  */
-export function supplyTroops(galaxy: Galaxy, st: BeaconState, g: StrikeGroup, destX: number, destY: number): number {
+export function supplyTroops(galaxy: Galaxy, st: BeaconState, g: StrikeGroup, destX: number, destY: number, madeAt: { x: number; y: number } | null = null): number {
     const faction = st.faction!;
     const target = g.target;
     const pos = beaconPosition(st);
@@ -686,7 +716,7 @@ export function supplyTroops(galaxy: Galaxy, st: BeaconState, g: StrikeGroup, de
         const regs = Math.max(1, Math.ceil(paidS / cap), Math.round(needN * (wantS > 0 ? paidS / wantS : 1)));
         const n = Math.min(transportsFor(galaxy, faction, regs), room0);
         const ships: BuiltObject[] = [];
-        for (let i = 0; i < n; i++) ships.push(spawnShip(galaxy, faction, design, from?.xpos ?? pos.x, from?.ypos ?? pos.y));
+        for (let i = 0; i < n; i++) ships.push(spawnShip(galaxy, faction, design, from?.xpos ?? (madeAt ?? pos).x, from?.ypos ?? (madeAt ?? pos).y));
         const race = from !== null ? ((from.population?.dominantRace ?? machineRace(galaxy)) as Race | null) : null;
         const got = loadSplit(galaxy, faction, ships, paidS, regs, race, T(from !== null ? 'Beacon Thrall Name' : 'Beacon Drone Name'));
         if (got.strength <= 0) for (const b of ships) builtObjectCompleteTeardown(galaxy, b);
@@ -712,7 +742,7 @@ export function supplyTroops(galaxy: Galaxy, st: BeaconState, g: StrikeGroup, de
         const regs = Math.max(1, Math.round(needN * share), Math.ceil(strength / cap));
         const n = Math.min(transportsFor(galaxy, faction, regs), room);
         const ships: BuiltObject[] = [];
-        for (let i = 0; i < n; i++) ships.push(spawnShip(galaxy, faction, design, pos.x, pos.y));
+        for (let i = 0; i < n; i++) ships.push(spawnShip(galaxy, faction, design, (madeAt ?? pos).x, (madeAt ?? pos).y));
         const got = loadSplit(galaxy, faction, ships, strength, regs, null, T('Beacon Drone Name'));
         for (const b of ships) {
             g.transports.push(b);
@@ -865,6 +895,196 @@ function depart(galaxy: Galaxy, st: BeaconState, season: Season): void {
         if (mine.length > 0) arcMessage(galaxy, st.sentStages, [e], { prefix: TAG, stage: 'Inbound', onceKey: `Inbound${season.n}:${e.empireId}`, args: [mine.map((g) => g.target!.name).join(', ')], type: EmpireMessageType.GeneralBadEvent });
     }
     risingWorlds(galaxy, st, season);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The first mega beam: the war begins, the Watchers decloak, season 1's groups come through
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * Season 1's countdown (the Great Work is finished): the first mega beam fires in beaconBeamDelayDays (fireBeam). No groups, no staging points: the
+ * season is a beam season (isBeamCountdown).
+ */
+export function startBeamCountdown(galaxy: Galaxy, st: BeaconState): Season {
+    const now = galaxyStarDate(galaxy);
+    const end = now + days(P.beamDelayDays(galaxy));
+    const season: Season = { n: 1, phase: 'prep', start: now, end, staging: [], groups: [], budget: 0, spawned: 0, departed: 0, departures: [], plannedTravelDays: 0, prepStart: now, launchAt: end };
+    st.season = season;
+    st.seasons.push(season);
+    st.stats.seasons++;
+    return season;
+}
+
+function newGroup(st: BeaconState, season: Season, target: Habitat | null): StrikeGroup {
+    return {
+        id: target !== null ? st.nextGroupId++ : 0, season: season.n, state: 'gather', target, staging: 0, ships: [], transports: [], lead: null, departDate: 0, arriveDate: 0, siegeStart: 0, landings: 0, fails: 0,
+        committed: false, destroyer: null, targetPop: target !== null ? target.population.totalAmount : 0, troopsDone: false, lastReinforce: 0, rolled: false,
+    };
+}
+
+/**
+ * The war begins (the first mega beam, or the Beacon's fall before it): the Reclaimers are at war with every empire, and the Watchers that were
+ * mustering decloak (the decloak the art and the pulse follow) to lead their fleets (startWatcherFleets). Idempotent; a save from before the beam is
+ * at war already.
+ */
+export function startWar(galaxy: Galaxy, st: BeaconState): void {
+    const faction = st.faction;
+    if (faction === null || st.warStarted !== false) return;
+    st.warStarted = true;
+    const now = galaxyStarDate(galaxy);
+    for (const e of normalEmpires(galaxy, faction)) lockWar(galaxy, faction, e);
+    startWatcherFleets(galaxy, st);
+    st.nextOfferDate = now + days(P.offerFirstDays(galaxy));
+}
+
+/**
+ * The Watcher fleets that take a share of the beam's budget as escorts (spawned at the Beacon, beside their Watcher). At least one group always
+ * strikes (`k` groups planned). Pure.
+ */
+function escortClaimants(st: BeaconState, k: number): WatcherFleet[] {
+    const out: WatcherFleet[] = [];
+    for (const f of st.watcherFleets ?? []) {
+        if (out.length >= k - 1) break;
+        if (liveWatcherShip(st, f) !== null && f.ships.length === 0) out.push(f);
+    }
+    return out;
+}
+
+/**
+ * THE FIRST MEGA BEAM (season 1's countdown ended): the war begins (startWar), and the Beacon sends the season's strike groups through: one per
+ * target world, each at the full strength of its share of the budget (the free share, then the fleet biofuel), made BEAM_STANDOFF from its world on
+ * the Beacon's side, with its troops. The Watcher fleets' escorts are made at the Beacon from the same budget (the share of up to two groups). A
+ * season that cannot be paid for or has no target does not come: the beam fires all the same and the next season (a preparation, as every later
+ * season) follows the quiet delay. Private Random for the targets only.
+ */
+export function fireBeam(galaxy: Galaxy, st: BeaconState, season: Season): void {
+    const faction = st.faction!;
+    const now = galaxyStarDate(galaxy);
+    const first = st.warStarted === false;
+    startWar(galaxy, st);
+    const n = season.n;
+    const budget = seasonBudget(galaxy, st, n);
+    const scripted = scriptedBudget(galaxy, st, n);
+    const kFull = groupCountFor(galaxy, st, n);
+    const affordable = P.fundingModel(galaxy) === 1 || budget >= P.minSeasonStrength(galaxy);
+    const k = P.fundingModel(galaxy) === 1 ? kFull : Math.max(1, Math.min(kFull, Math.round(budget / Math.max(1, scripted / kFull))));
+    const claimants = affordable ? escortClaimants(st, k) : [];
+    const targets = affordable ? pickTargets(galaxy, st, k - claimants.length, budget, now) : [];
+    season.budget = budget;
+    season.spawned = 0;
+    season.freeLeft = Math.min(budget, P.fundingModel(galaxy) === 1 ? budget : scripted * freeShare(galaxy));
+    const groups = targets.map((t) => newGroup(st, season, t.habitat));
+    const escorts = claimants.map(() => newGroup(st, season, null));
+    const pos = beaconPosition(st)!;
+    const total = groups.length + escorts.length;
+    if (total > 0) {
+        const all = [...groups, ...escorts];
+        const quota = budget / total;
+        const placeOf = (g: StrikeGroup): { x: number; y: number } => (g.target === null ? pos : arrivalPoint(galaxy, st, g.target));
+        for (let i = 0; i < 5000 && season.spawned < season.budget && st.stats.spawned < 1_000_000; i++) {
+            // paid for: the season's free share first, then the fleet biofuel (an empty account ends the wave)
+            if ((season.freeLeft ?? Infinity) <= 0 && fuelOf(st).fleet <= 0) break;
+            // the group furthest below its quota gets the next ship
+            let g: StrikeGroup | null = null;
+            let low = Infinity;
+            for (const x of all) {
+                const gs = groupStrength(x);
+                if (gs < quota && gs < low) {
+                    low = gs;
+                    g = x;
+                }
+            }
+            if (g === null) break;
+            if (aliveShips(g.ships, faction).length >= P.maxSeasonShips(galaxy) / Math.max(1, total) + 6) break;
+            const sub = g.ships.length === 0 ? BuiltObjectSubRole.CapitalShip : WAVE_CYCLE[(g.ships.length - 1) % WAVE_CYCLE.length];
+            const design = designFor(galaxy, faction, sub) ?? designFor(galaxy, faction, BuiltObjectSubRole.Cruiser);
+            if (design === null) break;
+            const at = placeOf(g);
+            const bo = spawnShip(galaxy, faction, design, at.x, at.y);
+            g.ships.push(bo);
+            if (g.lead === null || g.lead.hasBeenDestroyed) g.lead = bo;
+            const s = strengthOf(bo);
+            season.spawned += s;
+            if (season.freeLeft !== undefined) {
+                const free = Math.min(season.freeLeft, s);
+                season.freeLeft -= free;
+                if (s > free) payFleet(st, s - free);
+            }
+            st.stats.spawned++;
+            if (!(s > 0)) break;
+        }
+    }
+    claimants.forEach((f, i) => {
+        const ships = aliveShips(escorts[i].ships, faction);
+        if (ships.length === 0) return;
+        for (const b of ships) f.ships.push(b);
+        f.formed = f.formed > 0 ? f.formed : now;
+        st.stats.wfFormed = (st.stats.wfFormed ?? 0) + 1;
+    });
+    const departing: StrikeGroup[] = [];
+    for (const g of groups) {
+        prune(g, faction);
+        if (g.ships.length === 0) {
+            g.state = 'done';
+            continue;
+        }
+        const hold = holdingPoint(galaxy, g);
+        g.troopsDone = true;
+        supplyTroops(galaxy, st, g, hold.x, hold.y, arrivalPoint(galaxy, st, g.target!));
+        season.groups.push(g);
+        departing.push(g);
+    }
+    // the beam fired, so it is the first launch even if nothing came through (a victory is possible from now on)
+    if (first || departing.length > 0) {
+        st.launches = (st.launches ?? 0) + 1;
+        st.lastLaunchDate = now;
+        season.departed = now;
+    }
+    if (departing.length === 0) {
+        // nothing came: the next season (a preparation at staging points) begins after a quiet spell
+        season.phase = 'quiet';
+        season.start = now;
+        season.end = now + days(60);
+        st.nextRaidDate = now + days(10);
+        return;
+    }
+    let maxDays = 0;
+    for (const g of departing) {
+        g.state = 'travel';
+        g.departDate = now;
+        g.committed = false;
+        season.departures.push(now);
+        const speed = Math.min(...g.ships.map((b) => b.warpSpeed).filter((sp) => sp > 0), 1e9);
+        const lead = g.lead!;
+        maxDays = Math.max(maxDays, travelDays(Math.min(speed, 1e8), distTo(galaxy, lead, g.target!.xpos, g.target!.ypos)));
+        orderGroup(galaxy, g);
+        for (const b of [...g.ships, ...g.transports]) if (distTo(galaxy, b, lead.xpos, lead.ypos) <= 20000) b.beamArrival = now; // the arrival flash (render only)
+    }
+    season.plannedTravelDays = maxDays;
+    season.phase = 'offensive';
+    season.start = now;
+    season.end = now + days(Math.min(P.offensiveMaxDays(galaxy), Math.max(P.offensiveMinDays(galaxy), maxDays * 1.35 + 60)));
+    arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Beam', onceKey: `Beam${season.n}`, textTag: `${TAG} Beam News`, args: [departing.length] });
+    for (const e of normalEmpires(galaxy, faction)) {
+        if (!isHumanEmpire(galaxy, e)) continue;
+        const mine = departing.filter((g) => g.target?.empire === e);
+        if (mine.length > 0) arcMessage(galaxy, st.sentStages, [e], { prefix: TAG, stage: 'Beam Inbound', onceKey: `BeamInbound${season.n}:${e.empireId}`, args: [mine.map((g) => g.target!.name).join(', ')], type: EmpireMessageType.GeneralBadEvent });
+    }
+    risingWorlds(galaxy, st, season);
+}
+
+/**
+ * Every game day (a frame periodic: the 5-day pass runs once per stock long block, 36 days at 1x): the first beam fires on the day its countdown
+ * ends, so ten days means ten days. The pass itself would fire it late, never early.
+ */
+export function beamPass(galaxy: Galaxy): void {
+    const st = (galaxy.scenario?.state['beacon'] ?? null) as BeaconState | null;
+    if (st === null || st.phase !== 'reclamation' || st.faction === null || !st.faction.active || st.beaconDestroyed) return;
+    const season = st.season;
+    if (season === null || !isBeamCountdown(season)) return;
+    if (galaxyStarDate(galaxy) < (season.launchAt ?? season.end)) return;
+    if (st.beacon !== null && st.beacon.hasBeenDestroyed) return; // (the pass notices: no beam)
+    fireBeam(galaxy, st, season);
 }
 
 /** Issues the orders that send a group at its target. */
@@ -1277,9 +1497,11 @@ export function reclamationMonthly(galaxy: Galaxy): void {
     st.thrallShips = st.thrallShips.filter((b) => !b.hasBeenDestroyed);
     // Normal empires made after the Reclamation began are at war with it as well (unless spared or in its pocket).
     const now = galaxyStarDate(galaxy);
-    for (const e of normalEmpires(galaxy, faction)) {
-        if (sparedOrAllied(st, e, now)) continue;
-        if (obtainDiplomaticRelation(faction, e).type !== DiplomaticRelationType.War) lockWar(galaxy, faction, e);
+    if (warOn(st)) {
+        for (const e of normalEmpires(galaxy, faction)) {
+            if (sparedOrAllied(st, e, now)) continue;
+            if (obtainDiplomaticRelation(faction, e).type !== DiplomaticRelationType.War) lockWar(galaxy, faction, e);
+        }
     }
     lossCheck(galaxy, st);
 }
@@ -1393,10 +1615,19 @@ function reclamationPass(galaxy: Galaxy, st: BeaconState, now: number): void {
         st.beaconDestroyed = true;
         arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Beacon Destroyed', textTag: `${TAG} Beacon Destroyed News` });
     }
+    // the Beacon fell before the first beam: the Reclaimers are at war all the same (the Watchers decloak and lead their fleets), but no launch was ever made
+    if (st.beaconDestroyed && st.warStarted === false) startWar(galaxy, st);
     st.reserve = aliveShips(st.reserve, faction);
     const season = st.season;
     if (season === null) {
         if (now >= st.completeDate + days(P.startDelayDays(galaxy)) && !st.beaconDestroyed) beginSeason(galaxy, st, 1);
+    } else if (isBeamCountdown(season)) {
+        if (st.beaconDestroyed) {
+            // the Beacon fell before it could fire: no beam; the quiet delay, then the preparation of season 1 as any season
+            season.phase = 'quiet';
+            season.start = now;
+            season.end = now + days(P.quietDays(galaxy));
+        } else if (now >= (season.launchAt ?? season.end)) fireBeam(galaxy, st, season); // (beamPass fires it on the day: this is the fallback)
     } else if (season.phase === 'prep') prepPass(galaxy, st, season);
     else if (season.phase === 'offensive') {
         if (season.groups.every((g) => g.state === 'done') || now >= season.end) {
@@ -1465,13 +1696,21 @@ function nextOffensiveDate(galaxy: Galaxy, st: BeaconState, now: number): number
 }
 
 /**
- * The Reclamation begins: every living Watcher becomes the flagship of a Watcher fleet. It has no escorts yet (the first season's two biggest
- * strike groups give them at the departure, claimForWatcherFleets): until then it holds the Beacon. No more corruption trips or sightings.
+ * The first mega beam: every living Watcher decloaks (it was mustering, cloaked, round the Beacon) and becomes the flagship of a Watcher fleet. It
+ * has no escorts yet (the beam's budget gives them, at the Beacon, fireBeam; if it gives none, the first departure's biggest groups do): until then
+ * it holds the Beacon. No more corruption trips or sightings. With the fleets switched off the Watchers go back to their dark space, still cloaked.
  */
 export function startWatcherFleets(galaxy: Galaxy, st: BeaconState): void {
-    if (!P.wfEnabled(galaxy) || st.faction === null) return;
-    st.watcherFleets ??= [];
+    if (st.faction === null) return;
     const now = galaxyStarDate(galaxy);
+    if (!P.wfEnabled(galaxy)) {
+        for (const w of st.watchers) if (w.mode === 'muster') {
+            w.mode = 'return';
+            w.modeDate = now;
+        }
+        return;
+    }
+    st.watcherFleets ??= [];
     const star = st.site?.system.systemStar ?? null;
     for (const w of st.watchers) {
         if (w.dead || w.ship === null || w.ship.hasBeenDestroyed || w.ship.actualEmpire !== st.faction) continue;
@@ -1560,8 +1799,11 @@ export function pickWatcherTarget(galaxy: Galaxy, st: BeaconState, f: WatcherFle
         if (taken.has(h) || galaxy.calculateDistance(ws.xpos, ws.ypos, h.xpos, h.ypos) > reach) continue;
         const value = watcherTargetValue(galaxy, st, h);
         if (value < P.wfMinTargetValue(galaxy) || strength * 100 < defenceOf(galaxy, h) * P.wfRatioPct(galaxy)) continue;
-        if (value > bv) {
-            bv = value;
+        // the wave rolls out from the Beacon: among the worlds worth it, the nearer to the Beacon the better
+        const home = beaconPosition(st);
+        const score = home === null ? value : value / (1 + Math.pow(galaxy.calculateDistance(home.x, home.y, h.xpos, h.ypos) / (6 * Math.max(1, galaxy.sectorSize)), 2));
+        if (score > bv) {
+            bv = score;
             best = h;
         }
     }

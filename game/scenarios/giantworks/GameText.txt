@@ -158,14 +158,17 @@ Beacon Purge Failed Title;Purge of {0} failed
 Beacon Purge Failed;The rebels have taken {0}. It is still corrupted.
 'The Beacon and the Reclamation
 Beacon Awakens Title;The Beacon has awakened
-Beacon Awakens;The Great Work is finished, and it is a Beacon. Something has answered it. Machine ships are forming in the dark around it.
-Beacon Awakens News;The Great Work at {0} was a Beacon, and it has been lit. Machine ships are gathering around it, and the vast vessels that watched the galaxy for so long are not hiding now.
+Beacon Awakens;The Great Work is finished, and it is a Beacon. The vast vessels that watched the galaxy are gathering round it in the dark. In ten days it will fire.
+Beacon Awakens News;The Great Work at {0} was a Beacon, and it has been lit. The vast vessels that watched the galaxy for so long are gathering round it, hidden still. Nothing has happened yet.
 Beacon Beacon Row;The Beacon at {0}
 Beacon Beacon Status;Its waves of Reclaimers have conquered {0} worlds. {1}% of the galaxy's people are gone.
 Beacon Season News;The Reclaimers are preparing a campaign: {1} strike groups are forming at deep-space staging points (season {0}).
 Beacon Offensive News;{0} Reclaimer strike groups have left their staging points at the same moment, each bound for its own world. The farthest will need about {1} days to arrive.
 Beacon Inbound Title;Reclaimers inbound
 Beacon Inbound;Reclaimer strike groups have left their staging points. Their targets include our worlds at {0}.
+Beacon Beam News;The Beacon has fired. {0} Reclaimer strike groups have come out of the beam beside their targets, the great machine ships round it have shown themselves at last, and the Reclaimers are at war with every empire.
+Beacon Beam Inbound Title;The Beacon has fired
+Beacon Beam Inbound;Reclaimer strike groups have come out of the beam beside our worlds at {0}.
 Beacon Arrived Title;Reclaimers at {0}
 Beacon Arrived;A Reclaimer strike group has arrived over {0}.
 Beacon Coalition Staging News;The empires have fallen on the Reclaimers' gathering at {0}.

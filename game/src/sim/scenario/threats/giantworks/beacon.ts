@@ -10,8 +10,10 @@
 // then slips away and cloaks again; attacked, it only DEFENDS ITSELF: it fires back at the ships that attacked it (and their fleets) until they are
 // destroyed or gone, then goes back to what it was doing and cloaks; it goes to war with no one. Very hard to kill;
 // killing one slows the build sharply.
-// When the Beacon is finished the Reclamation begins (beaconFleet.ts). The Watchers then lead the Watcher fleets (the flagships of the two
-// biggest strike groups' escorts), which defend the harvest cores and go on an offensive only every few years.
+// When the Beacon is finished the Reclamation begins (beaconFleet.ts), but not the war: the Watchers stay cloaked and gather round the Beacon
+// (musterWatchers) for the ten days of the countdown. At the first mega beam the war is declared, the Watchers decloak and lead the Watcher fleets (their
+// escorts are made at the Beacon), which defend the harvest cores and go on an offensive only every few years, and the first season's strike
+// groups come through the beam beside their targets. Later seasons prepare at staging points as before.
 //
 // Cloak: a built object with `cloaked` set is not seen by any other empire (independentTraders.ts isObjectVisibleToThisEmpire,
 // the fog layer), unless its empire is listed in `cloakSeenBy` (a ship or base of that empire spotted it: detectCloaked).
@@ -39,7 +41,7 @@ import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission 
 import { isHumanEmpire } from '../../../humanEmpires';
 import { GameEndOutcome } from '../../../victory';
 import { CharacterRole, getEmpireCharacters } from '../../../characters';
-import { GAME_DAY_LENGTH, registerScenarioEvent, registerScenarioPeriodic, registerScenarioQuery } from '../../hooks';
+import { GAME_DAY_LENGTH, registerScenarioEvent, registerScenarioFramePeriodic, registerScenarioPeriodic, registerScenarioQuery } from '../../hooks';
 import { logScenarioMessage, logScenarioNews } from '../../eventLog/log';
 import { registerScenarioMapFeatures, type ScenarioMapFeatures } from '../../mapFeatures';
 import { scenarioMessage, scenarioNews, scenarioText as T } from '../../messages';
@@ -81,6 +83,7 @@ import {
     peekBeaconState,
     siphonGateOpen,
     watcherShips,
+    beaconPosition,
     type BeaconState,
     type CorruptRec,
     type WatcherRec,
@@ -97,11 +100,12 @@ import {
     onShipKilled,
     processingWorlds,
     reclaimerLevel,
+    beamPass,
+    startBeamCountdown,
     reclamationMonthly,
     reclamationPeriodic,
     referenceMilitary,
     spawnShip,
-    startWatcherFleets,
     syncReclaimerTech,
 } from './beaconFleet';
 import { registerBeaconAi } from './beaconAi';
@@ -118,11 +122,15 @@ declare module '../../../builtObject' {
         cloaked?: boolean;
         /** Empire ids whose sensors currently see through the cloak, with the star date it lapses. */
         cloakSeenBy?: { empireId: number; until: number }[];
+        /** Star date the ship came out of the Beacon's mega beam (beaconFleet.ts fireBeam): the renderer plays the Beacon warp's arrival once (effectsLayer.ts). Absent otherwise. */
+        beamArrival?: number;
     }
 }
 
 const TAG = 'Beacon';
 const WATCHER_DAYS = 2;
+/** Mustering Watchers wait this far from the Beacon. */
+const MUSTER_RADIUS = 16000;
 
 // ---------------------------------------------------------------------------------------------------------------
 // The Watchers: faction, design, ships
@@ -497,6 +505,35 @@ function goRest(galaxy: Galaxy, st: BeaconState, w: WatcherRec, from: { xpos: nu
     goHome(galaxy, st, w, now);
 }
 
+/** Where a mustering Watcher waits: on a ring round the Beacon (MUSTER_RADIUS), the Watchers spread evenly round it. Null without a Beacon. Pure. */
+function musterPoint(st: BeaconState, w: WatcherRec): { x: number; y: number } | null {
+    const pos = beaconPosition(st);
+    if (pos === null) return null;
+    const a = 0.6 + (2 * Math.PI * w.index) / Math.max(2, st.watchers.length);
+    return { x: pos.x + MUSTER_RADIUS * Math.cos(a), y: pos.y + MUSTER_RADIUS * Math.sin(a) };
+}
+
+/**
+ * The Great Work is finished: every living Watcher stops what it was doing (a corruption trip, a sighting, the guard of the scaffold, a fight, a rest in dark
+ * space) and goes, cloaked, to gather round the Beacon. There it stays until the mega beam.
+ */
+export function musterWatchers(galaxy: Galaxy, st: BeaconState): void {
+    const now = galaxyStarDate(galaxy);
+    for (const w of st.watchers) {
+        const ship = w.ship;
+        if (w.dead || ship === null || ship.hasBeenDestroyed || ship.actualEmpire !== st.faction) continue;
+        if (ship.cloaked !== true && st.faction !== null) loseTrack(galaxy, st.faction, ship, null);
+        ship.cloaked = true;
+        w.target = null;
+        w.until = 0;
+        w.attackerShips = [];
+        w.prevMode = undefined;
+        setMode(w, 'muster', now);
+        const at = musterPoint(st, w);
+        if (at !== null) sendTo(galaxy, ship, at.x, at.y);
+    }
+}
+
 /** One Watcher's turn (every 2 days). */
 function driveWatcher(galaxy: Galaxy, st: BeaconState, w: WatcherRec, sightingOpen: boolean): boolean {
     const ship = w.ship;
@@ -507,6 +544,17 @@ function driveWatcher(galaxy: Galaxy, st: BeaconState, w: WatcherRec, sightingOp
     if (w.mode === 'lead') {
         // The flagship of a Watcher fleet (beaconFleet.ts moves it with the fleet): uncloaked, no routine of its own.
         ship.cloaked = false;
+        return false;
+    }
+    if (w.mode === 'muster') {
+        // The Great Work is finished and the beam not yet fired: cloaked, it holds its place round the Beacon (beaconFleet.ts startWatcherFleets lets it go at the beam).
+        ship.cloaked = true;
+        const at = musterPoint(st, w);
+        if (at === null) {
+            goHome(galaxy, st, w, now);
+            return false;
+        }
+        if (!arrived(galaxy, ship, at.x, at.y, 6000)) sendTo(galaxy, ship, at.x, at.y);
         return false;
     }
     if (w.mode === 'fight') {
@@ -932,9 +980,11 @@ export function beaconComplete(galaxy: Galaxy, site: GreatWorkSite): void {
     setupBeacon(galaxy, st, site, faction, pos);
     st.popBaseline = galaxyPopulation(galaxy, faction);
     initHarvest(galaxy, st);
-    for (const e of normalEmpires(galaxy, faction)) lockWar(galaxy, faction, e);
-    startWatcherFleets(galaxy, st); // the Watchers lead the Watcher fleets from now on
-    st.nextOfferDate = now + days(P.offerFirstDays(galaxy));
+    // No war yet: the Watchers gather, cloaked, round the Beacon and the first countdown runs; at the mega beam the war begins, the Watchers decloak and lead
+    // their fleets, and the first season's groups come through (beaconFleet.ts fireBeam).
+    st.warStarted = false;
+    musterWatchers(galaxy, st);
+    startBeamCountdown(galaxy, st);
     arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Awakens', textTag: `${TAG} Awakens News`, args: [site.system.systemStar.name] });
     for (const e of normalEmpires(galaxy, faction)) {
         if (isHumanEmpire(galaxy, e)) arcMessage(galaxy, st.sentStages, [e], { prefix: TAG, stage: 'Awakens', type: EmpireMessageType.GeneralBadEvent, subject: st.beacon });
@@ -1182,7 +1232,7 @@ export const beaconKind: GreatWorkKind = {
     onDestroyed: beaconDestroyedEarly,
 };
 
-export const BEACON_HANDLER_IDS = ['beacon.watchers', 'beacon.reclaim', 'beacon.monthly', 'beacon.attacked', 'beacon.killed', 'beacon.owner', 'beacon.destroyed', 'beacon.boarded', 'beacon.repair', 'beacon.armour', 'beacon.troops', 'beacon.counter', 'beacon.ai', 'beacon.cloakTarget', 'beacon.cloakSpares', 'beacon.cattleSpool', 'beacon.cattle', 'beacon.selfDefence', 'beacon.noWar', 'beacon.moratorium', 'beacon.moratoriumMonthly', 'beacon.siteAttacked'] as const;
+export const BEACON_HANDLER_IDS = ['beacon.watchers', 'beacon.reclaim', 'beacon.beam', 'beacon.monthly', 'beacon.attacked', 'beacon.killed', 'beacon.owner', 'beacon.destroyed', 'beacon.boarded', 'beacon.repair', 'beacon.armour', 'beacon.troops', 'beacon.counter', 'beacon.ai', 'beacon.cloakTarget', 'beacon.cloakSpares', 'beacon.cattleSpool', 'beacon.cattle', 'beacon.selfDefence', 'beacon.noWar', 'beacon.moratorium', 'beacon.moratoriumMonthly', 'beacon.siteAttacked'] as const;
 
 export function registerBeacon(): void {
     registerGreatWork(beaconKind);
@@ -1197,6 +1247,8 @@ export function registerBeacon(): void {
             beaconEndCheck(g);
         },
     });
+    // the mega beam fires on its day, not at the next stock long block (36 days at 1x): a day-scale check at every sim frame end
+    registerScenarioFramePeriodic({ id: 'beacon.beam', flag: BEACON_FLAG, order: 21, periodDays: 1, run: (g) => beamPass(g) });
     registerScenarioPeriodic({
         id: 'beacon.monthly',
         flag: BEACON_FLAG,

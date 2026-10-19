@@ -34,8 +34,11 @@ export const SYSTEM_RADIUS = 23000;
 // State
 // ---------------------------------------------------------------------------------------------------------------
 
-/** 'lead': from the Reclamation on, the Watcher is the flagship of a Watcher fleet (beaconFleet.ts) and has no routine of its own. */
-export type WatcherMode = 'parked' | 'travel' | 'dwell' | 'sighting' | 'return' | 'fight' | 'lead' | 'guard' | 'dead';
+/**
+ * 'lead': from the first mega beam on, the Watcher is the flagship of a Watcher fleet (beaconFleet.ts) and has no routine of its own.
+ * 'muster': the Great Work is finished and the first beam not yet fired: the Watcher gathers, cloaked, round the Beacon (beacon.ts musterWatchers).
+ */
+export type WatcherMode = 'parked' | 'travel' | 'dwell' | 'sighting' | 'return' | 'fight' | 'lead' | 'muster' | 'guard' | 'dead';
 
 export interface WatcherRec {
     index: number;
@@ -191,13 +194,18 @@ export interface StagingPoint {
     startStrength: number;
 }
 
+/** Season 1 is a BEAM season: its 'prep' is a countdown with no groups and no staging points (fireBeam brings the groups through). Later seasons have both. Pure. */
+export function isBeamCountdown(s: { phase: string; groups: readonly unknown[]; staging: readonly unknown[] }): boolean {
+    return s.phase === 'prep' && s.groups.length === 0 && s.staging.length === 0;
+}
+
 export type SeasonPhase = 'prep' | 'offensive' | 'quiet';
 
 export interface Season {
     n: number;
     phase: SeasonPhase;
     start: number;
-    /** The phase's planned end (prep: the departure; offensive: the cap; quiet: the next prep). */
+    /** The phase's planned end (prep: the departure, or for season 1's beam countdown the beam; offensive: the cap; quiet: the next prep). */
     end: number;
     staging: StagingPoint[];
     groups: StrikeGroup[];
@@ -489,6 +497,11 @@ export interface BeaconState {
     salvage: SalvageRec[];
     /** The Reclamation began (star date, 0 before). */
     reclamationDate: number;
+    /**
+     * The war has begun: the first mega beam was fired (or the Beacon fell before it). False from the Great Work's completion to that beam (the Watchers
+     * muster cloaked round the Beacon); absent in saves from before the beam, which are at war already (warOn).
+     */
+    warStarted?: boolean;
     /** The siphon (created on first use: absent in older saves, where it starts at the share the build had made). */
     siphon?: SiphonRec;
     /** Star date the Watchers appeared (absent in older saves: the first siphon pass sets it). */
@@ -557,6 +570,11 @@ function withDefaults(st: BeaconState): BeaconState {
 
 export function beaconState(galaxy: Galaxy): BeaconState {
     return withDefaults(threatState(galaxy, BEACON_KEY, newState));
+}
+
+/** The Reclaimers are at war with the galaxy: the first mega beam was fired. A save from before the beam (no record) is at war once the Reclamation began. Pure. */
+export function warOn(st: BeaconState): boolean {
+    return st.phase === 'reclamation' && st.warStarted !== false;
 }
 
 export function peekBeaconState(galaxy: Galaxy): BeaconState | null {
@@ -659,6 +677,9 @@ export const P = {
     /** A corrupted world's chance (%) per month to rise, once the Reclamation has begun; the strength of the rising force. */
     riseStrength: (g: Galaxy) => p(g, 'beaconRiseStrength', 900000),
     // The Reclamation
+    /** Days from the Great Work's completion to the FIRST mega beam (the countdown: war, the Watchers decloak, season 1's groups arrive through the beam). */
+    beamDelayDays: (g: Galaxy) => p(g, 'beaconBeamDelayDays', 10),
+    /** A save from before the beam, between completion and season 1: days to season 1's preparation. */
     startDelayDays: (g: Galaxy) => p(g, 'beaconStartDelayDays', 90),
     prepMinDays: (g: Galaxy) => p(g, 'beaconPrepMinDays', 120),
     prepMaxDays: (g: Galaxy) => p(g, 'beaconPrepMaxDays', 180),

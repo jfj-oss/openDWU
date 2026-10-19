@@ -219,8 +219,8 @@ import { SystemVisibilityStatus } from '../src/sim/visibility';
 import { completeWork, greatWorkIsHostile, greatWorkKind, type GreatWorkSite } from '../src/sim/scenario/threats/giantworks/framework';
 import { defaultMessageOptions, routeEmpireMessage } from '../src/sim/messageRouting';
 import { watcherVariant, beaconBuildRate, beaconComplete, beaconEndCheck, beaconKind, beaconKnownSites, beaconLooks, beaconRolled, beaconShipRole, beaconSuppliers, cloakLapsedFor, corrupt, corruptCandidates, watchersPeriodic } from '../src/sim/scenario/threats/giantworks/beacon';
-import { peekBeaconState, salvageStepsOf, siphonGateOpen, siphonOf, type BeaconState, type CattleRec } from '../src/sim/scenario/threats/giantworks/beaconState';
-import { beginSeason, driveWatcherFleets, watcherTargetValue, designFor, groupCarryRegiments, scriptedBudget, seasonBudget, landingPlan, lossCheck, noticedGathering, planetStrike, reclamationMonthly, reclamationPeriodic, spawnShip, supplyTroops, targetCandidates } from '../src/sim/scenario/threats/giantworks/beaconFleet';
+import { beaconPosition, peekBeaconState, salvageStepsOf, warOn, siphonGateOpen, siphonOf, type BeaconState, type CattleRec } from '../src/sim/scenario/threats/giantworks/beaconState';
+import { arrivalPoint, beginSeason, driveWatcherFleets, fireBeam, startBeamCountdown, startWar, watcherTargetValue, designFor, groupCarryRegiments, scriptedBudget, seasonBudget, landingPlan, lossCheck, noticedGathering, planetStrike, reclamationMonthly, reclamationPeriodic, spawnShip, supplyTroops, targetCandidates } from '../src/sim/scenario/threats/giantworks/beaconFleet';
 import { coalitionMembers, coalitionPass } from '../src/sim/scenario/threats/giantworks/beaconAi';
 import { podWorld, assignEscorts, escortPlan, interceptsAt, noteIntercept, beaconArtInfo, cattleDesign, cattleOf, coreCountFor, coreTarget, coresOf, freeShare, fuelOf, cattleDamage, cattleRepairFactor, cattleStep, feedersOf, harvestMonthly, harvestPeriodic, liveCores, pickCore, poolOf, poolTarget, rescueCattle } from '../src/sim/scenario/threats/giantworks/beaconHarvest';
 import { kindTaken } from '../src/sim/scenario/threats/giantworks/founders';
@@ -4384,12 +4384,22 @@ describe('the Beacon (Giantworks wonder)', () => {
         beaconRolled(g, site);
         return { g, site, st: peekBeaconState(g)!, game, gameData };
     }
-    function completed(): { g: Galaxy; site: GreatWorkSite; st: BeaconState; game: Game; gameData: GameData } {
+    /** The Great Work finished and nothing else: the Watchers muster, cloaked, round the Beacon and season 1's beam countdown runs (no war yet). */
+    function completedRaw(): { g: Galaxy; site: GreatWorkSite; st: BeaconState; game: Game; gameData: GameData } {
         const r = rolled();
         r.site.progress = 1;
         r.site.stage = 4;
         r.site.completeDate = galaxyStarDate(r.g);
         beaconComplete(r.g, r.site);
+        return r;
+    }
+    /** Completed and the war begun (the Watchers decloaked and leading their fleets) with no season yet, as the saves from before the beam were: most tests start from this. */
+    function completed(): { g: Galaxy; site: GreatWorkSite; st: BeaconState; game: Game; gameData: GameData } {
+        const r = completedRaw();
+        startWar(r.g, r.st);
+        r.st.season = null;
+        r.st.seasons = [];
+        r.st.stats.seasons = 0;
         return r;
     }
 
@@ -5111,26 +5121,142 @@ describe('the Beacon (Giantworks wonder)', () => {
         expect(beaconKnownSites(g, b).some((r) => r.target === ship)).toBe(false);
     }, 900000);
 
-    it('onComplete: the faction becomes the Reclaimers, at locked war with everyone; the Beacon is theirs; the baseline population is recorded', () => {
-        const { g, st } = completed();
+    it('onComplete: the faction becomes the Reclaimers but there is NO war yet; the Watchers muster cloaked round the Beacon; a ten-day countdown to the mega beam runs; the Beacon is theirs; the baseline population is recorded', () => {
+        const { g, st } = completedRaw();
         expect(st.phase).toBe('reclamation');
         expect(st.faction!.name).toBe('The Reclaimers');
         expect(st.beacon).not.toBeNull();
         expect(st.beacon!.actualEmpire).toBe(st.faction);
-        for (const e of normalsOf(g)) {
-            expect(atWarWith(e, st.faction!), e.name).toBe(true);
-            expect(obtainDiplomaticRelation(st.faction!, e).locked).toBe(true);
+        expect(st.warStarted).toBe(false);
+        expect(warOn(st)).toBe(false);
+        for (const e of normalsOf(g)) expect(atWarWith(e, st.faction!), e.name).toBe(false);
+        expect(st.watcherFleets ?? []).toHaveLength(0);
+        const home = beaconPosition(st)!;
+        for (const w of st.watchers) {
+            expect(w.mode).toBe('muster');
+            expect(w.ship!.cloaked).toBe(true);
+            const m = builtObjectMission(w.ship!.mission);
+            expect(m?.type).toBe(BuiltObjectMissionType.Move);
+            expect(g.calculateDistance(m!.x, m!.y, home.x, home.y)).toBeLessThan(30000); // ordered to a point round the Beacon
         }
+        // the first season's countdown: ten days to the beam, no groups yet, no launch
+        const season = st.season!;
+        expect(season.n).toBe(1);
+        expect(season.phase).toBe('prep');
+        expect(season.groups).toHaveLength(0);
+        expect(season.staging).toHaveLength(0);
+        expect(season.launchAt).toBeCloseTo(st.completeDate + 10 * GAME_DAY_LENGTH, 3);
+        expect(st.launches ?? 0).toBe(0);
         expect(st.popBaseline).toBeGreaterThan(0);
         expect(st.popEliminated).toBe(0);
-        // the art hook names who is who
+        // the art hook names who is who, and reads the countdown
         const looks = beaconLooks(g);
         expect(looks.faction).toBe(st.faction);
         expect(looks.beacon).toBe(st.beacon);
         expect(looks.watchers).toHaveLength(2);
         expect(beaconShipRole(st, st.watchers[0].ship!)).toBe('watcher');
         expect(beaconShipRole(st, st.beacon!)).toBe('beacon');
+        expect(looks.art!.phase).toBe('prep');
+        expect(looks.art!.launchAt).toBe(season.launchAt);
     }, 900000);
+
+    it('the Watchers gather and stay cloaked until the beam: no corruption trips, no sightings, no guard; they hold their place round the Beacon', () => {
+        const { g, st } = completedRaw();
+        const home = beaconPosition(st)!;
+        for (const w of st.watchers) {
+            w.nextCorruptDate = 0; // (a trip would be due)
+            w.ship!.xpos = home.x + 16000;
+            w.ship!.ypos = home.y;
+        }
+        st.nextSightingDate = 0;
+        for (let i = 0; i < 4; i++) {
+            g.nowMs += 2 * GAME_DAY_LENGTH;
+            watchersPeriodic(g);
+        }
+        for (const w of st.watchers) {
+            expect(w.mode).toBe('muster');
+            expect(w.ship!.cloaked).toBe(true);
+            expect(w.target).toBeNull();
+        }
+        expect(st.sighted).toHaveLength(0);
+        expect(st.stats.sightings).toBe(0);
+        // one that drifted off is sent back to its place
+        const w0 = st.watchers[0];
+        w0.ship!.xpos = home.x + 600000;
+        watchersPeriodic(g);
+        const m = builtObjectMission(w0.ship!.mission);
+        expect(m?.type).toBe(BuiltObjectMissionType.Move);
+        expect(g.calculateDistance(m!.x, m!.y, home.x, home.y)).toBeLessThan(30000);
+        expect(w0.ship!.cloaked).toBe(true);
+    }, 900000);
+
+    it('the mega beam: ten days after completion the war begins, the Watchers decloak and lead their fleets (escorts made at the Beacon), and the first season\'s groups arrive beside their targets at full strength, all on the same day', () => {
+        const { g, st } = completedRaw();
+        const f = st.faction!;
+        f.stateMoney = 1e9;
+        g.scenario!.params.beaconFundingModel = 1;
+        g.scenario!.params.beaconGroups = 4;
+        g.scenario!.params.beaconStrengthPct = 400; // (max-tech ships are big: a season has to be able to buy several of them per group)
+        const season = st.season!;
+        const launchAt = season.launchAt!;
+        // five days in: nothing has happened
+        g.nowMs += 5 * GAME_DAY_LENGTH;
+        reclamationPeriodic(g);
+        expect(warOn(st)).toBe(false);
+        expect(season.phase).toBe('prep');
+        expect(season.groups).toHaveLength(0);
+        for (const w of st.watchers) expect(w.ship!.cloaked).toBe(true);
+        for (const e of normalsOf(g)) expect(atWarWith(e, f)).toBe(false);
+        // the beam
+        g.nowMs = launchAt + 1;
+        reclamationPeriodic(g);
+        expect(warOn(st)).toBe(true);
+        expect(st.warStarted).toBe(true);
+        for (const e of normalsOf(g)) {
+            expect(atWarWith(e, f), e.name).toBe(true);
+            expect(obtainDiplomaticRelation(f, e).locked).toBe(true);
+        }
+        for (const w of st.watchers) {
+            expect(w.mode).toBe('lead');
+            expect(w.ship!.cloaked).toBe(false);
+        }
+        expect(st.watcherFleets).toHaveLength(2);
+        expect(season.phase).toBe('offensive');
+        expect(season.departed).toBeGreaterThan(0);
+        expect(st.launches).toBe(1);
+        expect(st.lastLaunchDate).toBe(season.departed);
+        expect(season.groups.length).toBeGreaterThanOrEqual(1);
+        expect(new Set(season.departures).size).toBe(1);
+        expect(new Set(season.groups.map((x) => x.target)).size).toBe(season.groups.length);
+        const home = beaconPosition(st)!;
+        for (const grp of season.groups) {
+            expect(grp.state).toBe('travel');
+            expect(grp.departDate).toBe(season.departed);
+            expect(grp.target!.empire).not.toBe(f);
+            expect(grp.ships.length).toBeGreaterThan(0);
+            const t = grp.target!;
+            for (const b of grp.ships) {
+                // out of the beam beside its target (outside the system, far from the Beacon), the arrival flash noted for the renderer
+                const d = g.calculateDistance(b.xpos, b.ypos, t.xpos, t.ypos);
+                expect(d).toBeLessThan(120000);
+                expect(d).toBeGreaterThan(30000);
+                expect(b.beamArrival).toBe(season.departed);
+                const m = builtObjectMission(b.mission) ?? (b.shipGroup as { mission?: { type: BuiltObjectMissionType; targetHabitat: unknown } } | null)?.mission;
+                expect(m?.type).toBe(BuiltObjectMissionType.Attack);
+            }
+            void home;
+        }
+        // the Watcher fleets' escorts were made at the Beacon from the same budget
+        for (const fl of st.watcherFleets!) {
+            expect(fl.ships.length).toBeGreaterThan(0);
+            for (const b of fl.ships) expect(g.calculateDistance(b.xpos, b.ypos, home.x, home.y)).toBeLessThan(60000);
+        }
+        expect(season.spawned).toBeGreaterThan(0);
+        expect(season.staging).toHaveLength(0);
+        // nothing stays at a staging point and nothing is left to gather: the groups are driven as after any departure
+        reclamationPeriodic(g);
+        expect(season.groups.every((x) => x.state !== 'gather')).toBe(true);
+    }, 1800000);
 
     it('onComplete with the framework\'s scaffold base: the base changes hands, is plated like a fortress and named the Beacon', () => {
         const { g, site } = rolled();
@@ -5213,6 +5339,98 @@ describe('the Beacon (Giantworks wonder)', () => {
             expect(grp.ships.length).toBeGreaterThan(0);
         }
         expect(st.stats.spawned).toBeGreaterThan(0);
+    }, 1800000);
+
+    it('a beam that cannot be afforded: the war still begins and the first launch is still the first launch; the next season is then an ordinary preparation at staging points', () => {
+        const { g, st } = completedRaw();
+        g.scenario!.params.beaconFundingModel = 0;
+        fuelOf(st).fleet = 0;
+        const season = st.season!;
+        g.nowMs = season.launchAt! + 1;
+        reclamationPeriodic(g);
+        expect(warOn(st)).toBe(true);
+        expect(st.launches).toBe(1);
+        expect(season.groups).toHaveLength(0);
+        expect(season.phase).toBe('quiet');
+        // fed, after the quiet spell: season 2 prepares at staging points as before (no beam)
+        fuelOf(st).fleet = scriptedBudget(g, st, 2) * 6;
+        g.nowMs = season.end + 1;
+        reclamationPeriodic(g);
+        const next = st.season!;
+        expect(next.n).toBe(2);
+        expect(next.phase).toBe('prep');
+        expect(next.staging.length).toBeGreaterThanOrEqual(1);
+        expect(next.groups.length).toBeGreaterThanOrEqual(1);
+    }, 1800000);
+
+    it('old saves: a save already preparing season 1 (ships at staging) just continues; a save from the awakening (war, no season) keeps its war and prepares as before; a save at war stays at war', () => {
+        const a = completed();
+        a.st.faction!.stateMoney = 1e9;
+        delete a.st.warStarted;
+        expect(warOn(a.st)).toBe(true);
+        expect(beginSeason(a.g, a.st, 1)).toBe(true); // the old preparation (staging points, groups gathering)
+        const season = a.st.season!;
+        expect(season.staging.length).toBeGreaterThanOrEqual(1);
+        for (let i = 0; i < 160 && season.phase === 'prep'; i++) {
+            a.g.nowMs += 5 * GAME_DAY_LENGTH;
+            reclamationPeriodic(a.g);
+        }
+        expect(season.phase).toBe('offensive');
+        expect(a.st.launches).toBe(1);
+        // the awakening (no season yet): the 90-day delay, then season 1 prepares at staging points
+        const b = completed();
+        delete b.st.warStarted;
+        b.st.faction!.stateMoney = 1e9;
+        b.g.nowMs += 100 * GAME_DAY_LENGTH;
+        reclamationPeriodic(b.g);
+        expect(b.st.season!.phase).toBe('prep');
+        expect(b.st.season!.staging.length).toBeGreaterThanOrEqual(1);
+        for (const e of normalsOf(b.g)) expect(atWarWith(e, b.st.faction!)).toBe(true);
+    }, 1800000);
+
+    it('the Beacon destroyed during the countdown: no beam and no victory; the Reclaimers are at war all the same', () => {
+        const { g, st } = completedRaw();
+        const [a] = normalsOf(g);
+        scenarioEmit(g, 'builtObjectKilledBy', { builtObject: st.beacon!, destroyer: a });
+        expect(st.beaconDestroyed).toBe(true);
+        beaconEndCheck(g);
+        expect(st.ended).toBe(false);
+        expect(st.destroyVictoryDone).not.toBe(true);
+        g.nowMs += 5 * GAME_DAY_LENGTH;
+        reclamationPeriodic(g);
+        expect(warOn(st)).toBe(true);
+        expect(st.launches ?? 0).toBe(0);
+        g.nowMs = st.season!.launchAt! + GAME_DAY_LENGTH;
+        reclamationPeriodic(g);
+        expect(st.season!.groups).toHaveLength(0);
+        expect(st.season!.phase).toBe('quiet');
+        beaconEndCheck(g);
+        expect(st.destroyVictoryDone).not.toBe(true);
+    }, 900000);
+
+    it('save / load during the countdown: the mustering Watchers, the war flag and the countdown survive; both copies then fire the beam identically', () => {
+        const { g, st, game, gameData } = completedRaw();
+        st.faction!.stateMoney = 1e9;
+        runGameSeconds(g, 5);
+        expect(warOn(st)).toBe(false);
+        const time = new GalaxyTime();
+        time.bindGalaxy(g);
+        const text = serializeGame(game, time, {} as StartGameOptions);
+        const lg = deserializeGame(text, gameData).game.galaxy;
+        const ls = peekBeaconState(lg)!;
+        expect(ls.warStarted).toBe(false);
+        expect(warOn(ls)).toBe(false);
+        expect(ls.watchers.map((w) => [w.mode, w.ship?.cloaked])).toEqual([['muster', true], ['muster', true]]);
+        expect(ls.season!.phase).toBe('prep');
+        expect(ls.season!.launchAt).toBe(st.season!.launchAt);
+        expect(ls.season!.groups).toHaveLength(0);
+        runGameSeconds(g, 40);
+        runGameSeconds(lg, 40);
+        expect(st.launches).toBe(1);
+        expect(ls.launches).toBe(1);
+        expect(warOn(ls)).toBe(true);
+        expect(ls.season!.groups.length).toBe(st.season!.groups.length);
+        expect(stateDigest(lg)).toBe(stateDigest(g));
     }, 1800000);
 
     it('Watcher fleets: each Watcher leads the escorts of one of the two biggest strike groups, defends the cores, and goes on an offensive only every 3 to 4 years; a dead Watcher\'s fleet reverts', () => {

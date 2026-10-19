@@ -43,7 +43,7 @@ import { isHumanEmpire } from '../../../humanEmpires';
 import { GAME_DAY_LENGTH, registerScenarioPeriodic } from '../../hooks';
 import { scenarioText as T } from '../../messages';
 import { KNOWLEDGE_CONFIRMED, arcNews, knowledgeLevel, normalEmpires, revealTo } from '../framework';
-import { BEACON_FLAG, P, SYSTEM_RADIUS, aliveShips, cloakLapsedFor, peekBeaconState, type BeaconState, type StrikeGroup } from './beaconState';
+import { BEACON_FLAG, P, SYSTEM_RADIUS, aliveShips, cloakLapsedFor, peekBeaconState, warOn, type BeaconState, type StrikeGroup } from './beaconState';
 import { eliminatedPct, travelDays, watcherFleetStrengthOf } from './beaconFleet';
 import { cattleOf, inField, liveCores, phaseOf } from './beaconHarvest';
 import { isObjectVisibleToThisEmpire } from '../../../independentTraders';
@@ -614,7 +614,7 @@ function retake(p: Pass): number {
 /** The coalition's pass (every beaconAiPeriodDays). Returns the operations ordered. */
 export function coalitionPass(galaxy: Galaxy): number {
     const st = peekBeaconState(galaxy);
-    if (st === null || st.phase !== 'reclamation' || st.ended || st.faction === null || !st.faction.active || P.aiOn(galaxy) <= 0) return 0;
+    if (st === null || !warOn(st) || st.ended || st.faction === null || !st.faction.active || P.aiOn(galaxy) <= 0) return 0;
     const members = coalitionMembers(galaxy, st);
     if (members.length === 0) return 0;
     poolKnowledge(galaxy, st, members);

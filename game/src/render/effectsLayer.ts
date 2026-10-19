@@ -62,6 +62,7 @@ import { fogOf } from './fog';
 import { LightningTextures, ionStrikeAlpha, ionStrikeSeed, ionStrikeSizePx, ionStrikeVisible } from './lightning';
 import { explosionShakeAmplitude } from './screenShake';
 import { noteWarpBurst, noteWarpSpool } from './beaconWarp';
+import { GAME_DAY_LENGTH } from '../sim/scenario/hooks';
 import { beaconArtFile } from './threatArt';
 
 const IMG = '/assets/dwu/images';
@@ -72,6 +73,8 @@ const ROT90 = Math.PI / 2;
 const INTERCEPTED_POWER = Math.fround(3.4028234663852886e38);
 /** MainView.1.cs 1003 / 1038: objects are culled 50 px outside the view. */
 const CULL_MARGIN_PX = 50;
+/** A mega-beam arrival older than this many game days when first seen is not played (BuiltObject.beamArrival). */
+const BEAM_ARRIVAL_FRESH_DAYS = 10;
 
 // ---------------------------------------------------------------------------------------------------------------
 // Art (Main.Part12.cs LoadEffectsWeapons / LoadEffectsExplosion, Main.Part13.cs LoadEffects / hyper folders)
@@ -798,6 +801,8 @@ export class EffectsLayer {
     private hyper = new WeakMap<BuiltObject, HyperState>();
     /** Ships whose hyper state still holds a flag that checkHyper must reset once their flags clear. */
     private hyperDirty = new Set<BuiltObject>();
+    /** Ships whose mega-beam arrival (BuiltObject.beamArrival) was already shown. */
+    private beamSeen = new WeakSet<BuiltObject>();
     /** Ships with a renderer-side strike record that may still be visible (phaser / tractor; beamHit). */
     private strikeBos = new Set<BuiltObject>();
     // Perf (late games: 10k built objects): every input of the per-ship effects work below except the renderer's own
@@ -1014,6 +1019,7 @@ export class EffectsLayer {
      * already recorded — checkHyper is a no-op for them, every frame.
      */
     private hyperPending(bo: BuiltObject, starDate: number): boolean {
+        if (bo.beamArrival !== undefined && !this.beamSeen.has(bo)) return true;
         if (bo.hyperjumpJustExited || hyperEnterDue(bo.hyperjumpCountdown, starDate, bo.hyperEnterStartAnimation, bo.canHyperJump)) return true;
         if (bo.hyperExitStartAnimation) {
             const st = this.hyper.get(bo);
@@ -1375,6 +1381,12 @@ export class EffectsLayer {
 
     /** MainView.1.cs 3062 method_97: start the hyper enter / exit animations (30 fps) for ships on screen. */
     private checkHyper(bo: BuiltObject, starDate: number, nowMs: number): void {
+        // A ship that came out of the Beacon's mega beam (sim/scenario/threats/giantworks/beaconFleet.ts fireBeam): the Beacon warp's arrival, once, when it
+        // is fresh (a loaded save's arrival of long ago is not replayed).
+        if (bo.beamArrival !== undefined && !this.beamSeen.has(bo)) {
+            this.beamSeen.add(bo);
+            if (starDate - bo.beamArrival < BEAM_ARRIVAL_FRESH_DAYS * GAME_DAY_LENGTH && beaconArtFile(bo) !== null) noteWarpBurst('exit', bo);
+        }
         const enterDue = hyperEnterDue(bo.hyperjumpCountdown, starDate, bo.hyperEnterStartAnimation, bo.canHyperJump);
         const exitFlag = bo.hyperExitStartAnimation;
         // The Beacon's ships (Reclaimers, Watchers): their own red, crackling warp (beaconWarp.ts) for the stock flares.
