@@ -4555,7 +4555,7 @@ describe('the Beacon (Giantworks wonder)', () => {
         void b;
     }, 900000);
 
-    it('siphon fallbacks: with the start-independent pool exhausted the Watchers may corrupt small colonies; a slow baseline siphon begins after N years; a hard time limit opens the gate', () => {
+    it('siphon fallbacks: with the start-independent pool exhausted the Watchers may corrupt small colonies; a baseline siphon begins when the scaffold waits for the gate; a hard time limit opens the gate', () => {
         const { g, site, st } = rolled();
         const [a] = normalsOf(g);
         const year = 360 * GAME_DAY_LENGTH;
@@ -4579,7 +4579,7 @@ describe('the Beacon (Giantworks wonder)', () => {
         g.scenario!.params.beaconCorruptFallbackPop = 0;
         expect(corruptCandidates(g, st)).toHaveLength(0);
         delete g.scenario!.params.beaconCorruptFallbackPop;
-        // the baseline siphon: nothing before beaconSiphonBaselineYears, 15 a month after
+        // the baseline siphon: nothing while the scaffold is still being built, 80 a month once it waits at 99.9 % for the gate
         const credit = (): number => {
             siphonPass(g, st);
             const before = st.siphon!.total;
@@ -4589,9 +4589,22 @@ describe('the Beacon (Giantworks wonder)', () => {
         };
         setTech5(a, 0);
         expect(credit()).toBe(0);
-        st.rollDate = galaxyStarDate(g) - 11 * year;
-        expect(credit()).toBeCloseTo(15, 5);
-        expect(siphonOf(g, st).rate).toBe(15);
+        const gw = site as unknown as { phase: string; progress: number; base: BuiltObject | null };
+        gw.phase = 'building';
+        gw.progress = 0.999;
+        gw.base = a.builtObjects.find((o) => !o.hasBeenDestroyed)!;
+        expect(credit()).toBeCloseTo(80, 5);
+        expect(siphonOf(g, st).rate).toBe(80);
+        expect(siphonOf(g, st).holdSince).toBeGreaterThan(0);
+        // from nothing the gate opens within about two years of holding, with no tech-5 empire at all
+        st.siphon!.total = 0;
+        let months = 0;
+        while (!siphonGateOpen(g, st) && months < 60) {
+            credit();
+            months++;
+        }
+        expect(months).toBeGreaterThanOrEqual(24);
+        expect(months).toBeLessThanOrEqual(30);
         // the hard limit: the gate is open after beaconSiphonMaxYears whatever was taken
         st.siphon!.total = 0;
         st.rollDate = galaxyStarDate(g) - 29 * year;
@@ -4605,6 +4618,54 @@ describe('the Beacon (Giantworks wonder)', () => {
         g.scenario!.params.beaconSiphonMaxYears = 0; // 0: no limit
         st.siphon!.total = 0;
         expect(siphonGateOpen(g, st)).toBe(false);
+    }, 900000);
+
+    it('guarding the held scaffold: one Watcher comes home and guards it (the other keeps corrupting; a lone Watcher guards and corruption pauses); an attack on the scaffold makes it defend work and self under the no-war rule, then it goes back to guarding', () => {
+        const { g, st, site } = rolled();
+        const [a, b] = normalsOf(g);
+        const [w0, w1] = st.watchers;
+        const gw = site as unknown as { phase: string; progress: number; base: BuiltObject | null };
+        const base = a.builtObjects.find((o) => !o.hasBeenDestroyed)!;
+        // not holding: nothing changes
+        watchersPeriodic(g);
+        expect(w0.mode).not.toBe('guard');
+        gw.phase = 'building';
+        gw.progress = 0.999;
+        gw.base = base;
+        watchersPeriodic(g);
+        expect(w0.mode).toBe('guard');
+        expect(w1.mode).not.toBe('guard'); // the other keeps corrupting
+        expect(w0.ship!.cloaked).toBe(true);
+        expect(builtObjectMission(w0.ship!.mission)?.type).toBe(BuiltObjectMissionType.Move);
+        // an attack on the scaffold: the guard defends itself and the work, against the attackers only
+        w0.ship!.xpos = base.xpos + 1000;
+        w0.ship!.ypos = base.ypos;
+        const hunter = b.builtObjects.find((o) => !o.hasBeenDestroyed && o.role === BuiltObjectRole.Military && o.topSpeed > 0 && o.shipGroup === null)!;
+        const bystander = b.builtObjects.find((o) => !o.hasBeenDestroyed && o !== hunter && o.role === BuiltObjectRole.Military && o.topSpeed > 0 && o.shipGroup === null)!;
+        scenarioEmit(g, 'builtObjectAttacked', { builtObject: base, attacker: hunter, attackingEmpire: b });
+        expect(w0.mode).toBe('fight');
+        expect(w0.prevMode).toBe('guard');
+        expect(w0.ship!.cloaked).toBe(false);
+        const mayFire = (victim: BuiltObject): boolean => scenarioQuery(g, 'attackWithoutWar', false, { empire: st.faction!, target: victim.empire!, attacker: w0.ship!, victim });
+        expect(mayFire(hunter)).toBe(true);
+        expect(mayFire(bystander)).toBe(false);
+        for (const e of normalsOf(g)) expect(atWarWith(e, st.faction!)).toBe(false);
+        // the fight is over: back on guard, cloaked
+        w0.ship!.xpos = 1;
+        w0.ship!.ypos = 1;
+        g.nowMs += 20 * GAME_DAY_LENGTH;
+        watchersPeriodic(g);
+        expect(w0.mode).toBe('guard');
+        expect(w0.ship!.cloaked).toBe(true);
+        // a lone Watcher guards (corruption pauses); the guard goes home when the scaffold no longer waits
+        w1.dead = true;
+        w1.mode = 'dead';
+        w0.mode = 'parked';
+        watchersPeriodic(g);
+        expect(w0.mode).toBe('guard');
+        gw.progress = 0.5;
+        watchersPeriodic(g);
+        expect(w0.mode).toBe('return');
     }, 900000);
 
     it('the dwell grows with the world\'s population (30 to 150 days), a restarted dwell after the Watcher defends itself, and the gap starts after the dwell', () => {

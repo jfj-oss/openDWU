@@ -35,7 +35,7 @@ export const SYSTEM_RADIUS = 23000;
 // ---------------------------------------------------------------------------------------------------------------
 
 /** 'lead': from the Reclamation on, the Watcher is the flagship of a Watcher fleet (beaconFleet.ts) and has no routine of its own. */
-export type WatcherMode = 'parked' | 'travel' | 'dwell' | 'sighting' | 'return' | 'fight' | 'lead' | 'dead';
+export type WatcherMode = 'parked' | 'travel' | 'dwell' | 'sighting' | 'return' | 'fight' | 'lead' | 'guard' | 'dead';
 
 export interface WatcherRec {
     index: number;
@@ -126,6 +126,8 @@ export interface SiphonRec {
     gateDate: number;
     /** The rate at the last credit (points a month, all worlds), for the soak. */
     rate: number;
+    /** Star date the scaffold first waited at 99.9 % for the gate (absent: not yet): the baseline siphon begins and a Watcher guards it from then. */
+    holdSince?: number;
 }
 
 /** A research moratorium the Diet passed: members that break it (their research is not slowed), breaches seen per empire, empires sanctioned. */
@@ -589,10 +591,9 @@ export const P = {
     /** The siphon: knowledge needed before the Beacon can be completed, and points a month per tech-5 technology of the donor empire, per corrupted world. */
     siphonRequired: (g: Galaxy) => Math.max(0, p(g, 'beaconSiphonRequired', 2000)),
     siphonRate: (g: Galaxy) => Math.max(0, p(g, 'beaconSiphonRate', 1)),
-    /** Fallbacks so the Beacon cannot stall for ever: a slow baseline siphon (points a month) after this many years since the Watchers appeared, the Beacon completable regardless after beaconSiphonMaxYears; the Watchers
+    /** Fallbacks so the Beacon cannot stall for ever: a baseline siphon (points a month) from the moment the scaffold waits at 99.9 % for the gate (about two years from nothing), the Beacon completable regardless after beaconSiphonMaxYears; the Watchers
      *  may corrupt any colony of up to beaconCorruptFallbackPop million people when fewer than beaconCorruptMinPool of the start-independent worlds are left. */
-    siphonBaseline: (g: Galaxy) => Math.max(0, p(g, 'beaconSiphonBaseline', 15)),
-    siphonBaselineYears: (g: Galaxy) => Math.max(0, p(g, 'beaconSiphonBaselineYears', 10)),
+    siphonBaseline: (g: Galaxy) => Math.max(0, p(g, 'beaconSiphonBaseline', 80)),
     siphonMaxYears: (g: Galaxy) => Math.max(0, p(g, 'beaconSiphonMaxYears', 30)),
     corruptFallbackPop: (g: Galaxy) => Math.max(0, p(g, 'beaconCorruptFallbackPop', 30)) * 1e6,
     corruptMinPool: (g: Galaxy) => Math.max(0, Math.trunc(p(g, 'beaconCorruptMinPool', 3))),

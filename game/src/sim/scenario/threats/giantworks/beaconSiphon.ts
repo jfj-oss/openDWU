@@ -85,6 +85,12 @@ export function siphonRateOf(galaxy: Galaxy, st: BeaconState, rec: CorruptRec, c
     return P.siphonRate(galaxy) * n;
 }
 
+/** The Great Work is built to 99.9 % and waits only for the gate. Pure. */
+export function holdingAtGate(galaxy: Galaxy, st: BeaconState): boolean {
+    const gw = st.site as { phase?: string; progress?: number } | null;
+    return st.phase === 'watching' && gw !== null && gw.phase === 'building' && (gw.progress ?? 0) >= 0.999 && !siphonGateOpen(galaxy, st);
+}
+
 /** Credits the days since the last pass to every active corruption (before the Reclamation only). */
 export function siphonPass(galaxy: Galaxy, st: BeaconState): void {
     if (st.phase !== 'watching') return;
@@ -107,9 +113,10 @@ export function siphonPass(galaxy: Galaxy, st: BeaconState): void {
         if (donor !== null) rec.byEmpire[String(donor.empireId)] = (rec.byEmpire[String(donor.empireId)] ?? 0) + take;
         st.stats.siphoned = (st.stats.siphoned ?? 0) + take;
     }
-    // the slow baseline, for a galaxy with no tech-5 empire (or no corruptible world) for a long time
-    const sinceRoll = (now - st.rollDate) / (360 * GAME_DAY_LENGTH);
-    if (dt > 0 && P.siphonBaseline(galaxy) > 0 && sinceRoll >= P.siphonBaselineYears(galaxy)) {
+    // the scaffold waits at 99.9 % for the gate: the baseline siphon begins (a galaxy with no tech-5 empire still ripens in about two years)
+    const holding = holdingAtGate(galaxy, st);
+    if (holding && rec.holdSince === undefined) rec.holdSince = now;
+    if (holding && dt > 0 && P.siphonBaseline(galaxy) > 0) {
         const take = (P.siphonBaseline(galaxy) * dt) / 30;
         rec.total += take;
         rate += P.siphonBaseline(galaxy);

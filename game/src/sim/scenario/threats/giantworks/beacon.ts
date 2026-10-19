@@ -105,7 +105,7 @@ import {
     syncReclaimerTech,
 } from './beaconFleet';
 import { registerBeaconAi } from './beaconAi';
-import { dwellDaysFor, purgePass, purgeRebelStrength, recentlyPurged, siphonPass, siphonStatus } from './beaconSiphon';
+import { dwellDaysFor, holdingAtGate, purgePass, purgeRebelStrength, recentlyPurged, siphonPass, siphonStatus } from './beaconSiphon';
 import { addProgress } from './lifecycle';
 import './beaconDiet';
 import { counterIntelligencePass, counterMonthly, onBoarded, onKilledForSalvage, registerCounterplay, resistanceFactor } from './beaconCounter';
@@ -454,6 +454,15 @@ function endFight(galaxy: Galaxy, st: BeaconState, w: WatcherRec, now: number): 
     const ship = w.ship!;
     const prev = w.prevMode;
     const t = w.target;
+    if (prev === 'guard') {
+        // back to guarding the scaffold, cloaked
+        w.attackerShips = [];
+        w.prevMode = undefined;
+        if (st.faction !== null && ship.cloaked !== true) loseTrack(galaxy, st.faction, ship, null);
+        ship.cloaked = true;
+        setMode(w, 'guard', now);
+        return;
+    }
     const resumable = (prev === 'travel' || prev === 'dwell' || prev === 'sighting') && t !== null && !t.hasBeenDestroyed;
     w.attackerShips = [];
     w.prevMode = undefined;
@@ -513,6 +522,17 @@ function driveWatcher(galaxy: Galaxy, st: BeaconState, w: WatcherRec, sightingOp
         // (w.until marks when the fight began: it breaks off after 45 days however near its enemies still are, and is drawn back in if they hit it again)
         if (near && now - w.until < days(45)) w.modeDate = now;
         else if (now - Math.max(w.modeDate, w.lastHit ?? 0) > days(15) || now - w.until >= days(45)) endFight(galaxy, st, w, now);
+        return false;
+    }
+    if (w.mode === 'guard') {
+        // Guarding the scaffold that waits for its gate: cloaked over the site; attacked, it fights (onSiteAttacked / onAttacked) and comes back to this.
+        ship.cloaked = true;
+        const pos = scaffoldPosition(st);
+        if (pos === null || !guardWanted(galaxy, st)) {
+            goHome(galaxy, st, w, now);
+            return false;
+        }
+        if (!arrived(galaxy, ship, pos.x, pos.y, 20000)) sendTo(galaxy, ship, pos.x, pos.y);
         return false;
     }
     if (w.mode === 'parked' || w.mode === 'return') {
@@ -682,6 +702,53 @@ function sightingEnds(galaxy: Galaxy, st: BeaconState, w: WatcherRec, over: Habi
     void w;
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// Guarding the scaffold while it waits for the siphon gate
+// ---------------------------------------------------------------------------------------------------------------
+
+function scaffoldPosition(st: BeaconState): { x: number; y: number } | null {
+    const gw = st.site;
+    if (gw === null) return null;
+    if (gw.base !== null && !gw.base.hasBeenDestroyed) return { x: gw.base.xpos, y: gw.base.ypos };
+    return null;
+}
+
+/** The scaffold stands at 99.9 % and waits for the gate. */
+function guardWanted(galaxy: Galaxy, st: BeaconState): boolean {
+    return holdingAtGate(galaxy, st) && scaffoldPosition(st) !== null;
+}
+
+/**
+ * While the scaffold waits at 99.9 % for the gate, ONE Watcher (the lowest-numbered live one that is free) comes home and guards it: cloaked over the
+ * site, and when the scaffold is attacked it defends itself and the work (onSiteAttacked) under the no-war rule, so attackers must beat it first.
+ * With two Watchers the other keeps corrupting (new siphon sources, the work's build speed); a lone Watcher guards and corruption pauses, the
+ * baseline siphon (beaconSiphonBaseline) being the source then. A guard that died is replaced by the next free Watcher.
+ */
+function guardPass(galaxy: Galaxy, st: BeaconState): void {
+    if (!guardWanted(galaxy, st)) return;
+    const live = liveWatchers(st);
+    if (live.some((w) => w.mode === 'guard' || (w.mode === 'fight' && w.prevMode === 'guard'))) return;
+    const pick = live.find((w) => w.mode === 'parked' || w.mode === 'return' || w.mode === 'travel' || w.mode === 'dwell');
+    if (pick === undefined) return;
+    const now = galaxyStarDate(galaxy);
+    pick.target = null;
+    pick.until = 0;
+    setMode(pick, 'guard', now);
+    const pos = scaffoldPosition(st)!;
+    sendTo(galaxy, pick.ship!, pos.x, pos.y);
+}
+
+/** The scaffold was attacked: the guarding Watcher defends it and itself against the attackers (and their fleets) only. */
+function onSiteAttacked(galaxy: Galaxy, bo: BuiltObject, attacker: unknown, attackingEmpire: Empire | null): void {
+    const st = peekBeaconState(galaxy);
+    if (st === null || st.faction === null || st.phase !== 'watching' || attackingEmpire === null) return;
+    const base = st.site?.base ?? null;
+    if (base === null || bo !== base || base.hasBeenDestroyed) return;
+    const guard = st.watchers.find((w) => !w.dead && w.ship !== null && !w.ship.hasBeenDestroyed && (w.mode === 'guard' || (w.mode === 'fight' && w.prevMode === 'guard')));
+    if (guard === undefined || guard.ship === null) return;
+    onAttacked(galaxy, guard.ship, attacker, attackingEmpire);
+}
+
 /** Every 2 days: the Watchers' routine and the cloak check. */
 export function watchersPeriodic(galaxy: Galaxy): void {
     const st = peekBeaconState(galaxy);
@@ -710,6 +777,7 @@ export function watchersPeriodic(galaxy: Galaxy): void {
     }
     st.sighted = st.watchers.filter((w) => !w.dead && w.ship !== null && !w.ship.hasBeenDestroyed && w.ship.cloaked !== true).map((w) => w.ship!);
     siphonPass(galaxy, st);
+    guardPass(galaxy, st);
     purgePass(galaxy, st);
     // the siphon is complete and the work waits at the last stage: the next delivery (or this nudge) finishes it
     const gw = st.site as (GreatWorkSite & { phase?: string }) | null;
@@ -1113,7 +1181,7 @@ export const beaconKind: GreatWorkKind = {
     onDestroyed: beaconDestroyedEarly,
 };
 
-export const BEACON_HANDLER_IDS = ['beacon.watchers', 'beacon.reclaim', 'beacon.monthly', 'beacon.attacked', 'beacon.killed', 'beacon.owner', 'beacon.destroyed', 'beacon.boarded', 'beacon.repair', 'beacon.troops', 'beacon.counter', 'beacon.ai', 'beacon.cloakTarget', 'beacon.cloakSpares', 'beacon.cattleSpool', 'beacon.selfDefence', 'beacon.noWar', 'beacon.moratorium', 'beacon.moratoriumMonthly'] as const;
+export const BEACON_HANDLER_IDS = ['beacon.watchers', 'beacon.reclaim', 'beacon.monthly', 'beacon.attacked', 'beacon.killed', 'beacon.owner', 'beacon.destroyed', 'beacon.boarded', 'beacon.repair', 'beacon.troops', 'beacon.counter', 'beacon.ai', 'beacon.cloakTarget', 'beacon.cloakSpares', 'beacon.cattleSpool', 'beacon.selfDefence', 'beacon.noWar', 'beacon.moratorium', 'beacon.moratoriumMonthly', 'beacon.siteAttacked'] as const;
 
 export function registerBeacon(): void {
     registerGreatWork(beaconKind);
@@ -1140,6 +1208,7 @@ export function registerBeacon(): void {
     });
     registerScenarioPeriodic({ id: 'beacon.counter', flag: BEACON_FLAG, order: 23, periodDays: 60, run: (g) => counterIntelligencePass(g) });
     registerScenarioEvent({ id: 'beacon.attacked', flag: BEACON_FLAG, event: 'builtObjectAttacked', run: (g, e) => onAttacked(g, e.builtObject, e.attacker, e.attackingEmpire) });
+    registerScenarioEvent({ id: 'beacon.siteAttacked', flag: BEACON_FLAG, event: 'builtObjectAttacked', run: (g, e) => onSiteAttacked(g, e.builtObject, e.attacker, e.attackingEmpire) });
     registerScenarioEvent({ id: 'beacon.killed', flag: BEACON_FLAG, event: 'builtObjectKilledBy', run: (g, e) => onKilledBy(g, e.builtObject, e.destroyer) });
     registerScenarioEvent({
         id: 'beacon.owner',
