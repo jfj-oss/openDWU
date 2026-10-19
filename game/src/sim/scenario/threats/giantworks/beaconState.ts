@@ -445,8 +445,6 @@ export interface BeaconState {
     siphon?: SiphonRec;
     /** Cattle interceptions per held world (beaconHarvest.ts escorts). */
     intercepts?: InterceptRec[];
-    /** The research moratorium in force: until this star date (0: none) and who proposed it. */
-    moratoriumUntil?: number;
     stats: BeaconStats;
     ended: boolean;
     /** Spawned from the Game Editor / a test: the existence-year gates are skipped. */
@@ -562,8 +560,10 @@ export const P = {
     /** The siphon: knowledge needed before the Beacon can be completed, and points a month per tech-5 technology of the donor empire, per corrupted world. */
     siphonRequired: (g: Galaxy) => Math.max(0, p(g, 'beaconSiphonRequired', 3000)),
     siphonRate: (g: Galaxy) => Math.max(0, p(g, 'beaconSiphonRate', 0.5)),
-    /** Purge: the rebels' ground strength, and the least (%) of it the owner's defenders must outweigh before the AI tries; days a purged world is left alone by the Watchers. */
-    purgeRebelStrength: (g: Galaxy) => p(g, 'beaconPurgeRebelStrength', 1200000),
+    /** Purge: the rebels' ground strength for a max-population colony (beaconPurgeRebelPopFull, millions), the floor for a tiny one,  and the least (%) of it the owner's defenders must outweigh before the AI tries; days a purged world is left alone by the Watchers. */
+    purgeRebelStrength: (g: Galaxy) => p(g, 'beaconPurgeRebelStrength', 1500000),
+    purgeRebelMin: (g: Galaxy) => Math.max(1200, p(g, 'beaconPurgeRebelMin', 100000)),
+    purgeRebelPopFull: (g: Galaxy) => Math.max(1, p(g, 'beaconPurgeRebelPopFull', 2000)) * 1e6,
     purgeRebelRegiments: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'beaconPurgeRebelRegiments', 12))),
     aiPurgeMarginPct: (g: Galaxy) => p(g, 'beaconAiPurgeMarginPct', 130),
     reseedDays: (g: Galaxy) => p(g, 'beaconReseedDays', 120),

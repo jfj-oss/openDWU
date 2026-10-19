@@ -104,7 +104,7 @@ import {
     syncReclaimerTech,
 } from './beaconFleet';
 import { registerBeaconAi } from './beaconAi';
-import { dwellDaysFor, purgePass, recentlyPurged, siphonPass, siphonStatus } from './beaconSiphon';
+import { dwellDaysFor, purgePass, purgeRebelStrength, recentlyPurged, siphonPass, siphonStatus } from './beaconSiphon';
 import { addProgress } from './lifecycle';
 import { counterIntelligencePass, counterMonthly, onBoarded, onKilledForSalvage, registerCounterplay, resistanceFactor } from './beaconCounter';
 import { beaconArtInfo, cattleOf, initHarvest, liveCores, registerHarvest, releaseCaptives, rescueCattle } from './beaconHarvest';
@@ -901,7 +901,7 @@ export function beaconKnownSites(galaxy: Galaxy, empire: Empire): KnownThreatSit
     for (const c of st.corrupted) {
         if (c.ended !== null || c.colony.empire !== empire) continue;
         if (knowledgeLevel({ knowledge: c.knowledge }, empire) < KNOWLEDGE_CONFIRMED) continue;
-        out.push({ threat: BEACON_KEY, kind: 'colony', target: c.colony, level: KNOWLEDGE_CONFIRMED, site: { knowledge: c.knowledge }, label: T(`${TAG} Corrupt Row`, c.colony.name), status: T(`${TAG} Corrupt Status`, Math.round(P.purgeRebelStrength(galaxy) * resistanceFactor(st, empire)).toLocaleString('en-US'), c.purge !== undefined ? T(`${TAG} Corrupt Purging`) : siphonStatus(galaxy, st, c)) });
+        out.push({ threat: BEACON_KEY, kind: 'colony', target: c.colony, level: KNOWLEDGE_CONFIRMED, site: { knowledge: c.knowledge }, label: T(`${TAG} Corrupt Row`, c.colony.name), status: T(`${TAG} Corrupt Status`, Math.round(purgeRebelStrength(galaxy, c.colony, resistanceFactor(st, empire))).toLocaleString('en-US'), c.purge !== undefined ? T(`${TAG} Corrupt Purging`) : siphonStatus(galaxy, st, c)) });
     }
     if (st.phase === 'reclamation' && st.beacon !== null && !st.beacon.hasBeenDestroyed) {
         out.push({ threat: BEACON_KEY, kind: 'ship', target: st.beacon, level: KNOWLEDGE_CONFIRMED, site: { knowledge: st.beaconKnowledge }, label: T(`${TAG} Beacon Row`, placeName(galaxy, st.beacon)), status: T(`${TAG} Beacon Status`, st.stats.conquests, Math.round(eliminatedPct(st))) });

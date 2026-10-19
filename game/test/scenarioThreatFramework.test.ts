@@ -224,7 +224,7 @@ import { coalitionMembers, coalitionPass } from '../src/sim/scenario/threats/gia
 import { beaconArtInfo, cattleDesign, cattleOf, coreCountFor, coreTarget, coresOf, freeShare, fuelOf, harvestMonthly, harvestPeriodic, liveCores, pickCore, rescueCattle } from '../src/sim/scenario/threats/giantworks/beaconHarvest';
 import { kindTaken } from '../src/sim/scenario/threats/giantworks/founders';
 import { isHumanEmpire } from '../src/sim/humanEmpires';
-import { aiMayPurge, dwellDaysFor, garrisonStrength, purgePass, rebelsOn, siphonDonor, siphonPass, siphonRateOf, startPurge, tech5Count } from '../src/sim/scenario/threats/giantworks/beaconSiphon';
+import { aiMayPurge, dwellDaysFor, garrisonStrength, purgePass, purgeRebelStrength, rebelsOn, siphonDonor, siphonPass, siphonRateOf, startPurge, tech5Count } from '../src/sim/scenario/threats/giantworks/beaconSiphon';
 import { makeTroopsSplit } from '../src/sim/scenario/threats/factionNavy';
 import { resolveInvasionBattles } from '../src/sim/combat/invasion';
 import { addSalvage, aiBargainChoice, colonyToCede, counterMonthly, expose, offerCandidates, purgeCorruption, resistanceFactor, resolveBargain } from '../src/sim/scenario/threats/giantworks/beaconCounter';
@@ -4603,13 +4603,23 @@ describe('the Beacon (Giantworks wonder)', () => {
         const m = (h.troops?.items.length ?? 0);
         void m;
         expect(startPurge(g, st, rec, b, 1)).toBe(false); // not the owner's
-        expect(aiMayPurge(g, rec, 1)).toBe(garrisonStrength(h) >= 1200000 * 1.3);
+        expect(aiMayPurge(g, rec, 1)).toBe(garrisonStrength(h) >= purgeRebelStrength(g, h, 1) * 1.3);
         expect(startPurge(g, st, rec, a, 1)).toBe(true);
         expect(h.rebelling).toBe(true);
         expect(rebelsOn(g, h)).toBe(12);
         const strength = h.invadingTroops!.totalAttackStrength;
-        expect(strength).toBeGreaterThan(1_000_000);
-        expect(strength).toBeLessThan(1_400_000);
+        expect(strength).toBeGreaterThan(purgeRebelStrength(g, h, 1) * 0.9);
+        expect(strength).toBeLessThan(purgeRebelStrength(g, h, 1) * 1.1);
+        // scales with the population: a full colony 1.5 million, a tiny one the floor, linear between
+        const pop = h.population.totalAmount;
+        h.population.totalAmount = 2e9;
+        expect(purgeRebelStrength(g, h, 1)).toBeCloseTo(1_500_000, 0);
+        h.population.totalAmount = 1e9;
+        expect(purgeRebelStrength(g, h, 1)).toBeCloseTo(100_000 + 0.5 * 1_400_000, 0);
+        h.population.totalAmount = 1e5;
+        expect(purgeRebelStrength(g, h, 1)).toBeLessThan(105_000);
+        expect(purgeRebelStrength(g, h, 0.5)).toBeLessThan(55_000);
+        h.population.totalAmount = pop;
         expect(st.stats.purgeTried).toBe(1);
         // the stock ground battle, with an overwhelming garrison
         if (h.troops === null) h.troops = new TroopList();

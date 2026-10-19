@@ -121,9 +121,12 @@ export function siphonStatus(galaxy: Galaxy, st: BeaconState, c: CorruptRec): st
 // The purge
 // ---------------------------------------------------------------------------------------------------------------
 
-/** The rebels' ground strength on `colony`. Pure. */
-export function purgeRebelStrength(galaxy: Galaxy, _colony: Habitat, resistance: number): number {
-    return P.purgeRebelStrength(galaxy) * resistance;
+/** The rebels' ground strength on `colony`: beaconPurgeRebelStrength for a colony of beaconPurgeRebelPopFull people, falling linearly with the population to the beaconPurgeRebelMin floor. Pure. */
+export function purgeRebelStrength(galaxy: Galaxy, colony: Habitat, resistance: number): number {
+    const f = Math.max(0, Math.min(1, (colony.population?.totalAmount ?? 0) / P.purgeRebelPopFull(galaxy)));
+    const top = P.purgeRebelStrength(galaxy);
+    const floor = Math.min(top, P.purgeRebelMin(galaxy));
+    return (floor + (top - floor) * f) * resistance;
 }
 
 /** The strength of what stands against the rebels on the ground at `h` (its garrison). Pure. */
