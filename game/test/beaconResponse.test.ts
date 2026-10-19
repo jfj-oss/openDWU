@@ -281,7 +281,7 @@ describe('Game Editor: Great Work: beacon (finished)', () => {
         const entry = spawnableThreats(g).find((t) => t.key === BEACON_FINISHED_SPAWN);
         expect(entry?.label).toBe('Great Work: beacon (finished)');
         expect(entry?.note).toBeNull();
-        expect(spawnThreatNow(g, g.playerEmpire, BEACON_FINISHED_SPAWN)).toBe(true);
+        expect(spawnThreatNow(g, g.playerEmpire!, BEACON_FINISHED_SPAWN)).toBe(true);
         const st = peekBeaconState(g)!;
         expect(greatWorks(g).find((w) => w.wonder === 'beacon')?.phase).toBe('complete');
         expect(st.phase).toBe('reclamation');
@@ -298,7 +298,7 @@ describe('Game Editor: Great Work: beacon (finished)', () => {
         }
         // one per galaxy: a second spawn is refused
         expect(spawnableThreats(g).find((t) => t.key === BEACON_FINISHED_SPAWN)?.note).not.toBeNull();
-        expect(spawnThreatNow(g, g.playerEmpire, BEACON_FINISHED_SPAWN)).toBe(false);
+        expect(spawnThreatNow(g, g.playerEmpire!, BEACON_FINISHED_SPAWN)).toBe(false);
     }, 600000);
 });
 void liveCores;
