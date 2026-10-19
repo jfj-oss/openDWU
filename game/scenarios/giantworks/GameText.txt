@@ -103,7 +103,7 @@ Beacon Thrall Name;Thrall Regiment
 Beacon Harvester Design;Harvester
 Beacon Harvester Name;Harvester of {0}
 Beacon Cattle Design;Cattle Ship
-Beacon Cattle Name;Cattle Ship from {0}
+Beacon Cattle Name;Cattle Ship of {0}
 Beacon Core Marker;Harvest core
 Beacon Drone Name;Reclaimer Drone Regiment
 Beacon Rising Name;Corrupted Militia

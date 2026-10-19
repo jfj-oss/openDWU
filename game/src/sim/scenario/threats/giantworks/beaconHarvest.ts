@@ -4,10 +4,15 @@
 // galaxy's size: 2 below beaconCoresMidStars stars, 3 below beaconCoresBigStars, then rising to beaconCoresMax in the biggest galaxies;
 // never more than one per beaconCoreWorldsPer held worlds): the most populous held worlds, spread across their holdings (a candidate's
 // pull falls off within beaconCoreSpreadSectors of an existing core). A HARVESTER, a plated machine base, orbits each core and does the work.
-//   CATTLE SHIPS: every other held world launches a huge armoured freighter every beaconCattleDays with beaconCattleLoadPct % of the people
-//     it had when taken; the people leave the world at the launch and are penned at the nearest core when the ship docks. A cattle ship
-//     destroyed kills its captives (they count as eliminated; no reputation is lost for it); one boarded and taken frees them (rescueCattle,
-//     the hook for a future shared capture feature) to the taker's nearest worlds.
+//   CATTLE SHIPS: each core keeps a POOL of huge armoured freighters (one per beaconCattlePoolWorldsPer of the held worlds that feed it, at most
+//     beaconCattlePoolMax) that shuttle: an idle, mended ship flies to the most overdue feeder world (each is due a collection every
+//     beaconCattleDays), loads beaconCattleLoadPct % of the people it had when taken over beaconCattleLoadDays, flies them to the core (spool,
+//     escorts, escape pods), unloads into the pens and goes back for the next run. A damaged ship stays at its core to mend (slowly: away from
+//     it the mending is slower still). A cattle ship destroyed kills its captives but for the escape pods (no reputation is lost for it); one boarded
+//     and taken frees them all (rescueCattle, the hook for a future shared capture feature) to the taker's nearest worlds; either way the pool is a
+//     ship short until a replacement, paid from the fleet biofuel, is built beaconCattleBuildDays later at the core. The shuttle steps every
+//     2 days (CATTLE_STEP_DAYS, a frame periodic) and with each reclamation pass. Saves from before the shuttle: a ship in flight becomes a
+//     pool ship of its target core and joins the loop once it has docked.
 //   PROCESSING (monthly): once its harvester is built (beaconCoreBuildDays), a core renders beaconCoreProcessPct % of its pens, and its own people over beaconCoreDrainMonths, into BIOFUEL:
 //     beaconFuelPerBillionPct % of the reference military in fleet strength per billion people. Processed people are eliminated
 //     (the 80 % loss measure). A core whose harvester is destroyed is BROKEN, and one retaken is lost: either way its pens are freed and
@@ -44,12 +49,12 @@ import { Population, PopulationList } from '../../../population';
 import { recalculateEmpirePopulation } from '../../../taxes';
 import { TroopList } from '../../../cargo';
 import { isHumanEmpire } from '../../../humanEmpires';
-import { GAME_DAY_LENGTH, registerScenarioQuery } from '../../hooks';
+import { GAME_DAY_LENGTH, registerScenarioFramePeriodic, registerScenarioQuery } from '../../hooks';
 import { scenarioNews, scenarioText as T } from '../../messages';
 import { empireTechLevel } from '../robotMutiny';
 import { makeTroopsSplit } from '../factionNavy';
 import { arcMessage, arcNews, normalEmpires } from '../framework';
-import { BEACON_FLAG, P, peekBeaconState, type BeaconArtInfo, type BeaconState, type Captive, type CattleRec, type CoreRec, type FuelRec, type InterceptRec, type ProcessRec } from './beaconState';
+import { BEACON_FLAG, P, peekBeaconState, type BeaconArtInfo, type BeaconState, type Captive, type CattleOrder, type CattlePhase, type CattleRec, type CoreRec, type FuelRec, type InterceptRec, type ProcessRec } from './beaconState';
 import { addPlating, designFor, processingWorlds, referenceMilitary, scriptedBudget, spawnShip } from './beaconFleet';
 
 const TAG = 'Beacon';
@@ -473,46 +478,341 @@ function sail(galaxy: Galaxy, bo: BuiltObject, target: Habitat): void {
     assignMission(galaxy, bo, BuiltObjectMissionType.Move, target, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
 }
 
-/** A held world (not a core) launches a cattle ship to the nearest core with beaconCattleLoadPct % of its people at the conquest. */
-export function launchCattle(galaxy: Galaxy, st: BeaconState, rec: ProcessRec): CattleRec | null {
-    const faction = st.faction;
-    const h = rec.colony;
-    if (faction === null || h.population === null) return null;
-    const floor = Math.max(1, rec.popStart * 0.01);
-    const total = h.population.totalAmount;
-    if (total <= floor * 1.05) {
-        rec.done = true;
-        return null;
+// ---------------------------------------------------------------------------------------------------------------
+// The pool: persistent cattle ships that shuttle
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The step of the shuttle: the frame periodic runs it this often (the stock long block, 36 days, is too coarse for a loading of a few days). */
+export const CATTLE_STEP_DAYS = 2;
+/** A ship damaged past this share of its parts on an outward run turns back to mend. */
+const ABORT_DAMAGE = 0.5;
+
+export function phaseOf(c: CattleRec): CattlePhase {
+    return c.phase ?? (c.total > 0 ? 'in' : 'idle');
+}
+
+/** Out, loading or in: the ship is away from its core on a run. */
+export function inField(c: CattleRec): boolean {
+    const ph = phaseOf(c);
+    return ph === 'out' || ph === 'loading' || ph === 'in';
+}
+
+/** The share of a ship's parts that are damaged. Pure. */
+export function cattleDamage(bo: BuiltObject): number {
+    const n = bo.components?.count ?? 0;
+    return n > 0 ? Math.min(1, (bo.damagedComponentCount ?? 0) / n) : 0;
+}
+
+function liveCoreOf(st: BeaconState, h: Habitat): CoreRec | null {
+    return coresOf(st).find((x) => x.ended === null && x.colony === h && !h.hasBeenDestroyed && h.empire === st.faction) ?? null;
+}
+
+/** Cattle ship pool size a core with `feed` feeder worlds is given. Pure. */
+export function poolTarget(galaxy: Galaxy, feed: number): number {
+    return feed <= 0 ? 0 : Math.min(P.cattlePoolMax(galaxy), Math.max(1, Math.ceil(feed / P.cattlePoolWorldsPer(galaxy))));
+}
+
+/** The held worlds that are not cores, by the live core nearest each (the cores' feeders), in the held worlds' order. */
+export function feedersOf(galaxy: Galaxy, st: BeaconState): Map<Habitat, ProcessRec[]> {
+    const out = new Map<Habitat, ProcessRec[]>();
+    for (const c of liveCores(st)) out.set(c.colony, []);
+    for (const rec of processingWorlds(st)) {
+        if (isCore(st, rec.colony)) continue;
+        const core = nearestCore(galaxy, st, rec.colony.xpos, rec.colony.ypos);
+        if (core !== null) out.get(core.colony)?.push(rec);
     }
-    const core = nearestCore(galaxy, st, h.xpos, h.ypos);
-    const d = core !== null ? cattleDesign(galaxy, faction) : null;
-    if (core === null || d === null) return null;
-    const load = takePeople(h, Math.min(total - floor, Math.max(1, (rec.popStart * P.cattleLoadPct(galaxy)) / 100)));
-    const n = sumOf(load);
-    if (n <= 0) return null;
-    const ship = spawnShip(galaxy, faction, d, h.xpos, h.ypos);
-    ship.name = T('Beacon Cattle Name', h.name);
-    sail(galaxy, ship, core.colony);
-    const c: CattleRec = { ship, from: h, core: core.colony, load, total: n, launched: galaxyStarDate(galaxy) };
+    return out;
+}
+
+/** The pool of a core: its cattle ships (any phase). */
+export function poolOf(st: BeaconState, core: Habitat): CattleRec[] {
+    return cattleOf(st).filter((c) => c.core === core);
+}
+
+function orderOf(st: BeaconState): CattleOrder[] {
+    return (st.cattleOrders ??= []);
+}
+
+/** A cattle ship was lost (destroyed, or taken): a replacement is ordered for its pool (paid from the fleet biofuel, built after beaconCattleBuildDays). */
+function orderReplacement(galaxy: Galaxy, st: BeaconState, c: CattleRec): void {
+    const core = liveCoreOf(st, c.core) ?? nearestCore(galaxy, st, c.ship.xpos, c.ship.ypos);
+    if (core === null) return;
+    orderOf(st).push({ core: core.colony, paid: false, ready: 0 });
+    st.stats.cattleOrdered = (st.stats.cattleOrdered ?? 0) + 1;
+}
+
+/** Pays one cattle ship's price (beaconCattleBuildFuelPct % of the reference military) from the fleet biofuel (funding model 1: the troop account, which is all the fuel it has). */
+function payBuild(galaxy: Galaxy, st: BeaconState): boolean {
+    const cost = (referenceMilitary(galaxy, st.faction) * P.cattleBuildFuelPct(galaxy)) / 100;
+    if (!(cost > 0)) return true;
+    const fuel = fuelOf(st);
+    if (fuel.fleet >= cost) {
+        payFleet(st, cost);
+        return true;
+    }
+    if (P.fundingModel(galaxy) === 1 && fuel.troops >= cost) {
+        fuel.troops -= cost;
+        fuel.spentShips += cost;
+        st.stats.fuelShips = (st.stats.fuelShips ?? 0) + cost;
+        return true;
+    }
+    return false;
+}
+
+function spawnPoolShip(galaxy: Galaxy, st: BeaconState, core: Habitat): CattleRec | null {
+    const faction = st.faction;
+    const d = faction !== null ? cattleDesign(galaxy, faction) : null;
+    if (faction === null || d === null) return null;
+    const ship = spawnShip(galaxy, faction, d, core.xpos, core.ypos);
+    ship.name = T('Beacon Cattle Name', core.name);
+    sail(galaxy, ship, core);
+    const c: CattleRec = { ship, from: core, core, load: [], total: 0, launched: galaxyStarDate(galaxy), phase: 'idle' };
     cattleOf(st).push(c);
-    assignEscorts(galaxy, st, c);
-    rec.drained += n;
-    st.stats.cattleLaunched = (st.stats.cattleLaunched ?? 0) + 1;
-    if (h.population.totalAmount <= floor * 1.05) rec.done = true;
     return c;
 }
 
-/** A cattle ship was destroyed: its captives die with it (beaconCattleDeadCountPct % of them count as eliminated by the Reclaimers). No reputation is lost for it. */
+/** Sends the ship back to its core, empty (a run that came to nothing: the world was lost or emptied, or the ship is hurt). */
+function abortRun(galaxy: Galaxy, st: BeaconState, c: CattleRec, core: Habitat): void {
+    c.phase = 'home';
+    c.from = core;
+    sail(galaxy, c.ship, core);
+    st.stats.cattleRunsAborted = (st.stats.cattleRunsAborted ?? 0) + 1;
+}
+
+/** A held world (not a core) that a run may serve: still held, not a core, not emptied. */
+function servedRec(st: BeaconState, h: Habitat): ProcessRec | null {
+    const rec = processingWorlds(st).find((r) => r.colony === h) ?? null;
+    return rec === null || rec.done || isCore(st, h) ? null : rec;
+}
+
+/** The loading is done: beaconCattleLoadPct % of the people the world had when taken go aboard; the ship sails for its core with its escorts. */
+function loadShip(galaxy: Galaxy, st: BeaconState, c: CattleRec, rec: ProcessRec, core: Habitat, now: number): void {
+    const h = rec.colony;
+    const floor = Math.max(1, rec.popStart * 0.01);
+    const total = h.population?.totalAmount ?? 0;
+    if (total <= floor * 1.05) {
+        rec.done = true;
+        abortRun(galaxy, st, c, core);
+        return;
+    }
+    const load = takePeople(h, Math.min(total - floor, Math.max(1, (rec.popStart * P.cattleLoadPct(galaxy)) / 100)));
+    const n = sumOf(load);
+    if (n <= 0) {
+        abortRun(galaxy, st, c, core);
+        return;
+    }
+    c.load = load;
+    c.total = n;
+    c.launched = now;
+    c.phase = 'in';
+    rec.drained += n;
+    st.stats.cattleLaunched = (st.stats.cattleLaunched ?? 0) + 1;
+    if ((h.population?.totalAmount ?? 0) <= floor * 1.05) rec.done = true;
+    sail(galaxy, c.ship, core);
+    assignEscorts(galaxy, st, c);
+}
+
+/** The ship docks at its core: the people are penned, the escorts released; the ship waits for its next run. */
+function unloadShip(galaxy: Galaxy, st: BeaconState, c: CattleRec, core: CoreRec): void {
+    for (const x of c.load) addTo(core.pens, x.race, x.amount);
+    core.waiting = sumOf(core.pens);
+    core.received += c.total;
+    st.stats.cattleArrived = (st.stats.cattleArrived ?? 0) + 1;
+    releaseEscorts(galaxy, st, c, false);
+    c.load = [];
+    c.total = 0;
+    c.phase = 'idle';
+    c.from = core.colony;
+}
+
+/** No core is left: a ship with people aboard takes them back to the nearest held world's population (or frees them when none is held); an empty one waits. */
+function noCoreShip(galaxy: Galaxy, st: BeaconState, c: CattleRec): void {
+    const bo = c.ship;
+    if (c.total <= 0) {
+        c.phase = 'idle';
+        return;
+    }
+    let home: Habitat | null = null;
+    for (const r of processingWorlds(st)) if (home === null || galaxy.calculateDistance(bo.xpos, bo.ypos, r.colony.xpos, r.colony.ypos) < galaxy.calculateDistance(bo.xpos, bo.ypos, home.xpos, home.ypos)) home = r.colony;
+    if (home !== null && galaxy.calculateDistance(bo.xpos, bo.ypos, home.xpos, home.ypos) > DOCK_RANGE) {
+        sail(galaxy, bo, home);
+        return;
+    }
+    if (home !== null) {
+        for (const x of c.load) {
+            const race = raceNamed(galaxy, x.race);
+            if (race !== null) addPeople(galaxy, home, race, x.amount);
+        }
+    } else {
+        releaseCaptives(galaxy, st, c.load, bo, null, null);
+        st.stats.captivesFreed = (st.stats.captivesFreed ?? 0) + c.total;
+    }
+    releaseEscorts(galaxy, st, c, false);
+    c.load = [];
+    c.total = 0;
+    c.phase = 'idle';
+}
+
+/** One ship's turn. */
+function driveShip(galaxy: Galaxy, st: BeaconState, c: CattleRec, now: number): void {
+    const bo = c.ship;
+    let core = liveCoreOf(st, c.core);
+    if (core === null) {
+        core = nearestCore(galaxy, st, bo.xpos, bo.ypos);
+        if (core === null) {
+            noCoreShip(galaxy, st, c);
+            return;
+        }
+        c.core = core.colony;
+    }
+    const home = core.colony;
+    const atCore = galaxy.calculateDistance(bo.xpos, bo.ypos, home.xpos, home.ypos) <= DOCK_RANGE;
+    let ph = phaseOf(c);
+    c.phase = ph;
+    if (ph === 'in') {
+        if (atCore) unloadShip(galaxy, st, c, core);
+        else {
+            sail(galaxy, bo, home);
+            driveEscorts(galaxy, c);
+        }
+        return;
+    }
+    if (ph === 'idle' || ph === 'home') {
+        if (atCore) {
+            if (ph === 'home') {
+                c.phase = 'idle';
+                c.from = home;
+            }
+        } else sail(galaxy, bo, home);
+        return;
+    }
+    // out / loading
+    const rec = servedRec(st, c.from);
+    if (rec === null || cattleDamage(bo) > ABORT_DAMAGE) {
+        abortRun(galaxy, st, c, home);
+        return;
+    }
+    if (ph === 'out') {
+        if (galaxy.calculateDistance(bo.xpos, bo.ypos, c.from.xpos, c.from.ypos) > DOCK_RANGE) {
+            sail(galaxy, bo, c.from);
+            return;
+        }
+        c.phase = ph = 'loading';
+        c.loadUntil = now + days(P.cattleLoadDays(galaxy));
+    }
+    if (ph === 'loading' && now >= (c.loadUntil ?? 0)) loadShip(galaxy, st, c, rec, home, now);
+}
+
+/**
+ * The shuttle's step (every CATTLE_STEP_DAYS days, and with each reclamation pass): the ships of every pool take their turn (fly to a held world that
+ * is due, load for beaconCattleLoadDays, fly to the core, unload, go back); replacements ordered for lost ships are paid and built; a pool short of
+ * its size (one ship per beaconCattlePoolWorldsPer feeder worlds) grows by a ship a core a step; idle, mended ships are sent to the held worlds that
+ * are due a collection (the most overdue first: nextConvoy, beaconCattleDays apart). Fixed iteration orders; no Rnd.
+ */
+export function cattleStep(galaxy: Galaxy, st: BeaconState): void {
+    const faction = st.faction;
+    if (faction === null) return;
+    const now = galaxyStarDate(galaxy);
+    // the lost and the taken (the kill / board events do this at once; a ship lost without an event is found here); old saves get their phase
+    const alive: CattleRec[] = [];
+    for (const c of cattleOf(st)) {
+        c.phase = phaseOf(c);
+        if (c.ship.hasBeenDestroyed) cattleLost(galaxy, st, c);
+        else if (c.ship.actualEmpire !== faction) cattleTaken(galaxy, st, c, c.ship.actualEmpire);
+        else alive.push(c);
+    }
+    st.cattle = alive;
+    for (const c of alive) driveShip(galaxy, st, c, now);
+    // replacements: paid when the fleet biofuel allows (the build clock starts then), then built at the core
+    const cores = liveCores(st);
+    const orders = orderOf(st);
+    for (const o of orders) {
+        if (!o.paid && payBuild(galaxy, st)) {
+            o.paid = true;
+            o.ready = now + days(P.cattleBuildDays(galaxy));
+        }
+    }
+    const rest: CattleOrder[] = [];
+    for (const o of orders) {
+        if (liveCoreOf(st, o.core) === null) continue; // its core is gone: the order lapses
+        if (o.paid && o.ready <= now && cattleOf(st).length < P.cattleMax(galaxy) && spawnPoolShip(galaxy, st, o.core) !== null) {
+            st.stats.cattleRebuilt = (st.stats.cattleRebuilt ?? 0) + 1;
+            continue;
+        }
+        rest.push(o);
+    }
+    st.cattleOrders = rest;
+    // pools grow to their size, a ship a core a step
+    const feeders = feedersOf(galaxy, st);
+    for (const core of cores) {
+        const have = poolOf(st, core.colony).length + rest.filter((o) => o.core === core.colony).length;
+        if (have < poolTarget(galaxy, feeders.get(core.colony)?.length ?? 0) && cattleOf(st).length < P.cattleMax(galaxy) && spawnPoolShip(galaxy, st, core.colony) !== null) st.stats.cattleSpawned = (st.stats.cattleSpawned ?? 0) + 1;
+    }
+    // runs: idle, mended ships go to the most overdue feeder worlds of their core
+    const claimed = new Set<Habitat>();
+    for (const c of cattleOf(st)) if (c.phase === 'out' || c.phase === 'loading') claimed.add(c.from);
+    const mended = P.cattleRepairDamagePct(galaxy) / 100;
+    for (const core of cores) {
+        const idle = poolOf(st, core.colony)
+            .filter((c) => c.phase === 'idle' && cattleDamage(c.ship) <= mended && galaxy.calculateDistance(c.ship.xpos, c.ship.ypos, core.colony.xpos, core.colony.ypos) <= DOCK_RANGE)
+            .sort((a, b) => a.ship.builtObjectID - b.ship.builtObjectID);
+        if (idle.length === 0) continue;
+        const due = (feeders.get(core.colony) ?? []).filter((r) => !r.done && !claimed.has(r.colony) && (r.nextConvoy ?? 0) <= now).sort((a, b) => (a.nextConvoy ?? 0) - (b.nextConvoy ?? 0) || a.colony.habitatIndex - b.colony.habitatIndex);
+        const interval = days(P.cattleDays(galaxy));
+        for (let i = 0; i < idle.length && i < due.length; i++) {
+            const rec = due[i];
+            rec.nextConvoy = Math.max((rec.nextConvoy ?? 0) + interval, now - interval * 2);
+            claimed.add(rec.colony);
+            idle[i].from = rec.colony;
+            idle[i].phase = 'out';
+            sail(galaxy, idle[i].ship, rec.colony);
+        }
+    }
+    st.cattleShips = cattleOf(st).map((c) => c.ship);
+}
+
+/** The pool ships at a glance for the soaks: [ships, idle, out, loading, in, home, damaged, orders on]. */
+export function poolCensus(st: BeaconState): number[] {
+    const n = { idle: 0, out: 0, loading: 0, in: 0, home: 0 };
+    let hurt = 0;
+    for (const c of cattleOf(st)) {
+        n[phaseOf(c)]++;
+        if (cattleDamage(c.ship) > 0) hurt++;
+    }
+    return [cattleOf(st).length, n.idle, n.out, n.loading, n.in, n.home, hurt, (st.cattleOrders ?? []).length];
+}
+
+/** A cattle ship was destroyed: a ship on a run costs its captives (podsAway: most escape; the rest die) and counts against the world it was sent to; a replacement is ordered. */
+function cattleLost(galaxy: Galaxy, st: BeaconState, c: CattleRec): void {
+    const bo = c.ship;
+    if (inField(c)) noteIntercept(galaxy, st, c.from);
+    releaseEscorts(galaxy, st, c, true);
+    if (c.total > 0) cattleDestroyed(galaxy, st, c, bo);
+    st.stats.cattleKilled = (st.stats.cattleKilled ?? 0) + 1;
+    orderReplacement(galaxy, st, c);
+}
+
+/** A cattle ship was taken by `by` (boarded, or its owner changed): the people aboard are freed to `by`'s worlds; a replacement is ordered. */
+function cattleTaken(galaxy: Galaxy, st: BeaconState, c: CattleRec, by: Empire | null): number {
+    const bo = c.ship;
+    if (inField(c)) noteIntercept(galaxy, st, c.from);
+    releaseEscorts(galaxy, st, c, true);
+    const placed = c.total > 0 ? releaseCaptives(galaxy, st, c.load, bo, by, null) : 0;
+    st.stats.cattleBoarded = (st.stats.cattleBoarded ?? 0) + 1;
+    st.stats.captivesRescued = (st.stats.captivesRescued ?? 0) + c.total;
+    if (c.total > 0 && by !== null && isHumanEmpire(galaxy, by)) arcMessage(galaxy, st.sentStages, [by], { prefix: TAG, stage: 'Rescued', onceKey: `Rescued:${bo.builtObjectID}`, args: [Math.round(c.total / 1e6), c.from.name], type: EmpireMessageType.GeneralGoodEvent, subject: bo });
+    orderReplacement(galaxy, st, c);
+    return placed;
+}
+
+/** A cattle ship was destroyed: its captives escape in pods or die (cattleDestroyed); the pool is a ship short until the replacement is built. */
 export function onCattleKilled(galaxy: Galaxy, st: BeaconState, bo: BuiltObject): boolean {
     const list = cattleOf(st);
     const i = list.findIndex((c) => c.ship === bo);
     if (i < 0) return false;
     const c = list[i];
     list.splice(i, 1);
-    noteIntercept(galaxy, st, c.from);
-    releaseEscorts(galaxy, st, c, true);
-    cattleDestroyed(galaxy, st, c, bo);
-    st.stats.cattleKilled = (st.stats.cattleKilled ?? 0) + 1;
+    cattleLost(galaxy, st, c);
     return true;
 }
 
@@ -574,13 +874,7 @@ export function rescueCattle(galaxy: Galaxy, st: BeaconState, bo: BuiltObject, b
     if (i < 0) return 0;
     const c = list[i];
     list.splice(i, 1);
-    noteIntercept(galaxy, st, c.from);
-    releaseEscorts(galaxy, st, c, true);
-    const placed = releaseCaptives(galaxy, st, c.load, bo, by, null);
-    st.stats.cattleBoarded = (st.stats.cattleBoarded ?? 0) + 1;
-    st.stats.captivesRescued = (st.stats.captivesRescued ?? 0) + c.total;
-    if (by !== null && isHumanEmpire(galaxy, by)) arcMessage(galaxy, st.sentStages, [by], { prefix: TAG, stage: 'Rescued', onceKey: `Rescued:${bo.builtObjectID}`, args: [Math.round(c.total / 1e6), c.from.name], type: EmpireMessageType.GeneralGoodEvent, subject: bo });
-    return placed;
+    return cattleTaken(galaxy, st, c, by);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -741,77 +1035,11 @@ export function releaseEscorts(galaxy: Galaxy, st: BeaconState, c: CattleRec, lo
     }
 }
 
-/** Every 5 days: cattle ships sail on, dock at their core (the people are penned), or find another core when theirs is gone. */
-function driveCattle(galaxy: Galaxy, st: BeaconState): void {
-    const faction = st.faction!;
-    const keep: CattleRec[] = [];
-    for (const c of cattleOf(st)) {
-        const bo = c.ship;
-        if (bo.hasBeenDestroyed) {
-            // destroyed without a kill event (a collision, a teardown): the captives are lost all the same
-            noteIntercept(galaxy, st, c.from);
-            releaseEscorts(galaxy, st, c, true);
-            cattleDestroyed(galaxy, st, c, bo);
-            st.stats.cattleKilled = (st.stats.cattleKilled ?? 0) + 1;
-            continue;
-        }
-        if (bo.actualEmpire !== faction) {
-            noteIntercept(galaxy, st, c.from);
-            releaseEscorts(galaxy, st, c, true);
-            const placed = releaseCaptives(galaxy, st, c.load, bo, bo.actualEmpire, null);
-            void placed;
-            st.stats.cattleBoarded = (st.stats.cattleBoarded ?? 0) + 1;
-            st.stats.captivesRescued = (st.stats.captivesRescued ?? 0) + c.total;
-            continue;
-        }
-        let core = coresOf(st).find((x) => x.ended === null && x.colony === c.core && x.colony.empire === faction) ?? null;
-        if (core === null) {
-            core = nearestCore(galaxy, st, bo.xpos, bo.ypos);
-            if (core === null) {
-                // no core left: the people go back into the nearest held world's population (penned there), or go free when none is held
-                let home: Habitat | null = null;
-                for (const r of processingWorlds(st)) if (home === null || galaxy.calculateDistance(bo.xpos, bo.ypos, r.colony.xpos, r.colony.ypos) < galaxy.calculateDistance(bo.xpos, bo.ypos, home.xpos, home.ypos)) home = r.colony;
-                if (home !== null && galaxy.calculateDistance(bo.xpos, bo.ypos, home.xpos, home.ypos) > DOCK_RANGE) {
-                    sail(galaxy, bo, home);
-                    keep.push(c);
-                    continue;
-                }
-                if (home !== null) {
-                    for (const x of c.load) {
-                        const race = raceNamed(galaxy, x.race);
-                        if (race !== null) addPeople(galaxy, home, race, x.amount);
-                    }
-                } else {
-                    releaseCaptives(galaxy, st, c.load, bo, null, null);
-                    st.stats.captivesFreed = (st.stats.captivesFreed ?? 0) + c.total;
-                }
-                builtObjectCompleteTeardown(galaxy, bo);
-                continue;
-            }
-            c.core = core.colony;
-        }
-        if (galaxy.calculateDistance(bo.xpos, bo.ypos, core.colony.xpos, core.colony.ypos) <= DOCK_RANGE) {
-            for (const x of c.load) addTo(core.pens, x.race, x.amount);
-            core.waiting = sumOf(core.pens);
-            core.received += c.total;
-            st.stats.cattleArrived = (st.stats.cattleArrived ?? 0) + 1;
-            releaseEscorts(galaxy, st, c, false);
-            builtObjectCompleteTeardown(galaxy, bo);
-            continue;
-        }
-        sail(galaxy, bo, core.colony);
-        driveEscorts(galaxy, c);
-        keep.push(c);
-    }
-    st.cattle = keep;
-    decayIntercepts(galaxy, st);
-}
-
 // ---------------------------------------------------------------------------------------------------------------
 // The periodic pass (every 5 days) and the monthly processing
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Every 5 days: cores kept up (lost ones ended, broken ones found, new ones designated), cattle ships launched and sailed, the art's lists. */
+/** Every 5 days: cores kept up (lost ones ended, broken ones found, new ones designated), the cattle ships' step, the art's lists. */
 export function harvestPeriodic(galaxy: Galaxy, st: BeaconState): void {
     const faction = st.faction;
     if (faction === null) return;
@@ -829,18 +1057,9 @@ export function harvestPeriodic(galaxy: Galaxy, st: BeaconState): void {
         if (h === null) break;
         designateCore(galaxy, st, h);
     }
-    const cap = P.cattleMax(galaxy);
-    // (catching up, up to 3 a world a pass: the periodic runs once per stock long block, 36 days at 1x)
-    for (const rec of held) {
-        if (isCore(st, rec.colony)) continue;
-        for (let k = 0; k < 3 && !rec.done && (rec.nextConvoy ?? 0) <= now && cattleOf(st).length < cap; k++) {
-            rec.nextConvoy = Math.max((rec.nextConvoy ?? 0) + days(P.cattleDays(galaxy)), now - days(P.cattleDays(galaxy) * 2));
-            launchCattle(galaxy, st, rec);
-        }
-    }
-    driveCattle(galaxy, st);
+    cattleStep(galaxy, st);
+    decayIntercepts(galaxy, st);
     st.coreWorlds = liveCores(st).map((c) => c.colony);
-    st.cattleShips = cattleOf(st).map((c) => c.ship);
     st.harvesters = liveCores(st).map((c) => c.harvester).filter((b): b is BuiltObject => b !== null && !b.hasBeenDestroyed);
     st.art = beaconArtInfo(galaxy, st);
 }
@@ -1053,7 +1272,30 @@ export function cattleSpoolFactor(g: Galaxy, ship: BuiltObject, baseMs?: number)
     return base > 0 ? (secs * 1000) / base : null;
 }
 
+/**
+ * Repair rate factor of a pool cattle ship (null: not one): at its core (idle, in dock range) beaconCattleRepairFactor x the stock rate, anywhere
+ * else beaconCattleFieldRepairFactor x (the other machines mend 4 x in the field, a cattle ship is slow to).
+ */
+export function cattleRepairFactor(g: Galaxy, ship: BuiltObject): number | null {
+    const st = peekBeaconState(g);
+    if (st === null || st.cattle === undefined || st.cattle.length === 0 || ship.actualEmpire !== st.faction) return null;
+    const c = st.cattle.find((x) => x.ship === ship);
+    if (c === undefined) return null;
+    const atCore = !inField(c) && g.calculateDistance(ship.xpos, ship.ypos, c.core.xpos, c.core.ypos) <= DOCK_RANGE;
+    return atCore ? P.cattleRepairFactor(g) : P.cattleFieldRepairFactor(g);
+}
+
 export function registerHarvest(): void {
+    registerScenarioFramePeriodic({
+        id: 'beacon.cattle',
+        flag: BEACON_FLAG,
+        order: 30,
+        periodDays: CATTLE_STEP_DAYS,
+        run: (g) => {
+            const st = peekBeaconState(g);
+            if (st !== null && st.phase === 'reclamation' && st.faction !== null && st.faction.active && st.cattle !== undefined) cattleStep(g, st);
+        },
+    });
     registerScenarioQuery({
         id: 'beacon.cattleSpool',
         flag: BEACON_FLAG,

@@ -222,7 +222,7 @@ import { watcherVariant, beaconBuildRate, beaconComplete, beaconEndCheck, beacon
 import { peekBeaconState, salvageStepsOf, siphonGateOpen, siphonOf, type BeaconState, type CattleRec } from '../src/sim/scenario/threats/giantworks/beaconState';
 import { beginSeason, driveWatcherFleets, watcherTargetValue, designFor, groupCarryRegiments, scriptedBudget, seasonBudget, landingPlan, lossCheck, noticedGathering, planetStrike, reclamationMonthly, reclamationPeriodic, spawnShip, supplyTroops, targetCandidates } from '../src/sim/scenario/threats/giantworks/beaconFleet';
 import { coalitionMembers, coalitionPass } from '../src/sim/scenario/threats/giantworks/beaconAi';
-import { podWorld, assignEscorts, escortPlan, interceptsAt, noteIntercept, beaconArtInfo, cattleDesign, cattleOf, coreCountFor, coreTarget, coresOf, freeShare, fuelOf, harvestMonthly, harvestPeriodic, liveCores, pickCore, rescueCattle } from '../src/sim/scenario/threats/giantworks/beaconHarvest';
+import { podWorld, assignEscorts, escortPlan, interceptsAt, noteIntercept, beaconArtInfo, cattleDesign, cattleOf, coreCountFor, coreTarget, coresOf, freeShare, fuelOf, cattleDamage, cattleRepairFactor, cattleStep, feedersOf, harvestMonthly, harvestPeriodic, liveCores, pickCore, poolOf, poolTarget, rescueCattle } from '../src/sim/scenario/threats/giantworks/beaconHarvest';
 import { kindTaken } from '../src/sim/scenario/threats/giantworks/founders';
 import { isHumanEmpire } from '../src/sim/humanEmpires';
 import { aiMayPurge, dwellDaysFor, garrisonStrength, purgePass, purgeRebelStrength, rebelsOn, siphonDonor, siphonPass, siphonRateOf, startPurge, tech5Count } from '../src/sim/scenario/threats/giantworks/beaconSiphon';
@@ -4393,6 +4393,19 @@ describe('the Beacon (Giantworks wonder)', () => {
         return r;
     }
 
+    /** The shuttle's clock: a 3-day step at a time (ships that were sent out are put at their world, the sim does not fly them here) until `done`. */
+    function shuttleUntil(g: Galaxy, st: BeaconState, done: () => boolean, steps = 60): void {
+        for (let i = 0; i < steps && !done(); i++) {
+            g.nowMs += 3 * GAME_DAY_LENGTH;
+            for (const c of cattleOf(st)) if (c.phase === 'out') {
+                c.ship.xpos = c.from.xpos + 1000;
+                c.ship.ypos = c.from.ypos;
+            }
+            harvestPeriodic(g, st);
+        }
+    }
+    const laden = (st: BeaconState): CattleRec[] => cattleOf(st).filter((c) => c.phase === 'in');
+
     it('the kind is registered against the contract and the crisis list names the faction', () => {
         expect(beaconKind.id).toBe('beacon');
         expect(beaconKind.flag).toBe('gwBeacon');
@@ -5312,12 +5325,9 @@ describe('the Beacon (Giantworks wonder)', () => {
         // a second held world is a feeder (one core per three held worlds): its first cattle ship leaves within the interval
         const pop2 = second.population.totalAmount;
         takeOwnershipOfColonyFull(g, victim, second, f, false, false);
-        for (let i = 0; i < 6 && cattleOf(st).length === 0; i++) {
-            g.nowMs += 5 * GAME_DAY_LENGTH;
-            harvestPeriodic(g, st);
-        }
+        shuttleUntil(g, st, () => laden(st).length > 0);
         expect(liveCores(st)).toHaveLength(1);
-        const cattle = cattleOf(st)[0];
+        const cattle = laden(st)[0];
         expect(cattle.from).toBe(second);
         expect(cattle.core).toBe(first);
         expect(cattle.total).toBeGreaterThan(0);
@@ -5342,12 +5352,17 @@ describe('the Beacon (Giantworks wonder)', () => {
         delete g.scenario!.params.beaconCattleSpoolSeconds;
         const elim0 = st.popEliminated;
         // it docks: the people are penned at the core (not yet eliminated)
+        const carried = cattle.total;
         cattle.ship.xpos = first.xpos + 1000;
         cattle.ship.ypos = first.ypos;
         harvestPeriodic(g, st);
-        expect(cattleOf(st).includes(cattle)).toBe(false);
-        expect(cattle.ship.hasBeenDestroyed).toBe(true);
-        expect(core.waiting).toBe(cattle.total);
+        // ... and the ship stays: a pool ship of the core, empty, waiting for its next run
+        expect(cattleOf(st).includes(cattle)).toBe(true);
+        expect(cattle.ship.hasBeenDestroyed).toBe(false);
+        expect(cattle.phase).toBe('idle');
+        expect(cattle.total).toBe(0);
+        expect(cattle.load).toEqual([]);
+        expect(core.waiting).toBe(carried);
         expect(st.stats.cattleArrived).toBe(1);
         expect(st.popEliminated).toBe(elim0);
         // nothing is processed while the harvester is being built (beaconCoreBuildDays)
@@ -5357,10 +5372,233 @@ describe('the Beacon (Giantworks wonder)', () => {
         const fuel0 = fuelOf(st).income;
         const done = harvestMonthly(g, st);
         expect(done).toBeGreaterThan(0);
-        expect(core.waiting).toBeLessThan(cattle.total);
+        expect(core.waiting).toBeLessThan(carried);
         expect(st.popEliminated).toBe(elim0 + done);
         expect(fuelOf(st).income).toBeGreaterThan(fuel0);
         expect(st.stats.processed).toBe(done);
+    }, 900000);
+
+    /** A Reclaimer holding `n` more worlds than its one core: [core, ...feeders]. */
+    function heldWorlds(g: Galaxy, st: BeaconState, n: number): Habitat[] {
+        g.scenario!.params.beaconCoreWorldsPer = 20; // one core
+        const victim = normalsOf(g)[0];
+        const worlds = victim.colonies.filter((c) => c !== victim.capital && c.population.totalAmount > 0).slice(0, n + 1);
+        expect(worlds.length).toBe(n + 1);
+        for (const w of worlds) takeOwnershipOfColonyFull(g, victim, w, st.faction!, false, false);
+        harvestPeriodic(g, st);
+        return worlds;
+    }
+
+    it('the cattle shuttle: a pool ship flies to a held world, loads for beaconCattleLoadDays, flies the people to the core, unloads and goes back for the next run; worlds are served fairly, about every beaconCattleDays', () => {
+        const { g, st } = completed();
+        g.scenario!.params.beaconCattlePoolWorldsPer = 3; // one ship for the three feeders
+        const [first, ...feeders] = heldWorlds(g, st, 3);
+        expect(liveCores(st)[0].colony).toBe(first);
+        const core = liveCores(st)[0];
+        expect(feedersOf(g, st).get(first)).toHaveLength(3);
+        expect(poolTarget(g, 3)).toBe(1);
+        harvestPeriodic(g, st);
+        const pool = poolOf(st, first);
+        expect(pool).toHaveLength(1); // one ship, whatever the number of runs
+        const ship = pool[0];
+        expect(ship.phase).toBe('idle'); // (spawned at the core)
+        expect(st.stats.cattleSpawned).toBe(1);
+        const pops = feeders.map((w) => w.population.totalAmount);
+        const seen: Habitat[] = [];
+        let penned = 0;
+        // run it for a year: each step it is put where it was sent (the sim does not fly it here)
+        let lastPhase = ship.phase;
+        for (let i = 0; i < 120; i++) {
+            g.nowMs += 3 * GAME_DAY_LENGTH;
+            if (ship.phase === 'out') {
+                ship.ship.xpos = ship.from.xpos + 1000;
+                ship.ship.ypos = ship.from.ypos;
+            } else if (ship.phase === 'in') {
+                ship.ship.xpos = first.xpos + 1000;
+                ship.ship.ypos = first.ypos;
+            }
+            const before = core.received;
+            harvestPeriodic(g, st);
+            if (ship.phase !== lastPhase && ship.phase === 'loading') {
+                expect(ship.ship.xpos).toBeCloseTo(ship.from.xpos + 1000, 0);
+                expect(ship.loadUntil).toBeCloseTo(galaxyStarDate(g) + 3 * GAME_DAY_LENGTH, -2); // beaconCattleLoadDays
+                expect(ship.total).toBe(0); // nobody aboard until the loading is done
+                seen.push(ship.from);
+            }
+            if (ship.phase === 'in' && lastPhase === 'loading') expect(ship.total).toBeGreaterThan(0);
+            if (core.received > before) penned += core.received - before;
+            lastPhase = ship.phase;
+            expect(cattleOf(st)).toContain(ship); // it persists
+            expect(ship.ship.hasBeenDestroyed).toBe(false);
+        }
+        // every feeder was served, several times, by the one ship; the people left their worlds and sit in the pens
+        for (const w of feeders) expect(seen.filter((x) => x === w).length).toBeGreaterThanOrEqual(2);
+        expect(st.stats.cattleLaunched).toBeGreaterThanOrEqual(6);
+        expect(st.stats.cattleArrived).toBeGreaterThanOrEqual(5);
+        expect(penned).toBeGreaterThan(0);
+        feeders.forEach((w, k) => expect(w.population.totalAmount).toBeLessThan(pops[k]));
+        // the loop alternates: no world is served twice in a row while others wait (fair order)
+        for (let k = 3; k < seen.length; k++) expect(new Set(seen.slice(k - 3, k)).size).toBe(3);
+        // about one run per world per beaconCattleDays (20): a year = 18 collections a world at most
+        expect(seen.length).toBeLessThanOrEqual(3 * 19);
+    }, 900000);
+
+    it('cattle repair: a damaged pool ship waits at its core and is not sent out; it mends slowly (away from the core, slower still); a hurt outbound ship turns back', () => {
+        const { g, st } = completed();
+        const [first, second] = heldWorlds(g, st, 1);
+        harvestPeriodic(g, st);
+        const c = poolOf(st, first)[0];
+        expect(c.phase).toBe('idle');
+        // the other machines mend 4 x in the field
+        const hv = liveCores(st)[0].harvester!;
+        expect(scenarioQuery(g, 'repairRateFactor', 1, { builtObject: hv })).toBe(4);
+        expect(cattleRepairFactor(g, c.ship)).toBe(1);
+        expect(scenarioQuery(g, 'repairRateFactor', 1, { builtObject: c.ship })).toBe(1); // slow at the core
+        c.ship.xpos += 200000;
+        expect(scenarioQuery(g, 'repairRateFactor', 1, { builtObject: c.ship })).toBeCloseTo(0.1, 9); // slower in the field
+        c.ship.xpos -= 200000;
+        // hurt past beaconCattleRepairDamagePct (20 %): it stays, however due the world is
+        const parts = c.ship.components.items;
+        for (let i = 0; i < Math.ceil(parts.length * 0.4); i++) parts[i].status = ComponentStatus.Damaged;
+        c.ship.reDefine();
+        expect(cattleDamage(c.ship)).toBeGreaterThan(0.2);
+        second.population.totalAmount; // (due: the first convoy date is within the interval)
+        for (let i = 0; i < 12; i++) {
+            g.nowMs += 5 * GAME_DAY_LENGTH;
+            harvestPeriodic(g, st);
+        }
+        expect(c.phase).toBe('idle');
+        expect(st.stats.cattleLaunched ?? 0).toBe(0);
+        // mended: it goes
+        for (const p of parts) p.status = ComponentStatus.Normal;
+        c.ship.reDefine();
+        expect(cattleDamage(c.ship)).toBe(0);
+        shuttleUntil(g, st, () => c.phase !== 'idle', 4);
+        expect(c.phase).toBe('out');
+        expect(c.from).toBe(second);
+        // hurt badly on the way out: it goes home, nobody is taken
+        for (let i = 0; i < Math.ceil(parts.length * 0.7); i++) parts[i].status = ComponentStatus.Damaged;
+        c.ship.reDefine();
+        g.nowMs += 3 * GAME_DAY_LENGTH;
+        harvestPeriodic(g, st);
+        expect(c.phase).toBe('home');
+        expect(st.stats.cattleRunsAborted).toBe(1);
+        expect(c.total).toBe(0);
+        // back at the core it is idle
+        c.ship.xpos = first.xpos + 1000;
+        c.ship.ypos = first.ypos;
+        harvestPeriodic(g, st);
+        expect(c.phase).toBe('idle');
+    }, 900000);
+
+    it('cattle losses: a destroyed pool ship is a real loss; the Reclaimers rebuild it from their biofuel after beaconCattleBuildDays, and until then the harvest is thinner; no biofuel, no replacement', () => {
+        const { g, st } = completed();
+        const other = normalsOf(g)[1];
+        const [first] = heldWorlds(g, st, 3);
+        g.scenario!.params.beaconCattlePoolWorldsPer = 1; // three feeders: three ships
+        fuelOf(st).fleet = 0;
+        for (let i = 0; i < 6; i++) {
+            g.nowMs += 3 * GAME_DAY_LENGTH;
+            harvestPeriodic(g, st);
+        }
+        expect(poolOf(st, first)).toHaveLength(3);
+        const t0 = galaxyStarDate(g);
+        const victim = poolOf(st, first)[0];
+        scenarioEmit(g, 'builtObjectKilledBy', { builtObject: victim.ship, destroyer: other });
+        expect(poolOf(st, first)).toHaveLength(2);
+        expect(st.stats.cattleKilled).toBe(1);
+        expect(st.stats.cattleOrdered).toBe(1);
+        expect(st.cattleOrders).toHaveLength(1);
+        // no biofuel: the order waits unpaid, the pool does not grow back on its own
+        g.nowMs += 90 * GAME_DAY_LENGTH;
+        harvestPeriodic(g, st);
+        expect(poolOf(st, first)).toHaveLength(2);
+        expect(st.cattleOrders![0].paid).toBe(false);
+        expect(st.stats.cattleRebuilt ?? 0).toBe(0);
+        // paid: the build clock starts then; nothing before beaconCattleBuildDays (60) are over
+        fuelOf(st).fleet = 1e12;
+        const fleet0 = fuelOf(st).fleet;
+        harvestPeriodic(g, st);
+        expect(st.cattleOrders![0].paid).toBe(true);
+        expect(fuelOf(st).fleet).toBeLessThan(fleet0);
+        expect(st.cattleOrders![0].ready).toBeCloseTo(galaxyStarDate(g) + 60 * GAME_DAY_LENGTH, -2);
+        g.nowMs += 50 * GAME_DAY_LENGTH;
+        harvestPeriodic(g, st);
+        expect(poolOf(st, first)).toHaveLength(2);
+        g.nowMs += 11 * GAME_DAY_LENGTH;
+        harvestPeriodic(g, st);
+        expect(poolOf(st, first)).toHaveLength(3);
+        expect(st.stats.cattleRebuilt).toBe(1);
+        expect(st.cattleOrders).toHaveLength(0);
+        void t0;
+        // a boarded ship (empty, or laden: the captives all go free) is a loss too
+        const [b1] = laden(st).length > 0 ? laden(st) : [poolOf(st, first)[0]];
+        const ordered = st.stats.cattleOrdered!;
+        rescueCattle(g, st, b1.ship, other);
+        expect(st.stats.cattleBoarded).toBe(1);
+        expect(st.stats.cattleOrdered).toBe(ordered + 1);
+        expect(cattleOf(st)).not.toContain(b1);
+    }, 900000);
+
+    it('cattle old saves: a one-way ship in flight becomes a pool ship of its core (it docks, then stays); an empty one is idle; saves hold the pool, its phases and the orders', () => {
+        const { g, st, game, gameData } = completed();
+        const [first, second] = heldWorlds(g, st, 2);
+        const core = liveCores(st)[0];
+        const f = st.faction!;
+        // the old record: no phase, people aboard, no orders
+        const mk = (): BuiltObject => spawnShip(g, f, cattleDesign(g, f)!, second.xpos, second.ypos);
+        const race = second.population.dominantRace!.name;
+        const old: CattleRec = { ship: mk(), from: second, core: first, load: [{ race, amount: 3_000_000 }], total: 3_000_000, launched: galaxyStarDate(g) };
+        const oldEmpty: CattleRec = { ship: mk(), from: second, core: first, load: [], total: 0, launched: galaxyStarDate(g) };
+        st.cattle = [old, oldEmpty];
+        delete st.cattleOrders;
+        cattleStep(g, st);
+        expect(old.phase).toBe('in');
+        expect(oldEmpty.phase).toBe('idle');
+        expect(cattleOf(st)).toContain(old);
+        const waiting = core.waiting;
+        old.ship.xpos = first.xpos + 1000;
+        old.ship.ypos = first.ypos;
+        cattleStep(g, st);
+        expect(core.waiting).toBe(waiting + 3_000_000);
+        expect(old.phase).toBe('idle');
+        expect(old.total).toBe(0);
+        expect(old.ship.hasBeenDestroyed).toBe(false);
+        expect(poolOf(st, first)).toContain(old);
+        // the save round trip: a laden ship, a loading one, an idle one and an order
+        old.phase = 'in';
+        old.load = [{ race, amount: 2_000_000 }];
+        old.total = 2_000_000;
+        old.from = second;
+        old.ship.xpos = second.xpos;
+        old.ship.ypos = second.ypos;
+        oldEmpty.phase = 'loading';
+        oldEmpty.from = second;
+        oldEmpty.loadUntil = galaxyStarDate(g) + 2 * GAME_DAY_LENGTH;
+        st.cattleOrders = [{ core: first, paid: true, ready: galaxyStarDate(g) + 30 * GAME_DAY_LENGTH }];
+        const time = new GalaxyTime();
+        time.bindGalaxy(g);
+        const text = serializeGame(game, time, {} as StartGameOptions);
+        const lg = deserializeGame(text, gameData).game.galaxy;
+        const ls = peekBeaconState(lg)!;
+        expect(cattleOf(ls)).toHaveLength(cattleOf(st).length);
+        const lo = cattleOf(ls).find((c) => c.ship.builtObjectID === old.ship.builtObjectID)!;
+        expect(lo.phase).toBe('in');
+        expect(lo.total).toBe(2_000_000);
+        expect(lo.load).toEqual([{ race, amount: 2_000_000 }]);
+        expect(lo.core.habitatIndex).toBe(first.habitatIndex);
+        expect(lo.from.habitatIndex).toBe(second.habitatIndex);
+        const le = cattleOf(ls).find((c) => c.ship.builtObjectID === oldEmpty.ship.builtObjectID)!;
+        expect(le.phase).toBe('loading');
+        expect(le.loadUntil).toBe(oldEmpty.loadUntil);
+        expect(ls.cattleOrders).toHaveLength(1);
+        expect(ls.cattleOrders![0].paid).toBe(true);
+        expect(ls.cattleOrders![0].core.habitatIndex).toBe(first.habitatIndex);
+        expect(beaconShipRole(ls, lo.ship)).toBe('cattle');
+        // and the loaded game goes on with the loop
+        lg.nowMs += 3 * GAME_DAY_LENGTH;
+        cattleStep(lg, ls);
+        expect(cattleOf(ls)).toContain(lo);
     }, 900000);
 
     it('cattle escorts: free warships (the reserve) are ordered to escort, else escorts are built from the biofuel; the world with the most interceptions gets destroyers, then cruisers; the counts decay; the escorts return to patrol when the ship docks', () => {
@@ -5376,11 +5614,8 @@ describe('the Beacon (Giantworks wonder)', () => {
         const spare = spawnShip(g, f, frigateDesign, worlds[1].xpos, worlds[1].ypos);
         st.reserve.push(spare);
         harvestPeriodic(g, st);
-        for (let i = 0; i < 8 && cattleOf(st).length < 1; i++) {
-            g.nowMs += 5 * GAME_DAY_LENGTH;
-            harvestPeriodic(g, st);
-        }
-        const c1 = cattleOf(st)[0];
+        shuttleUntil(g, st, () => laden(st).length > 0);
+        const c1 = laden(st)[0];
         expect(c1.escorts!.length).toBeGreaterThanOrEqual(1);
         expect(c1.escorts!.length).toBeLessThanOrEqual(2);
         for (const b of c1.escorts!) {
@@ -5451,12 +5686,10 @@ describe('the Beacon (Giantworks wonder)', () => {
         core.pens = [{ race: core.colony.population.dominantRace!.name, amount: 500_000_000 }];
         core.waiting = 500_000_000;
         // a cattle ship destroyed: its captives die (eliminated), no core is touched
-        for (let i = 0; i < 8 && cattleOf(st).length < 2; i++) {
-            g.nowMs += 5 * GAME_DAY_LENGTH;
-            harvestPeriodic(g, st);
-        }
-        expect(cattleOf(st).length).toBeGreaterThanOrEqual(2);
-        const [c1, c2, c3] = cattleOf(st);
+        g.scenario!.params.beaconCattlePoolWorldsPer = 1; // a ship a feeder: two laden ships at once
+        shuttleUntil(g, st, () => laden(st).length >= 2);
+        expect(laden(st).length).toBeGreaterThanOrEqual(2);
+        const [c1, c2, c3] = laden(st);
         const elim = st.popEliminated;
         scenarioEmit(g, 'builtObjectKilledBy', { builtObject: c1.ship, destroyer: other });
         expect(st.popEliminated).toBe(elim); // the interceptors killed them, not the Reclaimers (beaconCattleDeadCountPct 0)
@@ -5870,11 +6103,8 @@ describe('the Beacon (Giantworks wonder)', () => {
         expect([...ai.builtObjects, ...ai.shipGroups.filter((x) => x !== null)].some((o) => atHv(o as never) || atHv((o as BuiltObject).shipGroup as never))).toBe(true);
         expect(human.builtObjects.map((b) => b.mission)).toEqual(humanBefore);
         // the harvester gone: the units go for a cattle ship within reach (one unit each)
-        for (let i = 0; i < 8 && cattleOf(st).length === 0; i++) {
-            g.nowMs += 5 * GAME_DAY_LENGTH;
-            harvestPeriodic(g, st);
-        }
-        const c = cattleOf(st)[0];
+        shuttleUntil(g, st, () => laden(st).length > 0);
+        const c = laden(st)[0];
         expect(c).toBeDefined();
         builtObjectCompleteTeardown(g, hv);
         for (const b of war) {

@@ -259,7 +259,17 @@ export interface CoreRec {
     endDate: number;
 }
 
-/** A cattle ship in flight from a held world to its core with a slice of the world's people. */
+/**
+ * Where a pool cattle ship is in its shuttle loop: out (empty, flying to the held world `from`), loading (at that world), in (laden, flying to its
+ * core), home (empty, flying back to its core), idle (at its core: waiting for a run or mending).
+ */
+export type CattlePhase = 'out' | 'loading' | 'in' | 'home' | 'idle';
+
+/**
+ * A cattle ship of a core's pool (beaconHarvest.ts): it shuttles between the core and the held worlds that are due a collection, carrying
+ * a slice of a world's people to the core's pens. `core` is its home core; `from` the world of the run in hand (the core's world when idle).
+ * Saves from before the shuttle have no `phase`: a ship with people aboard is `in` (it docks, then stays as a pool ship), an empty one idle.
+ */
 export interface CattleRec {
     ship: BuiltObject;
     from: Habitat;
@@ -267,9 +277,19 @@ export interface CattleRec {
     load: Captive[];
     total: number;
     launched: number;
+    phase?: CattlePhase;
+    /** The star date the loading at `from` is done. */
+    loadUntil?: number;
     /** Warships escorting it (beaconHarvest.ts assignEscorts), and those of them built for it (they join the reserve when it docks). */
     escorts?: BuiltObject[];
     built?: BuiltObject[];
+}
+
+/** A replacement cattle ship on order (beaconHarvest.ts): paid when the fleet biofuel allows, built beaconCattleBuildDays later at the core. */
+export interface CattleOrder {
+    core: Habitat;
+    paid: boolean;
+    ready: number;
 }
 
 /** The biofuel accounts, in fleet strength (the season budget's measure): the fleet's and the troops' (a troop costs strength / beaconTroopsPerFuel). */
@@ -380,6 +400,11 @@ export interface BeaconStats {
     cattleArrived?: number;
     cattleKilled?: number;
     cattleBoarded?: number;
+    /** The shuttle: pool ships spawned to fill a pool, replacements ordered / built, runs that never loaded (the world was gone). */
+    cattleSpawned?: number;
+    cattleOrdered?: number;
+    cattleRebuilt?: number;
+    cattleRunsAborted?: number;
     captivesKilled?: number;
     captivesFreed?: number;
     captivesRescued?: number;
@@ -478,6 +503,8 @@ export interface BeaconState {
      *  that may not be made a core again before a date (their harvester was destroyed), the biofuel accounts. */
     cores?: CoreRec[];
     cattle?: CattleRec[];
+    /** Replacement cattle ships ordered for a core after a loss: paid from the fleet biofuel, ready `ready` (a star date; 0 until paid). */
+    cattleOrders?: CattleOrder[];
     coreBans?: { colony: Habitat; until: number }[];
     fuel?: FuelRec;
     /** The launch record (the art's beam, camera and pop-up fire once per launch): how many times the strike groups were called out and
@@ -726,10 +753,21 @@ export const P = {
     harvesterArmourPct: (g: Galaxy) => p(g, 'beaconHarvesterArmourPct', 150),
     harvesterShieldPct: (g: Galaxy) => p(g, 'beaconHarvesterShieldPct', 100),
     harvesterGunsPct: (g: Galaxy) => p(g, 'beaconHarvesterGunsPct', 0),
-    /** Cattle ships: a held world launches one every this many days, carrying this % of the people it had when taken; at most this many fly at once; their plating, their holds and their slow spool. */
+    /** Cattle ships: a held world is due a collection every this many days, carrying this % of the people it had when taken; at most this many in all pools; their plating, their holds and their slow spool. */
     cattleDays: (g: Galaxy) => Math.max(1, p(g, 'beaconCattleDays', 20)),
     cattleLoadPct: (g: Galaxy) => Math.max(0.1, p(g, 'beaconCattleLoadPct', 5)),
     cattleMax: (g: Galaxy) => Math.max(0, Math.trunc(p(g, 'beaconCattleMax', 150))),
+    /** The shuttle (beaconHarvest.ts): a core's pool has one ship per this many feeder worlds (at least one, at most beaconCattlePoolMax); a ship loads
+     *  for this many days at a world; one damaged beyond this % of its parts stays at the core to mend, the mending there runs at this factor of the
+     *  stock rate (away from the core, at the field factor); a lost ship is replaced for this % of the reference military in fleet biofuel, built this many days after it is paid. */
+    cattlePoolWorldsPer: (g: Galaxy) => Math.max(1, p(g, 'beaconCattlePoolWorldsPer', 2)),
+    cattlePoolMax: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'beaconCattlePoolMax', 12))),
+    cattleLoadDays: (g: Galaxy) => Math.max(0, p(g, 'beaconCattleLoadDays', 3)),
+    cattleRepairDamagePct: (g: Galaxy) => Math.max(0, Math.min(100, p(g, 'beaconCattleRepairDamagePct', 20))),
+    cattleRepairFactor: (g: Galaxy) => Math.max(0.01, p(g, 'beaconCattleRepairFactor', 1)),
+    cattleFieldRepairFactor: (g: Galaxy) => Math.max(0.01, p(g, 'beaconCattleFieldRepairFactor', 0.1)),
+    cattleBuildFuelPct: (g: Galaxy) => Math.max(0, p(g, 'beaconCattleBuildFuelPct', 2)),
+    cattleBuildDays: (g: Galaxy) => Math.max(0, p(g, 'beaconCattleBuildDays', 60)),
     cattleArmourPct: (g: Galaxy) => p(g, 'beaconCattleArmourPct', 100),
     cattleHoldPct: (g: Galaxy) => p(g, 'beaconCattleHoldPct', 250),
     /** Their hyperdrive spools this many times as long as a warship's (they sit exposed at the world they leave). */

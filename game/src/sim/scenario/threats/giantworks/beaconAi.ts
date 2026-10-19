@@ -19,7 +19,7 @@
 //              its war with the Reclaimers (the stock war AI then builds and sends invasion fleets), and the nearest available fleet
 //              that carries the troops a core needs and can face its defence is sent to invade it at once (the stock invasion path);
 //   CORES    - a harvester (and the Reclaimer warships at its core): gather-then-strike as the Beacon's, at beaconAiCoreRatioPct %;
-//   CATTLE   - a cattle ship a member can see, within beaconAiCattleReachSectors of a free unit that can catch it before it docks: that unit
+//   CATTLE   - a cattle ship on a run (outbound, loading or laden; not one waiting at its core) a member can see, within beaconAiCattleReachSectors of a free unit that can catch it before it docks: that unit
 //              Attacks it (its captives die; the coalition starves the Reclaimers knowingly), at most beaconAiCattleMax a pass.
 // No member gives more than beaconAiSharePct % of its military to the coalition at once (the rest keep their home). Units that are
 // repairing, refitting, refuelling, invading or escorting are never called. Rnd: none (the stock mission assignments draw as usual).
@@ -45,7 +45,7 @@ import { scenarioText as T } from '../../messages';
 import { KNOWLEDGE_CONFIRMED, arcNews, knowledgeLevel, normalEmpires, revealTo } from '../framework';
 import { BEACON_FLAG, P, SYSTEM_RADIUS, aliveShips, cloakLapsedFor, peekBeaconState, type BeaconState, type StrikeGroup } from './beaconState';
 import { eliminatedPct, travelDays, watcherFleetStrengthOf } from './beaconFleet';
-import { cattleOf, liveCores } from './beaconHarvest';
+import { cattleOf, inField, liveCores, phaseOf } from './beaconHarvest';
 import { isObjectVisibleToThisEmpire } from '../../../independentTraders';
 import { WarObjective, obtainDiplomaticRelation } from '../../../diplomacy';
 import { calculateDefendingStrength, determineRequiredTroopStrength, findNearestAvailableFleet } from '../../../fleets/militaryAI';
@@ -553,9 +553,10 @@ function cattle(p: Pass): number {
     for (const c of cattleOf(st)) {
         if (sent >= max) break;
         const ship = c.ship;
-        if (ship.hasBeenDestroyed || !p.members.some((e) => isObjectVisibleToThisEmpire(galaxy, e, ship))) continue;
+        // the pool ships at their core (idle, mending, on their way home) are under the harvester's guns: only the ships on a run are chased
+        if (!inField(c) || ship.hasBeenDestroyed || !p.members.some((e) => isObjectVisibleToThisEmpire(galaxy, e, ship))) continue;
         // already chased: the unit on it stays on it
-        const left = travelDays(Math.max(1, ship.warpSpeed), dist(galaxy, ship, c.core.xpos, c.core.ypos)) + 5;
+        const left = travelDays(Math.max(1, ship.warpSpeed), dist(galaxy, ship, (phaseOf(c) === 'in' ? c.core : c.from).xpos, (phaseOf(c) === 'in' ? c.core : c.from).ypos)) + 5;
         const got = pick(p, ship.xpos, ship.ypos, strengthOf(ship) * 1.5, reach, left);
         if (got === null) continue;
         let ok = 0;
