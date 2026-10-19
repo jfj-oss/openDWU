@@ -368,3 +368,7 @@ Reputation Cause giantworks.capture;You took a Great Work by force
 'The Beacon's launch day (presentation only: ui/beaconLaunchCall.ts shows it a minute after the first call)
 Beacon End Times Title;The End Times
 Beacon End Times;The Beacon has fired. A pillar of light rose from its core into the dark, and every Reclaimer in the galaxy answered at once. Their strike groups are on the move. The Reclamation has begun its harvest: world by world, the living will be gathered and drained. It will not stop until the Beacon falls.
+Beacon Diet Moratorium;Research moratorium
+Beacon Diet Moratorium Effect;Research is slowed in every empire for a long while, so that nobody races ahead while the threat is not understood. Members who break it are called to account and, if they go on, sanctioned.
+Beacon Diet Moratorium News;The Interstellar Diet has passed a research moratorium: research is slowed by {0} % in every empire for {1} months. Any member that breaks it will answer to the Diet.
+Beacon Diet Moratorium Broken;it broke the research moratorium

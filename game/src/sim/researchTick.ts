@@ -1439,6 +1439,7 @@ export function performResearchProjects(galaxy: Galaxy, empire: Empire, timePass
     if (projects === null) return;
     if (galaxy.scenario !== null && scenarioQuery(galaxy, 'researchFrozen', false, { empire, industry })) return; // mod layer (19a research cap)
     if (empire.controlResearch && projects.length <= 0) selectNextResearchProject(galaxy, empire, industry, projects);
+    if (galaxy.scenario !== null) researchPower *= scenarioQuery(galaxy, 'researchPowerFactor', 1, { empire, industry }); // mod layer (Diet research moratorium)
     let num = ((researchPower * timePassed) / REAL_SECONDS_IN_GALACTIC_YEAR) * galaxy.researchSpeedModifier;
     const num2 = calculateResearchOutputBonuses(empire, industry);
     num *= num2;

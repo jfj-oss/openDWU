@@ -635,6 +635,8 @@ export interface ScenarioQueries {
      * the industry's research this pass (19a rimTraderResearchCap: the Concord's stagnation).
      */
     researchFrozen: { value: boolean; args: { empire: Empire; industry: number } };
+    /** Factor on an empire's research output of one industry (the Interstellar Diet's research moratorium; 1 = unchanged). */
+    researchPowerFactor: { value: number; args: { empire: Empire; industry: number } };
     /**
      * independentTraders.ts isObjectVisibleToThisEmpire (Empire.9.cs 3198), first line: true makes the object visible to
      * `empire` regardless of sensors (19a treasure-fleet beacon: a galaxy-wide position broadcast).

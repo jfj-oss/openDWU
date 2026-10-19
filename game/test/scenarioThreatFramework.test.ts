@@ -10,6 +10,7 @@ import {
     arcMessage,
     arcNews,
     KNOWLEDGE_CONFIRMED,
+    KNOWLEDGE_SUSPECTED,
     availableThreatActions,
     createThreatFaction,
     flipToFaction,
@@ -227,6 +228,9 @@ import { isHumanEmpire } from '../src/sim/humanEmpires';
 import { aiMayPurge, dwellDaysFor, garrisonStrength, purgePass, purgeRebelStrength, rebelsOn, siphonDonor, siphonPass, siphonRateOf, startPurge, tech5Count } from '../src/sim/scenario/threats/giantworks/beaconSiphon';
 import { makeTroopsSplit } from '../src/sim/scenario/threats/factionNavy';
 import { resolveInvasionBattles } from '../src/sim/combat/invasion';
+import { LAW_MORATORIUM, MOTION_MORATORIUM, knowsBeacon, moratoriumFactor, moratoriumMonthly } from '../src/sim/scenario/threats/giantworks/beaconDiet';
+import { dietOn, lawInForce } from '../src/sim/scenario/charactersVictory/diet/dietState';
+import { councilState, type Council } from '../src/sim/scenario/emergent/council';
 import { addSalvage, aiBargainChoice, colonyToCede, counterMonthly, expose, offerCandidates, purgeCorruption, resistanceFactor, resolveBargain } from '../src/sim/scenario/threats/giantworks/beaconCounter';
 import { builtObjectCompleteTeardown } from '../src/sim/combat/teardown';
 import { builtObjectVisibility, isObjectVisibleToThisEmpire, isObjectVisibleToThisEmpireImprecise } from '../src/sim/independentTraders';
@@ -4647,6 +4651,65 @@ describe('the Beacon (Giantworks wonder)', () => {
         expect(rec2.ended).toBeNull();
         expect(rec2.purge).toBeUndefined();
         expect(st.stats.purgeFailed).toBe(1);
+    }, 900000);
+
+    it('the research moratorium: a Diet motion once the Beacon is known; it slows research galaxy-wide, the AI votes by fear and tech race, breakers are called to account then sanctioned', () => {
+        const { game } = createScenarioGame(base, { scenario: comboOverlayFs([...ids, 'characters-victory']), flags: { charactersVictory: true, cvCouncil: true, galacticCouncil: true }, options: age3 });
+        const g = game.galaxy;
+        g.scenario!.flags.gwBeacon = true;
+        const site = { id: 0, system: g.systems.find((s) => s !== null)!, habitat: null, base: null, progress: 0, stage: 0, wonder: 'beacon', founders: [], startDate: galaxyStarDate(g), completeDate: null, destroyedBy: null } as GreatWorkSite;
+        beaconRolled(g, site);
+        const st = peekBeaconState(g)!;
+        const members = normalsOf(g);
+        const cs = councilState(g);
+        const c: Council = { id: cs.nextId++, name: 'Interstellar Diet', foundedYear: 0, members: [...members], chair: null, motion: null, results: [], blocs: [], coLosses: {}, losses: {}, sanctions: [], threats: [], recognised: [], condemned: {}, splitFrom: 0 };
+        cs.councils.push(c);
+        const dst = dietState(g);
+        const def = dietMotionKindDef(MOTION_MORATORIUM)!;
+        expect(def).not.toBeNull();
+        expect(dietOn(g)).toBe(true);
+        // not until someone knows of the Beacon
+        expect(def.proposable!(g)).toBe(false);
+        const [a, b, d] = members;
+        revealTo(g, { knowledge: st.watchers[0].knowledge }, a, KNOWLEDGE_SUSPECTED);
+        expect(knowsBeacon(st, a)).toBe(true);
+        expect(def.proposable!(g)).toBe(true);
+        // AI votes: those who know vote yes; a racer who does not know votes no
+        const motion = { id: 1, kind: MOTION_MORATORIUM, proposer: a, target: null, other: null, colony: null, resourceId: -1, text: 't', votes: [], status: 'voting', yes: 0, no: 0 } as never;
+        expect(def.voteScore(g, dst, a, motion)).toBeGreaterThan(50);
+        revealTo(g, { knowledge: st.watchers[0].knowledge }, b, KNOWLEDGE_SUSPECTED);
+        expect(def.voteScore(g, dst, b, motion)).toBeGreaterThan(20);
+        const sc = def.voteScore(g, dst, d, motion);
+        expect(sc).toBeLessThan(def.voteScore(g, dst, b, motion));
+        // passes: a law with a duration, the research slowed by the percentage for everyone but the breakers
+        for (const e of members) if (e !== a && e !== b) e.research.techTree.forEach((t) => { if (t.def.techLevel > 3) t.isResearched = false; });
+        def.apply(g, dst, motion, (kind, empire, other, colony, until) => {
+            const law = { id: 99, kind, empire, other, colony, since: galaxyStarDate(g), until, text: 'law' };
+            dst.laws.push(law);
+            return law;
+        });
+        expect(st.stats.moratoriums).toBe(1);
+        expect(def.proposable!(g)).toBe(false); // one at a time
+        expect(lawInForce(dst, LAW_MORATORIUM)!.until).toBeCloseTo(galaxyStarDate(g) + 720 * GAME_DAY_LENGTH, 0);
+        st.moratorium!.breakers = [d.empireId];
+        expect(moratoriumFactor(g, a)).toBeCloseTo(0.6, 9);
+        expect(moratoriumFactor(g, d)).toBe(1);
+        expect(scenarioQuery(g, 'researchPowerFactor', 1, { empire: a, industry: 0 })).toBeCloseTo(0.6, 9);
+        expect(scenarioQuery(g, 'researchPowerFactor', 1, { empire: d, industry: 0 })).toBe(1);
+        // the breaker is called to account every month and sanctioned at the third breach
+        const sanctions = c.sanctions.length;
+        const grievance0 = dst.grievances[d.empireId] ?? 0;
+        moratoriumMonthly(g);
+        moratoriumMonthly(g);
+        expect(dst.grievances[d.empireId] ?? 0).toBeGreaterThan(grievance0);
+        expect(c.sanctions.length).toBe(sanctions);
+        moratoriumMonthly(g);
+        expect(st.moratorium!.sanctioned).toEqual([d.empireId]);
+        expect(c.sanctions.length).toBeGreaterThan(sanctions);
+        expect(st.stats.moratoriumBreaches).toBe(3);
+        // it lapses with the law
+        dst.laws = [];
+        expect(moratoriumFactor(g, a)).toBe(1);
     }, 900000);
 
     it('a sighting: the Watcher shows itself over a colony, passive, then slips away cloaked; attacked, it defends itself against the attackers only and goes to war with no one', () => {

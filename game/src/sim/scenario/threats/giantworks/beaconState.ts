@@ -126,6 +126,17 @@ export interface SiphonRec {
     rate: number;
 }
 
+/** A research moratorium the Diet passed: members that break it (their research is not slowed), breaches seen per empire, empires sanctioned. */
+export interface MoratoriumRec {
+    since: number;
+    until: number;
+    proposer: number;
+    breakers: number[];
+    breaches: Record<string, number>;
+    sanctioned: number[];
+    lastCheck: number;
+}
+
 /** Interceptions of cattle ships from one held world (destroyed or boarded), slowly decaying. */
 export interface InterceptRec {
     colony: Habitat;
@@ -445,6 +456,8 @@ export interface BeaconState {
     siphon?: SiphonRec;
     /** Cattle interceptions per held world (beaconHarvest.ts escorts). */
     intercepts?: InterceptRec[];
+    /** The research moratorium the Diet passed last (beaconDiet.ts): who breaks it, the breaches seen and who was sanctioned. */
+    moratorium?: MoratoriumRec;
     stats: BeaconStats;
     ended: boolean;
     /** Spawned from the Game Editor / a test: the existence-year gates are skipped. */
@@ -566,6 +579,10 @@ export const P = {
     purgeRebelPopFull: (g: Galaxy) => Math.max(1, p(g, 'beaconPurgeRebelPopFull', 2000)) * 1e6,
     purgeRebelRegiments: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'beaconPurgeRebelRegiments', 12))),
     aiPurgeMarginPct: (g: Galaxy) => p(g, 'beaconAiPurgeMarginPct', 130),
+    /** The Diet's research moratorium: research is slowed by this % galaxy-wide for this many days; a member that broke it is sanctioned after this many breaches (one is counted a month). */
+    moratoriumPct: (g: Galaxy) => Math.max(0, Math.min(95, p(g, 'beaconMoratoriumPct', 40))),
+    moratoriumDays: (g: Galaxy) => Math.max(30, p(g, 'beaconMoratoriumDays', 720)),
+    moratoriumSanctionAfter: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'beaconMoratoriumSanctionAfter', 3))),
     reseedDays: (g: Galaxy) => p(g, 'beaconReseedDays', 120),
     /** Build speed: +this % per corrupted world (up to the cap %); a dead Watcher multiplies it by the factor %. */
     buildBoostPct: (g: Galaxy) => p(g, 'beaconBuildBoostPct', 9),

@@ -603,6 +603,15 @@ export function dietLawViolation(galaxy: Galaxy, offender: Empire, law: DietLaw)
     violation(galaxy, st, c, offender, law);
 }
 
+/** The Diet's sanction path for an offender who breaks a law again and again (the council's sanction applied at once, with the enforcers). Exported for registered kinds. */
+export function dietSanctionOffender(galaxy: Galaxy, offender: Empire, why: string): boolean {
+    const st = peekDietState(galaxy);
+    const c = dietCouncil(galaxy);
+    if (st === null || c === null || !inDiet(galaxy, c, offender)) return false;
+    automaticSanctions(galaxy, st, c, offender, why);
+    return true;
+}
+
 /** Expulsion: out of the council (and its blocs), no rejoining for dietExpelYears. */
 function expel(galaxy: Galaxy, st: DietState, c: Council, e: Empire, year: number): void {
     const i = c.members.indexOf(e);

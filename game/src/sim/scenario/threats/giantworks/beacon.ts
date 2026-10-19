@@ -106,6 +106,7 @@ import {
 import { registerBeaconAi } from './beaconAi';
 import { dwellDaysFor, purgePass, purgeRebelStrength, recentlyPurged, siphonPass, siphonStatus } from './beaconSiphon';
 import { addProgress } from './lifecycle';
+import './beaconDiet';
 import { counterIntelligencePass, counterMonthly, onBoarded, onKilledForSalvage, registerCounterplay, resistanceFactor } from './beaconCounter';
 import { beaconArtInfo, cattleOf, initHarvest, liveCores, registerHarvest, releaseCaptives, rescueCattle } from './beaconHarvest';
 import type { BeaconArtInfo } from './beaconState';
@@ -1031,7 +1032,7 @@ export const beaconKind: GreatWorkKind = {
     onDestroyed: beaconDestroyedEarly,
 };
 
-export const BEACON_HANDLER_IDS = ['beacon.watchers', 'beacon.reclaim', 'beacon.monthly', 'beacon.attacked', 'beacon.killed', 'beacon.owner', 'beacon.destroyed', 'beacon.boarded', 'beacon.repair', 'beacon.troops', 'beacon.counter', 'beacon.ai', 'beacon.cloakTarget', 'beacon.cloakSpares', 'beacon.cattleSpool', 'beacon.selfDefence', 'beacon.noWar'] as const;
+export const BEACON_HANDLER_IDS = ['beacon.watchers', 'beacon.reclaim', 'beacon.monthly', 'beacon.attacked', 'beacon.killed', 'beacon.owner', 'beacon.destroyed', 'beacon.boarded', 'beacon.repair', 'beacon.troops', 'beacon.counter', 'beacon.ai', 'beacon.cloakTarget', 'beacon.cloakSpares', 'beacon.cattleSpool', 'beacon.selfDefence', 'beacon.noWar', 'beacon.moratorium', 'beacon.moratoriumMonthly'] as const;
 
 export function registerBeacon(): void {
     registerGreatWork(beaconKind);
