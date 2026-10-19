@@ -46,8 +46,8 @@ import { BEACON_FRAMES, WATCHER_ART } from '../src/render/beaconArtData';
 import { WATCHER_FORK_ART } from '../src/render/beaconForkArtData';
 import { CAPITAL_FORK_ART } from '../src/render/beaconForkCapitalArtData';
 import { FRIGATE_FORK_ART } from '../src/render/beaconForkFrigateArtData';
-import { FORK_FLEET } from '../src/render/beaconForkFleet';
-import { FORK_FX_SHIPS_MAX, forkBlink, forkThrust } from '../src/render/beaconForkFx';
+import { FORK_FLEET, FORK_PLUMES_ONLY, forkPlumeArt } from '../src/render/beaconForkFleet';
+import { FORK_FX_SHIPS_MAX, FORK_PLUME_SHIPS_MAX, forkBlink, forkThrust } from '../src/render/beaconForkFx';
 import {
     WATCHER_CLOSE_S,
     WATCHER_OPEN_S,
@@ -415,7 +415,10 @@ describe('the Beacon art', () => {
         expect(beaconArtFile(ship(BuiltObjectSubRole.Destroyer, reclaimers), l)).toBe('destroyer-fork');
         expect(beaconArtFile(ship(BuiltObjectSubRole.Cruiser, reclaimers), l)).toBe('cruiser-fork');
         expect(beaconArtFile(ship(BuiltObjectSubRole.Carrier, reclaimers), l)).toBe('carrier-fork');
-        expect(beaconArtFile(ship(BuiltObjectSubRole.TroopTransport, reclaimers), l)).toBe('trooptransport');
+        expect(beaconArtFile(ship(BuiltObjectSubRole.TroopTransport, reclaimers), l)).toBe('troop-fork');
+        expect(beaconArtFile(ship(BuiltObjectSubRole.PassengerShip, reclaimers), l)).toBe('troop-fork');
+        expect(beaconArtFile(ship(BuiltObjectSubRole.ExplorationShip, reclaimers), l)).toBe('explorer-fork');
+        expect(threatDrawScale(l, ship(BuiltObjectSubRole.TroopTransport, reclaimers))).toBeCloseTo(FORK_FLEET['troop-fork'].drawScale, 9);
         const cattle = ship(BuiltObjectSubRole.LargeFreighter, reclaimers, BuiltObjectRole.Freight, 2000);
         const harv = ship(BuiltObjectSubRole.DefensiveBase, reclaimers, BuiltObjectRole.Base, 1500);
         const lh: ThreatLooks = { ...l, cattleShips: [cattle], harvesters: [harv] };
@@ -431,6 +434,8 @@ describe('the Beacon art', () => {
             expect(beaconArtFile(capital, l)).toBe('capitalship');
             expect(beaconArtFile(frigate, l)).toBe('frigate');
             expect(beaconArtFile(ship(BuiltObjectSubRole.Cruiser, reclaimers), l)).toBe('cruiser');
+            expect(beaconArtFile(ship(BuiltObjectSubRole.TroopTransport, reclaimers), l)).toBe('trooptransport');
+            expect(beaconArtFile(ship(BuiltObjectSubRole.ExplorationShip, reclaimers), l)).toBe('escort');
             setWatcherFrame('reaper');
             expect(beaconArtFile(watcher, l)).toBe('watcher-reaper');
             expect(beaconArtFile(capital, l)).toBe('capitalship-reaper');
@@ -447,6 +452,39 @@ describe('the Beacon art', () => {
         expect(beaconLooksActive(none)).toBe(false);
         expect(threatArtUrl(ship(BuiltObjectSubRole.Cruiser, reclaimers), none)).toBeNull();
         for (const f of Object.keys(BEACON_FRAMES)) expect(f in {}).toBe(false);
+    });
+
+    it('every Reclaimer that moves has plumes in the fork look: each sub-role\'s frame has engine bands at its stern', () => {
+        // every sub-role with a Reclaimer frame (and a planet destroyer, the Watcher, a cattle ship): its fork-look
+        // frame's plume anchors, inside the frame, in its aft half, each band a real width
+        const subs = (Object.values(BuiltObjectSubRole).filter((v) => typeof v === 'number') as BuiltObjectSubRole[]).filter((sr) => beaconFileForSubRole(sr) !== null);
+        expect(subs.length).toBeGreaterThanOrEqual(15);
+        const bos = subs.map((sr) => ship(sr, reclaimers));
+        bos.push({ ...ship(BuiltObjectSubRole.CapitalShip, reclaimers), isPlanetDestroyer: true } as BuiltObject, watcher);
+        const cattle = ship(BuiltObjectSubRole.LargeFreighter, reclaimers, BuiltObjectRole.Freight, 2000);
+        bos.push(cattle);
+        const lc: ThreatLooks = { ...l, cattleShips: [cattle] };
+        const files = new Set<string>();
+        for (const bo of bos) {
+            const f = beaconArtFile(bo, lc);
+            expect(f, `subRole ${bo.subRole}`).not.toBeNull();
+            files.add(f!);
+            const art = f === 'watcher-fork' ? WATCHER_FORK_ART : forkPlumeArt(f!);
+            expect(art, `${f} (subRole ${bo.subRole}) has no plume anchors`).not.toBeNull();
+            expect(art!.nozzles.length, f!).toBeGreaterThan(0);
+            for (const n of art!.nozzles) {
+                expect(n.x - n.w / 2, f!).toBeGreaterThan(0);
+                expect(n.x + n.w / 2, f!).toBeLessThan(art!.size);
+                expect(n.y, f!).toBeGreaterThan(art!.size * 0.5);
+                expect(n.y, f!).toBeLessThan(art!.size);
+                expect(n.w, f!).toBeGreaterThanOrEqual(18);
+            }
+        }
+        for (const f of ['troop-fork', 'explorer-fork', 'construction', 'frigate-fork', 'capitalship-fork', 'cattle-fork']) expect(files.has(f), f).toBe(true);
+        // the plumes-only frames are the Mass Effect frames the fork look still draws
+        for (const f of Object.keys(FORK_PLUMES_ONLY)) expect(BEACON_FRAMES[f].size, f).toBe(FORK_PLUMES_ONLY[f].size);
+        // a whole fleet gets them, not only the biggest few (those keep the lights)
+        expect(FORK_PLUME_SHIPS_MAX).toBeGreaterThanOrEqual(48);
     });
 
     it('the Watchers and the Beacon are drawn at least a set size; a bigger hull keeps its own', () => {

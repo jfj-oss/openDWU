@@ -600,7 +600,11 @@ export function beaconArtFile(bo: BuiltObject, l: ThreatLooks = looks): string |
     if (!isReclaimerHull(bo, l)) return null;
     const f = bo.isPlanetDestroyer ? 'capitalship' : beaconFileForSubRole(bo.subRole);
     if (f === null) return null;
-    if (watcherFrame === 'fork') return Object.hasOwn(FORK_REPLACES, f) ? FORK_REPLACES[f] : f;
+    if (watcherFrame === 'fork') {
+        // the explorer: the exploration ships (their frame the escort's in the other looks) get their own
+        if (bo.subRole === BuiltObjectSubRole.ExplorationShip && !bo.isPlanetDestroyer) return 'explorer-fork';
+        return Object.hasOwn(FORK_REPLACES, f) ? FORK_REPLACES[f] : f;
+    }
     return f === 'capitalship' && watcherFrame === 'reaper' ? 'capitalship-reaper' : f;
 }
 

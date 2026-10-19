@@ -25,8 +25,8 @@ import { SpritePool } from './fxCommon';
 import { loadShipArt } from './shipArt';
 import { BEACON_FRAMES, BEACON_RELAY, WATCHER_ART, type BeaconFrameArt, type BeaconFxRect } from './beaconArtData';
 import { WATCHER_FORK_ART } from './beaconForkArtData';
-import { forkFleetArt } from './beaconForkFleet';
-import { BEACON_ART_DIR } from './threatArt';
+import { forkFleetArt, forkPlumeArt } from './beaconForkFleet';
+import { BEACON_ART_DIR, getWatcherFrame } from './threatArt';
 import { BeaconRelayFx, type RelayFrame } from './beaconRelayFx';
 import { BeaconWarpLayer } from './beaconWarp';
 import { ReaperFx } from './beaconReaperFx';
@@ -310,9 +310,10 @@ export class BeaconFxLayer {
             this.motion.draw(bo, x, y, rotation, scale, ax * tw, ay * th, px, sec, bo.currentSpeed / cruise);
             return null;
         }
-        const forkArt = file === 'watcher-fork' ? WATCHER_FORK_ART : forkFleetArt(file);
+        const forkArt = file === 'watcher-fork' ? WATCHER_FORK_ART : getWatcherFrame() === 'fork' ? forkPlumeArt(file) : forkFleetArt(file);
         if (forkArt !== null) {
-            // its engines' plumes (by its speed) and its blinking navigation lights; its lamps' swell below
+            // its engines' plumes (by its speed) and its blinking navigation lights (a plumes-only frame: the plumes);
+            // its lamps' swell below
             const cruise = Math.max(1, bo.cruiseSpeed > 0 ? bo.cruiseSpeed : bo.topSpeed);
             this.fork.draw(forkArt, bo, x, y, rotation, scale, ax * tw, ay * th, px, sec, bo.currentSpeed / cruise);
         }

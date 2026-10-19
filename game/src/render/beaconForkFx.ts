@@ -5,8 +5,9 @@
 // exhaust art (effects/enginethrusters/3.png, the Vortex engine's pink-lilac flame the Ancient Guardians' ships draw; a theme's own if one is active), drawn as ambientLayer.ts
 // draws a ship's exhaust (untinted, normal blend). Small pink navigation lights across the hull (the prong fronts and
 // outer edges, the rear hump, the side horns' tips, the stern corners) blink, each on its own period and phase (a small
-// texture made once, a pixel buffer, no canvas). Pooled; drawn only for the FORK_FX_SHIPS_MAX biggest such ships on
-// screen (ranked by drawn size, a frame behind) and only from a drawn size up. Where the banks and lights sit comes from
+// texture made once, a pixel buffer, no canvas). Pooled; the plumes drawn for the FORK_PLUME_SHIPS_MAX biggest such
+// ships on screen (every ship of a fleet, so none moves without), the lights for the FORK_FX_SHIPS_MAX biggest (ranked
+// by drawn size, a frame behind), each only from a drawn size up. Where the banks and lights sit comes from
 // beaconForkArtData.ts / beaconForkCapitalArtData.ts (the art builds). The fork capital ship (capitalship-fork.png)
 // gets the same, from its own data.
 
@@ -21,10 +22,12 @@ import { cloakGlow, cloakLightGate } from './beaconCloakFx';
 
 /** The plumes and the lights on / off (render only; mutable so a preview can switch them). */
 export const FORK_FX = { plumes: true, lights: true };
-/** At most this many ships get the plumes and lights (the biggest drawn), as the warp's metaballs. */
+/** At most this many ships get the lights (the biggest drawn), as the warp's metaballs. */
 export const FORK_FX_SHIPS_MAX = 4;
+/** At most this many ships get the plumes (the biggest drawn): a whole battle's fleets. */
+export const FORK_PLUME_SHIPS_MAX = 64;
 /** No plumes under this drawn size (px); no lights under FORK_LIGHTS_MIN_PX. */
-export const FORK_PLUMES_MIN_PX = 20;
+export const FORK_PLUMES_MIN_PX = 10;
 export const FORK_LIGHTS_MIN_PX = 28;
 /** The plumes' art: enginethrusters/<i>.png (3: the Vortex engine's pink-lilac flame, the one the Ancient Guardians' ships draw). */
 export const FORK_PLUME_ART = 3;
@@ -33,6 +36,9 @@ export const FORK_PLUME_LEN = 0.9;
 /** Each band is this many stock flames side by side; each drawn this many times its share of the span wide (the stock
  * flame fills about the middle of its art, so they overlap and merge). */
 export const FORK_PLUME_PIECES = 9;
+/** A ship drawn under FORK_PLUME_SMALL_PX gets this many (wider) flames a band instead: the same band, fewer sprites. */
+export const FORK_PLUME_PIECES_SMALL = 5;
+export const FORK_PLUME_SMALL_PX = 60;
 export const FORK_PLUME_SPREAD = 3.4;
 /** How fast the plumes follow the speed (1/s). */
 const FOLLOW = 2.5;
@@ -93,7 +99,9 @@ export class ForkFx {
     private plume: Texture | null = null;
     private plumeLoading = false;
     private tracks = new Map<BuiltObject, Track>();
-    /** The ships drawn with the effects (ranked from the last frame's candidates); this frame's candidates. */
+    /** The ships drawn with the plumes, and with the lights too (ranked from the last frame's candidates); this frame's
+     * candidates. */
+    private plumed = new Set<BuiltObject>();
     private full = new Set<BuiltObject>();
     private candBo: BuiltObject[] = [];
     private candPx: number[] = [];
@@ -141,16 +149,21 @@ export class ForkFx {
     begin(): void {
         this.pool.begin();
         // the biggest drawn of last frame's candidates
+        this.full.clear();
+        this.plumed.clear();
         if (this.candN > FORK_FX_SHIPS_MAX) {
             const idx = this.rank;
             idx.length = 0;
             for (let i = 0; i < this.candN; i++) idx.push(i);
             idx.sort((a, b) => this.candPx[b] - this.candPx[a]);
-            this.full.clear();
             for (let k = 0; k < FORK_FX_SHIPS_MAX; k++) this.full.add(this.candBo[idx[k]]);
+            const n = Math.min(this.candN, FORK_PLUME_SHIPS_MAX);
+            for (let k = 0; k < n; k++) this.plumed.add(this.candBo[idx[k]]);
         } else {
-            this.full.clear();
-            for (let i = 0; i < this.candN; i++) this.full.add(this.candBo[i]);
+            for (let i = 0; i < this.candN; i++) {
+                this.full.add(this.candBo[i]);
+                this.plumed.add(this.candBo[i]);
+            }
         }
         this.candN = 0;
     }
@@ -188,7 +201,7 @@ export class ForkFx {
         const i = this.candN++;
         this.candBo[i] = bo;
         this.candPx[i] = px;
-        if (!this.full.has(bo)) return;
+        if (!this.plumed.has(bo)) return;
         const tex = this.textures();
         if (tex === null) return;
         this.x = x;
@@ -201,7 +214,7 @@ export class ForkFx {
         this.oy = oy;
         const A = art;
         const plume = this.plume;
-        if (FORK_FX.plumes && plume !== null && tr.k > 0.01) {
+        if (FORK_FX.plumes && plume !== null && tr.k > 0.01 && A.nozzles.length > 0) {
             const k = tr.k;
             // the stock exhaust as ambientLayer.ts draws it (untinted, normal blend, its hot head at the top of the raw
             // art turned with the ship): its length the stock PrepareEngineExhaust's 0.15 x the ship's prepared size
@@ -211,8 +224,9 @@ export class ForkFx {
             for (let n = 0; n < A.nozzles.length; n++) {
                 const z = A.nozzles[n];
                 // a wide, flat band across the bank: FORK_PLUME_PIECES stock flames side by side, overlapping so they merge
-                const step = z.w / FORK_PLUME_PIECES;
-                for (let i = 0; i < FORK_PLUME_PIECES; i++) {
+                const pieces = px < FORK_PLUME_SMALL_PX ? FORK_PLUME_PIECES_SMALL : FORK_PLUME_PIECES;
+                const step = z.w / pieces;
+                for (let i = 0; i < pieces; i++) {
                     const s = this.pool.acquire(plume);
                     s.blendMode = 'normal';
                     this.put(s, z.x - z.w / 2 + step * (i + 0.5), z.y, 0.5, 0.1);
@@ -222,7 +236,7 @@ export class ForkFx {
                 }
             }
         }
-        if (FORK_FX.lights && px >= FORK_LIGHTS_MIN_PX) {
+        if (FORK_FX.lights && px >= FORK_LIGHTS_MIN_PX && this.full.has(bo)) {
             // a small bright point: ~24 frame px (its halo), at least ~14 screen px whatever the zoom (less on a ship drawn
             // small: at most ~16 % of its drawn size, so a frigate's lights stay points)
             const screenPerFrame = px / A.size;
