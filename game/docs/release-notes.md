@@ -4,6 +4,8 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+## 0.1.33
+
 - **Guarantee the Beacon (Giantworks option).** A new-game option under Giantworks, off by default: when on (and The Beacon is enabled), the first Great Work is certain to be the Beacon, ignoring the six-empire minimum, so the Beacon arc always happens. Off, nothing changes.
 - **All Rim add-ons moved to Work in progress** (Rim Trade, Rim Fauna, Rim Herders, Rim Frontier, Rim Atmosphere): still being tuned.
 - **Victory only from the Beacon.** No threat ending gives a victory screen any more except destroying the Beacon after it has fired its mega beam at least once (destroying it before the first launch does not end the game). Every other threat still ends or is contained with its messages and news, but the game goes on. Of the threat defeats only the Beacon's (80% of the galaxy's people gone) still ends the game; the Dark Farms, Robot Mutiny, Corporate Coup and Time Bomb defeats no longer do. The stock victory conditions and the Galactic Diet's emperor ending are unchanged.
