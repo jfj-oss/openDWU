@@ -521,7 +521,7 @@ export function createLeftSidebar(wiring: LeftSidebarWiring): HTMLElement {
             issuePlayerCommand(galaxy, p, 'enemyTargetList', [], (list) => {
                 targetsAsked = null;
                 if (state.open !== 'enemyTargets') return;
-                state.items = enemyTargetItems(list);
+                state.items = enemyTargetItems(list, p);
                 state.itemsAt = performance.now();
                 state.scroll = clampScroll(state.scroll, state.items.length, metrics(), area.h, d.toggles.length);
                 render();

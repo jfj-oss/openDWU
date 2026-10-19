@@ -160,6 +160,32 @@ export function cloakFading(bo: BuiltObject): boolean {
 }
 
 /**
+ * A Watcher the viewer has detected but that is still cloaked (or still unfolding out of it): a contact, not a ship.
+ * The viewer sees only its outline and the starfield bend (this file); every icon, symbol, ring, name and stat is
+ * withheld (the map layers, the stacked-object list, the selection panel and the lists ask this). The owner always
+ * sees its own ship; a null viewer (a spectator) sees everything. A decloak counts as a contact until the hull is
+ * fully revealed (the render track's reveal below 1), so the icons come back with the hull, not before.
+ * Cheap for the common ship (one field read).
+ */
+export function isCloakedContact(bo: BuiltObject, viewer: Empire | null): boolean {
+    if (viewer === null || bo.empire === viewer) return false;
+    if (bo.cloaked === true) return true;
+    if (tracks.size === 0) return false;
+    const t = tracks.get(bo);
+    return t !== undefined && t.r < 0.999;
+}
+
+/** Whether a fleet's lead is such a contact (the fleet icon, name and count would give the Watcher away). */
+export function isCloakedContactFleet(sg: { leadShip: BuiltObject | null }, viewer: Empire | null): boolean {
+    return sg.leadShip !== null && isCloakedContact(sg.leadShip, viewer);
+}
+
+/** The selection panel's and stacked-list's name for a contact: no ship name, empire, design or role. */
+export const CONTACT_NAME = 'Unidentified contact';
+/** The one line the panel adds under it. */
+export const CONTACT_NOTE = 'Something is there. The sensors cannot say what.';
+
+/**
  * The viewer's sightings of cloaked Watchers (where it was when the viewer's ship or base spotted it, fading over the
  * seen-through days): refreshes from `watchers`' cloakSeenBy (`now` the star date) and returns the live ones with their
  * fade 1..0, but not a Watcher drawn right now. Render-local records.

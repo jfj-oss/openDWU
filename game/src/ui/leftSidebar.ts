@@ -56,6 +56,7 @@ import { determineResearchStationLocation } from '../sim/stationPlacement';
 import { resolveSectorDescription } from '../sim/empireEvents';
 import { builtObjectImageUrl, resolveDrawPictureRef } from '../render/builtObjectLayer';
 import { fighterImageUrl } from '../render/fighterLayer';
+import { isCloakedContact } from '../render/beaconCloakFx';
 import { troopImageUrl } from '../render/troopImages';
 import { mapStarUrls, cloudUrls } from '../render/assets';
 import { racePortraitUrl } from './empireEmblem';
@@ -409,14 +410,20 @@ export function panelItems(id: ItemPanelId, galaxy: Galaxy, player: Empire, o: P
         case 'enemyTargets':
             // The direct read: only when building the list draws no galaxy.rnd (enemyTargetListDrawsRandom false);
             // the view asks for it with the journaled 'enemyTargetList' command otherwise.
-            return enemyTargetItems(enemyTargetListDrawsRandom(player) ? [] : enemyTargetObjects(galaxy, player));
+            return enemyTargetItems(enemyTargetListDrawsRandom(player) ? [] : enemyTargetObjects(galaxy, player), player);
     }
 }
 
 /** method_205's targets as panel items (live ones only). */
-export function enemyTargetItems(targets: readonly (PrioritizedTargetObject | null)[]): EnemyTargetItem[] {
+export function enemyTargetItems(targets: readonly (PrioritizedTargetObject | null)[], viewer: Empire | null = null): EnemyTargetItem[] {
     const out: EnemyTargetItem[] = [];
-    for (const t of targets) if (t != null && !(t as { hasBeenDestroyed?: boolean }).hasBeenDestroyed) out.push(new EnemyTargetItem(t));
+    for (const t of targets) {
+        if (t == null || (t as { hasBeenDestroyed?: boolean }).hasBeenDestroyed) continue;
+        // Giantworks' Beacon: a detected cloaked Watcher (or its fleet) is a bare contact, never a named row
+        const ship = t instanceof BuiltObject ? t : t instanceof ShipGroup ? t.leadShip : null;
+        if (ship !== null && isCloakedContact(ship, viewer)) continue;
+        out.push(new EnemyTargetItem(t));
+    }
     return out;
 }
 

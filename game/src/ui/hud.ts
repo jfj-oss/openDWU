@@ -108,6 +108,7 @@ import { buildInfoModel, retrofitProgressPercent, type InfoTarget } from './sele
 import { renderInfoModel } from './selectionInfoView';
 import './selectionPanel.css';
 import { builtObjectImageUrl, resolveDrawPictureRef } from '../render/builtObjectLayer';
+import { CONTACT_NAME, isCloakedContact } from '../render/beaconCloakFx';
 import { createCharterButton } from './screens/charters'; // [charters]
 import { setTextIfChanged } from '../render/drawCache';
 import { CREATURE_FRAME_SETS, creatureFrameSetIndexes, creatureFrameUrls } from '../render/creatureLayer';
@@ -2844,7 +2845,7 @@ export function missionTargetText(mission: BuiltObjectMission, empire: Empire | 
     // TODO(port): ShipGroup.Name — not in sim
     if (mission.targetShipGroup !== null) return '';
     const bo = mission.targetBuiltObject;
-    if (bo !== null) return bo.name;
+    if (bo !== null) return isCloakedContact(bo, empire) ? CONTACT_NAME : bo.name; // Giantworks' Beacon: a cloaked Watcher stays unnamed
     const h = mission.targetHabitat;
     if (h !== null) {
         const cat = h.category === HabitatCategoryType.GasCloud ? 'Gas Cloud' : HabitatCategoryType[h.category];

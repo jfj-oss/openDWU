@@ -1,9 +1,12 @@
 // beaconCloakFx.ts: the Watchers' cloak visuals (render only): the reveal's pace, the lights' gate, the sightings' fade.
 import { describe, expect, it } from 'vitest';
-import { CLOAK_RECLOAK_S, CLOAK_TRANSITION_S, DECLOAK_HIT_S, PULSE_FAR, cloakGlow, cloakLightGate, cloakStep, decloaksSince, noteDecloak, pulseLevel, watcherSightings, type DecloakEvent } from '../src/render/beaconCloakFx';
+import { CLOAK_RECLOAK_S, CLOAK_TRANSITION_S, CONTACT_NAME, DECLOAK_HIT_S, PULSE_FAR, isCloakedContact, isCloakedContactFleet, cloakGlow, cloakLightGate, cloakStep, decloaksSince, noteDecloak, pulseLevel, watcherSightings, type DecloakEvent } from '../src/render/beaconCloakFx';
+import { unidentifiedContactInfo, rowText } from '../src/ui/selectionInfo';
+import { enemyTargetItems } from '../src/ui/leftSidebar';
 import { pulseRing, pulseVignette } from '../src/render/beaconPulseFx';
 import { DECLOAK_REST_S, POPUP_DUCK, POPUP_LOOP_END_S, decloakAllowed } from '../src/audio/beaconDecloak';
-import type { BuiltObject } from '../src/sim/builtObject';
+import { BuiltObject } from '../src/sim/builtObject';
+import { ShipGroup } from '../src/sim/fleets/shipGroup';
 import type { Empire } from '../src/sim/empire';
 
 describe('the Watchers\' cloak (render only)', () => {
@@ -81,5 +84,44 @@ describe('the Watchers\' cloak (render only)', () => {
         expect(decloakAllowed(0, -Infinity)).toBe(true);
         expect(POPUP_DUCK).toBeCloseTo(0.4, 9);
         expect(POPUP_LOOP_END_S / 5.45).toBeCloseTo(6, 1);
+    });
+});
+
+describe('a detected, cloaked Watcher is a bare contact', () => {
+    const viewer = { empireId: 3 } as Empire;
+    const owner = { empireId: 9 } as Empire;
+    const watcher = (cloaked: boolean | undefined): BuiltObject => ({ empire: owner, cloaked, name: 'Secret Name' }) as unknown as BuiltObject;
+
+    it('is one for every viewer but its owner while cloaked; a spectator and an ordinary ship see none', () => {
+        expect(isCloakedContact(watcher(true), viewer)).toBe(true);
+        expect(isCloakedContact(watcher(true), owner)).toBe(false);
+        expect(isCloakedContact(watcher(true), null)).toBe(false);
+        expect(isCloakedContact(watcher(false), viewer)).toBe(false);
+        expect(isCloakedContact(watcher(undefined), viewer)).toBe(false);
+    });
+
+    it('a fleet led by one is one; a fleet without a lead is not', () => {
+        expect(isCloakedContactFleet({ leadShip: watcher(true) }, viewer)).toBe(true);
+        expect(isCloakedContactFleet({ leadShip: watcher(false) }, viewer)).toBe(false);
+        expect(isCloakedContactFleet({ leadShip: null }, viewer)).toBe(false);
+    });
+
+    it('its panel names nothing of the ship', () => {
+        const m = unidentifiedContactInfo();
+        expect(m.title.map((t) => t.text).join('')).toBe(CONTACT_NAME);
+        expect(m.corner).toBeNull();
+        expect(m.picture).toBeNull();
+        const text = m.rows.map(rowText).join(' ');
+        expect(text).not.toMatch(/Secret|Design|Empire|Type|Weapons|Shields|Speed|Cargo|Crew|Size/i);
+    });
+
+    it('is left out of the enemy-targets list (alone or as a fleet lead), other targets stay', () => {
+        const make = <T extends object>(proto: object, o: object): T => Object.assign(Object.create(proto), o) as T;
+        const other = make<BuiltObject>(BuiltObject.prototype, { empire: owner, cloaked: false, hasBeenDestroyed: false });
+        const hidden = make<BuiltObject>(BuiltObject.prototype, { empire: owner, cloaked: true, hasBeenDestroyed: false });
+        const fleet = make<never>(ShipGroup.prototype, { leadShip: hidden, hasBeenDestroyed: false });
+        const items = enemyTargetItems([hidden, other, fleet], viewer);
+        expect(items.map((i) => i.target)).toEqual([other]);
+        expect(enemyTargetItems([hidden], null)).toHaveLength(1);
     });
 });

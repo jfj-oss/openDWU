@@ -65,7 +65,7 @@ import {
     type GasCloudFrameBudget,
 } from './stellarFx';
 import { DeepStarfield, deepStarfieldAlpha, systemPatchZoomAlpha, type PatchSystem } from './deepStarfield';
-import { StarLens, observeWatchers } from './beaconCloakFx';
+import { CONTACT_NAME, StarLens, isCloakedContact, observeWatchers } from './beaconCloakFx';
 import { WatcherPulseFx } from './beaconPulseFx';
 import { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
@@ -1709,6 +1709,8 @@ export class MainView {
         const icons = { creature: '!', ship: '>', base: '#', moon: 'o', planet: 'O', star: '*', other: '?' } as const;
         return hits.map((h) => {
             const it = h.item;
+            // Giantworks' Beacon: a detected cloaked Watcher is a bare contact in the list: no name, kind or owner
+            if (it instanceof BuiltObject && isCloakedContact(it, localViewerEmpire(this.galaxy))) return { icon: icons.other, name: CONTACT_NAME, type: '', owner: '', onPick: () => choose(it) };
             const owner = it instanceof BuiltObject || it instanceof Habitat ? (it.empire?.name ?? '') : '';
             const type = pickTypeLabel(it);
             const name = it.name !== '' ? it.name : type !== '' ? type : h.kind;
@@ -2421,6 +2423,7 @@ export class MainView {
         const hud = this.getHudSelection();
         const pushShip = (bo: BuiltObject): void => {
             if (bo.hasBeenDestroyed) return;
+            if (isCloakedContact(bo, localViewerEmpire(this.galaxy))) return; // Giantworks' Beacon: a detected cloaked Watcher gets no ring, only its outline
             const px = this.builtObjectLayer.drawnSizePx(bo);
             if (px <= 0) return;
             const d = drawnBuiltObjectPos(this.motion, bo);

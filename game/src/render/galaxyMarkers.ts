@@ -82,6 +82,7 @@ import { builtObjectHiddenFromPick, warEmpires } from './builtObjectLayer';
 import { SystemLinkLayer } from './systemLinks';
 import { galaxyViewGates } from './cleanGalaxyView';
 import { localViewerEmpire } from '../localViewer';
+import { isCloakedContact } from './beaconCloakFx';
 
 // --- constants ----------------------------------------------------------------------------------------------------
 
@@ -1528,11 +1529,14 @@ export class GalaxyMarkerLayer {
             if (bo === null || bo.hasBeenDestroyed) continue;
             const art = symbolArtFor(bo.role, bo.subRole);
             if (art === null) continue;
+            // Giantworks' Beacon: a detected, still cloaked Watcher is only its outline (beaconCloakFx.ts): no symbol, in either pass.
+            if (isCloakedContact(bo, player)) continue;
             const isBase = bo.role === BuiltObjectRole.Base;
             const owned = bo.empire !== null && bo.empire !== indep;
             if (galaxyPass) {
                 if (!this.visibleObjects.has(bo)) continue;
-                if (drawnAsFleet(bo)) continue; // the fleet icon stands for the whole fleet
+                // the fleet icon stands for the whole fleet (a fleet led by a cloaked Watcher has none: its escorts show as ships)
+                if (drawnAsFleet(bo) && !isCloakedContact((bo.shipGroup as ShipGroup).leadShip!, player)) continue;
                 const enemy = bo.empire !== null && (g.pirateEmpires.includes(bo.empire) || this.war.includes(bo.empire));
                 if (!galaxyViewTypeShown(bo.subRole, opts, enemy, f)) continue;
                 if (builtObjectHiddenFromPick(bo, g.systems, g.pirateEmpires, this.war)) continue;
@@ -1585,6 +1589,7 @@ export class GalaxyMarkerLayer {
             for (const sg of this.visibleFleets) {
                 const lead = sg.leadShip;
                 if (lead === null || lead.hasBeenDestroyed) continue;
+                if (isCloakedContact(lead, player)) continue; // Giantworks' Beacon: its icon, count and name would give the cloaked Watcher away
                 const atWar = sg.empire !== null && this.war.includes(sg.empire);
                 if (!galaxyViewFleetShown(opts, atWar, f)) continue;
                 const pos = this.positionOf(lead);

@@ -5,6 +5,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 ## Unreleased
 
 - **Beacon cattle ships are persistent fleets.** Each Reclaimer core keeps its own cattle ships (one per feeder world, at most 20 a core). They shuttle: fly to the most overdue world, load for 3 days, haul the people back under escort, unload into the pens and go again. Damaged ships return and mend at the core; destroyed ones are rebuilt from the fleet's biofuel after 60 days. Escape pods and boarding work as before. Old saves convert their cattle ships into the new pools. Only with the Beacon on.
+- **A detected cloaked Watcher stays a mystery.** Spotting a cloaked Watcher now shows only its faint outline and the bend in the stars: no icon, ring or map symbol, and a fleet it leads loses its fleet icon. If you click it, the panel and the stacked-object list say only "Unidentified contact": no name, empire, design or stats. It returns to normal once it has fully decloaked. Only with the Beacon on.
 
 ## 0.1.33
 

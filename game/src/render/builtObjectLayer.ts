@@ -29,6 +29,7 @@ import { CONCORD_LIMBS_MIN_PX, ConcordFxLayer, concordArtEmpire, concordShipArt,
 import { ConstructionOverlays, DamageOverlays, shipConstructionSubject, shipDamageSubject } from './shipOverlays';
 import { artBundleFlag } from './artBundleFlags';
 import { LiveryOverlays } from './liveryLayer';
+import { isCloakedContact } from './beaconCloakFx';
 import { ANCIENT_TINT, ANCIENT_WEAR, GenShipsFxLayer, GreatWorkFxLayer, SwarmFxLayer, arkRecordOf, beaconArtFile, beaconLooksActive, genShipsArtFile, greatWorkDrawPxOf, greatWorkDrawnFrame, greatWorkSeenThroughFog, isAncientHull, threatArtUrl, threatDrawScale, threatLooks, watcherOpenTarget } from './threatArt';
 import { ArkFxLayer, arkDrawScale } from './arkFx';
 import { beaconCountdownNow, pollBeaconLaunch } from './beaconLaunch';
@@ -959,7 +960,8 @@ export class BuiltObjectLayer {
             wx,
             wy,
             f,
-            (b) => builtObjectHiddenFromPick(b, this.galaxy.systems, this.galaxy.pirateEmpires, war),
+            // (a cloaked Watcher the viewer detected has no icon out here: nothing to click, only its outline closer in)
+            (b) => isCloakedContact(b, player) || builtObjectHiddenFromPick(b, this.galaxy.systems, this.galaxy.pirateEmpires, war),
             posOf,
         );
     }

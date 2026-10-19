@@ -74,6 +74,7 @@ import { LRS_DISC_URL, LRS_LAYER_ALPHA, POSTURE_ALPHA, POSTURE_LINE_WIDTH_PX, fl
 import { WEAPON_CIRCLES_MIN_FACTOR, drawRangeCircle, gravityWellRing, weaponRangeCircles } from './weaponRangeCircles';
 import { interdictionRing } from '../sim/scenario/interdiction/jumpInterdiction';
 import { isObjectVisibleToThisEmpire } from '../sim/independentTraders';
+import { isCloakedContact } from './beaconCloakFx';
 import { BuiltObjectMission, BuiltObjectMissionType, CommandAction, type Command } from '../sim/missions/mission';
 import { baconMovementSettings, calculateGravityWellSize } from '../sim/movement';
 import { getSettings } from '../ui/settings';
@@ -1414,6 +1415,7 @@ export class OverlayLayer {
                 const sg = sgU as ShipGroup | null;
                 if (sg === null || sg.leadShip === null || sg.leadShip.hasBeenDestroyed) continue;
                 if (sg.empire !== player && !isObjectVisibleToThisEmpire(this.galaxy, player, sg.leadShip, true, false)) continue;
+                if (isCloakedContact(sg.leadShip, player)) continue; // Giantworks' Beacon: a cloaked Watcher's fleet has no icon or travel line
                 out.push(sg);
             }
         }
