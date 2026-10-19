@@ -4827,6 +4827,64 @@ describe('the Beacon (Giantworks wonder)', () => {
         expect(routeEmpireMessage(decloak2, me, defaultMessageOptions())).toMatchObject({ popup: true, ticker: true }); // (the badge; the UI opens only 'force' by itself)
     }, 900000);
 
+    it('Watcher message throttle: the first detection / decloak / cloak always shows (popup); repeats inside beaconMsgRepeatDays get no ticker message (knowledge and the cloak-seen state still update), then show again', () => {
+        const { g, st } = rolled();
+        const w = st.watchers[0];
+        const ship = w.ship!;
+        const me = g.playerEmpire!;
+        const target = me.colonies[0];
+        const mine = me.builtObjects.find((o) => !o.hasBeenDestroyed)!;
+        g.scenario!.params.beaconDetectPct = 100;
+        const detect = (): number => {
+            ship.cloakSeenBy = [];
+            ship.xpos = mine.xpos + 5000;
+            ship.ypos = mine.ypos + 5000;
+            const n = empireMessages(me).length;
+            watchersPeriodic(g);
+            expect(cloakLapsedFor(ship, me, galaxyStarDate(g))).toBe(true); // (the cloak-seen state updates whatever the messages do)
+            return empireMessages(me).slice(n).filter((m) => m.title === 'Something in the dark').length;
+        };
+        const d1 = detect();
+        expect(d1).toBe(1);
+        const first = empireMessages(me).filter((m) => m.scenarioPopup === 'force').length;
+        expect(first).toBeGreaterThanOrEqual(1);
+        const lvl = knowledgeLevel({ knowledge: w.knowledge }, me);
+        // 30 days later: another detection, no new message; the knowledge rises
+        g.nowMs += 30 * GAME_DAY_LENGTH;
+        expect(detect()).toBe(0);
+        expect(knowledgeLevel({ knowledge: w.knowledge }, me)).toBeGreaterThanOrEqual(lvl);
+        expect(w.detections).toBe(2);
+        // after the window: a repeat message again (quiet, no popup)
+        g.nowMs += 125 * GAME_DAY_LENGTH;
+        const n3 = empireMessages(me).length;
+        expect(detect()).toBe(1);
+        expect(empireMessages(me).slice(n3).every((m) => m.scenarioPopup !== 'force')).toBe(true);
+        // the sighting messages (per world): a second sighting of the same world inside the window is not sent
+        const sighting = (): void => {
+            ship.xpos = target.xpos + 1000;
+            ship.ypos = target.ypos + 1000;
+            w.target = target;
+            w.mode = 'travel';
+            w.until = -1;
+            watchersPeriodic(g);
+            g.nowMs += 10 * GAME_DAY_LENGTH;
+            watchersPeriodic(g);
+            st.watchers[1].until = 0;
+        };
+        const nowS = empireMessages(me).length;
+        sighting();
+        const s1 = empireMessages(me).slice(nowS).filter((m) => m.title === 'An unidentified vessel' || m.title === 'It is gone').length;
+        expect(s1).toBe(2);
+        g.nowMs += 30 * GAME_DAY_LENGTH;
+        const nowS2 = empireMessages(me).length;
+        sighting();
+        expect(empireMessages(me).slice(nowS2).filter((m) => m.title === 'An unidentified vessel' || m.title === 'It is gone').length).toBe(0);
+        g.nowMs += 130 * GAME_DAY_LENGTH;
+        const nowS3 = empireMessages(me).length;
+        sighting();
+        expect(empireMessages(me).slice(nowS3).filter((m) => m.title === 'An unidentified vessel' || m.title === 'It is gone').length).toBe(2);
+    }, 900000);
+
     it('self-defence: an attacked Watcher may fire only at the ships that attacked it and their fleets; it breaks off, resumes its dwell and cloaks, with no war', () => {
         const { g, st } = rolled();
         const w = st.watchers[0];

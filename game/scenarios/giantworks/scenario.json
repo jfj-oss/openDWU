@@ -88,6 +88,7 @@
     {"name": "beaconEscortCruiserAt", "label": "Beacon: interceptions at which the leading world sends cruisers", "default": 3, "min": 0, "max": 100},
     {"name": "beaconWatcherTopSpeed", "label": "Beacon: top speed the Watcher design is given real engines for (0: the template's)", "default": 20, "min": 0, "max": 100},
     {"name": "beaconWatcherCruiseSpeed", "label": "Beacon: cruise speed the Watcher design is given real engines for", "default": 12, "min": 0, "max": 100},
+    {"name": "beaconMsgRepeatDays", "label": "Beacon: days between repeat Watcher detection / decloak / cloak messages to an empire", "default": 120, "min": 0, "max": 3600},
     {"name": "beaconReseedDays", "label": "Beacon: days the Watchers leave a purged world alone", "default": 120, "min": 0, "max": 3000},
     {"name": "beaconDwellMaxDays", "label": "Beacon: days a Watcher hangs over the biggest worlds to corrupt them", "default": 150, "min": 0, "max": 3000},
     {"name": "beaconDwellPopLow", "label": "Beacon: population (millions) of a world corrupted in the shortest dwell", "default": 10, "min": 0.1, "max": 100000},

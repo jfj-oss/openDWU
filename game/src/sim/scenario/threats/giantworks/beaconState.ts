@@ -414,6 +414,8 @@ export interface BeaconState {
     sentStages: SentStages;
     /** Message kind → ids of the human empires that already had its first-encounter message (beacon.ts watcherVariant; absent in older saves). */
     msgSeen?: Record<string, number[]>;
+    /** Star date of the last ticker message of a throttled kind (detect per Watcher, decloak / cloak per world) to an empire: key 'kind:subject:empireId' (beacon.ts watcherMessage). */
+    msgLast?: Record<string, number>;
     /** The colonies that were independent at the start (the Watchers corrupt only these). */
     formerIndependents: Habitat[];
     watchers: WatcherRec[];
@@ -594,6 +596,8 @@ export const P = {
     escortDecayDays: (g: Galaxy) => Math.max(1, p(g, 'beaconEscortDecayDays', 360)),
     escortDestroyerAt: (g: Galaxy) => p(g, 'beaconEscortDestroyerAt', 1),
     escortCruiserAt: (g: Galaxy) => p(g, 'beaconEscortCruiserAt', 3),
+    /** The repeat detection / decloak / cloak messages: at most one per Watcher (detect) or world (decloak, cloak) per empire in this many days; the first of each always shows. */
+    msgRepeatDays: (g: Galaxy) => Math.max(0, p(g, 'beaconMsgRepeatDays', 120)),
     reseedDays: (g: Galaxy) => p(g, 'beaconReseedDays', 120),
     /** Build speed: +this % per corrupted world (up to the cap %); a dead Watcher multiplies it by the factor %. */
     buildBoostPct: (g: Galaxy) => p(g, 'beaconBuildBoostPct', 9),

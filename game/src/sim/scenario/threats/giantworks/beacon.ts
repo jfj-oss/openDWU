@@ -26,7 +26,7 @@ import { HabitatType } from '../../../types';
 import { BuiltObjectSubRole } from '../../../builtObjectTypes';
 import { ComponentType } from '../../../data/components';
 import { BuiltObjectRole } from '../../../data/designSpecifications';
-import { EmpireMessageType } from '../../../messages';
+import { EmpireMessage, EmpireMessageType } from '../../../messages';
 import { galaxyStarDate } from '../../../tick/simTime';
 import { generateDesignFromSpec } from '../../../designGeneration';
 import { galaxyDesignSpecificationBySubRole } from '../../../gameStartTail';
@@ -40,6 +40,7 @@ import { isHumanEmpire } from '../../../humanEmpires';
 import { GameEndOutcome } from '../../../victory';
 import { CharacterRole, getEmpireCharacters } from '../../../characters';
 import { GAME_DAY_LENGTH, registerScenarioEvent, registerScenarioPeriodic, registerScenarioQuery } from '../../hooks';
+import { logScenarioMessage, logScenarioNews } from '../../eventLog/log';
 import { registerScenarioMapFeatures, type ScenarioMapFeatures } from '../../mapFeatures';
 import { scenarioMessage, scenarioNews, scenarioText as T } from '../../messages';
 import { colonyGovernor, spawnGovernorFor } from '../../governors';
@@ -346,7 +347,7 @@ function detectCloaked(galaxy: Galaxy, st: BeaconState, w: WatcherRec): void {
         const first = knowledgeLevel({ knowledge: w.knowledge }, e) === 0;
         revealTo(galaxy, { knowledge: w.knowledge }, e, knowledgeLevel({ knowledge: w.knowledge }, e) >= KNOWLEDGE_RUMOUR ? KNOWLEDGE_SUSPECTED : KNOWLEDGE_RUMOUR);
         void first;
-        if (isHumanEmpire(galaxy, e)) watcherMessage(galaxy, st, 'detect', e, [placeName(galaxy, ship)], ship, EmpireMessageType.GeneralWarning);
+        if (isHumanEmpire(galaxy, e)) watcherMessage(galaxy, st, 'detect', e, [placeName(galaxy, ship)], ship, EmpireMessageType.GeneralWarning, false, String(w.index));
     }
 }
 
@@ -612,17 +613,41 @@ export function watcherVariant(galaxy: Galaxy, st: BeaconState, kind: MsgKind, e
 const cap = (k: string): string => k.charAt(0).toUpperCase() + k.slice(1);
 
 /** One message of `kind` to a human empire: the first one opens its popup, the repeats only show in the ticker and as a badge. `news`: a NewsNet line (the empire's name is not the recipient's). */
-function watcherMessage(galaxy: Galaxy, st: BeaconState, kind: MsgKind, e: Empire, args: (string | number)[], subject: unknown, type: EmpireMessageType, news = false): void {
+function watcherMessage(galaxy: Galaxy, st: BeaconState, kind: MsgKind, e: Empire, args: (string | number)[], subject: unknown, type: EmpireMessageType, news = false, throttleKey: string | null = null): void {
     if (!isHumanEmpire(galaxy, e)) return;
     const v = watcherVariant(galaxy, st, kind, e);
     const popupMode = v === 'First' ? 'force' : 'quiet';
+    if (throttleKey !== null && throttled(galaxy, st, `${kind}:${throttleKey}:${e.empireId}`, v === 'First')) {
+        // inside the window: the event log keeps the line, the ticker and the badge do not get one
+        const m = new EmpireMessage(null, type, subject);
+        m.title = T(`${TAG} Msg ${cap(kind)} Title`);
+        m.description = T(`${TAG} Msg ${cap(kind)} ${v}`, ...args);
+        m.starDate = galaxyStarDate(galaxy);
+        logScenarioMessage(galaxy, e, m, undefined);
+        return;
+    }
     if (news) scenarioNews(galaxy, null, T(`${TAG} Msg ${cap(kind)} ${v}`, ...args), (x) => x === e, subject, undefined, popupMode);
     else scenarioMessage(galaxy, e, T(`${TAG} Msg ${cap(kind)} Title`), T(`${TAG} Msg ${cap(kind)} ${v}`, ...args), { type, subject, popupMode });
 }
 
+/**
+ * True when a throttled message with this key was sent less than beaconMsgRepeatDays ago (it is then not sent; the event log keeps it); otherwise
+ * records now as the last send and returns false. The first message of a kind (`first`) always goes out.
+ */
+function throttled(galaxy: Galaxy, st: BeaconState, key: string, first: boolean): boolean {
+    const now = galaxyStarDate(galaxy);
+    const last = (st.msgLast ??= {})[key];
+    if (!first && last !== undefined && now - last < days(P.msgRepeatDays(galaxy))) return true;
+    st.msgLast[key] = now;
+    return false;
+}
+
 /** A NewsNet line with a fixed text for one human empire (the sighting's news). */
-function watcherNews(galaxy: Galaxy, st: BeaconState, tag: string, e: Empire, args: (string | number)[], subject: unknown): void {
-    void st;
+function watcherNews(galaxy: Galaxy, st: BeaconState, tag: string, e: Empire, args: (string | number)[], subject: unknown, throttleKey: string | null = null): void {
+    if (throttleKey !== null && throttled(galaxy, st, `${tag.toLowerCase()}news:${throttleKey}:${e.empireId}`, false)) {
+        logScenarioNews(galaxy, null, T(`${TAG} Msg ${tag} News`, ...args), [e], subject, undefined);
+        return;
+    }
     scenarioNews(galaxy, null, T(`${TAG} Msg ${tag} News`, ...args), (x) => x === e, subject, undefined, 'quiet');
 }
 
@@ -636,13 +661,13 @@ function sightingStarts(galaxy: Galaxy, st: BeaconState, w: WatcherRec, over: Ha
     }
     const owner = over.empire;
     const ownerOk = owner !== null && owner !== galaxy.independentEmpire && owner !== st.faction && owner.active;
-    if (ownerOk) watcherMessage(galaxy, st, 'decloak', owner, [over.name], ship, EmpireMessageType.GeneralWarning);
-    for (const e of humanEmpires(galaxy)) if (e !== owner) watcherNews(galaxy, st, 'Decloak', e, [over.name, where], ship);
+    if (ownerOk) watcherMessage(galaxy, st, 'decloak', owner, [over.name], ship, EmpireMessageType.GeneralWarning, false, String(over.habitatIndex));
+    for (const e of humanEmpires(galaxy)) if (e !== owner) watcherNews(galaxy, st, 'Decloak', e, [over.name, where], ship, String(over.habitatIndex));
 }
 
 function sightingEnds(galaxy: Galaxy, st: BeaconState, w: WatcherRec, over: Habitat): void {
     const owner = over.empire;
-    if (owner !== null && owner !== galaxy.independentEmpire && owner !== st.faction && owner.active) watcherMessage(galaxy, st, 'cloak', owner, [over.name], null, EmpireMessageType.GeneralNeutralEvent);
+    if (owner !== null && owner !== galaxy.independentEmpire && owner !== st.faction && owner.active) watcherMessage(galaxy, st, 'cloak', owner, [over.name], null, EmpireMessageType.GeneralNeutralEvent, false, String(over.habitatIndex));
     void w;
 }
 
