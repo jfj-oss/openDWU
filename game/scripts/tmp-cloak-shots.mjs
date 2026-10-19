@@ -13,7 +13,7 @@ import { chromium } from 'playwright-core';
 const [base = 'http://localhost:5173/', outDir = 'shots', prefix = ''] = process.argv.slice(2);
 const browser = await chromium.launch({
     executablePath: process.env.CHROMIUM || '/usr/bin/chromium',
-    args: ['--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu'],
+    args: ['--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu', '--autoplay-policy=no-user-gesture-required'],
 });
 const page0 = await browser.newPage({ viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 1 });
 const page = page0;
@@ -121,15 +121,67 @@ const SPAN = Number(process.env.SPAN || 1e9);
 await page.evaluate(at, [Z, W.x, W.y]);
 await setCloak(true, SPAN);
 await page.waitForTimeout(3500);
+let t0 = Date.now();
+if (!process.env.PULSE_ONLY) {
 console.log('lens', JSON.stringify(await page.evaluate(async () => { const c = await import('/src/render/beaconCloakFx.ts'); return { ...c.cloakLensDebug }; })));
 for (let k = 0; k < 40; k++) { await snap('cloaked'); await page.waitForTimeout(150); }
 await setCloak(false, SPAN);
-for (let k = 0; k < 44; k++) { await snap('decloak'); await page.waitForTimeout(80); }
+// the decloak (10 s), frames by the clock
+t0 = Date.now();
+while (Date.now() - t0 < 10800) { await snap('decloak'); await page.waitForTimeout(40); }
 for (let k = 0; k < 6; k++) { await snap('open'); await page.waitForTimeout(150); }
 await setCloak(true, 0);
-for (let k = 0; k < 44; k++) { await snap('recloak'); await page.waitForTimeout(80); }
-// the sighted marker where it was detected, at play zoom: the Watcher slips away (moved far off), the earlier
-// sighting stands where it was seen
+t0 = Date.now();
+while (Date.now() - t0 < 5000) { await snap('recloak'); await page.waitForTimeout(40); }
+}
+// the pulse: a second decloak watched from far out (the ring across the map, the screen-edge dark), full screen
+const log = () => page.evaluate(async () => ({ ...(await import('/src/audio/beaconDecloak.ts')).watcherSoundLog }));
+// the popup sound: a Watcher message card opened (as a first encounter's), held, then closed
+const opened = await page.evaluate(async () => {
+    const ms = await import('/src/sim/messages.ts');
+    const tr = await import('/src/sim/textResolver.ts');
+    const ui = await import('/src/ui/messagePopups.ts');
+    const { game } = window.__dwu;
+    const m = new ms.EmpireMessage(null, ms.EmpireMessageType.GeneralWarning, window.__bc.w1);
+    m.title = tr.tryGetText('Beacon Msg Detect Title') ?? 'Something in the dark';
+    m.description = tr.tryGetText('Beacon Msg Detect First') ?? '...';
+    m.scenarioPopup = 'force';
+    window.__wmsg = m;
+    ui.openMessageCard(m);
+    return { title: m.title, open: ui.openMessageKey() === m };
+});
+console.log('popup opened', JSON.stringify(opened));
+// (the card hidden from the pulse frames: it stays open)
+await page.addStyleTag({ content: '.msg-card { visibility: hidden !important; }' });
+await page.waitForTimeout(1500);
+console.log('popup open while the decloak sound plays (ducked)', JSON.stringify(await log()));
+await setCloak(true, SPAN);
+await page.evaluate(at, [Number(process.env.ZFAR || 0.02), W.x, W.y]);
+await page.waitForTimeout(6000);
+await setCloak(false, SPAN);
+t0 = Date.now();
+while (Date.now() - t0 < 7000) {
+    await page.screenshot({ path: `${outDir}/pulse-${String(i++).padStart(3, '0')}.png` });
+    await page.waitForTimeout(60);
+}
+console.log('audio after the pulse', JSON.stringify(await log()));
+console.log('pulse debug', JSON.stringify(await page.evaluate(async () => {
+    const c = await import('/src/render/beaconCloakFx.ts');
+    const ta = await import('/src/render/threatArt.ts');
+    const out = [];
+    const n = c.decloaksSince(0, out);
+    const L = ta.lastThreatLooks();
+    const { galaxy, camera, game } = window.__dwu;
+    const e = out[out.length - 1];
+    const homes = game.playerEmpire.colonies;
+    return { n, events: out.length, watchers: L.watchers?.length, zoom: camera.zoom, level: e ? c.pulseLevel(e.x, e.y, camera.x, camera.y, homes, galaxy.sectorSize) : null, homes: homes.length, sector: galaxy.sectorSize };
+})));
+await page.waitForTimeout(9000);
+console.log('later: the decloak sound has ended (unducked)', JSON.stringify(await log()));
+await page.evaluate(async () => (await import('/src/ui/messagePopups.ts')).closeMessageCardFor(window.__wmsg));
+await page.waitForTimeout(1500);
+console.log('audio after popup closed', JSON.stringify(await log()));
+
 await page.evaluate(async () => { const roq = await import('/src/sim/readOnlyQuery.ts'); const w = window.__bc.w1; roq.withSimWrites(() => { w.xpos += 90000; }); });
 await page.evaluate(at, [1 / 4, W.x, W.y]);
 await page.waitForTimeout(2500);

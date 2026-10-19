@@ -65,7 +65,8 @@ import {
     type GasCloudFrameBudget,
 } from './stellarFx';
 import { DeepStarfield, deepStarfieldAlpha, systemPatchZoomAlpha, type PatchSystem } from './deepStarfield';
-import { StarLens } from './beaconCloakFx';
+import { StarLens, observeWatchers } from './beaconCloakFx';
+import { WatcherPulseFx } from './beaconPulseFx';
 import { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
 import { GalaxyLocation, GalaxyLocationType } from '../sim/galaxyLocation';
@@ -111,7 +112,7 @@ import type { Creature } from '../sim/creature';
 import { createMapOverlayState, type MapOverlayState } from '../ui/mapOverlays';
 import { getSettings, showRegionLabels, showSystemNames } from '../ui/settings';
 import { VOLCANIC_GLOW_SCALE, VolcanicGlowTextures, volcanicGlowIndex } from './volcanicGlow';
-import { forgetUltramindLooks, syncUltramindShell, type UltramindShellHolder } from './threatArt';
+import { forgetUltramindLooks, syncUltramindShell, threatLooks, type UltramindShellHolder } from './threatArt';
 import { galaxyViewGates } from './cleanGalaxyView';
 import { edgeScrollPixels, nebulaDetailScale, wheelNotches, wheelZoom, wheelZoomAnchor } from './viewInput'; // [gameoptions]
 import { hideMapTooltip, showMapTooltip, tooltipText } from '../ui/mapTooltip';
@@ -1404,6 +1405,8 @@ export class MainView {
     private deepStarfield!: DeepStarfield;
     /** The cloaked Watchers' bend of the deep starfield (beaconCloakFx.ts). */
     private starLens: StarLens | null = null;
+    /** A decloaking Watcher's pulse (beaconPulseFx.ts). */
+    private pulseFx: WatcherPulseFx | null = null;
     /** Systems for the deep starfield's per-system colour patches (flat, reused every frame). */
     private patchSystems: PatchSystem[] = [];
     /** Coloured per-system nebula haze at system zoom (systemNebula.ts), world-space just below the system roots. */
@@ -1845,6 +1848,7 @@ export class MainView {
         this.deepStarfield = new DeepStarfield(this.galaxy.randomSeed);
         this.app.stage.addChildAt(this.deepStarfield.root, 0);
         this.starLens = new StarLens(this.deepStarfield.root, this.world);
+        this.pulseFx = new WatcherPulseFx(this.galaxy, this.world, this.app.stage);
         const flareFiles = manifestFiles('mapstars/flares') ?? [];
         void this.deepStarfield
             .load(
@@ -2216,9 +2220,16 @@ export class MainView {
         // Task 13a: built objects (ships, bases, pirates, traders). Updated first among the object layers (draw order is
         // the container order, not this one): it samples the render-interpolated ship positions (this.motion) that the
         // overlays, ambient effects, selection ring, etc. read later this frame.
+        // Giantworks' Beacon: every Watcher's cloak transitions and decloak events, at every zoom (beaconCloakFx.ts)
+        {
+            const tl = threatLooks(this.galaxy);
+            if (tl.watchers !== undefined && tl.watchers.length > 0) observeWatchers(tl.watchers, Date.now() / 1000);
+        }
         this.builtObjectLayer.update(z, cam);
         // Giantworks' Beacon: a detected, cloaked Watcher bends the deep starfield behind it (beaconCloakFx.ts)
         this.starLens?.update(Date.now() / 1000, this.app.screen.width, this.app.screen.height);
+        // and a decloaking Watcher's pulse: the ring across the map, the screen-edge dark (beaconPulseFx.ts)
+        this.pulseFx?.update(Date.now() / 1000, cam.x, cam.y, z, this.app.screen.width, this.app.screen.height);
         // Task M2e: empire ownership overlays (colony rings at system zoom;
         // owned-system markers + territory discs at galaxy/sector zoom).
         this.empireLayer.update(z, cam);

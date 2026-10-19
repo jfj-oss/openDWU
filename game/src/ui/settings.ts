@@ -129,6 +129,9 @@ export interface UiSettings {
     cleanGalaxyView: boolean;
     /** Ours: animate the generated galaxy backdrops (render/deepBackdropAnim.ts; Game Options → Advanced Display). */
     animateBackdrop: boolean;
+    /** Ours (Giantworks, the Beacon): the Watcher pulse's ring across the map and screen-edge dark as a Watcher decloaks
+     *  (render/beaconPulseFx.ts; Game Options → Advanced Display). Its sound follows the Effects volume. */
+    watcherPulseEffects: boolean;
     /** Ours: the new-game wizard's last Galaxy Backdrop pick (render/galaxyBackdropChoice.ts kinds). */
     newGameBackdrop: string;
     // [musicmood] begin — Options → Music & Mood (ui/screens/musicMoodWindow.ts). UI settings, never sim state.
@@ -274,6 +277,7 @@ export const DEFAULT_SETTINGS: UiSettings = {
     // [galaxymarkers] end
     cleanGalaxyView: false,
     animateBackdrop: true,
+    watcherPulseEffects: true,
     newGameBackdrop: 'deepAzure',
     backgroundMood: 'off',
     moodLevel: 0.6,
@@ -381,6 +385,7 @@ export function loadSettings(): UiSettings {
         if (typeof parsed.pullStationsToCentre === 'boolean') out.pullStationsToCentre = parsed.pullStationsToCentre;
         if (typeof parsed.cleanGalaxyView === 'boolean') out.cleanGalaxyView = parsed.cleanGalaxyView;
         if (typeof parsed.animateBackdrop === 'boolean') out.animateBackdrop = parsed.animateBackdrop;
+        if (typeof parsed.watcherPulseEffects === 'boolean') out.watcherPulseEffects = parsed.watcherPulseEffects;
         // Deep Azure became the default with NEW_GAME_BACKDROP_SETTING_VERSION 2: a stored 'deep' from before (the old default,
         // written with every settings save) gives way to it; any other stored pick, or one saved since, is kept.
         if (typeof parsed.newGameBackdrop === 'string' && (parsed.newGameBackdrop !== 'deep' || (parsed as { newGameBackdropVersion?: unknown }).newGameBackdropVersion === NEW_GAME_BACKDROP_SETTING_VERSION)) out.newGameBackdrop = parsed.newGameBackdrop;

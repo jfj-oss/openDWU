@@ -898,6 +898,8 @@ function createAdvancedDisplaySettings(empire: Empire | null): OriginalWindow {
     // chkGameOptionsGalaxyDisplayCleanGalaxyView (Expanded, Start.1.cs 2935: (12, 425), font_1) → GameOptions.CleanGalaxyView
     // (3001, on the panel's close).
     check(body, 'Clean Galaxy view', st.cleanGalaxyView, 12, 425, (v) => updateSettings({ cleanGalaxyView: v }));
+    // Ours (Giantworks, the Beacon): the Watcher pulse's ring and screen-edge dark as a Watcher decloaks (beaconPulseFx.ts).
+    check(body, 'Watcher pulse effects', st.watcherPulseEffects, 212, 425, (v) => updateSettings({ watcherPulseEffects: v })).title = 'The dark ring across the map and the dark pulse at the screen edges when a Watcher drops its cloak';
 
     // Ours: the map label / overlay / output toggles (were in the Escape menu's Options panel), below it.
     const map = place(groupBox('Map Display', 400, 250, F2), 12, 450);

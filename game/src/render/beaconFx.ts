@@ -199,11 +199,6 @@ export class BeaconFxLayer {
         if (this.unfold.size > 4) for (const bo of this.unfold.keys()) if (bo.hasBeenDestroyed) this.unfold.delete(bo);
     }
 
-    /** Every Watcher, each frame before the ships are drawn (and before the fog is asked): their cloaks' transitions. */
-    observeWatchers(watchers: readonly BuiltObject[], sec: number): void {
-        if (watchers.length > 0) this.cloak.observe(watchers, sec);
-    }
-
     /** The light layers of `file` (loaded once, on first use; null until then or if it failed). */
     private fxSet(file: string): FxSet | null {
         const got = this.fx.get(file);

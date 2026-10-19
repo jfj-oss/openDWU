@@ -33,6 +33,8 @@ import type { BuiltObject } from '../sim/builtObject';
 import { ProbeChatter } from './probeChatter';
 import { BeaconHorn } from './beaconHorn'; // Giantworks, the Beacon: a Watcher's horn as it opens
 import { BeaconBlast } from './beaconBlast'; // Giantworks, the Beacon: the launch-day call's blast
+import { BeaconWatcherSounds } from './beaconDecloak'; // Giantworks, the Beacon: the decloak sound, the Watcher popup sound
+import { openMessageKey } from '../ui/messagePopups';
 import { RimCreatureAudio } from './rimCreatureAudio'; // [rimatmo-audio] 19i audio addendum
 import { DEEP_BED_WEIGHT, DeepSpaceEvents, deepEventGain } from './deepSpaceMood'; // [musicmood]
 import { DEFAULT_SETTINGS, getSettings } from '../ui/settings'; // [musicmood] UI settings only
@@ -344,6 +346,7 @@ export function installGameAudio(deps: GameAudioDeps): GameAudio {
     const probeChatter = new ProbeChatter(rimContext); // Dead Probe Swarm radio chatter near its ships
     const beaconHorn = new BeaconHorn(rimContext); // a Watcher's horn as it starts to open (cued by the render side)
     const beaconBlast = new BeaconBlast(rimContext); // the Beacon's launch-day blast (from the launch seen in the state)
+    const watcherSounds = new BeaconWatcherSounds(rimContext); // a Watcher's decloak, a Watcher message open
     // [rimatmo-wiring] end
     return {
         frame(): void {
@@ -397,6 +400,11 @@ export function installGameAudio(deps: GameAudioDeps): GameAudio {
             } catch {
                 // no audio
             }
+            try {
+                watcherSounds.update(galaxy, camera, session.player.volume, openMessageKey(), performance.now() / 1000);
+            } catch {
+                // no audio
+            }
             if (r.ambientPlaying === null) return;
             try {
                 const m = musicPlayer();
@@ -421,6 +429,7 @@ export function installGameAudio(deps: GameAudioDeps): GameAudio {
             deepEvents.dispose(); // [musicmood]
             probeChatter.dispose();
             beaconHorn.dispose();
+            watcherSounds.dispose();
             beaconBlast.dispose();
             if (rimCtx !== null) void rimCtx.close().catch(() => undefined);
             rimCtx = null;

@@ -4,12 +4,13 @@
 // - CLOAKED (drawn, so the viewer detected it): no hull, only a faint dark-purple outline breathing slowly and the stars
 //   behind it bent (StarLens: a displacement filter on the deep starfield, its map the ship's silhouette filled with
 //   noise, a slow calm wobble of several seconds a cycle).
-// - DECLOAK (`cloaked` goes false; CLOAK_TRANSITION_S): in the Beacon warp's own dark-matter language (beaconWarp.ts
+// - DECLOAK (`cloaked` goes false; CLOAK_TRANSITION_S, 10 s, with the decloak sound and the pulse: decloaksSince,
+//   pulseLevel, beaconPulseFx.ts, audio/beaconDecloak.ts): in the Beacon warp's own dark-matter language (beaconWarp.ts
 //   veil, the same metaballs, motes and sparks, pooled and limited the same way): dark blobs swell up over the
 //   silhouette and merge, then peel back and drain off the hull's edges as the hull fades in beneath, fine dark motes
 //   drifting off, slow violet sparks crawling along the edges; the starfield bends throughout; the engines come up and
-//   the pink navigation lights flicker on last. RE-CLOAK runs it backward (the blobs swallow the ship from its edges
-//   in); a Watcher the viewer has not detected stays drawn (cloakFading, read by fog.ts) until it has gone.
+//   the pink navigation lights flicker on last. RE-CLOAK runs it backward, quicker (CLOAK_RECLOAK_S; the blobs swallow
+//   the ship from its edges in); a Watcher the viewer has not detected stays drawn (cloakFading, read by fog.ts) until it has gone.
 // - SIGHTED markers (watcherSightings, drawn by artBundleLayer.ts): where the viewer last detected a cloaked Watcher,
 //   fading over the seen-through days (beaconDetectSeenDays).
 // The outline for at most CLOAK_SHIMMER_SLOTS Watchers a frame, the starfield lens for the biggest one; the fade frames
@@ -23,8 +24,16 @@ import { textureFromRgbaPixels } from './textureCanvas';
 import { loadRgba } from '../ui/empireEmblem';
 
 export const CLOAK_FX = { on: true };
-/** A decloak or re-cloak (s). */
-export const CLOAK_TRANSITION_S = 3.0;
+/** A decloak (s): slow, the dark matter unfolding with the decloak sound (beaconDecloak.ts). */
+export const CLOAK_TRANSITION_S = 10.0;
+/** A re-cloak (s): quicker, the ship swallowed and gone. */
+export const CLOAK_RECLOAK_S = 4.5;
+/** The decloak sound's opening hit (s into it): the pulse's ring and screen-edge dark fire on it. */
+export const DECLOAK_HIT_S = 1.3;
+/** The pulse (ring, vignette, sound) is heard / seen fully within PULSE_NEAR sectors of the camera or the player's
+ * worlds, and nothing beyond PULSE_FAR sectors of the player's worlds. */
+export const PULSE_NEAR = 0.6;
+export const PULSE_FAR = 3.5;
 /** How many reveal frames (the hull from its edges inward). */
 export const CLOAK_STEPS = 10;
 /** At most this many shimmering Watchers a frame. */
@@ -35,8 +44,52 @@ const HULL_IN: readonly [number, number] = [0.32, 0.62];
 
 /** The reveal 0..1 one step on toward `target` (dt s). Pure. */
 export function cloakStep(r: number, target: number, dt: number): number {
-    const k = dt / CLOAK_TRANSITION_S;
-    return target > r ? Math.min(target, r + k) : Math.max(target, r - k);
+    return target > r ? Math.min(target, r + dt / CLOAK_TRANSITION_S) : Math.max(target, r - dt / CLOAK_RECLOAK_S);
+}
+
+/**
+ * The pulse's strength 0..1 for a Watcher decloaking at (x, y): by its distance from the camera's centre and from the
+ * nearest of the player's worlds (`homes`), in sectors (`sector` world units): full within PULSE_NEAR of either, fading
+ * with distance, and nothing beyond PULSE_FAR of every player world (whatever the camera). Pure.
+ */
+export function pulseLevel(x: number, y: number, camX: number, camY: number, homes: readonly { xpos: number; ypos: number }[], sector: number): number {
+    const s = Math.max(1, sector);
+    let dHome = Infinity;
+    for (const h of homes) dHome = Math.min(dHome, Math.hypot(h.xpos - x, h.ypos - y));
+    dHome /= s;
+    if (!(dHome < PULSE_FAR)) return 0;
+    const dCam = Math.hypot(camX - x, camY - y) / s;
+    const fade = (d: number): number => {
+        const t = Math.max(0, Math.min(1, (d - PULSE_NEAR) / (PULSE_FAR - PULSE_NEAR)));
+        return 1 - t * t * (3 - 2 * t);
+    };
+    const gate = 1 - Math.max(0, Math.min(1, (dHome - (PULSE_FAR - 0.5)) / 0.5));
+    return Math.max(fade(dCam), fade(dHome)) * gate;
+}
+
+/** A Watcher's decloak, as the pulse and its sound read it (`at`: the render clock, s; serial: in order). */
+export interface DecloakEvent {
+    bo: BuiltObject;
+    x: number;
+    y: number;
+    at: number;
+    serial: number;
+}
+const decloaks: DecloakEvent[] = [];
+let decloakSerial = 0;
+
+/** The decloaks after `serial` (the reader's last seen; 0 at first), oldest first, into `out`; returns the newest
+ * serial. Kept: the last 8. */
+export function decloaksSince(serial: number, out: DecloakEvent[]): number {
+    out.length = 0;
+    for (const e of decloaks) if (e.serial > serial) out.push(e);
+    return decloakSerial;
+}
+
+/** (Tests and captures.) A decloak noted as observe() notes one. */
+export function noteDecloak(bo: BuiltObject, at: number): void {
+    decloaks.push({ bo, x: bo.xpos, y: bo.ypos, at, serial: ++decloakSerial });
+    if (decloaks.length > 8) decloaks.shift();
 }
 
 /** The navigation lights' gate at reveal r (flickering on over the last fifth; `sec`, a per-light seed). Pure. */
@@ -103,7 +156,7 @@ let clock = 0;
 export function cloakFading(bo: BuiltObject): boolean {
     const t = tracks.get(bo);
     if (t === undefined || !t.cloaked) return false;
-    return t.r > 0.001 && clock - t.cloakedAt < CLOAK_TRANSITION_S + 0.5;
+    return t.r > 0.001 && clock - t.cloakedAt < CLOAK_RECLOAK_S + 0.5;
 }
 
 /**
@@ -286,6 +339,28 @@ export class StarLens {
     }
 }
 
+/** Every Watcher's cloak, once a frame at every zoom (mainView.ts, before the layers; drawn or not, before the fog asks
+ * cloakFading): the flips start the transitions and note the decloaks (the pulse and its sound read them). */
+export function observeWatchers(watchers: readonly BuiltObject[], sec: number): void {
+    const dt = Math.max(0, Math.min(0.25, sec - clock));
+    clock = sec;
+    for (const bo of watchers) {
+        const cloaked = bo.cloaked === true;
+        let t = tracks.get(bo);
+        if (t === undefined) {
+            t = { r: cloaked ? 0 : 1, t: sec, cloaked, drawn: -99, cloakedAt: -99 };
+            tracks.set(bo, t);
+        }
+        if (cloaked !== t.cloaked) {
+            if (cloaked) t.cloakedAt = sec;
+            else noteDecloak(bo, sec);
+            t.cloaked = cloaked;
+        }
+        t.r = CLOAK_FX.on ? cloakStep(t.r, cloaked ? 0 : 1, dt) : cloaked ? 0 : 1;
+        t.t = sec;
+    }
+}
+
 export class CloakFx {
     readonly root = new Container();
     private pool = new SpritePool(this.root);
@@ -320,27 +395,6 @@ export class CloakFx {
             () => undefined,
         );
         return null;
-    }
-
-    /** Every Watcher, each frame (drawn or not, before the fog asks cloakFading): its cloak's flips start a transition
-     * whether or not it was on screen as it decloaked. */
-    observe(watchers: readonly BuiltObject[], sec: number): void {
-        const dt = Math.max(0, Math.min(0.25, sec - clock));
-        clock = sec;
-        for (const bo of watchers) {
-            const cloaked = bo.cloaked === true;
-            let t = tracks.get(bo);
-            if (t === undefined) {
-                t = { r: cloaked ? 0 : 1, t: sec, cloaked, drawn: -99, cloakedAt: -99 };
-                tracks.set(bo, t);
-            }
-            if (cloaked !== t.cloaked) {
-                if (cloaked) t.cloakedAt = sec;
-                t.cloaked = cloaked;
-            }
-            t.r = CLOAK_FX.on ? cloakStep(t.r, cloaked ? 0 : 1, dt) : cloaked ? 0 : 1;
-            t.t = sec;
-        }
     }
 
     /** A Watcher's reveal now (1: the plain hull). */

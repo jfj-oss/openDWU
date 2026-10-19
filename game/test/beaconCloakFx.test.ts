@@ -1,13 +1,16 @@
 // beaconCloakFx.ts: the Watchers' cloak visuals (render only): the reveal's pace, the lights' gate, the sightings' fade.
 import { describe, expect, it } from 'vitest';
-import { CLOAK_TRANSITION_S, cloakGlow, cloakLightGate, cloakStep, watcherSightings } from '../src/render/beaconCloakFx';
+import { CLOAK_RECLOAK_S, CLOAK_TRANSITION_S, DECLOAK_HIT_S, PULSE_FAR, cloakGlow, cloakLightGate, cloakStep, decloaksSince, noteDecloak, pulseLevel, watcherSightings, type DecloakEvent } from '../src/render/beaconCloakFx';
+import { pulseRing, pulseVignette } from '../src/render/beaconPulseFx';
+import { DECLOAK_REST_S, POPUP_DUCK, POPUP_LOOP_END_S, decloakAllowed } from '../src/audio/beaconDecloak';
 import type { BuiltObject } from '../src/sim/builtObject';
 import type { Empire } from '../src/sim/empire';
 
 describe('the Watchers\' cloak (render only)', () => {
     it('a decloak / re-cloak takes CLOAK_TRANSITION_S; the engines come up late, the lights last', () => {
-        expect(CLOAK_TRANSITION_S).toBeGreaterThanOrEqual(2.5);
-        expect(CLOAK_TRANSITION_S).toBeLessThanOrEqual(3.5);
+        expect(CLOAK_TRANSITION_S).toBe(10);
+        expect(CLOAK_RECLOAK_S).toBeGreaterThanOrEqual(4);
+        expect(CLOAK_RECLOAK_S).toBeLessThanOrEqual(5);
         let r = 0;
         let t = 0;
         while (r < 1 && t < 10) {
@@ -15,7 +18,7 @@ describe('the Watchers\' cloak (render only)', () => {
             t += 0.05;
         }
         expect(t).toBeCloseTo(CLOAK_TRANSITION_S, 1);
-        expect(cloakStep(1, 0, CLOAK_TRANSITION_S / 2)).toBeCloseTo(0.5, 9);
+        expect(cloakStep(1, 0, CLOAK_RECLOAK_S / 2)).toBeCloseTo(0.5, 9);
         expect(cloakGlow(0.4)).toBe(0);
         expect(cloakGlow(1)).toBe(1);
         expect(cloakLightGate(0.7, 3.1, 2)).toBe(0);
@@ -37,5 +40,46 @@ describe('the Watchers\' cloak (render only)', () => {
         expect(out[0].x).toBe(100);
         expect(out[0].fade).toBeCloseTo(0.5, 9);
         expect(watcherSightings([w], { empireId: 4 } as Empire, 1001, out)).toBe(0);
+    });
+
+    it('the pulse: by the distance from the camera and the player\'s worlds; nothing far from every player world', () => {
+        const S = 2_000_000;
+        const home = [{ xpos: 0, ypos: 0 }];
+        expect(pulseLevel(0, 0, 0, 0, home, S)).toBe(1);
+        // near the player's world, the camera far off: still full
+        expect(pulseLevel(S * 0.3, 0, S * 50, 0, home, S)).toBe(1);
+        // two sectors out, the camera on it: full (near the camera), but fading by distance from home otherwise
+        expect(pulseLevel(S * 2, 0, S * 2, 0, home, S)).toBe(1);
+        expect(pulseLevel(S * 2, 0, S * 40, 0, home, S)).toBeGreaterThan(0);
+        expect(pulseLevel(S * 2, 0, S * 40, 0, home, S)).toBeLessThan(1);
+        // beyond PULSE_FAR sectors of every player world: silent, whatever the camera
+        expect(pulseLevel(S * (PULSE_FAR + 0.1), 0, S * (PULSE_FAR + 0.1), 0, home, S)).toBe(0);
+        expect(pulseLevel(0, 0, 0, 0, [], S)).toBe(0);
+        // the ring runs out and fades; the screen-edge dark is brief
+        expect(pulseRing(0).radius).toBe(0);
+        expect(pulseRing(1).radius).toBeCloseTo(1, 9);
+        expect(pulseRing(1).alpha).toBeCloseTo(0, 9);
+        expect(pulseVignette(-0.1)).toBe(0);
+        expect(pulseVignette(0.12)).toBeCloseTo(1, 6);
+        expect(pulseVignette(3)).toBeLessThan(0.05);
+        expect(DECLOAK_HIT_S).toBeCloseTo(1.3, 9);
+    });
+
+    it('the decloaks are noted in order for the pulse and its sound; the sound never overlaps; the popup loop keeps the beat', () => {
+        const out: DecloakEvent[] = [];
+        const s0 = decloaksSince(0, out);
+        const w = { xpos: 5, ypos: 6 } as unknown as BuiltObject;
+        noteDecloak(w, 12);
+        const s1 = decloaksSince(s0, out);
+        expect(s1).toBe(s0 + 1);
+        expect(out.length).toBe(1);
+        expect(out[0].x).toBe(5);
+        expect(decloaksSince(s1, out)).toBe(s1);
+        expect(out.length).toBe(0);
+        expect(decloakAllowed(10, 9)).toBe(false);
+        expect(decloakAllowed(9 + DECLOAK_REST_S, 9)).toBe(true);
+        expect(decloakAllowed(0, -Infinity)).toBe(true);
+        expect(POPUP_DUCK).toBeCloseTo(0.4, 9);
+        expect(POPUP_LOOP_END_S / 5.45).toBeCloseTo(6, 1);
     });
 });
