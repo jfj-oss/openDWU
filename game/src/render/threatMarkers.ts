@@ -99,6 +99,24 @@ export function pulsePhase(t: number, period: number): number {
     return p < 0 ? p + 1 : p;
 }
 
+/**
+ * A glyph's size: `frac` of the marker radius `r`, kept between `minPx` and `maxPx` screen px (`px` = local units per
+ * screen px). Close in on a big world the ring grows with it, but the glyphs (the Compact's seal, the cult eye, the
+ * ledger, the "?") stay emblem-sized instead of turning into discs over the planet.
+ */
+export function markerGlyphSize(r: number, frac: number, minPx: number, maxPx: number, px: number): number {
+    return Math.max(minPx * px, Math.min(maxPx * px, r * frac));
+}
+
+/**
+ * The Dark Farm's outward pulse at phase `p` (0..1): its radius (× the marker radius) and alpha (× the marker alpha).
+ * It leaves from just outside the base ring and fades in over the first part of the cycle, so it never sits on the
+ * base ring as a doubled edge.
+ */
+export function redPulseRing(p: number): { radius: number; alpha: number } {
+    return { radius: 1.08 + 0.55 * p, alpha: (1 - p) * Math.min(1, p * 5) };
+}
+
 /** Hex lattice cell centres (pointy-top, cell radius `cell`) whose cell lies within `r` of the origin. */
 export function hexLatticeCentres(r: number, cell: number): { x: number; y: number }[] {
     const out: { x: number; y: number }[] = [];
@@ -153,8 +171,11 @@ function questionMark(g: Graphics, x: number, y: number, s: number, colour: numb
 }
 
 /**
- * Draws one marker at world (x, y) around a target of radius `r` (world units) at zoom z (px per world unit); `t` is
- * the render clock in seconds, `seed` varies flicker / ash per site.
+ * Draws one marker at (x, y) around a target of radius `r`, in `g`'s local units, `z` = screen px per local unit; `t` is
+ * the render clock in seconds, `seed` varies flicker / ash per site. The Main View (artBundleLayer updateThreats) draws
+ * in screen px (z = 1) round a Graphics at the camera centre: Pixi tessellates circles and arcs for their local size,
+ * and keeps a big Graphics' vertices as float32 in local units, so galaxy coordinates (millions of units) would put
+ * every vertex up to a pixel off and the rings would come out jagged.
  */
 export function drawThreatMarker(g: Graphics, st: ThreatMarkerStyle, x: number, y: number, r: number, z: number, t: number, seed: number): void {
     const px = 1 / z;
@@ -175,7 +196,7 @@ export function drawThreatMarker(g: Graphics, st: ThreatMarkerStyle, x: number, 
             // Glyph: an eye of three strokes over the ring's top.
             const gx = x;
             const gy = y - r * 1.14;
-            const s = Math.max(6 * px, r * 0.22);
+            const s = markerGlyphSize(r, 0.22, 6, 14, px);
             g.moveTo(gx - s, gy).quadraticCurveTo(gx, gy - s * 0.9, gx + s, gy).quadraticCurveTo(gx, gy + s * 0.9, gx - s, gy).stroke({ width: w, color: c, alpha: a });
             g.circle(gx, gy, s * 0.3).fill({ color: c, alpha: a });
             break;
@@ -223,13 +244,14 @@ export function drawThreatMarker(g: Graphics, st: ThreatMarkerStyle, x: number, 
             const p = pulsePhase(t, 1.4);
             g.circle(x, y, r * 0.9).fill({ color: c, alpha: (st.solid ? 0.18 : 0.08) * a * (1 - p * 0.6) });
             strokeCircle(g, x, y, r, w * 1.2, c, a, dashes);
-            strokeCircle(g, x, y, r * (1 + 0.6 * p), w, c, a * (1 - p), dashes);
+            const pr = redPulseRing(p);
+            if (pr.alpha > 0.01) strokeCircle(g, x, y, r * pr.radius, w * 0.8, c, a * pr.alpha, dashes);
             break;
         }
         case 'ledger': {
             strokeCircle(g, x, y, r, w, c, a, dashes);
             // Scales over a ledger: a beam with two pans above a closed book.
-            const s = Math.max(9 * px, r * 0.45);
+            const s = markerGlyphSize(r, 0.45, 9, 16, px);
             const bx = x;
             const by = y - r - s * 1.1;
             g.moveTo(bx, by - s * 0.6).lineTo(bx, by + s * 0.3).stroke({ width: w, color: c, alpha: a });
@@ -272,7 +294,7 @@ export function drawThreatMarker(g: Graphics, st: ThreatMarkerStyle, x: number, 
         case 'compact': {
             // The Founders' Compact: three linked rings (the three founding circles) in a seal.
             strokeCircle(g, x, y, r, w, c, a, dashes, t * 0.15);
-            const s = Math.max(9 * px, r * 0.5);
+            const s = markerGlyphSize(r, 0.5, 9, 20, px);
             const cx = x + r * 0.72;
             const cy = y - r * 0.72;
             g.circle(cx, cy, s * 1.05).fill({ color: 0x0c0a06, alpha: 0.55 * a });
@@ -293,7 +315,7 @@ export function drawThreatMarker(g: Graphics, st: ThreatMarkerStyle, x: number, 
         }
     }
     // (The Compact's seal sits where the others put the "?": its "?" goes top left.)
-    if (!st.solid) questionMark(g, x + (st.kind === 'compact' ? -r : r) * 0.95, y - r * 0.95, Math.max(7 * px, r * 0.18), c, a, w * 0.8);
+    if (!st.solid) questionMark(g, x + (st.kind === 'compact' ? -r : r) * 0.95, y - r * 0.95, markerGlyphSize(r, 0.18, 7, 12, px), c, a, w * 0.8);
 }
 
 /** How full stage arc `q` (0..3) of a Great Work's glyph is at `progress` (0..1). Pure. */

@@ -1047,7 +1047,9 @@ export function beaconKnownSites(galaxy: Galaxy, empire: Empire): KnownThreatSit
         if (w.dead || w.ship === null || w.ship.hasBeenDestroyed) continue;
         const level = knowledgeLevel({ knowledge: w.knowledge }, empire);
         if (level < KNOWLEDGE_SUSPECTED) continue;
-        out.push({ threat: BEACON_KEY, kind: 'ship', target: w.ship, level, site: { knowledge: w.knowledge }, label: T(`${TAG} Watcher Row`, placeName(galaxy, w.ship)), status: T(`${TAG} Watcher Status`) });
+        // cloaked, a nameless contact; decloaked for good (the Reclamation's fleet flagship), a Watcher by name
+        const row = w.mode === 'lead' ? 'Watcher Lead' : 'Watcher';
+        out.push({ threat: BEACON_KEY, kind: 'ship', target: w.ship, level, site: { knowledge: w.knowledge }, label: T(`${TAG} ${row} Row`, placeName(galaxy, w.ship)), status: T(`${TAG} ${row} Status`) });
     }
     for (const c of st.corrupted) {
         if (c.ended !== null || c.colony.empire !== empire) continue;
@@ -1077,7 +1079,6 @@ export function beaconKnownSites(galaxy: Galaxy, empire: Empire): KnownThreatSit
 }
 
 const MARKER_COLOR = 0x8a2be2;
-const CORE_COLOR = 0xc0203a;
 
 /** Map: the staging points (those the viewer knows) and the Beacon, as the default ring marker. */
 export function beaconMapFeatures(galaxy: Galaxy, viewer: Empire | null): ScenarioMapFeatures | null {
@@ -1086,7 +1087,7 @@ export function beaconMapFeatures(galaxy: Galaxy, viewer: Empire | null): Scenar
     const markers: ScenarioMapFeatures['markers'] = [];
     if (st.beacon !== null && !st.beacon.hasBeenDestroyed) markers.push({ x: st.beacon.xpos, y: st.beacon.ypos, label: '', color: MARKER_COLOR });
     if (st.season !== null && st.season.phase === 'prep') for (const sp of st.season.staging) if (knowledgeLevel(sp, viewer) >= KNOWLEDGE_CONFIRMED) markers.push({ x: sp.x, y: sp.y, label: sp.name, color: MARKER_COLOR });
-    for (const c of liveCores(st)) markers.push({ x: c.colony.xpos, y: c.colony.ypos, label: T(`${TAG} Core Marker`), color: CORE_COLOR });
+    // (no harvest-core marker: a Reclaimer-held world looks like any taken planet on the map; the threat lists name it)
     return markers.length === 0 ? null : { markers, routes: [] };
 }
 

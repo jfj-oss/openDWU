@@ -13,8 +13,9 @@ import type { BuiltObject } from '../sim/builtObject';
 import { HabitatCategoryType, type Habitat } from '../sim/types';
 import { moonDotPx, planetSpritePx, starSpritePx } from './mainView';
 import { KNOWLEDGE_RUMOUR, drawThreatMarker, threatMarkerStyle, type ThreatMarkerStyle } from './threatMarkers';
-import { greatWorkAt, greatWorkDrawPx, greatWorkFrame, lastThreatLooks } from './threatArt';
-import { watcherSightings } from './beaconCloakFx';
+import { greatWorkAt, greatWorkDrawPx, greatWorkFrame, isWatcher, lastThreatLooks } from './threatArt';
+import { isCloakedContact, watcherSightings } from './beaconCloakFx';
+import { builtObjectVisibleToPlayer } from './fog';
 import { KNOWLEDGE_SUSPECTED } from './threatMarkers';
 import { Texture } from 'pixi.js';
 import { SpritePool } from './fxCommon';
@@ -83,6 +84,12 @@ function habitatPx(h: { diameter?: number; category?: HabitatCategoryType }, z: 
 }
 
 /** World radius of a site's marker at zoom z: a colony's drawn disc + 12 px (≥ 18 px), a ship 14 px. */
+/** The Beacon's threat key (beaconState.ts BEACON_KEY). */
+const BEACON_THREAT = 'beacon';
+/** A Watcher's last-sighted marker: small and faint (a hint of where it was, not a live contact). */
+export const SIGHTING_PX = 12;
+export const SIGHTING_ALPHA = 0.5;
+
 export function threatMarkerRadius(site: KnownThreatSiteShape, z: number): number {
     if (site.kind === 'ship') return 14 / z;
     return Math.max(habitatPx(site.target, z) / 2 + 12, 18) / z;
@@ -465,6 +472,9 @@ export class ArtBundleLayer {
             let k = 0;
             for (const site of list) {
                 if (site.threat === 'purifier') continue; // its own medium glyphs (overlayLayer updateScenarioMarkers), no ring
+                // The Beacon's worlds (corrupted, Reclaimer-held, harvest cores) look like any taken planet on the map;
+                // the threat lists still name them.
+                if (site.threat === BEACON_THREAT && site.kind === 'colony') continue;
                 const style = threatMarkerStyle(site.threat, site.level, site.kind);
                 if (style !== null) this.sites.push({ site, style, seed: k++ * 7 + site.threat.length });
             }
@@ -480,10 +490,22 @@ export class ArtBundleLayer {
         }
         g.clear();
         g.visible = true;
+        // Drawn in screen px round the camera centre (drawThreatMarker's z = 1): the Graphics' vertices stay small
+        // (float32 at galaxy coordinates is up to a pixel coarse, which made the rings jagged) and Pixi tessellates
+        // each circle for its on-screen size.
+        g.position.set(cam.x, cam.y);
+        g.scale.set(1 / z);
         const t = performance.now() / 1000;
         const halfW = cam.width / 2 / z;
         const halfH = cam.height / 2 / z;
+        const viewer = localViewerEmpire(this.galaxy);
         for (const s of this.sites) {
+            // A Watcher's diamond only while the viewer actually sees it (not in the fog, not a cloaked contact); where
+            // it was last detected is the faint sighting marker below.
+            if (s.site.threat === BEACON_THREAT && s.site.kind === 'ship') {
+                const bo = s.site.target as BuiltObject;
+                if (isWatcher(bo) && (isCloakedContact(bo, viewer) || !builtObjectVisibleToPlayer(this.galaxy, viewer, bo))) continue;
+            }
             let r = threatMarkerRadius(s.site, z);
             const x = s.site.target.xpos;
             const y = s.site.target.ypos;
@@ -495,7 +517,7 @@ export class ArtBundleLayer {
                 if (gw !== null) r = Math.max(r, (greatWorkDrawPx(greatWorkFrame(gw), 1 / z) * 0.5 + 12) / z);
             }
             if (Math.abs(x - cam.x) > halfW + r * 3 || Math.abs(y - cam.y) > halfH + r * 3) continue;
-            drawThreatMarker(g, s.style, x, y, r, z, t, s.seed);
+            drawThreatMarker(g, s.style, (x - cam.x) * z, (y - cam.y) * z, r * z, 1, t, s.seed);
         }
         // the Watchers' last sighted positions: the uncertain threat ship marker, fading out over the seen-through days
         const ss = this.sightingStyle;
@@ -503,10 +525,10 @@ export class ArtBundleLayer {
             const base = ss.alpha;
             for (let i = 0; i < nSight; i++) {
                 const p = this.sightings[i];
-                const r = 18 / z;
+                const r = SIGHTING_PX / z;
                 if (Math.abs(p.x - cam.x) > halfW + r * 3 || Math.abs(p.y - cam.y) > halfH + r * 3) continue;
-                ss.alpha = base * (0.25 + 0.75 * p.fade);
-                drawThreatMarker(g, ss, p.x, p.y, r, z, t, 11 + i);
+                ss.alpha = base * SIGHTING_ALPHA * (0.3 + 0.7 * p.fade);
+                drawThreatMarker(g, ss, (p.x - cam.x) * z, (p.y - cam.y) * z, r * z, 1, t, 11 + i);
             }
             ss.alpha = base;
         }

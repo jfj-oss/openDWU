@@ -108,8 +108,10 @@ Beacon Rising Name;Corrupted Militia
 Beacon Garrison Name;Thrall Garrison
 Beacon Independents;the independents
 'The Watchers
-Beacon Watcher Row;A vast cloaked vessel (last known near {0})
+Beacon Watcher Row;A cloaked vessel (last known near {0})
 Beacon Watcher Status;It watches. It has never once fired first.
+Beacon Watcher Lead Row;A Watcher of the Reclaimers, near {0}
+Beacon Watcher Lead Status;It no longer hides. It leads the Reclaimers' fleets.
 Beacon Msg Detect Title;Something in the dark
 Beacon Msg Detect First;Our long-range array near {0} has logged a reading the technicians insist must be a fault: a mass the size of a moon, colder than empty space, there for eleven seconds and then gone. They have run the diagnostics three times. The array is fine.
 Beacon Msg Detect Repeat 1;Sensor log, {0}: for eleven seconds our array returned a shape where there was nothing. Something the size of a moon, colder than empty space. Then it was gone, and the array has reported static since. The crew have asked to be relieved.

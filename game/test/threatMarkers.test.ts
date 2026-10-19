@@ -12,7 +12,9 @@ import {
     ashPuffs,
     greatWorkArcFill,
     hexLatticeCentres,
+    markerGlyphSize,
     pulsePhase,
+    redPulseRing,
     threatMarkerStyle,
     uncertaintyFlicker,
 } from '../src/render/threatMarkers';
@@ -189,6 +191,24 @@ describe('19r threat marker selection', () => {
         for (const c of cells) expect(Math.hypot(c.x, c.y) + 4).toBeLessThanOrEqual(50 + 1e-9);
         expect(ashPuffs(4)).toEqual(ashPuffs(4));
         expect(ashPuffs(4)).not.toEqual(ashPuffs(5));
+    });
+    it('glyphs keep an emblem size (capped on screen) however big the marked world is drawn', () => {
+        // screen px (px = 1): the Compact seal is half the radius between 9 and 20 px
+        expect(markerGlyphSize(10, 0.5, 9, 20, 1)).toBe(9);
+        expect(markerGlyphSize(30, 0.5, 9, 20, 1)).toBe(15);
+        expect(markerGlyphSize(500, 0.5, 9, 20, 1)).toBe(20);
+        // in world units at zoom 0.25 (4 units per px) the same caps scale with px
+        expect(markerGlyphSize(4000, 0.5, 9, 20, 4)).toBe(80);
+    });
+    it('the Dark Farm pulse leaves from outside the base ring and fades in (no doubled edge)', () => {
+        expect(redPulseRing(0).alpha).toBe(0);
+        for (let p = 0; p < 1; p += 0.05) {
+            const pr = redPulseRing(p);
+            expect(pr.radius).toBeGreaterThan(1.05);
+            expect(pr.alpha).toBeGreaterThanOrEqual(0);
+            expect(pr.alpha).toBeLessThanOrEqual(1);
+        }
+        expect(redPulseRing(0.2).alpha).toBeGreaterThan(redPulseRing(0.02).alpha);
     });
     it('radius: ships 14 px, colonies at least 18 px', () => {
         const ship = { threat: 'exchange', kind: 'ship' as const, target: { xpos: 0, ypos: 0 }, level: 3, label: '' };
