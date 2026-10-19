@@ -706,7 +706,7 @@ function driveShip(galaxy: Galaxy, st: BeaconState, c: CattleRec, now: number): 
 /**
  * The shuttle's step (every CATTLE_STEP_DAYS days, and with each reclamation pass): the ships of every pool take their turn (fly to a held world that
  * is due, load for beaconCattleLoadDays, fly to the core, unload, go back); replacements ordered for lost ships are paid and built; a pool short of
- * its size (one ship per beaconCattlePoolWorldsPer feeder worlds) grows by a ship a core a step; idle, mended ships are sent to the held worlds that
+ * its size (one ship per beaconCattlePoolWorldsPer feeder worlds) is filled to size at once; idle, mended ships are sent to the held worlds that
  * are due a collection (the most overdue first: nextConvoy, beaconCattleDays apart). Fixed iteration orders; no Rnd.
  */
 export function cattleStep(galaxy: Galaxy, st: BeaconState): void {
@@ -742,11 +742,14 @@ export function cattleStep(galaxy: Galaxy, st: BeaconState): void {
         rest.push(o);
     }
     st.cattleOrders = rest;
-    // pools grow to their size, a ship a core a step
+    // a pool is filled to its size at once (a new core, more feeder worlds, an old save's part-grown pool); lost ships wait for their paid replacements
     const feeders = feedersOf(galaxy, st);
     for (const core of cores) {
-        const have = poolOf(st, core.colony).length + rest.filter((o) => o.core === core.colony).length;
-        if (have < poolTarget(galaxy, feeders.get(core.colony)?.length ?? 0) && cattleOf(st).length < P.cattleMax(galaxy) && spawnPoolShip(galaxy, st, core.colony) !== null) st.stats.cattleSpawned = (st.stats.cattleSpawned ?? 0) + 1;
+        const target = poolTarget(galaxy, feeders.get(core.colony)?.length ?? 0);
+        for (let have = poolOf(st, core.colony).length + rest.filter((o) => o.core === core.colony).length; have < target && cattleOf(st).length < P.cattleMax(galaxy); have++) {
+            if (spawnPoolShip(galaxy, st, core.colony) === null) break;
+            st.stats.cattleSpawned = (st.stats.cattleSpawned ?? 0) + 1;
+        }
     }
     // runs: idle, mended ships go to the most overdue feeder worlds of their core
     const claimed = new Set<Habitat>();

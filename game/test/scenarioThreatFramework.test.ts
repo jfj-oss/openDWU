@@ -5443,6 +5443,30 @@ describe('the Beacon (Giantworks wonder)', () => {
         expect(seen.length).toBeLessThanOrEqual(3 * 19);
     }, 900000);
 
+    it('cattle pools start full: a core is given its whole pool at once (not a ship a step), up to beaconCattlePoolMax and the overall beaconCattleMax; a part-grown pool (an old save) is topped up; losses wait for paid replacements', () => {
+        const { g, st } = completed();
+        const [first] = heldWorlds(g, st, 4);
+        expect(poolTarget(g, 100)).toBe(30); // the default cap
+        expect(poolTarget(g, 4)).toBe(4);
+        expect(poolOf(st, first)).toHaveLength(4); // all four at the first pass
+        expect(st.stats.cattleSpawned).toBe(4);
+        // a lost ship is not made again for free: its order stands
+        const lost = poolOf(st, first)[0];
+        lost.ship.hasBeenDestroyed = true;
+        cattleStep(g, st);
+        expect(poolOf(st, first)).toHaveLength(3);
+        expect(st.stats.cattleSpawned).toBe(4);
+        // a pool part-grown (an old save) fills up at once
+        st.cattleOrders = [];
+        cattleStep(g, st);
+        expect(poolOf(st, first)).toHaveLength(4);
+        // the overall cap holds
+        g.scenario!.params.beaconCattleMax = 2;
+        st.cattle = poolOf(st, first).slice(0, 1);
+        cattleStep(g, st);
+        expect(cattleOf(st)).toHaveLength(2);
+    });
+
     it('cattle repair: a damaged pool ship waits at its core and is not sent out; it mends slowly (away from the core, slower still); a hurt outbound ship turns back', () => {
         const { g, st } = completed();
         const [first, second] = heldWorlds(g, st, 1);
