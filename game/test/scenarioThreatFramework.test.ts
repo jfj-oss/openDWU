@@ -219,10 +219,10 @@ import { SystemVisibilityStatus } from '../src/sim/visibility';
 import { completeWork, greatWorkIsHostile, greatWorkKind, type GreatWorkSite } from '../src/sim/scenario/threats/giantworks/framework';
 import { defaultMessageOptions, routeEmpireMessage } from '../src/sim/messageRouting';
 import { watcherVariant, beaconBuildRate, beaconComplete, beaconEndCheck, beaconKind, beaconKnownSites, beaconLooks, beaconRolled, beaconShipRole, beaconSuppliers, cloakLapsedFor, corrupt, corruptCandidates, watchersPeriodic } from '../src/sim/scenario/threats/giantworks/beacon';
-import { peekBeaconState, salvageStepsOf, siphonOf, type BeaconState } from '../src/sim/scenario/threats/giantworks/beaconState';
+import { peekBeaconState, salvageStepsOf, siphonOf, type BeaconState, type CattleRec } from '../src/sim/scenario/threats/giantworks/beaconState';
 import { beginSeason, driveWatcherFleets, watcherTargetValue, designFor, groupCarryRegiments, scriptedBudget, seasonBudget, landingPlan, lossCheck, noticedGathering, planetStrike, reclamationMonthly, reclamationPeriodic, spawnShip, supplyTroops, targetCandidates } from '../src/sim/scenario/threats/giantworks/beaconFleet';
 import { coalitionMembers, coalitionPass } from '../src/sim/scenario/threats/giantworks/beaconAi';
-import { beaconArtInfo, cattleDesign, cattleOf, coreCountFor, coreTarget, coresOf, freeShare, fuelOf, harvestMonthly, harvestPeriodic, liveCores, pickCore, rescueCattle } from '../src/sim/scenario/threats/giantworks/beaconHarvest';
+import { assignEscorts, escortPlan, interceptsAt, noteIntercept, beaconArtInfo, cattleDesign, cattleOf, coreCountFor, coreTarget, coresOf, freeShare, fuelOf, harvestMonthly, harvestPeriodic, liveCores, pickCore, rescueCattle } from '../src/sim/scenario/threats/giantworks/beaconHarvest';
 import { kindTaken } from '../src/sim/scenario/threats/giantworks/founders';
 import { isHumanEmpire } from '../src/sim/humanEmpires';
 import { aiMayPurge, dwellDaysFor, garrisonStrength, purgePass, purgeRebelStrength, rebelsOn, siphonDonor, siphonPass, siphonRateOf, startPurge, tech5Count } from '../src/sim/scenario/threats/giantworks/beaconSiphon';
@@ -5166,6 +5166,82 @@ describe('the Beacon (Giantworks wonder)', () => {
         expect(st.popEliminated).toBe(elim0 + done);
         expect(fuelOf(st).income).toBeGreaterThan(fuel0);
         expect(st.stats.processed).toBe(done);
+    }, 900000);
+
+    it('cattle escorts: free warships (the reserve) are ordered to escort, else escorts are built from the biofuel; the world with the most interceptions gets destroyers, then cruisers; the counts decay; the escorts return to patrol when the ship docks', () => {
+        const { g, st } = completed();
+        const f = st.faction!;
+        const victim = normalsOf(g)[0];
+        const worlds = victim.colonies.filter((c) => c !== victim.capital && c.population.totalAmount > 0).slice(0, 3);
+        expect(worlds.length).toBeGreaterThanOrEqual(3);
+        for (const w of worlds) takeOwnershipOfColonyFull(g, victim, w, f, false, false);
+        fuelOf(st).fleet = 1e9;
+        // a free frigate in the reserve is taken before anything is built
+        const frigateDesign = designFor(g, f, BuiltObjectSubRole.Frigate)!;
+        const spare = spawnShip(g, f, frigateDesign, worlds[1].xpos, worlds[1].ypos);
+        st.reserve.push(spare);
+        harvestPeriodic(g, st);
+        for (let i = 0; i < 8 && cattleOf(st).length < 1; i++) {
+            g.nowMs += 5 * GAME_DAY_LENGTH;
+            harvestPeriodic(g, st);
+        }
+        const c1 = cattleOf(st)[0];
+        expect(c1.escorts!.length).toBeGreaterThanOrEqual(1);
+        expect(c1.escorts!.length).toBeLessThanOrEqual(2);
+        for (const b of c1.escorts!) {
+            expect(b.subRole).toBe(BuiltObjectSubRole.Frigate);
+            const m = builtObjectMission(b.mission);
+            expect(m?.type).toBe(BuiltObjectMissionType.Escort);
+            expect(m?.targetBuiltObject).toBe(c1.ship);
+        }
+        expect(c1.escorts).toContain(spare);
+        expect(st.reserve).not.toContain(spare);
+        expect(st.stats.escortLight).toBe(1);
+        // escalation: the world with the most interceptions sends destroyers, then cruisers; the others stay light
+        const a = c1.from;
+        const b = worlds.find((w) => w !== a && w !== c1.core)!;
+        expect(escortPlan(g, st, a, 0)).toEqual({ tier: 0, count: 1 });
+        noteIntercept(g, st, a);
+        expect(escortPlan(g, st, a, 0)).toEqual({ tier: 1, count: 2 });
+        expect(escortPlan(g, st, b, 0).tier).toBe(0);
+        noteIntercept(g, st, a);
+        noteIntercept(g, st, a);
+        expect(escortPlan(g, st, a, 0)).toEqual({ tier: 2, count: 2 });
+        noteIntercept(g, st, b);
+        noteIntercept(g, st, b);
+        noteIntercept(g, st, b);
+        noteIntercept(g, st, b);
+        expect(escortPlan(g, st, b, 0).tier).toBe(2); // now b leads
+        expect(escortPlan(g, st, a, 0).tier).toBe(0);
+        expect(escortPlan(g, st, a, 0).count).toBe(2);
+        // a real cattle ship from the leader gets built cruisers (none are free)
+        const built0 = st.stats.escortBuilt ?? 0;
+        const c2: CattleRec = { ship: spawnShip(g, f, cattleDesign(g, f)!, b.xpos, b.ypos), from: b, core: c1.core, load: [], total: 1, launched: galaxyStarDate(g) };
+        assignEscorts(g, st, c2);
+        expect(c2.escorts).toHaveLength(2);
+        expect(c2.escorts!.every((x) => x.subRole === BuiltObjectSubRole.Cruiser)).toBe(true);
+        expect(st.stats.escortBuilt).toBe(built0 + 2);
+        expect(st.stats.escortHeavy).toBe(1);
+        // no biofuel: it steps down to what it can have
+        const c3 = { ...c2, escorts: undefined, built: undefined };
+        fuelOf(st).fleet = 0;
+        assignEscorts(g, st, c3 as never);
+        expect(c3.escorts ?? []).toHaveLength(0);
+        // the counts decay slowly
+        g.nowMs += 360 * GAME_DAY_LENGTH;
+        harvestPeriodic(g, st);
+        expect(interceptsAt(st, a)).toBeCloseTo(2, 0);
+        expect(interceptsAt(st, b)).toBeCloseTo(3, 0);
+        // docked: the escorts go back to patrol and are free again
+        const escorts = [...c1.escorts!];
+        c1.ship.xpos = c1.core.xpos + 1000;
+        c1.ship.ypos = c1.core.ypos;
+        harvestPeriodic(g, st);
+        expect(c1.escorts).toEqual([]);
+        for (const e of escorts) {
+            expect(builtObjectMission(e.mission)?.type).toBe(BuiltObjectMissionType.Patrol);
+            expect(st.reserve).toContain(e);
+        }
     }, 900000);
 
     it('counterplay on the harvest: retaking a core frees its pens to the liberator; a destroyed cattle ship kills its captives (not counted as eliminated by default); a boarded one frees them; a destroyed harvester breaks the core', () => {

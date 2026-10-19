@@ -49,7 +49,7 @@ import { scenarioText as T } from '../../messages';
 import { empireTechLevel } from '../robotMutiny';
 import { makeTroopsSplit } from '../factionNavy';
 import { arcMessage, arcNews, normalEmpires } from '../framework';
-import { BEACON_FLAG, P, peekBeaconState, type BeaconArtInfo, type BeaconState, type Captive, type CattleRec, type CoreRec, type FuelRec, type ProcessRec } from './beaconState';
+import { BEACON_FLAG, P, peekBeaconState, type BeaconArtInfo, type BeaconState, type Captive, type CattleRec, type CoreRec, type FuelRec, type InterceptRec, type ProcessRec } from './beaconState';
 import { addPlating, designFor, processingWorlds, referenceMilitary, scriptedBudget, spawnShip } from './beaconFleet';
 
 const TAG = 'Beacon';
@@ -495,6 +495,7 @@ export function launchCattle(galaxy: Galaxy, st: BeaconState, rec: ProcessRec): 
     sail(galaxy, ship, core.colony);
     const c: CattleRec = { ship, from: h, core: core.colony, load, total: n, launched: galaxyStarDate(galaxy) };
     cattleOf(st).push(c);
+    assignEscorts(galaxy, st, c);
     rec.drained += n;
     st.stats.cattleLaunched = (st.stats.cattleLaunched ?? 0) + 1;
     if (h.population.totalAmount <= floor * 1.05) rec.done = true;
@@ -508,6 +509,8 @@ export function onCattleKilled(galaxy: Galaxy, st: BeaconState, bo: BuiltObject)
     if (i < 0) return false;
     const c = list[i];
     list.splice(i, 1);
+    noteIntercept(galaxy, st, c.from);
+    releaseEscorts(galaxy, st, c, true);
     st.popEliminated += (c.total * P.cattleDeadCountPct(galaxy)) / 100;
     st.stats.cattleKilled = (st.stats.cattleKilled ?? 0) + 1;
     st.stats.captivesKilled = (st.stats.captivesKilled ?? 0) + c.total;
@@ -524,11 +527,171 @@ export function rescueCattle(galaxy: Galaxy, st: BeaconState, bo: BuiltObject, b
     if (i < 0) return 0;
     const c = list[i];
     list.splice(i, 1);
+    noteIntercept(galaxy, st, c.from);
+    releaseEscorts(galaxy, st, c, true);
     const placed = releaseCaptives(galaxy, st, c.load, bo, by, null);
     st.stats.cattleBoarded = (st.stats.cattleBoarded ?? 0) + 1;
     st.stats.captivesRescued = (st.stats.captivesRescued ?? 0) + c.total;
     if (by !== null && isHumanEmpire(galaxy, by)) arcMessage(galaxy, st.sentStages, [by], { prefix: TAG, stage: 'Rescued', onceKey: `Rescued:${bo.builtObjectID}`, args: [Math.round(c.total / 1e6), c.from.name], type: EmpireMessageType.GeneralGoodEvent, subject: bo });
     return placed;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Cattle escorts, with escalation
+// ---------------------------------------------------------------------------------------------------------------
+
+export function interceptsOf(st: BeaconState): InterceptRec[] {
+    return (st.intercepts ??= []);
+}
+
+/** The interceptions (destroyed or boarded cattle ships) now counted against `colony` (decayed). Pure. */
+export function interceptsAt(st: BeaconState, colony: Habitat): number {
+    return interceptsOf(st).find((r) => r.colony === colony)?.n ?? 0;
+}
+
+/** A cattle ship from `colony` was destroyed or boarded. */
+export function noteIntercept(galaxy: Galaxy, st: BeaconState, colony: Habitat): void {
+    const now = galaxyStarDate(galaxy);
+    const list = interceptsOf(st);
+    const r = list.find((x) => x.colony === colony);
+    if (r === undefined) list.push({ colony, n: 1, date: now });
+    else {
+        r.n += 1;
+        r.date = now;
+    }
+}
+
+/** The counts slowly decay: 1 per beaconEscortDecayDays. */
+function decayIntercepts(galaxy: Galaxy, st: BeaconState): void {
+    const now = galaxyStarDate(galaxy);
+    const list = interceptsOf(st);
+    for (const r of list) {
+        r.n = Math.max(0, r.n - (now - r.date) / days(P.escortDecayDays(galaxy)));
+        r.date = now;
+    }
+    st.intercepts = list.filter((r) => r.n > 0.02 && !r.colony.hasBeenDestroyed);
+}
+
+const TIERS: readonly BuiltObjectSubRole[] = [BuiltObjectSubRole.Frigate, BuiltObjectSubRole.Destroyer, BuiltObjectSubRole.Cruiser];
+
+/** The escort a cattle ship from `from` should get: the world with the most interceptions the heaviest (destroyers, then cruisers), the rest light (1-2 frigates). Pure. */
+export function escortPlan(galaxy: Galaxy, st: BeaconState, from: Habitat, serial: number): { tier: 0 | 1 | 2; count: number } {
+    const list = interceptsOf(st).filter((r) => r.n >= 0.5);
+    const top = list.reduce<InterceptRec | null>((b, r) => (b === null || r.n > b.n ? r : b), null);
+    if (top !== null && top.colony === from) {
+        if (top.n >= P.escortCruiserAt(galaxy) - 0.5) return { tier: 2, count: 2 };
+        if (top.n >= P.escortDestroyerAt(galaxy) - 0.5) return { tier: 1, count: 2 };
+    }
+    return { tier: 0, count: list.some((r) => r.colony === from) ? 2 : 1 + (serial % 2) };
+}
+
+/** Warships of the Reclaimers that are free: not in a strike group, a Watcher fleet, the guard, a raid or an escort (the reserve, and any other idle or patrolling one). */
+function freeWarships(galaxy: Galaxy, st: BeaconState, sub: BuiltObjectSubRole): BuiltObject[] {
+    const faction = st.faction;
+    if (faction === null) return [];
+    const busy = new Set<BuiltObject>();
+    for (const s of st.seasons) for (const g of s.groups) for (const b of [...g.ships, ...g.transports, ...(g.destroyer !== null ? [g.destroyer] : [])]) busy.add(b);
+    for (const f of st.watcherFleets ?? []) for (const b of f.ships) busy.add(b);
+    for (const b of st.guards) busy.add(b);
+    for (const r of st.raids) for (const b of r.ships) busy.add(b);
+    for (const b of st.thrallShips) busy.add(b);
+    for (const c of cattleOf(st)) for (const b of c.escorts ?? []) busy.add(b);
+    for (const w of st.watchers) if (w.ship !== null) busy.add(w.ship);
+    if (st.beacon !== null) busy.add(st.beacon);
+    const out: BuiltObject[] = [];
+    for (const b of faction.builtObjects) {
+        if (b.hasBeenDestroyed || b.role !== BuiltObjectRole.Military || b.subRole !== sub || busy.has(b) || b.shipGroup !== null || b.actualEmpire !== faction) continue;
+        const m = builtObjectMission(b.mission);
+        if (m !== null && m.type !== BuiltObjectMissionType.Patrol && m.type !== BuiltObjectMissionType.Undefined && m.type !== BuiltObjectMissionType.Hold && m.type !== BuiltObjectMissionType.Move && m.type !== BuiltObjectMissionType.MoveAndWait) continue;
+        out.push(b);
+    }
+    return out;
+}
+
+function escortOrder(galaxy: Galaxy, bo: BuiltObject, target: BuiltObject): void {
+    const m = builtObjectMission(bo.mission);
+    if (m !== null && m.type === BuiltObjectMissionType.Escort && m.targetBuiltObject === target) return;
+    bo.isAutoControlled = false;
+    assignMission(galaxy, bo, BuiltObjectMissionType.Escort, target, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
+}
+
+/** Builds an escort of `sub` from the fleet biofuel at `from` (null when it cannot be paid). */
+function buildEscort(galaxy: Galaxy, st: BeaconState, sub: BuiltObjectSubRole, from: Habitat): BuiltObject | null {
+    const faction = st.faction;
+    if (faction === null) return null;
+    const design = designFor(galaxy, faction, sub);
+    if (design === null) return null;
+    const bo = spawnShip(galaxy, faction, design, from.xpos, from.ypos);
+    const cost = strengthOf(bo);
+    if (fuelOf(st).fleet < cost) {
+        builtObjectCompleteTeardown(galaxy, bo);
+        return null;
+    }
+    payFleet(st, cost);
+    st.stats.escortBuilt = (st.stats.escortBuilt ?? 0) + 1;
+    return bo;
+}
+
+/**
+ * A cattle ship has launched: the Reclaimers' nearest free warships of the tier the world's record calls for are ordered to escort it (the stock
+ * Escort job); with none free, escorts are built from the fleet biofuel. A tier that cannot be had falls back to the next lighter one.
+ */
+export function assignEscorts(galaxy: Galaxy, st: BeaconState, c: CattleRec): void {
+    if (!P.escortsOn(galaxy)) return;
+    const plan = escortPlan(galaxy, st, c.from, st.stats.cattleLaunched ?? 0);
+    c.escorts = [];
+    c.built = [];
+    for (let tier = plan.tier; tier >= 0; tier--) {
+        const sub = TIERS[tier];
+        const free = freeWarships(galaxy, st, sub).sort((a, b) => galaxy.calculateDistance(a.xpos, a.ypos, c.from.xpos, c.from.ypos) - galaxy.calculateDistance(b.xpos, b.ypos, c.from.xpos, c.from.ypos));
+        const got: BuiltObject[] = free.slice(0, plan.count);
+        const fresh: BuiltObject[] = [];
+        while (got.length < plan.count) {
+            const b = buildEscort(galaxy, st, sub, c.from);
+            if (b === null) break;
+            got.push(b);
+            fresh.push(b);
+        }
+        if (got.length === 0) continue;
+        for (const b of got) escortOrder(galaxy, b, c.ship);
+        for (const b of got) {
+            const i = st.reserve.indexOf(b);
+            if (i >= 0) st.reserve.splice(i, 1);
+        }
+        c.escorts = got;
+        c.built = fresh;
+        if (tier === 0) st.stats.escortLight = (st.stats.escortLight ?? 0) + 1;
+        else if (tier === 1) st.stats.escortMid = (st.stats.escortMid ?? 0) + 1;
+        else st.stats.escortHeavy = (st.stats.escortHeavy ?? 0) + 1;
+        return;
+    }
+}
+
+/** Keeps the escorts on the job (a lost order is given again, the dead are dropped). */
+function driveEscorts(galaxy: Galaxy, c: CattleRec): void {
+    if (c.escorts === undefined || c.escorts.length === 0) return;
+    c.escorts = c.escorts.filter((b) => !b.hasBeenDestroyed);
+    for (const b of c.escorts) escortOrder(galaxy, b, c.ship);
+}
+
+/** The cattle ship docked or was lost: its escorts go back to patrol (the world the ship sailed from) and are free again (the reserve). */
+export function releaseEscorts(galaxy: Galaxy, st: BeaconState, c: CattleRec, lost: boolean): void {
+    const faction = st.faction;
+    const list = c.escorts ?? [];
+    c.escorts = [];
+    c.built = [];
+    if (list.length === 0 || faction === null) return;
+    const home = c.core.hasBeenDestroyed ? c.from : c.core;
+    for (const b of list) {
+        if (b.hasBeenDestroyed) {
+            if (lost) st.stats.escortLost = (st.stats.escortLost ?? 0) + 1;
+            continue;
+        }
+        if (b.actualEmpire !== faction) continue;
+        b.isAutoControlled = false;
+        assignMission(galaxy, b, BuiltObjectMissionType.Patrol, home, null, BuiltObjectMissionPriority.Normal, { manuallyAssigned: true });
+        if (!st.reserve.includes(b)) st.reserve.push(b);
+    }
 }
 
 /** Every 5 days: cattle ships sail on, dock at their core (the people are penned), or find another core when theirs is gone. */
@@ -539,12 +702,16 @@ function driveCattle(galaxy: Galaxy, st: BeaconState): void {
         const bo = c.ship;
         if (bo.hasBeenDestroyed) {
             // destroyed without a kill event (a collision, a teardown): the captives are lost all the same
+            noteIntercept(galaxy, st, c.from);
+            releaseEscorts(galaxy, st, c, true);
             st.popEliminated += (c.total * P.cattleDeadCountPct(galaxy)) / 100;
             st.stats.cattleKilled = (st.stats.cattleKilled ?? 0) + 1;
             st.stats.captivesKilled = (st.stats.captivesKilled ?? 0) + c.total;
             continue;
         }
         if (bo.actualEmpire !== faction) {
+            noteIntercept(galaxy, st, c.from);
+            releaseEscorts(galaxy, st, c, true);
             const placed = releaseCaptives(galaxy, st, c.load, bo, bo.actualEmpire, null);
             void placed;
             st.stats.cattleBoarded = (st.stats.cattleBoarded ?? 0) + 1;
@@ -582,13 +749,16 @@ function driveCattle(galaxy: Galaxy, st: BeaconState): void {
             core.waiting = sumOf(core.pens);
             core.received += c.total;
             st.stats.cattleArrived = (st.stats.cattleArrived ?? 0) + 1;
+            releaseEscorts(galaxy, st, c, false);
             builtObjectCompleteTeardown(galaxy, bo);
             continue;
         }
         sail(galaxy, bo, core.colony);
+        driveEscorts(galaxy, c);
         keep.push(c);
     }
     st.cattle = keep;
+    decayIntercepts(galaxy, st);
 }
 
 // ---------------------------------------------------------------------------------------------------------------

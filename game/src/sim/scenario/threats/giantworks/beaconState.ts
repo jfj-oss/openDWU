@@ -263,6 +263,9 @@ export interface CattleRec {
     load: Captive[];
     total: number;
     launched: number;
+    /** Warships escorting it (beaconHarvest.ts assignEscorts), and those of them built for it (they join the reserve when it docks). */
+    escorts?: BuiltObject[];
+    built?: BuiltObject[];
 }
 
 /** The biofuel accounts, in fleet strength (the season budget's measure): the fleet's and the troops' (a troop costs strength / beaconTroopsPerFuel). */
@@ -583,6 +586,11 @@ export const P = {
     moratoriumPct: (g: Galaxy) => Math.max(0, Math.min(95, p(g, 'beaconMoratoriumPct', 40))),
     moratoriumDays: (g: Galaxy) => Math.max(30, p(g, 'beaconMoratoriumDays', 720)),
     moratoriumSanctionAfter: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'beaconMoratoriumSanctionAfter', 3))),
+    /** Cattle escorts: on / off; a world's interceptions fall by 1 every this many days; the world with the most interceptions sends destroyers from this many, cruisers from beaconEscortCruiserAt. */
+    escortsOn: (g: Galaxy) => p(g, 'beaconEscortsOn', 1) > 0,
+    escortDecayDays: (g: Galaxy) => Math.max(1, p(g, 'beaconEscortDecayDays', 360)),
+    escortDestroyerAt: (g: Galaxy) => p(g, 'beaconEscortDestroyerAt', 1),
+    escortCruiserAt: (g: Galaxy) => p(g, 'beaconEscortCruiserAt', 3),
     reseedDays: (g: Galaxy) => p(g, 'beaconReseedDays', 120),
     /** Build speed: +this % per corrupted world (up to the cap %); a dead Watcher multiplies it by the factor %. */
     buildBoostPct: (g: Galaxy) => p(g, 'beaconBuildBoostPct', 9),
