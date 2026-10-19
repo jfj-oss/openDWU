@@ -760,8 +760,8 @@ export const P = {
     /** The shuttle (beaconHarvest.ts): a core's pool has one ship per this many feeder worlds (at least one, at most beaconCattlePoolMax); a ship loads
      *  for this many days at a world; one damaged beyond this % of its parts stays at the core to mend, the mending there runs at this factor of the
      *  stock rate (away from the core, at the field factor); a lost ship is replaced for this % of the reference military in fleet biofuel, built this many days after it is paid. */
-    cattlePoolWorldsPer: (g: Galaxy) => Math.max(1, p(g, 'beaconCattlePoolWorldsPer', 2)),
-    cattlePoolMax: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'beaconCattlePoolMax', 12))),
+    cattlePoolWorldsPer: (g: Galaxy) => Math.max(1, p(g, 'beaconCattlePoolWorldsPer', 1)),
+    cattlePoolMax: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'beaconCattlePoolMax', 20))),
     cattleLoadDays: (g: Galaxy) => Math.max(0, p(g, 'beaconCattleLoadDays', 3)),
     cattleRepairDamagePct: (g: Galaxy) => Math.max(0, Math.min(100, p(g, 'beaconCattleRepairDamagePct', 20))),
     cattleRepairFactor: (g: Galaxy) => Math.max(0.01, p(g, 'beaconCattleRepairFactor', 1)),

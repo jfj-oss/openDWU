@@ -379,7 +379,8 @@ function sample(ctx, g) {
             const fuel = st.fuel ?? null;
             let fStr = 0;
             for (const b of faction.builtObjects) if (!b.hasBeenDestroyed && b.role === 1 && b.topSpeed > 0) fStr += M.thr.calculateOverallStrengthFactor(b);
-            s.h = { cores: live.length, want: M.bh.coreCountFor(g, M.bf.processingWorlds(st).length), pens: Math.round(live.reduce((a, c) => a + c.waiting, 0) / 1e6), cattle: (st.cattle ?? []).length,
+            s.h = { cores: live.length, want: M.bh.coreCountFor(g, M.bf.processingWorlds(st).length), pens: Math.round(live.reduce((a, c) => a + c.waiting, 0) / 1e6), cattle: (st.cattle ?? []).length, pool: M.bh.poolCensus ? M.bh.poolCensus(st) : null, // [ships, idle, out, loading, in, home, hurt, orders]
+                
                 fuel: fuel ? [Math.round(fuel.fleet), Math.round(fuel.troops)] : null, inc: fuel ? fuel.monthly.at(-1) ?? 0 : 0, fStr: Math.round(fStr) };
             // per core: AI warships ordered at the world (Attack / Bombard / Invade) or at its harvester, enemy troops on its ground, its garrison (k)
             s.h.coreAtk = live.map((c) => {
