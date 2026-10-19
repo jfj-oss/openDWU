@@ -25,7 +25,7 @@ export function toggleGameEditor(empire: Empire): void {
         open = null;
         return;
     }
-    const win = openOriginalWindow({ id: 'gameEditor', title: 'Game Editor', width: 560, height: 720, onClose: () => { open = null; } });
+    const win = openOriginalWindow({ id: 'gameEditor', title: 'Game Editor (WIP)', width: 560, height: 720, onClose: () => { open = null; } });
     open = win;
     const render = (): void => {
         win.body.replaceChildren();

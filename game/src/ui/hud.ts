@@ -189,7 +189,7 @@ export const CONTROL_HINTS: Record<string, string> = {
     tbtnTroops: 'Open Troops screen',
     btnEmpirePolicy: 'Open Empire Policy screen',
     btnBuildOrder: 'Open Build Order screen (F9)',
-    btnGameEditor: 'Switch to Game Editor',
+    btnGameEditor: 'Switch to Game Editor (WIP)',
     btnEmpireGraphs: 'Open Empire Comparison and Victory Conditions (V)',
     btnEmpireSummary: 'Open Your Empire Summary screen (F6)',
     btnExpansionPlanner: 'Open Expansion Planner screen (F3)',
