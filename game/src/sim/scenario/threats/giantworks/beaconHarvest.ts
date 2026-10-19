@@ -1038,17 +1038,28 @@ export function beaconArtInfo(galaxy: Galaxy, st: BeaconState): BeaconArtInfo {
     return out;
 }
 
-/** A cattle ship spools its hyperdrive beaconCattleSpoolFactor times as long as a warship (a huge hulk: it sits exposed at the world it leaves). */
+/**
+ * A cattle ship spools its hyperdrive for beaconCattleSpoolSeconds (120 game seconds at 1x) before each jump, whatever its hyperdrive and the
+ * other spool rules say (it sits exposed at the world it leaves: a window for raiders). The factor is derived from the jump's own stock spool, so
+ * nothing in the design changes and a reDefine cannot undo it; its warp speed is untouched. Runs last (order 100).
+ */
+export function cattleSpoolFactor(g: Galaxy, ship: BuiltObject, baseMs?: number): number | null {
+    const st = peekBeaconState(g);
+    if (st === null || st.cattle === undefined || st.cattle.length === 0 || ship.actualEmpire !== st.faction) return null;
+    if (!st.cattle.some((c) => c.ship === ship)) return null;
+    const secs = P.cattleSpoolSeconds(g);
+    if (!(secs > 0)) return null;
+    const base = baseMs !== undefined ? baseMs : Math.max(0, ship.hyperjumpInitiate) * 1000;
+    return base > 0 ? (secs * 1000) / base : null;
+}
+
 export function registerHarvest(): void {
     registerScenarioQuery({
         id: 'beacon.cattleSpool',
         flag: BEACON_FLAG,
+        order: 100,
         query: 'hyperjumpSpoolFactor',
-        run: (g, v, a) => {
-            const st = peekBeaconState(g);
-            if (st === null || st.cattle === undefined || st.cattle.length === 0 || a.ship.actualEmpire !== st.faction) return v;
-            return st.cattle.some((c) => c.ship === a.ship) ? v * Math.max(1, P.cattleSpoolFactor(g)) : v;
-        },
+        run: (g, v, a) => cattleSpoolFactor(g, a.ship, a.baseMs) ?? v,
     });
 }
 

@@ -267,7 +267,7 @@ export const cmdHyperTo: CommandHandler = (ctx) => {
         bo.hyperjumpCountdown = galaxyStarDate(galaxy) + num7;
         // Mod layer (slow hyperdrive / jump interdiction, not in the original): the spool's total factor.
         if (galaxy.scenario !== null) {
-            const k = scenarioQuery(galaxy, 'hyperjumpSpoolFactor', 1, { ship: bo, here: true });
+            const k = scenarioQuery(galaxy, 'hyperjumpSpoolFactor', 1, { ship: bo, here: true, baseMs: num7 });
             if (k !== 1) bo.hyperjumpCountdown = galaxyStarDate(galaxy) + Math.round(num7 * k);
         }
         spoolMs = num7;

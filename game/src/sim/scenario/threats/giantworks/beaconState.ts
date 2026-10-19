@@ -732,7 +732,8 @@ export const P = {
     cattleArmourPct: (g: Galaxy) => p(g, 'beaconCattleArmourPct', 100),
     cattleHoldPct: (g: Galaxy) => p(g, 'beaconCattleHoldPct', 250),
     /** Their hyperdrive spools this many times as long as a warship's (they sit exposed at the world they leave). */
-    cattleSpoolFactor: (g: Galaxy) => p(g, 'beaconCattleSpoolFactor', 12),
+    /** A cattle ship's hyperdrive spools this many game seconds before each jump (1x speed). */
+    cattleSpoolSeconds: (g: Galaxy) => p(g, 'beaconCattleSpoolSeconds', 120),
     /** The captives killed with a destroyed cattle ship: this % of them count toward the Reclaimers' eliminated people (the loss measure; 0: the
      *  interceptors killed them, not the Reclaimers; they are gone from the galaxy all the same). */
     cattleDeadCountPct: (g: Galaxy) => p(g, 'beaconCattleDeadCountPct', 0),

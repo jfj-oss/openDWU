@@ -168,7 +168,7 @@
     {"name": "beaconCattleMax", "label": "Beacon: the most cattle ships in flight at once", "default": 150, "min": 0, "max": 2000},
     {"name": "beaconCattleArmourPct", "label": "Beacon: armour plating of a cattle ship (% of its size)", "default": 100, "min": 0, "max": 5000},
     {"name": "beaconCattleHoldPct", "label": "Beacon: passenger holds added to a cattle ship (% of its size)", "default": 250, "min": 0, "max": 5000},
-    {"name": "beaconCattleSpoolFactor", "label": "Beacon: how many times as long a cattle ship spools its hyperdrive as a warship (it sits exposed meanwhile)", "default": 12, "min": 1, "max": 100},
+    {"name": "beaconCattleSpoolSeconds", "label": "Beacon: game seconds (at 1x) a cattle ship spools its hyperdrive before each jump (it sits exposed meanwhile)", "default": 120, "min": 0, "max": 3600},
     {"name": "beaconCattleDeadCountPct", "label": "Beacon: share of the captives killed with a destroyed cattle ship that counts toward the Reclaimers' eliminated people (%)", "default": 0, "min": 0, "max": 100},
     {"name": "beaconGarrison", "label": "Beacon: garrison strength of a world the Reclaimers hold", "default": 150000, "min": 0, "max": 150000000},
     {"name": "beaconSiegeDays", "label": "Beacon: days of siege before they fall back or strike the planet", "default": 150, "min": 0, "max": 15000},

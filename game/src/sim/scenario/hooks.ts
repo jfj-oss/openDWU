@@ -523,9 +523,10 @@ export interface ScenarioQueries {
     /**
      * The total factor on `ship`'s stock jump spool (1 = stock): cmdHyperTo's first execution (the countdown), the
      * move-together jump start (fleets/moveTogether.ts), intercept ETAs and construction-board estimates. `here`: a
-     * jump started where the ship is now (position-based rules such as jump interdiction apply), else anywhere. Pure.
+     * jump started where the ship is now (position-based rules such as jump interdiction apply), else anywhere. `baseMs`: the stock spool this jump rolled
+     * (cmdHyperTo only; absent: HyperjumpInitiate x 1000), for a handler that wants an absolute spool time. Pure.
      */
-    hyperjumpSpoolFactor: { value: number; args: { ship: BuiltObject; here: boolean } };
+    hyperjumpSpoolFactor: { value: number; args: { ship: BuiltObject; here: boolean; baseMs?: number } };
     /**
      * Once per game (scenario/componentScale.ts, at galaxy creation and again after a load / replica build, which rebuild the static
      * component tables): the percentage (100 = stock) to scale a component's Value1 and Value2 by, in the static definitions and in

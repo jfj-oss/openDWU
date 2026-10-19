@@ -5263,6 +5263,22 @@ describe('the Beacon (Giantworks wonder)', () => {
         expect(second.population.totalAmount).toBeLessThan(pop2); // they leave at the launch
         expect(beaconShipRole(st, cattle.ship)).toBe('cattle');
         expect(cattle.ship.subRole).toBe(BuiltObjectSubRole.LargeFreighter);
+        // its hyperdrive spools beaconCattleSpoolSeconds (120 s) before each jump, whatever the jump rolled, and a reDefine does not undo it; warp speed untouched
+        const warp0 = cattle.ship.warpSpeed;
+        const spoolMs = (baseMs?: number): number => {
+            const base = baseMs ?? cattle.ship.hyperjumpInitiate * 1000;
+            return base * scenarioQuery(g, 'hyperjumpSpoolFactor', 1, { ship: cattle.ship, here: true, baseMs });
+        };
+        expect(cattle.ship.hyperjumpInitiate).toBeGreaterThan(0);
+        expect(spoolMs()).toBeCloseTo(120000, 3);
+        expect(spoolMs(9300)).toBeCloseTo(120000, 3); // (the jump's own +-1 s roll)
+        cattle.ship.reDefine();
+        expect(spoolMs()).toBeCloseTo(120000, 3);
+        expect(cattle.ship.warpSpeed).toBe(warp0);
+        expect(scenarioQuery(g, 'hyperjumpSpoolFactor', 1, { ship: core.harvester!, here: true })).toBe(1); // only cattle ships
+        g.scenario!.params.beaconCattleSpoolSeconds = 60;
+        expect(spoolMs()).toBeCloseTo(60000, 3);
+        delete g.scenario!.params.beaconCattleSpoolSeconds;
         const elim0 = st.popEliminated;
         // it docks: the people are penned at the core (not yet eliminated)
         cattle.ship.xpos = first.xpos + 1000;
