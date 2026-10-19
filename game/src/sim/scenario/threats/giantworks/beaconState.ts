@@ -587,8 +587,8 @@ export const P = {
     dwellPopLow: (g: Galaxy) => Math.max(0.1, p(g, 'beaconDwellPopLow', 10)) * 1e6,
     dwellPopHigh: (g: Galaxy) => Math.max(p(g, 'beaconDwellPopLow', 10) * 1.01, p(g, 'beaconDwellPopHigh', 2000)) * 1e6,
     /** The siphon: knowledge needed before the Beacon can be completed, and points a month per tech-5 technology of the donor empire, per corrupted world. */
-    siphonRequired: (g: Galaxy) => Math.max(0, p(g, 'beaconSiphonRequired', 3000)),
-    siphonRate: (g: Galaxy) => Math.max(0, p(g, 'beaconSiphonRate', 0.5)),
+    siphonRequired: (g: Galaxy) => Math.max(0, p(g, 'beaconSiphonRequired', 2000)),
+    siphonRate: (g: Galaxy) => Math.max(0, p(g, 'beaconSiphonRate', 1)),
     /** Fallbacks so the Beacon cannot stall for ever: a slow baseline siphon (points a month) after this many years since the Watchers appeared, the Beacon completable regardless after beaconSiphonMaxYears; the Watchers
      *  may corrupt any colony of up to beaconCorruptFallbackPop million people when fewer than beaconCorruptMinPool of the start-independent worlds are left. */
     siphonBaseline: (g: Galaxy) => Math.max(0, p(g, 'beaconSiphonBaseline', 15)),

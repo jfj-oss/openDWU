@@ -4525,20 +4525,20 @@ describe('the Beacon (Giantworks wonder)', () => {
         expect(credit()).toBe(0);
         setTech5(a, 2);
         const two = credit();
-        expect(two).toBeCloseTo(2 * 0.5, 5);
+        expect(two).toBeCloseTo(2 * 1, 5);
         setTech5(a, 4);
         expect(credit()).toBeCloseTo(2 * two, 5);
-        expect(ra.siphoned).toBeCloseTo(0 + 1 + 2, 5);
+        expect(ra.siphoned).toBeCloseTo(0 + 2 + 4, 5);
         // an independent corrupted world drains the nearest empire
         const indep = st.formerIndependents.find((c) => c.empire === g.independentEmpire && !st.corrupted.some((r) => r.colony === c));
         if (indep !== undefined) {
             const r2 = corrupt(g, st, indep)!;
             const donor = siphonDonor(g, st, indep)!;
             expect(donor).not.toBe(g.independentEmpire);
-            expect(siphonRateOf(g, st, r2)).toBeCloseTo(0.5 * tech5Count(donor), 5);
+            expect(siphonRateOf(g, st, r2)).toBeCloseTo(1 * tech5Count(donor), 5);
         }
         // the gate: the work waits at 99.9 % until enough has been siphoned
-        const need = 3000;
+        const need = 2000;
         st.siphon!.total = need - 1;
         expect(beaconKind.canComplete!(g, site)).toBe(false);
         const work = { ...site, phase: 'building', wonder: 'beacon', convoys: [], delivered: 0, seenBy: [], knowledge: [] } as unknown as Parameters<typeof addProgress>[1];
@@ -4551,7 +4551,7 @@ describe('the Beacon (Giantworks wonder)', () => {
         // an older save (no record) starts at the share the build had made
         delete st.siphon;
         site.progress = 0.5;
-        expect(siphonOf(g, st).total).toBe(1500);
+        expect(siphonOf(g, st).total).toBe(1000);
         void b;
     }, 900000);
 
