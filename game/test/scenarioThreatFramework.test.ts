@@ -4622,15 +4622,15 @@ describe('the Beacon (Giantworks wonder)', () => {
         const strength = h.invadingTroops!.totalAttackStrength;
         expect(strength).toBeGreaterThan(purgeRebelStrength(g, h, 1) * 0.9);
         expect(strength).toBeLessThan(purgeRebelStrength(g, h, 1) * 1.1);
-        // scales with the population: a full colony 1.5 million, a tiny one the floor, linear between
+        // scales with the population: a full colony 750 thousand, a tiny one the floor, linear between
         const pop = h.population.totalAmount;
         h.population.totalAmount = 2e9;
-        expect(purgeRebelStrength(g, h, 1)).toBeCloseTo(1_500_000, 0);
+        expect(purgeRebelStrength(g, h, 1)).toBeCloseTo(750_000, 0);
         h.population.totalAmount = 1e9;
-        expect(purgeRebelStrength(g, h, 1)).toBeCloseTo(100_000 + 0.5 * 1_400_000, 0);
+        expect(purgeRebelStrength(g, h, 1)).toBeCloseTo(50_000 + 0.5 * 700_000, 0);
         h.population.totalAmount = 1e5;
-        expect(purgeRebelStrength(g, h, 1)).toBeLessThan(105_000);
-        expect(purgeRebelStrength(g, h, 0.5)).toBeLessThan(55_000);
+        expect(purgeRebelStrength(g, h, 1)).toBeLessThan(52_000);
+        expect(purgeRebelStrength(g, h, 0.5)).toBeLessThan(27_000);
         h.population.totalAmount = pop;
         expect(st.stats.purgeTried).toBe(1);
         // the stock ground battle, with an overwhelming garrison

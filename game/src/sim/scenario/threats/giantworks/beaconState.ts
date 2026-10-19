@@ -582,8 +582,8 @@ export const P = {
     siphonRequired: (g: Galaxy) => Math.max(0, p(g, 'beaconSiphonRequired', 3000)),
     siphonRate: (g: Galaxy) => Math.max(0, p(g, 'beaconSiphonRate', 0.5)),
     /** Purge: the rebels' ground strength for a max-population colony (beaconPurgeRebelPopFull, millions), the floor for a tiny one,  and the least (%) of it the owner's defenders must outweigh before the AI tries; days a purged world is left alone by the Watchers. */
-    purgeRebelStrength: (g: Galaxy) => p(g, 'beaconPurgeRebelStrength', 1500000),
-    purgeRebelMin: (g: Galaxy) => Math.max(1200, p(g, 'beaconPurgeRebelMin', 100000)),
+    purgeRebelStrength: (g: Galaxy) => p(g, 'beaconPurgeRebelStrength', 750000),
+    purgeRebelMin: (g: Galaxy) => Math.max(1200, p(g, 'beaconPurgeRebelMin', 50000)),
     purgeRebelPopFull: (g: Galaxy) => Math.max(1, p(g, 'beaconPurgeRebelPopFull', 2000)) * 1e6,
     purgeRebelRegiments: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'beaconPurgeRebelRegiments', 12))),
     aiPurgeMarginPct: (g: Galaxy) => p(g, 'beaconAiPurgeMarginPct', 130),
