@@ -389,7 +389,9 @@ export function seedGreatWorks(galaxy: Galaxy): void {
     st.seeded = true;
     const rnd = ownRandom(galaxy, 1);
     const n = greatWorkCount(galaxy);
-    for (let k = 0; k < n; k++) seedOne(galaxy, st, rnd, k, null, false);
+    const flags = galaxy.scenario?.flags ?? {};
+    const beaconFirst = flags.gwBeaconGuaranteed === true && enabledKinds(galaxy).some((kd) => kd.id === 'beacon'); // "Guarantee the Beacon": the first work is forced (no dice rolled for it)
+    for (let k = 0; k < n; k++) seedOne(galaxy, st, rnd, k, k === 0 && beaconFirst ? 'beacon' : null, false);
 }
 
 /** A Great Work started from the Game Editor now (rumour skipped, the first convoy leaves at once). */

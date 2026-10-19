@@ -2252,6 +2252,13 @@ describe('giantworks', () => {
         expect(lw.anger[e.empireId]).toBe(7);
     }, 1800000);
 
+    it('Guarantee the Beacon: on, the first Great Work is the Beacon even below the empire minimum; off, it is rolled as usual', () => {
+        const on = gw({ gwBeacon: true, gwBeaconGuaranteed: true, gwTestA: false, gwTestB: false, gwTestC: false }, { giantworksBeaconMinEmpires: 100 });
+        expect(greatWorks(on)[0].wonder).toBe('beacon');
+        const off = gw({ gwBeacon: true, gwTestA: false, gwTestB: false, gwTestC: false }, { giantworksBeaconMinEmpires: 100 });
+        expect(greatWorks(off)[0].wonder).not.toBe('beacon');
+    }, 900000);
+
     it('Game Editor: a Great Work starts now with a forced wonder', () => {
         const g = gw({ threatGiantworks: false });
         expect(peekGwState(g)).toBeNull();
