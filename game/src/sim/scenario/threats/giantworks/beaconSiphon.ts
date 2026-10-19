@@ -19,7 +19,7 @@ import { TroopList } from '../../../cargo';
 import { GAME_DAY_LENGTH } from '../../hooks';
 import { scenarioMessage, scenarioText as T } from '../../messages';
 import { makeTroopsSplit } from '../factionNavy';
-import { BEACON_FLAG, P, siphonOf, type BeaconState, type CorruptRec } from './beaconState';
+import { BEACON_FLAG, P, siphonGateOpen, siphonOf, type BeaconState, type CorruptRec } from './beaconState';
 
 const TAG = 'Beacon';
 
@@ -92,6 +92,7 @@ export function siphonPass(galaxy: Galaxy, st: BeaconState): void {
     const now = galaxyStarDate(galaxy);
     const dt = rec.last < 0 ? 0 : Math.max(0, now - rec.last) / GAME_DAY_LENGTH;
     rec.last = now;
+    st.rollDate ??= now;
     const cache = new Map<Empire, number>();
     let rate = 0;
     for (const c of st.corrupted) {
@@ -106,8 +107,16 @@ export function siphonPass(galaxy: Galaxy, st: BeaconState): void {
         if (donor !== null) rec.byEmpire[String(donor.empireId)] = (rec.byEmpire[String(donor.empireId)] ?? 0) + take;
         st.stats.siphoned = (st.stats.siphoned ?? 0) + take;
     }
+    // the slow baseline, for a galaxy with no tech-5 empire (or no corruptible world) for a long time
+    const sinceRoll = (now - st.rollDate) / (360 * GAME_DAY_LENGTH);
+    if (dt > 0 && P.siphonBaseline(galaxy) > 0 && sinceRoll >= P.siphonBaselineYears(galaxy)) {
+        const take = (P.siphonBaseline(galaxy) * dt) / 30;
+        rec.total += take;
+        rate += P.siphonBaseline(galaxy);
+        st.stats.siphoned = (st.stats.siphoned ?? 0) + take;
+    }
     rec.rate = rate;
-    if (rec.gateDate === 0 && rec.total >= P.siphonRequired(galaxy)) rec.gateDate = now;
+    if (rec.gateDate === 0 && siphonGateOpen(galaxy, st)) rec.gateDate = now;
 }
 
 /** The status line of the siphon for the corrupted-world row (empires that know the corruption for certain). Pure. */

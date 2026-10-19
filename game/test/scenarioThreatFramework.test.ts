@@ -219,7 +219,7 @@ import { SystemVisibilityStatus } from '../src/sim/visibility';
 import { completeWork, greatWorkIsHostile, greatWorkKind, type GreatWorkSite } from '../src/sim/scenario/threats/giantworks/framework';
 import { defaultMessageOptions, routeEmpireMessage } from '../src/sim/messageRouting';
 import { watcherVariant, beaconBuildRate, beaconComplete, beaconEndCheck, beaconKind, beaconKnownSites, beaconLooks, beaconRolled, beaconShipRole, beaconSuppliers, cloakLapsedFor, corrupt, corruptCandidates, watchersPeriodic } from '../src/sim/scenario/threats/giantworks/beacon';
-import { peekBeaconState, salvageStepsOf, siphonOf, type BeaconState, type CattleRec } from '../src/sim/scenario/threats/giantworks/beaconState';
+import { peekBeaconState, salvageStepsOf, siphonGateOpen, siphonOf, type BeaconState, type CattleRec } from '../src/sim/scenario/threats/giantworks/beaconState';
 import { beginSeason, driveWatcherFleets, watcherTargetValue, designFor, groupCarryRegiments, scriptedBudget, seasonBudget, landingPlan, lossCheck, noticedGathering, planetStrike, reclamationMonthly, reclamationPeriodic, spawnShip, supplyTroops, targetCandidates } from '../src/sim/scenario/threats/giantworks/beaconFleet';
 import { coalitionMembers, coalitionPass } from '../src/sim/scenario/threats/giantworks/beaconAi';
 import { podWorld, assignEscorts, escortPlan, interceptsAt, noteIntercept, beaconArtInfo, cattleDesign, cattleOf, coreCountFor, coreTarget, coresOf, freeShare, fuelOf, harvestMonthly, harvestPeriodic, liveCores, pickCore, rescueCattle } from '../src/sim/scenario/threats/giantworks/beaconHarvest';
@@ -4553,6 +4553,58 @@ describe('the Beacon (Giantworks wonder)', () => {
         site.progress = 0.5;
         expect(siphonOf(g, st).total).toBe(1500);
         void b;
+    }, 900000);
+
+    it('siphon fallbacks: with the start-independent pool exhausted the Watchers may corrupt small colonies; a slow baseline siphon begins after N years; a hard time limit opens the gate', () => {
+        const { g, site, st } = rolled();
+        const [a] = normalsOf(g);
+        const year = 360 * GAME_DAY_LENGTH;
+        // the pool: plenty of start-independent worlds, no fallback
+        expect(st.rollDate).toBe(galaxyStarDate(g));
+        const extra = a.colonies.filter((c) => c !== a.capital);
+        expect(extra.length).toBeGreaterThanOrEqual(2);
+        for (const c of extra) if (!st.formerIndependents.includes(c)) st.formerIndependents.push(c);
+        const small = extra[0];
+        const big = extra[1];
+        small.population.totalAmount = 10_000_000;
+        big.population.totalAmount = 900_000_000;
+        expect(corruptCandidates(g, st).length).toBeGreaterThanOrEqual(3);
+        // exhausted: fewer than beaconCorruptMinPool left (here: none start independent): any small, low-population colony, never a capital or a big one
+        st.formerIndependents = [];
+        const cands = corruptCandidates(g, st);
+        expect(cands).toContain(small);
+        expect(cands).not.toContain(big);
+        expect(cands).not.toContain(a.capital);
+        expect(cands.every((c) => c.population.totalAmount <= 30_000_000)).toBe(true);
+        g.scenario!.params.beaconCorruptFallbackPop = 0;
+        expect(corruptCandidates(g, st)).toHaveLength(0);
+        delete g.scenario!.params.beaconCorruptFallbackPop;
+        // the baseline siphon: nothing before beaconSiphonBaselineYears, 15 a month after
+        const credit = (): number => {
+            siphonPass(g, st);
+            const before = st.siphon!.total;
+            g.nowMs += 30 * GAME_DAY_LENGTH;
+            siphonPass(g, st);
+            return st.siphon!.total - before;
+        };
+        setTech5(a, 0);
+        expect(credit()).toBe(0);
+        st.rollDate = galaxyStarDate(g) - 11 * year;
+        expect(credit()).toBeCloseTo(15, 5);
+        expect(siphonOf(g, st).rate).toBe(15);
+        // the hard limit: the gate is open after beaconSiphonMaxYears whatever was taken
+        st.siphon!.total = 0;
+        st.rollDate = galaxyStarDate(g) - 29 * year;
+        expect(siphonGateOpen(g, st)).toBe(false);
+        expect(beaconKind.canComplete!(g, site)).toBe(false);
+        st.rollDate = galaxyStarDate(g) - 31 * year;
+        expect(siphonGateOpen(g, st)).toBe(true);
+        expect(beaconKind.canComplete!(g, site)).toBe(true);
+        siphonPass(g, st);
+        expect(st.siphon!.gateDate).toBeGreaterThan(0);
+        g.scenario!.params.beaconSiphonMaxYears = 0; // 0: no limit
+        st.siphon!.total = 0;
+        expect(siphonGateOpen(g, st)).toBe(false);
     }, 900000);
 
     it('the dwell grows with the world\'s population (30 to 150 days), a restarted dwell after the Watcher defends itself, and the gap starts after the dwell', () => {

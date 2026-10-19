@@ -238,6 +238,7 @@ export function beaconRolled(galaxy: Galaxy, site: GreatWorkSite): void {
     const now = galaxyStarDate(galaxy);
     const rnd = beaconRandom(galaxy, st, 1);
     st.formerIndependents = galaxy.independentColonies.filter((c) => !c.hasBeenDestroyed);
+    st.rollDate = now;
     const a0 = rnd.nextDouble() * Math.PI * 2;
     const count = P.watcherCount(galaxy);
     const homes = Array.from({ length: count }, (_, i) => rimPoint(galaxy, a0 + (i * Math.PI * 2) / count + (rnd.nextDouble() - 0.5) * 0.6));
@@ -373,7 +374,17 @@ function placeName(galaxy: Galaxy, o: { xpos: number; ypos: number }): string {
 /** Former-independent colonies a Watcher may corrupt: alive, populated, not already corrupted, not in the Reclaimers' hands. Pure. */
 export function corruptCandidates(_galaxy: Galaxy, st: BeaconState): Habitat[] {
     const taken = new Set<Habitat>(st.corrupted.filter((c) => c.ended === null).map((c) => c.colony));
-    return st.formerIndependents.filter((c) => !c.hasBeenDestroyed && c.population.totalAmount > 0 && !taken.has(c) && c.empire !== st.faction && !recentlyPurged(_galaxy, st, c));
+    const free = (c: Habitat): boolean => !c.hasBeenDestroyed && c.population.totalAmount > 0 && !taken.has(c) && c.empire !== st.faction && !recentlyPurged(_galaxy, st, c);
+    const primary = st.formerIndependents.filter(free);
+    if (primary.length >= P.corruptMinPool(_galaxy)) return primary;
+    // the pool of start-independent worlds is exhausted or tiny: any small, low-population colony will do (never a capital)
+    const max = P.corruptFallbackPop(_galaxy);
+    const out = [...primary];
+    for (const e of _galaxy.empires) {
+        if (e === null || !e.active || e === st.faction || e.pirateEmpireBaseHabitat !== null) continue;
+        for (const c of e.colonies) if (e.capital !== c && !out.includes(c) && free(c) && c.population.totalAmount <= max) out.push(c);
+    }
+    return out;
 }
 
 /** Corrupts `colony` now: its governor (a new one if it has none) and people quietly serve the Beacon. Draws galaxy.rnd only through governor creation. */

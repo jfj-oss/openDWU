@@ -13,6 +13,8 @@ import type { BuiltObject } from '../../../builtObject';
 import type { Character } from '../../../characters';
 import { Random } from '../../../random';
 import { scenarioParam } from '../../state';
+import { galaxyStarDate } from '../../../tick/simTime';
+import { GAME_DAY_LENGTH } from '../../hooks';
 import { peekThreatState, threatState, type SentStages, type ThreatKnowledge } from '../framework';
 import type { GreatWorkSite } from './types';
 
@@ -459,6 +461,8 @@ export interface BeaconState {
     reclamationDate: number;
     /** The siphon (created on first use: absent in older saves, where it starts at the share the build had made). */
     siphon?: SiphonRec;
+    /** Star date the Watchers appeared (absent in older saves: the first siphon pass sets it). */
+    rollDate?: number;
     /** Cattle interceptions per held world (beaconHarvest.ts escorts). */
     intercepts?: InterceptRec[];
     /** The research moratorium the Diet passed last (beaconDiet.ts): who breaks it, the breaches seen and who was sanctioned. */
@@ -540,7 +544,11 @@ export function siphonOf(galaxy: Galaxy, st: BeaconState): SiphonRec {
 
 /** The Beacon may be completed: enough tech-5 knowledge has been siphoned (always once the Reclamation has begun). Pure but for the lazy record. */
 export function siphonGateOpen(galaxy: Galaxy, st: BeaconState): boolean {
-    return st.phase !== 'watching' || siphonOf(galaxy, st).total >= P.siphonRequired(galaxy);
+    if (st.phase !== 'watching') return true;
+    if (siphonOf(galaxy, st).total >= P.siphonRequired(galaxy)) return true;
+    // the hard upper limit: after beaconSiphonMaxYears the Beacon ripens whatever was siphoned
+    const max = P.siphonMaxYears(galaxy);
+    return max > 0 && st.rollDate !== undefined && galaxyStarDate(galaxy) - st.rollDate >= max * 360 * GAME_DAY_LENGTH;
 }
 
 /** A private Random for one decision (never galaxy.rnd): seeded from the galaxy seed, a salt and the state's counter. */
@@ -581,6 +589,13 @@ export const P = {
     /** The siphon: knowledge needed before the Beacon can be completed, and points a month per tech-5 technology of the donor empire, per corrupted world. */
     siphonRequired: (g: Galaxy) => Math.max(0, p(g, 'beaconSiphonRequired', 3000)),
     siphonRate: (g: Galaxy) => Math.max(0, p(g, 'beaconSiphonRate', 0.5)),
+    /** Fallbacks so the Beacon cannot stall for ever: a slow baseline siphon (points a month) after this many years since the Watchers appeared, the Beacon completable regardless after beaconSiphonMaxYears; the Watchers
+     *  may corrupt any colony of up to beaconCorruptFallbackPop million people when fewer than beaconCorruptMinPool of the start-independent worlds are left. */
+    siphonBaseline: (g: Galaxy) => Math.max(0, p(g, 'beaconSiphonBaseline', 15)),
+    siphonBaselineYears: (g: Galaxy) => Math.max(0, p(g, 'beaconSiphonBaselineYears', 10)),
+    siphonMaxYears: (g: Galaxy) => Math.max(0, p(g, 'beaconSiphonMaxYears', 30)),
+    corruptFallbackPop: (g: Galaxy) => Math.max(0, p(g, 'beaconCorruptFallbackPop', 30)) * 1e6,
+    corruptMinPool: (g: Galaxy) => Math.max(0, Math.trunc(p(g, 'beaconCorruptMinPool', 3))),
     /** Purge: the rebels' ground strength for a max-population colony (beaconPurgeRebelPopFull, millions), the floor for a tiny one,  and the least (%) of it the owner's defenders must outweigh before the AI tries; days a purged world is left alone by the Watchers. */
     purgeRebelStrength: (g: Galaxy) => p(g, 'beaconPurgeRebelStrength', 750000),
     purgeRebelMin: (g: Galaxy) => Math.max(1200, p(g, 'beaconPurgeRebelMin', 50000)),
