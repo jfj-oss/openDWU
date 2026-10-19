@@ -1337,9 +1337,33 @@ function topUpGuard(galaxy: Galaxy, st: BeaconState): void {
         have += strengthOf(bo);
         if (!(strengthOf(bo) > 0)) break;
     }
-    // Hold station at the Beacon: Patrol its star.
-    const star = st.site?.system.systemStar ?? null;
-    if (star !== null) for (const b of st.guards) if (distTo(galaxy, b, pos.x, pos.y) <= 40000) patrol(galaxy, b, star);
+}
+
+/** Days a roaming guard ship stays on one world's patrol before it moves on to the next. */
+const GUARD_ROAM_DAYS = 20;
+
+/**
+ * The guard patrols the Beacon's system instead of sitting on the station: one ship in three holds the Beacon's own orbit, the rest take the
+ * system's worlds in turn (every GUARD_ROAM_DAYS they shift one world along, so each world and approach is covered), engaging intruders as a
+ * stock patrol does. A guard that has strayed far (a chase that ended, a stranded ship) is called back the same way. Rnd: none.
+ */
+function guardPatrols(galaxy: Galaxy, st: BeaconState): void {
+    const pos = beaconPosition(st);
+    if (pos === null) return;
+    const system = st.site?.system ?? null;
+    const star = system?.systemStar ?? null;
+    if (star === null) return;
+    const hold = st.site?.habitat ?? star;
+    const worlds = (system?.habitats ?? []).filter((h) => !h.hasBeenDestroyed && h !== hold);
+    const turn = Math.floor((galaxyStarDate(galaxy) - st.completeDate) / days(GUARD_ROAM_DAYS));
+    st.guards = aliveShips(st.guards, st.faction);
+    st.guards.forEach((b, i) => {
+        const strayed = distTo(galaxy, b, pos.x, pos.y) > 40000;
+        const m = builtObjectMission(b.mission);
+        if (strayed && m !== null && m.type === BuiltObjectMissionType.Attack && m.targetBuiltObject !== null && !m.targetBuiltObject.hasBeenDestroyed) return; // still on a chase
+        const to = i % 3 === 0 || worlds.length === 0 ? hold : worlds[(i + turn) % worlds.length];
+        patrol(galaxy, b, to);
+    });
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1397,6 +1421,7 @@ function reclamationPass(galaxy: Galaxy, st: BeaconState, now: number): void {
         st.guardDate = now;
         topUpGuard(galaxy, st);
     }
+    if (!st.beaconDestroyed) guardPatrols(galaxy, st);
     void faction;
 }
 

@@ -670,6 +670,8 @@ export const P = {
     groupColonies: (g: Galaxy) => Math.max(0, Math.trunc(p(g, 'beaconGroupColonies', 16))),
     /** The Beacon's own guard: this many strike groups' worth of warships parked at it. */
     guardGroups: (g: Galaxy) => p(g, 'beaconGuardGroups', 2),
+    /** The Beacon station's armour plates keep this % of their reactive rating (UltraDense 10: a hit of 10 or less does nothing; the beams' damage falls with range, so a coalition of ordinary beams could never hurt it). */
+    stationReactivePct: (g: Galaxy) => Math.max(0, p(g, 'beaconStationReactivePct', 0)),
     guardCapPct: (g: Galaxy) => p(g, 'beaconGuardCapPct', 20),
     guardRampDays: (g: Galaxy) => p(g, 'beaconGuardRampDays', 720),
     // The Watcher fleets (from the Reclamation on; beaconFleet.ts)

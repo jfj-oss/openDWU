@@ -4413,6 +4413,28 @@ describe('the Beacon (Giantworks wonder)', () => {
         expect(CRISIS_ENTRIES.some((e) => e.key === 'beacon' && e.flag === 'gwBeacon')).toBe(true);
     });
 
+    it('the Beacon station\'s plates are not proof against weak hits (reactive rating 0), other ships keep theirs; the guard patrols the system and calls a stray back', () => {
+        const { g, st } = completed();
+        const beacon = st.beacon!;
+        expect(scenarioQuery(g, 'armorReactivityFactor', 1, { builtObject: beacon })).toBe(0);
+        const other = st.watchers[0].ship!;
+        expect(scenarioQuery(g, 'armorReactivityFactor', 1, { builtObject: other })).toBe(1);
+        g.scenario!.params.beaconStationReactivePct = 50;
+        expect(scenarioQuery(g, 'armorReactivityFactor', 1, { builtObject: beacon })).toBe(0.5);
+        g.nowMs += 800 * GAME_DAY_LENGTH;
+        reclamationPeriodic(g);
+        const guards = st.guards.filter((b) => !b.hasBeenDestroyed);
+        expect(guards.length).toBeGreaterThan(1);
+        const targets = new Set(guards.map((b) => builtObjectMission(b.mission)?.targetHabitat?.name ?? null));
+        expect(targets.size).toBeGreaterThan(1); // not all on one orbit: some roam the system's worlds
+        const stray = guards[1];
+        stray.xpos += 400000;
+        stray.mission = null;
+        g.nowMs += 6 * GAME_DAY_LENGTH;
+        reclamationPeriodic(g);
+        expect(builtObjectMission(stray.mission)?.type).toBe(BuiltObjectMissionType.Patrol);
+    }, 600000);
+
     it('flag off: no state, no faction, nothing runs', () => {
         const { game } = createScenarioGame(base, { scenario: comboOverlayFs(ids), flags: {}, options: age3 });
         const g = game.galaxy;

@@ -403,9 +403,11 @@ export function baconInflictDamageMultiplier(firingShip: BuiltObject): number {
     return num;
 }
 /** BaconBuiltObject.cs 96 ArmorReactivityMultiplier(target). */
-export function armorReactivityMultiplier(target: BuiltObject): number {
+export function armorReactivityMultiplier(target: BuiltObject, galaxy: Galaxy | null = null): number {
     let num = 1;
     if (baconIsMyShip(target)) num = MY_ARMOR_REACTIVITY_MULTIPLIER;
+    // Mod layer (Giantworks, the Beacon): a factor on the plates' reactive rating (the Beacon's armour is not proof against weak hits).
+    if (galaxy !== null && galaxy.scenario !== null) num = scenarioQuery(galaxy, 'armorReactivityFactor', num, { builtObject: target });
     return num;
 }
 
@@ -1132,7 +1134,7 @@ export function inflictDamageFull(
                 const iterationCount = { count: 0 };
                 while (conditionCheckLimit(builtObjectComponent !== null && num5 > 0, 500, iterationCount)) {
                     if (num5 < 1073741823 && builtObjectComponent!.value2 > 0) {
-                        let num10 = builtObjectComponent!.value2 * armorReactivityMultiplier(builtObject);
+                        let num10 = builtObjectComponent!.value2 * armorReactivityMultiplier(builtObject, galaxy);
                         if (builtObject.armorReinforcingFactor > 0) num10 = csInt(num10 * (builtObject.armorReinforcingFactor / 100.0));
                         if (weapon !== null && weapon.component !== null) {
                             const type = weapon.component.type;

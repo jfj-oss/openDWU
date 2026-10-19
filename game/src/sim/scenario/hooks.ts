@@ -558,6 +558,8 @@ export interface ScenarioQueries {
      * hit that skips the armour pass (the armour reactive-rating test and armour absorption) and goes straight to the
      * components. Stock 0 (19j: mature herder herds' bred horns). Pure, never draws.
      */
+    /** combat/damage.ts armorReactivityMultiplier (BaconBuiltObject.cs 96): the multiplier on the target's armour plates' reactive rating (value2; the stock 1, or 2 for the Bacon player's ships). */
+    armorReactivityFactor: { value: number; args: { builtObject: BuiltObject } };
     creatureArmorPierce: { value: number; args: { creature: Creature; target: BuiltObject } };
     /**
      * logistics/colonySupply.ts orderColonyLuxuryResources (Empire.4.cs 4086-4110), after the stock cheapest-first luxury

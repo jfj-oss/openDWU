@@ -1182,7 +1182,7 @@ export const beaconKind: GreatWorkKind = {
     onDestroyed: beaconDestroyedEarly,
 };
 
-export const BEACON_HANDLER_IDS = ['beacon.watchers', 'beacon.reclaim', 'beacon.monthly', 'beacon.attacked', 'beacon.killed', 'beacon.owner', 'beacon.destroyed', 'beacon.boarded', 'beacon.repair', 'beacon.troops', 'beacon.counter', 'beacon.ai', 'beacon.cloakTarget', 'beacon.cloakSpares', 'beacon.cattleSpool', 'beacon.cattle', 'beacon.selfDefence', 'beacon.noWar', 'beacon.moratorium', 'beacon.moratoriumMonthly', 'beacon.siteAttacked'] as const;
+export const BEACON_HANDLER_IDS = ['beacon.watchers', 'beacon.reclaim', 'beacon.monthly', 'beacon.attacked', 'beacon.killed', 'beacon.owner', 'beacon.destroyed', 'beacon.boarded', 'beacon.repair', 'beacon.armour', 'beacon.troops', 'beacon.counter', 'beacon.ai', 'beacon.cloakTarget', 'beacon.cloakSpares', 'beacon.cattleSpool', 'beacon.cattle', 'beacon.selfDefence', 'beacon.noWar', 'beacon.moratorium', 'beacon.moratoriumMonthly', 'beacon.siteAttacked'] as const;
 
 export function registerBeacon(): void {
     registerGreatWork(beaconKind);
@@ -1250,6 +1250,7 @@ export function registerBeacon(): void {
     });
     // Machines mend themselves in the field (the stock AI would send a damaged warship home to a port the Reclaimers do not have).
     registerScenarioQuery({ id: 'beacon.repair', flag: BEACON_FLAG, query: 'repairRateFactor', run: (g, v, a) => (peekBeaconState(g)?.faction === a.builtObject.actualEmpire ? v * (cattleRepairFactor(g, a.builtObject) ?? 4) : v) });
+    registerScenarioQuery({ id: 'beacon.armour', flag: BEACON_FLAG, query: 'armorReactivityFactor', run: (g, v, a) => { const st = peekBeaconState(g); return st !== null && st.beacon === a.builtObject ? (v * P.stationReactivePct(g)) / 100 : v; } });
     registerScenarioQuery({ id: 'beacon.troops', flag: BEACON_FLAG, query: 'troopMaintenanceFactor', run: (g, v, a) => (peekBeaconState(g)?.faction === a.empire ? 0 : v) });
     // The AI never targets a cloaked Watcher: no mission (of any empire but the faction's own) may name a ship whose cloak still hides it
     // from the ship's empire. (The stock fog already keeps its AI from picking one; story factions that pick targets without the fog,
