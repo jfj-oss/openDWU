@@ -934,9 +934,9 @@ export const P = {
     /** The siphon: knowledge needed before the Beacon can be completed, and points a month per tech-5 technology of the donor empire, per corrupted world. */
     siphonRequired: (g: Galaxy) => Math.max(0, p(g, 'beaconSiphonRequired', 2000)),
     siphonRate: (g: Galaxy) => Math.max(0, p(g, 'beaconSiphonRate', 1)),
-    /** Fallbacks so the Beacon cannot stall for ever: a baseline siphon (points a month) from the moment the scaffold waits at 99.9 % for the gate (about two years from nothing), the Beacon completable regardless after beaconSiphonMaxYears; the Watchers
+    /** Fallbacks so the Beacon cannot stall for ever: an optional baseline siphon (points a month, 0 by default: the tech stages stop the stall it was made for) from the moment the scaffold waits at 99.9 % for the gate, the Beacon completable regardless after beaconSiphonMaxYears; the Watchers
      *  may corrupt any colony of up to beaconCorruptFallbackPop million people when fewer than beaconCorruptMinPool of the start-independent worlds are left. */
-    siphonBaseline: (g: Galaxy) => Math.max(0, p(g, 'beaconSiphonBaseline', 80)),
+    siphonBaseline: (g: Galaxy) => Math.max(0, p(g, 'beaconSiphonBaseline', 0)),
     siphonMaxYears: (g: Galaxy) => Math.max(0, p(g, 'beaconSiphonMaxYears', 30)),
     corruptFallbackPop: (g: Galaxy) => Math.max(0, p(g, 'beaconCorruptFallbackPop', 30)) * 1e6,
     corruptMinPool: (g: Galaxy) => Math.max(0, Math.trunc(p(g, 'beaconCorruptMinPool', 3))),
@@ -961,6 +961,9 @@ export const P = {
     /** Build speed: +this % per corrupted world (up to the cap %); a dead Watcher multiplies it by the factor %. */
     buildBoostPct: (g: Galaxy) => p(g, 'beaconBuildBoostPct', 4),
     buildBoostCapPct: (g: Galaxy) => p(g, 'beaconBuildBoostCapPct', 50),
+    /** The build waits for the galaxy's tech (beaconTech.ts): the share of the work built at full speed when the top half's mean tech is below 2, 2, 3, 4 and 5 or more (%), and the speed past that cap (%). */
+    techCaps: (g: Galaxy) => [p(g, 'beaconTechCap1', 20), p(g, 'beaconTechCap2', 40), p(g, 'beaconTechCap3', 60), p(g, 'beaconTechCap4', 80), p(g, 'beaconTechCap5', 100)],
+    techSlowPct: (g: Galaxy) => Math.max(0, Math.min(100, p(g, 'beaconTechSlowPct', 25))),
     watcherDeadFactorPct: (g: Galaxy) => p(g, 'beaconWatcherDeadFactorPct', 40),
     sightingMinDays: (g: Galaxy) => p(g, 'beaconSightingMinDays', 220),
     sightingMaxDays: (g: Galaxy) => p(g, 'beaconSightingMaxDays', 480),

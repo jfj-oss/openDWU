@@ -218,6 +218,8 @@ import { rebuildIndexes } from '../src/sim/indexRebuild';
 import { SystemVisibilityStatus } from '../src/sim/visibility';
 import { completeWork, greatWorkIsHostile, greatWorkKind, type GreatWorkSite } from '../src/sim/scenario/threats/giantworks/framework';
 import { defaultMessageOptions, routeEmpireMessage } from '../src/sim/messageRouting';
+import { beaconTechCap, beaconTechSlowed, topHalfTech } from '../src/sim/scenario/threats/giantworks/beaconTech';
+import { siteTexts } from '../src/sim/scenario/threats/giantworks/knowledge';
 import { beaconMapFeatures, watcherVariant, beaconBuildRate, beaconComplete, beaconEndCheck, beaconKind, beaconKnownSites, beaconLooks, beaconRolled, beaconShipRole, beaconSuppliers, cloakLapsedFor, corrupt, corruptCandidates, watchersPeriodic } from '../src/sim/scenario/threats/giantworks/beacon';
 import { beaconPosition, peekBeaconState, salvageStepsOf, warOn, siphonGateOpen, siphonOf, type BeaconState, type CattleRec } from '../src/sim/scenario/threats/giantworks/beaconState';
 import { performResearch } from '../src/sim/researchTick';
@@ -4539,6 +4541,63 @@ describe('the Beacon (Giantworks wonder)', () => {
         expect(cloakLapsedFor(ship, b, galaxyStarDate(g))).toBe(true);
     }, 900000);
 
+    it('tech stages: the Beacon builds at full speed up to a cap that follows the top half\'s tech, at 25% beyond it', () => {
+        const { g, site } = rolled();
+        const es = ordinaryEmpires(g);
+        expect(es.length).toBeGreaterThanOrEqual(3);
+        // give every empire exactly the techs of one level: researched flags on a tree of the level only (cheap: set the max by toggling nodes)
+        const setLevel = (e: Empire, lvl: number): void => {
+            for (const n of e.research.techTree) n.isResearched = n.def.techLevel <= lvl;
+        };
+        const all = (lvl: number): void => es.forEach((e) => setLevel(e, lvl));
+        const caps: Array<[number, number]> = [[1, 0.2], [2, 0.4], [3, 0.6], [4, 0.8], [5, 1], [6, 1]];
+        for (const [lvl, cap] of caps) {
+            all(lvl);
+            expect(topHalfTech(g)).toBe(lvl);
+            expect(beaconTechCap(g)).toBeCloseTo(cap, 9);
+            site.progress = Math.max(0, cap - 0.01);
+            expect(beaconBuildRate(g, site)).toBe(1);
+            expect(beaconTechSlowed(g, site.progress)).toBe(false);
+            if (cap < 1) {
+                site.progress = cap;
+                expect(beaconBuildRate(g, site)).toBeCloseTo(0.25, 9);
+                expect(beaconTechSlowed(g, site.progress)).toBe(true);
+            } else {
+                site.progress = 0.999;
+                expect(beaconBuildRate(g, site)).toBe(1);
+            }
+        }
+        // the top half only (rounded up): with n empires the best ceil(n/2) count
+        const n = es.length;
+        const half = Math.ceil(n / 2);
+        es.forEach((e, i) => setLevel(e, i < half ? 5 : 1));
+        expect(topHalfTech(g)).toBe(5);
+        es.forEach((e, i) => setLevel(e, i < half ? 4 : 1));
+        expect(topHalfTech(g)).toBe(4);
+        // a fractional mean steps down on floor: 4 and 3 -> 3.5 -> cap of tech 3
+        if (half >= 2) {
+            es.forEach((e, i) => setLevel(e, i === 0 ? 4 : i < half ? 3 : 1));
+            expect(topHalfTech(g)).toBeCloseTo((4 + 3 * (half - 1)) / half, 9);
+            expect(beaconTechCap(g)).toBeCloseTo(0.6, 9);
+        }
+        // the parameters
+        all(1);
+        g.scenario!.params.beaconTechCap1 = 50;
+        g.scenario!.params.beaconTechSlowPct = 10;
+        site.progress = 0.5;
+        expect(beaconBuildRate(g, site)).toBeCloseTo(0.1, 9);
+        delete g.scenario!.params.beaconTechCap1;
+        delete g.scenario!.params.beaconTechSlowPct;
+        // the status text (selection label and Intelligence status) while it is held back
+        const w = { ...site, phase: 'building', knowledge: [], suppliers: [], seenBy: [] } as unknown as GreatWorkRecord;
+        w.progress = 0.5;
+        all(1);
+        expect(siteTexts(g, w, es[0]).status).toContain('Progress slowed: it waits for something');
+        expect(siteTexts(g, w, es[0]).label).toContain('Progress slowed: it waits for something');
+        all(5);
+        expect(siteTexts(g, w, es[0]).status).not.toContain('Progress slowed');
+    }, 900000);
+
     it('corruption: a corrupted world speeds the build up and sends freighters; a dead Watcher slows it sharply; purging ends it', () => {
         const { g, site, st } = rolled();
         const base1 = beaconBuildRate(g, site);
@@ -4673,6 +4732,10 @@ describe('the Beacon (Giantworks wonder)', () => {
         gw.phase = 'building';
         gw.progress = 0.999;
         gw.base = a.builtObjects.find((o) => !o.hasBeenDestroyed)!;
+        // by default there is no baseline (the tech stages stop the stall): a held scaffold with no tech-5 empire siphons nothing
+        expect(credit()).toBe(0);
+        expect(siphonOf(g, st).rate).toBe(0);
+        g.scenario!.params.beaconSiphonBaseline = 80; // the optional baseline, set explicitly
         expect(credit()).toBeCloseTo(80, 5);
         expect(siphonOf(g, st).rate).toBe(80);
         expect(siphonOf(g, st).holdSince).toBeGreaterThan(0);
@@ -4685,6 +4748,7 @@ describe('the Beacon (Giantworks wonder)', () => {
         }
         expect(months).toBeGreaterThanOrEqual(24);
         expect(months).toBeLessThanOrEqual(30);
+        delete g.scenario!.params.beaconSiphonBaseline;
         // the hard limit: the gate is open after beaconSiphonMaxYears whatever was taken
         st.siphon!.total = 0;
         st.rollDate = galaxyStarDate(g) - 29 * year;

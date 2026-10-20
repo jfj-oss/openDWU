@@ -30,6 +30,7 @@ import {
 } from '../framework';
 import { registerThreatInvestigation } from '../investigate';
 import { blockadeNote } from './blockade';
+import { beaconTechSlowed } from './beaconTech';
 import { enabledKinds } from './founders';
 import { greatWorkKind, kindMenace, kindValue } from './registry';
 import { GW_KEY, gwParam, ordinaryEmpires, peekGwState, TAG, type GreatWorkRecord } from './state';
@@ -268,6 +269,7 @@ export function siteTexts(galaxy: Galaxy, work: GreatWorkRecord, e: Empire): { l
     let purpose = scenarioText(`${TAG} Purpose Unknown`);
     const bn = blockadeNote(galaxy, work);
     if (bn !== null) purpose += ' ' + scenarioText(`${TAG} Blockade Speed`, bn.pct, bn.held, bn.of);
+    if (work.wonder === 'beacon' && beaconTechSlowed(galaxy, work.progress)) purpose += ' ' + scenarioText(`${TAG} Tech Wait`); // (its build waits for the galaxy's technology)
     return { label: scenarioText(`${TAG} Label Building`, progressPct(work), purpose), status: scenarioText(`${TAG} Status Building`, stage, progressPct(work), purpose), level };
 }
 

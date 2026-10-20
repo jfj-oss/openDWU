@@ -113,7 +113,7 @@ export function siphonPass(galaxy: Galaxy, st: BeaconState): void {
         if (donor !== null) rec.byEmpire[String(donor.empireId)] = (rec.byEmpire[String(donor.empireId)] ?? 0) + take;
         st.stats.siphoned = (st.stats.siphoned ?? 0) + take;
     }
-    // the scaffold waits at 99.9 % for the gate: the baseline siphon begins (a galaxy with no tech-5 empire still ripens in about two years)
+    // the scaffold waits at 99.9 % for the gate: the optional baseline siphon begins (beaconSiphonBaseline, 0 by default)
     const holding = holdingAtGate(galaxy, st);
     if (holding && rec.holdSince === undefined) rec.holdSince = now;
     if (holding && dt > 0 && P.siphonBaseline(galaxy) > 0) {

@@ -122,6 +122,7 @@ import { registerPursuit } from './beaconPursuit';
 import { dwellDaysFor, holdingAtGate, purgePass, purgeRebelStrength, recentlyPurged, siphonPass, siphonStatus } from './beaconSiphon';
 import { addProgress } from './lifecycle';
 import { unblockaded } from './blockade';
+import { beaconTechSlowed } from './beaconTech';
 import './beaconDiet';
 import { ensureFoundries, foundryOf, registerFoundry } from './beaconFoundry';
 import { registerMega } from './megaStation';
@@ -1078,14 +1079,15 @@ function onKilledBy(galaxy: Galaxy, bo: BuiltObject, destroyer: Empire | null): 
 // The build: speed and suppliers
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Build speed: each corrupted world speeds the Great Work up; a dead Watcher slows it sharply. Pure. */
-export function beaconBuildRate(galaxy: Galaxy, _site: GreatWorkSite): number {
+/** Build speed: each corrupted world speeds the Great Work up; a dead Watcher slows it sharply; past the stage the galaxy's tech allows it crawls. Pure. */
+export function beaconBuildRate(galaxy: Galaxy, site: GreatWorkSite): number {
     const st = peekBeaconState(galaxy);
     if (st === null) return 1;
     const boost = Math.min(P.buildBoostCapPct(galaxy), P.buildBoostPct(galaxy) * unblockaded(galaxy, activeCorruption(st).map((c) => c.colony)).length); // (a blockaded corrupted world speeds nothing up)
     let rate = 1 + boost / 100;
     const dead = st.watchers.filter((w) => w.dead).length;
     for (let i = 0; i < dead; i++) rate *= P.watcherDeadFactorPct(galaxy) / 100;
+    if (beaconTechSlowed(galaxy, site.progress)) rate *= P.techSlowPct(galaxy) / 100; // (it waits for the galaxy's technology)
     return rate;
 }
 

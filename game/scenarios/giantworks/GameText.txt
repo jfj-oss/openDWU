@@ -37,6 +37,7 @@ Giantworks Blockade Started;The convoys from {0} have stopped: {1} holds its orb
 Giantworks Blockade Speed Note;The Great Work now builds at {0}% of its speed.
 Giantworks Blockade Lifted Title;Convoys sail again from {0}
 Giantworks Blockade Lifted;The blockade of {0} by {1} is over: its convoys sail again.
+Giantworks Tech Wait;Progress slowed: it waits for something.
 Giantworks Blockade Speed;Build speed {0}% ({1} of {2} founding worlds blockaded or taken).
 Giantworks Protected Title;The Compact remembers
 Giantworks Protected;Our warships have stood watch over the Great Work at {0} for a year. The Founders' Compact has noted it.
