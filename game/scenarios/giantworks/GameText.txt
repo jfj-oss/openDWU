@@ -546,3 +546,41 @@ Mega Know Status blockaded;TODO-PROSE: blockaded: {0}% done, nothing arrives; if
 Mega Know Status idle;TODO-PROSE: waiting for freighters: {0}% done, the parts allow {1}%
 Mega Know Status dormant;TODO-PROSE: asleep since the Long Night: {0}% done; it needs finding and a new Diet vote to resume
 Mega Know Status fired;TODO-PROSE: fired
+Mega Base Name;The Severance ({0})
+Mega Motion Text;Build the Severance at {0}, led by the {1}
+Mega Motion Effect;The Diet backs the building of the Severance in the empty void at the place named. Every member that votes yes and stands well with the builder hands over the parts it holds; the others keep theirs. Contributing empires send up to a fifth of their private freighters to it. It takes decades, builds no faster than the parts allow, cannot be harmed and cannot be armed.
+Mega Resume Text;Resume the building of the Severance, led by the {0}
+Mega Resume Effect;The half-built Severance, found again after the Long Night, is taken up once more. Members that vote yes and stand well with the builder hand over their parts; construction continues where it stopped.
+Mega Started Title;The Severance Begins
+Mega Started;The Diet has voted, and for once the galaxy has answered together. Out in the empty dark at {0}, where nothing has ever been built, the first frames of the Severance are rising.\n\nThe parts gathered so far will carry it to {1}%. They came from: {2}. Some kept theirs back: {3}.\n\nIt will take about {4} years of building. Whoever lives to see it finished will see the harvest's own path turned against it.
+Mega Started News;The Diet has voted to build the Severance in the empty void at {1}, led by the {0}.
+Mega Resumed Title;The Work Is Taken Up Again
+Mega Resumed;Across the gulf of the Long Night, hands that never knew its builders take up the work at {0}. It stands {1}% complete; the parts now gathered will carry it to {2}%. They came from: {3}. Some kept theirs back: {4}.
+Mega Resumed News;The Diet has voted to resume the half-built Severance at {1}, led by the {0}.
+Mega Refused News;The Diet has refused the {0}'s motion to build the Severance.
+Mega Blockade Title;The Severance Is Cut Off
+Mega Blockade;The {0} holds the space around the Severance. Nothing reaches it. The work has stopped, and every year no freighter gets through, a little of what was built is lost.
+Mega Lifted Title;The Way Is Open Again
+Mega Lifted;The space around the Severance is clear. The freighters are getting through, and the work goes on.
+Mega Stalled Title;It Waits for What It Lacks
+Mega Stalled;The Severance stands at {0}%, as far as the parts we hold will carry it. The builders can do nothing more until we bring them: {1}.
+Mega Found Title;Something Was Built Here
+Mega Found;Out in the void at {0}, where no star has ever burned, one of our ships has found a structure larger than any world, {1}% complete and silent.\n\nNo one living built it. Whoever began it stopped, and never came back. The Diet could vote to finish what they started.
+Mega Fired Title;The Path Burns Back
+Mega Fired;The Severance is whole. With the {0} at its heart, it fires: back along the path the harvest has always travelled, all the way to wherever it begins.\n\nThe light is visible from every world in the galaxy. Then it is gone, and the dark is only dark.
+Mega Know Nobody;not found yet
+Mega Know Held;held by {0}.
+Mega Know Pooled;in the Severance, from {0}.
+Mega Know Count;{0} of {1}
+Mega Know Blueprint;Our blueprint
+Mega Know No Blueprint;not begun (it starts when one of our ships reaches the drifting planet)
+Mega Know Blueprint Done;finished: we may move that the Severance be built
+Mega Know Blueprint Pct;{0}% researched
+Mega Know Structure;The Severance
+Mega Know Unknown Place;place unknown
+Mega Know Status building;building: {0}% done, the parts allow {1}%, about {2} years of active building in all
+Mega Know Status stalled;waiting for parts: {0}% done, the parts allow {1}%; still lacking {3}
+Mega Know Status blockaded;blockaded: {0}% done, nothing arrives; if freighters keep failing to arrive it decays
+Mega Know Status idle;waiting for freighters: {0}% done, the parts allow {1}%
+Mega Know Status dormant;asleep since the Long Night: {0}% done; it needs finding and a new Diet vote to resume
+Mega Know Status fired;fired
