@@ -226,27 +226,27 @@ Beacon Rising;The corrupted people of {0} have risen and declared for the Reclai
 Beacon Rising News;{0}, a world of {1}, has risen in revolt and joined the Reclaimers.
 Beacon Destroyer News;A Reclaimer planet destroyer is on its way to {0}.
 Beacon Planet Destroyed News;The Reclaimers have destroyed {0}, with {1} million people on it.
-Beacon Beacon Destroyed News;TODO-PROSE: Beacon destroyed news ({0}=destroying empire, may be empty). Must NOT say the war is over (the Reclamation carries on).
-Beacon Diet Hope News;TODO-PROSE: Galactic Diet line, once, when the Beacon first fires (Diet on): presents destroying the Beacon as the way to end the Reclaimers.
-Beacon Diet Hail News;TODO-PROSE: Galactic Diet line, once, when the Beacon is destroyed after it fired (Diet on): hails the end of the Reclamation ({0}=destroying empire).
-Beacon Lens Title;TODO-PROSE: beam lens popup title
-Beacon Lens;TODO-PROSE: beam lens popup, vague warning that it may be turned against them given enough time to study and integrate it ({0}=empire)
-Beacon Reveal Title;TODO-PROSE: drifting planet reveal popup title
-Beacon Reveal;TODO-PROSE: drifting planet reveal popup, every human, 1 year after the first beam ({0}=sector of the planet)
-Beacon Reveal News;TODO-PROSE: drifting planet reveal ticker line ({0}=sector of the planet)
-Beacon Blueprint Title;TODO-PROSE: blueprint popup title
-Beacon Blueprint;TODO-PROSE: blueprint popup, when your ship reaches the planet ({0}=research cost in points, {1}=share of your research it takes in %)
-Beacon Blueprint News;TODO-PROSE: first empire to reach the planet ({0}=empire)
-Beacon Blueprint Done Title;TODO-PROSE: blueprint finished popup title
-Beacon Blueprint Done;TODO-PROSE: blueprint finished popup
-Beacon Broken Title;TODO-PROSE: victory title, the Reclaimers' assets broken
-Beacon Broken News;TODO-PROSE: victory news, the Reclaimers' assets broken ({0}=% of their peak destroyed)
-Beacon Mega Title;TODO-PROSE: victory title, the mega-station fired
-Beacon Mega News;TODO-PROSE: victory news, the mega-station fired
-Beacon Part Gained Title;TODO-PROSE: part gained title
-Beacon Part Gained;TODO-PROSE: part gained ({0}=part name, {1}=how many you hold, {2}=how many are needed)
-Beacon Parts Captured Title;TODO-PROSE: parts captured title
-Beacon Parts Captured;TODO-PROSE: a capital fell and its parts went to the captor ({0}=empire that lost the capital, {1}=captor)
+Beacon Beacon Destroyed News;The Beacon at the edge of the dark has fallen. Its light is out. Their ships have not turned back.
+Beacon Diet Hope News;The Galactic Diet has met in emergency session. Its scholars are unanimous: the machines answer the Beacon. Silence it, and the harvest ends.
+Beacon Diet Hail News;The Diet declares the Beacon destroyed by {0} and the danger past. Celebrations are planned on a hundred worlds.
+Beacon Lens Title;What Was Left in the Fire
+Beacon Lens;Our salvage teams found it at the heart of the wreck, untouched by the blast that broke everything around it: a lens the size of a moon's shadow, still focused on a point no instrument can find.\n\nThe Diet celebrates. The machines have not slowed.\n\nOur physicists say the lens did not make the beam. It aimed it, back along something already there. Given years to study it, and the means to build around it, it might be made to aim the other way.
+Beacon Reveal Title;A World Between the Stars
+Beacon Reveal;For a year the signal went unanswered. Now every observatory hears it at once: a slow, patient call from the empty dark of {0}, where no star has ever burned.\n\nIt is a world. Cold, starless, drifting, and older than any of ours. Something there has been waiting a very long time for someone to ask the right question.
+Beacon Reveal News;A signal from a starless world in {0} has reached every observatory in the galaxy.
+Beacon Blueprint Title;The Plans of the Ones Before
+Beacon Blueprint;They knew. Whoever lived on this world saw the Beacon light, saw the ships come, and understood what was happening long before the end.\n\nThey began building something against it. They did not finish. They left the plans: a structure larger than any world, built in the empty space between the stars, made to strike back along the very path the harvest travels.\n\nOur researchers estimate {0} points of work just to understand it. Until we choose otherwise, {1}% of our research will go to that task.
+Beacon Blueprint News;{0} has reached the starless world first.
+Beacon Blueprint Done Title;We Understand It Now
+Beacon Blueprint Done;The plans are complete. We know what they meant to build, and why. What remains is gathering what it needs, and the time to build it.
+Beacon Broken Title;The Machines Are Broken
+Beacon Broken News;{0}% of everything they brought against us is wreckage now. The few that remain have gone silent and scattered. The harvest is over, for this age at least.
+Beacon Mega Title;The Path Burns Back
+Beacon Mega News;The great structure fired along the harvest's own path. Whatever was waiting at the other end of it will not call again.
+Beacon Part Gained Title;A Piece of It
+Beacon Part Gained;We have recovered {0}. Our engineers do not yet know how it fits, only that it does: {1} of the {2} we will need.
+Beacon Parts Captured Title;The Parts Change Hands
+Beacon Parts Captured;With the fall of its capital, {0}'s recovered machine parts now belong to {1}.
 Beacon Part Beam Lens;Beam lens
 Beacon Part Link Conduit;Link conduit
 Beacon Part Cloak Lattice;Cloak lattice
