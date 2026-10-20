@@ -200,7 +200,6 @@ export function workOfBase(galaxy: Galaxy, bo: BuiltObject | null): GreatWorkRec
 
 const DEFAULTS = {
     giantworksCount: 0,
-    giantworksBigGalaxyStars: 1400,
     giantworksExistChancePct: 100,
     giantworksFounderRangeSectors: 2,
     giantworksCapitalSectors: 4,

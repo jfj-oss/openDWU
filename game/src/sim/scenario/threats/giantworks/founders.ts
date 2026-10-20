@@ -193,6 +193,28 @@ export function pickFounders(galaxy: Galaxy, offset: number, used: ReadonlySet<H
     return { circles, pilgrims };
 }
 
+/**
+ * The founding circles for `offset`: a small galaxy cannot keep the founders as far from every capital, so the distance step is
+ * relaxed until two circles of real independent worlds fit (else until two circles fit, pilgrim colonies included). Founds the
+ * pilgrim colonies it picks. Fewer than two circles in the result: nothing fits.
+ */
+export function chooseCircles(galaxy: Galaxy, offset: number, used: ReadonlySet<Habitat>): FoundersPick {
+    const full = gwParam(galaxy, 'giantworksCapitalSectors');
+    const steps = [...new Set([full, Math.floor(full * 0.75), Math.floor(full / 2), 1, 0])].filter((x) => x <= full);
+    let circles: Habitat[][] = [];
+    let pilgrims: Habitat[] = [];
+    for (const needReal of [true, false]) {
+        for (const capSectors of steps) {
+            const dry = pickFounders(galaxy, offset, used, capSectors, false);
+            if ((needReal ? dry.circles.length - dry.pilgrims.length : dry.circles.length) < 2) continue;
+            ({ circles, pilgrims } = pickFounders(galaxy, offset, used, capSectors, true));
+            break;
+        }
+        if (circles.length >= 2) break;
+    }
+    return { circles, pilgrims };
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // The site
 // ---------------------------------------------------------------------------------------------------------------
@@ -246,11 +268,13 @@ export function siteHabitat(galaxy: Galaxy, sys: SystemInfo): Habitat | null {
 export function pickSite(galaxy: Galaxy, x: number, y: number): SystemInfo | null {
     const bases = systemsWithBases(galaxy);
     const caps = capitals(galaxy);
+    const taken = new Set<SystemInfo>(); // another live Great Work's site (two works never share a system)
+    for (const w of peekGwState(galaxy)?.sites ?? []) if (w.phase !== 'abandoned' && w.phase !== 'destroyed') taken.add(w.system);
     for (const strict of [true, false]) {
         let best: SystemInfo | null = null;
         let bd = Number.MAX_VALUE;
         for (const sys of galaxy.systems) {
-            if (sys === null || sys === undefined || siteBlocked(galaxy, sys, bases, caps, strict) !== null) continue;
+            if (sys === null || sys === undefined || taken.has(sys) || siteBlocked(galaxy, sys, bases, caps, strict) !== null) continue;
             const d = galaxy.calculateDistance(sys.systemStar.xpos, sys.systemStar.ypos, x, y);
             if (d < bd || (d === bd && best !== null && sys.systemStar.systemIndex < best.systemStar.systemIndex)) {
                 bd = d;
@@ -277,11 +301,11 @@ export function circlesCentroid(circles: readonly (readonly Habitat[])[]): { x: 
 // Seeding
 // ---------------------------------------------------------------------------------------------------------------
 
-/** The number of Great Works: the option, or 1 (2 in galaxies of more than `giantworksBigGalaxyStars` stars). Pure. */
+/** The number of Great Works: the option, or 2 (the first the Beacon, see seedGreatWorks). Pure. */
 export function greatWorkCount(galaxy: Galaxy): number {
     const n = Math.trunc(gwParam(galaxy, 'giantworksCount'));
     if (n > 0) return n;
-    return galaxy.systems.length > gwParam(galaxy, 'giantworksBigGalaxyStars') ? 2 : 1;
+    return 2;
 }
 
 function yearsToDate(galaxy: Galaxy, years: number): number {
@@ -301,21 +325,7 @@ export function seedOne(galaxy: Galaxy, st: GreatWorksState, rnd: Random, index:
     const used = new Set<Habitat>();
     for (const w of st.sites) for (const h of w.founders) used.add(h);
     const offset = rnd.nextDouble() * (TWO_PI / WEDGES) + index * (Math.PI / 3);
-    // A small galaxy cannot keep the founders as far from every capital: relax the distance step by step until two circles of real
-    // independent worlds fit (else until two circles fit, pilgrim colonies included).
-    const full = gwParam(galaxy, 'giantworksCapitalSectors');
-    const steps = [...new Set([full, Math.floor(full * 0.75), Math.floor(full / 2), 1, 0])].filter((x) => x <= full);
-    let circles: Habitat[][] = [];
-    let pilgrims: Habitat[] = [];
-    for (const needReal of [true, false]) {
-        for (const capSectors of steps) {
-            const dry = pickFounders(galaxy, offset, used, capSectors, false);
-            if ((needReal ? dry.circles.length - dry.pilgrims.length : dry.circles.length) < 2) continue;
-            ({ circles, pilgrims } = pickFounders(galaxy, offset, used, capSectors, true));
-            break;
-        }
-        if (circles.length >= 2) break;
-    }
+    const { circles, pilgrims } = chooseCircles(galaxy, offset, used);
     if (circles.length < 2) {
         logGw(galaxy, galaxyStarDate(galaxy), `only ${circles.length} founding circle(s)`);
         return null;

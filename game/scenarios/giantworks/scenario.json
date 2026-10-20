@@ -8,13 +8,12 @@
     { "name": "gwCasino", "label": "The Gilded Orbit (resort and casino)", "description": "May be the Great Work: a huge resort, perhaps a smugglers' front.", "default": true },
     { "name": "gwUltramind", "label": "The Ultramind (supercomputer)", "description": "May be the Great Work: a planet-sized supercomputer that can decide it is being abused.", "default": true },
     { "name": "gwSanctuary", "label": "The Leviathan Sanctuary (void aquarium)", "description": "May be the Great Work: a glass sphere of live void whales, with a small chance of a breach.", "default": true },
-    { "name": "gwBeacon", "label": "The Beacon", "description": "May be the Great Work: a relay that calls the Reclaimers. Only rolled in galaxies of six or more empires.", "default": true },
-    { "name": "gwBeaconGuaranteed", "label": "Guarantee the Beacon", "description": "The first Great Work is certain to be the Beacon (needs The Beacon above; ignores the six-empire minimum). Off: the wonder is rolled as usual.", "default": false },
+    { "name": "gwBeacon", "label": "The Beacon", "description": "May be the Great Work: a relay that calls the Reclaimers. Rolled only in galaxies of six or more empires, unless guaranteed below.", "default": true },
+    { "name": "gwBeaconGuaranteed", "label": "Guarantee the Beacon", "description": "The first Great Work is certain to be the Beacon (needs The Beacon above; ignores the six-empire minimum). Off: the wonder is rolled as usual.", "default": true },
     { "name": "gwArk", "label": "The Ark Engine (walking ark)", "description": "May be the Great Work: a planet-sized machine ship that roams from empire to empire and takes its people home, the descendants of independent colonies, by the shipload.", "default": true }
   ],
   "params": [
-    { "name": "giantworksCount", "label": "Number of Great Works (0 = automatic: 1, or 2 in galaxies of more than 1400 stars)", "default": 0, "min": 0, "max": 3 },
-    { "name": "giantworksBigGalaxyStars", "label": "Galaxy size above which the automatic number is 2 (stars)", "default": 1400, "min": 1, "max": 100000 },
+    { "name": "giantworksCount", "label": "Number of Great Works (0 = automatic: 2, the first the Beacon)", "default": 0, "min": 0, "max": 3 },
     { "name": "giantworksExistChancePct", "label": "Chance a Great Work exists in this game (%; -1 = use the shared value)", "default": 100, "min": -1, "max": 100 },
     { "name": "giantworksFounderRangeSectors", "label": "Neighbours that join a founder lie within this many sectors", "default": 2, "min": 0, "max": 10 },
     { "name": "giantworksCapitalSectors", "label": "Founding worlds lie at least this many sectors from every capital", "default": 4, "min": 0, "max": 40 },

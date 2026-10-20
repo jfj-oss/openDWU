@@ -35,7 +35,7 @@ import { GAME_DAY_LENGTH } from '../../hooks';
 import { scenarioMessage, scenarioNews, scenarioText } from '../../messages';
 import { arcNews } from '../framework';
 import { empireTechLevel } from '../robotMutiny';
-import { capitals, circlesCentroid, pickSite, siteBlocked, siteHabitat, systemsWithBases } from './founders';
+import { capitals, chooseCircles, circlesCentroid, pickSite, siteBlocked, siteHabitat, systemsWithBases } from './founders';
 import { confirmToAll, convoyTag, spreadRumour, updateKnowledge, kindName } from './knowledge';
 import { greatWorkKind } from './registry';
 import { compactFaction, gwParam, gwState, logGw, nextRandom, ordinaryEmpires, TAG, type GreatWorkConvoy, type GreatWorkRecord } from './state';
@@ -204,6 +204,35 @@ function supplierValid(galaxy: Galaxy, work: GreatWorkRecord, h: Habitat): boole
     return h.empire === galaxy.independentEmpire || !work.founders.includes(h); // a founder taken by an empire stops; a wonder's extra suppliers (corrupted worlds) do not need to be independent
 }
 
+/** Founding circles that still have a world sending convoys. Pure. */
+function liveCircles(galaxy: Galaxy, work: GreatWorkRecord): number {
+    const live = new Set(liveFounders(galaxy, work));
+    return work.circles.filter((c) => c.some((h) => live.has(h))).length;
+}
+
+/**
+ * The Gathering finds the founding worlds gone (absorbed, conquered or destroyed in the years since the seeding; in a late-age start
+ * the empires have swallowed most independents by then): fewer than two circles left, so the founders are chosen again from the
+ * independent worlds that remain (pilgrim colonies for a wedge without), with the same rules as at the seeding. The circles that
+ * survive are kept when they are picked again. Another Great Work's founders are skipped.
+ */
+function refoundIfLost(galaxy: Galaxy, work: GreatWorkRecord): void {
+    if (liveCircles(galaxy, work) >= 2) return;
+    const st = gwState(galaxy);
+    const used = new Set<Habitat>();
+    for (const w of st.sites) if (w !== work && w.phase !== 'abandoned' && w.phase !== 'destroyed') for (const h of w.founders) used.add(h);
+    const offset = nextRandom(galaxy).nextDouble() * ((Math.PI * 2) / 3);
+    const { circles, pilgrims } = chooseCircles(galaxy, offset, used);
+    if (circles.length < 2) {
+        logGw(galaxy, galaxyStarDate(galaxy), `work ${work.id}: founders lost and only ${circles.length} circle(s) to re-found`);
+        return;
+    }
+    logGw(galaxy, galaxyStarDate(galaxy), `work ${work.id}: founders lost, re-founded at ${circles.flat().map((h) => h.name).join(', ')}`);
+    work.circles = circles;
+    work.pilgrims = pilgrims;
+    work.founders = circles.flat();
+}
+
 /**
  * Starts the building: re-checks the site (an empire may have settled it), creates the Compact and the scaffold, plans the
  * convoys. Returns false when it could not start (the work is then abandoned).
@@ -218,6 +247,7 @@ export function startBuilding(galaxy: Galaxy, work: GreatWorkRecord): boolean {
         work.system = sys;
         work.habitat = siteHabitat(galaxy, sys);
     }
+    refoundIfLost(galaxy, work);
     const suppliers = liveFounders(galaxy, work);
     if (suppliers.length === 0) return abandon(galaxy, work, 'no founders left');
     const faction = ensureCompact(galaxy, work);

@@ -1949,12 +1949,14 @@ describe('giantworks', () => {
         expect(w2.founders.map((h) => h.name)).toEqual(w.founders.map((h) => h.name));
     }, 600000);
 
-    it('the number of Great Works: the option, distinct founders; 1 by default', () => {
-        expect(greatWorks(gw())).toHaveLength(1);
-        const g = gw({}, { giantworksCount: 2 });
-        const ws = greatWorks(g);
-        expect(ws.length).toBeGreaterThanOrEqual(1);
-        if (ws.length === 2) for (const h of ws[0].founders) expect(ws[1].founders).not.toContain(h);
+    it('the number of Great Works: the option; two by default, the first the Beacon, with distinct founders and sites', () => {
+        const ws = greatWorks(gw({ gwBeacon: true, gwBeaconGuaranteed: true }));
+        expect(ws).toHaveLength(2);
+        expect(ws[0].wonder).toBe('beacon');
+        expect(ws[1].wonder).not.toBe('beacon');
+        for (const h of ws[0].founders) expect(ws[1].founders).not.toContain(h);
+        expect(ws[1].system).not.toBe(ws[0].system);
+        expect(greatWorks(gw({}, { giantworksCount: 1 }))).toHaveLength(1);
     }, 600000);
 
     it('the Gathering: the Compact (stock AI off, no war, no colonising), a scaffold at stage 0, convoys of stock freighters', () => {
@@ -2028,6 +2030,26 @@ describe('giantworks', () => {
         const calls = periodicCalls;
         giantworksPeriodic(g);
         expect(periodicCalls).toBeGreaterThan(calls); // the wonder's periodic hook runs after completion
+    }, 900000);
+
+    it('late-age start: founders absorbed by empires before the Gathering are re-founded from the independents that remain (no "no founders left")', () => {
+        const { game } = gwFull({}, {});
+        const g = game.galaxy;
+        const [w, w2] = greatWorks(g);
+        const old = [...w.founders, ...w2.founders];
+        for (const h of old) h.empire = actors(g)[0]; // every founding world of both works swallowed by an empire over the years
+        w.gatherDate = 0;
+        w2.gatherDate = 0;
+        giantworksPeriodic(g);
+        expect(w.phase).toBe('building');
+        expect(w2.phase).toBe('building');
+        for (const h of w2.founders) expect(w.founders).not.toContain(h);
+        expect(w2.system).not.toBe(w.system);
+        expect(w.circles.length).toBeGreaterThanOrEqual(2);
+        expect(w.suppliers.length).toBeGreaterThan(0);
+        for (const h of w.suppliers) expect(h.empire).toBe(g.independentEmpire);
+        for (const h of old) expect(w.founders).not.toContain(h);
+        expect(w.founders).toEqual(w.circles.flat());
     }, 900000);
 
     it('a stalled work (no deliveries for years) is abandoned', () => {
@@ -2270,7 +2292,7 @@ describe('giantworks', () => {
     it('Guarantee the Beacon: on, the first Great Work is the Beacon even below the empire minimum; off, it is rolled as usual', () => {
         const on = gw({ gwBeacon: true, gwBeaconGuaranteed: true, gwTestA: false, gwTestB: false, gwTestC: false }, { giantworksBeaconMinEmpires: 100 });
         expect(greatWorks(on)[0].wonder).toBe('beacon');
-        const off = gw({ gwBeacon: true, gwTestA: false, gwTestB: false, gwTestC: false }, { giantworksBeaconMinEmpires: 100 });
+        const off = gw({ gwBeacon: true, gwBeaconGuaranteed: false, gwTestA: false, gwTestB: false, gwTestC: false }, { giantworksBeaconMinEmpires: 100 });
         expect(greatWorks(off)[0].wonder).not.toBe('beacon');
     }, 900000);
 
