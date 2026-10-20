@@ -178,6 +178,16 @@ export class GalaxyLockstepSim implements LockstepSim {
         return serializeGame(this.game, this.time, this.startOptions);
     }
 
+    /** The host built a new game for the session (the Long Night): it replaces the old one as a loaded save does. */
+    adopt(game: Game, time: GalaxyTime): void {
+        if (this.game !== null) setRemoteCommandSink(this.galaxy, null);
+        this.game = game;
+        this.time = time;
+        time.bindGalaxy(game.galaxy);
+        if (this.session !== null) setRemoteCommandSink(game.galaxy, this.sink);
+        this.opts.onGameReplaced?.(game, time);
+    }
+
     load(save: string): void {
         if (this.game !== null) setRemoteCommandSink(this.galaxy, null);
         // A process that never ran createGame (a joiner) needs the static tables and hooks (gameCache.ts does the same).

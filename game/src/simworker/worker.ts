@@ -135,8 +135,9 @@ async function init(m: InitMessage): Promise<void> {
 function startHost(game: Game, time: GalaxyTime, startOptions: StartGameOptions, bootMs: number): void {
     post({ type: 'progress', step: 'Preparing map', fraction: 0.9 });
     installWorkerBootState(game.galaxy);
-    // The Harvest Cycle's Long Night (sim/galaxyReset.ts): this worker can replace the galaxy between ticks (not under a multiplayer session).
-    setGalaxyResetSupported(game.galaxy, lockstep === null);
+    // The Harvest Cycle's Long Night (sim/galaxyReset.ts): this worker can replace the galaxy between ticks. Under a multiplayer session every peer's
+    // sim takes the same branch at the trigger; only the host builds the next age's game and pushes it to the clients as a resync (resetGalaxy).
+    setGalaxyResetSupported(game.galaxy, true);
     // The browser game always has the message UI: the worker is the player's message recipient (docs §9 chunk 4).
     const header = { baseTechCost: game.galaxy.baseTechCost, startOptions, scenario };
     let chunks = 0;
@@ -181,6 +182,8 @@ function resetGalaxy(h: SimHost): void {
     try {
         if (gameData === null) throw new Error('no game data');
         const next = performGalaxyReset(h.game, h.time, gameData);
+        // Multiplayer host: the session takes the new game (a resync to every client); the clients never build it.
+        if (lockstep?.mp?.role === 'host' && lockstep.mp.adoptGame(next.game, next.time)) return;
         replaceGame(next.game, next.time, h.startOptionsOfGame);
     } catch (err) {
         console.error('sim worker: the Long Night could not begin', err);
@@ -255,7 +258,8 @@ function loop(): void {
         fatal('step loop', err);
         return;
     }
-    if (galaxyResetPending(h.game.galaxy)) {
+    // A multiplayer client's sim reached the trigger too; its new galaxy comes from the host (a resync), not from here.
+    if (galaxyResetPending(h.game.galaxy) && lockstep?.mp?.role !== 'client') {
         resetGalaxy(h);
         return;
     }
@@ -319,8 +323,6 @@ function dispatch(m: ToWorker): void {
                 return;
             }
             ensureLockstep().start(m);
-            // A multiplayer session steps this game in lockstep: the Long Night cannot swap its galaxy (the defeat ends the game as before).
-            if (host !== null) setGalaxyResetSupported(host.game.galaxy, false);
             kick();
             return;
         case 'netIn':

@@ -610,6 +610,17 @@ export class MultiplayerGame {
         return mp;
     }
 
+    /**
+     * Host: the Long Night (sim/longNightReset.ts) built the next age's game here: it replaces this session's game and every client receives it as a
+     * resync (lockstep.ts gameReplaced). False when this peer is not the host.
+     */
+    adoptGame(game: Game, time: GalaxyTime): boolean {
+        if (this.role !== 'host' || this.session === null) return false;
+        this.sim.adopt(game, time);
+        this.session.gameReplaced();
+        return true;
+    }
+
     /** Leave: the host ends the game for everyone, a client leaves it. */
     close(reason = 'left the game'): void {
         this.session?.close(reason);

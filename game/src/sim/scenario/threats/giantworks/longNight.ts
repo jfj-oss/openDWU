@@ -19,10 +19,11 @@ import { humanEmpires, isHumanEmpire } from '../../../humanEmpires';
 import { galaxyStarDate } from '../../../tick/simTime';
 import { RuinType } from '../../../ruins';
 import { galaxyResetSupported, requestGalaxyReset } from '../../../galaxyReset';
-import { registerScenarioEvent } from '../../hooks';
+import { registerScenarioEvent, registerScenarioFramePeriodic, registerScenarioQuery, radiusFraction } from '../../hooks';
 import { scenarioFlag } from '../../state';
 import { scenarioMessage, scenarioNews, scenarioText as T } from '../../messages';
-import { beaconState, peekBeaconState, type BeaconState, type CoreRec, type EmpireParts } from './beaconState';
+import { captureSurvivors } from '../../../age2Placement';
+import { beaconState, isNormalEmpire, peekBeaconState, type BeaconState, type CoreRec, type EmpireParts } from './beaconState';
 import {
     AGE_PREPARATION,
     HARVEST_CYCLE_FLAG,
@@ -149,6 +150,8 @@ export function captureMemory(galaxy: Galaxy, st: BeaconState): MemoryRecord {
         scars: scarsOf(galaxy, st),
         foundries: foundriesOf(galaxy, st),
         megaStation: readMegaStation(galaxy),
+        survivors: captureSurvivors(galaxy, (e) => isNormalEmpire(galaxy, e, st)),
+        beaconSite: st.site?.habitat != null ? placeOf(galaxy, st.site.habitat) : null,
         // Placeholder: the Truths of the cycle (Knowledge page ids) are not built yet; one stands for "the Harvest was seen".
         truths: st.reclamationDate > 0 ? ['age1-harvest'] : [],
         player: playerIdentityOf(galaxy),
@@ -227,7 +230,42 @@ export function onCrashSurveyed(galaxy: Galaxy, empire: Empire, habitat: Habitat
     }
 }
 
-export const LONG_NIGHT_HANDLER_IDS = ['longNight.crash'] as const;
+// ---------------------------------------------------------------------------------------------------------------
+// Age 1: the advisors' warning at half the galaxy's people
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The share of the galaxy's people the Beacon must have processed for the advisors' popup (and the AI empires' lean to the rim). */
+export const RIM_WARNING_PCT = 50;
+/** How much more an AI empire values a colony target at the very rim than one at the galaxy's centre, once the warning has gone out. */
+const RIM_NUDGE_FACTOR = 0.6;
+
+/**
+ * Age 1, every few days: when the Beacon has processed half the galaxy's people (popEliminated / popBaseline), each human player gets the
+ * popup "A World Beyond Their Reach" once, and the AI empires start to lean to rim worlds (rimNudgeFactor). Pure of Rnd.
+ */
+export function advisorCheck(galaxy: Galaxy): void {
+    const ln = peekLongNight(galaxy);
+    const st = peekBeaconState(galaxy);
+    if (ln === null || ln.age !== 1 || st === null || st.popBaseline <= 0) return;
+    if ((100 * st.popEliminated) / st.popBaseline < RIM_WARNING_PCT) return;
+    ln.rimNudge = true;
+    const sent = (ln.advisorSent ??= []);
+    for (const e of humanEmpires(galaxy)) {
+        if (sent.includes(e.empireId)) continue;
+        sent.push(e.empireId);
+        scenarioMessage(galaxy, e, T(`${LN_TAG} Rim Title`), T(`${LN_TAG} Rim Body`), { type: EmpireMessageType.GeneralNeutralEvent, popupMode: 'force' });
+    }
+}
+
+/** The AI colonisation value of a target after the warning: up to RIM_NUDGE_FACTOR more at the very rim (squared with the distance from the centre). Pure. */
+export function rimNudgedValue(galaxy: Galaxy, empire: Empire, habitat: Habitat, value: number): number {
+    const ln = peekLongNight(galaxy);
+    if (ln === null || ln.rimNudge !== true || ln.age !== 1 || value <= 0 || isHumanEmpire(galaxy, empire)) return value;
+    const f = Math.min(1, radiusFraction(galaxy, habitat.xpos, habitat.ypos));
+    return value * (1 + RIM_NUDGE_FACTOR * f * f);
+}
+
+export const LONG_NIGHT_HANDLER_IDS = ['longNight.crash', 'longNight.advisor', 'longNight.rimNudge'] as const;
 
 /** The human players' mega-station parts and blueprint progress (beaconComponents.ts, kept in the Beacon state), by empire name: the new age's player keeps its name. */
 function captureParts(galaxy: Galaxy): Record<string, EmpireParts> | undefined {
@@ -258,6 +296,8 @@ function restoreParts(galaxy: Galaxy, data: unknown): void {
 
 export function registerLongNight(): void {
     registerMemoryContributor({ id: 'beacon.parts', capture: captureParts, restore: restoreParts });
+    registerScenarioFramePeriodic({ id: 'longNight.advisor', flag: HARVEST_CYCLE_FLAG, order: 26, periodDays: 5, run: (g) => advisorCheck(g) });
+    registerScenarioQuery({ id: 'longNight.rimNudge', flag: HARVEST_CYCLE_FLAG, query: 'colonizationTargetValue', run: (g, v, a) => rimNudgedValue(g, a.empire, a.habitat, v) });
     registerScenarioEvent({ id: 'longNight.crash', flag: HARVEST_CYCLE_FLAG, event: 'ruinsInvestigated', run: (g, e) => onCrashSurveyed(g, e.empire, e.habitat) });
 }
 

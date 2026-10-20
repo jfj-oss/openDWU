@@ -14,6 +14,7 @@ import type { GameData } from './data/gameData';
 import { createGame, installGameStatics, registerGameHooks, type CreateGameOptions, type EmpireStartOptions, type Game } from './game';
 import { GalaxyTime } from './galaxyTime';
 import { VictoryConditions } from './victory';
+import { age2PlacementOf } from './age2Placement';
 import { AGE_PREPARATION, longNightState, memoryContributors, peekLongNight, type MemoryRecord } from './scenario/threats/giantworks/longNightState';
 import { markCrashSites, sendAge2Start } from './scenario/threats/giantworks/longNight';
 
@@ -28,7 +29,8 @@ export function age2CreateOptions(stored: Record<string, unknown>, gameData: Gam
     if (o.victoryConditions != null && !(o.victoryConditions instanceof VictoryConditions)) o.victoryConditions = Object.assign(new VictoryConditions(), o.victoryConditions);
     const id = memory.player;
     const player: EmpireStartOptions = id === null ? o.player : { ...o.player, name: id.name, primaryColor: id.primaryColor, secondaryColor: id.secondaryColor, flagShape: id.flagShape };
-    return { ...o, foundPreWarp: true, player, ...(id === null ? {} : { playerFlagShape: id.flagShape }) };
+    const age2Placement = age2PlacementOf(memory.survivors, memory.scars, memory.beaconSite ?? null);
+    return { ...o, foundPreWarp: true, ...(age2Placement === undefined ? {} : { age2Placement }), player, ...(id === null ? {} : { playerFlagShape: id.flagShape }) };
 }
 
 /**

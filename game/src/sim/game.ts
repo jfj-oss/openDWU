@@ -73,6 +73,8 @@ import { scenarioAfterGeneration, scenarioFindHomeHabitat, scenarioGameStart, sc
 import { parseSectorColumn } from './sectorNames';
 import './scenario/packages'; // mod layer: registers the scenario packages' hooks
 import { setHumanColonyNames } from './perHumanState';
+import { makeHomeNative, planAge2, type Age2Placement, type Age2Plan } from './age2Placement';
+import type { SurvivorRec } from './scenario/threats/giantworks/longNightState';
 
 export type HomeSystem = 'Harsh' | 'Trying' | 'Normal' | 'Agreeable' | 'Excellent';
 
@@ -129,6 +131,11 @@ export interface CreateGameOptions {
      * (age 0, tech level 0, Galaxy.Age 0: the stock PreWarp start). Default false.
      */
     foundPreWarp?: boolean;
+    /**
+     * Ours (the Long Night, age2Placement.ts), with foundPreWarp: the empires of Age 1 that survived and where they stand, plus the sites new
+     * empires keep clear of. Unset = every empire placed the stock way.
+     */
+    age2Placement?: Age2Placement;
     colonyNames?: string[];
     player: EmpireStartOptions;
     aiEmpires: EmpireStartOptions[];
@@ -575,6 +582,44 @@ function proximityDistance(galaxy: Galaxy, s: string): { distance: number; secto
 // Start.cs method_50: system has a colony of a normal empire.
 function systemHasEmpireColony(galaxy: Galaxy, star: Habitat): boolean {
     return galaxy.systemHabitatsOf(star.systemIndex).some((h) => h.population.items.length > 0 && h.empire !== null && h.empire !== galaxy.independentEmpire);
+}
+
+/**
+ * The Long Night's AI starts (age2Placement.ts): the extra humans, then every surviving AI empire of Age 1 (its own name; its race's start
+ * options when the Age 1 list had one), then new empires from the Age 1 starts the survivors did not take, up to the original AI count (all
+ * survivors are kept when more survived). Rewrites `aiStarts` in that order and returns each start's survivor record and home (a survivor
+ * without a free world has none: it is placed the stock way). The map's insertion order is the founding order.
+ */
+function age2StartList(
+    races: Race[],
+    survivors: SurvivorRec[],
+    aiStarts: ResolvedStart[],
+    humanStartIndex: Map<ResolvedStart, number>,
+    plan: Age2Plan,
+    originalAiCount: number,
+): Map<ResolvedStart, { survivor: SurvivorRec | null; home: Habitat | null }> {
+    const out = new Map<ResolvedStart, { survivor: SurvivorRec | null; home: Habitat | null }>();
+    const humans = aiStarts.filter((s) => humanStartIndex.has(s)).sort((a, b) => humanStartIndex.get(a)! - humanStartIndex.get(b)!);
+    for (const st of humans) {
+        const rec = survivors.find((s) => s.human === humanStartIndex.get(st)! + 1) ?? null;
+        out.set(st, { survivor: rec, home: rec === null ? null : (plan.homes.get(rec) ?? null) });
+    }
+    const pool = aiStarts.filter((s) => !humanStartIndex.has(s));
+    // (A seat that joined mid-game, past createGame's humans, is an AI empire of Age 2.)
+    const aiSurvivors = survivors.filter((s) => s.human < 0 || s.human > humans.length);
+    for (const rec of aiSurvivors) {
+        const i = pool.findIndex((p) => p.resolvedRace?.name === rec.race);
+        const base = i >= 0 ? pool.splice(i, 1)[0] : null;
+        const st: ResolvedStart = {
+            opts: { ...(base?.opts ?? { race: rec.race, homeSystemFavourability: (pool[0]?.opts.homeSystemFavourability ?? 'Normal'), age: 0, techLevel: 0 }), race: rec.race, name: rec.name, age: 0, techLevel: 0 },
+            resolvedRace: base?.resolvedRace ?? races.find((r) => r.name === rec.race) ?? null,
+            projectedColonyAmount: 1,
+        };
+        out.set(st, { survivor: rec, home: plan.homes.get(rec) ?? null });
+    }
+    for (const st of pool.slice(0, Math.max(0, originalAiCount - aiSurvivors.length))) out.set(st, { survivor: null, home: null });
+    aiStarts.splice(0, aiStarts.length, ...out.keys());
+    return out;
 }
 
 function inNebula(galaxy: Galaxy, h: Habitat): boolean {
@@ -1132,11 +1177,19 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
     if (galaxy.scenario !== null) scenarioAfterGeneration(galaxy);
     // Ours (the Harvest Cycle's Long Night): the map above came out of the options as given (the alien-race projection reads each empire's age);
     // now every empire is founded pre-warp, the stock PreWarp start. The galaxy is the same as the one the options always made.
+    let age2: Age2Plan | null = null;
+    let age2Starts: Map<ResolvedStart, { survivor: SurvivorRec | null; home: Habitat | null }> | null = null;
+    let age2PlayerHome: Habitat | null = null;
     if (opts.foundPreWarp === true) {
         const preWarp = (o: EmpireStartOptions): EmpireStartOptions => ({ ...o, age: 0, techLevel: 0 });
         playerStart.opts = preWarp(playerStart.opts);
         for (const st of aiStarts) st.opts = preWarp(st.opts);
         opts = { ...opts, galaxyAge: 0, player: playerStart.opts };
+        if (opts.age2Placement !== undefined) {
+            age2 = planAge2(galaxy, opts.age2Placement, (h) => !inNebula(galaxy, h));
+            age2Starts = age2StartList(galaxyRaces, opts.age2Placement.survivors, aiStarts, humanStartIndex, age2, opts.aiEmpires.length);
+            age2PlayerHome = [...age2.homes].find(([s]) => s.human === 0)?.[1] ?? null;
+        }
     }
     yield { step: 'Founding empires', fraction: 0.1 };
     // Unset galaxyAge = 1: the game's standard preset (Start.cs 3298-3327: Expansion 1 / empire tech Normal 0.5).
@@ -1268,7 +1321,7 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
         const { homeSystemFactor } = Galaxy.resolveHomeSystem(opts.player.homeSystemFavourability);
         const capitalHabitatType = race.nativeHabitatType;
         // Mod layer: a scenario homePlacement rule for the race picks the capital first (no draws without one).
-        let found: Habitat | null = galaxy.scenario !== null ? scenarioFindHomeHabitat(galaxy, race, capitalHabitatType, { randomPointInRing, inNebula }, 0) : null;
+        let found: Habitat | null = age2PlayerHome !== null ? age2PlayerHome : galaxy.scenario !== null ? scenarioFindHomeHabitat(galaxy, race, capitalHabitatType, { randomPointInRing, inNebula }, 0) : null;
         let num10 = 0;
         let hookRejects = 0;
         let leastRim: Habitat | null = null;
@@ -1297,6 +1350,7 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
             }
         }
         habitat = found;
+        if (age2PlayerHome !== null) makeHomeNative(galaxy, habitat, capitalHabitatType);
         const player = generateEmpire(galaxy, true, opts.player.name ?? '', habitat, race, designPictureFamilyIndex, num2, homeSystemFactor, opts.player.homeSystemFavourability, opts.player.age, opts.player.techLevel, opts.player.corruptionMultiplier ?? 1.0, galaxy.storyShadowsEnabled);
         empire2 = player.empire;
         playerExpansion = player.expansion;
@@ -1327,6 +1381,11 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
     const listTech: number[] = playAsPirate ? [] : [opts.player.techLevel];
     const num14 = aiStarts.length;
     updateEmpireStarts(aiStarts, normalRaces, clockRnd, race.name);
+    // The Long Night: the survivors found first (the sort above reorders equal starts), then the new empires, so those see the survivors' colonies.
+    if (age2Starts !== null) {
+        const rank = [...age2Starts.keys()];
+        aiStarts.sort((a, b) => rank.indexOf(a) - rank.indexOf(b));
+    }
     for (let num15 = 0; num15 < num14; num15++) {
         yield { step: `Founding empires (${num15 + 2}/${num14 + 1})`, fraction: 0.1 + (0.3 * num15) / num14 };
         const es = aiStarts[num15];
@@ -1358,13 +1417,14 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
         galaxy.rnd.nextDouble();
         const home = Galaxy.resolveHomeSystem(es.opts.homeSystemFavourability);
         // Mod layer: a scenario homePlacement rule for the race picks the capital first (no draws without one).
-        const scenarioCap = galaxy.scenario !== null ? scenarioFindHomeHabitat(galaxy, aiRace, aiRace.nativeHabitatType, { randomPointInRing, inNebula }, galaxy.sectorSize * 0.7) : null;
+        const age2Home = age2Starts?.get(es)?.home ?? null;
+        const scenarioCap = age2Home === null && galaxy.scenario !== null ? scenarioFindHomeHabitat(galaxy, aiRace, aiRace.nativeHabitatType, { randomPointInRing, inNebula }, galaxy.sectorSize * 0.7) : null;
         // Not C#: whether an empire of this race was already placed (findAiCapital raceAlreadyHasEmpire).
         const raceAlreadyHasEmpire = empireList.some((x) => x.dominantRace === aiRace);
-        let cap = scenarioCap ?? findAiCapital(galaxy, aiRace, prox, habitat, aiRace.nativeHabitatType, playAsPirate, num14 + 1, sector, raceAlreadyHasEmpire);
+        let cap = age2Home ?? scenarioCap ?? findAiCapital(galaxy, aiRace, prox, habitat, aiRace.nativeHabitatType, playAsPirate, num14 + 1, sector, raceAlreadyHasEmpire);
         // Mod layer (rimStarts): findAiCapital's own fallbacks skip the acceptHomeHabitat hook; retry a bounded number of
         // times and keep the least-rim candidate. Only ever runs with a scenario that rejects the first pick.
-        if (scenarioCap === null && cap !== null && galaxy.scenario !== null && !scenarioQuery(galaxy, 'acceptHomeHabitat', true, { race: aiRace, habitat: cap, empireKind: 'ai' })) {
+        if (age2Home === null && scenarioCap === null && cap !== null && galaxy.scenario !== null && !scenarioQuery(galaxy, 'acceptHomeHabitat', true, { race: aiRace, habitat: cap, empireKind: 'ai' })) {
             let best = cap;
             for (let t = 0; t < 4; t++) {
                 const c2 = findAiCapital(galaxy, aiRace, prox, habitat, aiRace.nativeHabitatType, playAsPirate, num14 + 1, sector, raceAlreadyHasEmpire);
@@ -1374,11 +1434,26 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
             }
             cap = best;
         }
+        // The Long Night: a new empire (or a survivor that found no free world) keeps clear of the survivors' systems, the Scars and the old Beacon site.
+        if (age2 !== null && age2Home === null) {
+            for (let t = 0; t < 12 && cap !== null && age2.avoids(cap); t++) {
+                const c2 = findAiCapital(galaxy, aiRace, prox, habitat, aiRace.nativeHabitatType, playAsPirate, num14 + 1, sector, raceAlreadyHasEmpire);
+                if (c2 !== null) cap = c2;
+            }
+        }
         if (cap === null) throw new Error('Could not locate capital!');
+        if (age2Home !== null) makeHomeNative(galaxy, cap, aiRace.nativeHabitatType);
         let dpfi = es.opts.designPictureFamilyIndex ?? -1;
         if (dpfi < 0) dpfi = aiRace.designsPictureFamilyIndex;
         const r = generateEmpire(galaxy, false, es.opts.name ?? '', cap, aiRace, dpfi, num2, home.homeSystemFactor, es.opts.homeSystemFavourability, es.opts.age, es.opts.techLevel, es.opts.corruptionMultiplier ?? 1.0, galaxy.storyShadowsEnabled);
         if (es.opts.age === 0) clearIndependentColoniesFromSystem(galaxy, independentColonies, cap.systemIndex);
+        // The Long Night: a survivor keeps its flag (the empire's colours and shape as Age 1 had them).
+        const surv = age2Starts?.get(es)?.survivor ?? null;
+        if (surv !== null && !humanStartIndex.has(es)) {
+            r.empire.mainColor = surv.primaryColor;
+            r.empire.secondaryColor = surv.secondaryColor;
+            r.empire.flagShape = surv.flagShape;
+        }
         empireList.push(r.empire);
         const humanAt = humanStartIndex.get(es); // multiplayer: an extra human (createGameSteps' head)
         if (humanAt !== undefined) extraHumansAt[humanAt] = r.empire;

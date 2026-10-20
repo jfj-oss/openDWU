@@ -42,6 +42,26 @@ export interface PlayerIdentityRec {
     flagShape: number;
 }
 
+/**
+ * An empire as the Long Night found it (Age 2 placement, age2Placement.ts): the identity it is rebuilt with and the worlds it may be rebuilt on,
+ * best first (positions: habitat indexes shift between galaxies of one seed). An AI empire is recorded only if it still owned a colony; a human
+ * empire always is (a dead human starts on its Age 1 home world, `alive` false).
+ */
+export interface SurvivorRec {
+    name: string;
+    race: string;
+    primaryColor: number;
+    secondaryColor: number;
+    flagShape: number;
+    /** -1 an AI empire; otherwise the empire's seat in humanSeats (0 the player, 1.. the extra multiplayer humans). */
+    human: number;
+    alive: boolean;
+    /** It still held its capital when the Long Night began. */
+    capitalHeld: boolean;
+    /** Candidate home worlds, best first: a human's capital if held, then its colonies nearest the galaxy's centre; an AI's capital if held, then its most populous colonies. */
+    homes: PlaceRec[];
+}
+
 /** The mega-station's progress as Age 1 left it (filled from the megapath state, read defensively; absent fields stay empty). */
 export interface MegaStationMemory {
     /** Component name → count (or 1 when held) as the player's empire held them. */
@@ -64,6 +84,10 @@ export interface MemoryRecord {
     /** Reclaimer foundries (not built yet: the hooks): located and destroyed ones, by position, so the next Reclamation draws only on the survivors. */
     foundries: { located: PlaceRec[]; destroyed: PlaceRec[] };
     megaStation: MegaStationMemory;
+    /** The empires of Age 1 that Age 2 rebuilds (absent in a record made before the placement was built: the stock placement). */
+    survivors?: SurvivorRec[];
+    /** Where the Beacon stood (new empires keep clear of it); null when it never had a site. */
+    beaconSite?: PlaceRec | null;
     /** Truths unlocked (placeholder list: ids of Galactopedia / Knowledge entries). */
     truths: string[];
     player: PlayerIdentityRec | null;
@@ -85,6 +109,9 @@ export interface LongNightState {
     createOptions?: Record<string, unknown>;
     /** Age 1: the Long Night began (the memory taken, the reset asked for); the driver swaps the galaxy at the next boundary. */
     pending?: MemoryRecord | null;
+    /** Age 1: the Beacon has processed half the galaxy's people: the human players were advised (advisorSent, empire ids) and the AI empires lean to rim worlds. */
+    rimNudge?: boolean;
+    advisorSent?: number[];
     /** Age 2: what the player remembers. */
     memory?: MemoryRecord | null;
     /** Age 2: the crashed hulls (milestone 1). */

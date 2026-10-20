@@ -770,6 +770,19 @@ export class LockstepSession {
         }
     }
 
+    /**
+     * Host: the sim's game was replaced under the session (the Harvest Cycle's Long Night: the host built the next age's galaxy, sim/longNightReset.ts).
+     * The new game starts paused; every client gets it as a resync (a save of this boundary and the inputs from here on), as after a desync, so the
+     * clients never regenerate it. Their digests of the old galaxy are dropped with the epoch.
+     */
+    gameReplaced(): void {
+        if (this.role !== 'host') return;
+        this.clock = { ...this.clock, paused: true };
+        this.pendingClock = { ...this.clock };
+        this.hooks.log?.(`the game was replaced at frame ${this.frame} (a new galaxy): sending it to every client`);
+        for (const p of this.peers.values()) if (p.info.id !== this.localPeer && p.info.leftFrom === null) this.resync(p);
+    }
+
     /** Host: send `p` a save of the current boundary and the inputs from there on. */
     private resync(p: PeerState): void {
         if (p.link === null) return;

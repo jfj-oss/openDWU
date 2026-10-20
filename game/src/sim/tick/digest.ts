@@ -14,7 +14,9 @@ class Fnv {
     private readonly view = new DataView(new ArrayBuffer(8));
 
     num(x: number): void {
-        this.view.setFloat64(0, x);
+        // Every NaN hashes alike: a NaN computed in place (0 / 0 is the negative quiet NaN) and one a save wrote as null and read back differ in their bits
+        // (the Long Night's pre-warp independent empire carries one: relativeEmpireSize).
+        this.view.setFloat64(0, x !== x ? Number.NaN : x);
         for (let i = 0; i < 8; i++) {
             const byte = this.view.getUint8(i);
             this.a = Math.imul(this.a ^ byte, 0x01000193);
