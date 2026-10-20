@@ -63,9 +63,12 @@ export interface GreatWorkRecord extends GreatWorkSite, ThreatSite {
     seenBy: number[];
     /** Armed escorts that arrived and stayed to guard the site. */
     guards: BuiltObject[];
-    /** Star dates: the rumour and the Gathering (planned at game start). */
+    /** Star dates: the rumour and the Gathering (planned at game start; the fallback date, the Gathering comes earlier when the average tech reaches gatherTech). */
     rumourDate: number;
     gatherDate: number;
+    /** The average tech level (research techLevel, as the siphon gate counts it) that starts the Gathering, and the undisturbed build time in years: rolled per work at game start (absent in older saves: the parameter defaults). */
+    gatherTech?: number;
+    buildYears?: number;
     /** Started from the Game Editor (no rumour; the first convoy leaves at once). */
     forced: boolean;
     /** Worlds that send convoys (the founders at the Gathering), progress per delivered freighter, and the schedule. */
@@ -203,11 +206,13 @@ const DEFAULTS = {
     giantworksCapitalSectors: 4,
     giantworksRumourMinYear: 5,
     giantworksRumourMaxYear: 10,
-    giantworksGatherMinYear: 15,
-    giantworksGatherMaxYear: 30,
-    giantworksGatherTech: 4,
+    giantworksGatherMinYear: 40,
+    giantworksGatherMaxYear: 60,
+    giantworksGatherTechMin: 3,
+    giantworksGatherTechMax: 4,
     giantworksGatherFloorYear: 8,
-    giantworksBuildYears: 5,
+    giantworksBuildMinYears: 10,
+    giantworksBuildMaxYears: 15,
     giantworksConvoyDays: 180,
     giantworksConvoyMin: 3,
     giantworksConvoyMax: 6,

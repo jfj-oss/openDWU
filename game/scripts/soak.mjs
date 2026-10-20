@@ -173,7 +173,7 @@ const CONFIGS = [
         name: `ark-s${seed}`, set: 'ark', seed, years: 14, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, galaxyExpansionIndex: 5, empireExpansionIndex: 4, empireTechLevelIndex: 7 },
         scenario: ['threat-framework', 'smarter-ai', 'war-crimes', 'giantworks'],
         flags: { threatGiantworks: true, gwCasino: false, gwUltramind: false, gwSanctuary: false, gwBeacon: false, gwArk: true, smarterAI: true },
-        params: { giantworksExistChancePct: 100, giantworksRumourMinYear: 0, giantworksRumourMaxYear: 0, giantworksGatherMinYear: 0, giantworksGatherMaxYear: 0, giantworksGatherFloorYear: 0, giantworksBuildYears: 1 },
+        params: { giantworksExistChancePct: 100, giantworksRumourMinYear: 0, giantworksRumourMaxYear: 0, giantworksGatherMinYear: 0, giantworksGatherMaxYear: 0, giantworksGatherFloorYear: 0, giantworksBuildMinYears: 1, giantworksBuildMaxYears: 1 },
     })),
     // `--set gw-capture` (a hook that forces the wonder: CAPTURE_KIND=casino|ultramind|sanctuary|ark): the Great Work finished within
     // about two years on a late galaxy (700 stars, 7 AIs, aggressive), then 12 years of AI campaigns to take it by ground war.
@@ -181,7 +181,7 @@ const CONFIGS = [
         name: `gwcap-s${seed}`, set: 'gw-capture', seed, years: 14, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 7 }, galaxyExpansionIndex: 5, empireExpansionIndex: 4, empireTechLevelIndex: 7, aggressionIndex: 3 },
         scenario: ['threat-framework', 'smarter-ai', 'war-crimes', 'giantworks'],
         flags: { threatGiantworks: true, gwCasino: true, gwUltramind: true, gwSanctuary: true, gwBeacon: false, gwArk: true, smarterAI: true },
-        params: { giantworksExistChancePct: 100, giantworksRumourMinYear: 0, giantworksRumourMaxYear: 0, giantworksGatherMinYear: 0, giantworksGatherMaxYear: 0, giantworksGatherFloorYear: 0, giantworksBuildYears: 1, gwCasinoFrontPct: 0 },
+        params: { giantworksExistChancePct: 100, giantworksRumourMinYear: 0, giantworksRumourMaxYear: 0, giantworksGatherMinYear: 0, giantworksGatherMaxYear: 0, giantworksGatherFloorYear: 0, giantworksBuildMinYears: 1, giantworksBuildMaxYears: 1, gwCasinoFrontPct: 0 },
     })),
     // `--set interdiction` (--hook scripts/interdiction-soak-hook.mjs): Defensive jump interdiction on / off on the os-war
     // galaxy (aggressive AI, older galaxy, 700 stars, 7 empires, 20 years): pirate raids, interdicted jumps, pirate losses.
@@ -221,10 +221,10 @@ const CONFIGS = [
     ...(() => {
         const only = { gwCasino: false, gwUltramind: false, gwSanctuary: false, gwRiftGate: false, gwArk: false };
         const picks = ['giantworks', 'reputation', 'characters-victory', 'war-crimes'];
-        const mk = (name, set, seed, years, wizard, params = {}, extra = {}) => ({ name, set, seed, years, wizard, addons: picks, flags: { ...only, ...(extra.flags ?? {}) }, params: { giantworksBuildYears: 1.5, giantworksExistChancePct: 0, ...params }, ...Object.fromEntries(Object.entries(extra).filter(([k]) => k !== 'flags')) });
+        const mk = (name, set, seed, years, wizard, params = {}, extra = {}) => ({ name, set, seed, years, wizard, addons: picks, flags: { ...only, ...(extra.flags ?? {}) }, params: { giantworksBuildMinYears: 1.5, giantworksBuildMaxYears: 1.5, giantworksExistChancePct: 0, ...params }, ...Object.fromEntries(Object.entries(extra).filter(([k]) => k !== 'flags')) });
         const w700 = (n, more = {}) => ({ starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: n }, ...more });
         const late = { galaxyExpansionIndex: 4, empireExpansionIndex: 4, empireTechLevelIndex: 5 };
-        const nat = { giantworksBuildYears: 4, giantworksGatherMinYear: 3, giantworksGatherMaxYear: 5, giantworksExistChancePct: 100 };
+        const nat = { giantworksBuildMinYears: 4, giantworksBuildMaxYears: 4, giantworksGatherMinYear: 3, giantworksGatherMaxYear: 5, giantworksExistChancePct: 100 };
         return [
             // short: late starts, forced
             mk('bk-late-7-s1', 'beacon-short', 1, 8, w700(7, late)),
@@ -248,8 +248,12 @@ const CONFIGS = [
             // so the Reclamation has some twenty-odd years of a 40-year game; the Watchers corrupt worlds for the whole build.
             ...[[7, 11, 700], [12, 12, 1000], [20, 13, 1400]].map(([n, seed, stars]) => mk(`bl2-${n}-s${seed}`, 'beacon-long2', seed, 40,
                 { starCountIndex: stars === 700 ? 3 : stars === 1000 ? 4 : 5, dimensionIndex: stars === 700 ? 3 : 4, otherEmpires: { empireCount: n === 20 ? 19 : n } },
-                { giantworksBuildYears: 4, giantworksGatherMinYear: 10, giantworksGatherMaxYear: 14, giantworksExistChancePct: 100 })),
-            mk('bl-smoke', 'beacon-smoke', 1, 3, { starCountIndex: 2, dimensionIndex: 2, otherEmpires: { empireCount: 7 }, ...late }, { giantworksBuildYears: 0.6 }),
+                { giantworksBuildMinYears: 4, giantworksBuildMaxYears: 4, giantworksGatherMinYear: 10, giantworksGatherMaxYear: 14, giantworksExistChancePct: 100 })),
+            // long, the defaults: the Giantworks defaults untouched (Gathering at average tech 3-4 from year 8, 10-15 years to build), a normal start and a late start (the galaxy already at high tech)
+            mk('bg-7-s1', 'beacon-long3', 1, 70, w700(7), { giantworksExistChancePct: 100, giantworksBuildMinYears: 10, giantworksBuildMaxYears: 15 }),
+            mk('bg-7-s11', 'beacon-long3', 11, 70, w700(7), { giantworksExistChancePct: 100, giantworksBuildMinYears: 10, giantworksBuildMaxYears: 15 }),
+            mk('bg-late-7-s1', 'beacon-long3', 1, 50, w700(7, late), { giantworksExistChancePct: 100, giantworksBuildMinYears: 10, giantworksBuildMaxYears: 15 }),
+            mk('bl-smoke', 'beacon-smoke', 1, 3, { starCountIndex: 2, dimensionIndex: 2, otherEmpires: { empireCount: 7 }, ...late }, { giantworksBuildMinYears: 0.6, giantworksBuildMaxYears: 0.6 }),
         ];
     })(),
     // BVR combat is one add-on whose six combat changes are sub-options (on by default): the BVR-only runs switch the six off.

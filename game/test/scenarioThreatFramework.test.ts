@@ -139,7 +139,7 @@ import {
     type GreatWorkRecord,
 } from '../src/sim/scenario/threats/giantworks/framework';
 import { KIND_MENACE, KIND_VALUE } from '../src/sim/scenario/threats/giantworks/registry';
-import { stepWork } from '../src/sim/scenario/threats/giantworks/lifecycle';
+import { gatheringDue, stepWork } from '../src/sim/scenario/threats/giantworks/lifecycle';
 import { protectStep, resolveBaseLoss, stationedEmpires } from '../src/sim/scenario/threats/giantworks/actions';
 import { updateKnowledge } from '../src/sim/scenario/threats/giantworks/knowledge';
 import { dietState, registeredDietKinds } from '../src/sim/scenario/charactersVictory/diet/dietState';
@@ -1928,12 +1928,20 @@ describe('giantworks', () => {
         }
         expect(w.base).toBeNull();
         expect(compactFaction(g)).toBeNull();
-        // The rumour comes at year 5 to 10, the Gathering at year 15 to 30.
+        // The rumour comes at year 5 to 10, the Gathering (fallback date) at year 40 to 60; the tech trigger and build time are rolled per work.
         const y0 = galaxyStarDate(g);
         expect((w.rumourDate - y0) / YEAR_LENGTH).toBeGreaterThanOrEqual(5);
         expect((w.rumourDate - y0) / YEAR_LENGTH).toBeLessThanOrEqual(10);
-        expect((w.gatherDate - y0) / YEAR_LENGTH).toBeGreaterThanOrEqual(15);
-        expect((w.gatherDate - y0) / YEAR_LENGTH).toBeLessThanOrEqual(30);
+        expect((w.gatherDate - y0) / YEAR_LENGTH).toBeGreaterThanOrEqual(40);
+        expect((w.gatherDate - y0) / YEAR_LENGTH).toBeLessThanOrEqual(60);
+        expect(w.gatherTech!).toBeGreaterThanOrEqual(3);
+        expect(w.gatherTech!).toBeLessThanOrEqual(4);
+        expect(w.buildYears!).toBeGreaterThanOrEqual(10);
+        expect(w.buildYears!).toBeLessThanOrEqual(15);
+        // Not due at the start, even with a tech trigger of 1 (the floor year has not come); due once the fallback date passes.
+        w.gatherTech = 1;
+        expect(gatheringDue(g, w)).toBe(false);
+        w.gatherTech = 3;
         // Same seed, same Great Work (its own random stream).
         const w2 = greatWorks(gw())[0];
         expect(w2.wonder).toBe(w.wonder);
@@ -4516,11 +4524,11 @@ describe('the Beacon (Giantworks wonder)', () => {
         expect(r1.colony).toBe(cands[0]);
         expect(corrupt(g, st, cands[0])).toBeNull(); // once
         corrupt(g, st, cands[1]);
-        expect(beaconBuildRate(g, site)).toBeCloseTo(1 + (2 * 9) / 100, 5);
+        expect(beaconBuildRate(g, site)).toBeCloseTo(1 + (2 * 4) / 100, 5);
         expect(beaconSuppliers(g, site)).toEqual([cands[0], cands[1]]);
         // capped
         for (const c of cands.slice(2)) corrupt(g, st, c);
-        expect(beaconBuildRate(g, site)).toBeLessThanOrEqual(2.5 + 1e-9);
+        expect(beaconBuildRate(g, site)).toBeLessThanOrEqual(1.5 + 1e-9);
         // a dead Watcher: x0.4, both: x0.16
         const full = beaconBuildRate(g, site);
         st.watchers[0].dead = true;

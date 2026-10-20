@@ -230,7 +230,7 @@ export function startBuilding(galaxy: Galaxy, work: GreatWorkRecord): boolean {
     work.lastDelivery = now;
     work.suppliers = suppliers.slice();
     const per = (360 / gwParam(galaxy, 'giantworksConvoyDays')) * ((gwParam(galaxy, 'giantworksConvoyMin') + gwParam(galaxy, 'giantworksConvoyMax')) / 2);
-    work.perShip = 1 / Math.max(1, suppliers.length * per * gwParam(galaxy, 'giantworksBuildYears'));
+    work.perShip = 1 / Math.max(1, suppliers.length * per * (work.buildYears ?? gwParam(galaxy, 'giantworksBuildMinYears')));
     const days = gwParam(galaxy, 'giantworksConvoyDays');
     suppliers.forEach((h, i) => {
         work.nextDeparture[String(h.habitatIndex)] = now + ((i + 0.2) / suppliers.length) * days * GAME_DAY_LENGTH;
@@ -251,12 +251,12 @@ export function abandon(galaxy: Galaxy, work: GreatWorkRecord, why: string): fal
     return false;
 }
 
-/** The Gathering is due: the planned year passed, or the empires' average tech reached the trigger (not before the floor year). Pure. */
+/** The Gathering is due: the work's tech trigger (rolled in giantworksGatherTechMin..Max, on the research techLevel scale the siphon gate uses) reached by the empires' average tech (not before the floor year), or the much later fallback year passed. Pure. */
 export function gatheringDue(galaxy: Galaxy, work: GreatWorkRecord): boolean {
     const now = galaxyStarDate(galaxy);
     if (work.forced || now >= work.gatherDate) return true;
     const floor = startStarDateForAge(galaxy.age) + gwParam(galaxy, 'giantworksGatherFloorYear') * YEAR_LENGTH;
-    return now >= floor && averageTech(galaxy) >= gwParam(galaxy, 'giantworksGatherTech');
+    return now >= floor && averageTech(galaxy) >= (work.gatherTech ?? gwParam(galaxy, 'giantworksGatherTechMin'));
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -499,7 +499,9 @@ export function stepWork(galaxy: Galaxy, work: GreatWorkRecord): void {
                 work.delivered += delivered;
                 gwState(galaxy).stats.delivered += delivered;
                 work.lastDelivery = now;
-                addProgress(galaxy, work, delivered * work.perShip * mult);
+                // a wonder's extra suppliers (the Beacon's corrupted worlds) keep the work alive but add no speed: progress per freighter is shared out over every sending world once they outnumber the founders (the wonder's buildRateMultiplier is the speed-up)
+                const share = work.suppliers.length / Math.max(work.suppliers.length, suppliers(galaxy, work).length);
+                addProgress(galaxy, work, delivered * work.perShip * share * mult);
             }
             if (work.phase !== 'building') return;
             if (now - Math.max(work.lastDelivery, work.startDate) > gwParam(galaxy, 'giantworksStallYears') * YEAR_LENGTH) {

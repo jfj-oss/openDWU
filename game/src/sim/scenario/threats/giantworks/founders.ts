@@ -328,6 +328,10 @@ export function seedOne(galaxy: Galaxy, st: GreatWorksState, rnd: Random, index:
     }
     const rumourYears = gwParam(galaxy, 'giantworksRumourMinYear') + rnd.nextDouble() * Math.max(0, gwParam(galaxy, 'giantworksRumourMaxYear') - gwParam(galaxy, 'giantworksRumourMinYear'));
     const gatherYears = gwParam(galaxy, 'giantworksGatherMinYear') + rnd.nextDouble() * Math.max(0, gwParam(galaxy, 'giantworksGatherMaxYear') - gwParam(galaxy, 'giantworksGatherMinYear'));
+    const techMin = gwParam(galaxy, 'giantworksGatherTechMin');
+    const gatherTech = techMin + rnd.nextDouble() * Math.max(0, gwParam(galaxy, 'giantworksGatherTechMax') - techMin);
+    const buildMin = gwParam(galaxy, 'giantworksBuildMinYears');
+    const buildYears = buildMin + rnd.nextDouble() * Math.max(0, gwParam(galaxy, 'giantworksBuildMaxYears') - buildMin);
     const now = galaxyStarDate(galaxy);
     const rec: GreatWorkRecord = {
         id: st.nextId++,
@@ -350,6 +354,8 @@ export function seedOne(galaxy: Galaxy, st: GreatWorksState, rnd: Random, index:
         guards: [],
         rumourDate: forced ? now : yearsToDate(galaxy, rumourYears),
         gatherDate: forced ? now : yearsToDate(galaxy, gatherYears),
+        gatherTech,
+        buildYears,
         forced,
         suppliers: [],
         perShip: 0,

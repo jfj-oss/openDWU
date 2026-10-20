@@ -705,8 +705,8 @@ export const P = {
     msgRepeatDays: (g: Galaxy) => Math.max(0, p(g, 'beaconMsgRepeatDays', 120)),
     reseedDays: (g: Galaxy) => p(g, 'beaconReseedDays', 120),
     /** Build speed: +this % per corrupted world (up to the cap %); a dead Watcher multiplies it by the factor %. */
-    buildBoostPct: (g: Galaxy) => p(g, 'beaconBuildBoostPct', 9),
-    buildBoostCapPct: (g: Galaxy) => p(g, 'beaconBuildBoostCapPct', 150),
+    buildBoostPct: (g: Galaxy) => p(g, 'beaconBuildBoostPct', 4),
+    buildBoostCapPct: (g: Galaxy) => p(g, 'beaconBuildBoostCapPct', 50),
     watcherDeadFactorPct: (g: Galaxy) => p(g, 'beaconWatcherDeadFactorPct', 40),
     sightingMinDays: (g: Galaxy) => p(g, 'beaconSightingMinDays', 220),
     sightingMaxDays: (g: Galaxy) => p(g, 'beaconSightingMaxDays', 480),

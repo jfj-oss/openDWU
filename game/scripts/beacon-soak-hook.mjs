@@ -250,6 +250,8 @@ function sample(ctx, g) {
     const work = M.gw.greatWorks(g).find((x) => x.wonder === 'beacon') ?? M.gw.greatWorks(g)[0] ?? null;
     const s = { y: r2(years) };
     if (work) s.gw = [work.phase, r2(work.progress), work.stage, work.convoys.length, work.delivered, work.lost];
+    if (work) report.beacon.gwLog = M.gw.gwState(g).log.slice(0, 40).map((l) => [Math.round(l.date), l.text]);
+    if (work) { s.tech = r2(M.life.averageTech(g)); s.gwPlan = [r1(work.gatherTech ?? -1), r1(work.buildYears ?? -1)]; }
     const faction = st?.faction ?? null;
     const ns = normals(g, st);
     // The ordinary empires: colonies, population (millions), military.
