@@ -134,6 +134,8 @@ Beacon Msg Attack First;{0} fired on the giant. It did not flee and it did not t
 Beacon Msg Attack Repeat 1;{0} opened fire on one of the giants. For a long moment it did nothing. Then it answered, and the ships that fired on it went dark one by one.
 Beacon Msg Attack Repeat 2;Fragments of {0}'s fleet are drifting near {1}. They attacked the giant. It did not pursue the survivors; it simply finished what they had started.
 Beacon Msg Attack Repeat 3;{0} struck at one of the vast vessels. It turned to face them with terrible patience, and only those who fired were destroyed.
+Beacon Msg Pull Title;Dragged out of warp
+Beacon Msg Pull;A Reclaimer capital ship has run down {0} and dragged it out of hyperspace near {1}. Their drives are faster than ours: the fight is on again where it dropped.
 Beacon Msg Killed Title;A giant destroyed
 Beacon Msg Killed First;We have destroyed it, and we still do not know what it was. The wreck is enormous, unmarked and cold, and nothing aboard resembles a crew.
 Beacon Msg Killed Repeat 1;Another giant has fallen near {0}. Its wreck drifts dark and silent; even its lights died without a flicker.

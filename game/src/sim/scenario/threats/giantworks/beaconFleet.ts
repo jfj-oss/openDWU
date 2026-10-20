@@ -92,6 +92,7 @@ import {
 } from './beaconState';
 import { scenarioText as T } from '../../messages';
 import { allotResponse, driveResponse } from './beaconResponse';
+import { isPursuing } from './beaconPursuit';
 import { freeShare, fuelOf, harvestMonthly, liveCores, harvestPeriodic, onCattleKilled, onCoreRetaken, onHarvesterLost, payFleet, payTroops, troopSourceCore, troopsAffordable } from './beaconHarvest';
 
 const TAG = 'Beacon';
@@ -198,6 +199,7 @@ export function strengthOf(bo: BuiltObject): number {
 }
 
 function move(galaxy: Galaxy, bo: BuiltObject, x: number, y: number): void {
+    if (isPursuing(galaxy, bo)) return;
     const m = builtObjectMission(bo.mission);
     if (m !== null && m.type === BuiltObjectMissionType.Move && m.targetHabitat === null && m.targetBuiltObject === null && Math.abs(m.x - x) < 1 && Math.abs(m.y - y) < 1) return;
     bo.isAutoControlled = false;
@@ -205,6 +207,7 @@ function move(galaxy: Galaxy, bo: BuiltObject, x: number, y: number): void {
 }
 
 function moveTo(galaxy: Galaxy, bo: BuiltObject, target: Habitat): void {
+    if (isPursuing(galaxy, bo)) return;
     const m = builtObjectMission(bo.mission);
     if (m !== null && m.type === BuiltObjectMissionType.Move && m.targetHabitat === target) return;
     bo.isAutoControlled = false;
@@ -212,6 +215,7 @@ function moveTo(galaxy: Galaxy, bo: BuiltObject, target: Habitat): void {
 }
 
 function attackOrder(galaxy: Galaxy, bo: BuiltObject, target: Habitat, done: Set<ShipGroup>): void {
+    if (isPursuing(galaxy, bo)) return;
     const sg = bo.shipGroup as ShipGroup | null;
     if (sg !== null && sg !== undefined) {
         if (done.has(sg)) return;
@@ -229,6 +233,7 @@ function attackOrder(galaxy: Galaxy, bo: BuiltObject, target: Habitat, done: Set
 }
 
 export function patrol(galaxy: Galaxy, bo: BuiltObject, where: Habitat): void {
+    if (isPursuing(galaxy, bo)) return; // a capital's pursuit (beaconPursuit.ts) holds its ships' orders until it ends
     const m = builtObjectMission(bo.mission);
     if (m !== null && m.type === BuiltObjectMissionType.Patrol && m.targetHabitat === where) return;
     bo.isAutoControlled = false;

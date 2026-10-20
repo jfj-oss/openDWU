@@ -133,6 +133,50 @@ export interface ResponseRec {
     stats: Record<string, number>;
 }
 
+/** A ship's order before a pursuit took it (beaconPursuit.ts): restored when the chase ends. */
+export interface PriorOrder {
+    ship: BuiltObject;
+    type: number;
+    habitat: Habitat | null;
+    target: BuiltObject | null;
+    x: number;
+    y: number;
+}
+
+/**
+ * One pursuit (beaconPursuit.ts): a Reclaimer capital and some escorts chase `target`, a ship of an empire at war with them that left a fight
+ * by hyperjump. `pulled` is the star date the target was dragged out of warp (or the pursuers arrived where it stopped); 0 while still chasing.
+ */
+export interface PursuitChase {
+    id: number;
+    capital: BuiltObject;
+    escorts: BuiltObject[];
+    target: BuiltObject;
+    start: number;
+    originX: number;
+    originY: number;
+    pulled: number;
+    prior: PriorOrder[];
+    /** Star date of the last defended-place check once the enemy stopped. */
+    defChecked?: number;
+}
+
+/** A pursuit record: the chases under way, who fought whom lately, per-capital cooldowns, ships that may not start a jump, the counters. */
+export interface PursuitRec {
+    chases: PursuitChase[];
+    nextId: number;
+    /** Star date of the last sampling of the fights. */
+    sampled: number;
+    /** Enemy ships that fought a Reclaimer ship lately (`by`), with the star date of the last contact. */
+    contacts: { victim: BuiltObject; by: BuiltObject; date: number }[];
+    cooldown: { capital: BuiltObject; until: number }[];
+    /** Ships pulled out of warp: no jump may start before `until` (star date). */
+    locks: { ship: BuiltObject; until: number }[];
+    /** Per human empire: the star date of its last 'pulled out of warp' message. */
+    msgLast: Record<string, number>;
+    stats: Record<string, number>;
+}
+
 export interface CorruptRec {
     colony: Habitat;
     /** The governor the corruption works through, when the colony has one (a corrupted character, as the Cult's convert). */
@@ -556,6 +600,8 @@ export interface BeaconState {
     /** The AI coalition's standing operations (beaconAi.ts), by key ('beacon', 'staging:<season>:<point>'): the rally star's system index (-1 none) and whether the force has gone in; launches counts the Beacon assaults. */
     /** The response fleets and patrols (beaconResponse.ts; absent before they first ran and in older saves). */
     response?: ResponseRec;
+    /** Capital pursuits (beaconPursuit.ts; absent before the first contact and in older saves). */
+    pursuit?: PursuitRec;
     /** The harvest (beaconHarvest.ts; absent before it first ran): cores (live and ended, the last 40 kept), cattle ships in flight, worlds
      *  that may not be made a core again before a date (their harvester was destroyed), the biofuel accounts. */
     cores?: CoreRec[];
@@ -786,6 +832,30 @@ export const P = {
     /** A patrol reports a force this % of its own strength (or more) to the reserves. */
     patrolReportPct: (g: Galaxy) => p(g, 'beaconPatrolReportPct', 120),
     patrolHopSectors: (g: Galaxy) => p(g, 'beaconPatrolHopSectors', 6),
+    // Capital pursuit (beaconPursuit.ts)
+    /** 1: a Reclaimer capital (with escorts) follows an enemy that fled a fight by hyperjump and drags it out of warp (0: no pursuit). */
+    pursuitOn: (g: Galaxy) => p(g, 'beaconPursuitOn', 1) > 0,
+    /** Most pursuits at once; the most escorts that go with a capital. */
+    pursuitMax: (g: Galaxy) => Math.max(0, Math.trunc(p(g, 'beaconPursuitMax', 6))),
+    pursuitEscorts: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'beaconPursuitEscorts', 4))),
+    /** A flight is pursued only if the enemy fought a Reclaimer ship this many days before it went into warp. */
+    pursuitContactDays: (g: Galaxy) => p(g, 'beaconPursuitContactDays', 12),
+    /** The farthest a pursuit goes from where it began (sectors), the days before it gives up, and the days a capital rests after one. */
+    pursuitMaxSectors: (g: Galaxy) => p(g, 'beaconPursuitMaxSectors', 4.5),
+    pursuitGiveUpDays: (g: Galaxy) => p(g, 'beaconPursuitGiveUpDays', 50),
+    pursuitCooldownDays: (g: Galaxy) => p(g, 'beaconPursuitCooldownDays', 90),
+    /** A pursuer within this many units of the enemy in warp pulls it out of warp. */
+    pursuitPullRange: (g: Galaxy) => p(g, 'beaconPursuitPullRange', 20000),
+    /** The pursuers need a warp speed this % of the enemy's (or more); their jump spools this % of the stock time. */
+    pursuitSpeedPct: (g: Galaxy) => p(g, 'beaconPursuitSpeedPct', 110),
+    pursuitSpoolPct: (g: Galaxy) => p(g, 'beaconPursuitSpoolPct', 25),
+    /** No pursuit when the capital and its escorts are this % undamaged or less (share of components not damaged). */
+    pursuitMinHealthPct: (g: Galaxy) => p(g, 'beaconPursuitMinHealthPct', 60),
+    /** Days after a pull-out that the dragged ship cannot start another jump; days the pursuit stays on to fight after it. */
+    pursuitLockDays: (g: Galaxy) => p(g, 'beaconPursuitLockDays', 30),
+    pursuitFightDays: (g: Galaxy) => p(g, 'beaconPursuitFightDays', 45),
+    /** The pursuit stops at a place where the enemy's defence outweighs the pursuers by this % (a defended system's edge). */
+    pursuitDefencePct: (g: Galaxy) => p(g, 'beaconPursuitDefencePct', 80),
     /** A target's pull grows with its population to this power (x 100: 50 = the square root, 100 = linearly). */
     targetPopPct: (g: Galaxy) => p(g, 'beaconTargetPopPct', 50),
     /** Season strength: % of the reference military (mean of the three strongest empires), season 1, growth per season, per processing world, cap. */

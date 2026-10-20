@@ -46,7 +46,7 @@ export async function start(ctx) {
     const { load, g, report } = ctx;
     reportRef = report;
     M = {
-        bs: await load('beaconState'), bf: await load('beaconFleet'), bc: await load('beaconCounter'), bh: await load('beaconHarvest').catch(() => null), br: await load('beaconResponse').catch(() => null), beacon: await load('beacon'),
+        bs: await load('beaconState'), bf: await load('beaconFleet'), bc: await load('beaconCounter'), bh: await load('beaconHarvest').catch(() => null), br: await load('beaconResponse').catch(() => null), bp: await load('beaconPursuit').catch(() => null), beacon: await load('beacon'),
         thr: await load('threats'), hooks: await load('scnHooks'), own: await load('ownership').catch(() => null), gw: await load('gwState'), gwf: await load('gwFramework'), life: await load('gwLifecycle'), tf: await load('thFramework'), dip: await load('diplomacyTick'), mis: await load('missions'),
     };
     if (process.env.BEACON_TIMING === '1') {
@@ -293,6 +293,8 @@ function sample(ctx, g) {
         s.elim = r1(M.bf.eliminatedPct(st));
         // the response fleets and patrols (beaconResponse.ts; absent on a build without them)
         if (M.br) s.resp = M.br.responseSummary(st);
+        // the capitals' pursuits (beaconPursuit.ts; absent on a build without them)
+        if (M.bp) s.pursuit = M.bp.pursuitSummary(st);
         // the Watcher fleets: mode (d defence / o offensive), live escorts, strength (Watcher and escorts), the world held
         s.wf = (st.watcherFleets ?? []).map((f) => [f.mode[0], f.ships.filter((b) => !b.hasBeenDestroyed).length, Math.round(M.bf.watcherFleetStrength(st, f)), f.post ? f.post.name : null]);
         s.proc = M.bf.processingWorlds(st).length;
@@ -516,7 +518,7 @@ function sample(ctx, g) {
         }
         s.ai = ai;
         if (st.ended) s.ended = true;
-        report.beacon.final = { response: M.br ? M.br.responseSummary(st) : null, y: s.y, phase: st.phase, ended: st.ended, elim: s.elim, stats: { ...st.stats }, seasons: st.stats.seasons, salvage: st.salvage.map((x) => [x.empireId, x.points, x.steps]),
+        report.beacon.final = { response: M.br ? M.br.responseSummary(st) : null, pursuit: M.bp ? M.bp.pursuitSummary(st) : null, y: s.y, phase: st.phase, ended: st.ended, elim: s.elim, stats: { ...st.stats }, seasons: st.stats.seasons, salvage: st.salvage.map((x) => [x.empireId, x.points, x.steps]),
             bargains: st.bargains.map((b) => [b.empireId, b.kind, b.discovered, b.ended]), watchersDead: st.watchers.filter((w) => w.dead).length, beaconDestroyed: st.beaconDestroyed, processingNow: s.proc,
             harvest: M.bh ? (() => {
                 const sect = g.sectorSize;

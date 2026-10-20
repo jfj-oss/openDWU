@@ -111,6 +111,7 @@ import {
     syncReclaimerTech,
 } from './beaconFleet';
 import { registerBeaconAi } from './beaconAi';
+import { registerPursuit } from './beaconPursuit';
 import { dwellDaysFor, holdingAtGate, purgePass, purgeRebelStrength, recentlyPurged, siphonPass, siphonStatus } from './beaconSiphon';
 import { addProgress } from './lifecycle';
 import './beaconDiet';
@@ -1397,6 +1398,7 @@ export function registerBeacon(): void {
     registerCounterplay();
     registerBeaconAi();
     registerHarvest();
+    registerPursuit();
 }
 
 registerBeacon();
