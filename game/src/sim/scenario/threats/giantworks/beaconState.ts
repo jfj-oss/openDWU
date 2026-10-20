@@ -68,6 +68,29 @@ export interface WatcherRec {
     prevModeDate?: number;
     /** Dwell: days it hangs over the target before corrupting it (set on arrival from the world's population). */
     dwellDays?: number;
+    /** Site defence (beaconSite.ts): it was called to the Great Work's site by an attack on it before the first beam, and fires on every empire ship in that system while it fights. */
+    siteFight?: boolean;
+    /** It was moved to the site from where it was (a trip, a rest): when the fight is over it goes back to it (or rests) instead of resuming in place. */
+    teleported?: boolean;
+}
+
+/**
+ * The site's own defence before the first mega beam (beaconSite.ts): the Great Work's scaffold (and the finished Beacon) carry a shield; an attack on
+ * them calls the Watchers to the site, and a broken shield brings a Reclaimer fleet. Absent until the first attack.
+ */
+export interface SiteDefence {
+    /** An attack on the site is on (the Watchers fight, the fleet may fire); ends after beaconSiteQuietDays without a hit and no empire warship near. */
+    active: boolean;
+    /** Star date of the last attack on the site. */
+    lastAttack: number;
+    /** builtObjectIDs of attackers that are no empire's ordinary ships (pirates, monsters): the site's defenders may fire on them. */
+    attackerIds: number[];
+    /** The shield broke before the first beam and the fleet came (star date; 0: not yet). */
+    fleetDate: number;
+    /** The fleet that came (the Watchers' faction); after the beam they join the Beacon's guard. */
+    fleet: BuiltObject[];
+    /** The fleet was handed to the guard (st.guards) after the beam. */
+    handed?: boolean;
 }
 
 /**
@@ -608,6 +631,8 @@ export interface BeaconState {
     moratorium?: MoratoriumRec;
     /** Member worlds that took in the Diet's evacuees (beaconDiet.ts; absent before the first). */
     evacIntakes?: EvacIntake[];
+    /** The site's own defence before the first beam (beaconSite.ts); absent until the site is first attacked. */
+    defence?: SiteDefence;
     stats: BeaconStats;
     ended: boolean;
     /** Spawned from the Game Editor / a test: the existence-year gates are skipped. */
@@ -727,6 +752,15 @@ export const P = {
     watcherCruiseSpeed: (g: Galaxy) => p(g, 'beaconWatcherCruiseSpeed', 12),
     watcherArmourPct: (g: Galaxy) => p(g, 'beaconWatcherArmourPct', 350),
     watcherShieldPct: (g: Galaxy) => p(g, 'beaconWatcherShieldPct', 200),
+    /** The Great Work's scaffold shield before the Beacon is finished (the finished Beacon has its own plating); days its schedule keeps a broken shield down. */
+    siteShields: (g: Galaxy) => p(g, 'beaconSiteShields', 25000),
+    siteShieldRechargeDays: (g: Galaxy) => p(g, 'beaconSiteShieldRechargeDays', 30),
+    /** The Reclaimer fleet a broken site shield brings: % of the strongest attacking force in the system, its floor and its ship cap. */
+    siteFleetPct: (g: Galaxy) => p(g, 'beaconSiteFleetPct', 150),
+    siteFleetMin: (g: Galaxy) => p(g, 'beaconSiteFleetMin', 3000),
+    siteFleetMaxShips: (g: Galaxy) => p(g, 'beaconSiteFleetMaxShips', 40),
+    /** Days without a hit (and no empire warship near) after which a site fight is over. */
+    siteQuietDays: (g: Galaxy) => p(g, 'beaconSiteQuietDays', 15),
     /** 1: every Reclaimer design uses the maximum tech level the design generator supports (0: the galaxy average + 1, the Watchers + beaconWatcherTechBonus). */
     techMax: (g: Galaxy) => p(g, 'beaconTechMax', 1) > 0,
     watcherTechBonus: (g: Galaxy) => p(g, 'beaconWatcherTechBonus', 2),

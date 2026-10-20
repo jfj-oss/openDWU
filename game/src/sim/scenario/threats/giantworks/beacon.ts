@@ -68,6 +68,8 @@ import { registerCrisisHelpers } from '../crisis';
 import { refitInPlace } from '../framework';
 import { completeWork, greatWorkProtectors, greatWorks, GW_KEY, markGreatWorkHostile, registerGreatWork, registerHostileWonderCrisis, spawnGreatWork, spawnNote } from './framework';
 import { kindTaken } from './founders';
+import { isCompact } from './state';
+import { exitHyperjump } from '../../../movement';
 import type { GreatWorkKind, GreatWorkSite } from './types';
 import {
     BEACON_CODE_DESTROYED,
@@ -110,6 +112,7 @@ import {
     spawnShip,
     syncReclaimerTech,
 } from './beaconFleet';
+import { checkSiteShield, defenceOfSite, ensureSiteShield, inSiteSystem, isOutsider, outsiderShips, pointNearSite, preBeam, siteBase, siteDefencePass, siteVictim } from './beaconSite';
 import { registerBeaconAi } from './beaconAi';
 import { registerPursuit } from './beaconPursuit';
 import { dwellDaysFor, holdingAtGate, purgePass, purgeRebelStrength, recentlyPurged, siphonPass, siphonStatus } from './beaconSiphon';
@@ -466,6 +469,35 @@ function endFight(galaxy: Galaxy, st: BeaconState, w: WatcherRec, now: number): 
     const ship = w.ship!;
     const prev = w.prevMode;
     const t = w.target;
+    const teleported = w.teleported === true;
+    w.siteFight = false;
+    w.teleported = false;
+    if (prev === 'muster') {
+        // the Great Work is finished and the beam not yet fired: back to its place round the Beacon, cloaked
+        w.attackerShips = [];
+        w.prevMode = undefined;
+        if (st.faction !== null && ship.cloaked !== true) loseTrack(galaxy, st.faction, ship, null);
+        ship.cloaked = true;
+        setMode(w, 'muster', now);
+        return;
+    }
+    if (teleported && (prev === 'travel' || prev === 'dwell') && t !== null && !t.hasBeenDestroyed) {
+        // called away from a corruption trip: it sails back to its world and starts again (cloaked)
+        w.attackerShips = [];
+        w.prevMode = undefined;
+        if (st.faction !== null && ship.cloaked !== true) loseTrack(galaxy, st.faction, ship, null);
+        ship.cloaked = true;
+        setMode(w, 'travel', now);
+        w.until = 0;
+        sendTo(galaxy, ship, t.xpos, t.ypos, t);
+        return;
+    }
+    if (teleported && prev !== 'guard') {
+        w.attackerShips = [];
+        w.prevMode = undefined;
+        goHome(galaxy, st, w, now);
+        return;
+    }
     if (prev === 'guard') {
         // back to guarding the scaffold, cloaked
         w.attackerShips = [];
@@ -532,6 +564,8 @@ export function musterWatchers(galaxy: Galaxy, st: BeaconState): void {
         w.until = 0;
         w.attackerShips = [];
         w.prevMode = undefined;
+        w.siteFight = false;
+        w.teleported = false;
         setMode(w, 'muster', now);
         const at = musterPoint(st, w);
         if (at !== null) sendTo(galaxy, ship, at.x, at.y);
@@ -571,9 +605,11 @@ function driveWatcher(galaxy: Galaxy, st: BeaconState, w: WatcherRec, sightingOp
             if (e === undefined || e === null) continue;
             for (const b of e.builtObjects) if (!b.hasBeenDestroyed && b.role === BuiltObjectRole.Military && galaxy.calculateDistance(b.xpos, b.ypos, ship.xpos, ship.ypos) < 60000) near = true;
         }
-        // (w.until marks when the fight began: it breaks off after 45 days however near its enemies still are, and is drawn back in if they hit it again)
-        if (near && now - w.until < days(45)) w.modeDate = now;
-        else if (now - Math.max(w.modeDate, w.lastHit ?? 0) > days(15) || now - w.until >= days(45)) endFight(galaxy, st, w, now);
+        // (w.until marks when the fight began: it breaks off after 45 days however near its enemies still are, and is drawn back in if they hit it again;
+        // a fight over the site (beaconSite.ts) holds as long as the site is attacked)
+        const cap = w.siteFight === true ? Infinity : days(45);
+        if (near && now - w.until < cap) w.modeDate = now;
+        else if (now - Math.max(w.modeDate, w.lastHit ?? 0) > days(w.siteFight === true ? P.siteQuietDays(galaxy) : 15) || now - w.until >= cap) endFight(galaxy, st, w, now);
         return false;
     }
     if (w.mode === 'guard') {
@@ -675,7 +711,7 @@ function driveWatcher(galaxy: Galaxy, st: BeaconState, w: WatcherRec, sightingOp
 // later ones pick one of the repeat variants at random (the private Random). Both show in the ticker and as a badge (popupMode). AI: no UI.
 // ---------------------------------------------------------------------------------------------------------------
 
-const MSG_REPEATS = { detect: 2, decloak: 1, cloak: 3, corrupt: 3, attack: 3, killed: 3 } as const;
+const MSG_REPEATS = { detect: 2, decloak: 1, cloak: 3, corrupt: 3, attack: 3, killed: 3, site: 2, shield: 1 } as const;
 type MsgKind = keyof typeof MSG_REPEATS;
 
 function humanEmpires(galaxy: Galaxy): Empire[] {
@@ -790,15 +826,88 @@ function guardPass(galaxy: Galaxy, st: BeaconState): void {
     sendTo(galaxy, pick.ship!, pos.x, pos.y);
 }
 
-/** The scaffold was attacked: the guarding Watcher defends it and itself against the attackers (and their fleets) only. */
+/**
+ * The site (the scaffold, or the finished Beacon before its first beam) was attacked (beaconSite.ts): every live Watcher comes to it at once and fights
+ * the empire ships in that system, and a broken shield brings the Reclaimer fleet. Pirates and monsters get no reaction unless they attack the site.
+ * Self-defence of the site, not war: nothing is declared and no relation changes.
+ */
 function onSiteAttacked(galaxy: Galaxy, bo: BuiltObject, attacker: unknown, attackingEmpire: Empire | null): void {
     const st = peekBeaconState(galaxy);
-    if (st === null || st.faction === null || st.phase !== 'watching' || attackingEmpire === null) return;
-    const base = st.site?.base ?? null;
-    if (base === null || bo !== base || base.hasBeenDestroyed) return;
-    const guard = st.watchers.find((w) => !w.dead && w.ship !== null && !w.ship.hasBeenDestroyed && (w.mode === 'guard' || (w.mode === 'fight' && w.prevMode === 'guard')));
-    if (guard === undefined || guard.ship === null) return;
-    onAttacked(galaxy, guard.ship, attacker, attackingEmpire);
+    if (st === null || st.faction === null || !preBeam(st)) return;
+    const base = siteBase(st);
+    if (base === null || bo !== base) return;
+    if (attackingEmpire === st.faction || (attackingEmpire !== null && isCompact(galaxy, attackingEmpire))) return;
+    ensureSiteShield(galaxy, st); // (an attack in the first days, before the Watchers' pass plated it)
+    siteDefence(galaxy, st, base, attacker, attackingEmpire);
+    const fleet = checkSiteShield(galaxy, st);
+    if (fleet.length > 0) {
+        for (const e of humanEmpires(galaxy)) watcherMessage(galaxy, st, 'shield', e, [placeName(galaxy, base)], base, EmpireMessageType.GeneralBadEvent);
+    }
+}
+
+/** The Watchers come to the site (a teleport within SITE_ARRIVAL, a warp-in) and open fire, decloaked, on the empire ships in that system. */
+function siteDefence(galaxy: Galaxy, st: BeaconState, base: BuiltObject, attacker: unknown, attackingEmpire: Empire | null): void {
+    const now = galaxyStarDate(galaxy);
+    const def = defenceOfSite(st);
+    const was = def.active;
+    def.active = true;
+    def.lastAttack = now;
+    const ship = attackerShipOf(attacker);
+    if (ship !== null && !isOutsider(galaxy, st, ship.actualEmpire) && !def.attackerIds.includes(ship.builtObjectID)) def.attackerIds.push(ship.builtObjectID);
+    const outsiders = outsiderShips(galaxy, st, false);
+    const empireIds = new Set<number>();
+    for (const b of outsiders) if (b.actualEmpire !== null) empireIds.add(b.actualEmpire.empireId);
+    if (attackingEmpire !== null && isOutsider(galaxy, st, attackingEmpire)) empireIds.add(attackingEmpire.empireId);
+    let arrived = 0;
+    for (const w of st.watchers) {
+        const wship = w.ship;
+        if (w.dead || wship === null || wship.hasBeenDestroyed || wship.actualEmpire !== st.faction || w.mode === 'lead') continue;
+        if (w.mode !== 'fight') {
+            w.prevMode = w.mode;
+            w.prevUntil = w.until;
+            w.prevModeDate = w.modeDate;
+            if (w.mode === 'dwell') {
+                w.prevModeDate = now;
+                st.stats.dwellResets = (st.stats.dwellResets ?? 0) + 1;
+            }
+            setMode(w, 'fight', now);
+            w.until = now; // marks when the fight began
+        }
+        wship.cloaked = false;
+        w.siteFight = true;
+        w.lastHit = now;
+        for (const id of empireIds) if (!w.attackedBy.includes(id)) w.attackedBy.push(id);
+        if (ship !== null) {
+            // the ships that attacked it keep drawing its fire wherever they flee to (watcherMayFire)
+            w.attackerShips ??= [];
+            if (!w.attackerShips.includes(ship.builtObjectID)) w.attackerShips.push(ship.builtObjectID);
+        }
+        if (galaxy.calculateDistance(wship.xpos, wship.ypos, base.xpos, base.ypos) > 1000) {
+            teleportTo(galaxy, st, wship, pointNearSite(galaxy, st, base, 6000 + w.index), w);
+            arrived++;
+        }
+    }
+    if (!was || arrived > 0) {
+        const where = placeName(galaxy, base);
+        const by = attackingEmpire !== null ? attackingEmpire.name : T(`${TAG} Independents`);
+        for (const e of humanEmpires(galaxy)) watcherMessage(galaxy, st, 'site', e, [where, by], base, EmpireMessageType.GalacticNewsNet, true, 'site');
+    }
+}
+
+/**
+ * A Watcher is moved to a point at once (the warp-in; the sim has no flight there): out of any hyperjump, its orders cleared, then held at the point.
+ * (Render: the stock arrival flare is not played, only the decloak.)
+ */
+function teleportTo(galaxy: Galaxy, st: BeaconState, ship: BuiltObject, at: { x: number; y: number }, w: WatcherRec): void {
+    if (ship.hyperjumpPrepare || ship.currentSpeed > ship.topSpeed) exitHyperjump(galaxy, ship);
+    if (st.faction !== null && ship.cloaked !== true) loseTrack(galaxy, st.faction, ship, null);
+    w.teleported = true;
+    ship.xpos = at.x;
+    ship.ypos = at.y;
+    ship.currentSpeed = 0;
+    const star = st.site?.system.systemStar ?? null;
+    if (star !== null) ship.nearestSystemStar = star;
+    sendTo(galaxy, ship, at.x, at.y);
 }
 
 /** Every 2 days: the Watchers' routine and the cloak check. */
@@ -829,6 +938,7 @@ export function watchersPeriodic(galaxy: Galaxy): void {
     }
     st.sighted = st.watchers.filter((w) => !w.dead && w.ship !== null && !w.ship.hasBeenDestroyed && w.ship.cloaked !== true).map((w) => w.ship!);
     siphonPass(galaxy, st);
+    siteDefencePass(galaxy, st);
     guardPass(galaxy, st);
     purgePass(galaxy, st);
     // the siphon is complete and the work waits at the last stage: the next delivery (or this nudge) finishes it
@@ -867,7 +977,7 @@ function onAttacked(galaxy: Galaxy, bo: BuiltObject, attacker: unknown, attackin
     }
     if (attackingEmpire === null || attackingEmpire === st.faction || !isNormalAttacker(galaxy, attackingEmpire)) return; // pirates and monsters get no reaction
     // The Reclamation has begun: the faction is at war with everyone, and the Watcher leads its fleet (beaconFleet.ts); nothing changes.
-    if (st.phase !== 'watching' || w.mode === 'lead') return;
+    if (!preBeam(st) || w.mode === 'lead') return;
     // SELF-DEFENCE, not war: the cloak drops and the Watcher's guns may open fire on the ships that attacked it and their fleets (attackWithoutWar,
     // watcherMayFire) until they are destroyed or gone. No war is declared or locked, and no relation changes.
     const now = galaxyStarDate(galaxy);
@@ -910,7 +1020,13 @@ function attackerShipOf(attacker: unknown): BuiltObject | null {
 export function watcherMayFire(galaxy: Galaxy, attacker: BuiltObject | undefined, victim: BuiltObject | undefined): boolean {
     if (attacker === undefined || victim === undefined) return false;
     const st = peekBeaconState(galaxy);
-    if (st === null || st.faction === null || st.phase !== 'watching') return false;
+    if (st === null || st.faction === null || !preBeam(st)) return false;
+    // the Reclaimer fleet the site's broken shield brought, and the Watchers called to the site: the empire ships in the site's system while the fight is on
+    if (st.defence?.active === true && inSiteSystem(galaxy, st, victim)) {
+        if (st.defence.fleet.includes(attacker) && siteVictim(galaxy, st, victim)) return true;
+        const sw = watcherOf(st, attacker);
+        if (sw !== undefined && !sw.dead && sw.mode === 'fight' && sw.siteFight === true && siteVictim(galaxy, st, victim)) return true;
+    }
     const w = watcherOf(st, attacker);
     if (w === undefined || w.dead || w.mode !== 'fight' || w.attackerShips === undefined) return false;
     if (w.attackerShips.includes(victim.builtObjectID)) return true;

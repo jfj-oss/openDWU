@@ -140,6 +140,11 @@ Beacon Msg Attack First;{0} fired on the giant. It did not flee and it did not t
 Beacon Msg Attack Repeat 1;{0} opened fire on one of the giants. For a long moment it did nothing. Then it answered, and the ships that fired on it went dark one by one.
 Beacon Msg Attack Repeat 2;Fragments of {0}'s fleet are drifting near {1}. They attacked the giant. It did not pursue the survivors; it simply finished what they had started.
 Beacon Msg Attack Repeat 3;{0} struck at one of the vast vessels. It turned to face them with terrible patience, and only those who fired were destroyed.
+Beacon Msg Site Title;The site defends itself
+Beacon Msg Site First;Ships fired on the great structure at {0}, and the giants came. They were not there, and then they were: a flash of dark light over the scaffold and the shadows we had never been sure of hung over it, uncloaked, turning their guns on every ship in the system. {1} had struck first. Nobody has declared war on anyone, but nobody at {0} will leave.
+Beacon Msg Site Repeat 1;The giants have come to {0} again. {1} attacked the structure, and the vast ships dropped out of nothing above it to answer, aiming at every ship that shared the system.
+Beacon Msg Shield Title;The shield has failed
+Beacon Msg Shield First;The shield over the structure at {0} has failed. In the same moment a great fleet of the dark ships arrived out of nowhere around it, and it is holding the site. Whoever broke the shield has not made the structure weaker; they have made it call for help.
 Beacon Msg Pull Title;Dragged out of warp
 Beacon Msg Pull;A Reclaimer capital ship has run down {0} and dragged it out of hyperspace near {1}. Their drives are faster than ours: the fight is on again where it dropped.
 Beacon Msg CoreFirst Title;What the Ship Was Carrying
