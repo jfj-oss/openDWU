@@ -7,8 +7,8 @@
 // Evacuate the worlds near the Great Work (kind beaconEvacuate; proposable while the work is built or before the first beam): for the
 // motion's duration the member colonies within beaconEvacSectors of the site are migration sources (colonyMigrationFactor), send bigger
 // shiploads (migrationLoadFactor) farther afield (migrationRangeFactor) and grow slower (colonyGrowthFactor). The cost falls on the world that
-// takes the people in: when the evacuees it received within beaconEvacWindowDays reach beaconEvacIntakePct % of its population it earns
-// beaconEvacRevenueCutPct % less (colonyTaxRevenue) until beaconEvacSlowYears after the last such intake. The stock migration machinery
+// takes the people in: it earns beaconEvacRevenueCutPct % x min(1, the evacuees it received within beaconEvacWindowDays / its population before them) less
+// (colonyTaxRevenue) until beaconEvacSlowYears after the last intake (the news line comes once they reach beaconEvacIntakePct %). The stock migration machinery
 // (passenger ships, civilianAI.ts) does the moving; stock dense worlds only (the stock rule keeps a poor small colony's people).
 // Rnd: none.
 
@@ -268,7 +268,7 @@ registerScenarioQuery({
     run: (g, v, { habitat }) => (evacuationInForce(g) && inEvacuationZone(g, habitat) ? v * (1 - EVAC.growthCutPct(g) / 100) : v),
 });
 
-/** A passenger load from an evacuated zone world reached a member world outside it: count it; enough of it and the world earns less for a while. */
+/** A passenger load from an evacuated zone world reached a member world outside it: count it; the world earns less for a while, in proportion to the intake (evacuationRevenueFactor). */
 export function noteEvacuee(g: Galaxy, colony: Habitat, from: Habitat | null, amount: number): void {
     const st = peekBeaconState(g);
     if (st === null || from === null || colony.empire === null || !evacuationInForce(g)) return;
@@ -283,23 +283,29 @@ export function noteEvacuee(g: Galaxy, colony: Habitat, from: Habitat | null, am
     if (now - rec.since > EVAC.windowDays(g) * GAME_DAY_LENGTH) {
         rec.amount = 0;
         rec.since = now;
+        rec.basePop = undefined;
+        rec.noted = false;
     }
+    // the population before the window's first intake (the stock unload has added this load to the world already)
+    if (rec.basePop === undefined) rec.basePop = Math.max(1, colony.population.totalAmount - amount);
     rec.amount += amount;
-    if (rec.amount >= (EVAC.intakePct(g) / 100) * colony.population.totalAmount) {
-        if (rec.slowUntil <= now) {
-            st.stats.evacSlowed = (st.stats.evacSlowed ?? 0) + 1;
-            scenarioNews(g, colony.empire, scenarioText(`${TAG} Diet Evacuate Intake`, colony.name, EVAC.revenueCutPct(g)));
-        }
-        rec.slowUntil = now + EVAC.slowYears(g) * YEAR_LENGTH;
+    rec.slowUntil = now + EVAC.slowYears(g) * YEAR_LENGTH;
+    if (!rec.noted && rec.amount >= (EVAC.intakePct(g) / 100) * rec.basePop) {
+        rec.noted = true;
+        st.stats.evacSlowed = (st.stats.evacSlowed ?? 0) + 1;
+        scenarioNews(g, colony.empire, scenarioText(`${TAG} Diet Evacuate Intake`, colony.name, EVAC.revenueCutPct(g)));
     }
 }
 
-/** The receiving world's revenue factor: it earns less while it absorbs evacuees. Pure. */
+/**
+ * The receiving world's revenue factor: it earns less while it absorbs evacuees, by revenueCutPct % x min(1, the window's intake / its population
+ * before it) until slowYears after the last intake (the same scaled rule as the relocation order's intake, beaconRelocation.ts). Pure.
+ */
 export function evacuationRevenueFactor(g: Galaxy, h: Habitat): number {
     const st = peekBeaconState(g);
     if (st === null || st.evacIntakes === undefined) return 1;
     const now = galaxyStarDate(g);
-    for (const r of st.evacIntakes) if (r.colony === h && now < r.slowUntil) return 1 - EVAC.revenueCutPct(g) / 100;
+    for (const r of st.evacIntakes) if (r.colony === h && now < r.slowUntil) return 1 - (EVAC.revenueCutPct(g) / 100) * Math.min(1, r.amount / Math.max(1, r.basePop ?? Math.max(1, h.population.totalAmount - r.amount)));
     return 1;
 }
 

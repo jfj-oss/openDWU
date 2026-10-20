@@ -460,7 +460,7 @@ export function releaseCaptives(galaxy: Galaxy, st: BeaconState, load: readonly 
 // Cattle ships
 // ---------------------------------------------------------------------------------------------------------------
 
-function nearestCore(galaxy: Galaxy, st: BeaconState, x: number, y: number): CoreRec | null {
+export function nearestCore(galaxy: Galaxy, st: BeaconState, x: number, y: number): CoreRec | null {
     let best: CoreRec | null = null;
     let bd = Infinity;
     for (const c of liveCores(st)) {
@@ -528,7 +528,7 @@ export function feedersOf(galaxy: Galaxy, st: BeaconState): Map<Habitat, Process
 
 /** The pool of a core: its cattle ships (any phase). */
 export function poolOf(st: BeaconState, core: Habitat): CattleRec[] {
-    return cattleOf(st).filter((c) => c.core === core);
+    return cattleOf(st).filter((c) => c.core === core && c.seized !== true);
 }
 
 function orderOf(st: BeaconState): CattleOrder[] {
@@ -615,6 +615,29 @@ function loadShip(galaxy: Galaxy, st: BeaconState, c: CattleRec, rec: ProcessRec
     assignEscorts(galaxy, st, c);
 }
 
+/**
+ * A relocation transport seized by the refugee interceptors (beaconInterceptors.ts): its people are the Reclaimers' captives, flown to the pens of the
+ * nearest live core on the ship itself, as a laden cattle ship (the same record: docking pens them, a ship retaken first frees them to the taker's worlds
+ * (cattleTaken), one destroyed loses them but for the pods (cattleDestroyed)). The ship is scrapped after it unloads. False when no core is live.
+ */
+export function penSeizedTransport(galaxy: Galaxy, st: BeaconState, ship: BuiltObject, from: Habitat | null, people: readonly Captive[]): boolean {
+    const core = nearestCore(galaxy, st, ship.xpos, ship.ypos);
+    const total = sumOf(people);
+    if (core === null || !(total > 0)) return false;
+    from ??= core.colony;
+    ship.supportCostFactor = 0;
+    if (ship.fuelCapacity > 0) ship.currentFuel = ship.fuelCapacity;
+    if (ship.population !== null) {
+        ship.population.items.length = 0;
+        ship.population.recalculateTotalAmount();
+    }
+    const c: CattleRec = { ship, from, core: core.colony, load: people.map((x) => ({ race: x.race, amount: x.amount })), total, launched: galaxyStarDate(galaxy), phase: 'in', seized: true };
+    cattleOf(st).push(c);
+    sail(galaxy, ship, core.colony);
+    st.stats.transportsSeized = (st.stats.transportsSeized ?? 0) + 1;
+    return true;
+}
+
 /** The ship docks at its core: the people are penned, the escorts released; the ship waits for its next run. */
 function unloadShip(galaxy: Galaxy, st: BeaconState, c: CattleRec, core: CoreRec): void {
     for (const x of c.load) addTo(core.pens, x.race, x.amount);
@@ -635,6 +658,14 @@ function unloadShip(galaxy: Galaxy, st: BeaconState, c: CattleRec, core: CoreRec
  * True when the ship was retired (removed from the pool and torn down).
  */
 function retireSurplus(galaxy: Galaxy, st: BeaconState, c: CattleRec, core: CoreRec): boolean {
+    if (c.seized === true) {
+        // a seized relocation transport has delivered its people: it is scrapped (it was never a pool ship)
+        const list = cattleOf(st);
+        list.splice(list.indexOf(c), 1);
+        builtObjectCompleteTeardown(galaxy, c.ship);
+        st.stats.transportsPenned = (st.stats.transportsPenned ?? 0) + 1;
+        return true;
+    }
     if (c.legacy !== true) return false;
     c.legacy = undefined;
     const target = poolTarget(galaxy, feedersOf(galaxy, st).get(core.colony)?.length ?? 0);
@@ -817,23 +848,23 @@ export function poolCensus(st: BeaconState): number[] {
 /** A cattle ship was destroyed: a ship on a run costs its captives (podsAway: most escape; the rest die) and counts against the world it was sent to; a replacement is ordered. */
 function cattleLost(galaxy: Galaxy, st: BeaconState, c: CattleRec): void {
     const bo = c.ship;
-    if (inField(c)) noteIntercept(galaxy, st, c.from);
+    if (c.seized !== true && inField(c)) noteIntercept(galaxy, st, c.from);
     releaseEscorts(galaxy, st, c, true);
     if (c.total > 0) cattleDestroyed(galaxy, st, c, bo);
     st.stats.cattleKilled = (st.stats.cattleKilled ?? 0) + 1;
-    orderReplacement(galaxy, st, c);
+    if (c.seized !== true) orderReplacement(galaxy, st, c);
 }
 
 /** A cattle ship was taken by `by` (boarded, or its owner changed): the people aboard are freed to `by`'s worlds; a replacement is ordered. */
 function cattleTaken(galaxy: Galaxy, st: BeaconState, c: CattleRec, by: Empire | null): number {
     const bo = c.ship;
-    if (inField(c)) noteIntercept(galaxy, st, c.from);
+    if (c.seized !== true && inField(c)) noteIntercept(galaxy, st, c.from);
     releaseEscorts(galaxy, st, c, true);
     const placed = c.total > 0 ? releaseCaptives(galaxy, st, c.load, bo, by, null) : 0;
     st.stats.cattleBoarded = (st.stats.cattleBoarded ?? 0) + 1;
     st.stats.captivesRescued = (st.stats.captivesRescued ?? 0) + c.total;
     if (c.total > 0 && by !== null && isHumanEmpire(galaxy, by)) arcMessage(galaxy, st.sentStages, [by], { prefix: TAG, stage: 'Rescued', onceKey: `Rescued:${bo.builtObjectID}`, args: [Math.round(c.total / 1e6), c.from.name], type: EmpireMessageType.GeneralGoodEvent, subject: bo });
-    orderReplacement(galaxy, st, c);
+    if (c.seized !== true) orderReplacement(galaxy, st, c);
     return placed;
 }
 

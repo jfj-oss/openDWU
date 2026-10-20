@@ -4966,29 +4966,39 @@ describe('the Beacon (Giantworks wonder)', () => {
         // the zone: a migration source, bigger loads, farther trips, slower growth; the world outside is untouched
         expect(q(near)).toEqual({ mig: -0.6, load: 4, range: 2.5, growth: 0.4 });
         expect(q(far)).toEqual({ mig: 0.5, load: 1, range: 1, growth: 1 });
-        // the receiving world: a small intake costs nothing, a big one halves its revenue until two years after the last
+        // the receiving world earns 50 % x min(1, intake / the population before it) less, until two years after the last intake
         const tax = (h: typeof near) => scenarioQuery(g, 'colonyTaxRevenue', 100, { habitat: h, empire: h.empire! });
         far.population.items[0].amount = 1000000000;
         far.population.recalculateTotalAmount();
-        const total = far.population.totalAmount;
-        noteEvacuee(g, far, near, total * 0.02);
-        expect(evacuationRevenueFactor(g, far)).toBe(1);
-        expect(tax(far)).toBeCloseTo(100, 9);
-        noteEvacuee(g, far, near, total * 0.07); // within the window the amounts add up
-        expect(evacuationRevenueFactor(g, far)).toBe(0.5);
-        expect(tax(far)).toBeCloseTo(50, 9);
+        const pop0 = far.population.totalAmount;
+        const arrive = (x: number): void => {
+            // as the stock unload does: the people are in the world's population when the event fires
+            far.population.items[0].amount += x;
+            far.population.recalculateTotalAmount();
+            noteEvacuee(g, far, near, x);
+        };
+        arrive(pop0 * 0.02);
+        expect(evacuationRevenueFactor(g, far)).toBeCloseTo(0.99, 9);
+        expect(tax(far)).toBeCloseTo(99, 7);
+        expect(st.stats.evacSlowed ?? 0).toBe(0);
+        arrive(pop0 * 0.07); // within the window the amounts add up: 9 % of the population before them
+        expect(evacuationRevenueFactor(g, far)).toBeCloseTo(0.955, 9);
+        expect(tax(far)).toBeCloseTo(95.5, 7);
         expect(st.stats.evacSlowed).toBe(1);
         g.nowMs += 500 * GAME_DAY_LENGTH;
-        expect(evacuationRevenueFactor(g, far)).toBe(0.5);
-        noteEvacuee(g, far, near, total * 0.1); // another big intake pushes the end out
+        expect(evacuationRevenueFactor(g, far)).toBeCloseTo(0.955, 9);
+        arrive(pop0 * 0.1); // another intake (a new window) pushes the end out
+        const f2 = evacuationRevenueFactor(g, far);
+        expect(f2).toBeLessThan(1);
+        expect(f2).toBeGreaterThan(0.9);
         g.nowMs += 500 * GAME_DAY_LENGTH;
-        expect(evacuationRevenueFactor(g, far)).toBe(0.5);
+        expect(evacuationRevenueFactor(g, far)).toBeCloseTo(f2, 9);
         g.nowMs += 300 * GAME_DAY_LENGTH;
         expect(evacuationRevenueFactor(g, far)).toBe(1);
         expect(tax(far)).toBeCloseTo(100, 9);
         // people moving between worlds outside the zone, or into the zone, are not counted
-        noteEvacuee(g, far, far, total);
-        noteEvacuee(g, near, far, total);
+        noteEvacuee(g, far, far, pop0);
+        noteEvacuee(g, near, far, pop0);
         expect(evacuationRevenueFactor(g, far)).toBe(1);
         expect(evacuationRevenueFactor(g, near)).toBe(1);
         // it lapses with the law

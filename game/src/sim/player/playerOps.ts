@@ -145,6 +145,7 @@ import { addHumanSeat, isHumanEmpire, setAiSeat } from '../humanEmpires';
 import { setEmpireDifficultyFactors } from '../pirates';
 import { setHumanMessageOptions } from '../perHumanState';
 import { acceptGovernorSuggestion, requestGovernor, setCvAutomation } from '../scenario/charactersVictory/governorsCv';
+import { cancelRelocation, startRelocation } from '../scenario/threats/giantworks/beaconRelocation';
 import { bribeOfficials as vbBribeOfficials, playerLabourConvoy as vbPlayerLabourConvoy, playerLevyGarrison as vbPlayerLevyGarrison, playerSetAutomation as vbPlayerSetAutomation, playerSetPolicy as vbPlayerSetPolicy, playerStartDetox as vbPlayerStartDetox } from '../scenario/voidbloom/view';
 import { dietPlayerDeclareEmperor, dietPlayerEmergency, dietPlayerVeto, dietPlayerVote, dietPropose, dietSetDelegate } from '../scenario/charactersVictory/diet/diet';
 import type { DietMotionKind } from '../scenario/charactersVictory/diet/dietState';
@@ -701,6 +702,12 @@ export const PLAYER_OPS = {
     /** Bribe the Concord's officials: no inspections of our ships for two years. */
     vbBribeOfficials: (galaxy: Galaxy, empire: Empire) => vbBribeOfficials(galaxy, empire),
     // [voidbloom] end
+    // [beacon] begin — population relocation (scenario/threats/giantworks/beaconRelocation.ts; flag gwBeacon, false when off)
+    /** Move `amount` people from our colony `from` to our colony `to` (private passenger ships carry them; the cost is paid now). */
+    relocatePopulation: (galaxy: Galaxy, empire: Empire, from: Habitat, to: Habitat, amount: number) => startRelocation(galaxy, empire, from, to, amount),
+    /** Stop sending people on relocation order `id` (those aboard still arrive). */
+    relocateCancel: (galaxy: Galaxy, empire: Empire, id: number) => cancelRelocation(galaxy, empire, id),
+    // [beacon] end
     // [llm] begin — 19s-3 strategic upgrade (scenario/llm/strategic.ts; flag llmStrategic, no-op when off): the local
     // model's validated choice for an AI empire (`empire` = that AI), or its refusal; the only way a model choice
     // reaches the sim, so seed + command log replays it without the model.

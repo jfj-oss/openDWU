@@ -426,9 +426,9 @@ Beacon Diet Moratorium Effect;Research is slowed in every empire for a long whil
 Beacon Diet Moratorium News;The Interstellar Diet has passed a research moratorium: research is slowed by {0} % in every empire for {1} months. Any member that breaks it will answer to the Diet.
 Beacon Diet Moratorium Broken;it broke the research moratorium
 Beacon Diet Evacuate;Evacuate the worlds near the Great Work
-Beacon Diet Evacuate Effect;Member worlds near the Great Work send their dense populations to farther member worlds (more emigrants, bigger passenger loads, longer trips) and grow more slowly while the motion lasts. A world that takes in a great many evacuees earns half its revenue for two years after the last of them.
+Beacon Diet Evacuate Effect;Member worlds near the Great Work send their dense populations to farther member worlds (more emigrants, bigger passenger loads, longer trips) and grow more slowly while the motion lasts. A world that takes in evacuees earns less, in proportion to the evacuees' share of the people it already had, for two years after the last of them.
 Beacon Diet Evacuate News;The Interstellar Diet has ordered the evacuation of the member worlds within {0} sectors of the Great Work: their people will be moved to safer worlds for {1} months, and their growth is slowed.
-Beacon Diet Evacuate Intake;{0} has taken in so many evacuees that its revenue falls by {1} % while it absorbs them.
+Beacon Diet Evacuate Intake;{0} has taken in so many evacuees that its revenue falls by up to {1} % while it absorbs them.
 Beacon Pods News;Escape pods from the destroyed vessel reached {0}: {1} million people taken from {2} are free.
 LongNight Begin Title;The Long Night
 LongNight Begin Body;The last of the great empires fell silent. The machines took what they came for, and then they too went quiet.\n\nWhat followed has no history. Only centuries, and forgetting.
@@ -489,3 +489,13 @@ Knowledge Tip Watchers;Something vast was seen, and then was not. It may still b
 Knowledge Tip Beacon Fortify;They take the nearest worlds first. Fortify {0} before the light comes.
 Knowledge Tip Beacon Nearest;your nearest colonies
 Knowledge Tip Beacon Diet;The worlds near the Great Work will be the first to fall. Ask the Diet to move their people now.
+Beacon Interceptor Design;Reclaimer Interceptor
+Beacon Reloc Done Title;TODO-PROSE relocation finished
+Beacon Reloc Done;TODO-PROSE The relocation from {0} to {1} is finished: {2} million people moved, {3} million lost on the way, {4} million seized.
+Beacon Reloc Losses Title;TODO-PROSE disease aboard a transport
+Beacon Reloc Losses;TODO-PROSE Disease and starvation struck the transport {0} on the way from {1} to {2}: {3} million of its people died ({4} % of the load).
+Beacon Reloc Seized Title;TODO-PROSE transport seized
+Beacon Reloc Seized;TODO-PROSE The relocation transport {0} ({1} million people, {2} to {3}) has been boarded and seized by the Reclaimers ({4}). Its people will be taken to the harvest pens unless the ship is retaken.
+Beacon Reloc Wreck Title;TODO-PROSE transport lost
+Beacon Reloc Wreck;TODO-PROSE The relocation transport {0} was destroyed with its {1} million people ({2} to {3}).
+Beacon Reloc Warning;TODO-PROSE This evacuates {0} completely: all {1} people leave for {2} and the colony is abandoned (cost {3}). Are you sure?

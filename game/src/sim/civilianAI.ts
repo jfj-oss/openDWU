@@ -67,6 +67,7 @@ import { assignLoadTroopsMission, checkAssignGarrisonTroopsAtPenalColonyMission,
 import { identifyDeficientEmpireResources } from './industry';
 import { addChainMigrationDestinations, addChainMigrationSources, spawnRefugeeFlows } from './scenario/emergent/demographics';
 import { removeQuarantinedDestinations } from './scenario/security/registry';
+import { assignRelocationRun } from './scenario/threats/giantworks/beaconRelocation';
 import {
     HabitatPrioritization,
     calculateCurrentCompleteResourceValue,
@@ -1444,6 +1445,8 @@ function assignMissionConstructionShip(galaxy: Galaxy, empire: Empire, ship: Bui
 
 /** Empire.5.cs 2670-2695 case PassengerShip. Rnd: Next(0, 2), Next(0, 3) (short-circuit order as in the C#). */
 function assignMissionPassengerShip(galaxy: Galaxy, empire: Empire, ship: BuiltObject, flag2: boolean): void {
+    // mod layer (Beacon, population relocation): an idle private passenger ship takes the next load of a standing relocation order first; no-op without one (no Rnd).
+    if (galaxy.scenario !== null && assignRelocationRun(galaxy, empire, ship)) return;
     let flag9 = false;
     let flag10 = false;
     if (empire.migrationDestinations != null && empire.migrationSources != null && empire.migrationDestinations.length > 0 && empire.migrationSources.length > 0 && flag2) flag9 = true;

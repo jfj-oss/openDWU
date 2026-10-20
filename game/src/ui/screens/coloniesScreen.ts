@@ -27,6 +27,7 @@ import { SLAVERY_PARAMS, isPenalColony, penalGarrisonRequired, slaveryAllowed, s
 import { penalDesignationBlocked, penalLedger } from '../../sim/slaveryReview';
 import { cvColonySlot } from '../scenario/charactersVictoryUi'; // [charactersVictory]
 import { econVisible, renderEconomyTab } from '../scenario/colonyEconomyUi'; // [colonyEconomy]
+import { relocationVisible, renderRelocationBlock } from '../scenario/relocationUi'; // [beacon] population relocation
 import { econDesignationIconUrl } from '../scenario/colonyEconomyInfo'; // [colonyEconomy]
 import { DESIGNATIONS, DESIGNATION_NAMES, Designation, designationOf } from '../../sim/scenario/colonyEconomy/common'; // [colonyEconomy]
 
@@ -1286,22 +1287,26 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
                 page.appendChild(place(info, 5, 297, 265, 15));
             }
         }
+        // [beacon] the relocation block (a destination, an amount, the order's progress) takes the foot of the attitude panel
+        const reloc = relocationVisible(galaxy, empire, h);
+        const shrink = reloc ? 74 : 0;
         const bg = gradientPanel({ corners: { tl: true, br: true } });
-        page.appendChild(place(bg, 274, 5, 385, 240));
+        page.appendChild(place(bg, 274, 5, 385, 240 - shrink));
+        if (reloc) renderRelocationBlock(page, galaxy, empire, h, () => renderPage(true), 274, 5 + 240 - shrink + 4, 385, 70);
         const sc = scrollPanel('col-attitude');
         // [charactersVictory] the governor slot under the attitude summary: name or vacancy countdown, Request governor.
         const slot = galaxy.scenario !== null ? cvColonySlot(galaxy, empire, h) : null;
-        bg.appendChild(place(sc, 8, 8, 370, slot === null ? 220 : 190));
+        bg.appendChild(place(sc, 8, 8, 370, (slot === null ? 220 : 190) - shrink));
         if (slot !== null) {
             const label = slot.governor !== null ? `Governor: ${slot.governor.name}${slot.status !== '' ? ` — ${slot.status}` : ''}` : slot.status !== '' ? slot.status : 'No governor';
             const t = text(label, { size: FONT.small, color: slot.governor === null && slot.neglectPct > 0 ? COLORS.red : COLORS.gridText });
             t.title = 'Every colony needs a governor (Characters & Victory): six months after one leaves, the colony starts to decline.';
-            bg.appendChild(place(t, 8, 204, 240, 18));
+            bg.appendChild(place(t, 8, 204 - shrink, 240, 18));
             const req = glassButton(slot.requested ? 'Requested' : 'Request governor', {
                 disabled: !slot.canRequest,
                 onClick: () => issuePlayerCommand(galaxy, empire, 'cvRequestGovernor', [h], () => renderPage(true)),
             });
-            bg.appendChild(place(req, 252, 200, 125, 24));
+            bg.appendChild(place(req, 252, 200 - shrink, 125, 24));
         }
         const sum = colonyAttitudeSummary(galaxy, h);
         const line = (s: string, cls: string, color?: string): void => {
@@ -1314,7 +1319,7 @@ function createColoniesScreen(opts: ColoniesScreenOptions): OpenState {
         for (const f of sum.factors) line(`${f.description} (${formatSigned0(f.value)})`, 'col-att-factor', f.value < 0 ? COLORS.red : COLORS.green);
         const lnk = linkLabel(T('Learn about Colony Approval...', 'Learn about Colony Approval...'), () => opts.onHelp?.(T('Colony Approval', 'Colony Approval')));
         lnk.classList.add('col-link-right');
-        page.appendChild(place(lnk, 455, 250, 200, 21));
+        page.appendChild(place(lnk, 455, reloc ? 5 + 240 - shrink + 4 + 70 : 250, 200, 21));
     }
 
     // [improvements] supplyChain: a resource name opens its supply panel (resourceSupply.ts).

@@ -73,7 +73,7 @@ export function isPursuing(galaxy: Galaxy, bo: BuiltObject): boolean {
 }
 
 /** A ship in hyperspace: past its jump's spool and flying at warp speed. Pure. */
-function inWarp(b: BuiltObject): boolean {
+export function inWarp(b: BuiltObject): boolean {
     return !b.hasBeenDestroyed && b.warpSpeed > 0 && !b.hyperjumpPrepare && b.currentSpeed > b.topSpeed;
 }
 
@@ -293,7 +293,7 @@ function placeName(galaxy: Galaxy, o: { xpos: number; ypos: number }): string {
 }
 
 /** Drags `v` (and the ships of its fleet that are in warp) out of warp where it is, as the Stop order does; locks their jumps for a while. Returns the ships pulled. */
-function pullOut(galaxy: Galaxy, st: BeaconState, pr: PursuitRec, v: BuiltObject, now: number): number {
+export function pullOut(galaxy: Galaxy, st: BeaconState, pr: PursuitRec, v: BuiltObject, now: number): number {
     const group = shipGroupOf(v);
     const ships = group !== null ? group.ships.filter((b) => inWarp(b)) : [];
     if (!ships.includes(v)) ships.push(v);
@@ -351,7 +351,7 @@ function endChase(galaxy: Galaxy, pr: PursuitRec, c: PursuitChase, why: string, 
  * The stock Attack on a ship far away flies to the spot the ship was at when the order was given (the command holds coordinates), so a runner is
  * missed. The pursuers' current jump / move command is re-aimed at the runner's position every step: the pursuit curve of the header.
  */
-function steer(unit: readonly BuiltObject[], t: BuiltObject): void {
+export function steer(unit: readonly BuiltObject[], t: BuiltObject): void {
     for (const b of unit) {
         const cmd = builtObjectMission(b.mission)?.fastPeekCurrentCommand() ?? null;
         if (cmd === null || cmd.xpos <= -1e9 || cmd.ypos <= -1e9) continue;

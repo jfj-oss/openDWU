@@ -46,7 +46,7 @@ function stat(rs: ResponseRec, key: string, by = 1): void {
 
 /** Every ship of the response fleets and patrols (the other passes treat them as busy). Pure. */
 export function responseShips(st: BeaconState): BuiltObject[] {
-    return (st.response?.fleets ?? []).flatMap((f) => f.ships);
+    return [...(st.response?.fleets ?? []).flatMap((f) => f.ships), ...(st.interceptors?.groups ?? []).flatMap((g) => g.ships)]; // (the refugee interceptors, beaconInterceptors.ts, are busy too)
 }
 
 /**

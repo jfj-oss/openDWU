@@ -50,6 +50,7 @@ import { refugeeConvoySkipLoad, settleRefugeeConvoyArrival } from '../scenario/e
 import { labourConvoySkipLoad, settleLabourConvoyArrival } from '../scenario/voidbloom/supply';
 import { scenarioEmit } from '../scenario/hooks';
 import { smugglerRunSkipLoad } from '../scenario/voidbloom/trade';
+import { relocationArrive, relocationLoad } from '../scenario/threats/giantworks/beaconRelocation';
 import { addHumanSmuggling } from '../perHumanState';
 import { humanEmpires } from '../humanEmpires';
 
@@ -548,7 +549,13 @@ export const cmdLoad: CommandHandler = (ctx) => {
             bo.population.items.length = 0;
             bo.population.recalculateTotalAmount();
         }
-        if (bo.populationCapacityRemaining - population.totalAmount >= 0) {
+        if (galaxy.scenario !== null && relocationLoad(galaxy, bo, dockedAt) !== null) {
+            // mod layer (Beacon, population relocation): the run loads its people itself (ten times the capacity, a world may be emptied)
+            population.items.length = 0;
+            mission.completeCommand();
+            bo.firstExecutionOfCommand = true;
+            result = timePassed;
+        } else if (bo.populationCapacityRemaining - population.totalAmount >= 0) {
             for (const item6 of population.items) {
                 const dockPopulation = dockedAt.population;
                 if (dockPopulation !== null && dockPopulation.items.length > 0 && bo.population !== null) {
@@ -804,7 +811,8 @@ export const cmdUnload: CommandHandler = (ctx) => {
         }
         if (num21 >= 0) {
             const dockPopulation = dockedAt.population;
-            if (dockPopulation !== null && bo.population !== null) {
+            const relocated = galaxy.scenario !== null && relocationArrive(galaxy, bo, dockedAt); // mod layer (Beacon, population relocation)
+            if (!relocated && dockPopulation !== null && bo.population !== null) {
                 for (const item9 of bo.population.items.slice()) {
                     if (isBuiltObject(dockedAt) || item9.amount >= 1000000) {
                         let flag10 = true;
@@ -819,7 +827,7 @@ export const cmdUnload: CommandHandler = (ctx) => {
                     processTourists(galaxy, bo, item9);
                 }
             }
-            if (galaxy.scenario !== null && isHabitat(dockedAt) && bo.population !== null && bo.population.totalAmount > 0) {
+            if (!relocated && galaxy.scenario !== null && isHabitat(dockedAt) && bo.population !== null && bo.population.totalAmount > 0) {
                 scenarioEmit(galaxy, 'migrantsArrived', { colony: dockedAt, from: mission.targetHabitat, amount: bo.population.totalAmount }); // the Diet's Beacon evacuation
             }
             // mod layer (19d4 §2.6): refugee convoys settle here — before bo.population is wiped below, so the hook

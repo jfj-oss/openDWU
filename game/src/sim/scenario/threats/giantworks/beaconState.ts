@@ -147,6 +147,35 @@ export interface ResponseFleet {
     engaged: boolean;
 }
 
+/**
+ * A refugee interceptor group (beaconInterceptors.ts): a cruiser carrying assault pods (the first ship), a destroyer and two frigates. It patrols the
+ * Reclaimer-held worlds (`patrol`), at its leisure raids a private station (`raid`), and drops everything to chase a detected relocation transport (`chase`).
+ */
+export interface InterceptorGroup {
+    id: number;
+    ships: BuiltObject[];
+    mode: 'patrol' | 'chase' | 'raid';
+    modeDate: number;
+    /** Patrol: the route (held worlds), the leg being flown, and the star date it got there (0 on the way). */
+    route: Habitat[];
+    leg: number;
+    arrivedAt: number;
+    /** Chase: the transport; raid: the station. */
+    target: BuiltObject | null;
+    /** The cruiser may drag a ship out of warp again from this star date (its own cooldown). */
+    pullReady: number;
+    /** Star date of the last raid started. */
+    lastRaid: number;
+}
+
+export interface InterceptorRec {
+    groups: InterceptorGroup[];
+    nextId: number;
+    /** Star date of the last build pass. */
+    lastBuild: number;
+    stats: Record<string, number>;
+}
+
 export interface ResponseRec {
     fleets: ResponseFleet[];
     nextId: number;
@@ -254,12 +283,15 @@ export interface MoratoriumRec {
     lastCheck: number;
 }
 
-/** The people a member world took in from the evacuated zone (beaconDiet.ts): the amount in the current window, its start, and until when the world earns less. */
+/** The people a member world took in from the evacuated zone (beaconDiet.ts): the amount in the current window, its start, and until when the world earns less (by the intake's share of its population). */
 export interface EvacIntake {
     colony: Habitat;
     amount: number;
     since: number;
     slowUntil: number;
+    /** The world's population before the window's first intake, and whether the news line for the window was sent (absent in older saves). */
+    basePop?: number;
+    noted?: boolean;
 }
 
 /** Interceptions of cattle ships from one held world (destroyed or boarded), slowly decaying. */
@@ -413,6 +445,8 @@ export interface CattleRec {
     /** Warships escorting it (beaconHarvest.ts assignEscorts), and those of them built for it (they join the reserve when it docks). */
     escorts?: BuiltObject[];
     built?: BuiltObject[];
+    /** A seized relocation transport (beaconInterceptors.ts): not a pool ship; it flies its people to the core's pens and is scrapped there (`from`: the world they were taken from). */
+    seized?: boolean;
 }
 
 /** A replacement cattle ship on order (beaconHarvest.ts): paid when the fleet biofuel allows, built beaconCattleBuildDays later at the core. */
@@ -564,6 +598,9 @@ export interface BeaconStats {
     escortHeavy?: number;
     escortBuilt?: number;
     escortLost?: number;
+    /** Relocation transports seized by the refugee interceptors / the ones whose people were penned (beaconInterceptors.ts, beaconHarvest.ts). */
+    transportsSeized?: number;
+    transportsPenned?: number;
 }
 
 /** One empire's progress on the mega-station blueprint (a scenario research sink: a share of its research output while it is selected). */
@@ -695,6 +732,8 @@ export interface BeaconState {
     pursuit?: PursuitRec;
     /** The Reclaimer foundries (beaconFoundry.ts; raised when the Beacon is finished, absent in older saves until their first reclamation pass). */
     foundries?: FoundryState;
+    /** The refugee interceptors (beaconInterceptors.ts; absent before they first ran and in older saves). */
+    interceptors?: InterceptorRec;
     /** The harvest (beaconHarvest.ts; absent before it first ran): cores (live and ended, the last 40 kept), cattle ships in flight, worlds
      *  that may not be made a core again before a date (their harvester was destroyed), the biofuel accounts. */
     cores?: CoreRec[];

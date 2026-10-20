@@ -124,6 +124,8 @@ import { unblockaded } from './blockade';
 import './beaconDiet';
 import { ensureFoundries, foundryOf, registerFoundry } from './beaconFoundry';
 import { counterIntelligencePass, counterMonthly, onBoarded, onKilledForSalvage, registerCounterplay, resistanceFactor } from './beaconCounter';
+import './beaconRelocation'; // population relocation (registers its passes and queries)
+import './beaconInterceptors'; // the refugee interceptors (registers its tick)
 import { beaconArtInfo, cattleOf, cattleRepairFactor, initHarvest, knownCores, liveCores, noteCattleCore, registerHarvest, releaseCaptives, rescueCattle } from './beaconHarvest';
 import type { BeaconArtInfo } from './beaconState';
 

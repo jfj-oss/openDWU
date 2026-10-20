@@ -201,6 +201,8 @@ export const COMMAND_FAILURE: FailureTable = {
     vbLevyGarrison: no,
     vbStartDetox: no,
     vbBribeOfficials: no,
+    relocatePopulation: no,
+    relocateCancel: no,
     llmStrategic: () => null,
     llmNegotiate: (message) => ({ ok: false, verdict: 'stale', message, reply: null, treaty: null, counters: [], expireMessagesFor: null }),
 };
