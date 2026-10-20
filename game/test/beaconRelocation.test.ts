@@ -245,7 +245,7 @@ describe('the carriers', () => {
         expect(o.moved + o.lost).toBe(aboard);
         expect(to.population.totalAmount).toBe(100 * M + o.moved);
         expect(peekRelocation(g)!.stats.tripsDiseased).toBe(1);
-        expect((e.messages as { title: string }[]).some((m) => m.title.includes('disease aboard a transport'))).toBe(true);
+        expect((e.messages as { title: string }[]).some((m) => m.title.includes('Sickness in the Holds'))).toBe(true);
         // never, when the chance is zero
         g.scenario!.params.beaconRelocLossChancePct = 0;
         for (let i = 0; i < 3; i++) {
@@ -274,7 +274,7 @@ describe('the carriers', () => {
         expect(to.population.totalAmount).toBe(700 * M);
         relocationPass(g);
         expect(relocationView(g, from).order).toMatchObject({ done: true, ended: 'done', moved: 600 * M });
-        expect((e.messages as { title: string }[]).some((m) => m.title.includes('relocation finished'))).toBe(true);
+        expect((e.messages as { title: string }[]).some((m) => m.title.includes('They Have Arrived'))).toBe(true);
         // nothing is sent when there is no order
         expect(assignRelocationRun(g, e, ship)).toBe(false);
     }, 600000);
@@ -311,7 +311,7 @@ describe('the carriers', () => {
         ship.hasBeenDestroyed = true;
         relocationPass(g);
         expect(st.orders[0]).toMatchObject({ aboard: 0, lost: aboard });
-        expect((e.messages as { title: string }[]).some((m) => m.title.includes('transport lost'))).toBe(true);
+        expect((e.messages as { title: string }[]).some((m) => m.title.includes('Lost With All Aboard'))).toBe(true);
     }, 600000);
 
     it('idle warships nearby take stock Escort jobs for a laden transport', () => {
