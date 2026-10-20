@@ -13,7 +13,7 @@
 //     fleets (beaconResponse.ts threatsOf asks depotThreats).
 //   KNOWLEDGE: an empire that has seen a depot knows it (the Knowledge page, src/ui/knowledgeView.ts, lists depotsKnownTo); the destroyer's message says how much of
 //     the fuel burned. Not carried across the Long Night: the state lives in the Beacon's and a new cycle starts without it.
-// Rnd: private beaconRandom only (the angle round the world, the conquest roll).
+// Rnd: the depots' own stream (depotRandom: the angle round the world, the conquest roll); the Beacon's beaconRandom counter is never advanced.
 
 import type { Galaxy } from '../../../galaxy';
 import type { Empire } from '../../../empire';
@@ -32,7 +32,8 @@ import { GAME_DAY_LENGTH, registerScenarioEvent, registerScenarioFramePeriodic, 
 import { scenarioMessage, scenarioNews, scenarioText as T } from '../../messages';
 import { scenarioParam } from '../../state';
 import { empireTechLevel } from '../robotMutiny';
-import { BEACON_FLAG, SYSTEM_RADIUS, beaconRandom, peekBeaconState, type BeaconState } from './beaconState';
+import { Random } from '../../../random';
+import { BEACON_FLAG, SYSTEM_RADIUS, peekBeaconState, type BeaconState } from './beaconState';
 import { addPlating, designFor, enemyStrengthNear, processingWorlds, referenceMilitary, spawnShip } from './beaconFleet';
 import { coreTarget, fuelOf, liveCores, payFleet } from './beaconHarvest';
 import { foundryCountFor, starSystemCount } from './beaconFoundry';
@@ -64,6 +65,8 @@ export interface DepotRec {
 export interface DepotState {
     list: DepotRec[];
     nextId: number;
+    /** Draws made from the depots' own random stream (it never touches the Beacon's, so the depots leave every other draw as it was). */
+    rndCounter: number;
     /** Worlds waiting for a depot (a core's slots, a conquest's one), built one per beaconDepotBuildDays. */
     pending: Habitat[];
     /** Habitat indices already accounted for: cores that called for their depots, held worlds the conquest roll was made for. */
@@ -125,11 +128,17 @@ export function depotCap(galaxy: Galaxy): number {
 }
 
 function newDepotState(): DepotState {
-    return { list: [], nextId: 1, pending: [], coreSeen: [], procSeen: [], armed: false, toRebuild: 0, lastBuild: -1e18, lastRebuild: -1e18, incomeSeen: 0, unstoredSince: null, destroyedBy: {}, stats: {} };
+    return { list: [], nextId: 1, rndCounter: 0, pending: [], coreSeen: [], procSeen: [], armed: false, toRebuild: 0, lastBuild: -1e18, lastRebuild: -1e18, incomeSeen: 0, unstoredSince: null, destroyedBy: {}, stats: {} };
 }
 
 export function depotsOf(st: BeaconState): DepotState {
     return (st.depots ??= newDepotState());
+}
+
+/** A fresh generator of the depots' own stream (seeded like beaconRandom's, but counted in the depot state). */
+function depotRandom(galaxy: Galaxy, ds: DepotState, salt: number): Random {
+    ds.rndCounter++;
+    return new Random(((galaxy.randomSeed ^ 0x44455054) + salt * 7919 + ds.rndCounter * 104729) & 0x7fffffff);
 }
 
 function stat(ds: DepotState, key: string, n = 1): void {
@@ -205,7 +214,7 @@ function raiseDepot(galaxy: Galaxy, st: BeaconState, ds: DepotState, host: Habit
     if (faction === null) return null;
     const design = depotDesign(galaxy, faction);
     if (design === null) return null;
-    const rnd = beaconRandom(galaxy, st, 71);
+    const rnd = depotRandom(galaxy, ds, 71);
     const angle = rnd.nextDouble() * Math.PI * 2;
     const r = SYSTEM_RADIUS * (0.15 + 0.2 * rnd.nextDouble());
     const x = host.xpos + Math.cos(angle) * r;
@@ -252,7 +261,7 @@ function intake(galaxy: Galaxy, st: BeaconState, ds: DepotState): void {
         if (ds.procSeen.includes(i)) continue;
         ds.procSeen.push(i);
         if (room() <= 0) continue;
-        if (beaconRandom(galaxy, st, 72).nextDouble() * D.conquestOdds(galaxy) < 1) {
+        if (depotRandom(galaxy, ds, 72).nextDouble() * D.conquestOdds(galaxy) < 1) {
             ds.pending.push(r.colony);
             stat(ds, 'conquestSlots');
         }

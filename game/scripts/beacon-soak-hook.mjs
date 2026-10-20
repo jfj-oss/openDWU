@@ -11,6 +11,7 @@
 //   BEACON_SAMPLE_DAYS=15                sampling period
 //   BEACON_TIMING=1                      also run scripts/soak-timing-hook.mjs (per-year frame percentiles, report.timing)
 //   BEACON_FOUNDRY_KILL=N@Y              destroy N foundries (no empire credited) Y years after the Reclamation began (the capacity soak)
+//   BEACON_DEPOT_KILL=N@Y                destroy N biofuel depots (no empire credited) Y years after the Reclamation began (the depot soak: share burn, no-depot rule, rebuild)
 //   BEACON_STOP_ON_END=1                 stop the run when the game ends (victory / loss) + BEACON_TAIL_DAYS (default 60)
 
 const SAMPLE_DAYS = Number(process.env.BEACON_SAMPLE_DAYS ?? 15);
@@ -18,6 +19,7 @@ const MODE = process.env.BEACON_MODE ?? 'natural';
 const COMPLETE_DAYS = Number(process.env.BEACON_COMPLETE_DAYS ?? 90);
 const STOP_ON_END = process.env.BEACON_STOP_ON_END === '1';
 const KILL = process.env.BEACON_FOUNDRY_KILL ? (() => { const [n, y] = process.env.BEACON_FOUNDRY_KILL.split('@').map(Number); return { n, years: y, done: false }; })() : null;
+const DKILL = process.env.BEACON_DEPOT_KILL ? (() => { const [n, y] = process.env.BEACON_DEPOT_KILL.split('@').map(Number); return { n, years: y, done: false }; })() : null;
 const TAIL_DAYS = Number(process.env.BEACON_TAIL_DAYS ?? 60);
 const DAY_MS = 600_000 / 360;
 
@@ -211,6 +213,16 @@ export async function chunk(ctx) {
             const live = M.bfd.liveFoundries(st);
             for (const f of live.slice(0, KILL.n)) f.base.hasBeenDestroyed = true;
             console.log(`  beacon hook: ${Math.min(KILL.n, live.length)} foundries destroyed at year ${((g.nowMs - startMs) / 600_000).toFixed(2)}`);
+        }
+    }
+    if (DKILL !== null && !DKILL.done && M.bdp) {
+        const st = M.bs.peekBeaconState(g);
+        if (st && st.depots && recYears(g.nowMs, st) >= DKILL.years) {
+            DKILL.done = true;
+            const live = M.bdp.liveDepots(st);
+            const before = Math.round(st.fuel?.fleet ?? 0);
+            for (const d of live.slice(0, DKILL.n)) d.base.hasBeenDestroyed = true;
+            console.log(`  beacon hook: ${Math.min(DKILL.n, live.length)} of ${live.length} depots destroyed at year ${((g.nowMs - startMs) / 600_000).toFixed(2)} (fleet fuel ${before})`);
         }
     }
     if (STOP_ON_END) {
