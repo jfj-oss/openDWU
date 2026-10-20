@@ -190,6 +190,18 @@ export const CONTACT_NOTE = 'Something is there. The sensors cannot say what.';
  * seen-through days): refreshes from `watchers`' cloakSeenBy (`now` the star date) and returns the live ones with their
  * fade 1..0, but not a Watcher drawn right now. Render-local records.
  */
+/** The viewer's last detection of each cloaked Watcher (never expires: the Knowledge page lists them, fading with age). Render-only; recorded
+ * by watcherSightings every frame it runs, so it updates with every screen closed. At most one entry per Watcher ship. */
+const sightingHistory = new WeakMap<Empire, Map<BuiltObject, { x: number; y: number; date: number }>>();
+
+/** Where and when `viewer` last detected a cloaked Watcher (one record per Watcher, destroyed ones dropped). */
+export function sightingLogOf(viewer: Empire | null): { x: number; y: number; date: number }[] {
+    const m = viewer === null ? undefined : sightingHistory.get(viewer);
+    if (m === undefined) return [];
+    for (const bo of m.keys()) if (bo.hasBeenDestroyed) m.delete(bo);
+    return [...m.values()];
+}
+
 export function watcherSightings(watchers: readonly BuiltObject[], viewer: Empire | null, now: number, out: { x: number; y: number; fade: number }[]): number {
     let n = 0;
     if (viewer !== null) {
@@ -200,6 +212,9 @@ export function watcherSightings(watchers: readonly BuiltObject[], viewer: Empir
             for (const s of seen) if (s.empireId === viewer.empireId && s.until > until) until = s.until;
             if (until <= now) continue;
             const rec = sightings.get(bo);
+            let log = sightingHistory.get(viewer);
+            if (log === undefined) sightingHistory.set(viewer, (log = new Map()));
+            log.set(bo, { x: bo.xpos, y: bo.ypos, date: now });
             if (rec === undefined || rec.until !== until) sightings.set(bo, { x: bo.xpos, y: bo.ypos, from: rec !== undefined && rec.until === until ? rec.from : now, until });
         }
     }

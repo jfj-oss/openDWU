@@ -98,7 +98,7 @@ import { courtDetail } from '../courtView'; // [court]
 import type { SeatName } from '../../sim/scenario/court/court'; // [court]
 import { threatInvestigatorOptions, threatLeadRows, threatsSectionVisible, type ThreatLeadRow } from '../internalSecurityView'; // [threats]
 import { landscapeImageUrl } from '../landscapeImages';
-import { knowledgeView, knowledgeVisible, noteWatcherSightings, type KnowledgeRow } from '../knowledgeView'; // [knowledge]
+import { knowledgeView, knowledgeVisible, type KnowledgeRow } from '../knowledgeView'; // [knowledge]
 
 const MT = IntelligenceMissionType;
 
@@ -1729,6 +1729,8 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
     function setKnowledgeView(on: boolean, fromThreats = false): void {
         if (on && threatsOn && !fromThreats) setThreatsView(false);
         knowledgeOn = on;
+        win.setTitle(on ? 'Knowledge' : T('Characters'));
+        learn.style.display = on ? 'none' : '';
         knowledgeBtn?.classList.toggle('ow-glass-on', on);
         body.classList.toggle('ch-threats-on', on || threatsOn);
         if (on && knowledgePanel === null) buildKnowledge();
@@ -1753,7 +1755,6 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
     }
     function renderKnowledge(): void {
         if (knowledgeBody === null) return;
-        noteWatcherSightings(galaxy, player);
         const v = knowledgeView(galaxy, player);
         const sig = JSON.stringify([v.war, v.tips, v.article, v.sections.map((s) => [s.id, s.rows.map((r) => [r.key, r.where, r.status, r.fade.toFixed(2)])])]);
         if (sig === knowledgeSig) return;

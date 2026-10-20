@@ -20,6 +20,7 @@ import { peekBeaconState, warOn, type BeaconState } from '../sim/scenario/threat
 import { beaconArtInfo, knownCores } from '../sim/scenario/threats/giantworks/beaconHarvest';
 import { eliminatedPct } from '../sim/scenario/threats/giantworks/beaconFleet';
 import { giantworksCompactSites, giantworksKnownSites } from '../sim/scenario/threats/giantworks/knowledge';
+import { sightingLogOf } from '../render/beaconCloakFx';
 import { peekGwState } from '../sim/scenario/threats/giantworks/state';
 
 /** The Galactopedia article on the Great Works (expansionArticles.ts). */
@@ -100,14 +101,6 @@ registerKnowledgeSection('ageMemory', 'What We Remember', (galaxy) => {
 // Watcher sightings (the viewer's own detections of a cloaked Watcher; kept per galaxy while the page renders)
 // ---------------------------------------------------------------------------------------------------------------
 
-interface Sighting {
-    x: number;
-    y: number;
-    date: number;
-}
-
-const sightingLogs = new WeakMap<Galaxy, Map<number, Sighting>>();
-/** A sighting reads as fully fresh for this many days after, then fades to a floor. */
 const SIGHTING_FADE_DAYS = 180;
 const SIGHTING_FLOOR = 0.35;
 
@@ -126,27 +119,10 @@ function systemNear(galaxy: Galaxy, o: { xpos: number; ypos: number }): string {
     return best;
 }
 
-/** Records where the viewer's sensors have a cloaked Watcher right now (its `cloakSeenBy` entry is live); keeps the last such place per Watcher. */
-export function noteWatcherSightings(galaxy: Galaxy, viewer: Empire): void {
-    const st = peekBeaconState(galaxy);
-    if (st === null) return;
-    const now = galaxyStarDate(galaxy);
-    let log = sightingLogs.get(galaxy);
-    for (const w of st.watchers) {
-        const ship = w.ship;
-        if (w.dead || ship === null || ship.hasBeenDestroyed) continue;
-        const seen = ship.cloakSeenBy;
-        if (seen === undefined || !seen.some((s) => s.empireId === viewer.empireId && s.until > now)) continue;
-        if (log === undefined) sightingLogs.set(galaxy, (log = new Map()));
-        log.set(w.index, { x: ship.xpos, y: ship.ypos, date: now });
-    }
-}
-
-function sightingRows(galaxy: Galaxy, now: number): KnowledgeRow[] {
-    const log = sightingLogs.get(galaxy);
-    if (log === undefined) return [];
+function sightingRows(galaxy: Galaxy, viewer: Empire, now: number): KnowledgeRow[] {
+    const log = sightingLogOf(viewer);
     const rows: KnowledgeRow[] = [];
-    for (const [index, s] of log) {
+    log.forEach((s, index) => {
         const ageDays = Math.max(0, (now - s.date) / GAME_DAY_LENGTH);
         rows.push({
             key: `sighting:${index}`,
@@ -157,7 +133,7 @@ function sightingRows(galaxy: Galaxy, now: number): KnowledgeRow[] {
             point: { x: s.x, y: s.y },
             fade: Math.max(SIGHTING_FLOOR, 1 - ageDays / SIGHTING_FADE_DAYS),
         });
-    }
+    });
     return rows.sort((a, b) => b.fade - a.fade);
 }
 
@@ -237,7 +213,7 @@ export function knowledgeView(galaxy: Galaxy, empire: Empire): KnowledgeView {
         add('harvesters', scenarioText('Knowledge Section Harvesters'), harvesterRows);
         add('staging', scenarioText('Knowledge Section Staging'), stagingRows);
         add('corrupted', scenarioText('Knowledge Section Corrupted'), corruptRows);
-        add('watchers', scenarioText('Knowledge Section Watchers'), watcherRows.concat(sightingRows(galaxy, now)));
+        add('watchers', scenarioText('Knowledge Section Watchers'), watcherRows.concat(sightingRows(galaxy, empire, now)));
     }
 
     // The Founders' Compact: its founding worlds the viewer has heard of and explored, and the scaffold / wonder it has seen.
@@ -258,7 +234,7 @@ export function knowledgeView(galaxy: Galaxy, empire: Empire): KnowledgeView {
     if (harvesters > 0) tips.push(scenarioText('Knowledge Tip Harvester'));
     if (stagingKnown > 0) tips.push(scenarioText('Knowledge Tip Staging'));
     if (corruptedKnown > 0) tips.push(scenarioText('Knowledge Tip Purge'));
-    if (watchersKnown > 0 || sightingRows(galaxy, now).length > 0) tips.push(scenarioText('Knowledge Tip Watchers'));
+    if (watchersKnown > 0 || sightingRows(galaxy, empire, now).length > 0) tips.push(scenarioText('Knowledge Tip Watchers'));
     if (beaconKnown && st !== null && st.beacon !== null) {
         const bx = st.beacon.xpos;
         const by = st.beacon.ypos;

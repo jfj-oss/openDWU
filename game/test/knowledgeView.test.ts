@@ -15,6 +15,7 @@ import { beaconComplete, beaconRolled } from '../src/sim/scenario/threats/giantw
 import { peekBeaconState, type BeaconState } from '../src/sim/scenario/threats/giantworks/beaconState';
 import { spawnShip, startWar } from '../src/sim/scenario/threats/giantworks/beaconFleet';
 import { cattleDesign, cattleOf, harvestPeriodic, liveCores, noteCattleCore } from '../src/sim/scenario/threats/giantworks/beaconHarvest';
+import { watcherSightings } from '../src/render/beaconCloakFx';
 import { knowledgeRow, knowledgeView, knowledgeVisible, registerKnowledgeSection } from '../src/ui/knowledgeView';
 
 let base: GameData;
@@ -144,5 +145,20 @@ describe('Knowledge page model', () => {
         expect(knowledgeView(g, me).sections.find((s) => s.id === 'ageMemory')?.rows.map((r) => r.what)).toEqual(['The Archive burned.']);
         g.scenario!.state.longNight = 'broken';
         expect(knowledgeView(g, me).sections.some((s) => s.id === 'ageMemory')).toBe(false);
+    }, 600000);
+
+    it('a Watcher sighting is logged by the render pass (no page needed) and listed, only for the viewer who made it', () => {
+        const { g, st, me, ai } = setup();
+        const w = st.watchers.find((x) => x.ship !== null && !x.ship.hasBeenDestroyed)!.ship!;
+        const now = galaxyStarDate(g);
+        expect(knowledgeView(g, me).sections.some((s) => s.id === 'watchers' && s.rows.some((r) => r.key.startsWith('sighting')))).toBe(false);
+        w.cloakSeenBy = [{ empireId: me.empireId, until: now + 10 * GAME_DAY_LENGTH }];
+        watcherSightings([w], me, now, []);
+        w.cloakSeenBy = undefined;
+        watcherSightings([w], me, now + 50 * GAME_DAY_LENGTH, []);
+        const rows = knowledgeView(g, me).sections.find((s) => s.id === 'watchers')!.rows.filter((r) => r.key.startsWith('sighting'));
+        expect(rows).toHaveLength(1);
+        expect(rows[0].point).toEqual({ x: w.xpos, y: w.ypos });
+        expect(knowledgeView(g, ai).sections.some((s) => s.id === 'watchers' && s.rows.some((r) => r.key.startsWith('sighting')))).toBe(false);
     }, 600000);
 });
