@@ -508,44 +508,6 @@ Beacon Reloc Seized;The transport {0}, carrying {1} million people from {2} to {
 Beacon Reloc Wreck Title;Lost With All Aboard
 Beacon Reloc Wreck;The transport {0} was destroyed on its way from {2} to {3}. {1} million people were aboard.
 Beacon Reloc Warning;This will empty {0} completely. All {1} people will be moved to {2}, and the world will be abandoned. The relocation will cost {3}. Our people will be packed in far beyond what the ships were built for, and some will not survive the journey.
-Mega Base Name;TODO-PROSE: The Severance ({0})
-Mega Motion Text;TODO-PROSE: Build the Severance at {0}, led by the {1}
-Mega Motion Effect;TODO-PROSE: The Diet backs the building of the Severance in the empty void at the place named. Every member that votes yes and stands well with the builder hands over the parts it holds; the others keep theirs. Contributing empires send up to a fifth of their private freighters to it. It takes decades, builds no faster than the parts allow, cannot be harmed and cannot be armed.
-Mega Resume Text;TODO-PROSE: Resume the building of the Severance, led by the {0}
-Mega Resume Effect;TODO-PROSE: The half-built Severance, found again after the Long Night, is taken up once more. Members that vote yes and stand well with the builder hand over their parts; construction continues where it stopped.
-Mega Started Title;TODO-PROSE: The Severance begins
-Mega Started;TODO-PROSE: The Diet has voted. The Severance will rise in the void at {0}. The parts handed over allow {1}% of it; handed over by: {2}. Kept back by: {3}. Active construction will take about {4} years. Freighters of the contributing empires will begin to arrive.
-Mega Started News;TODO-PROSE: The Diet has voted to build the Severance in the empty void at {1}, led by the {0}.
-Mega Resumed Title;TODO-PROSE: The Severance is taken up again
-Mega Resumed;TODO-PROSE: Work resumes at {0}: {1}% is done and the parts handed over allow {2}%. Handed over by: {3}. Kept back by: {4}.
-Mega Resumed News;TODO-PROSE: The Diet has voted to resume the half-built Severance at {1}, led by the {0}.
-Mega Refused News;TODO-PROSE: The Diet has refused the {0}'s motion to build the Severance.
-Mega Blockade Title;TODO-PROSE: The Severance is blockaded
-Mega Blockade;TODO-PROSE: The {0} holds the space round the Severance. No freighter reaches it and its construction has stopped.
-Mega Lifted Title;TODO-PROSE: The blockade of the Severance is lifted
-Mega Lifted;TODO-PROSE: The space round the Severance is clear again. Freighters arrive and construction resumes.
-Mega Stalled Title;TODO-PROSE: The Severance waits for parts
-Mega Stalled;TODO-PROSE: The Severance stands at {0}% of the whole, as far as the parts handed over allow. It still lacks: {1}.
-Mega Found Title;TODO-PROSE: The Severance, found again
-Mega Found;TODO-PROSE: One of our ships has found a half-built structure in the void at {0}, whole as the Long Night left it: {1}% finished. A new Diet vote could resume it.
-Mega Fired Title;TODO-PROSE: The Severance fires
-Mega Fired;TODO-PROSE: The Severance is whole. Led by the {0}, it fires along the harvest's own path.
-Mega Know Nobody;TODO-PROSE: not found yet
-Mega Know Held;TODO-PROSE: held by {0}.
-Mega Know Pooled;TODO-PROSE: in the Severance, from {0}.
-Mega Know Count;TODO-PROSE: {0} of {1}
-Mega Know Blueprint;TODO-PROSE: Our blueprint
-Mega Know No Blueprint;TODO-PROSE: not begun (it starts when one of our ships reaches the drifting planet)
-Mega Know Blueprint Done;TODO-PROSE: finished: we may move that the Severance be built
-Mega Know Blueprint Pct;TODO-PROSE: {0}% researched
-Mega Know Structure;TODO-PROSE: The Severance
-Mega Know Unknown Place;TODO-PROSE: place unknown
-Mega Know Status building;TODO-PROSE: building: {0}% done, the parts allow {1}%, about {2} years of active building in all
-Mega Know Status stalled;TODO-PROSE: waiting for parts: {0}% done, the parts allow {1}%; still lacking {3}
-Mega Know Status blockaded;TODO-PROSE: blockaded: {0}% done, nothing arrives; if freighters keep failing to arrive it decays
-Mega Know Status idle;TODO-PROSE: waiting for freighters: {0}% done, the parts allow {1}%
-Mega Know Status dormant;TODO-PROSE: asleep since the Long Night: {0}% done; it needs finding and a new Diet vote to resume
-Mega Know Status fired;TODO-PROSE: fired
 Mega Base Name;The Severance ({0})
 Mega Motion Text;Build the Severance at {0}, led by the {1}
 Mega Motion Effect;The Diet backs the building of the Severance in the empty void at the place named. Every member that votes yes and stands well with the builder hands over the parts it holds; the others keep theirs. Contributing empires send up to a fifth of their private freighters to it. It takes decades, builds no faster than the parts allow, cannot be harmed and cannot be armed.
