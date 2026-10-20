@@ -396,7 +396,7 @@ export function cultUndefeated(galaxy: Galaxy): boolean {
 // ---------------------------------------------------------------------------------------------------------------
 
 /** BuiltObject.1.cs 3490 DestroyHabitat's explosion set-up, without the attacker-credit block (no attacking ship here). */
-function detonateHabitat(galaxy: Galaxy, habitat: Habitat): void {
+export function detonateHabitat(galaxy: Galaxy, habitat: Habitat): void {
     const explosion = new Explosion();
     explosion.explosionStart = galaxyNow(galaxy);
     explosion.explosionSize = toShort(Math.trunc(habitat.diameter * 4.0));

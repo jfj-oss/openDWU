@@ -621,6 +621,12 @@ export interface ScenarioQueries {
      */
     invasionTargetOrbitOk: { value: boolean; args: { empire: Empire; fleet: ShipGroup; target: Habitat } };
     /**
+     * combat/invasion.ts resolveInvasionBattles (after the troop-strength sums): true = a shield over `habitat` blocks the
+     * landing: the invaders' troops are wiped out and the defenders lose nothing (the Precursor holdouts' core). Stock false.
+     * May note a message for a human invader; no Rnd.
+     */
+    invasionBlocked: { value: boolean; args: { habitat: Habitat; invader: Empire | null } };
+    /**
      * player/orderMenu.ts troop "Attack" menu (Main.Part8.cs 2206 method_332 lists nearby foreign colonies): the objects that
      * are not colonies but that `empire`'s troops can land on now, near (x, y) within `range` (Giantworks: a finished Great
      * Work whose shields are down; its ground war is the add-on's own). Stock: none. Pure.

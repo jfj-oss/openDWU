@@ -1330,6 +1330,12 @@ export function resolveInvasionBattles(galaxy: Galaxy, habitat: Habitat, timeSpa
     let num6 = num5 * num2 * num4 * timePassedSeconds;
     const num7 = 0.8 + galaxy.rnd.nextDouble() * 0.4;
     let num8 = num7 * num3 * num4 * timePassedSeconds;
+    // Mod layer (Precursor holdouts): a shielded core cannot be invaded: the landing force is wiped out, the garrison untouched.
+    const shielded = galaxy.scenario !== null && scenarioQuery(galaxy, 'invasionBlocked', false, { habitat: self, invader });
+    if (shielded) {
+        num8 = 0;
+        num6 = Math.max(num6, attackingStrength * 2);
+    }
     const num9 = attackingStrength - num6;
     const num10 = defendingStrength - num8;
     if (num9 > num10) {
@@ -1348,7 +1354,7 @@ export function resolveInvasionBattles(galaxy: Galaxy, habitat: Habitat, timeSpa
     }
     inflictTroopLosses(galaxy, self, defender, defender, num6, self.invadingTroops, self.troops);
     inflictTroopLosses(galaxy, self, defender, invader, num8, self.troops, self.invadingTroops);
-    if (self.population != null) {
+    if (self.population != null && !shielded) {
         const num12 = Math.max(20000.0, Math.min(1000000.0, self.population.totalAmount / 4000.0));
         let val2 = Math.min(10000000.0, self.population.totalAmount / 2000.0);
         val2 = Math.max(val2, num12);
@@ -1372,6 +1378,7 @@ export function resolveInvasionBattles(galaxy: Galaxy, habitat: Habitat, timeSpa
         invasionRepelled(galaxy, self, defender!, invader, flag, flag2);
         return;
     }
+    if (shielded) return;
     const num21 = attackingStrength / defendingStrength;
     let flag5 = false;
     const num22 = self.troops!.countByType(TroopType.PirateRaider);

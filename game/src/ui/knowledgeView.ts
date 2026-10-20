@@ -25,9 +25,13 @@ import { peekGwState } from '../sim/scenario/threats/giantworks/state';
 import { megaKnowledgeRows } from '../sim/scenario/threats/giantworks/megaStation';
 import { foundriesKnownTo } from '../sim/scenario/threats/giantworks/beaconFoundry';
 import { memoryRecordOf } from '../sim/scenario/threats/giantworks/longNightState';
+<<<<<<< HEAD
 import { WAR_CREDIT_KINDS, WAR_CREDIT_LABEL, warCreditActive, warCreditRanking } from '../sim/scenario/threats/giantworks/beaconWarCredit';
 import { DiplomaticRelationType } from '../sim/diplomacy';
 import { milestoneRowsOf } from '../sim/scenario/threats/giantworks/age2Milestones';
+=======
+import { holdoutKnowledgeRows } from '../sim/scenario/threats/giantworks/age2Holdouts';
+>>>>>>> 6690e50f (Age 2: Precursor holdouts (shielded cores, rigged colonies, evacuation warning, tech on conquest, Knowledge rows))
 
 /** The Galactopedia article on the Great Works (expansionArticles.ts). */
 export const KNOWLEDGE_ARTICLE = 'The Great Work (Giantworks)';
@@ -101,6 +105,10 @@ registerKnowledgeSection('foundries', 'Foundries', (g, e) => {
         goTo: f.status === 'destroyed' ? null : f.base,
         point: { x: f.x, y: f.y },
     }));
+    return rows.length > 0 ? rows : null;
+});
+registerKnowledgeSection('holdouts', 'Precursor holdouts', (g, e) => {
+    const rows = holdoutKnowledgeRows(g, e).map((r): KnowledgeRow => ({ ...knowledgeRow(r.key, r.what, r.where, r.status), goTo: r.goTo }));
     return rows.length > 0 ? rows : null;
 });
 registerKnowledgeSection('sleepers', 'Sleeper warnings', () => null); // TODO(doppelgangers): sleeper warnings the viewer has

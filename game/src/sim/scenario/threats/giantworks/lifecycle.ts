@@ -74,7 +74,7 @@ function switchOffStockAi(faction: Empire): void {
 }
 
 /** Start.2.cs 1376-1427 meeting: a None relation on both sides (NotMet upgraded), as the Exchange introduces itself. */
-function introduce(a: Empire, b: Empire): void {
+export function introduce(a: Empire, b: Empire): void {
     let r = a.diplomaticRelations.byEmpire(b);
     if (r === null) a.diplomaticRelations.add(new DiplomaticRelation(DiplomaticRelationType.None, a, a, b, false));
     else if (r.type === DiplomaticRelationType.NotMet) r.type = DiplomaticRelationType.None;
@@ -83,7 +83,7 @@ function introduce(a: Empire, b: Empire): void {
     else if (r.type === DiplomaticRelationType.NotMet) r.type = DiplomaticRelationType.None;
 }
 
-function peacefulPolicy(policy: EmpirePolicy): void {
+export function peacefulPolicy(policy: EmpirePolicy): void {
     policy.offerPirateAttackMissions = 0;
     policy.offerDefensivePirateMissions = 0;
     policy.offerDefensivePirateMissionsSituation = 0;

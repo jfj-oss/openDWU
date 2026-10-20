@@ -25,7 +25,11 @@ import { scenarioMessage, scenarioNews, scenarioText as T } from '../../messages
 import { captureSurvivors } from '../../../age2Placement';
 import { beaconState, isNormalEmpire, peekBeaconState, type BeaconState, type CoreRec, type EmpireParts } from './beaconState';
 import { registerAge2World } from './age2World';
+<<<<<<< HEAD
 import { registerAge2Milestones } from './age2Milestones';
+=======
+import { registerAge2Holdouts } from './age2Holdouts';
+>>>>>>> 6690e50f (Age 2: Precursor holdouts (shielded cores, rigged colonies, evacuation warning, tech on conquest, Knowledge rows))
 import { captureMega, restoreMega } from './megaStation';
 import {
     AGE_PREPARATION,
@@ -326,7 +330,11 @@ export function restoreParts(galaxy: Galaxy, data: unknown): void {
 
 export function registerLongNight(): void {
     registerAge2World();
+<<<<<<< HEAD
     registerAge2Milestones();
+=======
+    registerAge2Holdouts();
+>>>>>>> 6690e50f (Age 2: Precursor holdouts (shielded cores, rigged colonies, evacuation warning, tech on conquest, Knowledge rows))
     registerMemoryContributor({ id: 'beacon.parts', capture: captureParts, restore: restoreParts });
     registerScenarioFramePeriodic({ id: 'longNight.advisor', flag: HARVEST_CYCLE_FLAG, order: 26, periodDays: 5, run: (g) => advisorCheck(g) });
     registerScenarioQuery({ id: 'longNight.rimNudge', flag: HARVEST_CYCLE_FLAG, query: 'colonizationTargetValue', run: (g, v, a) => rimNudgedValue(g, a.empire, a.habitat, v) });
