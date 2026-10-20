@@ -136,6 +136,16 @@ Beacon Msg Attack Repeat 2;Fragments of {0}'s fleet are drifting near {1}. They 
 Beacon Msg Attack Repeat 3;{0} struck at one of the vast vessels. It turned to face them with terrible patience, and only those who fired were destroyed.
 Beacon Msg Pull Title;Dragged out of warp
 Beacon Msg Pull;A Reclaimer capital ship has run down {0} and dragged it out of hyperspace near {1}. Their drives are faster than ours: the fight is on again where it dropped.
+Beacon Msg CoreFirst Title;What the Ship Was Carrying
+Beacon Msg CoreFirst Body;Our boarding crews went in expecting cargo. They found people.\n\nTens of thousands of them, packed into racks that run the length of the hull, fed through tubes, kept just warm enough to live. Many of them are from our own worlds. None of them can tell us where they were going. Most of them cannot tell us anything at all.\n\nThere is no crew aboard. No bridge, no quarters. Only the racks, the engines, and at the centre of it all a knot of bone and wiring that our engineers refuse to touch.\n\nThe ship's navigation record survived. Every run it ever made ends at {0}, in the {1} system. It flew there full, again and again, and it always came back empty.\n\nWe do not know what is done to them there. We have marked it on our charts.
+Beacon Msg CoreNew Title;Another Destination
+Beacon Msg CoreNew 1;The wreck near {0} was full when it died. Its record points to a world we had never connected to any of this: {1}, in {2}. Thousands carried in. None carried out. Marked.
+Beacon Msg CoreNew 2;Another ship, another course: {1}, in {2}. The analysts keep asking the same question: where do the people go once they land? Nobody has an answer. The world is on our charts.
+Beacon Msg CoreNew 3;Its last heading was {1}, {2}. The record shows years of runs there, each one full on arrival, each one empty when it left. Whatever happens to them happens there. Marked.
+Beacon Msg CoreKnown;The ship destroyed near {0} was flying to {1}. We already knew that world.
+Beacon Msg CoreAll Title;All Their Destinations
+Beacon Msg CoreAll Body;The newest record leads nowhere new. Every course we have recovered ends at one of {0} worlds, from {1} to {2}.\n\nWe know now where they take our people. We still do not know why, or what is left of them when it is done. There is only one way to find out.
+Beacon Msg CoreLost;{0} is no longer theirs. Its mark has been taken from our charts.
 Beacon Msg Killed Title;A giant destroyed
 Beacon Msg Killed First;We have destroyed it, and we still do not know what it was. The wreck is enormous, unmarked and cold, and nothing aboard resembles a crew.
 Beacon Msg Killed Repeat 1;Another giant has fallen near {0}. Its wreck drifts dark and silent; even its lights died without a flicker.

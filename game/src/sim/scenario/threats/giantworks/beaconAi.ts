@@ -15,7 +15,7 @@
 //              (Patrol), and only when beaconAiGatherPct % of the force beaconAiRatioPct % of the defence needs is there do they all
 //              Attack together, never piecemeal.
 // And against the harvest (beaconHarvest.ts), first of all:
-//   RETAKE   - Smarter AI members value the harvest cores above every other world: each core near one of them is made a war objective of
+//   RETAKE   - Smarter AI members value the harvest cores above every other world (those they know from a cattle ship's record at 1.5x the reach, first): each core near one of them is made a war objective of
 //              its war with the Reclaimers (the stock war AI then builds and sends invasion fleets), and the nearest available fleet
 //              that carries the troops a core needs and can face its defence is sent to invade it at once (the stock invasion path);
 //   CORES    - a harvester (and the Reclaimer warships at its core): gather-then-strike as the Beacon's, at beaconAiCoreRatioPct %;
@@ -45,7 +45,7 @@ import { scenarioText as T } from '../../messages';
 import { KNOWLEDGE_CONFIRMED, arcNews, knowledgeLevel, normalEmpires, revealTo } from '../framework';
 import { BEACON_FLAG, P, SYSTEM_RADIUS, aliveShips, cloakLapsedFor, peekBeaconState, warOn, type BeaconState, type StrikeGroup } from './beaconState';
 import { eliminatedPct, travelDays, watcherFleetStrengthOf } from './beaconFleet';
-import { cattleOf, inField, liveCores, phaseOf } from './beaconHarvest';
+import { cattleOf, coreKnownBy, inField, liveCores, phaseOf } from './beaconHarvest';
 import { isObjectVisibleToThisEmpire } from '../../../independentTraders';
 import { WarObjective, obtainDiplomaticRelation } from '../../../diplomacy';
 import { calculateDefendingStrength, determineRequiredTroopStrength, findNearestAvailableFleet } from '../../../fleets/militaryAI';
@@ -588,7 +588,11 @@ function retake(p: Pass): number {
     if (cs.length === 0) return 0;
     for (const e of p.members) {
         if (!isSmarterAIStrategist(galaxy, e)) continue;
-        const near = cs.filter((h) => e.colonies.some((c) => galaxy.calculateDistance(c.xpos, c.ypos, h.xpos, h.ypos) <= reach));
+        // a core the member has learned of (a cattle ship's record) is worth a longer reach, and is taken first
+        const knows = (h: Habitat): boolean => liveCores(st).some((c) => c.colony === h && coreKnownBy(c, e));
+        const near = cs
+            .filter((h) => e.colonies.some((c) => galaxy.calculateDistance(c.xpos, c.ypos, h.xpos, h.ypos) <= (knows(h) ? reach * 1.5 : reach)))
+            .sort((a, b) => Number(knows(b)) - Number(knows(a)));
         if (near.length === 0) continue;
         const rel = obtainDiplomaticRelation(e, faction);
         if (rel.warObjective !== WarObjective.TotalConquest) {

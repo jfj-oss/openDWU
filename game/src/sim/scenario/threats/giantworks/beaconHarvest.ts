@@ -50,11 +50,11 @@ import { recalculateEmpirePopulation } from '../../../taxes';
 import { TroopList } from '../../../cargo';
 import { isHumanEmpire } from '../../../humanEmpires';
 import { GAME_DAY_LENGTH, registerScenarioFramePeriodic, registerScenarioQuery } from '../../hooks';
-import { scenarioNews, scenarioText as T } from '../../messages';
+import { scenarioMessage, scenarioNews, scenarioText as T } from '../../messages';
 import { empireTechLevel } from '../robotMutiny';
 import { makeTroopsSplit } from '../factionNavy';
 import { arcMessage, arcNews, normalEmpires } from '../framework';
-import { BEACON_FLAG, P, peekBeaconState, type BeaconArtInfo, type BeaconState, type Captive, type CattleOrder, type CattlePhase, type CattleRec, type CoreRec, type FuelRec, type InterceptRec, type ProcessRec } from './beaconState';
+import { BEACON_FLAG, P, beaconRandom, peekBeaconState, type BeaconArtInfo, type BeaconState, type Captive, type CattleOrder, type CattlePhase, type CattleRec, type CoreRec, type FuelRec, type InterceptRec, type ProcessRec } from './beaconState';
 import { addPlating, designFor, processingWorlds, referenceMilitary, scriptedBudget, spawnShip } from './beaconFleet';
 import { responseShips } from './beaconResponse';
 
@@ -338,6 +338,7 @@ function endCore(galaxy: Galaxy, st: BeaconState, core: CoreRec, why: 'retaken' 
     }
     core.pens = [];
     core.waiting = 0;
+    coreMarkLost(galaxy, st, core);
     if (why === 'retaken') st.stats.coresRetaken = (st.stats.coresRetaken ?? 0) + 1;
     else if (why === 'broken') {
         st.stats.coresBroken = (st.stats.coresBroken ?? 0) + 1;
@@ -906,6 +907,106 @@ export function rescueCattle(galaxy: Galaxy, st: BeaconState, bo: BuiltObject, b
     const c = list[i];
     list.splice(i, 1);
     return cattleTaken(galaxy, st, c, by);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// What the empires learn of the cores from the cattle ships they destroy or board
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Days between two "already known" ticker lines to one empire. */
+const CORE_LINE_DAYS = 30;
+
+/** The empire knows `core` is a harvest core. */
+export function coreKnownBy(core: CoreRec, e: Empire | null): boolean {
+    return e !== null && (core.knownBy ?? []).includes(e.empireId);
+}
+
+/** The live cores `e` knows (the map marks them and the threat list names them). */
+export function knownCores(st: BeaconState, e: Empire | null): CoreRec[] {
+    return liveCores(st).filter((c) => coreKnownBy(c, e));
+}
+
+/** The name of the system a world is in. */
+function systemNameOf(galaxy: Galaxy, h: Habitat): string {
+    return galaxy.systems[h.systemIndex]?.systemStar?.name ?? h.name;
+}
+
+/** The name of the system nearest to a point (where a wreck lies). */
+function placeNear(galaxy: Galaxy, o: { xpos: number; ypos: number }): string {
+    let best = '';
+    let bd = Infinity;
+    for (const sys of galaxy.systems) {
+        const s = sys?.systemStar ?? null;
+        if (s === null) continue;
+        const d = galaxy.calculateDistance(o.xpos, o.ypos, s.xpos, s.ypos);
+        if (d < bd) {
+            bd = d;
+            best = s.name;
+        }
+    }
+    return best;
+}
+
+/** A line for the ticker and the badge (no popup): titled with the Reclaimers' name like the arc messages without a title. */
+function coreLine(galaxy: Galaxy, e: Empire, tag: string, args: (string | number)[], subject: unknown): void {
+    scenarioMessage(galaxy, e, T('Beacon Faction Reclaimers'), T(tag, ...args), { type: EmpireMessageType.GeneralNeutralEvent, subject, popupMode: 'quiet' });
+}
+
+/**
+ * A cattle ship `bo` was destroyed or boarded by `by` (call before the pool forgets it): its navigation record names the core it serves. The
+ * core becomes known to `by` (AI empires too, silently). A human empire's first such kill always opens the first popup; later ones that name a
+ * new core open another (or, when every live core is then known, the all-known one, once until a new core appears); one that names a core
+ * already known is a ticker line at most once per CORE_LINE_DAYS. Returns the core, or null (not a cattle ship, or no core to serve).
+ */
+export function noteCattleCore(galaxy: Galaxy, st: BeaconState, bo: BuiltObject, by: Empire | null): CoreRec | null {
+    if (by === null || by === st.faction || !by.active) return null;
+    const c = cattleOf(st).find((x) => x.ship === bo);
+    if (c === undefined) return null;
+    const core = liveCoreOf(st, c.core) ?? nearestCore(galaxy, st, bo.xpos, bo.ypos);
+    if (core === null) return null;
+    const seen = ((st.msgSeen ??= {}).coreKill ??= []);
+    const first = !seen.includes(by.empireId);
+    if (first) seen.push(by.empireId);
+    const known = coreKnownBy(core, by);
+    if (!known) (core.knownBy ??= []).push(by.empireId);
+    if (!isHumanEmpire(galaxy, by)) return core;
+    const live = liveCores(st);
+    const all = live.length >= 2 && live.every((x) => coreKnownBy(x, by));
+    const allSeen = ((st.msgSeen ??= {}).coreAll ??= []);
+    if (!all && allSeen.includes(by.empireId)) allSeen.splice(allSeen.indexOf(by.empireId), 1); // a new core appeared: all-known can come again
+    const name = core.colony.name;
+    const system = systemNameOf(galaxy, core.colony);
+    const place = placeNear(galaxy, bo);
+    const opts = { type: EmpireMessageType.GeneralWarning, subject: core.colony, popupMode: 'force' as const };
+    if (first) {
+        scenarioMessage(galaxy, by, T('Beacon Msg CoreFirst Title'), T('Beacon Msg CoreFirst Body', name, system), opts);
+    } else if (!known) {
+        if (all && !allSeen.includes(by.empireId)) {
+            allSeen.push(by.empireId);
+            const sorted = [...live].sort((a, b) => a.since - b.since || a.colony.habitatIndex - b.colony.habitatIndex);
+            scenarioMessage(galaxy, by, T('Beacon Msg CoreAll Title'), T('Beacon Msg CoreAll Body', live.length, sorted[0].colony.name, sorted[sorted.length - 1].colony.name), opts);
+        } else {
+            const v = beaconRandom(galaxy, st, 450).next(1, 4);
+            scenarioMessage(galaxy, by, T('Beacon Msg CoreNew Title'), T(`Beacon Msg CoreNew ${v}`, place, name, system), opts);
+        }
+    } else {
+        const key = `coreline:${by.empireId}`;
+        const now = galaxyStarDate(galaxy);
+        const last = (st.msgLast ??= {})[key];
+        if (last === undefined || now - last >= days(CORE_LINE_DAYS)) {
+            st.msgLast[key] = now;
+            coreLine(galaxy, by, 'Beacon Msg CoreKnown', [place, name], core.colony);
+        }
+    }
+    return core;
+}
+
+/** A core ended (retaken, harvester broken, world lost): the human empires that knew it get a ticker line; its mark goes with the core's end. */
+function coreMarkLost(galaxy: Galaxy, st: BeaconState, core: CoreRec): void {
+    for (const id of core.knownBy ?? []) {
+        const e = galaxy.empires.find((x) => x !== null && x.empireId === id) ?? null;
+        if (e !== null && e.active && isHumanEmpire(galaxy, e)) coreLine(galaxy, e, 'Beacon Msg CoreLost', [core.colony.name], core.colony);
+    }
 }
 
 // ---------------------------------------------------------------------------------------------------------------

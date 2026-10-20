@@ -12,7 +12,7 @@ import type { Empire } from '../sim/empire';
 import type { BuiltObject } from '../sim/builtObject';
 import { HabitatCategoryType, type Habitat } from '../sim/types';
 import { moonDotPx, planetSpritePx, starSpritePx } from './mainView';
-import { KNOWLEDGE_RUMOUR, drawThreatMarker, threatMarkerStyle, type ThreatMarkerStyle } from './threatMarkers';
+import { KNOWLEDGE_RUMOUR, coreMarkStyle, drawThreatMarker, threatMarkerStyle, type ThreatMarkerStyle } from './threatMarkers';
 import { greatWorkAt, greatWorkDrawPx, greatWorkFrame, isWatcher, lastThreatLooks } from './threatArt';
 import { isCloakedContact, watcherSightings } from './beaconCloakFx';
 import { builtObjectVisibleToPlayer } from './fog';
@@ -61,6 +61,7 @@ export interface KnownThreatSiteShape {
     target: { xpos: number; ypos: number; diameter?: number; category?: HabitatCategoryType };
     level: number;
     label: string;
+    glyph?: 'core';
 }
 type ThreatSitesFn = (galaxy: Galaxy, empire: Empire | null, minLevel?: number) => KnownThreatSiteShape[];
 
@@ -474,7 +475,11 @@ export class ArtBundleLayer {
                 if (site.threat === 'purifier') continue; // its own medium glyphs (overlayLayer updateScenarioMarkers), no ring
                 // The Beacon's worlds (corrupted, Reclaimer-held, harvest cores) look like any taken planet on the map;
                 // the threat lists still name them.
-                if (site.threat === BEACON_THREAT && site.kind === 'colony') continue;
+                if (site.threat === BEACON_THREAT && site.kind === 'colony') {
+                    // ... but a core the viewer has learned of gets a small purple diamond
+                    if (site.glyph === 'core') this.sites.push({ site, style: coreMarkStyle(), seed: k++ });
+                    continue;
+                }
                 const style = threatMarkerStyle(site.threat, site.level, site.kind);
                 if (style !== null) this.sites.push({ site, style, seed: k++ * 7 + site.threat.length });
             }

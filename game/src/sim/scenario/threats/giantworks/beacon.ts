@@ -116,7 +116,7 @@ import { dwellDaysFor, holdingAtGate, purgePass, purgeRebelStrength, recentlyPur
 import { addProgress } from './lifecycle';
 import './beaconDiet';
 import { counterIntelligencePass, counterMonthly, onBoarded, onKilledForSalvage, registerCounterplay, resistanceFactor } from './beaconCounter';
-import { beaconArtInfo, cattleOf, cattleRepairFactor, initHarvest, liveCores, registerHarvest, releaseCaptives, rescueCattle } from './beaconHarvest';
+import { beaconArtInfo, cattleOf, cattleRepairFactor, initHarvest, knownCores, liveCores, noteCattleCore, registerHarvest, releaseCaptives, rescueCattle } from './beaconHarvest';
 import type { BeaconArtInfo } from './beaconState';
 
 declare module '../../../builtObject' {
@@ -932,6 +932,7 @@ function onKilledBy(galaxy: Galaxy, bo: BuiltObject, destroyer: Empire | null): 
         return;
     }
     if (bo.actualEmpire === st.faction) {
+        noteCattleCore(galaxy, st, bo, destroyer); // (its navigation record names the core it served)
         onShipKilled(galaxy, st, bo, destroyer);
         onKilledForSalvage(galaxy, st, bo, destroyer, false);
         if (bo === st.beacon) {
@@ -1119,9 +1120,10 @@ export function beaconKnownSites(galaxy: Galaxy, empire: Empire): KnownThreatSit
             out.push({ threat: BEACON_KEY, kind: 'ship', target: ship, level: KNOWLEDGE_CONFIRMED, site: sp, label: T(`${TAG} Staging Row`, sp.name), status: T(`${TAG} Staging Status`, st.season.groups.filter((g) => g.staging === sp.index).reduce((n, g) => n + g.ships.length + g.transports.length, 0)) });
         }
     }
-    const cores = liveCores(st);
+    const cores = knownCores(st, empire);
+    // only the cores this empire has learned of (from the cattle ships it destroyed or boarded); the map marks them
     for (const c of cores) {
-        out.push({ threat: BEACON_KEY, kind: 'colony', target: c.colony, level: KNOWLEDGE_CONFIRMED, label: T(`${TAG} Core Row`, c.colony.name), status: T(`${TAG} Core Status`, Math.round(c.waiting / 1e6).toLocaleString('en-US'), Math.round(c.processed / 1e6).toLocaleString('en-US')) });
+        out.push({ threat: BEACON_KEY, kind: 'colony', target: c.colony, level: KNOWLEDGE_CONFIRMED, glyph: 'core', label: T(`${TAG} Core Row`, c.colony.name), status: T(`${TAG} Core Status`, Math.round(c.waiting / 1e6).toLocaleString('en-US'), Math.round(c.processed / 1e6).toLocaleString('en-US')) });
     }
     for (const r of processingWorlds(st)) {
         if (r.colony.empire !== st.faction || cores.some((c) => c.colony === r.colony)) continue;
@@ -1325,6 +1327,7 @@ export function registerBeacon(): void {
             // a cattle ship boarded and taken: its captives are rescued (rescueCattle: the hook a shared capture feature calls)
             const st = peekBeaconState(g);
             if (st === null || st.faction === null || e.from !== st.faction || e.to === st.faction) return;
+            noteCattleCore(g, st, e.builtObject, e.to);
             rescueCattle(g, st, e.builtObject, e.to);
             // a Watcher taken (boarded, or by a story faction): lost to the faction at once (the 2-day pass may run a long block later)
             const w = watcherOf(st, e.builtObject);

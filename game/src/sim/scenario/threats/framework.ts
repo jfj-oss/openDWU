@@ -121,6 +121,8 @@ export interface KnownThreatSite {
     site?: ThreatSite;
     /** Optional status text for the Intelligence screen's Threats & Leads row (default: the certainty wording). */
     status?: string;
+    /** A small purple diamond over the world instead of the default marker (render/artBundleLayer.ts): the Beacon's harvest cores an empire has learned of. */
+    glyph?: 'core';
 }
 
 type KnownSitesProvider = (galaxy: Galaxy, empire: Empire) => KnownThreatSite[];

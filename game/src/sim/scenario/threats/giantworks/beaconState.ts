@@ -345,6 +345,8 @@ export interface CoreRec {
     popStart: number;
     /** The harvester is built by this star date (beaconCoreBuildDays after the designation): the pens fill but nothing is processed before. */
     readyDate?: number;
+    /** The empires that know this is a harvest core (empire ids; absent: none): learned from the navigation record of a destroyed or boarded cattle ship (beaconHarvest.ts noteCattleCore). */
+    knownBy?: number[];
     /** retaken: an empire took the world back; broken: its harvester was destroyed; lost: the world was destroyed or slipped away. */
     ended: 'retaken' | 'broken' | 'lost' | null;
     endDate: number;

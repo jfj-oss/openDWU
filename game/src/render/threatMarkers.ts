@@ -18,7 +18,7 @@ export const KNOWLEDGE_RUMOUR = 1;
 export const KNOWLEDGE_SUSPECTED = 2;
 export const KNOWLEDGE_CONFIRMED = 3;
 
-export type ThreatMarkerKind = 'ash' | 'cultRing' | 'deadSignal' | 'mirror' | 'hex' | 'redPulse' | 'ledger' | 'greatWork' | 'compact' | 'ring' | 'diamond';
+export type ThreatMarkerKind = 'ash' | 'cultRing' | 'deadSignal' | 'mirror' | 'hex' | 'redPulse' | 'ledger' | 'greatWork' | 'compact' | 'ring' | 'diamond' | 'coreMark';
 
 /** Giantworks' site rows (threatKnownSites): the Great Work itself, and each founding world of the Compact. */
 export const GW_SITE_THREAT = 'giantworks';
@@ -49,6 +49,7 @@ export const THREAT_MARKER_COLOURS: Readonly<Record<ThreatMarkerKind, number>> =
     compact: 0xe6d08c,
     ring: 0xffa020,
     diamond: 0xffa020,
+    coreMark: 0x9a5cff,
 };
 
 export interface ThreatMarkerStyle {
@@ -83,6 +84,11 @@ export function threatMarkerStyle(threat: string, level: number, kind: 'colony' 
     let colour = THREAT_MARKER_COLOURS[k];
     if ((k === 'ring' || k === 'diamond') && solid) colour = 0xff3030;
     return { kind: k, colour, solid, alpha: solid ? 1 : 0.8, dashes: solid ? 0 : 14 };
+}
+
+/** The Beacon's harvest core a viewer has learned of: a small solid purple diamond (no ring), over the world. */
+export function coreMarkStyle(): ThreatMarkerStyle {
+    return { kind: 'coreMark', colour: THREAT_MARKER_COLOURS.coreMark, solid: true, alpha: 1, dashes: 0 };
 }
 
 /** Suspected markers flicker (0.55-1 × alpha); confirmed ones are steady (1). `t` in seconds. */
@@ -303,6 +309,13 @@ export function drawThreatMarker(g: Graphics, st: ThreatMarkerStyle, x: number, 
                 g.circle(cx + Math.cos(ang) * s * 0.36, cy + Math.sin(ang) * s * 0.36, s * 0.42).stroke({ width: w * 0.8, color: c, alpha: a });
             }
             g.circle(cx, cy, s * 1.05).stroke({ width: w * 0.6, color: c, alpha: 0.8 * a });
+            break;
+        }
+        case 'coreMark': {
+            // a small crisp diamond (6-9 screen px) just above the world; a dark outline keeps it legible on any planet
+            const s = markerGlyphSize(r, 0.25, 6, 9, px);
+            const cy = y - Math.max(r - 8 * px, s * 1.6);
+            g.moveTo(x, cy - s).lineTo(x + s * 0.75, cy).lineTo(x, cy + s).lineTo(x - s * 0.75, cy).closePath().fill({ color: c, alpha: a }).stroke({ width: 1.5 * px, color: 0x1a0d33, alpha: 0.9 * a });
             break;
         }
         case 'diamond': {
