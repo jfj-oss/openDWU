@@ -1851,10 +1851,8 @@ export function assignMigrationMissionToBuiltObject(galaxy: Galaxy, empire: Empi
                 }
                 if (!withinFuelRangeAndRefuel(galaxy, builtObject, num4, num5, 0.0)) continue;
                 const num6 = galaxy.calculateDistance(num4, num5, habitat3.xpos, habitat3.ypos);
-                // [scenario] the Diet's Beacon evacuation: people leave the zone for farther worlds.
-                const reach = num2 * (galaxy.scenario !== null && isHabitat(t) ? scenarioQuery(galaxy, 'migrationRangeFactor', 1.0, { source: t, destination: habitat3 }) : 1.0);
-                if (num6 <= reach) {
-                    let num7 = Math.sqrt(reach - num6) * empire.migrationSources[i].priority;
+                if (num6 <= num2) {
+                    let num7 = Math.sqrt(num2 - num6) * empire.migrationSources[i].priority;
                     num7 *= 0.75 + galaxy.rnd.nextDouble() * 0.5;
                     // C# oddity (Empire.5.cs 3021): `num7 < num3` with num3 = 0 — only a negative score (negative
                     // MigrationFactor priorities) qualifies; num7 = num3 never raises the bar.
@@ -1868,8 +1866,7 @@ export function assignMigrationMissionToBuiltObject(galaxy: Galaxy, empire: Empi
                 const habitat5 = prioritizedTarget.target;
                 if (habitat5 != null && habitat5.population != null && habitat5.population.items.length > 0 && habitat5.population.dominantRace !== null) {
                     const dominantRace = habitat5.population.dominantRace;
-                    const load = galaxy.scenario !== null ? scenarioQuery(galaxy, 'migrationLoadFactor', 1.0, { source: habitat5, destination: habitat3 }) : 1.0;
-                    const amount3 = Math.min(builtObject.populationCapacity, Math.trunc((populationOfRace(habitat5.population, dominantRace)!.amount / 50) * load));
+                    const amount3 = Math.min(builtObject.populationCapacity, Math.trunc(populationOfRace(habitat5.population, dominantRace)!.amount / 50));
                     populationList2.add(new Population(dominantRace, amount3, galaxy));
                     assignMission(galaxy, builtObject, BuiltObjectMissionType.Transport, habitat5, habitat3, BuiltObjectMissionPriority.Normal, { population: populationList2 });
                     return true;

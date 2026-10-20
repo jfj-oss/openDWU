@@ -4,12 +4,9 @@
 // BREAK it (their research is not slowed). Each month a breaker is in breach: the Diet's violation path (reputation, grievances); at the
 // beaconMoratoriumSanctionAfter-th breach the Diet's own sanction path (automatic sanctions with enforcers). Humans comply (no new menus).
 //
-// Evacuate the worlds near the Great Work (kind beaconEvacuate; proposable while the work is built or before the first beam): for the
-// motion's duration the member colonies within beaconEvacSectors of the site are migration sources (colonyMigrationFactor), send bigger
-// shiploads (migrationLoadFactor) farther afield (migrationRangeFactor) and grow slower (colonyGrowthFactor). The cost falls on the world that
-// takes the people in: it earns beaconEvacRevenueCutPct % x min(1, the evacuees it received within beaconEvacWindowDays / its population before them) less
-// (colonyTaxRevenue) until beaconEvacSlowYears after the last intake (the news line comes once they reach beaconEvacIntakePct %). The stock migration machinery
-// (passenger ships, civilianAI.ts) does the moving; stock dense worlds only (the stock rule keeps a poor small colony's people).
+// Evacuate the worlds near the Great Work (kind beaconEvacuate; proposable while the work is built or before the first beam): when it passes, each
+// member places relocation orders (beaconRelocation.ts: its plan, cost, carriers and income rule) for its own colonies within beaconEvacSectors of
+// the site, the densest first, each to the nearest member colony outside the zone with room. No migration boosts or bookkeeping of its own.
 // Rnd: none.
 
 import type { Galaxy } from '../../../galaxy';
@@ -21,14 +18,14 @@ import { isHumanEmpire } from '../../../humanEmpires';
 import { dietCouncil, dietLawViolation, dietSanctionOffender } from '../../charactersVictory/diet/diet';
 import { dietMembership } from '../../charactersVictory/diet/dietAi';
 import { dietOn, lawInForce, peekDietState, registerDietMotionKind, type DietKindCandidate } from '../../charactersVictory/diet/dietState';
-import { GAME_DAY_LENGTH, registerScenarioEvent, registerScenarioPeriodic, registerScenarioQuery } from '../../hooks';
+import { GAME_DAY_LENGTH, registerScenarioPeriodic, registerScenarioQuery } from '../../hooks';
 import { SECTOR_SIZE } from '../../../logistics/orders';
-import { YEAR_LENGTH } from '../../../galaxyTime';
 import { scenarioNews, scenarioText } from '../../messages';
 import { scenarioFlag, scenarioParam } from '../../state';
 import { KNOWLEDGE_CONFIRMED, KNOWLEDGE_SUSPECTED, knowledgeLevel } from '../framework';
 import { empireTechLevel } from '../robotMutiny';
 import { BEACON_FLAG, P, beaconPosition, peekBeaconState, type BeaconState } from './beaconState';
+import { relocationTargets, startRelocation } from './beaconRelocation';
 
 export const LAW_MORATORIUM = 'beaconMoratorium';
 export const MOTION_MORATORIUM = 'beaconMoratorium';
@@ -165,26 +162,11 @@ export const EVAC = {
     /** The zone: member colonies within this many sectors of the Great Work. */
     sectors: (g: Galaxy) => Math.max(1, scenarioParam(g, 'beaconEvacSectors', 4)),
     days: (g: Galaxy) => Math.max(30, scenarioParam(g, 'beaconEvacDays', 1080)),
-    /** The emigration of a zone colony: its migration factor is at most -this (a migration source), its shipload x loadX, its reach x rangeX. */
-    sourceFactor: (g: Galaxy) => Math.max(0, scenarioParam(g, 'beaconEvacSourceFactor', 0.6)),
-    loadX: (g: Galaxy) => Math.max(1, scenarioParam(g, 'beaconEvacLoadX', 4)),
-    rangeX: (g: Galaxy) => Math.max(1, scenarioParam(g, 'beaconEvacRangeX', 2.5)),
-    /** Population growth in the zone is cut by this %. */
-    growthCutPct: (g: Galaxy) => Math.max(0, Math.min(100, scenarioParam(g, 'beaconEvacGrowthCutPct', 60))),
-    /** A receiving world: evacuees of this % of its population within the window days make it earn revenueCutPct % less until slowYears after the last. */
-    intakePct: (g: Galaxy) => Math.max(0.1, scenarioParam(g, 'beaconEvacIntakePct', 8)),
-    windowDays: (g: Galaxy) => Math.max(30, scenarioParam(g, 'beaconEvacWindowDays', 360)),
-    revenueCutPct: (g: Galaxy) => Math.max(0, Math.min(100, scenarioParam(g, 'beaconEvacRevenueCutPct', 50))),
-    slowYears: (g: Galaxy) => Math.max(0.1, scenarioParam(g, 'beaconEvacSlowYears', 2)),
 };
 
 /** The evacuation may be moved: the Great Work is being built or the Beacon has not fired its first beam. Pure. */
 export function evacuationWindowOpen(st: BeaconState): boolean {
     return st.phase === 'watching' || (st.phase === 'reclamation' && (st.launches ?? 0) === 0);
-}
-
-function evacuationInForce(g: Galaxy): boolean {
-    return on(g) && lawInForce(peekDietState(g), LAW_EVACUATE) !== null;
 }
 
 /** `h` is a member's colony inside the evacuation zone. Pure (no zone: false). */
@@ -206,6 +188,17 @@ function zoneShare(g: Galaxy, e: Empire): number {
     return n / e.colonies.length;
 }
 
+/** Each member places relocation orders for its own colonies inside the zone, the densest first (each to the nearest colony outside the zone that has room). Funds and room permitting. */
+export function orderEvacuations(g: Galaxy): void {
+    for (const e of members(g)) {
+        const zone = e.colonies.filter((h) => !h.hasBeenDestroyed && inEvacuationZone(g, h)).sort((a, c) => (c.population?.totalAmount ?? 0) - (a.population?.totalAmount ?? 0) || a.habitatIndex - c.habitatIndex);
+        for (const h of zone) {
+            const to = relocationTargets(g, e, h).find((t) => !inEvacuationZone(g, t.habitat));
+            if (to !== undefined) startRelocation(g, e, h, to.habitat, to.max);
+        }
+    }
+}
+
 registerDietMotionKind({
     kind: MOTION_EVACUATE,
     label: 'Evacuate the worlds near the Great Work',
@@ -220,6 +213,7 @@ registerDietMotionKind({
         const b = peekBeaconState(g);
         addLaw(LAW_EVACUATE, null, null, null, galaxyStarDate(g) + EVAC.days(g) * GAME_DAY_LENGTH);
         if (b !== null) b.stats.evacuations = (b.stats.evacuations ?? 0) + 1;
+        orderEvacuations(g);
         scenarioNews(g, null, scenarioText(`${TAG} Diet Evacuate News`, EVAC.sectors(g), Math.round(EVAC.days(g) / 30)));
     },
     voteScore: (g, _st, voter, m) => {
@@ -229,7 +223,7 @@ registerDietMotionKind({
         const pr = p(voter);
         let s = 4 + 12 * pr.caution + 6 * pr.friendly - 8 * pr.aggression;
         if (knowsBeacon(b, voter)) s += 26;
-        // The people to move and the growth lost are its own; the cost of receiving them is shared by everyone else.
+        // The people to move are its own (the cost of moving them falls on the owner).
         s -= 70 * zoneShare(g, voter);
         s -= 6 * (1 - zoneShare(g, voter));
         return s;
@@ -242,72 +236,3 @@ registerDietMotionKind({
         return [candidate(a, 10 + 22 * p(a).caution)];
     },
 });
-
-registerScenarioQuery({
-    id: 'beacon.evacMigration',
-    flag: BEACON_FLAG,
-    query: 'colonyMigrationFactor',
-    run: (g, v, { habitat }) => (evacuationInForce(g) && inEvacuationZone(g, habitat) ? Math.min(v, -EVAC.sourceFactor(g)) : v),
-});
-registerScenarioQuery({
-    id: 'beacon.evacLoad',
-    flag: BEACON_FLAG,
-    query: 'migrationLoadFactor',
-    run: (g, v, { source }) => (evacuationInForce(g) && inEvacuationZone(g, source) ? v * EVAC.loadX(g) : v),
-});
-registerScenarioQuery({
-    id: 'beacon.evacRange',
-    flag: BEACON_FLAG,
-    query: 'migrationRangeFactor',
-    run: (g, v, { source }) => (evacuationInForce(g) && inEvacuationZone(g, source) ? v * EVAC.rangeX(g) : v),
-});
-registerScenarioQuery({
-    id: 'beacon.evacGrowth',
-    flag: BEACON_FLAG,
-    query: 'colonyGrowthFactor',
-    run: (g, v, { habitat }) => (evacuationInForce(g) && inEvacuationZone(g, habitat) ? v * (1 - EVAC.growthCutPct(g) / 100) : v),
-});
-
-/** A passenger load from an evacuated zone world reached a member world outside it: count it; the world earns less for a while, in proportion to the intake (evacuationRevenueFactor). */
-export function noteEvacuee(g: Galaxy, colony: Habitat, from: Habitat | null, amount: number): void {
-    const st = peekBeaconState(g);
-    if (st === null || from === null || colony.empire === null || !evacuationInForce(g)) return;
-    if (!inEvacuationZone(g, from) || inEvacuationZone(g, colony) || !members(g).includes(colony.empire)) return;
-    const now = galaxyStarDate(g);
-    const list = (st.evacIntakes ??= []);
-    let rec = list.find((r) => r.colony === colony);
-    if (rec === undefined) {
-        rec = { colony, amount: 0, since: now, slowUntil: 0 };
-        list.push(rec);
-    }
-    if (now - rec.since > EVAC.windowDays(g) * GAME_DAY_LENGTH) {
-        rec.amount = 0;
-        rec.since = now;
-        rec.basePop = undefined;
-        rec.noted = false;
-    }
-    // the population before the window's first intake (the stock unload has added this load to the world already)
-    if (rec.basePop === undefined) rec.basePop = Math.max(1, colony.population.totalAmount - amount);
-    rec.amount += amount;
-    rec.slowUntil = now + EVAC.slowYears(g) * YEAR_LENGTH;
-    if (!rec.noted && rec.amount >= (EVAC.intakePct(g) / 100) * rec.basePop) {
-        rec.noted = true;
-        st.stats.evacSlowed = (st.stats.evacSlowed ?? 0) + 1;
-        scenarioNews(g, colony.empire, scenarioText(`${TAG} Diet Evacuate Intake`, colony.name, EVAC.revenueCutPct(g)));
-    }
-}
-
-/**
- * The receiving world's revenue factor: it earns less while it absorbs evacuees, by revenueCutPct % x min(1, the window's intake / its population
- * before it) until slowYears after the last intake (the same scaled rule as the relocation order's intake, beaconRelocation.ts). Pure.
- */
-export function evacuationRevenueFactor(g: Galaxy, h: Habitat): number {
-    const st = peekBeaconState(g);
-    if (st === null || st.evacIntakes === undefined) return 1;
-    const now = galaxyStarDate(g);
-    for (const r of st.evacIntakes) if (r.colony === h && now < r.slowUntil) return 1 - (EVAC.revenueCutPct(g) / 100) * Math.min(1, r.amount / Math.max(1, r.basePop ?? Math.max(1, h.population.totalAmount - r.amount)));
-    return 1;
-}
-
-registerScenarioEvent({ id: 'beacon.evacArrival', flag: BEACON_FLAG, event: 'migrantsArrived', run: (g, e) => noteEvacuee(g, e.colony, e.from, e.amount) });
-registerScenarioQuery({ id: 'beacon.evacRevenue', flag: BEACON_FLAG, query: 'colonyTaxRevenue', run: (g, v, { habitat }) => (v > 0 ? v * evacuationRevenueFactor(g, habitat) : v) });

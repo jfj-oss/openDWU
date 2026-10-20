@@ -48,7 +48,6 @@ import { BuiltObjectMissionPriority, BuiltObjectMissionType, CommandAction, isBu
 import type { CommandHandler } from './executeCommands';
 import { refugeeConvoySkipLoad, settleRefugeeConvoyArrival } from '../scenario/emergent/demographics';
 import { labourConvoySkipLoad, settleLabourConvoyArrival } from '../scenario/voidbloom/supply';
-import { scenarioEmit } from '../scenario/hooks';
 import { smugglerRunSkipLoad } from '../scenario/voidbloom/trade';
 import { relocationArrive, relocationLoad } from '../scenario/threats/giantworks/beaconRelocation';
 import { addHumanSmuggling } from '../perHumanState';
@@ -826,9 +825,6 @@ export const cmdUnload: CommandHandler = (ctx) => {
                     }
                     processTourists(galaxy, bo, item9);
                 }
-            }
-            if (!relocated && galaxy.scenario !== null && isHabitat(dockedAt) && bo.population !== null && bo.population.totalAmount > 0) {
-                scenarioEmit(galaxy, 'migrantsArrived', { colony: dockedAt, from: mission.targetHabitat, amount: bo.population.totalAmount }); // the Diet's Beacon evacuation
             }
             // mod layer (19d4 §2.6): refugee convoys settle here — before bo.population is wiped below, so the hook
             // still sees the arrived items (and can found an independent colony when dockedAt had none, which the

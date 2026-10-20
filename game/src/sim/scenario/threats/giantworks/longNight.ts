@@ -274,12 +274,10 @@ export function rimNudgedValue(galaxy: Galaxy, empire: Empire, habitat: Habitat,
 
 export const LONG_NIGHT_HANDLER_IDS = ['longNight.crash', 'longNight.advisor', 'longNight.rimNudge'] as const;
 
-/** What the memory record holds of the empires' mega-station parts (contributor 'beacon.parts'): the pieces of every empire by name, and the pieces of the empires that died with the place of their old capital. */
+/** What the memory record holds of the empires' mega-station parts (contributor 'beacon.parts'): the pieces of every empire standing, by name. (The pieces of a dead empire lie in Age 2's ruins, age2World.ts; an older record's `dead` list is ignored.) */
 export interface PartsMemory {
     /** Empires standing at the Long Night, by name (the new age's empires of the same names hold them again). */
     empires: Record<string, EmpireParts>;
-    /** Empires that were gone by then: their pieces lie at their old lost capital, for whoever explores it first (Age 2's ruins). */
-    dead: { name: string; x: number; y: number; systemName: string; parts: EmpireParts }[];
 }
 
 function copyParts(rec: EmpireParts): EmpireParts {
@@ -292,25 +290,18 @@ function hasPieces(rec: EmpireParts): boolean {
 
 /**
  * Every empire's mega-station parts and blueprint progress (beaconComponents.ts, kept in the Beacon state), by empire name: the new age's empires
- * keep their names, so survivors carry their pieces (AIs too). An empire that died leaves its pieces, and the place of its old capital, in `dead`.
+ * keep their names, so survivors carry their pieces (AIs too). An empire that died is not carried (its pieces are the ruins' record).
  */
 export function captureParts(galaxy: Galaxy): PartsMemory | undefined {
     const st = peekBeaconState(galaxy);
     if (st === null || st.parts === undefined) return undefined;
-    const out: PartsMemory = { empires: {}, dead: [] };
+    const out: PartsMemory = { empires: {} };
     for (const [id, rec] of Object.entries(st.parts.held)) {
         const e = galaxy.empires.find((x) => x !== null && String(x.empireId) === id) ?? null;
         if (e === null || e === galaxy.independentEmpire || e.pirateEmpireBaseHabitat !== null || e === st.faction || !hasPieces(rec)) continue;
-        if (e.active) {
-            out.empires[e.name] = copyParts(rec);
-            continue;
-        }
-        const home = e.capital ?? e.homeWorld;
-        const pieces = copyParts(rec);
-        delete pieces.blueprint; // a dead empire's research dies with it
-        if (home !== null && hasPieces(pieces)) out.dead.push({ name: e.name, x: home.xpos, y: home.ypos, systemName: systemNameOf(galaxy, home), parts: pieces });
+        if (e.active) out.empires[e.name] = copyParts(rec);
     }
-    return Object.keys(out.empires).length > 0 || out.dead.length > 0 ? out : undefined;
+    return Object.keys(out.empires).length > 0 ? out : undefined;
 }
 
 /** The new age: each empire with a carried record (matched by name) holds its parts and blueprint progress again. Reads the older shape (humans only, a bare record by name) too. */

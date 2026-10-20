@@ -224,11 +224,6 @@ export function scenarioGameStart(galaxy: Galaxy, ctx: HomePlacementHelpers): vo
  * with no scenario nothing is built or called. Event handlers may draw galaxy.rnd (their gate is on).
  */
 export interface ScenarioEvents {
-    /**
-     * missions/cmdDocking.ts cmdUnload, after the stock unload settled a passenger load into a colony and before the ship's
-     * people are cleared: `amount` people from `from` (the mission's origin, null if none) arrived at `colony`. No Rnd in handlers.
-     */
-    migrantsArrived: { colony: Habitat; from: Habitat | null; amount: number };
     /** combat/ownership.ts takeOwnershipOfColonyFull (end; covers conquest, independents absorbed, secession). */
     colonyOwnerChanged: { colony: Habitat; from: Empire | null; to: Empire | null };
     /**
@@ -947,18 +942,6 @@ export interface ScenarioQueries {
      * < 0 a source). Giantworks' Gilded Orbit draws immigrants to the colonies of the empire that holds it. Pure, no Rnd.
      */
     colonyMigrationFactor: { value: number; args: { habitat: Habitat } };
-    /**
-     * colonyTick.ts (the growth loop of Habitat.cs UpdateColonyVariables, after the strategic-resource factor): a factor on
-     * a colony's population growth rate (1 = stock). The Diet's Beacon evacuation damps growth near the Great Work. Pure, no Rnd.
-     */
-    colonyGrowthFactor: { value: number; args: { habitat: Habitat } };
-    /**
-     * civilianAI.ts assignMigrationMissionToBuiltObject (Empire.5.cs 2947): factors on the shipload (1 = stock, a fiftieth of the
-     * source's people) and on the reach (1 = three sectors between source and destination) of a migration trip out of `source`.
-     * The Diet's Beacon evacuation. Pure, no Rnd.
-     */
-    migrationLoadFactor: { value: number; args: { source: Habitat; destination: Habitat } };
-    migrationRangeFactor: { value: number; args: { source: Habitat; destination: Habitat } };
     /**
      * civilianAI.ts checkMilitaryShipWelcomeAtTerritoryLocation (Galaxy.cs 3699) when the stock answer is no: true =
      * `empire`'s warships are welcome in `owner`'s territory anyway. Characters & Victory's Diet (an outlawed pirate faction). Pure.

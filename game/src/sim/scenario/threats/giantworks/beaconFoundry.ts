@@ -82,9 +82,8 @@ export interface FoundryState {
     /** Newborn warships still cloaked (until clear of the foundries). */
     fresh: BuiltObject[];
     held: HeldCapital[];
-    /** Empire id to foundries it destroyed (the credit for the void frames) / tech pieces its investigations yielded (TODO: what tech is undecided). */
+    /** Empire id to foundries it destroyed (the credit for the void frames) (an old save may carry a techPieces counter; it is ignored). */
     destroyedBy: Record<string, number>;
-    techPieces: Record<string, number>;
     /** Star dates of the last trap message per `empire:foundry`, of the last trap scan. */
     trapMsg: Record<string, number>;
     trapScan: number;
@@ -142,7 +141,7 @@ export function starSystemCount(galaxy: Galaxy): number {
 }
 
 function newFoundryState(initial: number): FoundryState {
-    return { list: [], initial, nextId: 1, rr: 0, carry: 0, fresh: [], held: [], destroyedBy: {}, techPieces: {}, trapMsg: {}, trapScan: -1e18, stats: {} };
+    return { list: [], initial, nextId: 1, rr: 0, carry: 0, fresh: [], held: [], destroyedBy: {}, trapMsg: {}, trapScan: -1e18, stats: {} };
 }
 
 function stat(fs: FoundryState, key: string, n = 1): void {
@@ -569,10 +568,7 @@ export function resolveFoundryInvestigation(g: Galaxy, e: Empire, target: BuiltO
     const guard = guardStrength(f);
     revealFoundry(g, f, e, KNOWLEDGE_CONFIRMED);
     f.intel[String(e.empireId)] = { date: galaxyStarDate(g), guard, built: f.built };
-    const fs = st.foundries!;
-    // TODO(foundries): the tech piece an investigation yields: which technology is undecided, only the count is kept
-    fs.techPieces[String(e.empireId)] = (fs.techPieces[String(e.empireId)] ?? 0) + 1;
-    stat(fs, 'investigated');
+    stat(st.foundries!, 'investigated');
     return { title, text: T(`${TAG} Foundry Investigation Found`, agent.name, where, Math.round(guard).toLocaleString('en-US'), f.built), good: true };
 }
 
@@ -585,11 +581,6 @@ function registerIntel(): void {
         },
         resolve: (g, e, target, agent, success) => resolveFoundryInvestigation(g, e, target as BuiltObject, agent, success),
     });
-}
-
-/** Tech pieces `empire` has earned from investigating foundries (TODO: the tech itself is undecided). Pure. */
-export function foundryTechPieces(galaxy: Galaxy, empire: Empire): number {
-    return peekBeaconState(galaxy)?.foundries?.techPieces[String(empire.empireId)] ?? 0;
 }
 
 // ---------------------------------------------------------------------------------------------------------------

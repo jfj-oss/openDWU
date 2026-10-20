@@ -11,9 +11,10 @@
 //              (the builtObjectInvulnerable query: no damage from any weapon). Contributors (the builder and the pledged) send up to megaFreighterPct
 //              (20%) of their PRIVATE freighters as construction contracts: an idle private freighter is redirected to the structure, delivers on arrival
 //              and goes back to the private sector. Active construction takes megaBuildMinYears..MaxYears (60-70) of game time: days with a delivery in the
-//              last megaActiveWindowDays count; days stalled (parts) or blockaded do not.
+//              last megaActiveWindowDays count; days stalled (parts) or with a holder shooting do not.
 //   DEFENCE    a hostile armed force (a pirate, the Reclaimers, an empire at war with a contributor) near it that outweighs the contributors' by the orbit
-//              ratio blockades it: deliveries stop. Freighters sent with none arriving for megaDecayAfterDays (2 years) cost it megaDecayPct (1%) of the whole
+//              ratio holds the space: it shoots the arriving freighters (the Blockades that bite rule, blockadeShoot, used even with that add-on off).
+//              A freighter shot down is one sent that did not arrive. Freighters sent with none arriving for megaDecayAfterDays (2 years) cost it megaDecayPct (1%) of the whole
 //              per megaDecayPerDays (2 years) from then on. It cannot be a base for fleets (the Compact is nobody's friend: no war, no pact, no docking rights).
 //   LONG NIGHT the half-built structure survives at the same place in the memory record (megaMemory: progress, place, pooled parts by empire name) and
 //              is dormant in the next age: it must be found (a ship within megaReach of it) and a new Diet vote ("Resume the Severance") continues it.
@@ -41,8 +42,9 @@ import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission 
 import { getNearbyBuiltObjects } from '../../../pirates/pirateAI';
 import { GAME_DAY_LENGTH, registerScenarioFramePeriodic, registerScenarioQuery } from '../../hooks';
 import { scenarioMessage, scenarioNews, scenarioText as T } from '../../messages';
-import { scenarioFlag } from '../../state';
-import { classifyOrbit, firepowerByEmpireNear, orbitalRatio } from '../../orbital/orbitalSuperiority';
+import { scenarioFlag, scenarioParam } from '../../state';
+import { ORBIT_RANGE, classifyOrbit, firepowerByEmpireNear, orbitalRatio } from '../../orbital/orbitalSuperiority';
+import { blockadeShoot } from '../../blockades/blockadesBite';
 import { dietCouncil } from '../../charactersVictory/diet/diet';
 import { dietMembership } from '../../charactersVictory/diet/dietAi';
 import { dietOn, registerDietMotionKind, type DietMotion, type DietState } from '../../charactersVictory/diet/dietState';
@@ -344,7 +346,6 @@ function startMega(galaxy: Galaxy, st: DietState, m: DietMotion): void {
         contracts: [],
         delivered: 0,
         deliveredBy: {},
-        blockader: -1,
         foundBy: [],
         voted: true,
         refused: [],
@@ -445,17 +446,16 @@ function distance(galaxy: Galaxy, a: { xpos: number; ypos: number }, b: { xpos: 
     return galaxy.calculateDistance(a.xpos, a.ypos, b.xpos, b.ypos);
 }
 
-/** Arrivals: a freighter within range delivers (unless a blockader holds the orbit: it is turned back), the lost and stale ones are dropped, idle ones are sent on. Returns the deliveries. */
-function stepContracts(galaxy: Galaxy, mega: MegaRec, base: BuiltObject, now: number, blocked: boolean): number {
+/** Arrivals: a freighter within range delivers, the lost (shot down) and stale ones are dropped, idle ones are sent on. Returns the deliveries. */
+function stepContracts(galaxy: Galaxy, mega: MegaRec, base: BuiltObject, now: number): number {
     let delivered = 0;
     const keep: typeof mega.contracts = [];
     for (const c of mega.contracts) {
         const b = c.ship;
         const owner = getEmpireById(galaxy, c.empireId);
-        if (b.hasBeenDestroyed || owner === null || b.actualEmpire !== owner) continue; // lost (the blockade's toll) or taken
+        if (b.hasBeenDestroyed || owner === null || b.actualEmpire !== owner) continue; // lost (shot down) or taken
         if (distance(galaxy, b, base) <= MEGA_DELIVER_RANGE) {
             release(b);
-            if (blocked) continue; // turned back
             delivered++;
             mega.delivered++;
             mega.deliveredBy[String(c.empireId)] = (mega.deliveredBy[String(c.empireId)] ?? 0) + 1;
@@ -509,7 +509,7 @@ function dispatch(galaxy: Galaxy, mega: MegaRec, base: BuiltObject, now: number)
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// The blockade
+// The blockade: the holder shoots the freighters (the Great Work's rule, blockades/blockadesBite.ts blockadeShoot)
 // ---------------------------------------------------------------------------------------------------------------
 
 /** The hostile force that holds the structure's orbit (a pirate, the Reclaimers or an empire at war with a contributor, outweighing the contributors' armed ships there by the orbit ratio), or null. */
@@ -541,15 +541,18 @@ export function megaBlockader(galaxy: Galaxy, st: BeaconState, mega: MegaRec): E
 // The daily step
 // ---------------------------------------------------------------------------------------------------------------
 
-function setStatus(galaxy: Galaxy, mega: MegaRec, status: MegaRec['status'], blockader: Empire | null): void {
+function setStatus(galaxy: Galaxy, mega: MegaRec, status: MegaRec['status']): void {
     const was = mega.status;
     mega.status = status;
-    mega.blockader = blockader === null ? -1 : blockader.empireId;
     if (was === status) return;
-    const us = humansIn(galaxy, mega.contributors);
-    if (status === 'blockaded' && blockader !== null) tellHumans(galaxy, us, T(`${TAG} Blockade Title`), T(`${TAG} Blockade`, blockader.name), { bad: true });
-    else if (was === 'blockaded') tellHumans(galaxy, us, T(`${TAG} Lifted Title`), T(`${TAG} Lifted`), { good: true });
-    else if (status === 'stalled') tellHumans(galaxy, us, T(`${TAG} Stalled Title`), T(`${TAG} Stalled`, Math.round(mega.progress * 100), missingParts(galaxy, mega)));
+    if (status === 'stalled') tellHumans(galaxy, humansIn(galaxy, mega.contributors), T(`${TAG} Stalled Title`), T(`${TAG} Stalled`, Math.round(mega.progress * 100), missingParts(galaxy, mega)));
+}
+
+/** The holder shoots the contributors' freighters near the structure (blockadeShoot: its armed ships there attack them). */
+function shootFreighters(galaxy: Galaxy, holder: Empire, mega: MegaRec, base: BuiltObject): void {
+    const range = Math.max(ORBIT_RANGE, scenarioParam(galaxy, 'blockadeShootRange', 6000));
+    const victims = mega.contracts.map((c) => c.ship).filter((b) => !b.hasBeenDestroyed && distance(galaxy, b, base) <= range);
+    blockadeShoot(galaxy, holder, base, victims, Math.max(1, Math.round(scenarioParam(galaxy, 'blockadeShooters', 2))));
 }
 
 /** The parts the pool still lacks, as a short list (empty: none). Pure. */
@@ -605,8 +608,9 @@ export function megaStep(galaxy: Galaxy): void {
     sweepPledges(galaxy, st, mega);
     const base = ensureBase(galaxy, mega);
     if (base === null) return;
-    const blockader = megaBlockader(galaxy, st, mega);
-    const delivered = stepContracts(galaxy, mega, base, now, blockader !== null);
+    const holder = megaBlockader(galaxy, st, mega);
+    if (holder !== null) shootFreighters(galaxy, holder, mega, base);
+    const delivered = stepContracts(galaxy, mega, base, now);
     if (delivered > 0) {
         mega.lastArrival = now;
         mega.starvedDays = 0;
@@ -615,19 +619,16 @@ export function megaStep(galaxy: Galaxy): void {
     const window = P.megaActiveWindowDays(galaxy) * DAY;
     const arrivedRecently = now - mega.lastArrival <= window;
     const sentRecently = mega.contracts.length > 0 || (mega.lastSent > 0 && now - mega.lastSent <= window);
-    if (blockader !== null) {
-        setStatus(galaxy, mega, 'blockaded', blockader);
-        if (sentRecently && delivered === 0) mega.starvedDays += dt;
-    } else if (mega.progress >= cap - 1e-9 && cap < 1) {
-        setStatus(galaxy, mega, 'stalled', null); // missing parts: no progress, no decay, nothing more sent
+    if (mega.progress >= cap - 1e-9 && cap < 1) {
+        setStatus(galaxy, mega, 'stalled'); // missing parts: no progress, no decay, nothing more sent
         mega.starvedDays = 0;
     } else if (arrivedRecently) {
-        setStatus(galaxy, mega, 'building', null);
+        setStatus(galaxy, mega, 'building');
         mega.progress = Math.min(cap, mega.progress + dt / (mega.buildYears * 360));
         mega.activeDays += dt;
         mega.starvedDays = 0;
     } else {
-        setStatus(galaxy, mega, 'idle', null);
+        setStatus(galaxy, mega, 'idle');
         if (sentRecently) mega.starvedDays += dt;
     }
     if (mega.starvedDays >= P.megaDecayAfterDays(galaxy) && sentRecently) mega.progress = Math.max(0, mega.progress - (P.megaDecayPct(galaxy) * dt) / P.megaDecayPerDays(galaxy));
@@ -713,7 +714,6 @@ export function restoreMega(galaxy: Galaxy, data: unknown): void {
         contracts: [],
         delivered: d.delivered ?? 0,
         deliveredBy: {},
-        blockader: -1,
         foundBy: [],
         voted: false,
         refused: [],

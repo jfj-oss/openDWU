@@ -415,7 +415,7 @@ describe('the building', () => {
         expect(mega.contracts.filter((c) => c.empireId === me.empireId).length).toBeLessThanOrEqual(cap);
     });
 
-    it('a blockade by a hostile armed force stops the deliveries and is lifted when it goes', () => {
+    it('a hostile armed force holding the space shoots the freighters on their way in (the Blockades that bite rule, add-on or not); one shot down never arrives', () => {
         const s = setup();
         give(s.st, s.me, { beamLens: true });
         const mega = started(s);
@@ -427,15 +427,25 @@ describe('the building', () => {
         const wy = warship.ypos;
         warship.xpos = mega.base!.xpos + 100;
         warship.ypos = mega.base!.ypos;
+        builtObjectMission(warship.mission)?.clear(); // idle at the structure
         rebuildIndexes(s.g);
         expect(megaBlockader(s.g, s.st, mega)).toBe(enemy);
-        deliverNow(s, s.me);
+        const freighter = s.me.builtObjects.find((b) => !b.hasBeenDestroyed && b.topSpeed > 0 && !(b.firepowerRaw > 0))!;
+        mega.contracts.push({ empireId: s.me.empireId, ship: freighter, sent: galaxyStarDate(s.g) });
+        freighter.ypos = mega.base!.ypos;
+        freighter.xpos = mega.base!.xpos + 3000;
+        rebuildIndexes(s.g);
         advance(s.g, 1);
         megaStep(s.g);
-        expect(mega.status).toBe('blockaded');
-        expect(mega.blockader).toBe(enemy.empireId);
-        expect(mega.delivered).toBe(0); // turned back
-        expect(mega.progress).toBe(0);
+        expect(builtMission(warship)).toBe('Attack'); // ordered to shoot the freighter
+        // a freighter shot down counts as sent, not arrived
+        freighter.hasBeenDestroyed = true;
+        const sent = mega.lastSent;
+        const delivered = mega.delivered;
+        megaStep(s.g);
+        expect(mega.contracts.some((c) => c.ship === freighter)).toBe(false);
+        expect(mega.delivered).toBe(delivered);
+        expect(mega.lastSent).toBe(sent);
         warship.xpos = wx;
         warship.ypos = wy;
         rebuildIndexes(s.g);
@@ -517,24 +527,26 @@ describe('the Long Night', () => {
         expect(m.voted).toBe(true);
     });
 
-    it('every empire keeps its pieces by name, the dead leave theirs at their old capital', () => {
+    it('every empire standing keeps its pieces by name; the dead are the ruins\' record, not the memory\'s', () => {
         const s = setup();
         const [a, b] = s.ais;
         give(s.st, s.me, { beamLens: true });
         give(s.st, a, { linkConduit: true, mindFragments: 4 });
         give(s.st, b, { cloakLattice: true, voidFrames: 2 });
-        const home = b.capital ?? b.homeWorld;
         b.active = false;
         const rec = captureParts(s.g)!;
         expect(rec.empires[s.me.name]).toMatchObject({ beamLens: true });
         expect(rec.empires[a.name]).toMatchObject({ linkConduit: true, mindFragments: 4 }); // AI survivors too
         expect(rec.empires[b.name]).toBeUndefined();
-        expect(rec.dead).toHaveLength(1);
-        expect(rec.dead[0]).toMatchObject({ name: b.name, x: home!.xpos, y: home!.ypos, parts: { cloakLattice: true, voidFrames: 2 } });
+        expect('dead' in rec).toBe(false);
         const n = setup();
         n.st.parts!.held = {};
         restoreParts(n.g, JSON.parse(JSON.stringify(rec)));
         expect(heldParts(n.st, n.ais[0])).toMatchObject({ linkConduit: true, mindFragments: 4 });
+        expect(heldParts(n.st, n.me)).toMatchObject({ beamLens: true });
+        // an older record (with a `dead` list) still restores its empires
+        n.st.parts!.held = {};
+        restoreParts(n.g, JSON.parse(JSON.stringify({ empires: { [n.me.name]: { beamLens: true } }, dead: [{ name: 'Gone', x: 0, y: 0, systemName: 's', parts: { voidFrames: 2 } }] })));
         expect(heldParts(n.st, n.me)).toMatchObject({ beamLens: true });
         // the older record shape (humans by name) still restores
         n.st.parts!.held = {};

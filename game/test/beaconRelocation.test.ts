@@ -51,7 +51,6 @@ import {
     startRelocation,
 } from '../src/sim/scenario/threats/giantworks/beaconRelocation';
 import { GROUP_SHIPS, INTERCEPT, groupCount, interceptorDesign, interceptorShips, interceptorSummary, interceptorTick } from '../src/sim/scenario/threats/giantworks/beaconInterceptors';
-import { evacuationRevenueFactor } from '../src/sim/scenario/threats/giantworks/beaconDiet';
 import { clearPreviousMissionRequirements } from '../src/sim/missions/assign';
 import { declareWar } from '../src/sim/diplomacyTick';
 
@@ -223,8 +222,6 @@ describe('the carriers', () => {
         expect(st.orders[0]).toMatchObject({ aboard: 0, moved: run.amount, lost: 0 });
         expect(ship.population!.totalAmount).toBe(0);
         expect(st.runs.length).toBe(0);
-        // the stock migration load is unchanged: only a ship on a run is affected
-        expect(scenarioQuery(g, 'migrationLoadFactor', 1, { source: from, destination: to })).toBe(1);
     }, 600000);
 
     it('a trip rolls a chance to lose a share of its people to disease, with a message to the owner', () => {
@@ -367,11 +364,6 @@ describe('the receiving world\'s income', () => {
         step(g, 361);
         expect(tax()).toBe(100);
         expect(relocationView(g, to).incomeFactor).toBe(1);
-    }, 600000);
-
-    it('the Diet\'s evacuation uses the same scaled rule (see scenarioThreatFramework.test.ts: the Diet evacuation)', () => {
-        const { g, to } = world();
-        expect(evacuationRevenueFactor(g, to)).toBe(1); // no intake: no cut
     }, 600000);
 });
 

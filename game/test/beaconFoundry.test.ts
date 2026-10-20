@@ -32,7 +32,6 @@ import {
     foundryCountFor,
     foundryKnownSites,
     foundryPass,
-    foundryTechPieces,
     foundriesDestroyedBy,
     liveFoundries,
     resolveFoundryInvestigation,
@@ -326,17 +325,14 @@ describe('the Reclaimer foundries', () => {
         expect(fs.list.length).toBe(before);
     }, 600000);
 
-    it('intel: an investigation reports the strength (level 3) and yields a tech piece (a counter: the tech is undecided)', () => {
+    it('intel: an investigation reports the strength (level 3)', () => {
         const { g, st, me } = completed();
         const fd = st.foundries!.list[0];
-        expect(foundryTechPieces(g, me)).toBe(0);
         const lost = resolveFoundryInvestigation(g, me, fd.base!, { name: 'Agent' }, false);
         expect(lost.good).toBe(false);
-        expect(foundryTechPieces(g, me)).toBe(0);
         const found = resolveFoundryInvestigation(g, me, fd.base!, { name: 'Agent' }, true);
         expect(found.good).toBe(true);
         expect(knowledgeLevel(fd, me)).toBe(KNOWLEDGE_CONFIRMED);
-        expect(foundryTechPieces(g, me)).toBe(1);
         expect(fd.intel[String(me.empireId)].guard).toBeGreaterThan(0);
         const row = foundryKnownSites(g, me)[0];
         expect(row.level).toBe(KNOWLEDGE_CONFIRMED);
@@ -350,7 +346,6 @@ describe('the Reclaimer foundries', () => {
         const pos = beaconPosition(st)!;
         const cap = spawnShip(g, f, designFor(g, f, BuiltObjectSubRole.CapitalShip)!, pos.x, pos.y);
         takeOwnershipOfBuiltObject(g, me, cap, me, false);
-        fs.techPieces[String(me.empireId)] = 2;
         scenarioEmit(g, 'builtObjectKilledBy', { builtObject: fs.list[0].base!, destroyer: me });
         const k = fs.list[1];
         k.base!.cloakSeenBy = [];
@@ -367,7 +362,6 @@ describe('the Reclaimer foundries', () => {
         expect(lfs.list[0].status).toBe('destroyed');
         expect(lfs.list[0].base).toBeNull();
         expect(lfs.list[1].base!.cloaked).toBe(true);
-        expect(lfs.techPieces).toEqual(fs.techPieces);
         expect(lfs.destroyedBy).toEqual(fs.destroyedBy);
         expect(foundriesDestroyedBy(lg, lg.playerEmpire!)).toBe(1);
         expect(lfs.list.map((x) => x.knowledge)).toEqual(fs.list.map((x) => x.knowledge));

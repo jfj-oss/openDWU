@@ -231,7 +231,8 @@ import { isHumanEmpire } from '../src/sim/humanEmpires';
 import { aiMayPurge, dwellDaysFor, garrisonStrength, purgePass, purgeRebelStrength, rebelsOn, siphonDonor, siphonPass, siphonRateOf, startPurge, tech5Count } from '../src/sim/scenario/threats/giantworks/beaconSiphon';
 import { makeTroopsSplit } from '../src/sim/scenario/threats/factionNavy';
 import { resolveInvasionBattles } from '../src/sim/combat/invasion';
-import { LAW_EVACUATE, LAW_MORATORIUM, MOTION_EVACUATE, MOTION_MORATORIUM, evacuationRevenueFactor, evacuationWindowOpen, inEvacuationZone, knowsBeacon, moratoriumFactor, moratoriumMonthly, noteEvacuee } from '../src/sim/scenario/threats/giantworks/beaconDiet';
+import { LAW_EVACUATE, LAW_MORATORIUM, MOTION_EVACUATE, MOTION_MORATORIUM, evacuationWindowOpen, inEvacuationZone, knowsBeacon, moratoriumFactor, moratoriumMonthly } from '../src/sim/scenario/threats/giantworks/beaconDiet';
+import { peekRelocation } from '../src/sim/scenario/threats/giantworks/beaconRelocation';
 import { dietOn, lawInForce } from '../src/sim/scenario/charactersVictory/diet/dietState';
 import { dietVoteScore, proposerBias } from '../src/sim/scenario/charactersVictory/diet/dietAi';
 import { councilState, type Council } from '../src/sim/scenario/emergent/council';
@@ -4943,17 +4944,21 @@ describe('the Beacon (Giantworks wonder)', () => {
         near.ypos = pos.y;
         far.xpos = pos.x + 1e7;
         far.ypos = pos.y;
-        const hab = (h: typeof near) => ({ habitat: h });
-        const q = (h: typeof near) => ({
-            mig: scenarioQuery(g, 'colonyMigrationFactor', 0.5, hab(h)),
-            load: scenarioQuery(g, 'migrationLoadFactor', 1, { source: h, destination: far }),
-            range: scenarioQuery(g, 'migrationRangeFactor', 1, { source: h, destination: far }),
-            growth: scenarioQuery(g, 'colonyGrowthFactor', 1, hab(h)),
-        });
-        // no law: nothing moves
         expect(inEvacuationZone(g, near)).toBe(true);
         expect(inEvacuationZone(g, far)).toBe(false);
-        expect(q(near)).toEqual({ mig: 0.5, load: 1, range: 1, growth: 1 });
+        // the motion: each member orders relocations for its own zone worlds (the relocation order's plan, cost and income rule); the rest are untouched
+        const M = 1_000_000;
+        for (const h of [...a.colonies, ...b.colonies]) {
+            h.population.items[0].amount = 500 * M;
+            h.population.recalculateTotalAmount();
+        }
+        const dest = a.colonies.find((h) => h !== near)!;
+        dest.xpos = pos.x + 1e7;
+        dest.ypos = pos.y;
+        dest.population.items[0].amount = 10 * M;
+        dest.population.recalculateTotalAmount();
+        a.stateMoney = 1e12;
+        const orders0 = peekRelocation(g)?.orders.length ?? 0;
         const motion = { id: 1, kind: MOTION_EVACUATE, proposer: a, target: null, other: null, colony: null, resourceId: -1, text: 't', votes: [], status: 'voting', yes: 0, no: 0 } as never;
         def.apply(g, dst, motion, (kind, empire, other, colony, until) => {
             const law = { id: 98, kind, empire, other, colony, since: galaxyStarDate(g), until, text: 'law' };
@@ -4963,47 +4968,10 @@ describe('the Beacon (Giantworks wonder)', () => {
         expect(lawInForce(dst, LAW_EVACUATE)).not.toBeNull();
         expect(def.proposable!(g)).toBe(false);
         expect(st.stats.evacuations).toBe(1);
-        // the zone: a migration source, bigger loads, farther trips, slower growth; the world outside is untouched
-        expect(q(near)).toEqual({ mig: -0.6, load: 4, range: 2.5, growth: 0.4 });
-        expect(q(far)).toEqual({ mig: 0.5, load: 1, range: 1, growth: 1 });
-        // the receiving world earns 50 % x min(1, intake / the population before it) less, until two years after the last intake
-        const tax = (h: typeof near) => scenarioQuery(g, 'colonyTaxRevenue', 100, { habitat: h, empire: h.empire! });
-        far.population.items[0].amount = 1000000000;
-        far.population.recalculateTotalAmount();
-        const pop0 = far.population.totalAmount;
-        const arrive = (x: number): void => {
-            // as the stock unload does: the people are in the world's population when the event fires
-            far.population.items[0].amount += x;
-            far.population.recalculateTotalAmount();
-            noteEvacuee(g, far, near, x);
-        };
-        arrive(pop0 * 0.02);
-        expect(evacuationRevenueFactor(g, far)).toBeCloseTo(0.99, 9);
-        expect(tax(far)).toBeCloseTo(99, 7);
-        expect(st.stats.evacSlowed ?? 0).toBe(0);
-        arrive(pop0 * 0.07); // within the window the amounts add up: 9 % of the population before them
-        expect(evacuationRevenueFactor(g, far)).toBeCloseTo(0.955, 9);
-        expect(tax(far)).toBeCloseTo(95.5, 7);
-        expect(st.stats.evacSlowed).toBe(1);
-        g.nowMs += 500 * GAME_DAY_LENGTH;
-        expect(evacuationRevenueFactor(g, far)).toBeCloseTo(0.955, 9);
-        arrive(pop0 * 0.1); // another intake (a new window) pushes the end out
-        const f2 = evacuationRevenueFactor(g, far);
-        expect(f2).toBeLessThan(1);
-        expect(f2).toBeGreaterThan(0.9);
-        g.nowMs += 500 * GAME_DAY_LENGTH;
-        expect(evacuationRevenueFactor(g, far)).toBeCloseTo(f2, 9);
-        g.nowMs += 300 * GAME_DAY_LENGTH;
-        expect(evacuationRevenueFactor(g, far)).toBe(1);
-        expect(tax(far)).toBeCloseTo(100, 9);
-        // people moving between worlds outside the zone, or into the zone, are not counted
-        noteEvacuee(g, far, far, pop0);
-        noteEvacuee(g, near, far, pop0);
-        expect(evacuationRevenueFactor(g, far)).toBe(1);
-        expect(evacuationRevenueFactor(g, near)).toBe(1);
-        // it lapses with the law
-        dst.laws = [];
-        expect(q(near)).toEqual({ mig: 0.5, load: 1, range: 1, growth: 1 });
+        const orders = peekRelocation(g)!.orders.slice(orders0);
+        expect(orders.some((o) => o.from === near && o.empireId === a.empireId && !inEvacuationZone(g, o.to))).toBe(true);
+        expect(orders.every((o) => inEvacuationZone(g, o.from))).toBe(true);
+        expect(orders.some((o) => o.from === far)).toBe(false);
     }, 900000);
 
     it('Diet votes weigh the proposer: an AI member leans toward motions from an empire it likes, away from one it dislikes; the owners of the zone vote against the evacuation', () => {

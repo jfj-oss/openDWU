@@ -285,11 +285,11 @@ function attackTargetOf(b: BuiltObject): BuiltObject | null {
 }
 
 /**
- * One blockaded colony `h`, held by `by`: its armed ships in the orbit attack `targets` (ships of the blockaded side near it).
+ * One blockaded colony `h` (or the Severance's structure), held by `by`: its armed ships in the orbit attack `targets` (ships of the blockaded side near it).
  * An idle ship takes an Attack mission; a ship on a Blockade / Patrol mission of `h` gets an Attack command on top (its
  * mission goes on afterwards); any other ship keeps its orders. Returns the orders given. Draws only inside the stock mission assignment.
  */
-export function blockadeShoot(galaxy: Galaxy, by: Empire, h: Habitat, targets: readonly BuiltObject[], maxPerTarget: number): number {
+export function blockadeShoot(galaxy: Galaxy, by: Empire, h: Habitat | BuiltObject, targets: readonly BuiltObject[], maxPerTarget: number): number {
     if (targets.length === 0) return 0;
     const near = getNearbyBuiltObjects(galaxy, h.xpos, h.ypos, ORBIT_RANGE);
     const shooters: BuiltObject[] = [];

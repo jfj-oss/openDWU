@@ -679,7 +679,7 @@ export interface MegaRec {
     activeDays: number;
     /** Years of active construction it needs (rolled once: megaBuildMinYears..megaBuildMaxYears). */
     buildYears: number;
-    status: 'building' | 'stalled' | 'blockaded' | 'idle' | 'dormant' | 'fired';
+    status: 'building' | 'stalled' | 'idle' | 'dormant' | 'fired';
     /** Star date the vote passed / the last step ran / the last freighter arrived / the last one was sent. */
     since: number;
     lastStep: number;
@@ -695,8 +695,6 @@ export interface MegaRec {
     /** Freighters that arrived, in all and per empire id. */
     delivered: number;
     deliveredBy: Record<string, number>;
-    /** The empire holding the orbit (id), or -1. */
-    blockader: number;
     /** Empire ids whose ships have found the structure (the Long Night's next age: it must be found before a vote can resume the work). */
     foundBy: number[];
     /** A Diet vote has passed in this age (a dormant structure waits for one). */
@@ -1070,7 +1068,7 @@ export const P = {
     megaCapLattice: (g: Galaxy) => Math.max(0, p(g, 'megaCapLatticePct', 15)) / 100,
     megaCapFragments: (g: Galaxy) => Math.max(0, p(g, 'megaCapFragmentsPct', 25)) / 100,
     megaCapFrames: (g: Galaxy) => Math.max(0, p(g, 'megaCapFramesPct', 25)) / 100,
-    /** Years of ACTIVE construction the whole takes (rolled once in this range); time stalled by missing parts or blockaded does not count. */
+    /** Years of ACTIVE construction the whole takes (rolled once in this range); time stalled by missing parts does not count. */
     megaBuildMinYears: (g: Galaxy) => Math.max(1, p(g, 'megaBuildMinYears', 60)),
     megaBuildMaxYears: (g: Galaxy) => Math.max(1, p(g, 'megaBuildMaxYears', 70)),
     /** Freighters of each contributor that may be on the way at once, as a share (%) of its freighters. */
@@ -1085,7 +1083,7 @@ export const P = {
     /** The void point must lie at least this far from every star; a ship within megaReach of the structure has found it. */
     megaVoidClear: (g: Galaxy) => Math.max(1000, p(g, 'megaVoidClear', 60000)),
     megaReach: (g: Galaxy) => Math.max(1000, p(g, 'megaReach', 30000)),
-    /** A hostile armed force within this range of the structure that outweighs the contributors' by the orbit ratio (1.5) blockades it. */
+    /** A hostile armed force within this range of the structure that outweighs the contributors' by the orbit ratio (1.5) holds the space and shoots the freighters (the Blockades that bite rule). */
     megaOrbitRange: (g: Galaxy) => Math.max(1000, p(g, 'megaOrbitRange', 20000)),
     // Capital pursuit (beaconPursuit.ts)
     /** 1: a Reclaimer capital (with escorts) follows an enemy that fled a fight by hyperjump and drags it out of warp (0: no pursuit). */
