@@ -624,6 +624,7 @@ function doSingleEmpireEncounter(galaxy: Galaxy, discoverer: Empire | null, othe
             flag = doSingleEmpireEncounterShakturiStory(galaxy, discoverer, otherEmpire, discoveryLocation, systemName);
         }
         diplomaticRelation.type = DiplomaticRelationType.None;
+        if (galaxy.scenario !== null) scenarioEmit(galaxy, 'empireEncountered', { empire: discoverer, other: otherEmpire }); // mod layer
         // Galaxy.7.cs 4141-4142: scripted game events (story/eventActions.ts, M4z3).
         const matchingGameEventIdEmpireEncounter = getMatchingGameEventIdEmpireEncounter(galaxy, discoverer, otherEmpire);
         checkTriggerEvent(galaxy, matchingGameEventIdEmpireEncounter, discoverer, EventTriggerType.EmpireEncounter, null);

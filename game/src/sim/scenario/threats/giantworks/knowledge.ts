@@ -18,6 +18,7 @@ import { isObjectVisibleToThisEmpire } from '../../../independentTraders';
 import { EmpireMessageType } from '../../../messages';
 import { tryGetText } from '../../../textResolver';
 import { scenarioMessage, scenarioText } from '../../messages';
+import { scenarioEmit } from '../../hooks';
 import {
     KNOWLEDGE_CONFIRMED,
     KNOWLEDGE_RUMOUR,
@@ -241,6 +242,7 @@ export function spreadRumour(galaxy: Galaxy, work: GreatWorkRecord): void {
     const list = names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} ${scenarioText(`${TAG} And`)} ${names[names.length - 1]}`;
     for (const e of ordinaryEmpires(galaxy)) {
         revealTo(galaxy, work, e, KNOWLEDGE_RUMOUR);
+        scenarioEmit(galaxy, 'foundersRumour', { empire: e });
         if (human(galaxy, e)) scenarioMessage(galaxy, e, scenarioText(`${TAG} Rumour Title`), scenarioText(`${TAG} Rumour`, list), { type: EmpireMessageType.GeneralNeutralEvent, subject: work.circles[0][0], popup: false });
     }
 }

@@ -25,7 +25,7 @@ import { checkForPlanetDestroyerWeaponFiringDelayOnHyperExit } from '../combat/w
 import { checkClearDocking, checkMissionStillValid } from '../logistics/docking';
 import { checkSendPreWarpProgressEventMessage } from '../events';
 import { PreWarpProgressEventType } from '../exploration';
-import { scenarioQuery } from '../scenario/hooks';
+import { scenarioEmit, scenarioQuery } from '../scenario/hooks';
 import { moveTogetherCruiseSpeed, moveTogetherHold, moveTogetherJumpCountdown, moveTogetherJumpEntered, moveTogetherReleased, moveTogetherWarpSpeed } from '../fleets/moveTogether';
 import { noteBuiltObjectEffect } from '../combat/effectWatch';
 import {
@@ -342,6 +342,7 @@ export const cmdHyperTo: CommandHandler = (ctx) => {
             checkClearDocking(galaxy, bo, true);
             if (bo.empire !== null) {
                 checkSendPreWarpProgressEventMessage(galaxy, bo.empire, PreWarpProgressEventType.FirstHyperjump, bo);
+                if (galaxy.scenario !== null) scenarioEmit(galaxy, 'hyperjumpStarted', { empire: bo.empire, ship: bo }); // mod layer
             }
         }
         const shipGroup = shipGroupOf(bo);

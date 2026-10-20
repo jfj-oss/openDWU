@@ -37,7 +37,7 @@ import {
 } from '../../diplomacyTick';
 import { EmpireMessageType, sendMessageToEmpire } from '../../messages';
 import { galaxyStarDate } from '../../tick/simTime';
-import { GAME_DAY_LENGTH, gameYear, registerScenarioYearly } from '../hooks';
+import { GAME_DAY_LENGTH, gameYear, registerScenarioYearly, scenarioEmit } from '../hooks';
 import { scenarioFlag, scenarioParam, scenarioState } from '../state';
 import { scenarioMessage, scenarioNews } from '../messages';
 import { noteVoiceCue, voicesOn } from '../llm/voiceCues';
@@ -426,6 +426,7 @@ function foundCouncil(galaxy: Galaxy, st: CouncilState, members: Empire[], year:
     for (const m of members) {
         scenarioMessage(galaxy, m, `${c.name} founded`, founding ?? `We have a seat on the ${c.name} with the ${names}. Each year the council votes on one motion; the ${c.chair?.name ?? ''} hold the chair.`, { type: EmpireMessageType.GeneralGoodEvent });
     }
+    scenarioEmit(galaxy, 'councilFounded', { members: [...members] });
     return c;
 }
 

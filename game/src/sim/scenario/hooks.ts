@@ -292,6 +292,14 @@ export interface ScenarioEvents {
     researchCompleted: { empire: Empire; project: unknown };
     /** exploration.ts investigateRuins (top, after the null checks): `empire` investigates the ruins at `habitat`. No Rnd in handlers. */
     ruinsInvestigated: { empire: Empire; habitat: Habitat };
+    /** missions/cmdMovement.ts, a ship's first hyperjump execution (right where the stock FirstHyperjump pre-warp event fires). No Rnd in handlers. Age 2 milestones. */
+    hyperjumpStarted: { empire: Empire; ship: BuiltObject };
+    /** exploration.ts doSingleEmpireEncounter, right after the relation went NotMet -> None for `empire` (normal empires only). No Rnd in handlers. Age 2 milestones. */
+    empireEncountered: { empire: Empire; other: Empire };
+    /** emergent/council.ts foundCouncil, end: a council was founded by `members`. No Rnd in handlers. Age 2 milestones. */
+    councilFounded: { members: Empire[] };
+    /** giantworks/knowledge.ts spreadRumour: `empire` heard the rumour of the Founders' Compact. No Rnd in handlers. Age 2 milestones. */
+    foundersRumour: { empire: Empire };
     /** characters.ts generateNewCharacter (end). */
     characterCreated: { character: unknown; empire: Empire };
     /** combat/ownership.ts investigateAbandonedBuiltObject (end). */

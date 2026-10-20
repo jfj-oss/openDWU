@@ -25,8 +25,12 @@ import { peekGwState } from '../sim/scenario/threats/giantworks/state';
 import { megaKnowledgeRows } from '../sim/scenario/threats/giantworks/megaStation';
 import { foundriesKnownTo } from '../sim/scenario/threats/giantworks/beaconFoundry';
 import { memoryRecordOf } from '../sim/scenario/threats/giantworks/longNightState';
+<<<<<<< HEAD
 import { WAR_CREDIT_KINDS, WAR_CREDIT_LABEL, warCreditActive, warCreditRanking } from '../sim/scenario/threats/giantworks/beaconWarCredit';
 import { DiplomaticRelationType } from '../sim/diplomacy';
+=======
+import { milestoneRowsOf } from '../sim/scenario/threats/giantworks/age2Milestones';
+>>>>>>> f26a50ad (Age 2 knowledge milestones 2-8: first warp jump, first contact (species myth variants, shared-myth Truth), old-capital ruin, ark hook, first Harvest Scar, Founders' Compact rumour, the Diet re-forms; The New Age Knowledge section)
 
 /** The Galactopedia article on the Great Works (expansionArticles.ts). */
 export const KNOWLEDGE_ARTICLE = 'The Great Work (Giantworks)';
@@ -125,6 +129,10 @@ registerKnowledgeSection('ageMemory', 'What We Remember', (galaxy) => {
     for (const [i, f] of mem.foundries.located.entries()) rows.push({ ...knowledgeRow(`memory:found:${i}`, f.name, '', 'a foundry we found before the Long Night'), point: { x: f.x, y: f.y } });
     for (const [i, f] of mem.foundries.destroyed.entries()) rows.push({ ...knowledgeRow(`memory:gone:${i}`, f.name, '', 'destroyed before the Long Night'), point: { x: f.x, y: f.y } });
     return rows;
+});
+registerKnowledgeSection('newAge', 'The New Age', (galaxy, empire) => {
+    const rows = milestoneRowsOf(galaxy, empire).map((m) => knowledgeRow(`newage:${m.key}`, m.title, '', m.text));
+    return rows.length > 0 ? rows : null;
 });
 
 // ---------------------------------------------------------------------------------------------------------------

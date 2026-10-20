@@ -447,6 +447,41 @@ LongNight Ruin Survey Title;The Ruins of {0}
 LongNight Ruin Survey Body;Our survey teams have walked through the ruins on {1}, where the {0} once ruled. The scale of it is hard to believe: cities built for billions, empty for longer than anyone can say.\n\nThey brought back what they could carry. Fragments of old learning, half of it beyond us. Some wealth. And the uneasy sense that whoever lived here did not simply fade away.
 LongNight Ruin Parts Title;What {0} Left Behind
 LongNight Ruin Parts Body;Deep beneath the ruins of {1}, sealed away as if someone meant them to be found, our teams uncovered things the {0} were keeping safe: {2}.\n\nNo one can say what they are for. Only that they were made with great care, by people who expected to need them.
+LongNight Know This;TODO-PROSE: You know what this is.
+LongNight Warp Title;TODO-PROSE: The Songs Were True
+LongNight Warp Body;TODO-PROSE: (fires once per empire, the first time one of its ships makes a hyperjump in Age 2) The first ship has crossed between the stars in a moment. The old songs were not myths.
+LongNight Contact Title;TODO-PROSE: We Are Not Alone
+LongNight Contact Body;TODO-PROSE: (fires once, first contact with another species in Age 2; {0} = empire name, {1} = species, {2} = their version of the myth, from Contact Variant 0-3 by race) We have met the {0}, a people of the {1}. They tell the same myth as we do, in their own way: {2}
+LongNight Contact Variant 0;TODO-PROSE: (the {0} version, variant 0; {0} = species, {1} = empire) Their version of the myth.
+LongNight Contact Variant 1;TODO-PROSE: (variant 1; {0} = species, {1} = empire) Their version of the myth.
+LongNight Contact Variant 2;TODO-PROSE: (variant 2; {0} = species, {1} = empire) Their version of the myth.
+LongNight Contact Variant 3;TODO-PROSE: (variant 3; {0} = species, {1} = empire) Their version of the myth.
+LongNight Myth Truth Title;TODO-PROSE: One Story, Told Many Ways
+LongNight Myth Truth Body;TODO-PROSE: (fires once, when an empire has met 3 different species; {0} = number of species met) Comparing the myths of {0} peoples shows they are one story. Truth unlocked: the shared myth.
+LongNight Truth age2-shared-myth Title;TODO-PROSE: The Shared Myth
+LongNight Truth age2-shared-myth Text;TODO-PROSE: (Knowledge page line for the Truth) Every people remembers the same thing in its own way.
+LongNight Ruin Milestone Title;TODO-PROSE: We Were Not the First
+LongNight Ruin Milestone Body;TODO-PROSE: (fires once, the first old-capital ruin an empire surveys; {0} = the empire that ruled it, {1} = the world) The ruins of the {0} on {1} show we were not the first.
+LongNight Ark Title;TODO-PROSE: A Witness
+LongNight Ark Body;TODO-PROSE: (fires once, the first survivor ark an empire scouts; hook milestoneArk, survivor arks not built yet) The first direct account of the Long Night.
+LongNight Scar Title;TODO-PROSE: The Pens
+LongNight Scar Body;TODO-PROSE: (fires once, the first Harvest Scar an empire finds, its system explored or in sensor range; {0} = the world, {1} = its system) {0} was a place where people were kept. The racks' meaning is revealed here.
+LongNight Rumour Title;TODO-PROSE: It Is Happening Again
+LongNight Rumour Body;TODO-PROSE: (fires once, the first Founders' Compact rumour in Age 2, for a human who holds the Age 1 memory) We have heard this before. It is happening again.
+LongNight Rumour Neutral Title;TODO-PROSE: A Secret Among the Independents
+LongNight Rumour Neutral Body;TODO-PROSE: (the same milestone for an empire without the Age 1 memory) Rumours of secret meetings among the independent worlds.
+LongNight Diet Title;TODO-PROSE: The Preparation Begins
+LongNight Diet Body;TODO-PROSE: (fires once for each founding member, when the Galactic Diet is founded in Age 2) The great powers have formed a council. The preparation begins.
+LongNight Know Row Unification;TODO-PROSE: (Knowledge page, The New Age: milestone 0) The warlords united.
+LongNight Know Row Crater;TODO-PROSE: (Knowledge page: milestone 1) A hull in a crater; the old songs may be true.
+LongNight Know Row Warp;TODO-PROSE: (Knowledge page: milestone 2) The songs were true: we have jumped between the stars.
+LongNight Know Row Contact;TODO-PROSE: (Knowledge page: milestone 3) Other peoples share the myth.
+LongNight Know Row Ruin Milestone;TODO-PROSE: (Knowledge page: milestone 4) We were not the first.
+LongNight Know Row Ark;TODO-PROSE: (Knowledge page: milestone 5) A survivor's account of the Long Night.
+LongNight Know Row Scar;TODO-PROSE: (Knowledge page: milestone 6) The pens, and what the racks were for.
+LongNight Know Row Rumour;TODO-PROSE: (Knowledge page: milestone 7) It is happening again.
+LongNight Know Row Rumour Neutral;TODO-PROSE: (Knowledge page: milestone 7, no memory) Secret meetings among the independents.
+LongNight Know Row Diet;TODO-PROSE: (Knowledge page: milestone 8) The preparation begins.
 LongNight Hulk Name;Reclaimer hulk {0}
 Beacon Foundry Design;Foundry
 Beacon Foundry Name;Foundry {0}
