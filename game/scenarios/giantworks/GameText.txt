@@ -589,26 +589,26 @@ Beacon War Credit Diet;The {0} lead with {1} % of the work ({2} points); yours: 
 Beacon War Credit Diet None;No one has yet done anything against the Reclaimers.
 Beacon Reputation War Credit Top;carried a great share of the war against the Reclaimers
 Beacon Reputation War Credit Slack;left the war against the Reclaimers to others
-Holdout Empire Name;TODO-PROSE: The {0} Holdouts
-Holdout Shield Held Title;TODO-PROSE: The core cannot be invaded
-Holdout Shield Held Body;TODO-PROSE: Our landing forces on {0} were destroyed before they reached the ground. An old shield, older than anything the {1} should still be able to power, stands over the world and nothing we land can pass it. It is fed from their colonies. {2} of them still stand.
-Holdout Shield Down Title;TODO-PROSE: The shield over {0} has fallen
-Holdout Shield Down Body;TODO-PROSE: With their last colony gone, the old shield over {0} in {2} has lost the power that fed it. The world of the {1} lies open to invasion.
-Holdout News Shield Down;TODO-PROSE: The shield over {0}, the last stronghold of the {1}, has failed. The world can now be invaded.
-Holdout Rigged Title;TODO-PROSE: Colonists are fleeing {0}
-Holdout Rigged Body;TODO-PROSE: Our fleet had hardly arrived over {0} in {2} when freighters began to lift off in their hundreds, crammed with colonists. The {1} are emptying the world ahead of us. Whatever they have left behind, they did not want their own people there when it was found.
-Holdout Colony Blown Title;TODO-PROSE: {0} has been destroyed
-Holdout Colony Blown Body;TODO-PROSE: Within a day of our landing on {0} in {1}, the world was torn apart from within. The defenders had rigged it with a device of the age before, and it went off the moment the planet changed hands. Nothing is left to hold.
-Holdout Core Taken Title;TODO-PROSE: {0} is ours
-Holdout Core Taken Body;TODO-PROSE: The seat of the {1} has fallen. Among the archives of {0} our scholars found what they had kept hidden since the age before: {2} technologies, among them {3}. Nothing was offered to us in peace. We took all of it.
-Holdout News Core Taken;TODO-PROSE: {2} has taken {0}, the seat of the {1}, and with it their knowledge of the age before.
-Holdout Row Core;TODO-PROSE: {0}, core of the {1}
-Holdout Row Core Shielded;TODO-PROSE: shielded; cannot be invaded until its {0} colonies are taken
-Holdout Row Core Open;TODO-PROSE: the shield is down; it can be invaded
-Holdout Row Core Taken;TODO-PROSE: conquered by {0}
-Holdout Row Core Destroyed;TODO-PROSE: destroyed
-Holdout Row Colony;TODO-PROSE: {0}, a colony
-Holdout Row Colony Held;TODO-PROSE: held
-Holdout Row Colony Fled;TODO-PROSE: held; its colonists are fleeing
-Holdout Row Colony Taken;TODO-PROSE: taken
-Holdout Row Colony Blown;TODO-PROSE: destroyed
+Holdout Empire Name;The {0} Holdouts
+Holdout Shield Held Title;The core cannot be invaded
+Holdout Shield Held Body;Our landing forces on {0} were destroyed before they reached the ground. An old shield, older than anything the {1} should still be able to power, stands over the world and nothing we land can pass it. It is fed from their colonies. {2} of them still stand.
+Holdout Shield Down Title;The shield over {0} has fallen
+Holdout Shield Down Body;With their last colony gone, the old shield over {0} in {2} has lost the power that fed it. The world of the {1} lies open to invasion.
+Holdout News Shield Down;The shield over {0}, the last stronghold of the {1}, has failed. The world can now be invaded.
+Holdout Rigged Title;Colonists are fleeing {0}
+Holdout Rigged Body;Our fleet had hardly arrived over {0} in {2} when freighters began to lift off in their hundreds, crammed with colonists. The {1} are emptying the world ahead of us. Whatever they have left behind, they did not want their own people there when it was found.
+Holdout Colony Blown Title;{0} has been destroyed
+Holdout Colony Blown Body;Within a day of our landing on {0} in {1}, the world was torn apart from within. The defenders had rigged it with a device of the age before, and it went off the moment the planet changed hands. Nothing is left to hold.
+Holdout Core Taken Title;{0} is ours
+Holdout Core Taken Body;The seat of the {1} has fallen. Among the archives of {0} our scholars found what they had kept hidden since the age before: {2} technologies, among them {3}. Nothing was offered to us in peace. We took all of it.
+Holdout News Core Taken;{2} has taken {0}, the seat of the {1}, and with it their knowledge of the age before.
+Holdout Row Core;{0}, core of the {1}
+Holdout Row Core Shielded;shielded; cannot be invaded until its {0} colonies are taken
+Holdout Row Core Open;the shield is down; it can be invaded
+Holdout Row Core Taken;conquered by {0}
+Holdout Row Core Destroyed;destroyed
+Holdout Row Colony;{0}, a colony
+Holdout Row Colony Held;held
+Holdout Row Colony Fled;held; its colonists are fleeing
+Holdout Row Colony Taken;taken
+Holdout Row Colony Blown;destroyed
