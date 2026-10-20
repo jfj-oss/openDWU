@@ -442,11 +442,11 @@ LongNight Rim Body;Half of the galaxy's people are gone. Our analysts have stopp
 LongNight Crash Name;Crashed Reclaimer hull
 LongNight Crash Description;A vast shape buried deep in an ancient crater. Not stone. Not ours.
 LongNight Ruin Name;Ruins of {0}
-LongNight Ruin Description;TODO-PROSE The broken seat of {0}, a {1} power of the age before the Long Night. Whatever the machines left of {2} lies under the dust.
-LongNight Ruin Survey Title;TODO-PROSE The Ruins of {0}
-LongNight Ruin Survey Body;TODO-PROSE Our survey teams have gone through the ruins on {1}, the seat of the {0}. They found fragments of old learning, and some wealth.
-LongNight Ruin Parts Title;TODO-PROSE What {0} Left Behind
-LongNight Ruin Parts Body;TODO-PROSE Beneath the ruins of {1}, the seat of the {0}, our survey teams found parts of the machine the old empires were building: {2}. They are ours now.
+LongNight Ruin Description;Broken towers under centuries of dust: once the seat of {0}, a {1} power of the age before. Whatever was done to {2}, it was not done by time alone.
+LongNight Ruin Survey Title;The Ruins of {0}
+LongNight Ruin Survey Body;Our survey teams have walked through the ruins on {1}, where the {0} once ruled. The scale of it is hard to believe: cities built for billions, empty for longer than anyone can say.\n\nThey brought back what they could carry. Fragments of old learning, half of it beyond us. Some wealth. And the uneasy sense that whoever lived here did not simply fade away.
+LongNight Ruin Parts Title;What {0} Left Behind
+LongNight Ruin Parts Body;Deep beneath the ruins of {1}, sealed away as if someone meant them to be found, our teams uncovered things the {0} were keeping safe: {2}.\n\nNo one can say what they are for. Only that they were made with great care, by people who expected to need them.
 LongNight Hulk Name;Reclaimer hulk {0}
 Beacon Foundry Design;Foundry
 Beacon Foundry Name;Foundry {0}
