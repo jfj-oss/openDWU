@@ -18,6 +18,7 @@ import { BEACON_KIND, isNormalEmpire, peekBeaconState, type BeaconState } from '
 import { lossCheck } from '../src/sim/scenario/threats/giantworks/beaconFleet';
 import { advisorCheck, rimNudgedValue } from '../src/sim/scenario/threats/giantworks/longNight';
 import { peekLongNight, type SurvivorRec } from '../src/sim/scenario/threats/giantworks/longNightState';
+import { peekHoldouts } from '../src/sim/scenario/threats/giantworks/age2Holdouts';
 
 let base: GameData;
 beforeAll(async () => {
@@ -126,7 +127,8 @@ describe('Age 2 placement', () => {
 
     it('rebuilds the survivors pre-warp with their identity and fills the empire count with new empires', () => {
         const g = next.galaxy;
-        const now = g.empires.filter((e): e is Empire => e !== null && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null && e.capital !== null);
+        const holdouts = new Set((peekHoldouts(g)?.holdouts ?? []).map((h) => h.empire)); // the Precursor holdouts are not part of the start's empire count
+        const now = g.empires.filter((e): e is Empire => e !== null && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null && e.capital !== null && !holdouts.has(e));
         for (const r of recs) {
             const e = now.find((x) => x.name === r.name);
             expect(e, r.name).toBeDefined();

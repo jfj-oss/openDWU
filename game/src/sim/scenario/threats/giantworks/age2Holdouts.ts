@@ -16,6 +16,10 @@
 // Rnd: placement uses its own stream (age2Random); the empire's creation and the explosions draw galaxy.rnd inside the restore / the gated
 // daily handler, as the other Age 2 content does. Scenario state `age2Holdouts` (plain data plus Empire / Habitat / BuiltObject references).
 
+import { GAME_DAY_LENGTH, registerScenarioEvent, registerScenarioFramePeriodic, registerScenarioQuery } from '../../hooks';
+import { scenarioParam, scenarioState } from '../../state';
+import { scenarioMessage, scenarioNews, scenarioText as T } from '../../messages';
+import { HARVEST_CYCLE_FLAG, memoryRecordOf, registerMemoryContributor } from './longNightState';
 import type { Galaxy } from '../../../galaxy';
 import type { Empire } from '../../../empire';
 import { AutomationLevel } from '../../../empire';
@@ -33,16 +37,12 @@ import { BuiltObjectMissionPriority, BuiltObjectMissionType } from '../../../mis
 import { assignMission } from '../../../missions/assign';
 import { obtainDiplomaticRelation, DiplomaticRelationType } from '../../../diplomacy';
 import { createEmpireMidGame } from '../../empireMidGame';
-import { GAME_DAY_LENGTH, registerScenarioEvent, registerScenarioFramePeriodic, registerScenarioQuery } from '../../hooks';
-import { scenarioParam, scenarioState } from '../../state';
-import { scenarioMessage, scenarioNews, scenarioText as T } from '../../messages';
 import { maxDesignTechLevel, empireTechLevel } from '../robotMutiny';
 import { detonateHabitat } from '../timeBomb';
 import { age2Random } from './age2World';
 import { inForeignTerritory, capitals } from './founders';
 import { factionDesign, introduce, peacefulPolicy, placeObject } from './lifecycle';
 import { ordinaryEmpires } from './state';
-import { HARVEST_CYCLE_FLAG, memoryRecordOf, registerMemoryContributor } from './longNightState';
 
 export const HOLDOUTS_ID = 'age2.holdouts';
 /** The scenario state key. */
@@ -624,7 +624,7 @@ function targetOk(galaxy: Galaxy, value: boolean, empire: Empire, target: Habita
 }
 
 export function registerAge2Holdouts(): void {
-    registerMemoryContributor({ id: HOLDOUTS_ID, capture: () => undefined, restore: (g, _data: unknown) => restoreHoldouts(g) });
+    registerMemoryContributor({ id: 'age2.holdouts', capture: () => undefined, restore: (g, _data: unknown) => restoreHoldouts(g) });
     registerScenarioQuery({ id: 'age2.holdouts.shield', flag: HARVEST_CYCLE_FLAG, query: 'invasionBlocked', run: (g, v, a) => v || onInvasionBlocked(g, a.habitat, a.invader) });
     registerScenarioQuery({ id: 'age2.holdouts.targets', flag: HARVEST_CYCLE_FLAG, query: 'invasionTargetOrbitOk', run: (g, v, a) => targetOk(g, v, a.empire, a.target) });
     registerScenarioEvent({ id: 'age2.holdouts.owner', flag: HARVEST_CYCLE_FLAG, event: 'colonyOwnerChanged', run: (g, e) => onColonyOwnerChanged(g, e.colony, e.from, e.to) });
