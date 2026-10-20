@@ -619,13 +619,13 @@ Holdout Row Colony Blown;destroyed
 LongNight Ark Contact Line;This ship is a survivor of the old age: an ark of the Long Night. It kept the old knowledge, and its weapons and shields are the weapons and shields of that age.
 LongNight Stranded Faction;The Left Behind
 LongNight Stranded Name;a damaged Watcher
-LongNight Stranded Found Title;Left behind
-LongNight Stranded Found Body;Something huge has woken in the {0} system and opened fire on our ships. It is a Watcher of the old age, damaged and unable to leave: the machines left it behind when they went. It guards the place the harvest was worst.
-LongNight Stranded Gone Title;The Watcher has gone
-LongNight Stranded Gone Body;The damaged Watcher we found has mended its drive and left. Wherever the machines gather again, it will be there.
-LongNight Stranded Prize Title;A Watcher boarded
-LongNight Stranded Prize Foundry Body;The Watcher is ours. Its memory held a ledger of the machines' foundries; one of them, {0}, lies near {1}.
-LongNight Stranded Prize Truth Body;The Watcher is ours. Its memory held a ledger of the machines' foundries, but every entry in it is either destroyed or already known to us. What remains is the ledger itself: proof of how the machines kept their accounts.
+LongNight Stranded Found Title;Something Was Waiting
+LongNight Stranded Found Body;Our ships had barely entered the {0} system when the dark itself seemed to move. Something vast, that none of our sensors had seen, unfolded out of nothing and opened fire.\n\nIt is old, and it is damaged; it limps rather than flies. But it is guarding that world as if its makers had told it to, long ago, and never came back for it.
+LongNight Stranded Gone Title;It Has Gone
+LongNight Stranded Gone Body;The thing that guarded the old harvest world is gone. Whatever kept it there has been mended. Our analysts do not like to guess where it went, or who it went to join.
+LongNight Stranded Prize Title;It Is Ours
+LongNight Stranded Prize Foundry Body;The ship is ours, and something in its heart is still talking. Among the fragments our engineers pulled from it is a place: {0}, out in the dark near {1}, where something like it was once made.
+LongNight Stranded Prize Truth Body;The ship is ours, and something in its heart is still talking. It kept a list of places where ships like it were made. Every one of them is gone, or already known to us. What remains is the list itself, and what it tells us about how many of them there were.
 LongNight Truth age2-watcher-ledger Title;The Ledger of the Left Behind
 LongNight Truth age2-watcher-ledger Text;A Watcher's memory kept a list of every foundry the machines built.
 LongNight Stranded Row Stranded;stranded, cloaked, guarding a harvest world

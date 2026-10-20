@@ -164,7 +164,7 @@ describe('the stranded Watchers', () => {
         expect(r.ship!.cloaked).toBe(false);
         expect(r.mode).toBe('hunt');
         expect(r.discovered).toContain(me.empireId);
-        expect(popups(me, 'Left behind').length).toBe(1);
+        expect(popups(me, 'Something Was Waiting').length).toBe(1);
         expect(strandedMayFire(g, r.ship!, visitor)).toBe(true);
         expect(scenarioQuery(g, 'attackWithoutWar', false, { empire: faction(), target: me, attacker: r.ship!, victim: visitor })).toBe(true);
         expect(strandedRowsOf(g, me).length).toBe(1);
@@ -183,7 +183,7 @@ describe('the stranded Watchers', () => {
         visitor.ypos = r.ship!.ypos;
         strandedPass(g);
         expect(r.ship!.cloaked).toBe(false);
-        expect(popups(me, 'Left behind').length).toBe(1);
+        expect(popups(me, 'Something Was Waiting').length).toBe(1);
         visitor.xpos = home.x;
         visitor.ypos = home.y;
         r.lastNear -= 1e9;
@@ -208,7 +208,7 @@ describe('the stranded Watchers', () => {
         onStrandedOwnerChanged(g, r.ship!, faction(), me);
         expect(r.status).toBe('taken');
         expect(peekStranded(g)!.revealed[String(me.empireId)].length).toBe(1);
-        expect(popups(me, 'A Watcher boarded').length).toBe(1);
+        expect(popups(me, 'It Is Ours').length).toBe(1);
         expect(strandedRowsOf(g, me).some((x) => x.key.startsWith('stranded:foundry'))).toBe(true);
         // a second capture by the same empire (a fresh rec) finds nothing left to show: the Truth
         r.status = 'stranded';
