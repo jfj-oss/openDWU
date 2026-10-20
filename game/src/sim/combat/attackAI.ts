@@ -154,7 +154,6 @@ export function calculateAvailableAssaultPodAttackStrength(galaxy: Galaxy, bo: B
 
 /** BuiltObject.1.cs 3394/3399 CalculateBoardingDefenseValue(time[, includeAllAssaultPods], out fixedDefenseValue). */
 export function calculateBoardingDefenseValue(galaxy: Galaxy, bo: BuiltObject, time: number, includeAllAssaultPods = false): { value: number; fixedDefenseValue: number } {
-    void galaxy;
     let num = 0;
     let fixedDefenseValue = 0;
     let num2 = 1.0;
@@ -198,6 +197,14 @@ export function calculateBoardingDefenseValue(galaxy: Galaxy, bo: BuiltObject, t
                 num += num5;
                 fixedDefenseValue += num5;
             }
+        }
+    }
+    // mod layer (not in the original): a scenario may raise the boarding defence (the Beacon's Reclaimer capitals and foundries).
+    if (galaxy.scenario !== null) {
+        const raised = scenarioQuery(galaxy, 'boardingDefenseValue', num, { builtObject: bo });
+        if (raised > num) {
+            fixedDefenseValue += raised - num;
+            num = raised;
         }
     }
     return { value: num, fixedDefenseValue };

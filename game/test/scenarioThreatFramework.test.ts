@@ -6358,6 +6358,7 @@ describe('the Beacon (Giantworks wonder)', () => {
 
     it('a group whose staging fleet was beaten down below a quarter of its share is called off at the departure; its ships go to the reserve', () => {
         const { g, st } = completed();
+        g.scenario!.params.beaconFoundryCapitalEscorts = 0; // (this tiny budget makes lone capitals: the escort rule is off here, beaconFoundry.test.ts has it)
         const f = st.faction!;
         f.stateMoney = 1e9;
         beginSeason(g, st, 1);

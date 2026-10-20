@@ -122,6 +122,7 @@ import { dwellDaysFor, holdingAtGate, purgePass, purgeRebelStrength, recentlyPur
 import { addProgress } from './lifecycle';
 import { unblockaded } from './blockade';
 import './beaconDiet';
+import { ensureFoundries, foundryOf, registerFoundry } from './beaconFoundry';
 import { counterIntelligencePass, counterMonthly, onBoarded, onKilledForSalvage, registerCounterplay, resistanceFactor } from './beaconCounter';
 import { beaconArtInfo, cattleOf, cattleRepairFactor, initHarvest, knownCores, liveCores, noteCattleCore, registerHarvest, releaseCaptives, rescueCattle } from './beaconHarvest';
 import type { BeaconArtInfo } from './beaconState';
@@ -1109,6 +1110,7 @@ export function beaconComplete(galaxy: Galaxy, site: GreatWorkSite): void {
     setupBeacon(galaxy, st, site, faction, pos);
     st.popBaseline = galaxyPopulation(galaxy, faction);
     initHarvest(galaxy, st);
+    ensureFoundries(galaxy, st);
     // No war yet: the Watchers gather, cloaked, round the Beacon and the first countdown runs; at the mega beam the war begins, the Watchers decloak and lead
     // their fleets, and the first season's groups come through (beaconFleet.ts fireBeam).
     st.warStarted = false;
@@ -1342,7 +1344,7 @@ export function beaconShipRole(st: BeaconState, bo: BuiltObject): BeaconShipRole
     if (st.watchers.some((w) => w.ship === bo)) return 'watcher';
     if (bo.isPlanetDestroyer) return 'planetDestroyer';
     if ((st.cattle ?? []).some((c) => c.ship === bo)) return 'cattle';
-    if ((st.cores ?? []).some((c) => c.harvester === bo)) return 'harvester';
+    if ((st.cores ?? []).some((c) => c.harvester === bo) || foundryOf(st, bo) !== null) return 'harvester'; // (a foundry wears the harvester's look)
     switch (bo.subRole) {
         case BuiltObjectSubRole.CapitalShip:
             return 'capital';
@@ -1549,6 +1551,7 @@ export function registerBeacon(): void {
     registerBeaconAi();
     registerHarvest();
     registerPursuit();
+    registerFoundry();
 }
 
 registerBeacon();

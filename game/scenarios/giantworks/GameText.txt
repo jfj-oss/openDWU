@@ -439,3 +439,20 @@ LongNight Crater Title;The Thing in the Crater
 LongNight Crater Body;Our survey teams expected a meteorite. The crater on {0} is old, older than our oldest cities, and whatever made it buried itself deep in the rock.\n\nIt is not a meteorite. It is not natural. And it is not ours.\n\nIt is a hull, or part of one, larger than any vessel we have ever built, of a material our engineers cannot cut. Inside, among the wreckage, something is still faintly running: a guidance record. It has been calculating the same course for longer than we have existed as a people. It points across the system, at this world.\n\nIt was not lost. It was coming here.\n\nWe do not know who sent it, or what it meant to do when it arrived. But its engines did not work the way ours do. They did not push through space at all. If we can understand them, the old songs might not be myths after all.
 LongNight Crash Name;Crashed Reclaimer hull
 LongNight Crash Description;A vast shape buried deep in an ancient crater. Not stone. Not ours.
+Beacon Foundry Design;Foundry
+Beacon Foundry Name;Foundry {0}
+Beacon Foundry Row;{0}
+Beacon Foundry Status;A Reclaimer foundry in the empty void: its warships are made here. Its strength is unknown; an investigation would tell.
+Beacon Foundry Status Intel;A Reclaimer foundry. Investigated: guard and base strength {0}, {1} warships made here so far. Destroy it to slow the Reclaimers' fleets (no ship can jump away from it until it falls).
+Beacon Foundry Held Title;TODO-PROSE: the prize is stirring
+Beacon Foundry Held;TODO-PROSE: we hold the captured Reclaimer capital {0}. Its mind fights back; hold it {1} days, without losing or destroying it, and it will give up what it knows.
+Beacon Foundry Reveal Title;TODO-PROSE: a foundry revealed
+Beacon Foundry Reveal;TODO-PROSE: the mind core of the captured capital {0} has yielded a foundry, {1}, hidden in the void at ({2}, {3}).
+Beacon Foundry Trap Title;TODO-PROSE: held fast
+Beacon Foundry Trap;TODO-PROSE: {0} is within the reach of {1}: its drive will not spool. It cannot jump away until the foundry is destroyed.
+Beacon Foundry Destroyed Title;TODO-PROSE: a foundry destroyed
+Beacon Foundry Destroyed;TODO-PROSE: {0} is destroyed. {1} of {2} foundries remain.
+Beacon Foundry Destroyed News;TODO-PROSE: {0} has destroyed a Reclaimer foundry; {1} of {2} remain.
+Beacon Foundry Investigation Title;Foundry investigation
+Beacon Foundry Investigation Found;TODO-PROSE: {0} has reported on {1}: guard and base strength {2}, {3} warships made there so far. The agent brought back a piece of its technology.
+Beacon Foundry Investigation Nothing;TODO-PROSE: {0} learned nothing more about {1}.

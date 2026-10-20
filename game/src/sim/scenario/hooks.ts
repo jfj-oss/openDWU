@@ -254,6 +254,8 @@ export interface ScenarioEvents {
      * branches), torn down by DoExplosions (BuiltObject.1.cs 14) or CleanupInvalidShips (Empire.8.cs 2896). 19e-7.
      */
     builtObjectDestroyed: { builtObject: BuiltObject };
+    /** beaconFoundry.ts foundryDestroyed: a Reclaimer foundry was destroyed by `empire` (null: no empire); `foundry` is its record (plain data: position, status). */
+    foundryDestroyed: { empire: Empire | null; foundry: import('./threats/giantworks/beaconFoundry').FoundryRec };
     /**
      * civilianAI.ts assignMissionConstructionShip end (Empire.5.cs 2669, end of case ConstructionShip) and
      * pirateShipMissions.ts pirateAssignConstructionShip end (Empire.1.cs 5116): the stock AI found no task and the
@@ -635,6 +637,16 @@ export interface ScenarioQueries {
      * attacked by it first (the Dead Probe Swarm leaves colony defences alone). Stock false. Never draws.
      */
     builtObjectSparesStaticTarget: { value: boolean; args: { builtObject: BuiltObject; target: BuiltObject } };
+    /**
+     * combat/attackAI.ts calculateBoardingDefenseValue (end): the ship's boarding defence value (the stock sum is the value); a scenario may raise it
+     * (the Beacon's Reclaimer capitals and foundries, beaconFoundry.ts: a floor). The raise counts in the fixed part too. Pure; never draws.
+     */
+    boardingDefenseValue: { value: number; args: { builtObject: BuiltObject } };
+    /**
+     * movement.ts detectHyperDeny (after the stock loops): true = `builtObject` may not start a hyperjump here (the Beacon's foundry trap,
+     * beaconFoundry.ts). Stock false. Pure; never draws.
+     */
+    hyperDenyHere: { value: boolean; args: { builtObject: BuiltObject } };
     /**
      * combat/spared.ts (shouldAttack, fireWeaponsAtTarget, the damage sinks, threat levels, fighters, area weapons): true = the two
      * empires never fight each other (the Purifier and the Ancient Guardians). Symmetric. Stock false. Pure; never draws.

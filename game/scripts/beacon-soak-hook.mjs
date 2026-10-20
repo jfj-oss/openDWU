@@ -10,12 +10,14 @@
 //                                        (the Gathering starts at once); complete: force, then finish the work after BEACON_COMPLETE_DAYS (default 90).
 //   BEACON_SAMPLE_DAYS=15                sampling period
 //   BEACON_TIMING=1                      also run scripts/soak-timing-hook.mjs (per-year frame percentiles, report.timing)
+//   BEACON_FOUNDRY_KILL=N@Y              destroy N foundries (no empire credited) Y years after the Reclamation began (the capacity soak)
 //   BEACON_STOP_ON_END=1                 stop the run when the game ends (victory / loss) + BEACON_TAIL_DAYS (default 60)
 
 const SAMPLE_DAYS = Number(process.env.BEACON_SAMPLE_DAYS ?? 15);
 const MODE = process.env.BEACON_MODE ?? 'natural';
 const COMPLETE_DAYS = Number(process.env.BEACON_COMPLETE_DAYS ?? 90);
 const STOP_ON_END = process.env.BEACON_STOP_ON_END === '1';
+const KILL = process.env.BEACON_FOUNDRY_KILL ? (() => { const [n, y] = process.env.BEACON_FOUNDRY_KILL.split('@').map(Number); return { n, years: y, done: false }; })() : null;
 const TAIL_DAYS = Number(process.env.BEACON_TAIL_DAYS ?? 60);
 const DAY_MS = 600_000 / 360;
 
@@ -46,7 +48,7 @@ export async function start(ctx) {
     const { load, g, report } = ctx;
     reportRef = report;
     M = {
-        bs: await load('beaconState'), bf: await load('beaconFleet'), bc: await load('beaconCounter'), bh: await load('beaconHarvest').catch(() => null), br: await load('beaconResponse').catch(() => null), bp: await load('beaconPursuit').catch(() => null), beacon: await load('beacon'),
+        bs: await load('beaconState'), bf: await load('beaconFleet'), bc: await load('beaconCounter'), bh: await load('beaconHarvest').catch(() => null), br: await load('beaconResponse').catch(() => null), bp: await load('beaconPursuit').catch(() => null), bfd: await load('beaconFoundry').catch(() => null), beacon: await load('beacon'),
         thr: await load('threats'), hooks: await load('scnHooks'), own: await load('ownership').catch(() => null), gw: await load('gwState'), gwf: await load('gwFramework'), life: await load('gwLifecycle'), tf: await load('thFramework'), dip: await load('diplomacyTick'), mis: await load('missions'),
     };
     if (process.env.BEACON_TIMING === '1') {
@@ -202,6 +204,15 @@ export async function chunk(ctx) {
             console.log(`  beacon hook: work completed by the hook at year ${((g.nowMs - startMs) / 600_000).toFixed(2)}`);
         }
     }
+    if (KILL !== null && !KILL.done) {
+        const st = M.bs.peekBeaconState(g);
+        if (st && st.foundries && recYears(g.nowMs, st) >= KILL.years) {
+            KILL.done = true;
+            const live = M.bfd.liveFoundries(st);
+            for (const f of live.slice(0, KILL.n)) f.base.hasBeenDestroyed = true;
+            console.log(`  beacon hook: ${Math.min(KILL.n, live.length)} foundries destroyed at year ${((g.nowMs - startMs) / 600_000).toFixed(2)}`);
+        }
+    }
     if (STOP_ON_END) {
         const st = M.bs.peekBeaconState(g);
         if (st?.ended && endedAt === null) endedAt = g.nowMs;
@@ -349,6 +360,7 @@ function sample(ctx, g) {
             for (const w of st.watchers) if (w.ship) tracked.add(w.ship);
             for (const b of M.br ? M.br.responseShips(st) : []) tracked.add(b);
             if (st.beacon) tracked.add(st.beacon);
+            for (const f of st.foundries?.list ?? []) for (const b of f.guard) tracked.add(b);
             let orphans = 0;
             for (const b of faction.builtObjects) {
                 if (b.hasBeenDestroyed) continue;
@@ -518,6 +530,11 @@ function sample(ctx, g) {
         }
         s.ai = ai;
         if (st.ended) s.ended = true;
+        if (M.bfd && st.foundries) {
+            const fs = st.foundries;
+            report.beacon.foundry = { alive: M.bfd.liveFoundries(st).length, initial: fs.initial, capacity: r2(M.bfd.capacity(st)), built: fs.list.reduce((a, f) => a + f.built, 0), builtBy: fs.list.map((f) => f.built), fresh: fs.fresh.length, held: fs.held.length, stats: { ...fs.stats }, destroyedBy: { ...fs.destroyedBy }, techPieces: { ...fs.techPieces }, known: fs.list.map((f) => f.knowledge.length) };
+            s.fd = [report.beacon.foundry.alive, report.beacon.foundry.built];
+        }
         report.beacon.final = { response: M.br ? M.br.responseSummary(st) : null, pursuit: M.bp ? M.bp.pursuitSummary(st) : null, y: s.y, phase: st.phase, ended: st.ended, elim: s.elim, stats: { ...st.stats }, seasons: st.stats.seasons, salvage: st.salvage.map((x) => [x.empireId, x.points, x.steps]),
             bargains: st.bargains.map((b) => [b.empireId, b.kind, b.discovered, b.ended]), watchersDead: st.watchers.filter((w) => w.dead).length, beaconDestroyed: st.beaconDestroyed, processingNow: s.proc,
             harvest: M.bh ? (() => {

@@ -17,6 +17,7 @@ import { galaxyStarDate } from '../../../tick/simTime';
 import { GAME_DAY_LENGTH } from '../../hooks';
 import { peekThreatState, threatState, type SentStages, type ThreatKnowledge } from '../framework';
 import type { GreatWorkSite } from './types';
+import type { FoundryState } from './beaconFoundry';
 
 export const BEACON_KEY = 'beacon';
 export const BEACON_FLAG = 'gwBeacon';
@@ -692,6 +693,8 @@ export interface BeaconState {
     response?: ResponseRec;
     /** Capital pursuits (beaconPursuit.ts; absent before the first contact and in older saves). */
     pursuit?: PursuitRec;
+    /** The Reclaimer foundries (beaconFoundry.ts; raised when the Beacon is finished, absent in older saves until their first reclamation pass). */
+    foundries?: FoundryState;
     /** The harvest (beaconHarvest.ts; absent before it first ran): cores (live and ended, the last 40 kept), cattle ships in flight, worlds
      *  that may not be made a core again before a date (their harvester was destroyed), the biofuel accounts. */
     cores?: CoreRec[];

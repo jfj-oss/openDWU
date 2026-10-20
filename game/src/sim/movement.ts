@@ -772,6 +772,8 @@ export function detectHyperDeny(galaxy: Galaxy, builtObject: BuiltObject): boole
             }
         }
     }
+    // mod layer (not in the original): a scenario may deny the jump here (the Beacon's foundry trap).
+    if (galaxy.scenario !== null && scenarioQuery(galaxy, 'hyperDenyHere', false, { builtObject: bo })) return true;
     return false;
 }
 

@@ -24,6 +24,7 @@ import { GAME_DAY_LENGTH } from '../../hooks';
 import { P, aliveShips, beaconPosition, type BeaconState, type ResponseFleet, type ResponseRec } from './beaconState';
 import { ENGAGE_RANGE, WAVE_CYCLE, defencePosts, designFor, distTo, enemyStrengthNear, groupCountFor, patrol, processingWorlds, scriptedBudget, spawnShip, strengthOf } from './beaconFleet';
 import { freeShare, fuelOf, liveCores, payFleet } from './beaconHarvest';
+import { buildPoint, foundryBatch, noteBirth } from './beaconFoundry';
 
 /** Most ships one fleet is built to, and ships one fleet takes from the bank in one pass. */
 const FLEET_SHIPS_MAX = 24;
@@ -98,14 +99,17 @@ function build(galaxy: Galaxy, st: BeaconState, rs: ResponseRec, f: ResponseFlee
     const key = f.kind === 'reserve' ? 'reserveAllow' : 'patrolAllow';
     let made = 0;
     let have = fleetStrength(f);
-    for (let i = 0; i < BUILD_PER_PASS && have < want && f.ships.length < FLEET_SHIPS_MAX && st.stats.spawned < 1_000_000; i++) {
+    const batch = foundryBatch(st, BUILD_PER_PASS); // the foundries' living share of the baseline (beaconFoundry.ts)
+    for (let i = 0; i < batch && have < want && f.ships.length < FLEET_SHIPS_MAX && st.stats.spawned < 1_000_000; i++) {
         if (!(rs[key] > 0)) break;
         const sub = WAVE_CYCLE[f.ships.length % WAVE_CYCLE.length];
         const design = designFor(galaxy, faction, sub) ?? designFor(galaxy, faction, BuiltObjectSubRole.Cruiser);
         if (design === null) break;
         // paid like every other Reclaimer ship: the free share comes for nothing, the rest from the fleet biofuel (an empty account ends the building)
         if (freeShare(galaxy) < 1 && fuelOf(st).fleet <= 0) break;
-        const bo = spawnShip(galaxy, faction, design, pos.x, pos.y);
+        const at = buildPoint(st, pos);
+        const bo = spawnShip(galaxy, faction, design, at.x, at.y);
+        noteBirth(st, at, bo);
         const s = strengthOf(bo);
         const paid = s * (1 - freeShare(galaxy));
         payFleet(st, paid);

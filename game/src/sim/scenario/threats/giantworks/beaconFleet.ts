@@ -95,6 +95,7 @@ import { allotResponse, driveResponse } from './beaconResponse';
 import { beginLongNight } from './longNight';
 import { isPursuing } from './beaconPursuit';
 import { noteFirstBeam, partsPass } from './beaconComponents';
+import { buildPoint, capitalAlone, foundryBatch, foundryStat, noteBirth } from './beaconFoundry';
 import { freeShare, fuelOf, harvestMonthly, liveCores, harvestPeriodic, onCattleKilled, onCoreRetaken, onHarvesterLost, payFleet, payTroops, troopSourceCore, troopsAffordable } from './beaconHarvest';
 
 const TAG = 'Beacon';
@@ -652,6 +653,7 @@ function spawnWave(galaxy: Galaxy, st: BeaconState, season: Season, until: numbe
     if (pos === null || season.groups.length === 0) return 0;
     let spawnedNow = 0;
     const quota = season.budget / season.groups.length;
+    batch = foundryBatch(st, batch); // the foundries make the ships from season 2 on: what is made per pass is the living share of the baseline
     for (let i = 0; i < batch && season.spawned < until && st.stats.spawned < 1_000_000; i++) {
         // paid for: the season's free share first, then the fleet biofuel (an empty account ends the wave)
         if ((season.freeLeft ?? Infinity) <= 0 && fuelOf(st).fleet <= 0) break;
@@ -670,7 +672,9 @@ function spawnWave(galaxy: Galaxy, st: BeaconState, season: Season, until: numbe
         const sub = g.ships.length === 0 ? BuiltObjectSubRole.CapitalShip : WAVE_CYCLE[(g.ships.length - 1) % WAVE_CYCLE.length];
         const design = designFor(galaxy, faction, sub) ?? designFor(galaxy, faction, BuiltObjectSubRole.Cruiser);
         if (design === null) break;
-        const bo = spawnShip(galaxy, faction, design, pos.x, pos.y);
+        const at = buildPoint(st, pos);
+        const bo = spawnShip(galaxy, faction, design, at.x, at.y);
+        noteBirth(st, at, bo);
         g.ships.push(bo);
         if (g.lead === null || g.lead.hasBeenDestroyed) g.lead = bo;
         const s = strengthOf(bo);
@@ -1181,6 +1185,11 @@ function driveGroup(galaxy: Galaxy, st: BeaconState, g: StrikeGroup): void {
         g.transports = [];
         return;
     }
+    // a capital never fights without escorts (foundries, beaconFoundry.ts): with its escorts gone the group falls back to the Beacon
+    if (capitalAlone(galaxy, st, g)) {
+        foundryStat(st, 'capitalFallbacks');
+        return retreat(galaxy, st, g);
+    }
     if (g.ships.length === 0) {
         // The escort is gone: the surviving transports fall back to the reserve (a later season uses their troops).
         for (const b of g.transports) {
@@ -1461,7 +1470,10 @@ function quietPass(galaxy: Galaxy, st: BeaconState, season: Season): void {
     // raiders are paid from the fleet biofuel unless the model is the scripted one
     const paid = P.fundingModel(galaxy) !== 1;
     if (paid && fuelOf(st).fleet <= 0) return;
-    const ships = designs.slice(0, 2).map((d) => spawnShip(galaxy, faction, d, pos.x, pos.y));
+    if (foundryBatch(st, 1) < 1) return; // no foundry can make a raider now
+    const at = buildPoint(st, pos);
+    const ships = designs.slice(0, 2).map((d) => spawnShip(galaxy, faction, d, at.x, at.y));
+    for (const b of ships) noteBirth(st, at, b);
     if (paid) payFleet(st, ships.reduce((a, b) => a + strengthOf(b), 0));
     st.stats.spawned += ships.length;
     st.stats.raids++;
@@ -1562,13 +1574,16 @@ function topUpGuard(galaxy: Galaxy, st: BeaconState): void {
     let have = st.guards.reduce((s, b) => s + strengthOf(b), 0);
     // The funding model's free share of the guard comes for nothing; the rest is paid from the fleet biofuel.
     const freeTo = want * freeShare(galaxy);
-    for (let i = 0; i < 12 && have < want; i++) {
+    const makes = foundryBatch(st, 12);
+    for (let i = 0; i < makes && have < want; i++) {
         const paid = have >= freeTo;
         if (paid && fuelOf(st).fleet <= 0) break;
         const sub = WAVE_CYCLE[(st.guards.length + i) % WAVE_CYCLE.length];
         const d = designFor(galaxy, faction, sub);
         if (d === null) break;
-        const bo = spawnShip(galaxy, faction, d, pos.x, pos.y);
+        const at = buildPoint(st, pos);
+        const bo = spawnShip(galaxy, faction, d, at.x, at.y);
+        noteBirth(st, at, bo);
         st.guards.push(bo);
         st.stats.spawned++;
         if (paid) payFleet(st, strengthOf(bo));
