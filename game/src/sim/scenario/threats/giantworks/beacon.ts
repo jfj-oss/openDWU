@@ -68,6 +68,7 @@ import { registerCrisisHelpers } from '../crisis';
 import { refitInPlace } from '../framework';
 import { completeWork, greatWorkProtectors, greatWorks, GW_KEY, markGreatWorkHostile, registerGreatWork, registerHostileWonderCrisis, spawnGreatWork, spawnNote } from './framework';
 import { kindTaken } from './founders';
+import { registerWarCredit, warCreditCapturedCapital, warCreditKilled, warCreditWatcher } from './beaconWarCredit';
 import { assetsBroken, assetsLeftPct, creditBeaconKill, creditCapitalKill, creditHarvesterKill, creditWatcherKill, planetKnown, planetMarkerLabel, registerComponents } from './beaconComponents';
 import { isCompact } from './state';
 import { exitHyperjump } from '../../../movement';
@@ -1054,9 +1055,11 @@ function onKilledBy(galaxy: Galaxy, bo: BuiltObject, destroyer: Empire | null): 
         markDead(galaxy, st, w, destroyer);
         onKilledForSalvage(galaxy, st, bo, destroyer, true);
         creditWatcherKill(galaxy, st, destroyer);
+        warCreditWatcher(galaxy, st, destroyer);
         return;
     }
     if (bo.actualEmpire === st.faction) {
+        warCreditKilled(galaxy, st, bo, destroyer); // (before the pools forget the ship)
         noteCattleCore(galaxy, st, bo, destroyer); // (its navigation record names the core it served)
         if ((st.cores ?? []).some((c) => c.ended === null && c.harvester === bo)) creditHarvesterKill(galaxy, st, destroyer);
         else if (bo !== st.beacon && bo.subRole === BuiltObjectSubRole.CapitalShip) creditCapitalKill(galaxy, st, destroyer);
@@ -1485,7 +1488,8 @@ export function registerBeacon(): void {
             if (w !== undefined && !w.dead) {
                 e.builtObject.cloaked = false;
                 markDead(g, st, w, e.to);
-            }
+                warCreditWatcher(g, st, e.to);
+            } else if (w === undefined && e.builtObject.subRole === BuiltObjectSubRole.CapitalShip && e.builtObject !== st.beacon) warCreditCapturedCapital(g, st, e.to);
         },
     });
     // Machines mend themselves in the field (the stock AI would send a damaged warship home to a port the Reclaimers do not have).
@@ -1550,6 +1554,7 @@ export function registerBeacon(): void {
     });
     registerScenarioMapFeatures(BEACON_KEY, beaconMapFeatures);
     registerComponents();
+    registerWarCredit();
     registerCounterplay();
     registerBeaconAi();
     registerHarvest();

@@ -209,6 +209,9 @@ export interface DietMotionKindDef {
 /** The Diet window's war-crimes line (War Crimes, diet/warCrimes.ts fills it; '' = none). */
 export const dietWarCrimesLine: { fn: ((galaxy: Galaxy) => string) | null } = { fn: null };
 
+/** The Diet window's war-credit line (the Beacon's share of the war, threats/giantworks/beaconWarCredit.ts fills it; '' = none). */
+export const dietWarCreditLine: { fn: ((galaxy: Galaxy) => string) | null } = { fn: null };
+
 // eslint-disable-next-line no-var
 var dietKindStore: DietMotionKindDef[] | undefined;
 // eslint-disable-next-line no-var

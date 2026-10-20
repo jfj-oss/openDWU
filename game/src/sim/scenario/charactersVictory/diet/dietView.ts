@@ -16,7 +16,7 @@ import { blocOf, scoreToVote, type Council } from '../../emergent/council';
 import { colonyGovernor } from '../../governors';
 import { empireGovernors, mostImportantGovernor } from '../governorsCv';
 import { tripOfCharacter } from '../vip';
-import { type DietMotion, type DietMotionKind, type DietState, DIET_NAME, byId, dietWarCrimesLine, dietMotionKindDef, dietOn, dietParam, peekDietState, registeredDietKinds } from './dietState';
+import { type DietMotion, type DietMotionKind, type DietState, DIET_NAME, byId, dietWarCreditLine, dietWarCrimesLine, dietMotionKindDef, dietOn, dietParam, peekDietState, registeredDietKinds } from './dietState';
 import { dietMembership, dietVoteScore, memberScores, proposerBias, voteWeight } from './dietAi';
 import { dietCouncil, emperorBidNote } from './diet';
 import { YEAR_LENGTH } from '../../../galaxyTime';
@@ -123,6 +123,8 @@ export interface DietViewModel {
     proposal: string;
     /** War Crimes: the worst offender's line ('' = the add-on is off). */
     warCrimes: string;
+    /** The Beacon war's share-of-the-war line ('' = none; threats/giantworks/beaconWarCredit.ts). */
+    warCredit: string;
 }
 
 const KIND_LABEL: Record<DietMotionKind, string> = {
@@ -332,6 +334,7 @@ export function dietView(galaxy: Galaxy, player: Empire): DietViewModel | null {
         nextSessionAt: st.nextSessionAt,
         nextSession: s !== null ? 'in session' : dateOf(st.nextSessionAt),
         warCrimes: dietWarCrimesLine.fn?.(galaxy) ?? '',
+        warCredit: dietWarCreditLine.fn?.(galaxy) ?? '',
         session,
         laws: st.laws.map((l) => ({ text: l.text, since: dateOf(l.since), until: l.until < 0 ? 'until repealed' : dateOf(l.until) })),
         sanctions: c.sanctions.map((x) => `${x.kind === 'sanction' ? 'Sanctions' : 'Embargo'} on the ${x.target.name} (since ${x.year})`),

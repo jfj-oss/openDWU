@@ -333,6 +333,9 @@ export function toggleDietScreen(galaxy: Galaxy, player: Empire): void {
         if (vm.warCrimes !== '') {
             fact('Crimes', vm.warCrimes);
         }
+        if (vm.warCredit !== '') {
+            fact('War credit', vm.warCredit, 'Each year the Diet reviews the share of the war every member has earned against the Reclaimers: the top contributors gain vote weight and standing, those far below their share lose a little.');
+        }
         top.appendChild(facts);
 
         // Our delegate.

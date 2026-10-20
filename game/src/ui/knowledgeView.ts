@@ -25,6 +25,8 @@ import { peekGwState } from '../sim/scenario/threats/giantworks/state';
 import { megaKnowledgeRows } from '../sim/scenario/threats/giantworks/megaStation';
 import { foundriesKnownTo } from '../sim/scenario/threats/giantworks/beaconFoundry';
 import { memoryRecordOf } from '../sim/scenario/threats/giantworks/longNightState';
+import { WAR_CREDIT_KINDS, WAR_CREDIT_LABEL, warCreditActive, warCreditRanking } from '../sim/scenario/threats/giantworks/beaconWarCredit';
+import { DiplomaticRelationType } from '../sim/diplomacy';
 
 /** The Galactopedia article on the Great Works (expansionArticles.ts). */
 export const KNOWLEDGE_ARTICLE = 'The Great Work (Giantworks)';
@@ -101,6 +103,20 @@ registerKnowledgeSection('foundries', 'Foundries', (g, e) => {
     return rows.length > 0 ? rows : null;
 });
 registerKnowledgeSection('sleepers', 'Sleeper warnings', () => null); // TODO(doppelgangers): sleeper warnings the viewer has
+// The share of the war (beaconWarCredit.ts): the empires you have met (and you), by what they have done against the Reclaimers; the Diet weighs it each year.
+registerKnowledgeSection('warCredit', 'Share of the war', (galaxy, empire) => {
+    const st = peekBeaconState(galaxy);
+    if (!warCreditActive(galaxy, st)) return null;
+    const met = (e: Empire): boolean => e === empire || (empire.diplomaticRelations?.byEmpire(e)?.type ?? DiplomaticRelationType.NotMet) !== DiplomaticRelationType.NotMet;
+    const rows = warCreditRanking(galaxy, st).filter((r) => met(r.empire));
+    if (rows.length === 0) return null;
+    return rows.map((r, i) => {
+        const fx = st.warCredit?.effect[String(r.empire.empireId)];
+        const parts = WAR_CREDIT_KINDS.filter((k) => (r.by[k] ?? 0) > 0).sort((a, b) => (r.by[b] ?? 0) - (r.by[a] ?? 0)).slice(0, 3).map((k) => `${WAR_CREDIT_LABEL[k]} ${Math.round(r.by[k] ?? 0)}`);
+        const standing = fx === undefined ? '' : fx.why === 'top' ? `, Diet weight +${fx.votePct}%` : `, Diet weight ${fx.votePct}% (lagging)`;
+        return knowledgeRow(`warCredit:${r.empire.empireId}`, `${i + 1}. ${r.empire.name}`, parts.join(', '), `${Math.round(r.total)} points (${Math.round(r.sharePct)}%)${standing}`);
+    });
+});
 registerKnowledgeSection('ageMemory', 'What We Remember', (galaxy) => {
     const mem = memoryRecordOf(galaxy);
     if (mem === null) return null;

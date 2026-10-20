@@ -810,6 +810,8 @@ export interface BeaconState {
     parts?: PartsRec;
     /** The mega-station under construction (megaStation.ts; absent until the Diet votes it). */
     mega?: MegaRec;
+    /** The share of the war per empire and the Diet's standing from it (beaconWarCredit.ts; absent before the war credit first counted). */
+    warCredit?: import('./beaconWarCredit').WarCreditRec;
     /** Where the Reclaimers' ships are made and gather once the Beacon is gone (their biggest held world; absent: the site). */
     yard?: { x: number; y: number };
     /** The mega-station was fired (a placeholder for the later ages: the threat's other victory). */

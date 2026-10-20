@@ -52,6 +52,7 @@ import { calculateDefendingStrength, determineRequiredTroopStrength, findNearest
 import { shipGroupTotalOverallStrengthFactor } from '../../../fleets/shipGroup';
 import { isAiControlled } from '../../../missions/playerOrder';
 import { isSmarterAIStrategist } from '../../smarterAI/common';
+import { warCreditAiFactor } from './beaconWarCredit';
 
 const TAG = 'Beacon';
 const STAGE_RANGE = 250000;
@@ -635,7 +636,7 @@ export function coalitionPass(galaxy: Galaxy): number {
     for (const e of members) {
         let total = 0;
         for (const b of e.builtObjects) if (!b.hasBeenDestroyed && b.role === BuiltObjectRole.Military && b.topSpeed > 0) total += calculateOverallStrengthFactor(b);
-        cap.set(e, total * share);
+        cap.set(e, total * share * warCreditAiFactor(galaxy, st, e));
     }
     const beacon = st.beacon;
     const stageTargets = st.season !== null && st.season.phase === 'prep' ? st.season.staging : [];

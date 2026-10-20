@@ -40,6 +40,7 @@ import { blockadeInfo } from '../../blockades/blockadesBite';
 import { calculateOverallStrengthFactorWithoutShields } from '../../../diplomacyTick';
 import { DiplomaticRelationType } from '../../../diplomacy';
 import { BEACON_FLAG, peekBeaconState, warOn } from './beaconState';
+import { warCreditRefugees } from './beaconWarCredit';
 
 const KEY = 'beaconRelocation';
 
@@ -507,6 +508,7 @@ export function relocationArrive(g: Galaxy, bo: BuiltObject, dockedAt: unknown):
         if (o !== null) o.moved += arrived;
         noteIntake(g, st, dest, arrived, before);
         stat(st, 'peopleMoved', arrived);
+        warCreditRefugees(g, dest.empire, arrived);
     } else {
         // the destination is gone or changed hands: the people are lost with the trip
         if (o !== null) o.lost += arrived;

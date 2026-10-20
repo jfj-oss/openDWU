@@ -57,6 +57,7 @@ import { arcMessage, arcNews, normalEmpires } from '../framework';
 import { BEACON_FLAG, P, beaconRandom, peekBeaconState, type BeaconArtInfo, type BeaconState, type Captive, type CattleOrder, type CattlePhase, type CattleRec, type CoreRec, type FuelRec, type InterceptRec, type ProcessRec } from './beaconState';
 import { addPlating, designFor, processingWorlds, referenceMilitary, scriptedBudget, spawnShip } from './beaconFleet';
 import { responseShips } from './beaconResponse';
+import { warCreditCattleTaken, warCreditCore } from './beaconWarCredit';
 
 const TAG = 'Beacon';
 /** A cattle ship this close to its core docks. */
@@ -339,7 +340,10 @@ function endCore(galaxy: Galaxy, st: BeaconState, core: CoreRec, why: 'retaken' 
     core.pens = [];
     core.waiting = 0;
     coreMarkLost(galaxy, st, core);
-    if (why === 'retaken') st.stats.coresRetaken = (st.stats.coresRetaken ?? 0) + 1;
+    if (why === 'retaken') {
+        st.stats.coresRetaken = (st.stats.coresRetaken ?? 0) + 1;
+        warCreditCore(galaxy, st, to, freed);
+    }
     else if (why === 'broken') {
         st.stats.coresBroken = (st.stats.coresBroken ?? 0) + 1;
         (st.coreBans ??= []).push({ colony: core.colony, until: now + days(P.coreBanDays(galaxy)) });
@@ -863,6 +867,7 @@ function cattleTaken(galaxy: Galaxy, st: BeaconState, c: CattleRec, by: Empire |
     const placed = c.total > 0 ? releaseCaptives(galaxy, st, c.load, bo, by, null) : 0;
     st.stats.cattleBoarded = (st.stats.cattleBoarded ?? 0) + 1;
     st.stats.captivesRescued = (st.stats.captivesRescued ?? 0) + c.total;
+    warCreditCattleTaken(galaxy, st, by, c.total);
     if (c.total > 0 && by !== null && isHumanEmpire(galaxy, by)) arcMessage(galaxy, st.sentStages, [by], { prefix: TAG, stage: 'Rescued', onceKey: `Rescued:${bo.builtObjectID}`, args: [Math.round(c.total / 1e6), c.from.name], type: EmpireMessageType.GeneralGoodEvent, subject: bo });
     if (c.seized !== true) orderReplacement(galaxy, st, c);
     return placed;
