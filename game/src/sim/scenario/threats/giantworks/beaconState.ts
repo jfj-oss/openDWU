@@ -650,6 +650,63 @@ export interface PartsRec {
     sent?: Record<string, { id: number; date: number }>;
 }
 
+/** One contributor's convoy freighter on its way to the mega-station (a construction contract the private sector fulfils). */
+export interface MegaContract {
+    empireId: number;
+    ship: BuiltObject;
+    /** Star date it was sent. */
+    sent: number;
+}
+
+/**
+ * The mega-station (megaStation.ts): ONE per galaxy, raised in the empty void by the Diet's vote. Progress (0..1) rises with the days of active
+ * construction up to the cap the pooled parts allow; it survives the Long Night in the memory record (status 'dormant' in the next age).
+ */
+export interface MegaRec {
+    /** Where it stands (empty void). */
+    x: number;
+    y: number;
+    /** Who proposed it (empire id; -1 after a Long Night until matched) and its name (the identity that crosses the Long Night). */
+    builder: number;
+    builderName: string;
+    /** Empire ids that pledged their parts (the builder first); a pledged empire's new parts are handed over at the next pass. */
+    contributors: number[];
+    /** Parts pooled in the structure, by the name of the empire that gave them (names survive the Long Night). */
+    pool: Record<string, EmpireParts>;
+    /** 0..1. Rises with active days up to the cap of the pooled parts; falls when starved (decay). */
+    progress: number;
+    /** Days of active construction in all (it takes buildYears of them). */
+    activeDays: number;
+    /** Years of active construction it needs (rolled once: megaBuildMinYears..megaBuildMaxYears). */
+    buildYears: number;
+    status: 'building' | 'stalled' | 'blockaded' | 'idle' | 'dormant' | 'fired';
+    /** Star date the vote passed / the last step ran / the last freighter arrived / the last one was sent. */
+    since: number;
+    lastStep: number;
+    lastArrival: number;
+    lastSent: number;
+    /** Empire id → star date of its last dispatch. */
+    lastSentBy?: Record<string, number>;
+    /** Days in a row freighters were sent and none arrived (decay starts at megaDecayAfterDays). */
+    starvedDays: number;
+    /** The structure (a Founders' Compact base at the spot; absent while dormant and before it was found in the next age). */
+    base?: BuiltObject | null;
+    contracts: MegaContract[];
+    /** Freighters that arrived, in all and per empire id. */
+    delivered: number;
+    deliveredBy: Record<string, number>;
+    /** The empire holding the orbit (id), or -1. */
+    blockader: number;
+    /** Empire ids whose ships have found the structure (the Long Night's next age: it must be found before a vote can resume the work). */
+    foundBy: number[];
+    /** A Diet vote has passed in this age (a dormant structure waits for one). */
+    voted: boolean;
+    /** Names of the part holders that refused to hand their parts over (Knowledge page). */
+    refused: string[];
+    /** The firing was announced. */
+    announced?: boolean;
+}
+
 export interface BeaconState {
     /** The Great Work site (the framework's object). */
     site: GreatWorkSite | null;
@@ -751,6 +808,8 @@ export interface BeaconState {
     lastLaunchDate?: number;
     /** The mega-station path (beaconComponents.ts): parts, asset peak, the drifting planet. */
     parts?: PartsRec;
+    /** The mega-station under construction (megaStation.ts; absent until the Diet votes it). */
+    mega?: MegaRec;
     /** Where the Reclaimers' ships are made and gather once the Beacon is gone (their biggest held world; absent: the site). */
     yard?: { x: number; y: number };
     /** The mega-station was fired (a placeholder for the later ages: the threat's other victory). */
@@ -1002,6 +1061,30 @@ export const P = {
     /** The attitude toward the receiver a giver needs for a part to change hands. */
     partTradeAttitude: (g: Galaxy) => p(g, 'beaconPartTradeAttitude', 10),
     partTradeValue: (g: Galaxy) => Math.max(1, p(g, 'beaconPartTradeValue', 30000)),
+    // The mega-station's construction (megaStation.ts)
+    /** Share (%) of the whole each part allows: beam lens, link conduit, cloak lattice, mind fragments (scaled by count / needed), void frames (likewise). */
+    megaCapLens: (g: Galaxy) => Math.max(0, p(g, 'megaCapLensPct', 20)) / 100,
+    megaCapConduit: (g: Galaxy) => Math.max(0, p(g, 'megaCapConduitPct', 15)) / 100,
+    megaCapLattice: (g: Galaxy) => Math.max(0, p(g, 'megaCapLatticePct', 15)) / 100,
+    megaCapFragments: (g: Galaxy) => Math.max(0, p(g, 'megaCapFragmentsPct', 25)) / 100,
+    megaCapFrames: (g: Galaxy) => Math.max(0, p(g, 'megaCapFramesPct', 25)) / 100,
+    /** Years of ACTIVE construction the whole takes (rolled once in this range); time stalled by missing parts or blockaded does not count. */
+    megaBuildMinYears: (g: Galaxy) => Math.max(1, p(g, 'megaBuildMinYears', 60)),
+    megaBuildMaxYears: (g: Galaxy) => Math.max(1, p(g, 'megaBuildMaxYears', 70)),
+    /** Freighters of each contributor that may be on the way at once, as a share (%) of its freighters. */
+    megaFreighterPct: (g: Galaxy) => Math.max(0, Math.min(100, p(g, 'megaFreighterPct', 20))),
+    /** Days between the dispatches of one contributor; days with no arrival after which construction counts as starved (not active). */
+    megaDispatchDays: (g: Galaxy) => Math.max(1, p(g, 'megaDispatchDays', 30)),
+    megaActiveWindowDays: (g: Galaxy) => Math.max(1, p(g, 'megaActiveWindowDays', 360)),
+    /** Freighters sent and none arrived for this many days: the structure decays by megaDecayPct % of the whole per megaDecayPerDays days from then on. */
+    megaDecayAfterDays: (g: Galaxy) => Math.max(1, p(g, 'megaDecayAfterDays', 720)),
+    megaDecayPct: (g: Galaxy) => Math.max(0, p(g, 'megaDecayPct', 1)) / 100,
+    megaDecayPerDays: (g: Galaxy) => Math.max(1, p(g, 'megaDecayPerDays', 720)),
+    /** The void point must lie at least this far from every star; a ship within megaReach of the structure has found it. */
+    megaVoidClear: (g: Galaxy) => Math.max(1000, p(g, 'megaVoidClear', 60000)),
+    megaReach: (g: Galaxy) => Math.max(1000, p(g, 'megaReach', 30000)),
+    /** A hostile armed force within this range of the structure that outweighs the contributors' by the orbit ratio (1.5) blockades it. */
+    megaOrbitRange: (g: Galaxy) => Math.max(1000, p(g, 'megaOrbitRange', 20000)),
     // Capital pursuit (beaconPursuit.ts)
     /** 1: a Reclaimer capital (with escorts) follows an enemy that fled a fight by hyperjump and drags it out of warp (0: no pursuit). */
     pursuitOn: (g: Galaxy) => p(g, 'beaconPursuitOn', 1) > 0,

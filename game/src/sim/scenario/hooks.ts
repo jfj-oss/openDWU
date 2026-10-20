@@ -652,6 +652,8 @@ export interface ScenarioQueries {
      * empires never fight each other (the Purifier and the Ancient Guardians). Symmetric. Stock false. Pure; never draws.
      */
     empiresSpared: { value: boolean; args: { a: Empire; b: Empire } };
+    /** combat/damage.ts inflictDamageFull: true = the `builtObject` takes no damage from any weapon (the mega-station, Giantworks). Stock false. Pure; never draws. */
+    builtObjectInvulnerable: { value: boolean; args: { builtObject: BuiltObject } };
     /** 19j: events.ts applyLocationEffects (BuiltObject.cs 3934 ApplyLocationEffects): true = no lightning / ship-damage effects. */
     builtObjectStormImmune: { value: boolean; args: { builtObject: BuiltObject } };
     /** 19j: movement.ts rechargeReactors (BuiltObject.1.cs 2509 RechargeReactors): true = recharging burns no fuel. */

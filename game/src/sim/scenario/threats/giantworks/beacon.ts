@@ -123,6 +123,7 @@ import { addProgress } from './lifecycle';
 import { unblockaded } from './blockade';
 import './beaconDiet';
 import { ensureFoundries, foundryOf, registerFoundry } from './beaconFoundry';
+import { registerMega } from './megaStation';
 import { counterIntelligencePass, counterMonthly, onBoarded, onKilledForSalvage, registerCounterplay, resistanceFactor } from './beaconCounter';
 import './beaconRelocation'; // population relocation (registers its passes and queries)
 import './beaconInterceptors'; // the refugee interceptors (registers its tick)
@@ -1554,6 +1555,7 @@ export function registerBeacon(): void {
     registerHarvest();
     registerPursuit();
     registerFoundry();
+    registerMega();
 }
 
 registerBeacon();

@@ -987,6 +987,7 @@ export function inflictDamageFull(
     allowArmorInvulnerability: boolean,
 ): boolean {
     if (galaxy.scenario !== null && sparedObjects(galaxy, self, abstractTarget)) return false; // mod layer (Purifier / Ancient Guardians): no damage between them
+    if (galaxy.scenario !== null && isBuiltObject(abstractTarget) && scenarioQuery(galaxy, 'builtObjectInvulnerable', false, { builtObject: abstractTarget })) return false; // mod layer (the mega-station takes no damage)
     hitPower *= baconInflictDamageMultiplier(self);
     const selfBattleStats = battleStatsOf(self);
     const selfGroupStats = shipGroupBattleStats(self);

@@ -328,6 +328,17 @@ let deps: OrderUiDeps | null = null;
 let fleetPointMode: { mode: ShipActionMouseHoverMode; fleet: ShipGroup } | null = null;
 let statusEl: HTMLElement | null = null;
 let bar: SelectionBar | null = null;
+/** A one-shot map pick for a window that needs a place (the Diet's "Build the Severance"): the next left click gives its world position, a right click cancels. */
+let mapPick: { done: (x: number, y: number) => void; cancelled: () => void } | null = null;
+
+/** Arms the one-shot map pick: the next left click on the map calls `done` with the world position; a right click calls `cancelled`. Nothing happens without a game view. */
+export function armMapPick(prompt: string, done: (x: number, y: number) => void, cancelled: () => void): boolean {
+    if (deps === null) return false;
+    mapPick?.cancelled();
+    mapPick = { done, cancelled };
+    showToast(prompt, document.body, 6000);
+    return true;
+}
 
 function T(key: string): string {
     return tryGetText(key) ?? key;
@@ -349,6 +360,12 @@ export function installOrderUi(d: OrderUiDeps, view: OrderMainView, camera: Orde
     // reply for an older right-click is dropped.
     let rightClickSeq = 0;
     view.onRightClick = (sx, sy, e) => {
+        if (mapPick !== null) {
+            const p = mapPick;
+            mapPick = null;
+            p.cancelled();
+            return;
+        }
         if (deps === null) return;
         const { galaxy, empire } = deps;
         const seq = ++rightClickSeq;
@@ -457,6 +474,13 @@ export function installOrderUi(d: OrderUiDeps, view: OrderMainView, camera: Orde
         });
     };
     view.onLeftClickIntercept = (sx, sy) => {
+        if (deps !== null && mapPick !== null) {
+            const p = mapPick;
+            mapPick = null;
+            const w = camera.screenToWorld(sx, sy);
+            p.done(Math.trunc(w.x), Math.trunc(w.y));
+            return true;
+        }
         if (deps === null || fleetPointMode === null) return false;
         const { mode, fleet } = fleetPointMode;
         fleetPointMode = null;
@@ -500,6 +524,7 @@ export function installOrderUi(d: OrderUiDeps, view: OrderMainView, camera: Orde
         statusEl?.remove();
         statusEl = null;
         fleetPointMode = null;
+        mapPick = null;
         deps = null;
     };
 }

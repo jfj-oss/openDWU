@@ -19,6 +19,7 @@ import { dietView, type DietViewModel, type DietMemberRow, type DietMotionRow } 
 import { peekDietState, type DietMotionKind } from '../../sim/scenario/charactersVictory/diet/dietState';
 import { strategicValue } from '../../sim/territory';
 import { showToast } from '../toast';
+import { armMapPick } from '../orderMenu';
 import { CHARACTER_IMAGE_SPEC, characterPortrait } from '../characterPortrait';
 import { readableTextColors } from '../selectionInfo';
 import { empireFlagUrl } from '../selectionInfoView';
@@ -416,7 +417,7 @@ export function toggleDietScreen(galaxy: Galaxy, player: Empire): void {
         let opts = targetOpts(propKind);
         if (!opts.some((o) => o.value === propTarget)) propTarget = opts[0]?.value ?? '';
         const tdd = dropDown(opts, propTarget, (v) => (propTarget = v), 'The empire, pair, colony or measure the motion names.');
-        tdd.disabled = needsOf(propKind) === 'none';
+        tdd.disabled = needsOf(propKind) === 'none' || needsOf(propKind) === 'point';
         const kdd = dropDown(
             vm.proposable.map((k) => ({ value: k.kind, label: k.label })),
             propKind,
@@ -426,7 +427,9 @@ export function toggleDietScreen(galaxy: Galaxy, player: Empire): void {
                 tdd.replaceChildren(...opts.map((o) => Object.assign(document.createElement('option'), { value: o.value, textContent: o.label })));
                 propTarget = opts[0]?.value ?? '';
                 tdd.value = propTarget;
-                tdd.disabled = needsOf(propKind) === 'none';
+                tdd.disabled = needsOf(propKind) === 'none' || needsOf(propKind) === 'point';
+                const lab = propose.querySelector('.ow-glass-text');
+                if (lab !== null) lab.textContent = proposeLabel();
             },
             'The kind of motion.',
         );
@@ -435,11 +438,25 @@ export function toggleDietScreen(galaxy: Galaxy, player: Empire): void {
         kdd.style.height = tdd.style.height = '26px';
         const gathering = s !== null && s.stage === 'gathering';
         const joinsNow = gathering ? !ours : false;
-        const propose = glassButton(joinsNow ? 'Add to this session' : 'Put to the next session', {
+        const proposeLabel = (): string => (needsOf(propKind) === 'point' ? 'Pick the place on the map...' : joinsNow ? 'Add to this session' : 'Put to the next session');
+        const propose = glassButton(proposeLabel(), {
             size: FONT.normal,
             disabled: gathering && ours,
             title: gathering ? (ours ? 'We have already moved a motion in this session.' : 'Delegates are still gathering: our motion joins this session.') : 'Motions are heard at the next session (one of ours at a time).',
             onClick: () => {
+                if (needsOf(propKind) === 'point') {
+                    // The Diet window closes, the next map click names the place (the server snaps it to the nearest empty void), then the window comes back.
+                    const kind = propKind;
+                    const back = (): void => {
+                        if (open === null) toggleDietScreen(galaxy, player);
+                    };
+                    closeDietScreen();
+                    if (!armMapPick('Click the empty void where it is to be built (right click cancels)', (x, y) => issuePlayerCommand(galaxy, player, 'dietPropose' as never, [kind, null, null, null, -1, { x, y }] as never, (ok: unknown) => {
+                        showToast(ok === true ? 'Motion queued for the next session' : 'The motion could not be moved: no empty void there');
+                        back();
+                    }), back)) back();
+                    return;
+                }
                 const args = proposalArgs(galaxy, player, propKind, propTarget);
                 if (args === null) {
                     showToast('Choose a target');
@@ -774,7 +791,7 @@ function signature(galaxy: Galaxy, player: Empire): string {
 }
 
 /** Target choices for a proposed motion (value = an id string the proposal decodes). */
-function targetOptions(galaxy: Galaxy, player: Empire, needs: 'none' | 'empire' | 'pirate' | 'pair' | 'colony' | 'law'): { value: string; label: string }[] {
+function targetOptions(galaxy: Galaxy, player: Empire, needs: 'none' | 'empire' | 'pirate' | 'pair' | 'colony' | 'law' | 'point'): { value: string; label: string }[] {
     const met = (e: Empire): boolean => {
         const r = player.diplomaticRelations.byEmpire(e);
         return r !== null && r.type !== DiplomaticRelationType.NotMet;
@@ -783,6 +800,8 @@ function targetOptions(galaxy: Galaxy, player: Empire, needs: 'none' | 'empire' 
     switch (needs) {
         case 'none':
             return [{ value: '', label: '(galaxy-wide)' }];
+        case 'point':
+            return [{ value: '', label: '(you pick the place on the map)' }];
         case 'empire':
             // Others first, ourselves last: a motion naming ourselves is rarely what is meant.
             return galaxy.empires

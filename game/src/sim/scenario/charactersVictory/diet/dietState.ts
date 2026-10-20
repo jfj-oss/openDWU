@@ -130,6 +130,8 @@ export interface DietMotion {
     colony: Habitat | null;
     /** embargo: the resource; repeal: the law id. */
     resourceId: number;
+    /** A place in the void a motion names (the mega-station's site; absent for every other kind). */
+    place?: { x: number; y: number };
     text: string;
     votes: DietVote[];
     status: 'voting' | 'passed' | 'failed' | 'vetoed';
@@ -176,6 +178,7 @@ export interface DietKindCandidate {
     other: Empire | null;
     colony: Habitat | null;
     resourceId: number;
+    place?: { x: number; y: number };
     weight: number;
 }
 
@@ -185,15 +188,20 @@ export interface DietKindCandidate {
  */
 export interface DietMotionKindDef {
     kind: string;
-    text: (galaxy: Galaxy, st: DietState, m: { target: Empire | null; other: Empire | null; colony: Habitat | null; resourceId: number }) => string;
+    text: (galaxy: Galaxy, st: DietState, m: { target: Empire | null; other: Empire | null; colony: Habitat | null; resourceId: number; place?: { x: number; y: number } }) => string;
     apply: (galaxy: Galaxy, st: DietState, m: DietMotion, addLaw: (kind: DietLawKind, empire: Empire | null, other: Empire | null, colony: Habitat | null, until: number) => DietLaw) => void;
     voteScore: (galaxy: Galaxy, st: DietState, voter: Empire, m: DietMotion) => number;
     candidates?: (galaxy: Galaxy, st: DietState, a: Empire) => DietKindCandidate[];
     /** The Diet screen: the motion's name, what it does, what it names ('none' | 'empire'), and when it may be moved. */
     label: string;
     effect: (m: DietMotion) => string;
-    needs: 'none' | 'empire';
+    /** 'point': the motion names a place on the map (the proposer picks it: the Diet screen asks for a map click). */
+    needs: 'none' | 'empire' | 'point';
     proposable?: (galaxy: Galaxy) => boolean;
+    /** Whether this member may move it (default: any member; the mega-station: a human holding the finished blueprint). */
+    proposableBy?: (galaxy: Galaxy, empire: Empire) => boolean;
+    /** The player's proposal before it is stored: may normalise it (the mega-station snaps the place to empty void); null refuses it. */
+    prepare?: (galaxy: Galaxy, empire: Empire, p: { target: Empire | null; other: Empire | null; colony: Habitat | null; resourceId: number; place?: { x: number; y: number } }) => { target: Empire | null; other: Empire | null; colony: Habitat | null; resourceId: number; place?: { x: number; y: number } } | null;
     /** The motion failed or was vetoed (optional). */
     failed?: (galaxy: Galaxy, st: DietState, m: DietMotion) => void;
 }
@@ -340,7 +348,7 @@ export interface DietState {
     /** empireId → the player's chosen delegate (null: the most important governor). */
     delegateChoice: Record<number, Character | null>;
     /** empireId → player proposals for the next session. */
-    proposals: Record<number, { kind: DietMotionKind; target: Empire | null; other: Empire | null; colony: Habitat | null; resourceId: number }>;
+    proposals: Record<number, { kind: DietMotionKind; target: Empire | null; other: Empire | null; colony: Habitat | null; resourceId: number; place?: { x: number; y: number } }>;
     /** "attackerId" → grievance weight for an automatic sanction motion (crimes, defiance, violations). */
     grievances: Record<number, number>;
     /** "originId:targetId" → successful intelligence missions (decaying; the spies in vote weights). */

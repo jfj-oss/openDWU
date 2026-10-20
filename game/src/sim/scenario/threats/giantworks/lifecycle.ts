@@ -112,6 +112,19 @@ export function ensureCompact(galaxy: Galaxy, work: GreatWorkRecord): Empire | n
     if (st.compact !== null && st.compact.active) return st.compact;
     const race = compactRace(galaxy, work);
     if (race === null) return null;
+    return createCompact(galaxy, race, work.habitat ?? work.system.systemStar);
+}
+
+/** The Compact for a structure that belongs to no Great Work (the mega-station): the existing one, else one made of `race` with `standIn` as its stand-in capital. */
+export function ensureCompactFor(galaxy: Galaxy, race: Race | null, standIn: Habitat | null): Empire | null {
+    const st = gwState(galaxy);
+    if (st.compact !== null && st.compact.active) return st.compact;
+    if (race === null || standIn === null) return null;
+    return createCompact(galaxy, race, standIn);
+}
+
+function createCompact(galaxy: Galaxy, race: Race, standIn: Habitat): Empire | null {
+    const st = gwState(galaxy);
     const tech = Math.max(1, Math.min(7, Math.round(averageTech(galaxy))));
     const faction = createEmpireMidGame(galaxy, {
         kind: 'empire',
@@ -122,7 +135,6 @@ export function ensureCompact(galaxy: Galaxy, work: GreatWorkRecord): Empire | n
         configurePolicy: peacefulPolicy,
     });
     if (faction === null) return null;
-    const standIn = work.habitat ?? work.system.systemStar;
     faction.capital = standIn; // stand-in capital: the stock AI reads Capital without a null check (the Exchange precedent)
     switchOffStockAi(faction);
     const now = galaxyStarDate(galaxy);

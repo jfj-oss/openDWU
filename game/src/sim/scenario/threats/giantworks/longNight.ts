@@ -23,10 +23,14 @@ import { registerScenarioEvent, registerScenarioFramePeriodic, registerScenarioQ
 import { scenarioFlag } from '../../state';
 import { scenarioMessage, scenarioNews, scenarioText as T } from '../../messages';
 <<<<<<< HEAD
+<<<<<<< HEAD
 import { captureSurvivors } from '../../../age2Placement';
 import { beaconState, isNormalEmpire, peekBeaconState, type BeaconState, type CoreRec, type EmpireParts } from './beaconState';
 =======
 import { registerAge2World } from './age2World';
+=======
+import { captureMega, restoreMega } from './megaStation';
+>>>>>>> cc9a0a01 (Mega-station: the Diet vote builds it (blueprint holder moves it, picks the void place), pooled parts cap progress, 20% of contributors' private freighters build it over 60-70 active years, blockade and decay, indestructible unarmed base, Long Night carry, firing)
 import { beaconState, peekBeaconState, type BeaconState, type CoreRec, type EmpireParts } from './beaconState';
 >>>>>>> 4cb45ddb (Age 2 world: old capitals as ruins (with a dead empire's mega-station parts), Reclaimer hulks, wrecks in the systems of fallen capitals)
 import {
@@ -272,38 +276,69 @@ export function rimNudgedValue(galaxy: Galaxy, empire: Empire, habitat: Habitat,
 
 export const LONG_NIGHT_HANDLER_IDS = ['longNight.crash', 'longNight.advisor', 'longNight.rimNudge'] as const;
 
-/** The human players' mega-station parts and blueprint progress (beaconComponents.ts, kept in the Beacon state), by empire name: the new age's player keeps its name. */
-function captureParts(galaxy: Galaxy): Record<string, EmpireParts> | undefined {
-    const st = peekBeaconState(galaxy);
-    if (st === null || st.parts === undefined) return undefined;
-    const out: Record<string, EmpireParts> = {};
-    for (const e of galaxy.empires) {
-        if (e === null || !isHumanEmpire(galaxy, e)) continue;
-        const rec = st.parts.held[String(e.empireId)];
-        if (rec !== undefined) out[e.name] = JSON.parse(JSON.stringify(rec)) as EmpireParts;
-    }
-    return Object.keys(out).length > 0 ? out : undefined;
+/** What the memory record holds of the empires' mega-station parts (contributor 'beacon.parts'): the pieces of every empire by name, and the pieces of the empires that died with the place of their old capital. */
+export interface PartsMemory {
+    /** Empires standing at the Long Night, by name (the new age's empires of the same names hold them again). */
+    empires: Record<string, EmpireParts>;
+    /** Empires that were gone by then: their pieces lie at their old lost capital, for whoever explores it first (Age 2's ruins). */
+    dead: { name: string; x: number; y: number; systemName: string; parts: EmpireParts }[];
 }
 
-/** The new age: each human empire with a carried record (matched by name) holds its parts and blueprint progress again. */
-function restoreParts(galaxy: Galaxy, data: unknown): void {
+function copyParts(rec: EmpireParts): EmpireParts {
+    return JSON.parse(JSON.stringify(rec)) as EmpireParts;
+}
+
+function hasPieces(rec: EmpireParts): boolean {
+    return rec.beamLens === true || rec.linkConduit === true || rec.cloakLattice === true || (rec.mindFragments ?? 0) > 0 || (rec.voidFrames ?? 0) > 0 || rec.blueprint !== undefined;
+}
+
+/**
+ * Every empire's mega-station parts and blueprint progress (beaconComponents.ts, kept in the Beacon state), by empire name: the new age's empires
+ * keep their names, so survivors carry their pieces (AIs too). An empire that died leaves its pieces, and the place of its old capital, in `dead`.
+ */
+export function captureParts(galaxy: Galaxy): PartsMemory | undefined {
+    const st = peekBeaconState(galaxy);
+    if (st === null || st.parts === undefined) return undefined;
+    const out: PartsMemory = { empires: {}, dead: [] };
+    for (const [id, rec] of Object.entries(st.parts.held)) {
+        const e = galaxy.empires.find((x) => x !== null && String(x.empireId) === id) ?? null;
+        if (e === null || e === galaxy.independentEmpire || e.pirateEmpireBaseHabitat !== null || e === st.faction || !hasPieces(rec)) continue;
+        if (e.active) {
+            out.empires[e.name] = copyParts(rec);
+            continue;
+        }
+        const home = e.capital ?? e.homeWorld;
+        const pieces = copyParts(rec);
+        delete pieces.blueprint; // a dead empire's research dies with it
+        if (home !== null && hasPieces(pieces)) out.dead.push({ name: e.name, x: home.xpos, y: home.ypos, systemName: systemNameOf(galaxy, home), parts: pieces });
+    }
+    return Object.keys(out.empires).length > 0 || out.dead.length > 0 ? out : undefined;
+}
+
+/** The new age: each empire with a carried record (matched by name) holds its parts and blueprint progress again. Reads the older shape (humans only, a bare record by name) too. */
+export function restoreParts(galaxy: Galaxy, data: unknown): void {
     if (data === null || typeof data !== 'object') return;
-    const byName = data as Record<string, EmpireParts>;
+    const d = data as Partial<PartsMemory> & Record<string, unknown>;
+    const byName = (d.empires !== undefined ? d.empires : (d as unknown as Record<string, EmpireParts>)) as Record<string, EmpireParts>;
     for (const e of galaxy.empires) {
-        if (e === null || !isHumanEmpire(galaxy, e)) continue;
+        if (e === null || e === galaxy.independentEmpire || e.pirateEmpireBaseHabitat !== null) continue;
         const rec = byName[e.name];
-        if (rec === undefined) continue;
+        if (rec === undefined || rec === null || typeof rec !== 'object') continue;
         const st = beaconState(galaxy);
         st.parts ??= { held: {}, peakAssets: 0, lastAssets: 0, shipUnit: 0, firstBeam: 0, revealDate: 0, visited: [] };
-        st.parts.held[String(e.empireId)] = rec;
+        st.parts.held[String(e.empireId)] = copyParts(rec);
     }
 }
 
 export function registerLongNight(): void {
     registerAge2World();
     registerMemoryContributor({ id: 'beacon.parts', capture: captureParts, restore: restoreParts });
+<<<<<<< HEAD
     registerScenarioFramePeriodic({ id: 'longNight.advisor', flag: HARVEST_CYCLE_FLAG, order: 26, periodDays: 5, run: (g) => advisorCheck(g) });
     registerScenarioQuery({ id: 'longNight.rimNudge', flag: HARVEST_CYCLE_FLAG, query: 'colonizationTargetValue', run: (g, v, a) => rimNudgedValue(g, a.empire, a.habitat, v) });
+=======
+    registerMemoryContributor({ id: 'beacon.mega', capture: captureMega, restore: restoreMega });
+>>>>>>> cc9a0a01 (Mega-station: the Diet vote builds it (blueprint holder moves it, picks the void place), pooled parts cap progress, 20% of contributors' private freighters build it over 60-70 active years, blockade and decay, indestructible unarmed base, Long Night carry, firing)
     registerScenarioEvent({ id: 'longNight.crash', flag: HARVEST_CYCLE_FLAG, event: 'ruinsInvestigated', run: (g, e) => onCrashSurveyed(g, e.empire, e.habitat) });
 }
 

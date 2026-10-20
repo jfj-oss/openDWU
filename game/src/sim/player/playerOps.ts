@@ -681,8 +681,8 @@ export const PLAYER_OPS = {
     /** Our delegate (a governor; null = the most important governor); sent at once while delegates gather. */
     dietSetDelegate: (galaxy: Galaxy, empire: Empire, character: Character | null) => dietSetDelegate(galaxy, empire, character),
     /** Move a motion (for the next session, or this one while delegates gather). */
-    dietPropose: (galaxy: Galaxy, empire: Empire, kind: string, target: Empire | null, other: Empire | null, colony: Habitat | null, resourceId: number) =>
-        dietPropose(galaxy, empire, { kind: kind as DietMotionKind, target, other, colony, resourceId }),
+    dietPropose: (galaxy: Galaxy, empire: Empire, kind: string, target: Empire | null, other: Empire | null, colony: Habitat | null, resourceId: number, place?: { x: number; y: number }) =>
+        dietPropose(galaxy, empire, { kind: kind as DietMotionKind, target, other, colony, resourceId, ...(place !== undefined ? { place } : {}) }),
     /** The Regent calls an emergency session (with our proposal, if any). */
     dietEmergency: (galaxy: Galaxy, empire: Empire) => dietPlayerEmergency(galaxy, empire),
     /** The Regent declares themselves Emperor (the countdown victory). */

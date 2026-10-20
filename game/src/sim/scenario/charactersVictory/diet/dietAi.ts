@@ -348,6 +348,7 @@ export interface DietCandidate {
     other: Empire | null;
     colony: Habitat | null;
     resourceId: number;
+    place?: { x: number; y: number };
     weight: number;
 }
 

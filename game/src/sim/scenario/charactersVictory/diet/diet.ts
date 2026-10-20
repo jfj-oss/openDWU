@@ -134,7 +134,7 @@ function nameOf(e: Empire | null): string {
 }
 
 /** Motion text: the council's own wording for its kinds, the Diet's for the rest. */
-export function dietMotionText(galaxy: Galaxy, st: DietState, kind: DietMotionKind, target: Empire | null, other: Empire | null, colony: Habitat | null, resourceId: number): string {
+export function dietMotionText(galaxy: Galaxy, st: DietState, kind: DietMotionKind, target: Empire | null, other: Empire | null, colony: Habitat | null, resourceId: number, place?: { x: number; y: number }): string {
     if (STOCK_KINDS.has(kind) && target !== null) return motionText(galaxy, kind as never, target, other, resourceId);
     switch (kind) {
         case 'truce':
@@ -163,7 +163,7 @@ export function dietMotionText(galaxy: Galaxy, st: DietState, kind: DietMotionKi
         }
         default: {
             const def = dietMotionKindDef(kind);
-            return def !== null ? def.text(galaxy, st, { target, other, colony, resourceId }) : kind;
+            return def !== null ? def.text(galaxy, st, { target, other, colony, resourceId, place }) : kind;
         }
     }
 }
@@ -285,7 +285,8 @@ function makeMotion(galaxy: Galaxy, st: DietState, cand: Omit<DietCandidate, 'we
         other: cand.other,
         colony: cand.colony,
         resourceId: cand.resourceId,
-        text: dietMotionText(galaxy, st, cand.kind, cand.target, cand.other, cand.colony, cand.resourceId),
+        ...(cand.place !== undefined ? { place: cand.place } : {}),
+        text: dietMotionText(galaxy, st, cand.kind, cand.target, cand.other, cand.colony, cand.resourceId, cand.place),
         votes: [],
         status: 'voting',
         yes: 0,
@@ -1184,19 +1185,32 @@ export interface DietProposal {
     other: Empire | null;
     colony: Habitat | null;
     resourceId: number;
+    /** A place on the map (kinds with needs 'point'). */
+    place?: { x: number; y: number };
 }
 
 /** The player's motion: for the next session, or added to this one while delegates are still gathering. */
 export function dietPropose(galaxy: Galaxy, e: Empire, p: DietProposal): boolean {
     const x = dietFor(galaxy, e);
     if (x === null) return false;
+    // A registered kind may restrict who moves it and normalise what is moved (the mega-station: a human with the blueprint, the place snapped to empty void).
+    const def = dietMotionKindDef(p.kind);
+    if (def !== null) {
+        if (def.proposable !== undefined && !def.proposable(galaxy)) return false;
+        if (def.proposableBy !== undefined && !def.proposableBy(galaxy, e)) return false;
+        if (def.prepare !== undefined) {
+            const q = def.prepare(galaxy, e, p);
+            if (q === null) return false;
+            p = { kind: p.kind, ...q };
+        }
+    }
     const s = x.st.session;
     if (s !== null && s.stage === 'gathering') {
         if (s.motions.some((m) => m.proposer === e)) return false;
         s.motions.push(makeMotion(galaxy, x.st, { ...p, proposer: e }));
         return true;
     }
-    x.st.proposals[e.empireId] = { kind: p.kind, target: p.target, other: p.other, colony: p.colony, resourceId: p.resourceId };
+    x.st.proposals[e.empireId] = { kind: p.kind, target: p.target, other: p.other, colony: p.colony, resourceId: p.resourceId, ...(p.place !== undefined ? { place: p.place } : {}) };
     return true;
 }
 

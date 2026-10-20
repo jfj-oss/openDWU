@@ -119,7 +119,7 @@ export interface DietViewModel {
     emperorNote: string;
     fund: number;
     /** Kinds the player may propose, with the targets they take. */
-    proposable: { kind: DietMotionKind; label: string; needs: 'none' | 'empire' | 'pirate' | 'pair' | 'colony' | 'law' }[];
+    proposable: { kind: DietMotionKind; label: string; needs: 'none' | 'empire' | 'pirate' | 'pair' | 'colony' | 'law' | 'point' }[];
     proposal: string;
     /** War Crimes: the worst offender's line ('' = the add-on is off). */
     warCrimes: string;
@@ -351,7 +351,7 @@ export function dietView(galaxy: Galaxy, player: Empire): DietViewModel | null {
                 needs: k === 'truce' ? 'pair' : k === 'outlawPirates' ? 'pirate' : k === 'claim' ? 'colony' : k === 'repeal' ? 'law' : ['freeTrade', 'banPlanetDestroyers', 'banBombard', 'protectIndependents', 'openIndependents'].includes(k) ? 'none' : 'empire',
             })),
             ...registeredDietKinds()
-                .filter((d) => d.proposable === undefined || d.proposable(galaxy))
+                .filter((d) => (d.proposable === undefined || d.proposable(galaxy)) && (d.proposableBy === undefined || d.proposableBy(galaxy, player)))
                 .map((d) => ({ kind: d.kind as DietMotionKind, label: d.label, needs: d.needs })),
         ],
         proposal: p !== undefined ? `${kindLabel(p.kind)}${p.target !== null ? `: ${p.target.name}` : ''}` : '',
