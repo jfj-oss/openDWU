@@ -6874,7 +6874,9 @@ describe('the Beacon (Giantworks wonder)', () => {
             expect(partCount(st, b, 'linkConduit')).toBe(1);
         }
         // capitals: mind fragments, 30 needed
-        const ships = st.faction!.builtObjects.filter((x) => !x.hasBeenDestroyed && x !== st.beacon && !st.watchers.some((w) => w.ship === x));
+        // (not the foundries' bases or guards: a destroyed foundry is a void frame, counted below)
+        const foundryShips = new Set((st.foundries?.list ?? []).flatMap((f) => [f.base, ...f.guard]));
+        const ships = st.faction!.builtObjects.filter((x) => !x.hasBeenDestroyed && x !== st.beacon && !st.watchers.some((w) => w.ship === x) && !foundryShips.has(x));
         expect(ships.length).toBeGreaterThan(0);
         for (let i = 0; i < 31; i++) {
             const s = ships[i % ships.length];
