@@ -98,6 +98,7 @@ import { courtDetail } from '../courtView'; // [court]
 import type { SeatName } from '../../sim/scenario/court/court'; // [court]
 import { threatInvestigatorOptions, threatLeadRows, threatsSectionVisible, type ThreatLeadRow } from '../internalSecurityView'; // [threats]
 import { landscapeImageUrl } from '../landscapeImages';
+import { knowledgeView, knowledgeVisible, noteWatcherSightings, type KnowledgeRow } from '../knowledgeView'; // [knowledge]
 
 const MT = IntelligenceMissionType;
 
@@ -878,6 +879,8 @@ export interface IntelligenceScreenOptions {
     player: Empire;
     /** CharacterDoubleClicked: move the view to the character's location. */
     onZoomTo?: (target: BuiltObject | Habitat) => void;
+    /** [knowledge] Centre the map on a point (a Watcher sighting). */
+    onGoToPoint?: (x: number, y: number) => void;
     /** method_424(character): open with this character selected. */
     character?: Character | null;
 }
@@ -996,6 +999,7 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
     const historyBtn = glassButton(T('Show Event History'), { onClick: () => openHistory(selected) });
     body.appendChild(place(historyBtn, 689, 8, 146, 30));
     const showThreats = threatsSectionVisible(galaxy); // [threats]
+    const showKnowledge = showThreats && knowledgeVisible(galaxy); // [knowledge]
     const learn = linkLabel(T('Learn about Characters') + '...', () => openGalactopedia({ topic: T('Characters') }));
     learn.classList.add('ch-keep');
     body.appendChild(place(learn, 840, showThreats ? 0 : 12, 160, 21));
@@ -1003,15 +1007,26 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
     // link switches this screen between the characters and the known threat sites / 19m leads (no extra window).
     let threatsOn = false;
     const threatsBtn = showThreats
-        ? glassButton('Threats & Leads', {
+        ? glassButton(showKnowledge ? 'Threats' : 'Threats & Leads', {
               size: FONT.small,
               title: 'Known threat sites and security leads: investigate them with an agent, go to them, act on them',
               className: 'ch-keep',
               onClick: () => setThreatsView(!threatsOn),
           })
         : null;
-    if (threatsBtn !== null) body.appendChild(place(threatsBtn, 840, 19, 155, 19));
+    if (threatsBtn !== null) body.appendChild(place(threatsBtn, 840, 19, showKnowledge ? 76 : 155, 19));
     // [threats] end
+    // [knowledge] the Knowledge page: what the empire has found about the Reclaimers' war (knowledgeView.ts); shares the Threats area.
+    let knowledgeOn = false;
+    const knowledgeBtn = showKnowledge
+        ? glassButton('Knowledge', {
+              size: FONT.small,
+              title: 'What your empire knows of the Reclaimers and the Great Works: the war at a glance, known locations, recommended moves',
+              className: 'ch-keep',
+              onClick: () => setKnowledgeView(!knowledgeOn),
+          })
+        : null;
+    if (knowledgeBtn !== null) body.appendChild(place(knowledgeBtn, 919, 19, 76, 19));
 
     // --- ctlIntelligenceAgents (10, 40) 570 × 655: Image 40, Name 100, Role 100, Location 100, Mission 230. ---
     const showPolitics = politicsVisible(galaxy); // [emergent] 19d1: Loyalty / Ambition columns
@@ -1448,6 +1463,10 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
     }
 
     function render(): void {
+        if (knowledgeOn) {
+            renderKnowledge(); // [knowledge]
+            return;
+        }
         if (threatsOn) {
             renderThreats(); // [threats]
             return;
@@ -1602,14 +1621,16 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
     let threatsGrid: OwGrid<ThreatLeadRow> | null = null;
     let threatSelected: unknown = null;
     function setThreatsView(on: boolean): void {
+        if (on && knowledgeOn) setKnowledgeView(false, true);
         threatsOn = on;
         threatsBtn?.classList.toggle('ow-glass-on', on);
-        if (threatsBtn !== null) setButtonLabel(threatsBtn, on ? 'Characters' : 'Threats & Leads');
-        body.classList.toggle('ch-threats-on', on);
+        if (threatsBtn !== null && !showKnowledge) setButtonLabel(threatsBtn, on ? 'Characters' : 'Threats & Leads');
+        body.classList.toggle('ch-threats-on', on || knowledgeOn);
+        if (threatsPanel !== null) threatsPanel.style.display = on ? '' : 'none';
         if (on && threatsPanel === null) buildThreats();
         threatsSig = '';
         if (on) renderThreats();
-        else render();
+        else if (!knowledgeOn) render();
     }
     function buildThreats(): void {
         const panel = el('div', 'ch-keep ch-threats');
@@ -1699,6 +1720,81 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
         }
     }
     // [threats] end
+
+    // [knowledge] begin — the Knowledge page (knowledgeView.ts): the war at a glance, the sections of what is known (a row centres the
+    // map: double-click or Go to), the recommended moves and the Galactopedia link. Replaces the list area while toggled on.
+    let knowledgePanel: HTMLDivElement | null = null;
+    let knowledgeBody: HTMLDivElement | null = null;
+    let knowledgeSig = '';
+    function setKnowledgeView(on: boolean, fromThreats = false): void {
+        if (on && threatsOn && !fromThreats) setThreatsView(false);
+        knowledgeOn = on;
+        knowledgeBtn?.classList.toggle('ow-glass-on', on);
+        body.classList.toggle('ch-threats-on', on || threatsOn);
+        if (on && knowledgePanel === null) buildKnowledge();
+        if (knowledgePanel !== null) knowledgePanel.style.display = on ? '' : 'none';
+        knowledgeSig = '';
+        if (on) renderKnowledge();
+        else if (!threatsOn) render();
+    }
+    function buildKnowledge(): void {
+        const panel = el('div', 'ch-keep ch-knowledge');
+        place(panel, 0, 0, 1000, 700);
+        dropText(panel, 'Knowledge', 10, 10, { size: FONT.large, bold: true, color: COLORS.text });
+        const scroller = el('div', 'ch-knowledge-body');
+        panel.appendChild(place(scroller, 10, 40, 985, 655));
+        knowledgeBody = scroller;
+        knowledgePanel = panel;
+        body.appendChild(panel);
+    }
+    function goToRow(r: KnowledgeRow): void {
+        if (r.goTo !== null) opts.onZoomTo?.(r.goTo);
+        else if (r.point !== null) opts.onGoToPoint?.(r.point.x, r.point.y);
+    }
+    function renderKnowledge(): void {
+        if (knowledgeBody === null) return;
+        noteWatcherSightings(galaxy, player);
+        const v = knowledgeView(galaxy, player);
+        const sig = JSON.stringify([v.war, v.tips, v.article, v.sections.map((s) => [s.id, s.rows.map((r) => [r.key, r.where, r.status, r.fade.toFixed(2)])])]);
+        if (sig === knowledgeSig) return;
+        knowledgeSig = sig;
+        const root = knowledgeBody;
+        const top = root.scrollTop;
+        root.replaceChildren();
+        const head = (t: string): void => {
+            root.appendChild(el('div', 'ch-kn-head', t));
+        };
+        if (v.war.length > 0) {
+            head('The war at a glance');
+            for (const l of v.war) root.appendChild(el('div', 'ch-kn-line', l));
+        }
+        for (const sec of v.sections) {
+            head(sec.title);
+            for (const r of sec.rows) {
+                const line = el('div', 'ch-kn-row' + (r.goTo !== null || r.point !== null ? ' ch-kn-go' : ''));
+                line.style.opacity = String(r.fade);
+                line.appendChild(el('span', 'ch-kn-what', r.what));
+                line.appendChild(el('span', 'ch-kn-where', r.where));
+                line.appendChild(el('span', 'ch-kn-status', r.status));
+                if (r.goTo !== null || r.point !== null) {
+                    line.title = 'Click to centre the map on it';
+                    line.addEventListener('click', () => goToRow(r));
+                }
+                root.appendChild(line);
+            }
+        }
+        if (v.tips.length > 0) {
+            head('Recommended moves');
+            for (const t of v.tips) root.appendChild(el('div', 'ch-kn-tip', t));
+        }
+        if (v.war.length === 0 && v.sections.length === 0 && v.tips.length === 0) root.appendChild(el('div', 'ch-kn-line', 'Nothing is known yet. What your scouts, agents and fleets find about the Great Works and the Reclaimers will be gathered here.'));
+        if (v.article !== null) {
+            const article = v.article;
+            root.appendChild(linkLabel('Learn about the Great Works...', () => openGalactopedia({ topic: article })));
+        }
+        root.scrollTop = top;
+    }
+    // [knowledge] end
 
     // method_425: select the requested character (if it is the empire's), else the first row.
     renderChips();

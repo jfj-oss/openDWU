@@ -1039,7 +1039,7 @@ function openTopBarScreen(name: string, wiring: HudWiring): void {
         }
         // [intel] tbtnIntelligenceAgents → Intelligence Agents / Characters (Main.Part6.cs:3231).
         case 'tbtnIntelligenceAgents':
-            if (src) toggleIntelligenceScreen({ player: src.empire, onZoomTo: (t) => selectStellarObject(t, true) });
+            if (src) toggleIntelligenceScreen({ player: src.empire, onZoomTo: (t) => selectStellarObject(t, true), onGoToPoint: (x, y) => historyGoTo(wiring.camera, x, y) });
             return;
         // [leftovers] btnGalacticHistory → Galactic History (Main.Part3.cs:46 btnGalacticHistory_Click).
         case 'btnGalacticHistory':

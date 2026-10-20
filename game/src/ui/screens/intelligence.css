@@ -151,8 +151,48 @@
 .ch-body.ch-threats-on > :not(.ch-keep) {
     display: none !important;
 }
-.ch-body:not(.ch-threats-on) > .ch-threats {
+.ch-body:not(.ch-threats-on) > .ch-threats,
+.ch-body:not(.ch-threats-on) > .ch-knowledge {
     display: none;
+}
+/* Knowledge page */
+.ch-knowledge-body {
+    overflow-y: auto;
+    color: rgb(200, 200, 200);
+}
+.ch-kn-head {
+    margin: 14px 0 4px;
+    font-weight: bold;
+    color: rgb(255, 255, 255);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+.ch-kn-line,
+.ch-kn-tip {
+    padding: 2px 4px;
+}
+.ch-kn-tip {
+    color: rgb(255, 214, 120);
+}
+.ch-kn-row {
+    display: flex;
+    gap: 12px;
+    padding: 3px 4px;
+}
+.ch-kn-go {
+    cursor: pointer;
+}
+.ch-kn-go:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+.ch-kn-what {
+    flex: 0 0 300px;
+    color: rgb(255, 128, 96);
+}
+.ch-kn-where {
+    flex: 0 0 170px;
+}
+.ch-kn-status {
+    flex: 1;
 }
 .ch-threat-actions {
     display: flex;

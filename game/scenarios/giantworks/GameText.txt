@@ -430,6 +430,7 @@ Beacon Diet Evacuate Effect;Member worlds near the Great Work send their dense p
 Beacon Diet Evacuate News;The Interstellar Diet has ordered the evacuation of the member worlds within {0} sectors of the Great Work: their people will be moved to safer worlds for {1} months, and their growth is slowed.
 Beacon Diet Evacuate Intake;{0} has taken in so many evacuees that its revenue falls by {1} % while it absorbs them.
 Beacon Pods News;Escape pods from the destroyed vessel reached {0}: {1} million people taken from {2} are free.
+<<<<<<< HEAD
 LongNight Begin Title;The Long Night
 LongNight Begin Body;The last of the great empires fell silent. The machines took what they came for, and then they too went quiet.\n\nWhat followed has no history. Only centuries, and forgetting.
 LongNight News;An age has ended. No one remembers it.
@@ -456,3 +457,38 @@ Beacon Foundry Destroyed News;{0} has destroyed one of the places the machines a
 Beacon Foundry Investigation Title;Foundry investigation
 Beacon Foundry Investigation Found;{0} has returned from {1}. Its defences amount to {2}, and it has made {3} of their warships. The agent did not come back empty-handed: a piece of what they build there is now in our laboratories.
 Beacon Foundry Investigation Nothing;{0} could learn nothing more about {1}.
+=======
+Knowledge Section Beacon;The Beacon
+Knowledge Section Cores;Known harvest cores
+Knowledge Section Harvesters;Known harvesters
+Knowledge Section Staging;Known staging points
+Knowledge Section Corrupted;Corrupted worlds you have identified
+Knowledge Section Watchers;Watchers
+Knowledge Section Founders;Founding worlds of the Compact
+Knowledge Section Work;The Great Work
+Knowledge Sighting Row;Cloaked contact (sighting)
+Knowledge Sighting Status;Last detected {0}; it has since moved on
+Knowledge Harvester Row;Harvester at {0}
+Knowledge Harvester Status;Destroy it to break the core and free the pens
+Knowledge War Over;The Beacon is silent. The war of the Reclaimers is over.
+Knowledge War Phase;The Reclaimers are in season {1}: {0}
+Knowledge Phase awakening;awakening
+Knowledge Phase prep;gathering their fleets
+Knowledge Phase offensive;on the offensive
+Knowledge Phase quiet;between offensives
+Knowledge Phase dormant;dormant
+Knowledge Phase dead;silent
+Knowledge War Launch;Next launch in {0} days
+Knowledge War Eliminated;{0} % of the galaxy's people eliminated
+Knowledge War Taken;{0} people taken, {1} freed
+Knowledge War Worlds;{0} worlds conquered, {1} retaken
+Knowledge Tip Founders;TODO-PROSE Blockade the founding worlds: their convoys build it.
+Knowledge Tip Cattle;TODO-PROSE Their cattle ships know the way to the pens. Hunt them to learn where the cores are.
+Knowledge Tip Harvester;TODO-PROSE A core stops harvesting when its harvester falls. Strike the harvesters you know.
+Knowledge Tip Staging;TODO-PROSE Their fleets gather at the staging points before every launch. Strike them while they are still gathering.
+Knowledge Tip Purge;TODO-PROSE A corrupted world can be purged before it rises. Do it before the siphon is complete.
+Knowledge Tip Watchers;TODO-PROSE A Watcher was detected. They are not alone and not weak: do not meet them piecemeal.
+Knowledge Tip Beacon Fortify;TODO-PROSE The Beacon is known. Fortify the worlds nearest it: {0}.
+Knowledge Tip Beacon Nearest;your nearest colonies
+Knowledge Tip Beacon Diet;TODO-PROSE Propose the Diet's evacuation of the worlds near the Beacon before the first beam.
+>>>>>>> 98a710d1 (Intelligence screen: Knowledge page (what the empire knows of the Reclaimers' war and the Great Works))
