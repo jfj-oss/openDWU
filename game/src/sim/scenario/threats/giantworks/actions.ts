@@ -94,7 +94,7 @@ export function angerYearly(galaxy: Galaxy): void {
     }
 }
 
-function compactRegard(galaxy: Galaxy, e: Empire, value: number, cause: string): void {
+export function compactRegard(galaxy: Galaxy, e: Empire, value: number, cause: string): void {
     const c = compactFaction(galaxy);
     if (c === null) return;
     applyReputation(galaxy, c, e, value, { cause, labelKey: `Reputation Cause ${cause}`, source: 'giantworks', decayPerYear: 0.5 });

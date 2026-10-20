@@ -28,6 +28,7 @@ import {
     type KnownThreatSite,
 } from '../framework';
 import { registerThreatInvestigation } from '../investigate';
+import { blockadeNote } from './blockade';
 import { enabledKinds } from './founders';
 import { greatWorkKind, kindMenace, kindValue } from './registry';
 import { GW_KEY, gwParam, ordinaryEmpires, peekGwState, TAG, type GreatWorkRecord } from './state';
@@ -262,7 +263,9 @@ export function siteTexts(galaxy: Galaxy, work: GreatWorkRecord, e: Empire): { l
     }
     const stage = scenarioText(`${TAG} Stage ${work.stage}`);
     // What it might be is never shown before it is finished (the user: keep it a mystery); the shortlist still guides the AI.
-    const purpose = scenarioText(`${TAG} Purpose Unknown`);
+    let purpose = scenarioText(`${TAG} Purpose Unknown`);
+    const bn = blockadeNote(galaxy, work);
+    if (bn !== null) purpose += ' ' + scenarioText(`${TAG} Blockade Speed`, bn.pct, bn.held, bn.of);
     return { label: scenarioText(`${TAG} Label Building`, progressPct(work), purpose), status: scenarioText(`${TAG} Status Building`, stage, progressPct(work), purpose), level };
 }
 

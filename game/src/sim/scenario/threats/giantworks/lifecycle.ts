@@ -40,6 +40,7 @@ import { confirmToAll, convoyTag, spreadRumour, updateKnowledge, kindName } from
 import { greatWorkKind } from './registry';
 import { compactFaction, gwParam, gwState, logGw, nextRandom, ordinaryEmpires, TAG, type GreatWorkConvoy, type GreatWorkRecord } from './state';
 import { knowledgeLevel } from '../framework';
+import { blockaderOf, blockadeSpeedFactor, gwBlockadesOn, worldAlive } from './blockade';
 
 /** A freighter within this distance of the scaffold has delivered. */
 export const DELIVER_RANGE = 9000;
@@ -202,6 +203,11 @@ export function liveFounders(galaxy: Galaxy, work: GreatWorkRecord): Habitat[] {
 function supplierValid(galaxy: Galaxy, work: GreatWorkRecord, h: Habitat): boolean {
     if (h.hasBeenDestroyed || h.population === null || h.population === undefined || h.population.totalAmount <= 0) return false;
     return h.empire === galaxy.independentEmpire || !work.founders.includes(h); // a founder taken by an empire stops; a wonder's extra suppliers (corrupted worlds) do not need to be independent
+}
+
+/** The worlds that send convoys now: the suppliers that are not blockaded (a blockaded world sends nothing). */
+function senders(galaxy: Galaxy, work: GreatWorkRecord): Habitat[] {
+    return suppliers(galaxy, work).filter((h) => blockaderOf(galaxy, h) === null);
 }
 
 /** Founding circles that still have a world sending convoys. Pure. */
@@ -404,7 +410,7 @@ function departures(galaxy: Galaxy, work: GreatWorkRecord, faction: Empire, now:
     const rnd = nextRandom(galaxy);
     const days = gwParam(galaxy, 'giantworksConvoyDays');
     const cap = gwParam(galaxy, 'giantworksMaxInFlight');
-    for (const s of suppliers(galaxy, work)) {
+    for (const s of senders(galaxy, work)) {
         const key = String(s.habitatIndex);
         if (work.nextDeparture[key] === undefined) work.nextDeparture[key] = now + rnd.nextDouble() * days * GAME_DAY_LENGTH;
         if (work.nextDeparture[key] > now) continue;
@@ -530,7 +536,13 @@ export function stepWork(galaxy: Galaxy, work: GreatWorkRecord): void {
                 gwState(galaxy).stats.delivered += delivered;
                 work.lastDelivery = now;
                 // a wonder's extra suppliers (the Beacon's corrupted worlds) keep the work alive but add no speed: progress per freighter is shared out over every sending world once they outnumber the founders (the wonder's buildRateMultiplier is the speed-up)
-                const share = work.suppliers.length / Math.max(work.suppliers.length, suppliers(galaxy, work).length);
+                let share = work.suppliers.length / Math.max(work.suppliers.length, suppliers(galaxy, work).length);
+                if (gwBlockadesOn(galaxy)) {
+                    // Blockades that bite: the founders the empires control cut the SPEED (20% each, blockade.ts), not just the convoys: the freighters that still
+                    // come are worth what the missing ones would have been (a world that is gone is a plain loss), times the speed left
+                    const gone = work.suppliers.filter((h) => !worldAlive(h)).length;
+                    share = (blockadeSpeedFactor(galaxy, work) * Math.max(0, work.suppliers.length - gone)) / Math.max(1, senders(galaxy, work).length);
+                }
                 addProgress(galaxy, work, delivered * work.perShip * share * mult);
             }
             if (work.phase !== 'building') return;

@@ -27,6 +27,7 @@ import { enableThreat, peekThreatState, registerThreatExistence,  registerThreat
 import { addCrisisEntry, registerCrisisHelpers, type CrisisEntry } from '../crisis';
 import { angerYearly, greatWorkProtectors, protectStep, registerActionEvents, resolveBaseLoss } from './actions';
 import { aiStep } from './ai';
+import { BLOCKADE_HANDLER_IDS, BLOCKADE_QUERY_IDS, registerBlockadeHooks } from './blockadeDaily';
 import './diet';
 import { kindTaken, seedGreatWorks, seedNow } from './founders';
 import { startBuilding, stepWork } from './lifecycle';
@@ -169,6 +170,7 @@ export function registerGiantworks(): void {
     registerScenarioPeriodic({ id: 'giantworks.periodic', flag: GW_FLAG, periodDays: PERIOD_DAYS, order: 20, run: (g) => giantworksPeriodic(g) });
     registerScenarioYearly({ id: 'giantworks.yearly', flag: GW_FLAG, order: 20, run: (g) => angerYearly(g) });
     registerActionEvents();
+    registerBlockadeHooks();
     registerScenarioQuery({
         id: 'giantworks.noWar',
         flag: GW_FLAG,
@@ -184,7 +186,7 @@ export function registerGiantworks(): void {
     registerScenarioQuery({ id: 'giantworks.noCapture', flag: GW_FLAG, query: 'combatCaptureAllowed', run: (g, v, a) => v && !isCompact(g, a.capturingEmpire) });
 }
 
-export const GIANTWORKS_HANDLER_IDS = ['giantworks.start', 'giantworks.periodic', 'giantworks.yearly', 'giantworks.attacked', 'giantworks.killed', 'giantworks.owner', 'giantworks.exposed', 'giantworks.intel'] as const;
-export const GIANTWORKS_QUERY_IDS = ['giantworks.noWar', 'giantworks.missions', 'giantworks.noCapture'] as const;
+export const GIANTWORKS_HANDLER_IDS = ['giantworks.start', 'giantworks.periodic', 'giantworks.yearly', 'giantworks.attacked', 'giantworks.killed', 'giantworks.owner', 'giantworks.exposed', 'giantworks.intel', ...BLOCKADE_HANDLER_IDS] as const;
+export const GIANTWORKS_QUERY_IDS = ['giantworks.noWar', 'giantworks.missions', 'giantworks.noCapture', ...BLOCKADE_QUERY_IDS] as const;
 
 registerGiantworks();

@@ -114,6 +114,7 @@ import { registerBeaconAi } from './beaconAi';
 import { registerPursuit } from './beaconPursuit';
 import { dwellDaysFor, holdingAtGate, purgePass, purgeRebelStrength, recentlyPurged, siphonPass, siphonStatus } from './beaconSiphon';
 import { addProgress } from './lifecycle';
+import { unblockaded } from './blockade';
 import './beaconDiet';
 import { counterIntelligencePass, counterMonthly, onBoarded, onKilledForSalvage, registerCounterplay, resistanceFactor } from './beaconCounter';
 import { beaconArtInfo, cattleOf, cattleRepairFactor, initHarvest, knownCores, liveCores, noteCattleCore, registerHarvest, releaseCaptives, rescueCattle } from './beaconHarvest';
@@ -950,7 +951,7 @@ function onKilledBy(galaxy: Galaxy, bo: BuiltObject, destroyer: Empire | null): 
 export function beaconBuildRate(galaxy: Galaxy, _site: GreatWorkSite): number {
     const st = peekBeaconState(galaxy);
     if (st === null) return 1;
-    const boost = Math.min(P.buildBoostCapPct(galaxy), P.buildBoostPct(galaxy) * activeCorruption(st).length);
+    const boost = Math.min(P.buildBoostCapPct(galaxy), P.buildBoostPct(galaxy) * unblockaded(galaxy, activeCorruption(st).map((c) => c.colony)).length); // (a blockaded corrupted world speeds nothing up)
     let rate = 1 + boost / 100;
     const dead = st.watchers.filter((w) => w.dead).length;
     for (let i = 0; i < dead; i++) rate *= P.watcherDeadFactorPct(galaxy) / 100;

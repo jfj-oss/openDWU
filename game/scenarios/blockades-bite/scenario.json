@@ -1,7 +1,7 @@
 {
   "id": "blockades-bite",
   "name": "Blockades that bite",
-  "description": "A gameplay change (off by default; set on the new-game wizard's Other Empires page). A colony whose orbit is held by an enemy it is at war with (or by an empire with a declared blockade of it) is blockaded: armed ships and bases within 2000 of the planet, the original game's Space Control measure, and the enemy holds the orbit when its strength there is more than 1.5 times the owner's (the Orbital superiority measure). While blockaded the colony loses the trade share of its tax revenue, its space ports earn no trade income, construction there stops (ship yards, bases and facilities), its population stops growing and its approval falls slowly. It ends when the orbit is no longer held. AI empires at war blockade their enemies' richest reachable colonies before invading, and send their nearest strong enough fleet to break a blockade of their own colonies.",
+  "description": "A gameplay change (off by default; set on the new-game wizard's Other Empires page). A colony whose orbit is held by an enemy it is at war with (or by an empire with a declared blockade of it) is blockaded: armed ships and bases within 2000 of the planet, the original game's Space Control measure, and the enemy holds the orbit when its strength there is more than 1.5 times the owner's (the Orbital superiority measure). While blockaded the colony loses the trade share of its tax revenue, its space ports earn no trade income, construction there stops (ship yards, bases and facilities), its population stops growing and its approval falls slowly. It ends when the orbit is no longer held. AI empires at war blockade their enemies' richest reachable colonies before invading, and send their nearest strong enough fleet to break a blockade of their own colonies. The blockaders' armed ships in orbit also shoot the ships of the blockaded side that arrive at or leave the colony (and, for the Giantworks' supplier worlds, the Compact's convoys).",
   "flags": [
     { "name": "blockadesBite", "label": "Blockades that bite", "description": "Master switch.", "default": true }
   ],
@@ -15,6 +15,9 @@
     { "name": "blockadeAiMaxFleets", "label": "AI: most fleets an empire keeps on blockade duty", "default": 2, "min": 0, "max": 20 },
     { "name": "blockadeAiHoldDays", "label": "AI: days a blockading fleet holds the orbit before it is free for an invasion", "default": 60, "min": 1, "max": 720 },
     { "name": "blockadeAiRange", "label": "AI: fleets within this distance are sent to blockade or to break a blockade", "default": 4000000, "min": 10000, "max": 40000000 },
-    { "name": "blockadeAiReliefMinRatio", "label": "AI: a relief fleet needs at least this share of the blockaders' strength in orbit", "default": 1, "min": 0.1, "max": 10 }
+    { "name": "blockadeAiReliefMinRatio", "label": "AI: a relief fleet needs at least this share of the blockaders' strength in orbit", "default": 1, "min": 0.1, "max": 10 },
+    { "name": "blockadeShoots", "label": "Blockaders shoot the ships of the blockaded side that arrive at or leave the colony (1 = yes, 0 = no)", "default": 1, "min": 0, "max": 1 },
+    { "name": "blockadeShootRange", "label": "Ships of the blockaded side within this distance of the colony are shot", "default": 6000, "min": 2000, "max": 100000 },
+    { "name": "blockadeShooters", "label": "Most blockading ships sent against one target", "default": 2, "min": 1, "max": 20 }
   ]
 }

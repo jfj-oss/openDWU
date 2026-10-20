@@ -936,6 +936,16 @@ export interface ScenarioQueries {
      */
     blockadeEngagesDocking: { value: boolean; args: { builtObject: BuiltObject } };
     /**
+     * blockades/blockadesBite.ts blockadesBiteShoot: extra blockaded worlds whose blockaders shoot (the worlds of the Great Works'
+     * suppliers held by a declared blockade); `victim` = the empire whose ships leaving / arriving are shot (null: only the ships
+     * blockadeVictimShip names). Giantworks. Pure, no Rnd.
+     */
+    blockadeSites: { value: { habitat: Habitat; by: Empire; victim: Empire | null }[]; args: Record<string, never> };
+    /** blockadesBiteShoot: true = `builtObject` (any ship near the blockaded `habitat`) belongs to the blockaded side (a Great Work convoy from that world). Giantworks. Pure. */
+    blockadeVictimShip: { value: boolean; args: { habitat: Habitat; builtObject: BuiltObject } };
+    /** player/orderMenu.ts: true = the player may declare a blockade of this independent colony (a Great Work's supplier, Blockades that bite on). Giantworks. Pure. */
+    blockadeIndependentTarget: { value: boolean; args: { habitat: Habitat } };
+    /**
      * construction/constructionQueue.ts ConstructionQueue.doConstruction (ConstructionQueue.cs 1196), after its yard
      * draw: true = no progress this step (the time passes). `habitat` = the colony whose queue it is, or the colony a
      * base with yards (`builtObject`) orbits. Blockades that bite. Pure, no Rnd.

@@ -34,6 +34,8 @@
     { "name": "giantworksStallYears", "label": "Years without a delivery after which the work is abandoned", "default": 8, "min": 1, "max": 100 },
     { "name": "giantworksSiteMinCapitalSectors", "label": "The site lies at least this many sectors from every capital", "default": 2, "min": 0, "max": 40 },
     { "name": "giantworksCompactCutPct", "label": "Share of a wonder's benefits the Compact keeps (%)", "default": 20, "min": 0, "max": 100 },
+    { "name": "giantworksBlockadeCutPct", "label": "With Blockades that bite: build speed lost per founding world the empires control (blockaded or taken) (%)", "default": 20, "min": 0, "max": 100 },
+    { "name": "giantworksBlockadeMaxCutPct", "label": "With Blockades that bite: most build speed the founders' blockades can cost (%)", "default": 60, "min": 0, "max": 100 },
     { "name": "giantworksIntlOwnerPct", "label": "Internationalised: the territory owner's share of the rest (%)", "default": 30, "min": 0, "max": 100 },
     { "name": "giantworksSabotageSetbackPct", "label": "A destroyed section (Destroy Base mission) sets progress back (% of the whole)", "default": 20, "min": 0, "max": 100 },
     { "name": "giantworksSabotageSmallPct", "label": "Sabotaged construction sets progress back (% of the whole)", "default": 6, "min": 0, "max": 100 },

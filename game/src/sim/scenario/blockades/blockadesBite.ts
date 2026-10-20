@@ -26,6 +26,12 @@
 // an invasion at any time (blockading never replaces or delays one), released after blockadeAiHoldDays;
 // daily, each blockaded AI colony gets the nearest routine fleet not on a strike or invasion with ≥ blockadeAiReliefMinRatio × the blockaders'
 // orbit strength as a Normal-priority Patrol of it (above routine patrols; strikes may still take it) (orbitalAI.ts nearestFleet, value × winnability order).
+// Blockades SHOOT (blockadeShoots): every day the holder's armed ships in the orbit (an idle ship, or one on a Blockade / Patrol
+// mission of that colony) engage the ships of the blockaded side that arrive at or leave the colony (any non-base ship of the
+// owner within blockadeShootRange of it; at peace only its unarmed ones: freighters, colony ships ...) and, for a Great Work's
+// supplier world, its convoys (scenario queries blockadeSites / blockadeVictimShip, Giantworks), with stock Attack missions (an
+// Attack command put on top of a Blockade / Patrol mission, as the stock Blockade does for ships docking), at most
+// blockadeShooters ships per target, nearest first. The stock combat and events do the rest (an attack on a Compact convoy angers it).
 // Rnd: only the fleet mission assignments' own draws, only with the flag on. State: scenario.state.blockadesBite.
 
 import type { Galaxy } from '../../galaxy';
@@ -35,7 +41,11 @@ import type { ShipGroup } from '../../fleets/shipGroup';
 import { shipGroupAssignMission, shipGroupCompleteMission } from '../../fleets/shipGroup';
 import { shipGroupTotalTroopAttackStrength } from '../../fleets/shipGroupTasks';
 import { blockadeFor, implementBlockadeColony } from '../../fleets/blockades';
-import { BuiltObjectMissionPriority, BuiltObjectMissionType } from '../../missions/mission';
+import type { BuiltObject } from '../../builtObject';
+import { BuiltObjectRole } from '../../data/designSpecifications';
+import { assignMission } from '../../missions/assign';
+import { BuiltObjectMissionPriority, BuiltObjectMissionType, Command, CommandAction, builtObjectMission } from '../../missions/mission';
+import { getNearbyBuiltObjects } from '../../pirates/pirateAI';
 import { DiplomaticRelationType } from '../../diplomacy';
 import { FleetPosture } from '../../diplomacyTick';
 import { EmpireMessageType } from '../../messages';
@@ -44,7 +54,7 @@ import { isHumanEmpire } from '../../humanEmpires';
 import { getEmpireById } from '../../logistics/contracts';
 import { strategicValue } from '../../territory';
 import { galaxyStarDate } from '../../tick/simTime';
-import { GAME_DAY_LENGTH, registerScenarioPeriodic, registerScenarioQuery } from '../hooks';
+import { GAME_DAY_LENGTH, registerScenarioPeriodic, registerScenarioQuery, scenarioQuery } from '../hooks';
 import { scenarioMessage, scenarioText } from '../messages';
 import { registerStabilityTerm } from '../stability';
 import { scenarioFlag, scenarioParam, scenarioState } from '../state';
@@ -102,6 +112,8 @@ export interface BiteStats {
     /** Tax revenue lost (credits, accrued daily) / port trade income lost. */
     taxLost: number;
     portTradeLost: number;
+    /** Attack orders the blockaders gave to ships arriving at / leaving blockaded colonies. */
+    shots: number;
 }
 
 export interface BlockadesBiteState {
@@ -115,7 +127,7 @@ export interface BlockadesBiteState {
 }
 
 function newStats(): BiteStats {
-    return { started: 0, ended: 0, brokenByRelief: 0, endedByCapture: 0, reliefsSent: 0, aiBlockadesOrdered: 0, aiDutiesReleased: 0, colonyDays: 0, taxLost: 0, portTradeLost: 0 };
+    return { started: 0, ended: 0, brokenByRelief: 0, endedByCapture: 0, reliefsSent: 0, aiBlockadesOrdered: 0, aiDutiesReleased: 0, colonyDays: 0, taxLost: 0, portTradeLost: 0, shots: 0 };
 }
 
 export function blockadesBiteOn(galaxy: Galaxy): boolean {
@@ -256,6 +268,95 @@ export function blockadesBiteDaily(galaxy: Galaxy): void {
         }
     }
     st.pending = pending;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Shooting
+// ---------------------------------------------------------------------------------------------------------------
+
+function isShip(b: BuiltObject): boolean {
+    return !b.hasBeenDestroyed && b.role !== BuiltObjectRole.Base && b.topSpeed > 0;
+}
+
+/** The Attack command already on top of the ship's mission (its target), or null. */
+function attackTargetOf(b: BuiltObject): BuiltObject | null {
+    const c = builtObjectMission(b.mission)?.fastPeekCurrentCommand() ?? null;
+    return c !== null && c.action === CommandAction.Attack ? c.targetBuiltObject : null;
+}
+
+/**
+ * One blockaded colony `h`, held by `by`: its armed ships in the orbit attack `targets` (ships of the blockaded side near it).
+ * An idle ship takes an Attack mission; a ship on a Blockade / Patrol mission of `h` gets an Attack command on top (its
+ * mission goes on afterwards); any other ship keeps its orders. Returns the orders given. Draws only inside the stock mission assignment.
+ */
+export function blockadeShoot(galaxy: Galaxy, by: Empire, h: Habitat, targets: readonly BuiltObject[], maxPerTarget: number): number {
+    if (targets.length === 0) return 0;
+    const near = getNearbyBuiltObjects(galaxy, h.xpos, h.ypos, ORBIT_RANGE);
+    const shooters: BuiltObject[] = [];
+    const engaged = new Map<BuiltObject, number>();
+    for (const b of near) {
+        if (b == null || !isShip(b) || b.owner !== by) continue;
+        const t = attackTargetOf(b);
+        if (t !== null) engaged.set(t, (engaged.get(t) ?? 0) + 1);
+        else if (b.firepowerRaw > 0 && b.role === BuiltObjectRole.Military) shooters.push(b);
+    }
+    if (shooters.length === 0) return 0;
+    const sorted = targets.slice().sort((x, y) => galaxy.calculateDistanceSquared(h.xpos, h.ypos, x.xpos, x.ypos) - galaxy.calculateDistanceSquared(h.xpos, h.ypos, y.xpos, y.ypos) || x.builtObjectID - y.builtObjectID);
+    let orders = 0;
+    for (const t of sorted) {
+        while ((engaged.get(t) ?? 0) < maxPerTarget && shooters.length > 0) {
+            let bi = -1;
+            let bd = Infinity;
+            for (let i = 0; i < shooters.length; i++) {
+                const d = galaxy.calculateDistanceSquared(shooters[i].xpos, shooters[i].ypos, t.xpos, t.ypos);
+                if (d < bd) {
+                    bd = d;
+                    bi = i;
+                }
+            }
+            const s = shooters[bi];
+            shooters.splice(bi, 1);
+            const m = builtObjectMission(s.mission);
+            if (m === null || m.type === BuiltObjectMissionType.Undefined || m.type === BuiltObjectMissionType.Hold) {
+                assignMission(galaxy, s, BuiltObjectMissionType.Attack, t, null, BuiltObjectMissionPriority.Normal);
+            } else if ((m.type === BuiltObjectMissionType.Blockade || m.type === BuiltObjectMissionType.Patrol) && m.targetHabitat === h) {
+                m.insertCommandAtTop(Command.forTarget(CommandAction.Attack, t));
+                s.firstExecutionOfCommand = true;
+            } else continue;
+            engaged.set(t, (engaged.get(t) ?? 0) + 1);
+            orders++;
+        }
+        if (shooters.length === 0) break;
+    }
+    return orders;
+}
+
+/** The blockaded side's ships near colony `h`: the owner's (all of them at war, else its unarmed ones) and the convoys of a Great Work supplier. */
+function victimsNear(galaxy: Galaxy, h: Habitat, victim: Empire | null, by: Empire, range: number): BuiltObject[] {
+    const out: BuiltObject[] = [];
+    const war = victim !== null && atWarNoAdd(by, victim);
+    for (const b of getNearbyBuiltObjects(galaxy, h.xpos, h.ypos, range)) {
+        if (b == null || !isShip(b) || b.owner === by) continue;
+        const own = victim !== null && b.actualEmpire === victim && (war || b.role !== BuiltObjectRole.Military || !(b.firepowerRaw > 0));
+        if (own || scenarioQuery(galaxy, 'blockadeVictimShip', false, { habitat: h, builtObject: b })) out.push(b);
+    }
+    return out;
+}
+
+/** Daily: every blockaded colony's holder shoots the arrivals and departures of the blockaded side. */
+export function blockadesBiteShoot(galaxy: Galaxy): void {
+    if (!(scenarioParam(galaxy, 'blockadeShoots', 1) > 0)) return;
+    const st = biteState(galaxy);
+    const range = Math.max(ORBIT_RANGE, scenarioParam(galaxy, 'blockadeShootRange', 6000));
+    const per = Math.max(1, Math.round(scenarioParam(galaxy, 'blockadeShooters', 2)));
+    const sites: { habitat: Habitat; by: Empire; victim: Empire | null }[] = [];
+    for (const rec of st.active) {
+        const h = galaxy.habitats[rec.h];
+        const by = getEmpireById(galaxy, rec.by);
+        if (h !== undefined && by !== null && h.empire !== null && h.empire.empireId === rec.owner) sites.push({ habitat: h, by, victim: h.empire });
+    }
+    for (const s of scenarioQuery(galaxy, 'blockadeSites', [], {})) sites.push(s);
+    for (const s of sites) st.stats.shots += blockadeShoot(galaxy, s.by, s.habitat, victimsNear(galaxy, s.habitat, s.victim, s.by, range), per);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -501,6 +602,7 @@ registerScenarioPeriodic({
     periodDays: 1,
     run: (g) => {
         blockadesBiteDaily(g);
+        blockadesBiteShoot(g);
         blockadesBiteAiReview(g);
     },
 });

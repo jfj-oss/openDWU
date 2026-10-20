@@ -1016,7 +1016,8 @@ function patrolMenu(ctx: OrderMenuContext): OrderMenuItem | null {
 function blockadeMenu(ctx: OrderMenuContext): OrderMenuItem | null {
     const num = nearRange(ctx.galaxy);
     const item = item312('Blockade', T('Blockade'));
-    for (const h of coloniesNear(ctx, ctx.cursorX, ctx.cursorY, num, false)) {
+    for (const h of coloniesNear(ctx, ctx.cursorX, ctx.cursorY, num, ctx.galaxy.scenario !== null)) {
+        if (h.empire === ctx.galaxy.independentEmpire && !independentBlockadeAllowed(ctx.galaxy, h)) continue;
         if (h.empire !== ctx.empire && canSendShipToBlockadeColony(ctx.galaxy, ctx.empire, h)) item.children.push(leaf(h.name, ownedLabel(h.name, h.empire, 'Lost'), missionAction(BuiltObjectMissionType.Blockade, h)));
     }
     for (const b of basesNear(ctx, ctx.cursorX, ctx.cursorY, num)) {
@@ -1269,6 +1270,10 @@ function buildAtHabitatMenu(ctx: OrderMenuContext, bo: BuiltObject, habitat: Hab
 // "Queue Next Mission" (Main.Part8.cs 2598 method_342 for a ship, 3035 method_343 for a fleet)
 // ---------------------------------------------------------------------------------------------------------------
 
+/** [scenario] An independent colony the player may blockade (a Great Work's supplier with Blockades that bite on). */
+function independentBlockadeAllowed(galaxy: Galaxy, h: Habitat): boolean {
+    return galaxy.scenario !== null && scenarioQuery(galaxy, 'blockadeIndependentTarget', false, { habitat: h });
+}
 /** `(obj is Habitat && Empire != null && != Independent && != empire) || (obj is BuiltObject && Empire != empire) || (obj is ShipGroup && Empire != empire) || obj is Creature`. */
 function isHostileTarget(ctx: OrderMenuContext, obj: unknown, empire: Empire | null): boolean {
     if (obj === null || obj === undefined) return false;
@@ -1283,7 +1288,7 @@ function isPatrolTarget(obj: unknown): boolean {
 }
 /** `(obj is Habitat && Empire != null && != Independent && != empire) || (obj is BuiltObject && Role == Base && Empire != empire)`. */
 function isBlockadeTarget(ctx: OrderMenuContext, obj: unknown, empire: Empire | null): boolean {
-    if (isHabitat(obj)) return obj.empire !== null && obj.empire !== ctx.galaxy.independentEmpire && obj.empire !== empire;
+    if (isHabitat(obj)) return obj.empire !== null && (obj.empire !== ctx.galaxy.independentEmpire || independentBlockadeAllowed(ctx.galaxy, obj)) && obj.empire !== empire;
     if (isBuiltObject(obj)) return obj.role === BuiltObjectRole.Base && obj.empire !== empire;
     return false;
 }
@@ -3983,6 +3988,8 @@ export function resolveHoverOrder(input: HoverInput): HoverOrder {
                 if (habitat2.empire !== null && habitat2.empire !== galaxy.independentEmpire && habitat2.empire !== empire && flag4 && empire !== null) {
                     const t = obtainDiplomaticRelation(empire, habitat2.empire).type;
                     if (t === DiplomaticRelationType.TradeSanctions || t === DiplomaticRelationType.War) flag10 = true;
+                } else if (habitat2.empire === galaxy.independentEmpire && flag4 && empire !== null && independentBlockadeAllowed(galaxy, habitat2)) {
+                    flag10 = true; // [scenario] a declared blockade of a Great Work's independent supplier needs no war
                 }
                 if (flag10) {
                     set(missionAction(BuiltObjectMissionType.Blockade, habitat2), T('Blockade X') + ' ' + hdesc(habitat2), 'blockade');

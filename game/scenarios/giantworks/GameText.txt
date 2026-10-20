@@ -32,6 +32,12 @@ Giantworks Investigation Found;{0} has learned something at {1}: {2}
 Giantworks Investigation Nothing;{0} found nothing new at {1}.
 Giantworks Convoy Attacked Title;Attack on the Compact's convoy
 Giantworks Convoy Attacked;The ships we attacked belong to the Founders' Compact and sail for the independent worlds. The galaxy counts an attack on its convoys as an attack on the independents, and the Compact will not forget it.
+Giantworks Blockade Title;Convoys stopped at {0}
+Giantworks Blockade Started;The convoys from {0} have stopped: {1} holds its orbit and blockades it, and its ships are fired on as they come and go. {2}
+Giantworks Blockade Speed Note;The Great Work now builds at {0}% of its speed.
+Giantworks Blockade Lifted Title;Convoys sail again from {0}
+Giantworks Blockade Lifted;The blockade of {0} by {1} is over: its convoys sail again.
+Giantworks Blockade Speed;Build speed {0}% ({1} of {2} founding worlds blockaded or taken).
 Giantworks Protected Title;The Compact remembers
 Giantworks Protected;Our warships have stood watch over the Great Work at {0} for a year. The Founders' Compact has noted it.
 Giantworks Sabotage Caught News;{0} was caught sabotaging the Great Work at {1}.

@@ -132,6 +132,10 @@ export interface GreatWorksState {
     seeded: boolean;
     stats: { convoys: number; freighters: number; delivered: number; lost: number; sabotaged: number; destroyed: number; completed: number; inspections: number };
     log: { date: number; text: string }[];
+    /** Supplier worlds (habitat index) under a confirmed blockade, with the holder (blockade.ts; Blockades that bite on). */
+    blockaded?: Record<string, { by: number; since: number }>;
+    /** blockadeDaily.ts: daily checks in a row an independent supplier world's orbit was held (pending start) / free (pending end). */
+    blockadePending?: Record<string, { by: number; n: number }>;
 }
 
 export function gwState(galaxy: Galaxy): GreatWorksState {
@@ -220,6 +224,8 @@ const DEFAULTS = {
     giantworksStallYears: 8,
     giantworksSiteMinCapitalSectors: 2,
     giantworksCompactCutPct: 20,
+    giantworksBlockadeCutPct: 20,
+    giantworksBlockadeMaxCutPct: 60,
     giantworksIntlOwnerPct: 30,
     giantworksSabotageSetbackPct: 20,
     giantworksSabotageSmallPct: 6,
