@@ -4431,12 +4431,12 @@ describe('the Beacon (Giantworks wonder)', () => {
         expect(CRISIS_ENTRIES.some((e) => e.key === 'beacon' && e.flag === 'gwBeacon')).toBe(true);
     });
 
-    it('the Beacon station\'s plates keep only a quarter of their reactive rating, the other Reclaimer ships 70% (tech-5 plating); the guard patrols the system and calls a stray back', () => {
+    it('the Beacon station\'s plates keep only a quarter of their reactive rating, the other Reclaimer ships 60%; the guard patrols the system and calls a stray back', () => {
         const { g, st } = completed();
         const beacon = st.beacon!;
         expect(scenarioQuery(g, 'armorReactivityFactor', 1, { builtObject: beacon })).toBe(0.25);
         const other = st.watchers[0].ship!;
-        expect(scenarioQuery(g, 'armorReactivityFactor', 1, { builtObject: other })).toBeCloseTo(0.7);
+        expect(scenarioQuery(g, 'armorReactivityFactor', 1, { builtObject: other })).toBeCloseTo(0.6);
         g.scenario!.params.beaconStationReactivePct = 50;
         expect(scenarioQuery(g, 'armorReactivityFactor', 1, { builtObject: beacon })).toBe(0.5);
         g.nowMs += 800 * GAME_DAY_LENGTH;
