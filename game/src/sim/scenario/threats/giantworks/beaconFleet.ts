@@ -93,6 +93,7 @@ import {
 import { scenarioText as T } from '../../messages';
 import { allotResponse, driveResponse } from './beaconResponse';
 import { isPursuing } from './beaconPursuit';
+import { noteFirstBeam, partsPass } from './beaconComponents';
 import { freeShare, fuelOf, harvestMonthly, liveCores, harvestPeriodic, onCattleKilled, onCoreRetaken, onHarvesterLost, payFleet, payTroops, troopSourceCore, troopsAffordable } from './beaconHarvest';
 
 const TAG = 'Beacon';
@@ -571,7 +572,7 @@ function stagingName(index: number): string {
 export function beginSeason(galaxy: Galaxy, st: BeaconState, n: number): boolean {
     const faction = st.faction;
     const pos = beaconPosition(st);
-    if (faction === null || pos === null || st.beaconDestroyed) return false;
+    if (faction === null || pos === null) return false;
     const now = galaxyStarDate(galaxy);
     const budget = seasonBudget(galaxy, st, n);
     const scripted = scriptedBudget(galaxy, st, n);
@@ -837,7 +838,7 @@ function prepPass(galaxy: Galaxy, st: BeaconState, season: Season): void {
     const spawnWindow = total * 0.5;
     const frac = Math.min(1, Math.max(0, (now - season.start) / Math.max(1, spawnWindow)));
     // A batch per 5 days since the last pass: the periodic runs once per stock long block (36 days at 1x), not every 5 days.
-    if (!st.beaconDestroyed) spawnWave(galaxy, st, season, season.budget * frac, Math.ceil(WAVE_PER_PASS * passDays(st, now) / 5));
+    spawnWave(galaxy, st, season, season.budget * frac, Math.ceil(WAVE_PER_PASS * passDays(st, now) / 5));
     // Troops once the warships are spawned (half way through the preparation).
     if (now - season.start >= spawnWindow) {
         for (const g of season.groups) {
@@ -970,6 +971,7 @@ export function fireBeam(galaxy: Galaxy, st: BeaconState, season: Season): void 
     const now = galaxyStarDate(galaxy);
     const first = st.warStarted === false;
     startWar(galaxy, st);
+    noteFirstBeam(galaxy, st);
     const n = season.n;
     const fullBudget = seasonBudget(galaxy, st, n);
     let budget = fullBudget;
@@ -1443,7 +1445,7 @@ function quietPass(galaxy: Galaxy, st: BeaconState, season: Season): void {
         }
         return true;
     });
-    if (st.beaconDestroyed || now < st.nextRaidDate || st.raids.length >= 3) return;
+    if (now < st.nextRaidDate || st.raids.length >= 3) return;
     const pos = beaconPosition(st);
     if (pos === null) return;
     const rnd = beaconRandom(galaxy, st, 51);
@@ -1624,14 +1626,16 @@ function reclamationPass(galaxy: Galaxy, st: BeaconState, now: number): void {
     const faction = st.faction!;
     if (st.beacon !== null && st.beacon.hasBeenDestroyed && !st.beaconDestroyed) {
         st.beaconDestroyed = true;
-        arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Beacon Destroyed', textTag: `${TAG} Beacon Destroyed News` });
+        arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Beacon Destroyed', textTag: `${TAG} Beacon Destroyed News`, args: [empireName(galaxy, st.beaconKillerId)] });
     }
     // the Beacon fell before the first beam: the Reclaimers are at war all the same (the Watchers decloak and lead their fleets), but no launch was ever made
     if (st.beaconDestroyed && st.warStarted === false) startWar(galaxy, st);
+    // the Beacon is gone and the Reclamation goes on: its yard, the asset measure, the planet's reveal (beaconComponents.ts)
+    partsPass(galaxy, st, now);
     st.reserve = aliveShips(st.reserve, faction);
     const season = st.season;
     if (season === null) {
-        if (now >= st.completeDate + days(P.startDelayDays(galaxy)) && !st.beaconDestroyed) beginSeason(galaxy, st, 1);
+        if (now >= st.completeDate + days(P.startDelayDays(galaxy))) beginSeason(galaxy, st, 1);
     } else if (isBeamCountdown(season)) {
         if (st.beaconDestroyed) {
             // the Beacon fell before it could fire: no beam; the quiet delay, then the preparation of season 1 as any season
@@ -1650,7 +1654,7 @@ function reclamationPass(galaxy: Galaxy, st: BeaconState, now: number): void {
         }
     } else if (season.phase === 'quiet') {
         quietPass(galaxy, st, season);
-        if (now >= season.end && !st.beaconDestroyed) {
+        if (now >= season.end) {
             if (!beginSeason(galaxy, st, season.n + 1)) season.end = now + days(60); // nothing to strike: wait a little
         }
     }
@@ -2038,4 +2042,9 @@ export function onShipKilled(galaxy: Galaxy, st: BeaconState, bo: BuiltObject, d
     if (season !== null && season.phase === 'prep' && bo.role === BuiltObjectRole.Military && bo.subRole !== BuiltObjectSubRole.TroopTransport) {
         for (const sp of season.staging) if (distTo(galaxy, bo, sp.x, sp.y) <= 2 * GATHER_RANGE) st.stats.stagingKills = (st.stats.stagingKills ?? 0) + 1;
     }
+}
+
+/** The name of the empire with this id ('' for none). */
+function empireName(galaxy: Galaxy, id: number | undefined): string {
+    return id === undefined ? '' : (galaxy.empires.find((e) => e !== null && e.empireId === id)?.name ?? '');
 }

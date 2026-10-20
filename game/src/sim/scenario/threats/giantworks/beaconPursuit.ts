@@ -439,7 +439,7 @@ function driveChase(galaxy: Galaxy, st: BeaconState, pr: PursuitRec, c: PursuitC
 /** Every CHASE_DAYS: new flights are looked for (every SAMPLE_DAYS the fights are sampled) and the chases driven. */
 export function pursuitTick(galaxy: Galaxy): void {
     const st = peekBeaconState(galaxy);
-    if (st === null || st.faction === null || !warOn(st) || !P.pursuitOn(galaxy) || !st.faction.active || st.beaconDestroyed) return;
+    if (st === null || st.faction === null || !warOn(st) || !P.pursuitOn(galaxy) || !st.faction.active) return;
     const now = galaxyStarDate(galaxy);
     const pr = pursuitOf(st);
     if (now - pr.sampled >= days(SAMPLE_DAYS)) {

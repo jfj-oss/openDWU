@@ -94,7 +94,7 @@ export function fleetCounts(galaxy: Galaxy, st: BeaconState): { reserves: number
 function build(galaxy: Galaxy, st: BeaconState, rs: ResponseRec, f: ResponseFleet, want: number): number {
     const faction = st.faction!;
     const pos = beaconPosition(st);
-    if (pos === null || st.beaconDestroyed) return 0;
+    if (pos === null) return 0;
     const key = f.kind === 'reserve' ? 'reserveAllow' : 'patrolAllow';
     let made = 0;
     let have = fleetStrength(f);

@@ -226,7 +226,34 @@ Beacon Rising;The corrupted people of {0} have risen and declared for the Reclai
 Beacon Rising News;{0}, a world of {1}, has risen in revolt and joined the Reclaimers.
 Beacon Destroyer News;A Reclaimer planet destroyer is on its way to {0}.
 Beacon Planet Destroyed News;The Reclaimers have destroyed {0}, with {1} million people on it.
-Beacon Beacon Destroyed News;The Beacon has been destroyed. No more waves will come from it.
+Beacon Beacon Destroyed News;TODO-PROSE: Beacon destroyed news ({0}=destroying empire, may be empty). Must NOT say the war is over (the Reclamation carries on).
+Beacon Diet Hope News;TODO-PROSE: Galactic Diet line, once, when the Beacon first fires (Diet on): presents destroying the Beacon as the way to end the Reclaimers.
+Beacon Diet Hail News;TODO-PROSE: Galactic Diet line, once, when the Beacon is destroyed after it fired (Diet on): hails the end of the Reclamation ({0}=destroying empire).
+Beacon Lens Title;TODO-PROSE: beam lens popup title
+Beacon Lens;TODO-PROSE: beam lens popup, vague warning that it may be turned against them given enough time to study and integrate it ({0}=empire)
+Beacon Reveal Title;TODO-PROSE: drifting planet reveal popup title
+Beacon Reveal;TODO-PROSE: drifting planet reveal popup, every human, 1 year after the first beam ({0}=sector of the planet)
+Beacon Reveal News;TODO-PROSE: drifting planet reveal ticker line ({0}=sector of the planet)
+Beacon Blueprint Title;TODO-PROSE: blueprint popup title
+Beacon Blueprint;TODO-PROSE: blueprint popup, when your ship reaches the planet ({0}=research cost in points, {1}=share of your research it takes in %)
+Beacon Blueprint News;TODO-PROSE: first empire to reach the planet ({0}=empire)
+Beacon Blueprint Done Title;TODO-PROSE: blueprint finished popup title
+Beacon Blueprint Done;TODO-PROSE: blueprint finished popup
+Beacon Broken Title;TODO-PROSE: victory title, the Reclaimers' assets broken
+Beacon Broken News;TODO-PROSE: victory news, the Reclaimers' assets broken ({0}=% of their peak destroyed)
+Beacon Mega Title;TODO-PROSE: victory title, the mega-station fired
+Beacon Mega News;TODO-PROSE: victory news, the mega-station fired
+Beacon Part Gained Title;TODO-PROSE: part gained title
+Beacon Part Gained;TODO-PROSE: part gained ({0}=part name, {1}=how many you hold, {2}=how many are needed)
+Beacon Parts Captured Title;TODO-PROSE: parts captured title
+Beacon Parts Captured;TODO-PROSE: a capital fell and its parts went to the captor ({0}=empire that lost the capital, {1}=captor)
+Beacon Part Beam Lens;Beam lens
+Beacon Part Link Conduit;Link conduit
+Beacon Part Cloak Lattice;Cloak lattice
+Beacon Part Mind Fragments;Mind fragments
+Beacon Part Void Frames;Void frames
+Beacon Planet Marker;Drifting world
+Beacon Assets Status;Reclaimer assets left: {0}% of their peak.
 Beacon Lost News;The Reclaimers have eliminated {0}% of the galaxy's people.
 Beacon Defeat Title;The Reclaimers have won
 Beacon Victory Title;The Beacon is gone

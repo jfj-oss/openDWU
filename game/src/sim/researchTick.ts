@@ -1440,8 +1440,17 @@ export function performResearchProjects(galaxy: Galaxy, empire: Empire, timePass
     if (galaxy.scenario !== null && scenarioQuery(galaxy, 'researchFrozen', false, { empire, industry })) return; // mod layer (19a research cap)
     if (empire.controlResearch && projects.length <= 0) selectNextResearchProject(galaxy, empire, industry, projects);
     if (galaxy.scenario !== null) researchPower *= scenarioQuery(galaxy, 'researchPowerFactor', 1, { empire, industry }); // mod layer (Diet research moratorium)
-    let num = ((researchPower * timePassed) / REAL_SECONDS_IN_GALACTIC_YEAR) * galaxy.researchSpeedModifier;
     const num2 = calculateResearchOutputBonuses(empire, industry);
+    if (galaxy.scenario !== null) {
+        // mod layer (the Beacon's mega-station blueprint): a scenario sink takes a share of the output before the projects get any
+        const share = scenarioQuery(galaxy, 'researchSinkShare', 0, { empire, industry });
+        if (share > 0) {
+            const sunk = researchPower * Math.min(1, share);
+            researchPower -= sunk;
+            scenarioEmit(galaxy, 'researchSunk', { empire, industry, points: ((sunk * timePassed) / REAL_SECONDS_IN_GALACTIC_YEAR) * galaxy.researchSpeedModifier * num2 });
+        }
+    }
+    let num = ((researchPower * timePassed) / REAL_SECONDS_IN_GALACTIC_YEAR) * galaxy.researchSpeedModifier;
     num *= num2;
     const iterationCount = { value: 0 };
     while (conditionCheckLimit(num > 0.0, 50, iterationCount)) {

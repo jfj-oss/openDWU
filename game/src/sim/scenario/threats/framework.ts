@@ -692,13 +692,14 @@ export function arcNews(galaxy: Galaxy, sent: SentStages, spec: ArcMessageSpec):
 }
 
 /**
- * Which threat endings end the game (user rule, 2026-10-18): the only threat VICTORY is destroying the Beacon after it has fired
- * its mega beam at least once (code 2152, beacon.ts), and the only threat DEFEAT is the Beacon's (80% of the galaxy's people gone,
+ * Which threat endings end the game (user rule, 2026-10-18): the only threat VICTORIES are destroying 95% of the Reclaimers'
+ * assets (code 2153) and firing the mega-station (code 2154) (beacon.ts; destroying the Beacon after it fired no longer wins, it gives the
+ * beam lens), and the only threat DEFEAT is the Beacon's (80% of the galaxy's people gone,
  * code 2051). Every other threat still ends or is contained with its own messages and news, but threatGameEnd does nothing for it:
  * no game-over screen. REVERSIBLE: set `restrict = false` (every threat ending ends the game again, as before), or add a code to
  * `allowed`. Stock victory conditions and the Galactic Diet's emperor ending do not go through here.
  */
-export const threatGameEndPolicy: { restrict: boolean; allowed: Set<number> } = { restrict: true, allowed: new Set([2051, 2152]) };
+export const threatGameEndPolicy: { restrict: boolean; allowed: Set<number> } = { restrict: true, allowed: new Set([2051, 2153, 2154]) };
 
 export function threatGameEndAllowed(code: number): boolean {
     return !threatGameEndPolicy.restrict || threatGameEndPolicy.allowed.has(code);

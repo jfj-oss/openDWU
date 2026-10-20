@@ -24,8 +24,11 @@ export const BEACON_KIND = 'beacon';
 /** Game-end codes (threats: 1911… defeat, +100 victory; Giantworks takes 2051 / 2151). */
 export const BEACON_CODE_LOST = 2051;
 export const BEACON_CODE_VICTORY = 2151;
-/** The Beacon destroyed after its first launch: the only threat victory that ends the game (framework.ts threatGameEndPolicy). */
+/** The Beacon destroyed after its first launch: no longer ends the game (the fake-out: it gives the beam lens); kept as the old code. */
 export const BEACON_CODE_DESTROYED = 2152;
+/** The threat victories (framework.ts threatGameEndPolicy): 95% of the Reclaimers' assets destroyed, or the mega-station fired. */
+export const BEACON_CODE_ASSETS = 2153;
+export const BEACON_CODE_MEGA = 2154;
 
 /** Galaxy.MaxSolarSystemSize: a ship this close to a system's star is inside the system. */
 export const SYSTEM_RADIUS = 23000;
@@ -562,6 +565,53 @@ export interface BeaconStats {
     escortLost?: number;
 }
 
+/** One empire's progress on the mega-station blueprint (a scenario research sink: a share of its research output while it is selected). */
+export interface BlueprintRec {
+    /** Star date the empire reached the drifting planet. */
+    since: number;
+    /** Research points put into it, of beaconBlueprintCost. */
+    progress: number;
+    /** Share (%) of the empire's research output it takes (0 = paused). */
+    sharePct: number;
+    /** Finished (the mega-station's design is known). */
+    done?: boolean;
+}
+
+/** The parts one empire holds toward the mega-station (carried across ages). */
+export interface EmpireParts {
+    /** The beam lens: the Beacon destroyed after it fired. */
+    beamLens?: boolean;
+    /** The link conduit: a harvester destroyed. */
+    linkConduit?: boolean;
+    /** The cloak lattice (a Watcher part): a Watcher destroyed. */
+    cloakLattice?: boolean;
+    /** Reclaimer capital ships its ships destroyed (30 needed). */
+    mindFragments?: number;
+    /** Void frames, one per foundry destroyed (4 needed; foundries do not exist yet). */
+    voidFrames?: number;
+    blueprint?: BlueprintRec;
+}
+
+/** The mega-station path (beaconComponents.ts): parts per empire, the Reclaimers' asset peak, the drifting planet. Absent before first use. */
+export interface PartsRec {
+    /** Empire id → its parts. */
+    held: Record<string, EmpireParts>;
+    /** The Reclaimers' highest asset index so far (ships and bases by strength, held worlds as that many ships), and the last one measured. */
+    peakAssets: number;
+    lastAssets: number;
+    /** The largest average ship strength seen (the unit a held world is worth ships of). */
+    shipUnit: number;
+    /** Star date of the first mega beam (0: not fired). */
+    firstBeam: number;
+    /** The drifting precursor planet's place, and the star date everyone learned of it (0: not yet). */
+    planet?: { x: number; y: number };
+    revealDate: number;
+    /** Empire ids that reached the planet. */
+    visited: number[];
+    /** Empire id → the ship an AI sent to the planet and when. */
+    sent?: Record<string, { id: number; date: number }>;
+}
+
 export interface BeaconState {
     /** The Great Work site (the framework's object). */
     site: GreatWorkSite | null;
@@ -657,6 +707,14 @@ export interface BeaconState {
     beaconKillerId?: number;
     destroyVictoryDone?: boolean;
     lastLaunchDate?: number;
+    /** The mega-station path (beaconComponents.ts): parts, asset peak, the drifting planet. */
+    parts?: PartsRec;
+    /** Where the Reclaimers' ships are made and gather once the Beacon is gone (their biggest held world; absent: the site). */
+    yard?: { x: number; y: number };
+    /** The mega-station was fired (a placeholder for the later ages: the threat's other victory). */
+    megaFired?: boolean;
+    /** The asset victory was declared. */
+    assetVictoryDone?: boolean;
     /** Star date of the last reclamation pass (a pass is credited with the days since: the periodics run once per stock long block). */
     lastPassDate?: number;
     /** Render only (refreshed every pass): the live harvest cores' worlds, the cattle ships in flight, the live harvesters; the art record (beaconArtInfo). */
@@ -881,6 +939,27 @@ export const P = {
     /** A patrol reports a force this % of its own strength (or more) to the reserves. */
     patrolReportPct: (g: Galaxy) => p(g, 'beaconPatrolReportPct', 120),
     patrolHopSectors: (g: Galaxy) => p(g, 'beaconPatrolHopSectors', 6),
+    // The mega-station path (beaconComponents.ts)
+    /** The Reclaimers lose when this % of their peak assets (ships, bases and held worlds, as a strength index) is destroyed. */
+    assetVictoryPct: (g: Galaxy) => Math.max(1, Math.min(100, p(g, 'beaconAssetVictoryPct', 95))),
+    /** A held world counts as this many average ships in the asset index. */
+    assetWorldShips: (g: Galaxy) => Math.max(0, p(g, 'beaconAssetWorldShips', 10)),
+    /** The asset victory needs a peak of at least this many average ships (a Reclamation that never got going is not "broken"). */
+    assetMinPeakShips: (g: Galaxy) => Math.max(0, p(g, 'beaconAssetMinPeakShips', 30)),
+    /** Days from the first mega beam to the Guardians' reveal of the drifting planet. */
+    revealDays: (g: Galaxy) => Math.max(0, p(g, 'beaconRevealDays', 360)),
+    /** The blueprint's research cost in points, and the share (%) of an empire's research a started project takes. */
+    blueprintCost: (g: Galaxy) => Math.max(1, p(g, 'beaconBlueprintCost', 5000000)),
+    blueprintSharePct: (g: Galaxy) => Math.max(0, Math.min(100, p(g, 'beaconBlueprintSharePct', 25))),
+    /** The planet is reached by a ship within this many units. */
+    planetReach: (g: Galaxy) => Math.max(1000, p(g, 'beaconPlanetReach', 30000)),
+    /** Mind fragments and void frames the mega-station needs. */
+    mindFragmentsNeeded: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'beaconMindFragmentsNeeded', 30))),
+    voidFramesNeeded: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'beaconVoidFramesNeeded', 4))),
+    /** A part changes hands in a trade at this value (credits' worth, for the AI's evaluation). */
+    /** The attitude toward the receiver a giver needs for a part to change hands. */
+    partTradeAttitude: (g: Galaxy) => p(g, 'beaconPartTradeAttitude', 10),
+    partTradeValue: (g: Galaxy) => Math.max(1, p(g, 'beaconPartTradeValue', 30000)),
     // Capital pursuit (beaconPursuit.ts)
     /** 1: a Reclaimer capital (with escorts) follows an enemy that fled a fight by hyperjump and drags it out of warp (0: no pursuit). */
     pursuitOn: (g: Galaxy) => p(g, 'beaconPursuitOn', 1) > 0,
@@ -1083,7 +1162,9 @@ export function galaxyPopulation(galaxy: Galaxy, except: Empire | null): number 
 
 /** The Beacon's position (the site's base, else its star). */
 export function beaconPosition(st: BeaconState): { x: number; y: number } | null {
-    if (st.beacon !== null && !st.beacon.hasBeenDestroyed) return { x: st.beacon.xpos, y: st.beacon.ypos };
+    if (st.beacon !== null && !st.beacon.hasBeenDestroyed && !(st.beaconDestroyed && st.yard !== undefined)) return { x: st.beacon.xpos, y: st.beacon.ypos };
+    // the Beacon is gone and the Reclamation carries on: its ships are made at, and gather round, its biggest held world (beaconComponents.ts refreshYard)
+    if (st.yard !== undefined && st.phase === 'reclamation') return st.yard;
     const s = st.site;
     if (s === null) return null;
     if (s.base !== null) return { x: s.base.xpos, y: s.base.ypos };

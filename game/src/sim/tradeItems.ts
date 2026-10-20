@@ -74,7 +74,7 @@ import { nodeCategory, resolveResearchAbilityType, ResearchAbilityType } from '.
 import { resolveMoreAdvancedProjectsIncludeSpecial } from './espionage';
 import { doResearchBreakthrough } from './researchTick';
 import { scenarioFlag } from './scenario/state';
-import { scenarioQuery } from './scenario/hooks';
+import { scenarioEmit, scenarioQuery } from './scenario/hooks';
 import { ESPIONAGE_FLAG, espionageHooks } from './scenario/emergent/espionageHooks';
 import type { Component } from './data/components';
 import { ComponentType } from './data/components';
@@ -110,6 +110,8 @@ export enum TradeableItemType {
     SecretLocation,
     SystemMap,
     IndependentColonyLocation,
+    /** Scenario (not in the C#; appended last): a part toward the Beacon's mega-station (item = { part, label }); see scenario/threats/giantworks/beaconComponents.ts. */
+    ScenarioPart,
 }
 
 // TradeOfferResponse.cs.
@@ -214,6 +216,9 @@ export class TradeableItem {
                 break;
             case TradeableItemType.IndependentColonyLocation:
                 if (this.item instanceof HabitatClass) str1 = this.item.name;
+                break;
+            case TradeableItemType.ScenarioPart:
+                str1 = String((this.item as { label?: string } | null)?.label ?? '');
                 break;
         }
         if (showValue && this.type !== TradeableItemType.Money && this.type !== TradeableItemType.TerritoryMap && this.type !== TradeableItemType.GalaxyMap && this.type !== TradeableItemType.ThreatenWar && this.type !== TradeableItemType.ThreatenTradeSanctions) {
@@ -1167,6 +1172,10 @@ export function resolveTradeableItems(galaxy: Galaxy, giver: Empire, receiver: E
         }
     }
     if (giver.pirateEmpireBaseHabitat === null && receiver.pirateEmpireBaseHabitat === null) list.push(...resolveTradeableItemsDiplomacy(galaxy, giver, receiver, refactorValuesForEmpire));
+    // mod layer (the Beacon's mega-station parts): only between empires on good terms; no Rnd
+    if (galaxy.scenario !== null && giver.pirateEmpireBaseHabitat === null && receiver.pirateEmpireBaseHabitat === null) {
+        for (const x of scenarioQuery(galaxy, 'tradeablePartItems', [], { giver, receiver })) list.push(new TradeableItem(TradeableItemType.ScenarioPart, { part: x.part, label: x.label }, x.value));
+    }
     if (giver.pirateEmpireBaseHabitat !== null) {
         list.push(...resolveTradeableItemsPirateInfo(galaxy, giver, receiver, refactorValuesForEmpire));
     }
@@ -1344,6 +1353,11 @@ export function evaluateTradeOffer(galaxy: Galaxy, self: Empire, offeringEmpire:
             const r = endOrLift(diplomaticRelation, (t) => t === DiplomaticRelationType.TradeSanctions || t === DiplomaticRelationType.War);
             if (r !== null) return r;
         }
+        // mod layer (the Beacon's parts): an empire on bad terms with the other side hands over none and takes none
+        if (galaxy.scenario !== null) {
+            if (requested.some((t) => t.type === TradeableItemType.ScenarioPart) && !scenarioQuery(galaxy, 'partTradeAllowed', true, { giver: self, receiver: offeringEmpire })) return TradeOfferResponse.Refuse;
+            if (offered.some((t) => t.type === TradeableItemType.ScenarioPart) && !scenarioQuery(galaxy, 'partTradeAllowed', true, { giver: offeringEmpire, receiver: self })) return TradeOfferResponse.Refuse;
+        }
         let flag = true;
         if (disallowCriticalItems && checkForCriticalTradeItems(galaxy, self, requested)) flag = false;
         const threat = (civilityFactor: number, incidentFactor: number, strengthFactor: number): TradeOfferResponse => {
@@ -1492,6 +1506,9 @@ export function giveTradeableItem(galaxy: Galaxy, giver: Empire, receiver: Empir
                 if (receiver.visibility.checkSystemVisibilityStatus(systemStar3.systemIndex) === SystemVisibilityStatus.Unexplored) receiver.visibility.setSystemVisibility(systemStar3, SystemVisibilityStatus.Explored);
                 addLocationHint(receiver, { x: Math.trunc(item.item.xpos), y: Math.trunc(item.item.ypos) }, habitatSubject('Independent colony', item.item), `Diplomacy (traded by ${giver.name})`);
             }
+            break;
+        case TradeableItemType.ScenarioPart:
+            if (galaxy.scenario !== null) scenarioEmit(galaxy, 'partTraded', { giver, receiver, part: String((item.item as { part?: string } | null)?.part ?? '') });
             break;
         case TradeableItemType.SecretLocation:
             if (item.item instanceof GalaxyLocation) {

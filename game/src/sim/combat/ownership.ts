@@ -500,6 +500,7 @@ export function takeOwnershipOfColonyFull(galaxy: Galaxy, self: Empire, colony: 
         if (flag) {
             empire.capital = selectBestCandidateForCapital(empire);
             recalculateColonyDistancesFromCapital(galaxy, empire);
+            if (galaxy.scenario !== null) scenarioEmit(galaxy, 'capitalLost', { empire, colony, capturer: newEmpire }); // mod layer (the Beacon's parts go to the captor)
         }
         if (empire.colonies.length <= 0 && empire !== galaxy.independentEmpire) {
             if (empire.pirateEmpireBaseHabitat !== null) {

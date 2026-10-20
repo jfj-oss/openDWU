@@ -280,6 +280,12 @@ export interface ScenarioEvents {
      * single kill under double-different payload shapes, and so rimTrade's raid-stats counter isn't double-counted.
      */
     builtObjectKilledBy: { builtObject: BuiltObject; destroyer: Empire | null };
+    /** combat/ownership.ts takeOwnershipOfColony (after the stock capital reassignment): `empire` lost its capital `colony` to `capturer` (null: no new owner). */
+    capitalLost: { empire: Empire; colony: Habitat; capturer: Empire | null };
+    /** researchTick.ts performResearchProjects: `points` of `empire`'s research (one industry) were taken by the sink (researchSinkShare) instead of its projects. */
+    researchSunk: { empire: Empire; industry: number; points: number };
+    /** tradeItems.ts giveTradeableItem: a scenario part (trade item type ScenarioPart) changed hands. */
+    partTraded: { giver: Empire; receiver: Empire; part: string };
     /** researchTick.ts doResearchBreakthrough (end). */
     researchCompleted: { empire: Empire; project: unknown };
     /** exploration.ts investigateRuins (top, after the null checks): `empire` investigates the ruins at `habitat`. No Rnd in handlers. */
@@ -645,6 +651,12 @@ export interface ScenarioQueries {
     researchFrozen: { value: boolean; args: { empire: Empire; industry: number } };
     /** Factor on an empire's research output of one industry (the Interstellar Diet's research moratorium; 1 = unchanged). */
     researchPowerFactor: { value: number; args: { empire: Empire; industry: number } };
+    /** The share (0..1) of an empire's research output of one industry a scenario sink takes (the Beacon's mega-station blueprint); 0 = none. */
+    researchSinkShare: { value: number; args: { empire: Empire; industry: number } };
+    /** Scenario parts `giver` could hand `receiver` in a trade (tradeItems.ts resolveTradeableItems): plain records with the part id, its label and its value. */
+    tradeablePartItems: { value: { part: string; label: string; value: number }[]; args: { giver: Empire; receiver: Empire } };
+    /** false: `giver` will not hand `receiver` scenario parts (bad relations or reputation); the trade evaluation refuses. */
+    partTradeAllowed: { value: boolean; args: { giver: Empire; receiver: Empire } };
     /**
      * independentTraders.ts isObjectVisibleToThisEmpire (Empire.9.cs 3198), first line: true makes the object visible to
      * `empire` regardless of sensors (19a treasure-fleet beacon: a galaxy-wide position broadcast).

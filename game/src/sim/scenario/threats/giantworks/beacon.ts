@@ -68,11 +68,13 @@ import { registerCrisisHelpers } from '../crisis';
 import { refitInPlace } from '../framework';
 import { completeWork, greatWorkProtectors, greatWorks, GW_KEY, markGreatWorkHostile, registerGreatWork, registerHostileWonderCrisis, spawnGreatWork, spawnNote } from './framework';
 import { kindTaken } from './founders';
+import { assetsBroken, assetsLeftPct, creditBeaconKill, creditCapitalKill, creditHarvesterKill, creditWatcherKill, planetKnown, planetMarkerLabel, registerComponents } from './beaconComponents';
 import { isCompact } from './state';
 import { exitHyperjump } from '../../../movement';
 import type { GreatWorkKind, GreatWorkSite } from './types';
 import {
-    BEACON_CODE_DESTROYED,
+    BEACON_CODE_ASSETS,
+    BEACON_CODE_MEGA,
     BEACON_CODE_VICTORY,
     BEACON_FLAG,
     BEACON_KEY,
@@ -91,6 +93,7 @@ import {
     type BeaconState,
     type CorruptRec,
     type WatcherRec,
+    warOn,
 } from './beaconState';
 import {
     addPlating,
@@ -1046,15 +1049,20 @@ function onKilledBy(galaxy: Galaxy, bo: BuiltObject, destroyer: Empire | null): 
     if (w !== undefined) {
         markDead(galaxy, st, w, destroyer);
         onKilledForSalvage(galaxy, st, bo, destroyer, true);
+        creditWatcherKill(galaxy, st, destroyer);
         return;
     }
     if (bo.actualEmpire === st.faction) {
         noteCattleCore(galaxy, st, bo, destroyer); // (its navigation record names the core it served)
+        if ((st.cores ?? []).some((c) => c.ended === null && c.harvester === bo)) creditHarvesterKill(galaxy, st, destroyer);
+        else if (bo !== st.beacon && bo.subRole === BuiltObjectSubRole.CapitalShip) creditCapitalKill(galaxy, st, destroyer);
         onShipKilled(galaxy, st, bo, destroyer);
         onKilledForSalvage(galaxy, st, bo, destroyer, false);
         if (bo === st.beacon) {
             st.beaconDestroyed = true;
             if (destroyer !== null) st.beaconKillerId = destroyer.empireId;
+            // the fake-out: it does not end the Reclamation; the destroyer gets the beam lens
+            creditBeaconKill(galaxy, st, destroyer);
         }
     }
 }
@@ -1178,36 +1186,53 @@ export function beaconDestroyedEarly(galaxy: Galaxy, site: GreatWorkSite, by: Em
 // The end: victory
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Every 5 days after completion: victory when the Beacon and both Watchers are destroyed and the Reclaimers hold no world. */
+/**
+ * Every 5 days after completion. The threat's victories (framework.ts threatGameEndPolicy): 95% of the Reclaimers' peak assets destroyed
+ * (beaconComponents.ts assetsBroken), or the mega-station fired (placeholder hook: fireMegaStation). Destroying the Beacon after it fired no
+ * longer wins (the fake-out: it gives the beam lens and the Reclamation carries on). The old ending still holds: the Beacon and both Watchers
+ * destroyed and no world held.
+ */
 export function beaconEndCheck(galaxy: Galaxy): void {
     const st = peekBeaconState(galaxy);
     if (st === null || st.phase !== 'reclamation' || st.ended || st.faction === null) return;
     if (!st.beaconDestroyed && st.beacon !== null && st.beacon.hasBeenDestroyed) st.beaconDestroyed = true;
-    // The only threat victory (framework.ts threatGameEndPolicy): the Beacon destroyed AFTER it fired its mega beam at least once.
-    // Destroyed before any launch it does not end the game. The destroyer wins; with no human destroyer, every human shares it.
-    if (st.beaconDestroyed && (st.launches ?? 0) > 0 && st.destroyVictoryDone !== true) {
-        st.destroyVictoryDone = true;
-        const killer = st.beaconKillerId === undefined ? null : (galaxy.empires.find((e) => e !== null && e.empireId === st.beaconKillerId) ?? null);
-        const humanKiller = killer !== null && isHumanEmpire(galaxy, killer);
-        threatGameEnd(galaxy, humanKiller ? killer : galaxy.playerEmpire, GameEndOutcome.Victory, T(`${TAG} Victory Title`), BEACON_CODE_DESTROYED, !humanKiller);
+    if (st.megaFired === true) {
+        st.assetVictoryDone = true;
+        endReclamation(galaxy, st, T(`${TAG} Mega Title`), BEACON_CODE_MEGA, 'Mega');
+        return;
+    }
+    if (st.assetVictoryDone !== true && assetsBroken(galaxy, st)) {
+        st.assetVictoryDone = true;
+        endReclamation(galaxy, st, T(`${TAG} Broken Title`), BEACON_CODE_ASSETS, 'Broken', Math.round(100 - assetsLeftPct(st)));
+        return;
     }
     if (!st.beaconDestroyed || liveWatchers(st).length > 0 || st.watchers.some((w) => !w.dead)) return;
     if (processingWorlds(st).length > 0 || st.faction.colonies.some((c) => !c.hasBeenDestroyed)) return;
+    endReclamation(galaxy, st, T(`${TAG} Victory Title`), BEACON_CODE_VICTORY, 'Victory');
+}
+
+/** The Reclamation is over (a victory): its news, the captives home, the leftover ships fall silent, the game ends (shared by every human). */
+function endReclamation(galaxy: Galaxy, st: BeaconState, title: string, code: number, stage: string, arg?: number): void {
+    const faction = st.faction!;
     st.ended = true;
     st.phase = 'ended';
-    arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Victory', textTag: `${TAG} Victory News` });
+    arcNews(galaxy, st.sentStages, { prefix: TAG, stage, textTag: `${TAG} ${stage} News`, args: arg === undefined ? [] : [arg] });
     // the captives still on cattle ships go home; leftover ships fall silent
     for (const c of cattleOf(st)) if (!c.ship.hasBeenDestroyed) releaseCaptives(galaxy, st, c.load, c.ship, null, null);
     st.cattle = [];
     st.cattleOrders = [];
-    for (const b of [...st.faction.builtObjects]) if (!b.hasBeenDestroyed) builtObjectCompleteTeardown(galaxy, b);
-    const player = galaxy.playerEmpire;
-    threatGameEnd(galaxy, player, GameEndOutcome.Victory, T(`${TAG} Victory Title`), BEACON_CODE_VICTORY, true);
+    for (const b of [...faction.builtObjects]) if (!b.hasBeenDestroyed) builtObjectCompleteTeardown(galaxy, b);
+    threatGameEnd(galaxy, galaxy.playerEmpire, GameEndOutcome.Victory, title, code, true);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
 // Known sites and the map
 // ---------------------------------------------------------------------------------------------------------------
+
+/** The Reclaimers' assets left, as a percentage of their peak (appended to the status of their rows once they are at war). */
+function assetsNote(st: BeaconState): string {
+    return warOn(st) && st.parts !== undefined && st.parts.peakAssets > 0 ? ' ' + T(`${TAG} Assets Status`, Math.round(assetsLeftPct(st))) : '';
+}
 
 export function beaconKnownSites(galaxy: Galaxy, empire: Empire): KnownThreatSite[] {
     const st = peekBeaconState(galaxy);
@@ -1219,7 +1244,7 @@ export function beaconKnownSites(galaxy: Galaxy, empire: Empire): KnownThreatSit
         if (level < KNOWLEDGE_SUSPECTED) continue;
         // cloaked, a nameless contact; decloaked for good (the Reclamation's fleet flagship), a Watcher by name
         const row = w.mode === 'lead' ? 'Watcher Lead' : 'Watcher';
-        out.push({ threat: BEACON_KEY, kind: 'ship', target: w.ship, level, site: { knowledge: w.knowledge }, label: T(`${TAG} ${row} Row`, placeName(galaxy, w.ship)), status: T(`${TAG} ${row} Status`) });
+        out.push({ threat: BEACON_KEY, kind: 'ship', target: w.ship, level, site: { knowledge: w.knowledge }, label: T(`${TAG} ${row} Row`, placeName(galaxy, w.ship)), status: T(`${TAG} ${row} Status`) + (row === 'Watcher Lead' ? assetsNote(st) : '') });
     }
     for (const c of st.corrupted) {
         if (c.ended !== null || c.colony.empire !== empire) continue;
@@ -1227,7 +1252,7 @@ export function beaconKnownSites(galaxy: Galaxy, empire: Empire): KnownThreatSit
         out.push({ threat: BEACON_KEY, kind: 'colony', target: c.colony, level: KNOWLEDGE_CONFIRMED, site: { knowledge: c.knowledge }, label: T(`${TAG} Corrupt Row`, c.colony.name), status: T(`${TAG} Corrupt Status`, Math.round(purgeRebelStrength(galaxy, c.colony, resistanceFactor(st, empire))).toLocaleString('en-US'), c.purge !== undefined ? T(`${TAG} Corrupt Purging`) : siphonStatus(galaxy, st, c)) });
     }
     if (st.phase === 'reclamation' && st.beacon !== null && !st.beacon.hasBeenDestroyed) {
-        out.push({ threat: BEACON_KEY, kind: 'ship', target: st.beacon, level: KNOWLEDGE_CONFIRMED, site: { knowledge: st.beaconKnowledge }, label: T(`${TAG} Beacon Row`, placeName(galaxy, st.beacon)), status: T(`${TAG} Beacon Status`, st.stats.conquests, Math.round(eliminatedPct(st))) });
+        out.push({ threat: BEACON_KEY, kind: 'ship', target: st.beacon, level: KNOWLEDGE_CONFIRMED, site: { knowledge: st.beaconKnowledge }, label: T(`${TAG} Beacon Row`, placeName(galaxy, st.beacon)), status: T(`${TAG} Beacon Status`, st.stats.conquests, Math.round(eliminatedPct(st))) + assetsNote(st) });
     }
     if (st.season !== null) {
         for (const sp of st.season.staging) {
@@ -1240,7 +1265,7 @@ export function beaconKnownSites(galaxy: Galaxy, empire: Empire): KnownThreatSit
     const cores = knownCores(st, empire);
     // only the cores this empire has learned of (from the cattle ships it destroyed or boarded); the map marks them
     for (const c of cores) {
-        out.push({ threat: BEACON_KEY, kind: 'colony', target: c.colony, level: KNOWLEDGE_CONFIRMED, glyph: 'core', label: T(`${TAG} Core Row`, c.colony.name), status: T(`${TAG} Core Status`, Math.round(c.waiting / 1e6).toLocaleString('en-US'), Math.round(c.processed / 1e6).toLocaleString('en-US')) });
+        out.push({ threat: BEACON_KEY, kind: 'colony', target: c.colony, level: KNOWLEDGE_CONFIRMED, glyph: 'core', label: T(`${TAG} Core Row`, c.colony.name), status: T(`${TAG} Core Status`, Math.round(c.waiting / 1e6).toLocaleString('en-US'), Math.round(c.processed / 1e6).toLocaleString('en-US')) + assetsNote(st) });
     }
     for (const r of processingWorlds(st)) {
         if (r.colony.empire !== st.faction || cores.some((c) => c.colony === r.colony)) continue;
@@ -1250,6 +1275,7 @@ export function beaconKnownSites(galaxy: Galaxy, empire: Empire): KnownThreatSit
 }
 
 const MARKER_COLOR = 0x8a2be2;
+const PLANET_MARKER_COLOR = 0x4fc3f7;
 
 /** Map: the staging points (those the viewer knows) and the Beacon, as the default ring marker. */
 export function beaconMapFeatures(galaxy: Galaxy, viewer: Empire | null): ScenarioMapFeatures | null {
@@ -1258,6 +1284,9 @@ export function beaconMapFeatures(galaxy: Galaxy, viewer: Empire | null): Scenar
     const markers: ScenarioMapFeatures['markers'] = [];
     if (st.beacon !== null && !st.beacon.hasBeenDestroyed) markers.push({ x: st.beacon.xpos, y: st.beacon.ypos, label: '', color: MARKER_COLOR });
     if (st.season !== null && st.season.phase === 'prep') for (const sp of st.season.staging) if (knowledgeLevel(sp, viewer) >= KNOWLEDGE_CONFIRMED) markers.push({ x: sp.x, y: sp.y, label: sp.name, color: MARKER_COLOR });
+    // the drifting precursor world, known to every empire from the Guardians' reveal on
+    const planet = planetKnown(st);
+    if (planet !== null) markers.push({ x: planet.x, y: planet.y, label: planetMarkerLabel(), color: PLANET_MARKER_COLOR });
     // (no harvest-core marker: a Reclaimer-held world looks like any taken planet on the map; the threat lists name it)
     return markers.length === 0 ? null : { markers, routes: [] };
 }
@@ -1515,6 +1544,7 @@ export function registerBeacon(): void {
         return out;
     });
     registerScenarioMapFeatures(BEACON_KEY, beaconMapFeatures);
+    registerComponents();
     registerCounterplay();
     registerBeaconAi();
     registerHarvest();

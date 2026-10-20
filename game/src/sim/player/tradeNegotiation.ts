@@ -93,6 +93,9 @@ export function tradeableItemIndexOf(list: readonly TradeableItem[], tradeableIt
             case TradeableItemType.ResearchProject:
                 if (isTechNode(other.item) && isTechNode(tradeableItem.item) && other.item.def.projectId === tradeableItem.item.def.projectId) return index;
                 break;
+            case TradeableItemType.ScenarioPart:
+                if ((other.item as { part?: string }).part === (tradeableItem.item as { part?: string }).part) return index;
+                break;
             case TradeableItemType.SecretLocation:
                 if (other.item instanceof GalaxyLocation) {
                     if (other.item === tradeableItem.item) return index;
@@ -201,6 +204,9 @@ export function tradeItemLabel(galaxy: Galaxy, item: TradeableItem, showValue = 
             break;
         case TradeableItemType.IndependentColonyLocation:
             if (item.item instanceof Habitat) str1 = item.item.name;
+            break;
+        case TradeableItemType.ScenarioPart:
+            str1 = String((item.item as { label?: string } | null)?.label ?? '');
             break;
     }
     if (
@@ -425,6 +431,7 @@ export function tradeTreeRows(galaxy: Galaxy, tree: TradeTree): TradeTreeGroup[]
         if (isHumanEmpire(galaxy, tree.otherEmpire)) text3 = 'Secret Location';
         return valued(text3, t);
     });
+    group('Mega-station parts', TradeableItemType.ScenarioPart, (t) => valued(String((t.item as { label?: string }).label ?? ''), t));
     group('Research', TradeableItemType.ResearchProject, (t) => valued(isTechNode(t.item) ? t.item.def.name : '', t));
     group('Declare War on...', TradeableItemType.DeclareWarOther, (t) => valued((t.item as Empire).name, t));
     group('Initiate Trade Sanctions against...', TradeableItemType.InitiateTradeSanctionsOther, (t) => valued((t.item as Empire).name, t));

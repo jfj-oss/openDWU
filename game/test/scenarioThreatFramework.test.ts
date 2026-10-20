@@ -218,8 +218,11 @@ import { rebuildIndexes } from '../src/sim/indexRebuild';
 import { SystemVisibilityStatus } from '../src/sim/visibility';
 import { completeWork, greatWorkIsHostile, greatWorkKind, type GreatWorkSite } from '../src/sim/scenario/threats/giantworks/framework';
 import { defaultMessageOptions, routeEmpireMessage } from '../src/sim/messageRouting';
-import { watcherVariant, beaconBuildRate, beaconComplete, beaconEndCheck, beaconKind, beaconKnownSites, beaconLooks, beaconRolled, beaconShipRole, beaconSuppliers, cloakLapsedFor, corrupt, corruptCandidates, watchersPeriodic } from '../src/sim/scenario/threats/giantworks/beacon';
+import { beaconMapFeatures, watcherVariant, beaconBuildRate, beaconComplete, beaconEndCheck, beaconKind, beaconKnownSites, beaconLooks, beaconRolled, beaconShipRole, beaconSuppliers, cloakLapsedFor, corrupt, corruptCandidates, watchersPeriodic } from '../src/sim/scenario/threats/giantworks/beacon';
 import { beaconPosition, peekBeaconState, salvageStepsOf, warOn, siphonGateOpen, siphonOf, type BeaconState, type CattleRec } from '../src/sim/scenario/threats/giantworks/beaconState';
+import { performResearch } from '../src/sim/researchTick';
+import { TradeOfferResponse, TradeableItem, TradeableItemType, evaluateTradeOffer, giveTradeableItem, resolveTradeableItems } from '../src/sim/tradeItems';
+import { assetsBroken, assetsLeftPct, awardPart, blueprintProgress, blueprintShare, creditCapitalKill, creditFoundryKill, fireMegaStation, heldParts, partCount, partNeeded, partTradeAllowed, partsOf, partsPass, planetKnown, planetWatch } from '../src/sim/scenario/threats/giantworks/beaconComponents';
 import { arrivalPoint, beginSeason, driveWatcherFleets, fireBeam, startBeamCountdown, startWar, watcherTargetValue, designFor, groupCarryRegiments, scriptedBudget, seasonBudget, landingPlan, lossCheck, noticedGathering, planetStrike, reclamationMonthly, reclamationPeriodic, spawnShip, supplyTroops, targetCandidates } from '../src/sim/scenario/threats/giantworks/beaconFleet';
 import { coalitionMembers, coalitionPass } from '../src/sim/scenario/threats/giantworks/beaconAi';
 import { podWorld, assignEscorts, escortPlan, interceptsAt, noteIntercept, beaconArtInfo, cattleDesign, cattleOf, coreCountFor, coreTarget, coresOf, freeShare, fuelOf, cattleDamage, cattleRepairFactor, cattleStep, feedersOf, harvestMonthly, harvestPeriodic, liveCores, pickCore, poolOf, poolTarget, rescueCattle } from '../src/sim/scenario/threats/giantworks/beaconHarvest';
@@ -252,7 +255,7 @@ import { empireShipGroups } from '../src/sim/fleets/shipGroup';
 import { aiReview } from '../src/sim/scenario/threats/giantworks/ai';
 import { ShipGroup } from '../src/sim/fleets/shipGroup';
 import { FleetPosture } from '../src/sim/diplomacyTick';
-import { threatGameEndPolicy, threatGameEnd } from '../src/sim/scenario/threats/framework';
+import { threatGameEndPolicy, threatGameEnd, threatGameEndAllowed } from '../src/sim/scenario/threats/framework';
 import { GameEndOutcome, GameEndEventArgs, setGameEndHandler } from '../src/sim/victory';
 // These tests cover each ending's own mechanics; the user's rule that only the Beacon's endings end the game (threatGameEndPolicy)
 // is tested in scenarioThreatFramework.test.ts ("threat game-end policy").
@@ -6762,7 +6765,7 @@ describe('the Beacon (Giantworks wonder)', () => {
             setGameEndHandler(g, null);
         }
     }, 900000);
-    it('the Beacon destroyed before it ever launched does not end the game; destroyed after a launch it does (victory)', () => {
+    it('the Beacon destroyed, before or after it launched, no longer ends the game; after a launch the destroyer gets the beam lens', () => {
         const keep = threatGameEndPolicy.restrict;
         threatGameEndPolicy.restrict = true;
         try {
@@ -6770,24 +6773,210 @@ describe('the Beacon (Giantworks wonder)', () => {
                 const { g, st } = completed();
                 const ends: GameEndEventArgs[] = [];
                 setGameEndHandler(g, (e) => ends.push(e));
-                const [a] = normalsOf(g);
+                const [a, b] = normalsOf(g);
                 if (launched) st.launches = 1;
                 scenarioEmit(g, 'builtObjectKilledBy', { builtObject: st.beacon!, destroyer: a });
                 expect(st.beaconDestroyed).toBe(true);
                 beaconEndCheck(g);
-                if (launched) {
-                    expect(ends.map((e) => [e.code, e.outcomeForPlayer])).toEqual([[2152, GameEndOutcome.Victory]]);
-                    beaconEndCheck(g);
-                    expect(ends.length).toBe(1); // once
-                } else {
-                    expect(ends).toEqual([]);
-                }
+                beaconEndCheck(g);
+                expect(ends).toEqual([]);
+                expect(st.ended).toBe(false);
+                expect(partCount(st, a, 'beamLens')).toBe(launched ? 1 : 0);
+                expect(partCount(st, b, 'beamLens')).toBe(0);
                 setGameEndHandler(g, null);
             }
         } finally {
             threatGameEndPolicy.restrict = keep;
         }
     }, 900000);
+    it('the new victories: 95% of the Reclaimers\' peak assets destroyed, or the mega-station fired; the code policy allows only those and the Beacon\'s defeat', () => {
+        const keep = threatGameEndPolicy.restrict;
+        threatGameEndPolicy.restrict = true;
+        try {
+            expect(threatGameEndAllowed(2152)).toBe(false);
+            expect(threatGameEndAllowed(2153)).toBe(true);
+            expect(threatGameEndAllowed(2154)).toBe(true);
+            expect(threatGameEndAllowed(2051)).toBe(true);
+            // 40% left: no victory; 5%: victory; once
+            const { g, st } = completed();
+            const ends: GameEndEventArgs[] = [];
+            setGameEndHandler(g, (e) => ends.push(e));
+            st.launches = 1;
+            const rec = partsOf(st);
+            rec.shipUnit = 10;
+            rec.peakAssets = 100000;
+            rec.lastAssets = 40000;
+            beaconEndCheck(g);
+            expect(ends).toEqual([]);
+            expect(assetsLeftPct(st)).toBeCloseTo(40);
+            rec.lastAssets = 5000;
+            expect(assetsBroken(g, st)).toBe(true);
+            beaconEndCheck(g);
+            expect(ends.map((e) => [e.code, e.outcomeForPlayer])).toEqual([[2153, GameEndOutcome.Victory]]);
+            expect(st.ended).toBe(true);
+            // a peak that never was a force does not count
+            const c = completed();
+            c.st.launches = 1;
+            partsOf(c.st).shipUnit = 10;
+            partsOf(c.st).peakAssets = 100;
+            partsOf(c.st).lastAssets = 0;
+            expect(assetsBroken(c.g, c.st)).toBe(false);
+            // the mega-station hook
+            const d = completed();
+            const ends2: GameEndEventArgs[] = [];
+            setGameEndHandler(d.g, (e) => ends2.push(e));
+            fireMegaStation(d.g);
+            beaconEndCheck(d.g);
+            expect(ends2.map((e) => e.code)).toEqual([2154]);
+            setGameEndHandler(g, null);
+            setGameEndHandler(d.g, null);
+        } finally {
+            threatGameEndPolicy.restrict = keep;
+        }
+    }, 900000);
+    it('the Reclamation goes on without the Beacon: seasons begin and ships are made at its biggest held world', () => {
+        const { g, st } = completed();
+        const f = st.faction!;
+        f.stateMoney = 1e9;
+        st.launches = 1;
+        const victim = normalsOf(g)[1];
+        const world = victim.colonies.find((c) => c !== victim.capital && c.population.totalAmount > 0)!;
+        takeOwnershipOfColonyFull(g, victim, world, f, false, false);
+        scenarioEmit(g, 'builtObjectKilledBy', { builtObject: st.beacon!, destroyer: normalsOf(g)[0] });
+        g.nowMs += 100 * GAME_DAY_LENGTH;
+        reclamationPeriodic(g);
+        expect(st.yard).toEqual({ x: world.xpos, y: world.ypos });
+        expect(beaconPosition(st)).toEqual({ x: world.xpos, y: world.ypos });
+        expect(st.season).not.toBeNull();
+        expect(st.season!.phase).toBe('prep');
+        expect(st.ended).toBe(false);
+        // later seasons too: the quiet ends and the next begins
+        st.season!.phase = 'quiet';
+        st.season!.end = galaxyStarDate(g) - 1;
+        g.nowMs += 5 * GAME_DAY_LENGTH;
+        reclamationPeriodic(g);
+        expect(st.stats.seasons).toBeGreaterThanOrEqual(1);
+    }, 900000);
+    it('parts: credit goes to the empire whose ship made the kill; capitals count toward 30; a captured capital hands its parts to the captor', () => {
+        const { g, st } = completed();
+        const [a, b, c] = normalsOf(g);
+        // a Watcher: the cloak lattice
+        scenarioEmit(g, 'builtObjectKilledBy', { builtObject: st.watchers[0].ship!, destroyer: a });
+        expect(partCount(st, a, 'cloakLattice')).toBe(1);
+        expect(partCount(st, b, 'cloakLattice')).toBe(0);
+        // a harvester: the link conduit (the core is made by hand)
+        const colony = normalsOf(g)[1].colonies.find((x) => x.population.totalAmount > 0)!;
+        takeOwnershipOfColonyFull(g, normalsOf(g)[1], colony, st.faction!, false, false);
+        const core = (st.cores ?? []).find((x) => x.ended === null) ?? null;
+        if (core !== null && core.harvester !== null) {
+            scenarioEmit(g, 'builtObjectKilledBy', { builtObject: core.harvester, destroyer: b });
+            expect(partCount(st, b, 'linkConduit')).toBe(1);
+        }
+        // capitals: mind fragments, 30 needed
+        const ships = st.faction!.builtObjects.filter((x) => !x.hasBeenDestroyed && x !== st.beacon && !st.watchers.some((w) => w.ship === x));
+        expect(ships.length).toBeGreaterThan(0);
+        for (let i = 0; i < 31; i++) {
+            const s = ships[i % ships.length];
+            s.subRole = BuiltObjectSubRole.CapitalShip;
+            scenarioEmit(g, 'builtObjectKilledBy', { builtObject: s, destroyer: c });
+        }
+        expect(partCount(st, c, 'mindFragments')).toBe(31);
+        expect(partNeeded(g, 'mindFragments')).toBe(30);
+        // foundries do not exist yet: the hook
+        creditFoundryKill(g, st, c);
+        expect(partCount(st, c, 'voidFrames')).toBe(1);
+        // no credit for the independents, the faction itself or no one
+        creditCapitalKill(g, st, null);
+        creditCapitalKill(g, st, st.faction!);
+        expect(partCount(st, c, 'mindFragments')).toBe(31);
+        // c's capital is taken by a: everything c holds goes to a
+        scenarioEmit(g, 'capitalLost', { empire: c, colony: c.colonies[0], capturer: a });
+        expect(partCount(st, c, 'mindFragments')).toBe(0);
+        expect(partCount(st, a, 'mindFragments')).toBe(31);
+        expect(partCount(st, a, 'voidFrames')).toBe(1);
+        expect(partCount(st, a, 'cloakLattice')).toBe(1);
+    }, 900000);
+    it('parts are tradeable between empires on good terms and refused on bad ones', () => {
+        const { g, st } = completed();
+        const [a, b] = normalsOf(g);
+        awardPart(g, st, a, 'beamLens', true);
+        awardPart(g, st, a, 'mindFragments', true);
+        // default attitudes are below the bar: nothing is offered
+        g.scenario!.params.beaconPartTradeAttitude = 1000;
+        expect(resolveTradeableItems(g, a, b, false, false).some((t) => t.type === TradeableItemType.ScenarioPart)).toBe(false);
+        g.scenario!.params.beaconPartTradeAttitude = -1000;
+        const items = resolveTradeableItems(g, a, b, false, false).filter((t) => t.type === TradeableItemType.ScenarioPart);
+        expect(items.map((t) => (t.item as { part: string }).part).sort()).toEqual(['beamLens', 'mindFragments']);
+        expect(items[0].toString(false)).not.toBe('');
+        // at war: refused
+        const dr = obtainDiplomaticRelation(a, b);
+        const keep = dr.type;
+        dr.type = DiplomaticRelationType.War;
+        expect(partTradeAllowed(g, a, b)).toBe(false);
+        expect(resolveTradeableItems(g, a, b, false, false).some((t) => t.type === TradeableItemType.ScenarioPart)).toBe(false);
+        dr.type = keep;
+        // the item changes hands
+        giveTradeableItem(g, a, b, items.find((t) => (t.item as { part: string }).part === 'beamLens')!, null);
+        expect(partCount(st, a, 'beamLens')).toBe(0);
+        expect(partCount(st, b, 'beamLens')).toBe(1);
+        // the evaluation refuses when the giver will not hand them over
+        g.scenario!.params.beaconPartTradeAttitude = 1000;
+        const ask = new TradeableItem(TradeableItemType.ScenarioPart, { part: 'mindFragments', label: 'x' }, 30000);
+        expect(evaluateTradeOffer(g, a, b, [new TradeableItem(TradeableItemType.Money, 1e6, 1e6)], [ask], false)).toBe(TradeOfferResponse.Refuse);
+    }, 900000);
+    it('the Guardians\' reveal a year after the first beam, the blueprint for every empire that reaches the planet, and the research sink; all of it saved', () => {
+        const { g, st, game, gameData } = completed();
+        const [a, b] = normalsOf(g);
+        st.launches = 1;
+        const now = galaxyStarDate(g);
+        partsOf(st).firstBeam = now;
+        g.nowMs += 300 * GAME_DAY_LENGTH;
+        partsPass(g, st, galaxyStarDate(g));
+        expect(planetKnown(st)).toBeNull();
+        g.nowMs += 70 * GAME_DAY_LENGTH;
+        partsPass(g, st, galaxyStarDate(g));
+        const place = planetKnown(st)!;
+        expect(place).not.toBeNull();
+        expect(place.x).toBeGreaterThan(0);
+        // every empire knows: the map marker is there for a viewer, and no star is near
+        expect(beaconMapFeatures(g, a)!.markers.some((m) => m.x === place.x && m.y === place.y)).toBe(true);
+        for (const sys of g.systems) if (sys?.systemStar) expect(g.calculateDistance(sys.systemStar.xpos, sys.systemStar.ypos, place.x, place.y)).toBeGreaterThan(30000);
+        // an empire's ship arrives: its own blueprint (the other empire has none yet)
+        const ship = a.builtObjects.find((x) => !x.hasBeenDestroyed && x.role !== BuiltObjectRole.Base)!;
+        ship.xpos = place.x + 100;
+        ship.ypos = place.y;
+        planetWatch(g);
+        expect(heldParts(st, a)?.blueprint).toBeDefined();
+        expect(heldParts(st, b)?.blueprint).toBeUndefined();
+        expect(st.parts!.visited).toEqual([a.empireId]);
+        expect(blueprintShare(st, a)).toBeCloseTo(0.25);
+        expect(scenarioQuery(g, 'researchSinkShare', 0, { empire: a, industry: 0 })).toBeCloseTo(0.25);
+        expect(scenarioQuery(g, 'researchSinkShare', 0, { empire: b, industry: 0 })).toBe(0);
+        // the stock research pass feeds it
+        const before = heldParts(st, a)!.blueprint!.progress;
+        performResearch(g, a, 600, false);
+        expect(heldParts(st, a)!.blueprint!.progress).toBeGreaterThan(before);
+        // finished
+        g.scenario!.params.beaconBlueprintCost = 10;
+        scenarioEmit(g, 'researchSunk', { empire: a, industry: 0, points: 11 });
+        expect(heldParts(st, a)!.blueprint!.done).toBe(true);
+        expect(blueprintShare(st, a)).toBe(0);
+        expect(blueprintProgress(g, st, a)).toBe(1);
+        // the AI sends a ship some weeks later
+        g.nowMs += 250 * GAME_DAY_LENGTH;
+        partsPass(g, st, galaxyStarDate(g));
+        expect(Object.keys(st.parts!.sent ?? {}).length).toBeGreaterThan(0);
+        // save and load: parts, blueprint, planet, yard
+        awardPart(g, st, b, 'linkConduit', true);
+        const time = new GalaxyTime();
+        time.bindGalaxy(g);
+        const text = serializeGame(game, time, {} as StartGameOptions);
+        const lg = deserializeGame(text, gameData).game.galaxy;
+        const ls = peekBeaconState(lg)!;
+        expect(JSON.stringify(ls.parts)).toBe(JSON.stringify(st.parts));
+        expect(planetKnown(ls)).toEqual(place);
+        expect(stateDigest(lg)).toBe(stateDigest(g));
+    }, 1800000);
     it('the AI coalition against the Beacon: the members gather their free fleets at a waypoint, strike the Beacon together, and are released when it falls', () => {
         const { g, st } = completed();
         st.popEliminated = st.popBaseline * 0.2;
