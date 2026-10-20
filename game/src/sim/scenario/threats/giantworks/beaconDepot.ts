@@ -8,7 +8,7 @@
 //     With no depot alive (once the first was raised) new biofuel cannot be stored: it is there only until the fleet passes have spent it (beaconDepotSettleDays)
 //     and the rest is lost. Before the first depot the stock (the awakening reserve) is kept as it always was.
 //   REBUILDING: a destroyed depot is replaced slowly, one per beaconDepotRebuildDays, paid beaconDepotRebuildFuelPct % of the reference military from the fleet
-//     biofuel, at a held core (the nearest to the old site); never above the cap.
+//     biofuel as it allows (what comes in pays for it even when no depot stands), at a held core (the nearest to the old site); never above the cap.
 //   DEFENCE: beaconDepotGuardShips ships stand guard (rebuilt every beaconDepotGuardRebuildDays); a threatened depot is a threatened held world to the response
 //     fleets (beaconResponse.ts threatsOf asks depotThreats).
 //   KNOWLEDGE: an empire that has seen a depot knows it (the Knowledge page, src/ui/knowledgeView.ts, lists depotsKnownTo); the destroyer's message says how much of
@@ -78,6 +78,8 @@ export interface DepotState {
     toRebuild: number;
     lastBuild: number;
     lastRebuild: number;
+    /** Biofuel already paid toward the replacement being made (it is paid as the fuel allows, so a Reclaimer with no depot left can still rebuild from what comes in). */
+    rebuildFund: number;
     /** With no depot: the income already counted and when unstored fuel was first seen (null: none). */
     incomeSeen: number;
     unstoredSince: number | null;
@@ -128,7 +130,7 @@ export function depotCap(galaxy: Galaxy): number {
 }
 
 function newDepotState(): DepotState {
-    return { list: [], nextId: 1, rndCounter: 0, pending: [], coreSeen: [], procSeen: [], armed: false, toRebuild: 0, lastBuild: -1e18, lastRebuild: -1e18, incomeSeen: 0, unstoredSince: null, destroyedBy: {}, stats: {} };
+    return { list: [], nextId: 1, rndCounter: 0, pending: [], coreSeen: [], procSeen: [], armed: false, toRebuild: 0, lastBuild: -1e18, lastRebuild: -1e18, rebuildFund: 0, incomeSeen: 0, unstoredSince: null, destroyedBy: {}, stats: {} };
 }
 
 export function depotsOf(st: BeaconState): DepotState {
@@ -309,9 +311,10 @@ function buildPass(galaxy: Galaxy, st: BeaconState, ds: DepotState, now: number)
         const h = rebuildHost(galaxy, st, last?.x ?? 0, last?.y ?? 0);
         if (h === null) return;
         const cost = (referenceMilitary(galaxy, faction) * D.rebuildFuelPct(galaxy)) / 100;
-        if (fuelOf(st).fleet < cost) return;
+        ds.rebuildFund += payFleet(st, Math.max(0, cost - ds.rebuildFund));
+        if (ds.rebuildFund + 1e-9 < cost) return;
         if (raiseDepot(galaxy, st, ds, h) !== null) {
-            payFleet(st, cost);
+            ds.rebuildFund = 0;
             ds.toRebuild--;
             ds.lastRebuild = now;
             stat(ds, 'rebuilt');

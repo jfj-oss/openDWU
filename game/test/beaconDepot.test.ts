@@ -242,13 +242,24 @@ describe('the Reclaimer biofuel depots', () => {
         expect(liveDepots(st).length).toBe(want);
         expect(fuel.fleet).toBeLessThan(stock);
         expect(st.depots!.stats.rebuilt).toBe(1);
-        // cannot afford it: it waits
+        // no fuel to pay with: it waits; fuel that comes in pays for it by degrees
         const second = liveDepots(st)[0];
         second.base!.hasBeenDestroyed = true;
         depotPass(g);
         fuel.fleet = 0;
         run(g, 1, D.rebuildDays(g) + 1);
         expect(liveDepots(st).length).toBe(want - 1);
+        fuel.fleet = 1;
+        run(g, 1, 2);
+        expect(liveDepots(st).length).toBe(want - 1);
+        expect(st.depots!.rebuildFund).toBeGreaterThan(0);
+        fuel.fleet = 1e12;
+        run(g, 1, 2);
+        expect(liveDepots(st).length).toBe(want);
+        expect(st.depots!.rebuildFund).toBe(0);
+        const third = liveDepots(st)[0];
+        third.base!.hasBeenDestroyed = true;
+        depotPass(g);
         // the cap holds: with the cap at the standing number a replacement is not made
         fuel.fleet = 1e12;
         g.scenario!.params.beaconDepotCount = want - 1;
