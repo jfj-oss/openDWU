@@ -126,6 +126,7 @@ import { beaconTechSlowed } from './beaconTech';
 import './beaconDiet';
 import { ensureFoundries, foundryOf, registerFoundry } from './beaconFoundry';
 import { registerMega } from './megaStation';
+import { depotOf, registerDepot } from './beaconDepot';
 import { counterIntelligencePass, counterMonthly, onBoarded, onKilledForSalvage, registerCounterplay, resistanceFactor } from './beaconCounter';
 import './beaconRelocation'; // population relocation (registers its passes and queries)
 import './beaconInterceptors'; // the refugee interceptors (registers its tick)
@@ -1352,7 +1353,7 @@ export function beaconShipRole(st: BeaconState, bo: BuiltObject): BeaconShipRole
     if (st.watchers.some((w) => w.ship === bo)) return 'watcher';
     if (bo.isPlanetDestroyer) return 'planetDestroyer';
     if ((st.cattle ?? []).some((c) => c.ship === bo)) return 'cattle';
-    if ((st.cores ?? []).some((c) => c.harvester === bo) || foundryOf(st, bo) !== null) return 'harvester'; // (a foundry wears the harvester's look)
+    if ((st.cores ?? []).some((c) => c.harvester === bo) || foundryOf(st, bo) !== null || depotOf(st, bo) !== null) return 'harvester'; // (a foundry and a depot wear the harvester's look)
     switch (bo.subRole) {
         case BuiltObjectSubRole.CapitalShip:
             return 'capital';
@@ -1563,6 +1564,7 @@ export function registerBeacon(): void {
     registerPursuit();
     registerFoundry();
     registerMega();
+    registerDepot();
 }
 
 registerBeacon();

@@ -48,7 +48,7 @@ export async function start(ctx) {
     const { load, g, report } = ctx;
     reportRef = report;
     M = {
-        bs: await load('beaconState'), bf: await load('beaconFleet'), bc: await load('beaconCounter'), bh: await load('beaconHarvest').catch(() => null), br: await load('beaconResponse').catch(() => null), bp: await load('beaconPursuit').catch(() => null), bfd: await load('beaconFoundry').catch(() => null), beacon: await load('beacon'),
+        bs: await load('beaconState'), bf: await load('beaconFleet'), bc: await load('beaconCounter'), bh: await load('beaconHarvest').catch(() => null), br: await load('beaconResponse').catch(() => null), bp: await load('beaconPursuit').catch(() => null), bfd: await load('beaconFoundry').catch(() => null), beacon: await load('beacon'), bdp: await load('beaconDepot').catch(() => null),
         thr: await load('threats'), hooks: await load('scnHooks'), own: await load('ownership').catch(() => null), gw: await load('gwState'), gwf: await load('gwFramework'), life: await load('gwLifecycle'), rob: await load('thRobot'), tf: await load('thFramework'), dip: await load('diplomacyTick'), mis: await load('missions'),
     };
     if (process.env.BEACON_TIMING === '1') {
@@ -534,6 +534,11 @@ function sample(ctx, g) {
             const fs = st.foundries;
             report.beacon.foundry = { alive: M.bfd.liveFoundries(st).length, initial: fs.initial, capacity: r2(M.bfd.capacity(st)), built: fs.list.reduce((a, f) => a + f.built, 0), builtBy: fs.list.map((f) => f.built), fresh: fs.fresh.length, held: fs.held.length, stats: { ...fs.stats }, destroyedBy: { ...fs.destroyedBy }, techPieces: { ...fs.techPieces }, known: fs.list.map((f) => f.knowledge.length) };
             s.fd = [report.beacon.foundry.alive, report.beacon.foundry.built];
+        }
+        if (M.bdp && st.depots) {
+            const ds = st.depots;
+            report.beacon.depot = { ...M.bdp.depotSummary(g, st), pendingNow: ds.pending.length, list: ds.list.map((d) => [d.id, d.status, Math.round(d.burned * 100) / 100, d.destroyedBy]) };
+            s.dp = [report.beacon.depot.alive, ds.stats.destroyed ?? 0, Math.round(report.beacon.depot.fuel)];
         }
         report.beacon.final = { response: M.br ? M.br.responseSummary(st) : null, pursuit: M.bp ? M.bp.pursuitSummary(st) : null, y: s.y, phase: st.phase, ended: st.ended, elim: s.elim, stats: { ...st.stats }, seasons: st.stats.seasons, salvage: st.salvage.map((x) => [x.empireId, x.points, x.steps]),
             bargains: st.bargains.map((b) => [b.empireId, b.kind, b.discovered, b.ended]), watchersDead: st.watchers.filter((w) => w.dead).length, beaconDestroyed: st.beaconDestroyed, processingNow: s.proc,

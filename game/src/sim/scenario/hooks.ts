@@ -251,6 +251,8 @@ export interface ScenarioEvents {
     builtObjectDestroyed: { builtObject: BuiltObject };
     /** beaconFoundry.ts foundryDestroyed: a Reclaimer foundry was destroyed by `empire` (null: no empire); `foundry` is its record (plain data: position, status). */
     foundryDestroyed: { empire: Empire | null; foundry: import('./threats/giantworks/beaconFoundry').FoundryRec };
+    /** beaconDepot.ts depotFell: a Reclaimer biofuel depot was destroyed by `empire` (null: no empire); `depot` is its record (burned = the share of the fuel that went with it). */
+    depotDestroyed: { empire: Empire | null; depot: import('./threats/giantworks/beaconDepot').DepotRec };
     /**
      * civilianAI.ts assignMissionConstructionShip end (Empire.5.cs 2669, end of case ConstructionShip) and
      * pirateShipMissions.ts pirateAssignConstructionShip end (Empire.1.cs 5116): the stock AI found no task and the

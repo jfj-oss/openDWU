@@ -18,6 +18,7 @@ import { GAME_DAY_LENGTH } from '../../hooks';
 import { peekThreatState, threatState, type SentStages, type ThreatKnowledge } from '../framework';
 import type { GreatWorkSite } from './types';
 import type { FoundryState } from './beaconFoundry';
+import type { DepotState } from './beaconDepot';
 
 export const BEACON_KEY = 'beacon';
 export const BEACON_FLAG = 'gwBeacon';
@@ -787,6 +788,8 @@ export interface BeaconState {
     pursuit?: PursuitRec;
     /** The Reclaimer foundries (beaconFoundry.ts; raised when the Beacon is finished, absent in older saves until their first reclamation pass). */
     foundries?: FoundryState;
+    /** The biofuel depots (beaconDepot.ts; made on the first reclamation pass, absent in older saves until then). */
+    depots?: DepotState;
     /** The refugee interceptors (beaconInterceptors.ts; absent before they first ran and in older saves). */
     interceptors?: InterceptorRec;
     /** The harvest (beaconHarvest.ts; absent before it first ran): cores (live and ended, the last 40 kept), cattle ships in flight, worlds

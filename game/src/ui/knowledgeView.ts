@@ -18,6 +18,7 @@ import { peekThreatState } from '../sim/scenario/threats/framework';
 import { beaconKnownSites } from '../sim/scenario/threats/giantworks/beacon';
 import { peekBeaconState, warOn, type BeaconState } from '../sim/scenario/threats/giantworks/beaconState';
 import { beaconArtInfo, knownCores } from '../sim/scenario/threats/giantworks/beaconHarvest';
+import { depotsKnownTo } from '../sim/scenario/threats/giantworks/beaconDepot';
 import { eliminatedPct } from '../sim/scenario/threats/giantworks/beaconFleet';
 import { giantworksCompactSites, giantworksKnownSites } from '../sim/scenario/threats/giantworks/knowledge';
 import { sightingLogOf } from '../render/beaconCloakFx';
@@ -106,6 +107,24 @@ registerKnowledgeSection('foundries', 'Foundries', (g, e) => {
 });
 registerKnowledgeSection('holdouts', 'Precursor holdouts', (g, e) => {
     const rows = holdoutKnowledgeRows(g, e).map((r): KnowledgeRow => ({ ...knowledgeRow(r.key, r.what, r.where, r.status), goTo: r.goTo }));
+    return rows.length > 0 ? rows : null;
+});
+// The Reclaimers' biofuel depots the viewer has seen (beaconDepot.ts): standing ones click to centre; a destroyed one stays listed, with what burned.
+registerKnowledgeSection('depots', 'Fuel depots', (galaxy, empire) => {
+    const st = peekBeaconState(galaxy);
+    if (st === null) return null;
+    const rows = depotsKnownTo(st, empire).map((d): KnowledgeRow => {
+        const alive = d.status === 'active' && d.base !== null && !d.base.hasBeenDestroyed;
+        return {
+            key: `depot:${d.id}`,
+            what: scenarioText('Beacon Depot Row', scenarioText('Beacon Depot Name', d.id)),
+            where: alive ? placeOf(galaxy, d.base!) : systemNear(galaxy, { xpos: d.x, ypos: d.y }),
+            status: alive ? scenarioText('Beacon Depot Status') : scenarioText('Beacon Depot Status Destroyed', Math.round(d.burned * 100)),
+            goTo: alive ? d.base : null,
+            point: alive ? null : { x: d.x, y: d.y },
+            fade: alive ? 1 : 0.5,
+        };
+    });
     return rows.length > 0 ? rows : null;
 });
 registerKnowledgeSection('sleepers', 'Sleeper warnings', () => null); // TODO(doppelgangers): sleeper warnings the viewer has

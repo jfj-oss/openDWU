@@ -500,6 +500,14 @@ Beacon Foundry Destroyed News;{0} has destroyed one of the places the machines a
 Beacon Foundry Investigation Title;Foundry investigation
 Beacon Foundry Investigation Found;{0} has returned from {1}. Its defences amount to {2}, and it has made {3} of their warships.
 Beacon Foundry Investigation Nothing;{0} could learn nothing more about {1}.
+Beacon Depot Design;Depot
+Beacon Depot Name;Depot {0}
+Beacon Depot Row;{0}
+Beacon Depot Status;TODO-PROSE: a Reclaimer biofuel depot; it holds a share of their fleet fuel.
+Beacon Depot Status Destroyed;TODO-PROSE: destroyed; {0}% of their fuel burned with it.
+Beacon Depot Destroyed Title;TODO-PROSE: Depot destroyed
+Beacon Depot Destroyed;TODO-PROSE: {0} is destroyed and {1}% of the Reclaimers' fuel burned with it. {2} of {3} depots remain.
+Beacon Depot Destroyed News;TODO-PROSE: {0} has destroyed a Reclaimer fuel depot; {1}% of their fuel burned. {2} depots remain.
 Knowledge Section Beacon;The Beacon
 Knowledge Section Cores;Known harvest cores
 Knowledge Section Harvesters;Known harvesters

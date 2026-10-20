@@ -25,6 +25,7 @@ import { P, aliveShips, beaconPosition, type BeaconState, type ResponseFleet, ty
 import { ENGAGE_RANGE, WAVE_CYCLE, defencePosts, designFor, distTo, enemyStrengthNear, groupCountFor, patrol, processingWorlds, scriptedBudget, spawnShip, strengthOf } from './beaconFleet';
 import { freeShare, fuelOf, liveCores, payFleet } from './beaconHarvest';
 import { buildPoint, foundryBatch, noteBirth } from './beaconFoundry';
+import { depotThreats } from './beaconDepot';
 
 /** Most ships one fleet is built to, and ships one fleet takes from the bank in one pass. */
 const FLEET_SHIPS_MAX = 24;
@@ -161,6 +162,15 @@ function threatsOf(galaxy: Galaxy, st: BeaconState, rs: ResponseRec, now: number
         if (e > 0 || enemyLanded(st, h)) {
             out.push({ world: h, enemy: e, core: cores.has(h) });
             seen.add(h);
+        }
+    }
+    // a depot in danger is a held world in danger (its host world, the enemy near the depot itself)
+    for (const t of depotThreats(galaxy, st)) {
+        const known = out.find((o) => o.world === t.world);
+        if (known !== undefined) known.enemy = Math.max(known.enemy, t.enemy);
+        else {
+            out.push({ world: t.world, enemy: t.enemy, core: cores.has(t.world) });
+            seen.add(t.world);
         }
     }
     rs.alerts = rs.alerts.filter((a) => now - a.date <= days(ALERT_DAYS) && a.world.empire === st.faction);
