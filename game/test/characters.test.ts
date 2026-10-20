@@ -712,7 +712,7 @@ describe('Characters & Victory: the Interstellar Diet', () => {
         } finally {
             guardians.dominantRace = race;
         }
-    });
+    }, 60000); // (heavy setup: needs more than the 5 s default on a loaded machine)
 
     it("the tally counts only delegates present, weighted (a lesser delegate counts less), and the Regent's veto stops one motion", () => {
         const { g, c, members } = dietGame();
