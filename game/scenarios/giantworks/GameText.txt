@@ -488,5 +488,4 @@ Knowledge Tip Purge;The corrupted worlds feed the Great Work. Purge them before 
 Knowledge Tip Watchers;Something vast was seen, and then was not. It may still be there.
 Knowledge Tip Beacon Fortify;They take the nearest worlds first. Fortify {0} before the light comes.
 Knowledge Tip Beacon Nearest;your nearest colonies
-Knowledge Tip Beacon Diet;TODO-PROSE Propose the Diet's evacuation of the worlds near the Beacon before the first beam.
 Knowledge Tip Beacon Diet;The worlds near the Great Work will be the first to fall. Ask the Diet to move their people now.
