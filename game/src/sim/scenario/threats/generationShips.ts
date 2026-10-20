@@ -99,6 +99,7 @@ import {
     type ThreatKnowledge,
 } from './framework';
 import { agreedHandover } from './crisis';
+import { age2ArkFlavour, age2ArkTechLevel, ensureArkShields, onArkScoutContact } from './giantworks/age2Arks';
 
 export const GEN_SHIPS_KEY = 'generationShips';
 export const GEN_SHIPS_FLAG = 'threatGenerationShips';
@@ -203,6 +204,8 @@ export interface GenShipsState {
     launches?: number;
     /** The world ship's sublight speed floor and turn-rate scale have been applied (saves from before lack it; the periodic applies them once). */
     wsLimited?: boolean;
+    /** Age 2 (Harvest Cycle): the Age 1 tech level the ark's fleet and the empire it founds are made at (age2Arks.ts); absent = the ordinary scaling. */
+    ageLevel?: number;
 }
 
 function newState(): GenShipsState {
@@ -542,12 +545,13 @@ function addExtraFuel(d: Design, pct: number): void {
     if (n > 0) d.reDefine();
 }
 
-function factionDesigns(galaxy: Galaxy, faction: Empire, lvl: number): Map<BuiltObjectSubRole, Design> {
+function factionDesigns(galaxy: Galaxy, faction: Empire, lvl: number, gap = P.techGap(galaxy)): Map<BuiltObjectSubRole, Design> {
     raiseFactionTech(galaxy, faction, lvl);
+    if (age2ArkTechLevel(galaxy) !== null) ensureArkShields(galaxy, faction); // Age 2: the ark fleet always has shields
     const now = galaxyStarDate(galaxy);
     const top = maxDesignTechLevel(galaxy) || lvl;
     const defs = galaxy.researchStatic?.componentStatic?.definitions ?? [];
-    const old = genShipsComponentDefinitions(defs, genShipsLowLevel(lvl, P.techGap(galaxy)), P.hyperdriveTech(galaxy), top);
+    const old = genShipsComponentDefinitions(defs, genShipsLowLevel(lvl, gap), P.hyperdriveTech(galaxy), top);
     const out = new Map<BuiltObjectSubRole, Design>();
     for (const sub of DESIGN_SUBROLES) {
         const spec = faction.designSpecifications.find((s) => s !== null && s.subRole === sub) ?? galaxyDesignSpecificationBySubRole(sub);
@@ -794,14 +798,17 @@ export function genShipsArrive(galaxy: Galaxy, st: GenShipsState, aimAt: Empire 
     const race = pickRace(galaxy, rnd);
     if (race === null) return false;
     const pt = genShipsSpawnPoint(galaxy, target);
-    const lvl = Math.max(1, Math.min(empireTechLevel(owner), maxDesignTechLevel(galaxy) || 7));
+    // Age 2: the ark carries Age 1 tech (a clearly higher level than the pre-warp empires, shields included), not the target's.
+    const ageLevel = age2ArkTechLevel(galaxy);
+    if (ageLevel !== null) st.ageLevel = ageLevel;
+    const lvl = ageLevel ?? Math.max(1, Math.min(empireTechLevel(owner), maxDesignTechLevel(galaxy) || 7));
     const bias = st.flavour === 'pilgrims' ? 0 : st.flavour === 'heirs' ? -20 : st.flavour === 'ark' ? -50 : -100;
     const faction = createThreatFaction(galaxy, { race, name: scenarioText(`${TAG} Faction ${FLAVOUR_TEXT[st.flavour]}`, race.name), techLevel: lvl, relationBias: bias });
     if (faction === null) return false;
     // As ghostArmada / darkFarms: stock AI reads Empire.Capital without a null check; a habitat near the edge stands in
     // until the faction owns a colony (cleared before it takes one, so takeOwnershipOfColonyFull picks the real one).
     faction.capital = galaxy.findNearestHabitatOfType(pt.x, pt.y, HabitatType.Undefined);
-    const designs = factionDesigns(galaxy, faction, lvl);
+    const designs = factionDesigns(galaxy, faction, lvl, ageLevel !== null ? 0 : P.techGap(galaxy));
     st.faction = faction;
     st.target = target;
     st.owner = owner;
@@ -906,7 +913,8 @@ function ownerMessage(galaxy: Galaxy, st: GenShipsState, stage: string, args: un
     if (got.includes(owner.empireId)) return;
     got.push(owner.empireId);
     const fl = flavourText(st);
-    scenarioMessage(galaxy, owner, scenarioText(`${TAG} ${stage} Title ${fl}`), scenarioText(`${TAG} ${stage} ${fl}`, ...args), { type, subject: st.worldShip ?? st.target, popup });
+    const age2 = stage === 'Contact' ? age2ArkFlavour(galaxy) : '';
+    scenarioMessage(galaxy, owner, scenarioText(`${TAG} ${stage} Title ${fl}`), scenarioText(`${TAG} ${stage} ${fl}`, ...args) + age2, { type, subject: st.worldShip ?? st.target, popup });
 }
 
 function contact(galaxy: Galaxy, st: GenShipsState): void {
@@ -914,6 +922,7 @@ function contact(galaxy: Galaxy, st: GenShipsState): void {
     st.ultimatumDate = galaxyStarDate(galaxy) + P.ultimatumDays(galaxy) * GAME_DAY_LENGTH;
     const target = st.target!;
     ownerMessage(galaxy, st, 'Contact', [st.faction!.name, target.name, months(P.ultimatumDays(galaxy)), fmt(st.fleetStrength), st.regiments], EmpireMessageType.GeneralWarning, true);
+    if (st.owner !== null) onArkScoutContact(galaxy, st.owner); // Age 2: milestone 5 (a survivor ark's scout)
 }
 
 /** A substitute world for the Pilgrims: the nearest empty habitable planet, else the owner's smallest other colony. Pure. */
@@ -1885,8 +1894,8 @@ export function genShipsRaiseHullTech(galaxy: Galaxy, faction: Empire, top: numb
 function refreshDesigns(galaxy: Galaxy, st: GenShipsState): void {
     const faction = st.faction!;
     const before = new Set(faction.designs);
-    const lvl = Math.max(1, Math.min(st.owner !== null && st.owner.active ? empireTechLevel(st.owner) : empireTechLevel(faction), maxDesignTechLevel(galaxy) || 7));
-    const fresh = factionDesigns(galaxy, faction, lvl);
+    const lvl = st.ageLevel ?? Math.max(1, Math.min(st.owner !== null && st.owner.active ? empireTechLevel(st.owner) : empireTechLevel(faction), maxDesignTechLevel(galaxy) || 7));
+    const fresh = factionDesigns(galaxy, faction, lvl, st.ageLevel !== undefined ? 0 : P.techGap(galaxy));
     const keep = new Set(fresh.values());
     for (const d of before) if (!keep.has(d) && DESIGN_SUBROLES.includes(d.subRole)) d.isObsolete = true;
     for (const d of keep) d.isObsolete = false;

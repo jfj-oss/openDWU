@@ -30,6 +30,7 @@ import { WAR_CREDIT_KINDS, WAR_CREDIT_LABEL, warCreditActive, warCreditRanking }
 import { DiplomaticRelationType } from '../sim/diplomacy';
 import { milestoneRowsOf } from '../sim/scenario/threats/giantworks/age2Milestones';
 import { holdoutKnowledgeRows } from '../sim/scenario/threats/giantworks/age2Holdouts';
+import { strandedRowsOf } from '../sim/scenario/threats/giantworks/age2Watchers';
 
 /** The Galactopedia article on the Great Works (expansionArticles.ts). */
 export const KNOWLEDGE_ARTICLE = 'The Great Work (Giantworks)';
@@ -150,6 +151,10 @@ registerKnowledgeSection('ageMemory', 'What We Remember', (galaxy) => {
     for (const [i, f] of mem.foundries.located.entries()) rows.push({ ...knowledgeRow(`memory:found:${i}`, f.name, '', 'a foundry we found before the Long Night'), point: { x: f.x, y: f.y } });
     for (const [i, f] of mem.foundries.destroyed.entries()) rows.push({ ...knowledgeRow(`memory:gone:${i}`, f.name, '', 'destroyed before the Long Night'), point: { x: f.x, y: f.y } });
     return rows;
+});
+registerKnowledgeSection('leftBehind', 'Left behind', (galaxy, empire) => {
+    const rows = strandedRowsOf(galaxy, empire).map((r): KnowledgeRow => ({ ...knowledgeRow(r.key, r.what, r.where, r.status), goTo: r.goTo, point: r.point }));
+    return rows.length > 0 ? rows : null;
 });
 registerKnowledgeSection('newAge', 'The New Age', (galaxy, empire) => {
     const rows = milestoneRowsOf(galaxy, empire).map((m) => knowledgeRow(`newage:${m.key}`, m.title, '', m.text));

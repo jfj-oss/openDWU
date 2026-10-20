@@ -119,6 +119,7 @@ import {
 import { checkSiteShield, defenceOfSite, ensureSiteShield, inSiteSystem, isOutsider, outsiderShips, pointNearSite, preBeam, siteBase, siteDefencePass, siteVictim } from './beaconSite';
 import { registerBeaconAi } from './beaconAi';
 import { registerPursuit } from './beaconPursuit';
+import { registerWatcherDesigner } from './age2Watchers';
 import { dwellDaysFor, holdingAtGate, purgePass, purgeRebelStrength, recentlyPurged, siphonPass, siphonStatus } from './beaconSiphon';
 import { addProgress } from './lifecycle';
 import { unblockaded } from './blockade';
@@ -208,7 +209,7 @@ export function boostEngines(d: import('../../../design').Design, top: number, c
     return added;
 }
 
-function watcherDesign(galaxy: Galaxy, faction: Empire, lvl: number): import('../../../design').Design | null {
+export function watcherDesign(galaxy: Galaxy, faction: Empire, lvl: number): import('../../../design').Design | null {
     const spec = faction.designSpecifications.find((s) => s !== null && s.subRole === BuiltObjectSubRole.CapitalShip) ?? galaxyDesignSpecificationBySubRole(BuiltObjectSubRole.CapitalShip);
     if (spec === null || spec === undefined) return null;
     try {
@@ -1420,6 +1421,7 @@ export const beaconKind: GreatWorkKind = {
 export const BEACON_HANDLER_IDS = ['beacon.watchers', 'beacon.reclaim', 'beacon.beam', 'beacon.monthly', 'beacon.attacked', 'beacon.killed', 'beacon.owner', 'beacon.destroyed', 'beacon.boarded', 'beacon.repair', 'beacon.armour', 'beacon.troops', 'beacon.counter', 'beacon.ai', 'beacon.cloakTarget', 'beacon.cloakSpares', 'beacon.cattleSpool', 'beacon.cattle', 'beacon.selfDefence', 'beacon.noWar', 'beacon.moratorium', 'beacon.moratoriumMonthly', 'beacon.siteAttacked'] as const;
 
 export function registerBeacon(): void {
+    registerWatcherDesigner(watcherDesign); // the Age 2 stranded Watchers are made of the same design (age2Watchers.ts)
     registerGreatWork(beaconKind);
     registerThreatSpawn({
         key: BEACON_FINISHED_SPAWN,

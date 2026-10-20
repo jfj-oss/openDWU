@@ -112,7 +112,7 @@ export function truthsOf(galaxy: Galaxy, empire: Empire): string[] {
     return dataOf(galaxy)?.truths[String(empire.empireId)] ?? [];
 }
 
-function grantTruth(galaxy: Galaxy, empire: Empire, id: string): void {
+export function grantTruth(galaxy: Galaxy, empire: Empire, id: string): void {
     const d = dataOf(galaxy);
     if (d === null) return;
     const list = (d.truths[String(empire.empireId)] ??= []);

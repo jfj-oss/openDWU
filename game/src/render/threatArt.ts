@@ -45,6 +45,7 @@ import type { Empire } from '../sim/empire';
 import type { Habitat } from '../sim/types';
 import { peekThreatState } from '../sim/scenario/threats/framework';
 import { AGE2_WORLD_KEY } from '../sim/scenario/threats/giantworks/age2World';
+import { strandedShips } from '../sim/scenario/threats/giantworks/age2Watchers';
 import { galaxyStarDate } from '../sim/tick/simTime';
 import { GAME_DAY_LENGTH } from '../sim/scenario/hooks';
 import { genShipsStates } from '../sim/scenario/threats/generationShips';
@@ -262,6 +263,8 @@ export function threatLooks(galaxy: Galaxy): ThreatLooks {
         if (Array.isArray(b.cattle)) for (const c of b.cattle) if (c?.ship != null && !c.ship.hasBeenDestroyed) looks.cattleShips!.push(c.ship);
         if (Array.isArray(b.cores)) for (const c of b.cores) if (c?.harvester != null && !c.harvester.hasBeenDestroyed) looks.harvesters!.push(c.harvester);
     }
+    // The Age 2 stranded Watchers (age2Watchers.ts) are drawn as Watchers too.
+    for (const ship of strandedShips(galaxy)) if (!looks.watchers!.includes(ship)) looks.watchers!.push(ship);
     // Giantworks: a finished Great Work whose wonder is the Beacon is the Beacon (its art, size floor and life), unless
     // the Beacon's sim names one itself.
     if (looks.beacon === null) {

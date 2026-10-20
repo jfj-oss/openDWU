@@ -615,3 +615,21 @@ Holdout Row Colony Held;held
 Holdout Row Colony Fled;held; its colonists are fleeing
 Holdout Row Colony Taken;taken
 Holdout Row Colony Blown;destroyed
+'TODO-PROSE (Age 2 arks and stranded Watchers; placeholder text for the author to polish): LongNight Ark Contact Line, LongNight Stranded Faction, LongNight Stranded Name, LongNight Stranded Found Title, LongNight Stranded Found Body, LongNight Stranded Gone Title, LongNight Stranded Gone Body, LongNight Stranded Prize Title, LongNight Stranded Prize Foundry Body, LongNight Stranded Prize Truth Body, LongNight Truth age2-watcher-ledger Title, LongNight Truth age2-watcher-ledger Text, LongNight Stranded Row Stranded, LongNight Stranded Row Taken, LongNight Stranded Row Destroyed, LongNight Stranded Row Gone, LongNight Stranded Row Foundry
+LongNight Ark Contact Line;This ship is a survivor of the old age: an ark of the Long Night. It kept the old knowledge, and its weapons and shields are the weapons and shields of that age.
+LongNight Stranded Faction;The Left Behind
+LongNight Stranded Name;a damaged Watcher
+LongNight Stranded Found Title;Left behind
+LongNight Stranded Found Body;Something huge has woken in the {0} system and opened fire on our ships. It is a Watcher of the old age, damaged and unable to leave: the machines left it behind when they went. It guards the place the harvest was worst.
+LongNight Stranded Gone Title;The Watcher has gone
+LongNight Stranded Gone Body;The damaged Watcher we found has mended its drive and left. Wherever the machines gather again, it will be there.
+LongNight Stranded Prize Title;A Watcher boarded
+LongNight Stranded Prize Foundry Body;The Watcher is ours. Its memory held a ledger of the machines' foundries; one of them, {0}, lies near {1}.
+LongNight Stranded Prize Truth Body;The Watcher is ours. Its memory held a ledger of the machines' foundries, but every entry in it is either destroyed or already known to us. What remains is the ledger itself: proof of how the machines kept their accounts.
+LongNight Truth age2-watcher-ledger Title;The Ledger of the Left Behind
+LongNight Truth age2-watcher-ledger Text;A Watcher's memory kept a list of every foundry the machines built.
+LongNight Stranded Row Stranded;stranded, cloaked, guarding a harvest world
+LongNight Stranded Row Taken;boarded and ours
+LongNight Stranded Row Destroyed;destroyed
+LongNight Stranded Row Gone;mended its drive and left
+LongNight Stranded Row Foundry;shown by a captured Watcher

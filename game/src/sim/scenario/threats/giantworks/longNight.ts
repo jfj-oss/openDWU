@@ -27,6 +27,8 @@ import { beaconState, isNormalEmpire, peekBeaconState, type BeaconState, type Co
 import { registerAge2World } from './age2World';
 import { registerAge2Milestones } from './age2Milestones';
 import { registerAge2Holdouts } from './age2Holdouts';
+import { registerAge2Arks } from './age2Arks';
+import { registerAge2Watchers } from './age2Watchers';
 import { captureMega, restoreMega } from './megaStation';
 import {
     AGE_PREPARATION,
@@ -320,6 +322,8 @@ export function registerLongNight(): void {
     registerAge2World();
     registerAge2Milestones();
     registerAge2Holdouts();
+    registerAge2Arks();
+    registerAge2Watchers();
     registerMemoryContributor({ id: 'beacon.parts', capture: captureParts, restore: restoreParts });
     registerScenarioFramePeriodic({ id: 'longNight.advisor', flag: HARVEST_CYCLE_FLAG, order: 26, periodDays: 5, run: (g) => advisorCheck(g) });
     registerScenarioQuery({ id: 'longNight.rimNudge', flag: HARVEST_CYCLE_FLAG, query: 'colonizationTargetValue', run: (g, v, a) => rimNudgedValue(g, a.empire, a.habitat, v) });

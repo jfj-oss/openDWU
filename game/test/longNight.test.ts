@@ -25,6 +25,7 @@ import { lossCheck } from '../src/sim/scenario/threats/giantworks/beaconFleet';
 import { beginLongNight, hyperdriveUnlockNodeId, markCrashSites, readMegaStation } from '../src/sim/scenario/threats/giantworks/longNight';
 import { AGE_PREPARATION, galaxyAgeOf, longNightState, markMilestone, memoryRecordOf, peekLongNight, registerMemoryContributor } from '../src/sim/scenario/threats/giantworks/longNightState';
 import { peekHoldouts } from '../src/sim/scenario/threats/giantworks/age2Holdouts';
+import { peekStranded } from '../src/sim/scenario/threats/giantworks/age2Watchers';
 
 let base: GameData;
 beforeAll(async () => {
@@ -150,7 +151,7 @@ describe('the reset', () => {
         expect(me.mainColor).toBe(old.mainColor);
         expect(me.secondaryColor).toBe(old.secondaryColor);
         const holdouts = new Set((peekHoldouts(g)?.holdouts ?? []).map((h) => h.empire)); // the Precursor holdouts keep their old ships
-        for (const e of g.empires) if (e !== null && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null && e.capital !== null && !holdouts.has(e)) expect(e.builtObjects.filter((b) => b.topSpeed > 0).length).toBe(0);
+        for (const e of g.empires) if (e !== null && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null && e.capital !== null && !holdouts.has(e) && e !== peekStranded(g)?.faction) expect(e.builtObjects.filter((b) => b.topSpeed > 0).length).toBe(0);
     });
 
     it('carries the memory record: Age 2, the scars, the player, the contributors', () => {
