@@ -426,7 +426,7 @@ Beacon Diet Moratorium Effect;Research is slowed in every empire for a long whil
 Beacon Diet Moratorium News;The Interstellar Diet has passed a research moratorium: research is slowed by {0} % in every empire for {1} months. Any member that breaks it will answer to the Diet.
 Beacon Diet Moratorium Broken;it broke the research moratorium
 Beacon Diet Evacuate;Evacuate the worlds near the Great Work
-Beacon Diet Evacuate Effect;Each member orders its own worlds near the Great Work to be relocated, the densest first, to its nearest safer world with room: the same orders, costs, transports and income loss as a relocation order of its own.
+Beacon Diet Evacuate Effect;Each member orders its own worlds near the Great Work to be relocated, the densest first, to its nearest safer world with room: the same orders, costs, transports and income loss as a relocation order of its own. (Your own worlds are yours to move: use the relocation order on the colony screen.)
 Beacon Diet Evacuate News;The Interstellar Diet has ordered the evacuation of the member worlds within {0} sectors of the Great Work: each member is relocating their people to safer worlds.
 Beacon Pods News;Escape pods from the destroyed vessel reached {0}: {1} million people taken from {2} are free.
 LongNight Begin Title;The Long Night

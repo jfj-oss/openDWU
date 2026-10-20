@@ -191,6 +191,7 @@ function zoneShare(g: Galaxy, e: Empire): number {
 /** Each member places relocation orders for its own colonies inside the zone, the densest first (each to the nearest colony outside the zone that has room). Funds and room permitting. */
 export function orderEvacuations(g: Galaxy): void {
     for (const e of members(g)) {
+        if (isHumanEmpire(g, e)) continue; // a human player decides its own relocations (the colony screen's order)
         const zone = e.colonies.filter((h) => !h.hasBeenDestroyed && inEvacuationZone(g, h)).sort((a, c) => (c.population?.totalAmount ?? 0) - (a.population?.totalAmount ?? 0) || a.habitatIndex - c.habitatIndex);
         for (const h of zone) {
             const to = relocationTargets(g, e, h).find((t) => !inEvacuationZone(g, t.habitat));

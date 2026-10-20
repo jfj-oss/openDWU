@@ -4936,7 +4936,9 @@ describe('the Beacon (Giantworks wonder)', () => {
         expect(def.proposable!(g)).toBe(false);
         st.launches = 0;
         st.phase = 'watching';
-        const [a, b] = members;
+        // a: an AI member (the motion orders its relocations); human members decide their own (no orders placed for them)
+        const a = members.find((e) => e !== g.playerEmpire)!;
+        const b = members.find((e) => e !== a)!;
         const pos = beaconPosition(st)!;
         const near = a.colonies[0];
         const far = b.colonies[0];
@@ -4972,6 +4974,7 @@ describe('the Beacon (Giantworks wonder)', () => {
         expect(orders.some((o) => o.from === near && o.empireId === a.empireId && !inEvacuationZone(g, o.to))).toBe(true);
         expect(orders.every((o) => inEvacuationZone(g, o.from))).toBe(true);
         expect(orders.some((o) => o.from === far)).toBe(false);
+        expect(orders.some((o) => o.empireId === g.playerEmpire!.empireId)).toBe(false);
     }, 900000);
 
     it('Diet votes weigh the proposer: an AI member leans toward motions from an empire it likes, away from one it dislikes; the owners of the zone vote against the evacuation', () => {
