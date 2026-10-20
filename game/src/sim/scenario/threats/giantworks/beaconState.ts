@@ -227,6 +227,14 @@ export interface MoratoriumRec {
     lastCheck: number;
 }
 
+/** The people a member world took in from the evacuated zone (beaconDiet.ts): the amount in the current window, its start, and until when the world earns less. */
+export interface EvacIntake {
+    colony: Habitat;
+    amount: number;
+    since: number;
+    slowUntil: number;
+}
+
 /** Interceptions of cattle ships from one held world (destroyed or boarded), slowly decaying. */
 export interface InterceptRec {
     colony: Habitat;
@@ -520,6 +528,9 @@ export interface BeaconStats {
     /** Research moratorium motions passed; breaches sanctioned. */
     moratoriums?: number;
     moratoriumBreaches?: number;
+    /** Evacuation motions passed; worlds slowed by taking in the evacuees. */
+    evacuations?: number;
+    evacSlowed?: number;
     /** Escorts assigned to cattle ships by tier (light / destroyer / cruiser), built for them, and cattle ships whose escort fell. */
     escortLight?: number;
     escortMid?: number;
@@ -595,6 +606,8 @@ export interface BeaconState {
     intercepts?: InterceptRec[];
     /** The research moratorium the Diet passed last (beaconDiet.ts): who breaks it, the breaches seen and who was sanctioned. */
     moratorium?: MoratoriumRec;
+    /** Member worlds that took in the Diet's evacuees (beaconDiet.ts; absent before the first). */
+    evacIntakes?: EvacIntake[];
     stats: BeaconStats;
     ended: boolean;
     /** Spawned from the Game Editor / a test: the existence-year gates are skipped. */

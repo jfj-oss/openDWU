@@ -17,7 +17,7 @@ import { colonyGovernor } from '../../governors';
 import { empireGovernors, mostImportantGovernor } from '../governorsCv';
 import { tripOfCharacter } from '../vip';
 import { type DietMotion, type DietMotionKind, type DietState, DIET_NAME, byId, dietWarCrimesLine, dietMotionKindDef, dietOn, dietParam, peekDietState, registeredDietKinds } from './dietState';
-import { dietMembership, dietVoteScore, memberScores, voteWeight } from './dietAi';
+import { dietMembership, dietVoteScore, memberScores, proposerBias, voteWeight } from './dietAi';
 import { dietCouncil, emperorBidNote } from './diet';
 import { YEAR_LENGTH } from '../../../galaxyTime';
 
@@ -210,6 +210,12 @@ function presenceOf(st: DietState, galaxy: Galaxy, e: Empire): { delegate: strin
 }
 
 /** The window model for `player`; null when the Diet is off or no council exists yet. */
+/** The adviser line of a motion: the verdict, why when the proposer weighs in (dietAi.proposerBias), and the score. */
+function adviceText(advise: number, note: string): string {
+    const why = note === '' ? '' : ` — ${note}`;
+    return advise >= 5 ? `Favourable to us${why} (${Math.round(advise)})` : advise <= -5 ? `Against our interest${why} (${Math.round(advise)})` : 'Of little concern to us';
+}
+
 export function dietView(galaxy: Galaxy, player: Empire): DietViewModel | null {
     if (!dietOn(galaxy)) return null;
     const c: Council | null = dietCouncil(galaxy);
@@ -249,7 +255,7 @@ export function dietView(galaxy: Galaxy, player: Empire): DietViewModel | null {
                 targetEmpire: m.target,
                 kindName: kindLabel(m.kind),
                 effect: effectOf(st, m),
-                advice: !member ? '' : advise >= 5 ? `Favourable to us (${Math.round(advise)})` : advise <= -5 ? `Against our interest (${Math.round(advise)})` : 'Of little concern to us',
+                advice: !member ? '' : adviceText(advise, m.proposer === player ? '' : proposerBias(galaxy, player, m.proposer).note),
                 projectedYes: Math.round(yes * 10) / 10,
                 projectedNo: Math.round(no * 10) / 10,
                 projected: `${(Math.round(yes * 10) / 10).toFixed(1)} for, ${(Math.round(no * 10) / 10).toFixed(1)} against — ${yes > no ? 'likely to pass' : 'likely to fail'}`,

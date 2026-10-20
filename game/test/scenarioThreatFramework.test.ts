@@ -228,8 +228,9 @@ import { isHumanEmpire } from '../src/sim/humanEmpires';
 import { aiMayPurge, dwellDaysFor, garrisonStrength, purgePass, purgeRebelStrength, rebelsOn, siphonDonor, siphonPass, siphonRateOf, startPurge, tech5Count } from '../src/sim/scenario/threats/giantworks/beaconSiphon';
 import { makeTroopsSplit } from '../src/sim/scenario/threats/factionNavy';
 import { resolveInvasionBattles } from '../src/sim/combat/invasion';
-import { LAW_MORATORIUM, MOTION_MORATORIUM, knowsBeacon, moratoriumFactor, moratoriumMonthly } from '../src/sim/scenario/threats/giantworks/beaconDiet';
+import { LAW_EVACUATE, LAW_MORATORIUM, MOTION_EVACUATE, MOTION_MORATORIUM, evacuationRevenueFactor, evacuationWindowOpen, inEvacuationZone, knowsBeacon, moratoriumFactor, moratoriumMonthly, noteEvacuee } from '../src/sim/scenario/threats/giantworks/beaconDiet';
 import { dietOn, lawInForce } from '../src/sim/scenario/charactersVictory/diet/dietState';
+import { dietVoteScore, proposerBias } from '../src/sim/scenario/charactersVictory/diet/dietAi';
 import { councilState, type Council } from '../src/sim/scenario/emergent/council';
 import { addSalvage, aiBargainChoice, colonyToCede, counterMonthly, expose, offerCandidates, purgeCorruption, resistanceFactor, resolveBargain } from '../src/sim/scenario/threats/giantworks/beaconCounter';
 import { builtObjectCompleteTeardown } from '../src/sim/combat/teardown';
@@ -4906,6 +4907,131 @@ describe('the Beacon (Giantworks wonder)', () => {
         // it lapses with the law
         dst.laws = [];
         expect(moratoriumFactor(g, a)).toBe(1);
+    }, 900000);
+
+    it('the Beacon evacuation: a Diet motion in the build / before-the-first-beam window; zone worlds emigrate more, farther, and grow slower; the world that takes the people in earns 50% less for a while', () => {
+        const { game } = createScenarioGame(base, { scenario: comboOverlayFs([...ids, 'characters-victory']), flags: { charactersVictory: true, cvCouncil: true, galacticCouncil: true }, options: age3 });
+        const g = game.galaxy;
+        g.scenario!.flags.gwBeacon = true;
+        const site = { id: 0, system: g.systems.find((s) => s !== null)!, habitat: null, base: null, progress: 0, stage: 0, wonder: 'beacon', founders: [], startDate: galaxyStarDate(g), completeDate: null, destroyedBy: null } as GreatWorkSite;
+        beaconRolled(g, site);
+        const st = peekBeaconState(g)!;
+        const members = normalsOf(g);
+        const cs = councilState(g);
+        const c: Council = { id: cs.nextId++, name: 'Interstellar Diet', foundedYear: 0, members: [...members], chair: null, motion: null, results: [], blocs: [], coLosses: {}, losses: {}, sanctions: [], threats: [], recognised: [], condemned: {}, splitFrom: 0 };
+        cs.councils.push(c);
+        const dst = dietState(g);
+        const def = dietMotionKindDef(MOTION_EVACUATE)!;
+        expect(def).not.toBeNull();
+        // the window: while the work is built, or in the Reclamation before the first beam
+        expect(evacuationWindowOpen(st)).toBe(true);
+        expect(def.proposable!(g)).toBe(true);
+        st.phase = 'reclamation';
+        expect(def.proposable!(g)).toBe(true);
+        st.launches = 1;
+        expect(def.proposable!(g)).toBe(false);
+        st.launches = 0;
+        st.phase = 'watching';
+        const [a, b] = members;
+        const pos = beaconPosition(st)!;
+        const near = a.colonies[0];
+        const far = b.colonies[0];
+        near.xpos = pos.x + 100;
+        near.ypos = pos.y;
+        far.xpos = pos.x + 1e7;
+        far.ypos = pos.y;
+        const hab = (h: typeof near) => ({ habitat: h });
+        const q = (h: typeof near) => ({
+            mig: scenarioQuery(g, 'colonyMigrationFactor', 0.5, hab(h)),
+            load: scenarioQuery(g, 'migrationLoadFactor', 1, { source: h, destination: far }),
+            range: scenarioQuery(g, 'migrationRangeFactor', 1, { source: h, destination: far }),
+            growth: scenarioQuery(g, 'colonyGrowthFactor', 1, hab(h)),
+        });
+        // no law: nothing moves
+        expect(inEvacuationZone(g, near)).toBe(true);
+        expect(inEvacuationZone(g, far)).toBe(false);
+        expect(q(near)).toEqual({ mig: 0.5, load: 1, range: 1, growth: 1 });
+        const motion = { id: 1, kind: MOTION_EVACUATE, proposer: a, target: null, other: null, colony: null, resourceId: -1, text: 't', votes: [], status: 'voting', yes: 0, no: 0 } as never;
+        def.apply(g, dst, motion, (kind, empire, other, colony, until) => {
+            const law = { id: 98, kind, empire, other, colony, since: galaxyStarDate(g), until, text: 'law' };
+            dst.laws.push(law);
+            return law;
+        });
+        expect(lawInForce(dst, LAW_EVACUATE)).not.toBeNull();
+        expect(def.proposable!(g)).toBe(false);
+        expect(st.stats.evacuations).toBe(1);
+        // the zone: a migration source, bigger loads, farther trips, slower growth; the world outside is untouched
+        expect(q(near)).toEqual({ mig: -0.6, load: 4, range: 2.5, growth: 0.4 });
+        expect(q(far)).toEqual({ mig: 0.5, load: 1, range: 1, growth: 1 });
+        // the receiving world: a small intake costs nothing, a big one halves its revenue until two years after the last
+        const tax = (h: typeof near) => scenarioQuery(g, 'colonyTaxRevenue', 100, { habitat: h, empire: h.empire! });
+        far.population.items[0].amount = 1000000000;
+        far.population.recalculateTotalAmount();
+        const total = far.population.totalAmount;
+        noteEvacuee(g, far, near, total * 0.02);
+        expect(evacuationRevenueFactor(g, far)).toBe(1);
+        expect(tax(far)).toBeCloseTo(100, 9);
+        noteEvacuee(g, far, near, total * 0.07); // within the window the amounts add up
+        expect(evacuationRevenueFactor(g, far)).toBe(0.5);
+        expect(tax(far)).toBeCloseTo(50, 9);
+        expect(st.stats.evacSlowed).toBe(1);
+        g.nowMs += 500 * GAME_DAY_LENGTH;
+        expect(evacuationRevenueFactor(g, far)).toBe(0.5);
+        noteEvacuee(g, far, near, total * 0.1); // another big intake pushes the end out
+        g.nowMs += 500 * GAME_DAY_LENGTH;
+        expect(evacuationRevenueFactor(g, far)).toBe(0.5);
+        g.nowMs += 300 * GAME_DAY_LENGTH;
+        expect(evacuationRevenueFactor(g, far)).toBe(1);
+        expect(tax(far)).toBeCloseTo(100, 9);
+        // people moving between worlds outside the zone, or into the zone, are not counted
+        noteEvacuee(g, far, far, total);
+        noteEvacuee(g, near, far, total);
+        expect(evacuationRevenueFactor(g, far)).toBe(1);
+        expect(evacuationRevenueFactor(g, near)).toBe(1);
+        // it lapses with the law
+        dst.laws = [];
+        expect(q(near)).toEqual({ mig: 0.5, load: 1, range: 1, growth: 1 });
+    }, 900000);
+
+    it('Diet votes weigh the proposer: an AI member leans toward motions from an empire it likes, away from one it dislikes; the owners of the zone vote against the evacuation', () => {
+        const { game } = createScenarioGame(base, { scenario: comboOverlayFs([...ids, 'characters-victory']), flags: { charactersVictory: true, cvCouncil: true, galacticCouncil: true }, options: age3 });
+        const g = game.galaxy;
+        g.scenario!.flags.gwBeacon = true;
+        const site = { id: 0, system: g.systems.find((s) => s !== null)!, habitat: null, base: null, progress: 0, stage: 0, wonder: 'beacon', founders: [], startDate: galaxyStarDate(g), completeDate: null, destroyedBy: null } as GreatWorkSite;
+        beaconRolled(g, site);
+        const st = peekBeaconState(g)!;
+        const members = normalsOf(g);
+        const cs = councilState(g);
+        const c: Council = { id: cs.nextId++, name: 'Interstellar Diet', foundedYear: 0, members: [...members], chair: null, motion: null, results: [], blocs: [], coLosses: {}, losses: {}, sanctions: [], threats: [], recognised: [], condemned: {}, splitFrom: 0 };
+        cs.councils.push(c);
+        const dst = dietState(g);
+        const [voter, friend, foe] = members;
+        obtainEmpireEvaluation(g, voter, friend).incidentEvaluation = 80;
+        obtainEmpireEvaluation(g, voter, foe).incidentEvaluation = -80;
+        const mk = (proposer: Empire, id: number): DietMotion => ({ id, kind: 'freeTrade', proposer, target: null, other: null, colony: null, resourceId: -1, text: 't', votes: [], status: 'voting', yes: 0, no: 0 });
+        const real = (e: Empire) => dietVoteScore(g, c, dst, voter, mk(e, 5));
+        const pseudo = (e: Empire) => dietVoteScore(g, c, dst, voter, mk(e, -1));
+        expect(proposerBias(g, voter, friend).value).toBeGreaterThan(10);
+        expect(proposerBias(g, voter, foe).value).toBeLessThan(-10);
+        expect(proposerBias(g, voter, voter).value).toBe(0);
+        expect(proposerBias(g, voter, friend).note).toContain('favour');
+        expect(proposerBias(g, voter, foe).note).toContain('distrust');
+        expect(real(friend)).toBeGreaterThan(real(foe));
+        expect(real(friend) - pseudo(friend)).toBeCloseTo(proposerBias(g, voter, friend).value, 9);
+        // the proposer itself still votes yes
+        expect(dietVoteScore(g, c, dst, voter, mk(voter, 5))).toBe(100);
+        // the evacuation: the owner of zone worlds is against it
+        const pos = beaconPosition(st)!;
+        for (const h of foe.colonies) h.xpos = pos.x + 1e7;
+        const def0 = dietMotionKindDef(MOTION_EVACUATE)!;
+        const before = def0.voteScore(g, dst, foe, { id: 2, kind: MOTION_EVACUATE, proposer: friend, target: null, other: null, colony: null, resourceId: -1, text: 't', votes: [], status: 'voting', yes: 0, no: 0 } as never);
+        for (const h of foe.colonies) {
+            h.xpos = pos.x + 100;
+            h.ypos = pos.y;
+        }
+        const def = dietMotionKindDef(MOTION_EVACUATE)!;
+        const motion = { id: 2, kind: MOTION_EVACUATE, proposer: friend, target: null, other: null, colony: null, resourceId: -1, text: 't', votes: [], status: 'voting', yes: 0, no: 0 } as never;
+        expect(def.voteScore(g, dst, foe, motion)).toBeLessThan(before - 20);
     }, 900000);
 
     it('a sighting: the Watcher shows itself over a colony, passive, then slips away cloaked; attacked, it defends itself against the attackers only and goes to war with no one', () => {

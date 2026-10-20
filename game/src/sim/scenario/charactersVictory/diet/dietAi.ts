@@ -20,6 +20,7 @@ import { strategicValue } from '../../../territory';
 import { YEAR_LENGTH } from '../../../galaxyTime';
 import { galaxyStarDate } from '../../../tick/simTime';
 import { isHumanEmpire } from '../../../humanEmpires';
+import { reputationOn, reputationSum } from '../../reputation/ledger';
 import { empireSpyCrises } from '../../emergent/espionage';
 import {
     attitudeOf,
@@ -226,6 +227,30 @@ function eyesIndependents(galaxy: Galaxy, e: Empire): number {
  * stock kinds start from the galactic council's own voteScore (attitude, trade, borders, war, blocs, extensions).
  */
 export function dietVoteScore(galaxy: Galaxy, c: Council, st: DietState, voter: Empire, m: DietMotion): number {
+    const base = dietVoteScoreBase(galaxy, c, st, voter, m);
+    // A real motion (id >= 0; the pseudo motions of lawScore / the AI's own cases have none) is also weighed by who moved it.
+    return m.id >= 0 && m.kind !== 'repeal' ? base + proposerBias(galaxy, voter, m.proposer).value : base;
+}
+
+/** Proposer attitude weight (score per point of attitude, -100..100) and the reputation ledger's (per point, clamped to +-50). */
+export const PROPOSER_ATTITUDE_WEIGHT = 0.22;
+export const PROPOSER_REPUTATION_WEIGHT = 0.15;
+
+/**
+ * How much `voter`'s score on a motion moves because of its proposer: an AI member likes what an empire it likes (attitude) or
+ * respects (the reputation add-on's ledger) moves, and distrusts what one it dislikes moves. 0 for the proposer itself, a human voter's
+ * advice included (it is the advisers' reading). `note` is the reasoning text for the Diet screen ('' when negligible).
+ */
+export function proposerBias(galaxy: Galaxy, voter: Empire, proposer: Empire): { value: number; note: string } {
+    if (voter === proposer) return { value: 0, note: '' };
+    const att = attitudeOf(voter, proposer);
+    const rep = reputationOn(galaxy) ? Math.max(-50, Math.min(50, reputationSum(galaxy, voter, proposer))) : 0;
+    const value = PROPOSER_ATTITUDE_WEIGHT * att + PROPOSER_REPUTATION_WEIGHT * rep;
+    if (Math.abs(value) < 3) return { value, note: '' };
+    return { value, note: value > 0 ? `we favour ${proposer.name}'s proposals` : `we distrust ${proposer.name}'s proposals` };
+}
+
+function dietVoteScoreBase(galaxy: Galaxy, c: Council, st: DietState, voter: Empire, m: DietMotion): number {
     const p = personality(voter);
     const t = m.target;
     if (m.kind === 'repeal') {

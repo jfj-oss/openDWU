@@ -885,6 +885,7 @@ function evaluateColonyVariablesCore(galaxy: Galaxy, empire: Empire, timePassed:
                 }
                 num17 *= num14;
                 num17 *= num8;
+                if (galaxy.scenario !== null) num17 *= scenarioQuery(galaxy, 'colonyGrowthFactor', 1.0, { habitat }); // [scenario] the Diet's Beacon evacuation damps growth
                 let colonyPopulationPolicy = ColonyPopulationPolicy.Assimilate;
                 if (empire.dominantRace !== null && population.race !== empire.dominantRace) {
                     colonyPopulationPolicy = habitat.colonyPopulationPolicy;
