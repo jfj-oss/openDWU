@@ -157,14 +157,14 @@ export function memoryRecordOf(galaxy: Galaxy): MemoryRecord | null {
 /** An Age 2 empire reached knowledge milestone `key` (0-8 of the plan; 1 = the crashed hull). True the first time for that empire. */
 export function markMilestone(galaxy: Galaxy, key: string, empireId: number): boolean {
     const st = longNightState(galaxy);
-    const list = (st.milestones[key] ??= []);
+    const list = ((st.milestones ??= {})[key] ??= []);
     if (list.includes(empireId)) return false;
     list.push(empireId);
     return true;
 }
 
 export function milestoneReached(galaxy: Galaxy, key: string, empireId: number): boolean {
-    return (peekLongNight(galaxy)?.milestones[key] ?? []).includes(empireId);
+    return (peekLongNight(galaxy)?.milestones?.[key] ?? []).includes(empireId);
 }
 
 /**
