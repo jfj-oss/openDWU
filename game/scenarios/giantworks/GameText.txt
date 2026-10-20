@@ -444,15 +444,15 @@ Beacon Foundry Name;Foundry {0}
 Beacon Foundry Row;{0}
 Beacon Foundry Status;A Reclaimer foundry in the empty void: its warships are made here. Its strength is unknown; an investigation would tell.
 Beacon Foundry Status Intel;A Reclaimer foundry. Investigated: guard and base strength {0}, {1} warships made here so far. Destroy it to slow the Reclaimers' fleets (no ship can jump away from it until it falls).
-Beacon Foundry Held Title;TODO-PROSE: the prize is stirring
-Beacon Foundry Held;TODO-PROSE: we hold the captured Reclaimer capital {0}. Its mind fights back; hold it {1} days, without losing or destroying it, and it will give up what it knows.
-Beacon Foundry Reveal Title;TODO-PROSE: a foundry revealed
-Beacon Foundry Reveal;TODO-PROSE: the mind core of the captured capital {0} has yielded a foundry, {1}, hidden in the void at ({2}, {3}).
-Beacon Foundry Trap Title;TODO-PROSE: held fast
-Beacon Foundry Trap;TODO-PROSE: {0} is within the reach of {1}: its drive will not spool. It cannot jump away until the foundry is destroyed.
-Beacon Foundry Destroyed Title;TODO-PROSE: a foundry destroyed
-Beacon Foundry Destroyed;TODO-PROSE: {0} is destroyed. {1} of {2} foundries remain.
-Beacon Foundry Destroyed News;TODO-PROSE: {0} has destroyed a Reclaimer foundry; {1} of {2} remain.
+Beacon Foundry Held Title;It Is Still Awake
+Beacon Foundry Held;We have taken {0}. Our boarding crews hold its corridors, but not its heart: something at the centre of the ship is still awake, and it is fighting us.\n\nOur engineers believe it knows where these ships come from. Hold it {1} days, and do not lose it or let it be destroyed, and they think it will give that up.
+Beacon Foundry Reveal Title;Where They Are Made
+Beacon Foundry Reveal;The mind in {0} has gone quiet. Before it did, it showed us a place.\n\nOut in the empty dark, at ({2}, {3}), where no star burns and no one would think to look, something vast is building their ships. We are calling it {1}. It is on our charts now.
+Beacon Foundry Trap Title;Held Fast
+Beacon Foundry Trap;{0} has come too close to {1}. Its drive will not spool. Whatever the foundry does to the space around it, nothing that comes within its reach can leave until it is destroyed.
+Beacon Foundry Destroyed Title;The Forge Is Cold
+Beacon Foundry Destroyed;{0} is gone. No more of their ships will come out of that dark. {1} of {2} remain.
+Beacon Foundry Destroyed News;{0} has destroyed one of the places the machines are made. {1} of {2} remain.
 Beacon Foundry Investigation Title;Foundry investigation
-Beacon Foundry Investigation Found;TODO-PROSE: {0} has reported on {1}: guard and base strength {2}, {3} warships made there so far. The agent brought back a piece of its technology.
-Beacon Foundry Investigation Nothing;TODO-PROSE: {0} learned nothing more about {1}.
+Beacon Foundry Investigation Found;{0} has returned from {1}. Its defences amount to {2}, and it has made {3} of their warships. The agent did not come back empty-handed: a piece of what they build there is now in our laboratories.
+Beacon Foundry Investigation Nothing;{0} could learn nothing more about {1}.
