@@ -73,7 +73,7 @@ describe('milestone 2: the first warp jump', () => {
         scenarioEmit(g, 'hyperjumpStarted', { empire: me, ship });
         scenarioEmit(g, 'hyperjumpStarted', { empire: me, ship });
         scenarioEmit(g, 'hyperjumpStarted', { empire: ai, ship });
-        expect(popups(me, 'TODO-PROSE: The Songs Were True').length).toBe(1);
+        expect(popups(me, 'The Songs Were True').length).toBe(1);
         expect(milestoneReached(g, 'warp', me.empireId)).toBe(true);
         expect(milestoneReached(g, 'warp', ai.empireId)).toBe(true);
         expect(empireMessages(ai).filter((m) => m.scenarioPopup === 'force' && m.title.includes('Songs')).length).toBe(0);
@@ -93,12 +93,12 @@ describe('milestone 3: first contact and the shared myth', () => {
         expect(empireMessages(ai).some((m) => m.scenarioPopup === 'force' && m.title.includes('Not Alone'))).toBe(false);
         const first = others.find((o) => o.dominantRace !== me.dominantRace)!;
         onEncounter(g, me, first);
-        const pop = popups(me, 'TODO-PROSE: We Are Not Alone');
+        const pop = popups(me, 'We Are Not Alone');
         expect(pop.length).toBe(1);
         expect(pop[0].description).toContain(first.name);
         expect(pop[0].description).toContain('You know what this is.');
         onEncounter(g, me, first);
-        expect(popups(me, 'TODO-PROSE: We Are Not Alone').length).toBe(1);
+        expect(popups(me, 'We Are Not Alone').length).toBe(1);
         // the Truth after three different species (the test galaxy has few: one empire takes three races in turn)
         expect(truthsOf(g, me)).not.toContain(SHARED_MYTH_TRUTH);
         const saved = first.dominantRace;
@@ -111,19 +111,20 @@ describe('milestone 3: first contact and the shared myth', () => {
         (first as { dominantRace: unknown }).dominantRace = saved;
         expect(truthsOf(g, me)).toContain(SHARED_MYTH_TRUTH);
         expect(peekLongNight(g)!.memory!.truths).toContain(SHARED_MYTH_TRUTH);
-        expect(popups(me, 'TODO-PROSE: One Story, Told Many Ways').length).toBe(1);
+        expect(popups(me, 'One Story, Told Many Ways').length).toBe(1);
     });
 });
 
 describe('milestone 4: an old-capital ruin', () => {
-    it('opens "we were not the first" once, with the know line for a human with the memory', () => {
+    it('logs "we were not the first" once, quietly (the ruin survey popup tells it), with the know line for a human with the memory', () => {
         const site = age2WorldOf(g)?.ruins[0];
         expect(site).toBeDefined();
         investigateRuins(g, me, site!.habitat);
         investigateRuins(g, me, site!.habitat);
-        const pop = popups(me, 'TODO-PROSE: We Were Not the First');
-        expect(pop.length).toBe(1);
-        expect(pop[0].description).toContain('You know what this is.');
+        expect(popups(me, 'We Were Not the First').length).toBe(0);
+        const logged = empireMessages(me).filter((m) => m.title.includes('We Were Not the First'));
+        expect(logged.length).toBe(1);
+        expect(logged[0].description).toContain('You know what this is.');
         investigateRuins(g, ai2, site!.habitat);
         expect(milestoneReached(g, 'ruin', ai2.empireId)).toBe(true);
         expect(empireMessages(ai2).some((m) => m.title.includes('Not the First'))).toBe(false);
@@ -134,7 +135,7 @@ describe('milestone 5: the survivor-ark hook', () => {
     it('milestoneArk marks once and tells a human', () => {
         expect(milestoneArk(g, me)).toBe(true);
         expect(milestoneArk(g, me)).toBe(false);
-        expect(popups(me, 'TODO-PROSE: A Witness').length).toBe(1);
+        expect(popups(me, 'A Witness').length).toBe(1);
         expect(milestoneArk(g, ai)).toBe(true);
         expect(empireMessages(ai).some((m) => m.title.includes('Witness'))).toBe(false);
     });
@@ -152,7 +153,7 @@ describe('milestone 6: the first Harvest Scar', () => {
         expect(milestoneReached(g, 'scar', me.empireId)).toBe(true);
         expect(milestoneReached(g, 'scar', ai.empireId)).toBe(true);
         if (!seenBefore) {
-            const pop = popups(me, 'TODO-PROSE: The Pens');
+            const pop = popups(me, 'The Pens');
             expect(pop.length).toBe(1);
             expect(pop[0].description).toContain('You know what this is.');
         }
@@ -164,8 +165,8 @@ describe('milestone 7: the Founders\' Compact rumour', () => {
     it('"it is happening again" for a human with the memory, a neutral line without it', () => {
         scenarioEmit(g, 'foundersRumour', { empire: me });
         scenarioEmit(g, 'foundersRumour', { empire: me });
-        expect(popups(me, 'TODO-PROSE: It Is Happening Again').length).toBe(1);
-        expect(popups(me, 'TODO-PROSE: A Secret Among the Independents').length).toBe(0);
+        expect(popups(me, 'It Is Happening Again').length).toBe(1);
+        expect(popups(me, 'A Secret Among the Independents').length).toBe(0);
         scenarioEmit(g, 'foundersRumour', { empire: ai });
         expect(milestoneReached(g, 'rumour', ai.empireId)).toBe(true);
         expect(empireMessages(ai).some((m) => m.scenarioPopup === 'force' && m.title.includes('Happening'))).toBe(false);
@@ -196,7 +197,7 @@ describe('milestone 8: the Diet re-forms', () => {
         g.deferEventsForGameStart = false;
         scenarioEmit(g, 'councilFounded', { members: [me, ai] });
         scenarioEmit(g, 'councilFounded', { members: [me, ai] });
-        expect(popups(me, 'TODO-PROSE: The Preparation Begins').length).toBe(1);
+        expect(popups(me, 'The Preparation Begins').length).toBe(1);
         expect(milestoneReached(g, 'diet', ai.empireId)).toBe(true);
         expect(empireMessages(ai).some((m) => m.title.includes('Preparation'))).toBe(false);
     });

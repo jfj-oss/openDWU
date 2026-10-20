@@ -78,12 +78,12 @@ export function remembersAge1(galaxy: Galaxy, e: Empire): boolean {
  * `empire` reaches milestone `key`: true the first time. A human empire gets the forced popup (title tag `LongNight <stem> Title`, body
  * `LongNight <stem> Body` with `args`; titles take no arguments); when `know` and it remembers Age 1, the body ends with "You know what this is.".
  */
-function reach(galaxy: Galaxy, empire: Empire, key: string, stem: string, args: unknown[], opts: { know?: boolean; subject?: Habitat | null; bodyTag?: string; titleTag?: string } = {}): boolean {
+function reach(galaxy: Galaxy, empire: Empire, key: string, stem: string, args: unknown[], opts: { know?: boolean; subject?: Habitat | null; bodyTag?: string; titleTag?: string; quiet?: boolean } = {}): boolean {
     if (!markMilestone(galaxy, key, empire.empireId)) return false;
     if (!isHumanEmpire(galaxy, empire)) return true;
     let body = T(opts.bodyTag ?? `${LN_TAG} ${stem} Body`, ...args);
     if (opts.know === true && remembersAge1(galaxy, empire)) body += `\n\n${T(`${LN_TAG} Know This`)}`;
-    scenarioMessage(galaxy, empire, T(opts.titleTag ?? `${LN_TAG} ${stem} Title`), body, { type: EmpireMessageType.GeneralGoodEvent, subject: opts.subject ?? null, popupMode: 'force' });
+    scenarioMessage(galaxy, empire, T(opts.titleTag ?? `${LN_TAG} ${stem} Title`), body, { type: EmpireMessageType.GeneralGoodEvent, subject: opts.subject ?? null, popupMode: opts.quiet === true ? 'quiet' : 'force' });
     return true;
 }
 
@@ -145,7 +145,8 @@ export function onRuinFound(galaxy: Galaxy, empire: Empire, habitat: Habitat): v
     if (!eligible(galaxy, empire) || w === null) return;
     const site = w.ruins.find((s) => s.habitat === habitat);
     if (site === undefined) return;
-    reach(galaxy, empire, 'ruin', 'Ruin Milestone', [site.empire, habitat.name], { know: true, subject: habitat });
+    // (quiet: the ruin's own survey popup, age2World.ts, already tells it; this only logs it and marks the milestone)
+    reach(galaxy, empire, 'ruin', 'Ruin Milestone', [site.empire, habitat.name], { know: true, subject: habitat, quiet: true });
 }
 
 // ---------------------------------------------------------------------------------------------------------------
