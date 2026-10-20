@@ -49,7 +49,7 @@ export async function start(ctx) {
     reportRef = report;
     M = {
         bs: await load('beaconState'), bf: await load('beaconFleet'), bc: await load('beaconCounter'), bh: await load('beaconHarvest').catch(() => null), br: await load('beaconResponse').catch(() => null), bp: await load('beaconPursuit').catch(() => null), bfd: await load('beaconFoundry').catch(() => null), beacon: await load('beacon'),
-        thr: await load('threats'), hooks: await load('scnHooks'), own: await load('ownership').catch(() => null), gw: await load('gwState'), gwf: await load('gwFramework'), life: await load('gwLifecycle'), tf: await load('thFramework'), dip: await load('diplomacyTick'), mis: await load('missions'),
+        thr: await load('threats'), hooks: await load('scnHooks'), own: await load('ownership').catch(() => null), gw: await load('gwState'), gwf: await load('gwFramework'), life: await load('gwLifecycle'), rob: await load('thRobot'), tf: await load('thFramework'), dip: await load('diplomacyTick'), mis: await load('missions'),
     };
     if (process.env.BEACON_TIMING === '1') {
         timing = await import('./soak-timing-hook.mjs');
@@ -262,7 +262,7 @@ function sample(ctx, g) {
     const s = { y: r2(years) };
     if (work) s.gw = [work.phase, r2(work.progress), work.stage, work.convoys.length, work.delivered, work.lost];
     if (work) report.beacon.gwLog = M.gw.gwState(g).log.slice(0, 40).map((l) => [Math.round(l.date), l.text]);
-    if (work) { s.tech = r2(M.life.averageTech(g)); s.gwPlan = [r1(work.gatherTech ?? -1), r1(work.buildYears ?? -1)]; }
+    if (work) { s.tech = r2(M.life.averageTech(g)); { const lv = M.gw.ordinaryEmpires(g).map(M.rob.empireTechLevel).sort((a, b) => b - a); const n = Math.ceil(lv.length / 2); s.top = lv.length === 0 ? 1 : r2(lv.slice(0, n).reduce((a, b) => a + b, 0) / n); } s.gwPlan = [r1(work.gatherTech ?? -1), r1(work.buildYears ?? -1)]; }
     const faction = st?.faction ?? null;
     const ns = normals(g, st);
     // The ordinary empires: colonies, population (millions), military.
