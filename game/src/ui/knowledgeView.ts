@@ -22,6 +22,9 @@ import { eliminatedPct } from '../sim/scenario/threats/giantworks/beaconFleet';
 import { giantworksCompactSites, giantworksKnownSites } from '../sim/scenario/threats/giantworks/knowledge';
 import { sightingLogOf } from '../render/beaconCloakFx';
 import { peekGwState } from '../sim/scenario/threats/giantworks/state';
+import { megaKnowledgeRows } from '../sim/scenario/threats/giantworks/megaStation';
+import { foundriesKnownTo } from '../sim/scenario/threats/giantworks/beaconFoundry';
+import { memoryRecordOf } from '../sim/scenario/threats/giantworks/longNightState';
 
 /** The Galactopedia article on the Great Works (expansionArticles.ts). */
 export const KNOWLEDGE_ARTICLE = 'The Great Work (Giantworks)';
@@ -86,15 +89,26 @@ function looseState(galaxy: Galaxy, key: string): Record<string, unknown> | null
 // Mega-station components + blueprint progress (wip/megapath adds the state), foundries found (wip/foundries) and the Doppelganger sleeper
 // warnings have no state in this branch: empty hooks, registered by those modules. The Age 2 memory record reads the Long Night's state
 // (scenario state `longNight`, a `memory` list of strings: "What We Remember") when it exists.
-registerKnowledgeSection('megaStation', 'Mega-station', () => null); // TODO(megapath): components found + blueprint progress
-registerKnowledgeSection('foundries', 'Foundries', () => null); // TODO(foundries): foundries the viewer has found
+registerKnowledgeSection('megaStation', 'The Severance', (g, e) => megaKnowledgeRows(g, e));
+registerKnowledgeSection('foundries', 'Foundries', (g, e) => {
+    const st = peekBeaconState(g);
+    if (st === null) return null;
+    const rows = foundriesKnownTo(st, e).map((f): KnowledgeRow => ({
+        ...knowledgeRow(`foundry:${f.id}`, scenarioText('Beacon Foundry Name', f.id), '', f.status === 'destroyed' ? 'destroyed' : f.knowledge.some((k) => k.empireId === e.empireId && k.level >= 3) ? scenarioText('Beacon Foundry Status Intel', Math.round(f.intel[String(e.empireId)]?.guard ?? 0), f.intel[String(e.empireId)]?.built ?? f.built) : scenarioText('Beacon Foundry Status')),
+        goTo: f.status === 'destroyed' ? null : f.base,
+        point: { x: f.x, y: f.y },
+    }));
+    return rows.length > 0 ? rows : null;
+});
 registerKnowledgeSection('sleepers', 'Sleeper warnings', () => null); // TODO(doppelgangers): sleeper warnings the viewer has
 registerKnowledgeSection('ageMemory', 'What We Remember', (galaxy) => {
-    const ln = looseState(galaxy, 'longNight');
-    const mem = ln?.memory;
-    if (!Array.isArray(mem)) return null;
-    const rows = mem.filter((m): m is string => typeof m === 'string').map((m, i) => knowledgeRow(`memory:${i}`, m));
-    return rows.length > 0 ? rows : null;
+    const mem = memoryRecordOf(galaxy);
+    if (mem === null) return null;
+    const rows: KnowledgeRow[] = [knowledgeRow('memory:age', `Age ${mem.age}`, '', `${Math.round(mem.eliminatedPct)}% of the old galaxy's people were taken before the Long Night`)];
+    for (const [i, sc] of mem.scars.entries()) rows.push({ ...knowledgeRow(`memory:scar:${i}`, sc.name, sc.systemName, 'a harvest world of the old age'), point: { x: sc.x, y: sc.y } });
+    for (const [i, f] of mem.foundries.located.entries()) rows.push({ ...knowledgeRow(`memory:found:${i}`, f.name, '', 'a foundry we found before the Long Night'), point: { x: f.x, y: f.y } });
+    for (const [i, f] of mem.foundries.destroyed.entries()) rows.push({ ...knowledgeRow(`memory:gone:${i}`, f.name, '', 'destroyed before the Long Night'), point: { x: f.x, y: f.y } });
+    return rows;
 });
 
 // ---------------------------------------------------------------------------------------------------------------

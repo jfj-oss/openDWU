@@ -22,17 +22,10 @@ import { galaxyResetSupported, requestGalaxyReset } from '../../../galaxyReset';
 import { registerScenarioEvent, registerScenarioFramePeriodic, registerScenarioQuery, radiusFraction } from '../../hooks';
 import { scenarioFlag } from '../../state';
 import { scenarioMessage, scenarioNews, scenarioText as T } from '../../messages';
-<<<<<<< HEAD
-<<<<<<< HEAD
 import { captureSurvivors } from '../../../age2Placement';
 import { beaconState, isNormalEmpire, peekBeaconState, type BeaconState, type CoreRec, type EmpireParts } from './beaconState';
-=======
 import { registerAge2World } from './age2World';
-=======
 import { captureMega, restoreMega } from './megaStation';
->>>>>>> cc9a0a01 (Mega-station: the Diet vote builds it (blueprint holder moves it, picks the void place), pooled parts cap progress, 20% of contributors' private freighters build it over 60-70 active years, blockade and decay, indestructible unarmed base, Long Night carry, firing)
-import { beaconState, peekBeaconState, type BeaconState, type CoreRec, type EmpireParts } from './beaconState';
->>>>>>> 4cb45ddb (Age 2 world: old capitals as ruins (with a dead empire's mega-station parts), Reclaimer hulks, wrecks in the systems of fallen capitals)
 import {
     AGE_PREPARATION,
     HARVEST_CYCLE_FLAG,
@@ -333,12 +326,9 @@ export function restoreParts(galaxy: Galaxy, data: unknown): void {
 export function registerLongNight(): void {
     registerAge2World();
     registerMemoryContributor({ id: 'beacon.parts', capture: captureParts, restore: restoreParts });
-<<<<<<< HEAD
     registerScenarioFramePeriodic({ id: 'longNight.advisor', flag: HARVEST_CYCLE_FLAG, order: 26, periodDays: 5, run: (g) => advisorCheck(g) });
     registerScenarioQuery({ id: 'longNight.rimNudge', flag: HARVEST_CYCLE_FLAG, query: 'colonizationTargetValue', run: (g, v, a) => rimNudgedValue(g, a.empire, a.habitat, v) });
-=======
     registerMemoryContributor({ id: 'beacon.mega', capture: captureMega, restore: restoreMega });
->>>>>>> cc9a0a01 (Mega-station: the Diet vote builds it (blueprint holder moves it, picks the void place), pooled parts cap progress, 20% of contributors' private freighters build it over 60-70 active years, blockade and decay, indestructible unarmed base, Long Night carry, firing)
     registerScenarioEvent({ id: 'longNight.crash', flag: HARVEST_CYCLE_FLAG, event: 'ruinsInvestigated', run: (g, e) => onCrashSurveyed(g, e.empire, e.habitat) });
 }
 

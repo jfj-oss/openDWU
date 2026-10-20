@@ -141,9 +141,12 @@ describe('Knowledge page model', () => {
     it('the Age 2 memory record reads the Long Night state defensively', () => {
         const { g, me } = setup();
         expect(knowledgeView(g, me).sections.some((s) => s.id === 'ageMemory')).toBe(false);
-        g.scenario!.state.longNight = { memory: ['The Archive burned.', 7] };
-        expect(knowledgeView(g, me).sections.find((s) => s.id === 'ageMemory')?.rows.map((r) => r.what)).toEqual(['The Archive burned.']);
-        g.scenario!.state.longNight = 'broken';
+        // the Long Night's memory record (longNightState.ts): the age, the harvest worlds, the foundries found or destroyed
+        g.scenario!.state.longNight = { memory: { age: 2, eliminatedPct: 81.4, scars: [{ name: 'Aporak', systemName: 'Nugdra', x: 1, y: 2, fate: 'live', knownToPlayer: true }], foundries: { located: [{ name: 'Foundry 3', systemName: '', x: 5, y: 6 }], destroyed: [] }, truths: [], extra: {} } };
+        const rows = knowledgeView(g, me).sections.find((s) => s.id === 'ageMemory')!.rows;
+        expect(rows.map((r) => r.what)).toEqual(['Age 2', 'Aporak', 'Foundry 3']);
+        expect(rows[1].point).toEqual({ x: 1, y: 2 });
+        g.scenario!.state.longNight = {};
         expect(knowledgeView(g, me).sections.some((s) => s.id === 'ageMemory')).toBe(false);
     }, 600000);
 
