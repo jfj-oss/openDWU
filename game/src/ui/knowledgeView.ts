@@ -25,12 +25,9 @@ import { peekGwState } from '../sim/scenario/threats/giantworks/state';
 import { megaKnowledgeRows } from '../sim/scenario/threats/giantworks/megaStation';
 import { foundriesKnownTo } from '../sim/scenario/threats/giantworks/beaconFoundry';
 import { memoryRecordOf } from '../sim/scenario/threats/giantworks/longNightState';
-<<<<<<< HEAD
 import { WAR_CREDIT_KINDS, WAR_CREDIT_LABEL, warCreditActive, warCreditRanking } from '../sim/scenario/threats/giantworks/beaconWarCredit';
 import { DiplomaticRelationType } from '../sim/diplomacy';
-=======
 import { milestoneRowsOf } from '../sim/scenario/threats/giantworks/age2Milestones';
->>>>>>> f26a50ad (Age 2 knowledge milestones 2-8: first warp jump, first contact (species myth variants, shared-myth Truth), old-capital ruin, ark hook, first Harvest Scar, Founders' Compact rumour, the Diet re-forms; The New Age Knowledge section)
 
 /** The Galactopedia article on the Great Works (expansionArticles.ts). */
 export const KNOWLEDGE_ARTICLE = 'The Great Work (Giantworks)';

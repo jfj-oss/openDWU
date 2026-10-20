@@ -581,7 +581,7 @@ Mega Know Status blockaded;blockaded: {0}% done, nothing arrives; if freighters 
 Mega Know Status idle;waiting for freighters: {0}% done, the parts allow {1}%
 Mega Know Status dormant;asleep since the Long Night: {0}% done; it needs finding and a new Diet vote to resume
 Mega Know Status fired;fired
-' TODO-PROSE: the war-credit texts below are placeholders (beaconWarCredit.ts)
+' The war-credit texts (beaconWarCredit.ts): the yearly Diet review, the laggard's message, the Diet screen line and the reputation causes.
 Beacon War Credit News;The Interstellar Diet has reviewed the share of the war against the Reclaimers: the {0} lead, with {1} % of what has been done. Their weight in the Diet rises by {2} % for the year.
 Beacon War Credit Slack Title;The Diet counts the war
 Beacon War Credit Slack;The Diet's review finds that your empire has done {0} % of the work against the Reclaimers, though it holds {1} % of the members' fleets. Your standing among the members and your weight in the Diet fall for the year.
