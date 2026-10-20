@@ -441,6 +441,13 @@ LongNight Rim Title;A World Beyond Their Reach
 LongNight Rim Body;Half of the galaxy's people are gone. Our analysts have stopped pretending otherwise.\n\nThey take the near worlds first and work outward. They have never been seen at the rim. If any of us are to be alive when this ends, it will be there: a colony on the galaxy's far edge, as distant from the Beacon as our ships can reach, small enough to be overlooked.\n\nWe are not asking you to abandon anything. We are asking you to make sure something of us remains.
 LongNight Crash Name;Crashed Reclaimer hull
 LongNight Crash Description;A vast shape buried deep in an ancient crater. Not stone. Not ours.
+LongNight Ruin Name;Ruins of {0}
+LongNight Ruin Description;TODO-PROSE The broken seat of {0}, a {1} power of the age before the Long Night. Whatever the machines left of {2} lies under the dust.
+LongNight Ruin Survey Title;TODO-PROSE The Ruins of {0}
+LongNight Ruin Survey Body;TODO-PROSE Our survey teams have gone through the ruins on {1}, the seat of the {0}. They found fragments of old learning, and some wealth.
+LongNight Ruin Parts Title;TODO-PROSE What {0} Left Behind
+LongNight Ruin Parts Body;TODO-PROSE Beneath the ruins of {1}, the seat of the {0}, our survey teams found parts of the machine the old empires were building: {2}. They are ours now.
+LongNight Hulk Name;Reclaimer hulk {0}
 Beacon Foundry Design;Foundry
 Beacon Foundry Name;Foundry {0}
 Beacon Foundry Row;{0}

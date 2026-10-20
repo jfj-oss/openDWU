@@ -44,6 +44,7 @@ import type { BuiltObject } from '../sim/builtObject';
 import type { Empire } from '../sim/empire';
 import type { Habitat } from '../sim/types';
 import { peekThreatState } from '../sim/scenario/threats/framework';
+import { AGE2_WORLD_KEY } from '../sim/scenario/threats/giantworks/age2World';
 import { galaxyStarDate } from '../sim/tick/simTime';
 import { GAME_DAY_LENGTH } from '../sim/scenario/hooks';
 import { genShipsStates } from '../sim/scenario/threats/generationShips';
@@ -80,6 +81,8 @@ export interface ThreatLooks {
     /** The Beacon (Giantworks): the Reclaimers' faction, the two Watchers, the Watchers seen uncloaked now (null: the sim
      * does not say, a Watcher opens while it sits still) and the finished Beacon. Optional: absent = none. */
     reclaimers?: Empire | null;
+    /** The Age 2 Reclaimer hulks (giantworks/age2World.ts): abandoned or claimed ships that wear the Reclaimer frames. Optional. */
+    hulks?: BuiltObject[];
     watchers?: BuiltObject[];
     watchersSighted?: BuiltObject[] | null;
     beacon?: BuiltObject | null;
@@ -108,6 +111,7 @@ const looks: ThreatLooks = {
     purifierFaction: null,
     purifierDock: null,
     reclaimers: null,
+    hulks: [],
     watchers: [],
     watchersSighted: null,
     beacon: null,
@@ -194,6 +198,9 @@ export function threatLooks(galaxy: Galaxy): ThreatLooks {
     looks.swarmFaction = looks.mothercore = null;
     looks.purifierFaction = looks.purifierDock = null;
     looks.reclaimers = null;
+    looks.hulks!.length = 0;
+    const w2 = peekThreatState<{ hulks?: BuiltObject[] }>(galaxy, AGE2_WORLD_KEY);
+    if (w2 !== null) for (const h of w2.hulks ?? []) if (!h.hasBeenDestroyed) looks.hulks!.push(h);
     looks.watchers!.length = 0;
     looks.watchersSighted = null;
     looks.beacon = null;
@@ -519,6 +526,7 @@ export function beaconFileForSubRole(subRole: BuiltObjectSubRole): string | null
 
 /** A Reclaimer hull: a ship of the Reclaimers' faction (its bases excepted). */
 export function isReclaimerHull(bo: BuiltObject, l: ThreatLooks = looks): boolean {
+    if (l.hulks !== undefined && l.hulks.length > 0 && l.hulks.includes(bo)) return bo.role !== BuiltObjectRole.Base;
     return l.reclaimers !== undefined && l.reclaimers !== null && bo.actualEmpire === l.reclaimers && bo.role !== BuiltObjectRole.Base;
 }
 
@@ -623,7 +631,7 @@ export function watcherOpenTarget(bo: BuiltObject, l: ThreatLooks = looks): bool
 
 /** Any Beacon art in play (the per-object lookups are skipped without). */
 export function beaconLooksActive(l: ThreatLooks): boolean {
-    return (l.reclaimers !== undefined && l.reclaimers !== null) || (l.watchers !== undefined && l.watchers.length > 0) || (l.beacon !== undefined && l.beacon !== null);
+    return (l.reclaimers !== undefined && l.reclaimers !== null) || (l.hulks !== undefined && l.hulks.length > 0) || (l.watchers !== undefined && l.watchers.length > 0) || (l.beacon !== undefined && l.beacon !== null);
 }
 
 /** The bundled threat art of an object (a Great Work's, the Beacon's, the generation ships', the Purifier's or the probe

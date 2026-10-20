@@ -22,8 +22,13 @@ import { galaxyResetSupported, requestGalaxyReset } from '../../../galaxyReset';
 import { registerScenarioEvent, registerScenarioFramePeriodic, registerScenarioQuery, radiusFraction } from '../../hooks';
 import { scenarioFlag } from '../../state';
 import { scenarioMessage, scenarioNews, scenarioText as T } from '../../messages';
+<<<<<<< HEAD
 import { captureSurvivors } from '../../../age2Placement';
 import { beaconState, isNormalEmpire, peekBeaconState, type BeaconState, type CoreRec, type EmpireParts } from './beaconState';
+=======
+import { registerAge2World } from './age2World';
+import { beaconState, peekBeaconState, type BeaconState, type CoreRec, type EmpireParts } from './beaconState';
+>>>>>>> 4cb45ddb (Age 2 world: old capitals as ruins (with a dead empire's mega-station parts), Reclaimer hulks, wrecks in the systems of fallen capitals)
 import {
     AGE_PREPARATION,
     HARVEST_CYCLE_FLAG,
@@ -295,6 +300,7 @@ function restoreParts(galaxy: Galaxy, data: unknown): void {
 }
 
 export function registerLongNight(): void {
+    registerAge2World();
     registerMemoryContributor({ id: 'beacon.parts', capture: captureParts, restore: restoreParts });
     registerScenarioFramePeriodic({ id: 'longNight.advisor', flag: HARVEST_CYCLE_FLAG, order: 26, periodDays: 5, run: (g) => advisorCheck(g) });
     registerScenarioQuery({ id: 'longNight.rimNudge', flag: HARVEST_CYCLE_FLAG, query: 'colonizationTargetValue', run: (g, v, a) => rimNudgedValue(g, a.empire, a.habitat, v) });
