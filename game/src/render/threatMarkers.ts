@@ -49,7 +49,7 @@ export const THREAT_MARKER_COLOURS: Readonly<Record<ThreatMarkerKind, number>> =
     compact: 0xe6d08c,
     ring: 0xffa020,
     diamond: 0xffa020,
-    coreMark: 0x9a5cff,
+    coreMark: 0x5a2a9e,
 };
 
 export interface ThreatMarkerStyle {
@@ -312,10 +312,10 @@ export function drawThreatMarker(g: Graphics, st: ThreatMarkerStyle, x: number, 
             break;
         }
         case 'coreMark': {
-            // a small crisp diamond (6-9 screen px) just above the world; a dark outline keeps it legible on any planet
+            // a small crisp diamond (6-9 screen px) just above the world: solid dark purple, no outline (user 2026-10-19)
             const s = markerGlyphSize(r, 0.25, 6, 9, px);
             const cy = y - Math.max(r - 8 * px, s * 1.6);
-            g.moveTo(x, cy - s).lineTo(x + s * 0.75, cy).lineTo(x, cy + s).lineTo(x - s * 0.75, cy).closePath().fill({ color: c, alpha: a }).stroke({ width: 1.5 * px, color: 0x1a0d33, alpha: 0.9 * a });
+            g.moveTo(x, cy - s).lineTo(x + s * 0.75, cy).lineTo(x, cy + s).lineTo(x - s * 0.75, cy).closePath().fill({ color: c, alpha: a });
             break;
         }
         case 'diamond': {

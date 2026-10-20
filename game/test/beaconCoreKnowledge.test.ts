@@ -144,7 +144,7 @@ describe('cattle kills reveal the harvest cores', () => {
         noteCattleCore(g, st, shipOf(g, st, cores[2]), ai);
         expect(knownCores(st, ai)).toEqual([cores[2]]);
         expect(empireMessages(ai).length).toBe(aiMsgs);
-        expect(coreMarkStyle().colour).toBe(0x9a5cff);
+        expect(coreMarkStyle().colour).toBe(0x5a2a9e);
     }, 600000);
 
     it('the kill event and a boarding both count; the last unknown core opens the all-known popup once; a lost core drops its mark with a ticker line', () => {
