@@ -478,6 +478,7 @@ export function planetMarkerLabel(): string {
     return T(`${TAG} Planet Marker`);
 }
 
+
 export function registerComponents(): void {
     registerScenarioFramePeriodic({ id: 'beacon.planet', flag: BEACON_FLAG, order: 24, periodDays: 1, run: (g) => planetWatch(g) });
     registerScenarioQuery({ id: 'beacon.blueprintSink', flag: BEACON_FLAG, query: 'researchSinkShare', run: (g, v, a) => {

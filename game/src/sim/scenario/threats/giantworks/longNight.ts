@@ -22,7 +22,7 @@ import { galaxyResetSupported, requestGalaxyReset } from '../../../galaxyReset';
 import { registerScenarioEvent } from '../../hooks';
 import { scenarioFlag } from '../../state';
 import { scenarioMessage, scenarioNews, scenarioText as T } from '../../messages';
-import type { BeaconState, CoreRec } from './beaconState';
+import { beaconState, peekBeaconState, type BeaconState, type CoreRec, type EmpireParts } from './beaconState';
 import {
     AGE_PREPARATION,
     HARVEST_CYCLE_FLAG,
@@ -30,6 +30,7 @@ import {
     longNightState,
     markMilestone,
     memoryContributors,
+    registerMemoryContributor,
     peekLongNight,
     type CrashSite,
     type MegaStationMemory,
@@ -216,7 +217,35 @@ export function onCrashSurveyed(galaxy: Galaxy, empire: Empire, habitat: Habitat
 
 export const LONG_NIGHT_HANDLER_IDS = ['longNight.crash'] as const;
 
+/** The human players' mega-station parts and blueprint progress (beaconComponents.ts, kept in the Beacon state), by empire name: the new age's player keeps its name. */
+function captureParts(galaxy: Galaxy): Record<string, EmpireParts> | undefined {
+    const st = peekBeaconState(galaxy);
+    if (st === null || st.parts === undefined) return undefined;
+    const out: Record<string, EmpireParts> = {};
+    for (const e of galaxy.empires) {
+        if (e === null || !isHumanEmpire(galaxy, e)) continue;
+        const rec = st.parts.held[String(e.empireId)];
+        if (rec !== undefined) out[e.name] = JSON.parse(JSON.stringify(rec)) as EmpireParts;
+    }
+    return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** The new age: each human empire with a carried record (matched by name) holds its parts and blueprint progress again. */
+function restoreParts(galaxy: Galaxy, data: unknown): void {
+    if (data === null || typeof data !== 'object') return;
+    const byName = data as Record<string, EmpireParts>;
+    for (const e of galaxy.empires) {
+        if (e === null || !isHumanEmpire(galaxy, e)) continue;
+        const rec = byName[e.name];
+        if (rec === undefined) continue;
+        const st = beaconState(galaxy);
+        st.parts ??= { held: {}, peakAssets: 0, lastAssets: 0, shipUnit: 0, firstBeam: 0, revealDate: 0, visited: [] };
+        st.parts.held[String(e.empireId)] = rec;
+    }
+}
+
 export function registerLongNight(): void {
+    registerMemoryContributor({ id: 'beacon.parts', capture: captureParts, restore: restoreParts });
     registerScenarioEvent({ id: 'longNight.crash', flag: HARVEST_CYCLE_FLAG, event: 'ruinsInvestigated', run: (g, e) => onCrashSurveyed(g, e.empire, e.habitat) });
 }
 

@@ -123,6 +123,8 @@ describe('the reset', () => {
         s = brink();
         registerMemoryContributor({ id: 'test', capture: () => ({ foundries: [1, 2] }), restore: (g, d) => void ((g.scenario!.state['testRestored'] as unknown) = d) });
         setGalaxyResetSupported(s.g, true);
+        // the player's mega-station parts and blueprint progress (beaconComponents.ts) carry into the next age
+        s.st.parts = { held: { [String(s.g.playerEmpire!.empireId)]: { beamLens: true, mindFragments: 7, blueprint: { since: 1, progress: 1234, sharePct: 25 } } }, peakAssets: 0, lastAssets: 0, shipUnit: 0, firstBeam: 0, revealDate: 0, visited: [] };
         lossCheck(s.g, s.st);
         next = buildAge2Game(s.game, s.gameData);
     }, 900000);
@@ -162,6 +164,8 @@ describe('the reset', () => {
         expect(mem.extra['test']).toEqual({ foundries: [1, 2] });
         expect(g.scenario!.state['testRestored']).toEqual({ foundries: [1, 2] });
         expect(peekLongNight(g)!.pending).toBeFalsy();
+        const carried = peekBeaconState(g)?.parts?.held[String(g.playerEmpire!.empireId)];
+        expect(carried).toMatchObject({ beamLens: true, mindFragments: 7, blueprint: { progress: 1234 } });
     });
 
     it('sends the transition and popup #0 "The Unification" (approved text) to the player', () => {
