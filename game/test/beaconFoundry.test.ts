@@ -302,6 +302,8 @@ describe('the Reclaimer foundries', () => {
         scenarioEmit(g, 'builtObjectKilledBy', { builtObject: fd.base!, destroyer: me });
         expect(heard).toEqual([{ empire: me, id: fd.id }]);
         expect(foundriesDestroyedBy(g, me)).toBe(1);
+        // and it is a void frame toward the mega-station (beaconComponents.ts)
+        expect(st.parts?.held[String(me.empireId)]?.voidFrames).toBe(1);
         expect(fd.status).toBe('destroyed');
         expect(fd.destroyedBy).toBe(me.empireId);
         expect([fd.x, fd.y]).toEqual([x, y]);

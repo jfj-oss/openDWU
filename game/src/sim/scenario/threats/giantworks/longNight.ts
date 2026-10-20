@@ -122,6 +122,18 @@ export function playerIdentityOf(galaxy: Galaxy): PlayerIdentityRec | null {
     return { name: p.name, race: p.dominantRace.name, primaryColor: p.mainColor, secondaryColor: p.secondaryColor, flagShape: p.flagShape };
 }
 
+/** The Reclaimers' foundries (beaconFoundry.ts, kept in the Beacon state): the destroyed ones, and the living ones a human player had found. */
+function foundriesOf(galaxy: Galaxy, st: BeaconState): MemoryRecord['foundries'] {
+    const out: MemoryRecord['foundries'] = { located: [], destroyed: [] };
+    const humans = new Set(humanEmpires(galaxy).map((e) => e.empireId));
+    for (const f of st.foundries?.list ?? []) {
+        const place = { name: T('Beacon Foundry Name', f.id), systemName: '', x: f.x, y: f.y };
+        if (f.status === 'destroyed') out.destroyed.push(place);
+        else if (f.knowledge.some((k) => humans.has(k.empireId) && k.level >= 2)) out.located.push(place);
+    }
+    return out;
+}
+
 /** What the player remembers when the Long Night begins. Pure (the contributors' captures are theirs to keep pure). */
 export function captureMemory(galaxy: Galaxy, st: BeaconState): MemoryRecord {
     const extra: Record<string, unknown> = {};
@@ -135,7 +147,7 @@ export function captureMemory(galaxy: Galaxy, st: BeaconState): MemoryRecord {
         fromDate: galaxyStarDate(galaxy),
         eliminatedPct: st.popBaseline > 0 ? (100 * st.popEliminated) / st.popBaseline : 0,
         scars: scarsOf(galaxy, st),
-        foundries: { located: [], destroyed: [] },
+        foundries: foundriesOf(galaxy, st),
         megaStation: readMegaStation(galaxy),
         // Placeholder: the Truths of the cycle (Knowledge page ids) are not built yet; one stands for "the Harvest was seen".
         truths: st.reclamationDate > 0 ? ['age1-harvest'] : [],

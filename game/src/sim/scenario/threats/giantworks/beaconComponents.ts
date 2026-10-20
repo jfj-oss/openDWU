@@ -492,6 +492,11 @@ export function registerComponents(): void {
     } });
     registerScenarioQuery({ id: 'beacon.partItems', flag: BEACON_FLAG, query: 'tradeablePartItems', run: (g, v, a) => [...v, ...tradeablePartItems(g, a.giver, a.receiver)] });
     registerScenarioQuery({ id: 'beacon.partTrade', flag: BEACON_FLAG, query: 'partTradeAllowed', run: (g, v, a) => v && partTradeAllowed(g, a.giver, a.receiver) });
+    // A destroyed Reclaimer foundry (beaconFoundry.ts) is a void frame for the empire that destroyed it.
+    registerScenarioEvent({ id: 'beacon.foundryFrame', flag: BEACON_FLAG, event: 'foundryDestroyed', run: (g, e) => {
+        const st = peekBeaconState(g);
+        if (st !== null && e.empire !== null) creditFoundryKill(g, st, e.empire);
+    } });
     registerScenarioEvent({ id: 'beacon.partTraded', flag: BEACON_FLAG, event: 'partTraded', run: (g, e) => {
         const st = peekBeaconState(g);
         if (st !== null) tradePart(g, st, e.giver, e.receiver, e.part);
