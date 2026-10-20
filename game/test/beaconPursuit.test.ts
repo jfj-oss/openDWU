@@ -238,7 +238,7 @@ describe('the Reclaimer capitals\' pursuit', () => {
         expect(canCatch(w.g, w.cap, w.enemy.warpSpeed / 2, w.enemy)).toBe('slow');
     }, 600000);
 
-    it('the pursuit gives up after its time, and stops at a strongly defended place', () => {
+    it('the pursuit gives up after its time; a runner still in warp is pulled out even over a strongly defended place', () => {
         // give up
         {
             const w = world();
@@ -285,7 +285,7 @@ describe('the Reclaimer capitals\' pursuit', () => {
             expect(pr.stats.maxAwayX100).toBeGreaterThanOrEqual(460);
             expect(builtObjectMission(w.cap.mission)?.type).toBe(BuiltObjectMissionType.Patrol);
         }
-        // a defended system: the enemy's whole navy sits at a star and the enemy is over it
+        // a defended system: the enemy's whole navy sits at a star and the enemy, still in warp, is over it: it is pulled out short of safety
         {
             const w = world();
             const owner = w.enemy.actualEmpire as Empire;
@@ -311,8 +311,8 @@ describe('the Reclaimer capitals\' pursuit', () => {
             pursuitTick(w.g);
             const pr = pursuitOf(w.st);
             expect(pr.stats.started).toBe(1);
-            expect(pr.stats.end_defended).toBe(1);
-            expect(pr.stats.caught).toBeUndefined();
+            expect(pr.stats.caught).toBe(1);
+            expect(pr.stats.end_defended).toBeUndefined();
         }
     }, 900000);
 

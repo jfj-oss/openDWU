@@ -845,7 +845,7 @@ export const P = {
     pursuitGiveUpDays: (g: Galaxy) => p(g, 'beaconPursuitGiveUpDays', 50),
     pursuitCooldownDays: (g: Galaxy) => p(g, 'beaconPursuitCooldownDays', 90),
     /** A pursuer within this many units of the enemy in warp pulls it out of warp. */
-    pursuitPullRange: (g: Galaxy) => p(g, 'beaconPursuitPullRange', 20000),
+    pursuitPullRange: (g: Galaxy) => p(g, 'beaconPursuitPullRange', 40000),
     /** The pursuers need a warp speed this % of the enemy's (or more); their jump spools this % of the stock time. */
     pursuitSpeedPct: (g: Galaxy) => p(g, 'beaconPursuitSpeedPct', 110),
     pursuitSpoolPct: (g: Galaxy) => p(g, 'beaconPursuitSpoolPct', 25),

@@ -401,11 +401,8 @@ function driveChase(galaxy: Galaxy, st: BeaconState, pr: PursuitRec, c: PursuitC
         const range = Math.max(P.pursuitPullRange(galaxy), t.currentSpeed * 0.5);
         for (const b of unit) {
             if (!inWarp(b) || galaxy.calculateDistance(b.xpos, b.ypos, t.xpos, t.ypos) > range) continue;
-            if (tooDefended(galaxy, st, t.xpos, t.ypos, fleetTotal(c))) {
-                for (const u of unit) if (inWarp(u)) exitHyperjump(galaxy, u);
-                endChase(galaxy, pr, c, 'defended', now);
-                return;
-            }
+            // (no defended-place check here: a runner caught in warp is pulled out short of its safe harbour, user 2026-10-19;
+            // the check below still stops a chase whose enemy reached a defended place before it was caught)
             c.pulled = now;
             pullOut(galaxy, st, pr, t, now);
             stat(pr, 'caught');
