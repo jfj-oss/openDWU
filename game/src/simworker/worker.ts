@@ -17,6 +17,8 @@ import { installWorkerBootState, SimHost } from './simHost';
 import { bootWorkerGame, scenarioGameData } from './workerBoot';
 import { installGameStatics, registerGameHooks, type Game } from '../sim/game';
 import type { GalaxyTime } from '../sim/galaxyTime';
+import { clearGalaxyReset, galaxyResetPending, setGalaxyResetSupported } from '../sim/galaxyReset';
+import { performGalaxyReset } from '../sim/longNightReset';
 import type { StartGameOptions } from '../sim/startGameOptions';
 import { WorkerLockstep } from './workerLockstep';
 import { saveTextString } from '../saveData';
@@ -133,6 +135,8 @@ async function init(m: InitMessage): Promise<void> {
 function startHost(game: Game, time: GalaxyTime, startOptions: StartGameOptions, bootMs: number): void {
     post({ type: 'progress', step: 'Preparing map', fraction: 0.9 });
     installWorkerBootState(game.galaxy);
+    // The Harvest Cycle's Long Night (sim/galaxyReset.ts): this worker can replace the galaxy between ticks (not under a multiplayer session).
+    setGalaxyResetSupported(game.galaxy, lockstep === null);
     // The browser game always has the message UI: the worker is the player's message recipient (docs §9 chunk 4).
     const header = { baseTechCost: game.galaxy.baseTechCost, startOptions, scenario };
     let chunks = 0;
@@ -166,6 +170,25 @@ function replaceGame(game: Game, time: GalaxyTime, startOptions: StartGameOption
         post({ type: 'gameReplaced' });
     }
     startHost(game, time, startOptions, 0);
+}
+
+/**
+ * The sim asked for the galaxy to be replaced (sim/galaxyReset.ts: the Harvest Cycle's Long Night): build the next cycle's game from this one
+ * and swap it in as a multiplayer resync does (replaceGame: gameReplaced, a new SimHost, a new snapshot). The new game starts paused. A failure
+ * leaves the old game as it is, paused, and tells the main thread.
+ */
+function resetGalaxy(h: SimHost): void {
+    try {
+        if (gameData === null) throw new Error('no game data');
+        const next = performGalaxyReset(h.game, h.time, gameData);
+        replaceGame(next.game, next.time, h.startOptionsOfGame);
+    } catch (err) {
+        console.error('sim worker: the Long Night could not begin', err);
+        clearGalaxyReset(h.game.galaxy);
+        h.time.paused = true;
+        post({ type: 'error', message: `the Long Night could not begin: ${err instanceof Error ? err.message : String(err)}` });
+        timer = setTimeout(loop, FRAME_REAL_MS);
+    }
 }
 
 function ensureLockstep(): WorkerLockstep {
@@ -232,6 +255,10 @@ function loop(): void {
         fatal('step loop', err);
         return;
     }
+    if (galaxyResetPending(h.game.galaxy)) {
+        resetGalaxy(h);
+        return;
+    }
     // Next tick when the next step is due (paused: poll for commands / clock changes at the step rate).
     const delay = h.time.paused ? FRAME_REAL_MS : Math.max(0, FRAME_REAL_MS - h.budget.backlogMs);
     timer = setTimeout(loop, delay);
@@ -292,6 +319,8 @@ function dispatch(m: ToWorker): void {
                 return;
             }
             ensureLockstep().start(m);
+            // A multiplayer session steps this game in lockstep: the Long Night cannot swap its galaxy (the defeat ends the game as before).
+            if (host !== null) setGalaxyResetSupported(host.game.galaxy, false);
             kick();
             return;
         case 'netIn':

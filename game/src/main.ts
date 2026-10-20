@@ -25,7 +25,7 @@ import { GalaxyTime } from './sim/clock';
 import { resolveStarDateDescription, YEAR_LENGTH } from './sim/galaxyTime';
 import { createSimLoop, simViewEnabledFromUrl, simViewFromCamera } from './simLoop';
 // [simworker] begin — docs/sim-worker.md: the sim in a Web Worker (the default; ?simWorker=0 or Settings → off selects the in-thread fallback).
-import { SimWorkerClient, simWorkerEnabled, type MpSideChannel, type ReplicaGameData } from './simworker/workerClient';
+import { SimWorkerClient, setReplacedGameHandler, simWorkerEnabled, type MpSideChannel, type ReplicaGameData } from './simworker/workerClient';
 import type { SimEndpoint } from './simworker/simEndpoint';
 import { workerCreateOptions } from './simworker/bootOptions';
 import type { ScenarioRef, WorkerBoot } from './simworker/protocol';
@@ -176,6 +176,8 @@ import { devValue } from './ui/multiplayer/devHooks';
 import { endMultiplayerSession, multiplayerActive, multiplayerIsClient, multiplayerSaveExtras, openMultiplayerScreen, type LoadedMultiplayerSave, type MultiplayerAppDeps } from './ui/multiplayer/multiplayerApp';
 import { engineName, noteDataRead, resetDataReads } from './net/fingerprint';
 import { APP_BUILD, APP_EDITION, APP_VERSION, IS_CLASSIC } from './appVersion';
+import { setGalacticAge } from './sim/scenario/expansionArticles';
+import { galaxyAgeOf } from './sim/scenario/threats/giantworks/longNightState';
 
 // ?shape= names accepted by the boot URL.
 const SHAPE_BY_NAME: Record<string, GalaxyShape> = {
@@ -516,6 +518,16 @@ async function createGameInWorker(opts: CreateGameOptions, scenario: { id: strin
     const client = await bootWorker('Creating galaxy', { kind: 'create', options: workerCreateOptions(opts), scenario }, opts.gameData, startOptions);
     return { game: client.core.game, simClient: client };
 }
+// The Harvest Cycle's Long Night (sim/galaxyReset.ts): the worker replaced its game; show the new one (paused, so its opening popups are read first).
+setReplacedGameHandler((next) => {
+    void next.then(
+        async (client) => {
+            teardownActiveGameView();
+            await startGameViewWithOverlay(client.core.game, undefined, undefined, { speed: 1, paused: true }, client);
+        },
+        (err: unknown) => console.error('sim worker: the new game could not be shown', err),
+    );
+});
 // [simworker] end
 
 /** startGameView under a "Preparing map" overlay: building the map layers of a big galaxy takes a moment. */
@@ -725,6 +737,7 @@ export async function startGameView(
         }
     }
     const galaxy = game.galaxy;
+    setGalacticAge(galaxyAgeOf(galaxy)); // the Harvest Cycle: Galactopedia articles unlocked by the Long Night
     // The empire this screen plays (src/localViewer.ts; multiplayer): galaxy.playerEmpire unless a viewer is set.
     const viewer: Empire = localViewerEmpire(galaxy) ?? game.playerEmpire;
     // The viewer now (the hot-seat switch moves it, src/localViewer.ts switchLocalViewerEmpire): what the order UI, the

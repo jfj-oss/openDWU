@@ -44,7 +44,7 @@ import { econGalactopediaItems, econGalactopediaPage } from '../scenario/colonyE
 import { FONT, el, glassButton, gradientPanel, linkLabel, openOriginalWindow, place, textBox } from '../originalWindow';
 import { EXPANSIONS } from '../../sim/scenario/addons';
 import { EXPANSION_INFO, difficultyLabel, meterBar } from '../../sim/scenario/expansionInfo';
-import { ARTICLE_IMAGES, EXPANSION_ARTICLES, STANDALONE_EXP, articleTitle, type ArticleImage, type ExpansionArticle } from '../../sim/scenario/expansionArticles';
+import { ARTICLE_IMAGES, EXPANSION_ARTICLES, STANDALONE_EXP, articleKnown, articleTitle, getGalacticAge, type ArticleImage, type ExpansionArticle } from '../../sim/scenario/expansionArticles';
 import { FAUNA_BODIES, LANTERN_SWARM, PALETTE_FRAMES, dotRgba, fallbackPaletteSource, paletteSourceFromRgba, rasterBody, restPose, type PaletteSource, type RgbaImage } from '../../render/creatureRig';
 import { loadScenarioIndex } from '../../sim/scenario/fetchScenario';
 import { fileNameOf, findMhtPart, parseMht, type MhtDocument } from './mht';
@@ -246,13 +246,16 @@ async function loadGalactopediaData(): Promise<GalactopediaData> {
 }
 
 let dataTheme = '';
+/** The game's age the item list was built for (the field guide shows gated articles once the Long Night has passed). */
+let dataAge = 1;
 
 function getData(): Promise<GalactopediaData> {
-    if (dataTheme !== activeCustomizationSetName()) {
+    if (dataTheme !== activeCustomizationSetName() || dataAge !== getGalacticAge()) {
         // the theme changed (Start.cs method_2 rebuilds the encyclopedia, method_465): rebuild for it
         dataPromise = null;
         pageCache.clear();
         dataTheme = activeCustomizationSetName();
+        dataAge = getGalacticAge();
     }
     if (!dataPromise) {
         dataPromise = loadGalactopediaData().catch((err) => {
@@ -1148,12 +1151,12 @@ function expansionArticleItems(expItems: EncyclopediaItem[]): EncyclopediaItem[]
         const expItem = expItems.find((i) => i.id === e.id);
         if (category === undefined || expItem === undefined) continue;
         out.push({ id: `fieldguide-${e.id}`, title: `${e.name}: field guide`, filename: `${ART_PREFIX}root:${e.id}`, category, isCategoryRoot: true, relatedItems: [expItem] });
-        for (const a of EXPANSION_ARTICLES.filter((x) => x.exp === e.id)) {
+        for (const a of EXPANSION_ARTICLES.filter((x) => x.exp === e.id && articleKnown(x))) {
             out.push({ id: articleItemId(a), title: articleTitle(a), filename: `${ART_PREFIX}${articleItemId(a)}`, category, isCategoryRoot: false, relatedItems: [expItem] });
         }
     }
     // Standalone add-ons (in no expansion: exp STANDALONE_EXP) are listed under Expansions themselves.
-    for (const a of EXPANSION_ARTICLES.filter((x) => x.exp === STANDALONE_EXP)) {
+    for (const a of EXPANSION_ARTICLES.filter((x) => x.exp === STANDALONE_EXP && articleKnown(x))) {
         out.push({ id: articleItemId(a), title: `${articleTitle(a)} — standalone add-on`, filename: `${ART_PREFIX}${articleItemId(a)}`, category: EncyclopediaCategory.Expansions, isCategoryRoot: false, relatedItems: [] });
     }
     return out;
@@ -1280,7 +1283,7 @@ function fieldGuideList(expId: string): HTMLElement {
     const box = el('div');
     const KINDS: [ExpansionArticle['kind'], string][] = [['creature', 'Creatures'], ['faction', 'Factions'], ['ship', 'Ships'], ['good', 'Goods'], ['mechanic', 'Mechanics']];
     for (const [kind, heading] of KINDS) {
-        const list = EXPANSION_ARTICLES.filter((x) => x.exp === expId && x.kind === kind);
+        const list = EXPANSION_ARTICLES.filter((x) => x.exp === expId && x.kind === kind && articleKnown(x));
         if (list.length === 0) continue;
         box.appendChild(el('h3', '', heading));
         const ul = el('ul');

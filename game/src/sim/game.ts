@@ -21,6 +21,7 @@
 
 import { rebuildIndexes } from './indexRebuild';
 import { baconInitializeSettings, resetBaconSettings } from './baconSettings';
+import { recordCreateOptions } from './scenario/threats/giantworks/longNightState';
 import { baconSettingsOverrides, defaultBaconSettings, type BaconSettingsOverrides } from './data/baconSettings';
 import { applyVictoryConditionsToGalaxy, type VictoryConditions } from './victory';
 import { setHumanEmpires } from './humanEmpires';
@@ -122,6 +123,12 @@ export interface CreateGameOptions {
     /** Galaxy.Age (0-6): the wizard's galaxy Expansion slider (Start.1.cs 3695 / Start.2.cs 113). Also
      *  Galaxy.StartingAge (Galaxy.cs 982). Unset = 1 (standard preset, Start.cs 3298-3327). */
     galaxyAge?: number;
+    /**
+     * Our addition (the Harvest Cycle's Long Night, longNightReset.ts): generate the galaxy exactly as these options say (its alien-race
+     * projection reads each empire's age, so the same seed gives the same map only with the same ages), then found every empire PRE-WARP
+     * (age 0, tech level 0, Galaxy.Age 0: the stock PreWarp start). Default false.
+     */
+    foundPreWarp?: boolean;
     colonyNames?: string[];
     player: EmpireStartOptions;
     aiEmpires: EmpireStartOptions[];
@@ -1123,6 +1130,14 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
     // Mod layer: every habitat's faithful resource selection is done (setupSolarSystem / generateGasCloud, run inside
     // generateGalaxy above); 19h fuel oases adds its guaranteed rim fuel sources here, before anything reads resources.
     if (galaxy.scenario !== null) scenarioAfterGeneration(galaxy);
+    // Ours (the Harvest Cycle's Long Night): the map above came out of the options as given (the alien-race projection reads each empire's age);
+    // now every empire is founded pre-warp, the stock PreWarp start. The galaxy is the same as the one the options always made.
+    if (opts.foundPreWarp === true) {
+        const preWarp = (o: EmpireStartOptions): EmpireStartOptions => ({ ...o, age: 0, techLevel: 0 });
+        playerStart.opts = preWarp(playerStart.opts);
+        for (const st of aiStarts) st.opts = preWarp(st.opts);
+        opts = { ...opts, galaxyAge: 0, player: playerStart.opts };
+    }
     yield { step: 'Founding empires', fraction: 0.1 };
     // Unset galaxyAge = 1: the game's standard preset (Start.cs 3298-3327: Expansion 1 / empire tech Normal 0.5).
     // The C# option-screen defaults (Main.Part9.cs 2664 / 2689: GalaxyExpansion 0, YourEmpireTechLevel 0) are a
@@ -1685,6 +1700,8 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
     // The wizard's flag pick for the empire types whose options do not carry it (main.ts used to write it after
     // createGame; as an option it replays): the last write, as it was.
     if (opts.playerFlagShape !== undefined && opts.playerFlagShape >= 0) empire2.flagShape = opts.playerFlagShape;
+    // The Harvest Cycle (Giantworks option): the game keeps its own new-game options so the Long Night can build the next cycle's galaxy from them.
+    recordCreateOptions(galaxy, opts);
     // Main.Part12.cs:2881 (the game view starts): the player's message / event recipient from here on.
     ensurePlayerInbox(galaxy);
     // Not in the C#: the stable ids player commands name objects by (entityRefs.ts).

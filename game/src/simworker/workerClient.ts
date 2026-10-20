@@ -70,6 +70,16 @@ function isSideMessage(m: FromWorker): m is MpSideMessage {
     return m.type === 'netOut' || m.type === 'netCloseOut' || m.type === 'mpState' || m.type === 'mpReply';
 }
 
+/**
+ * Single player: the sim replaced its game (the Harvest Cycle's Long Night, sim/galaxyReset.ts; a multiplayer session has its own side channel).
+ * main.ts shows the new game as a loaded one when its client is ready.
+ */
+let replacedGameHandler: ((next: Promise<SimWorkerClient>) => void) | null = null;
+
+export function setReplacedGameHandler(handler: ((next: Promise<SimWorkerClient>) => void) | null): void {
+    replacedGameHandler = handler;
+}
+
 export class SimWorkerClient {
     /** save / digest / debug / commandLog requests waiting for their answer (rejected when the worker stops or the
      *  client is disposed). */
@@ -131,6 +141,7 @@ export class SimWorkerClient {
         this.stopWatchdog();
         const next = SimWorkerClient.listen(this.worker, this.gameData, undefined, this.side, null);
         if (this.side?.onReplaced != null) this.side.onReplaced(next);
+        else if (replacedGameHandler !== null) replacedGameHandler(next);
         else next.catch((err: unknown) => console.error('sim worker: the replaced game could not be shown', err));
     }
 

@@ -92,6 +92,7 @@ import {
 } from './beaconState';
 import { scenarioText as T } from '../../messages';
 import { allotResponse, driveResponse } from './beaconResponse';
+import { beginLongNight } from './longNight';
 import { isPursuing } from './beaconPursuit';
 import { noteFirstBeam, partsPass } from './beaconComponents';
 import { freeShare, fuelOf, harvestMonthly, liveCores, harvestPeriodic, onCattleKilled, onCoreRetaken, onHarvesterLost, payFleet, payTroops, troopSourceCore, troopsAffordable } from './beaconHarvest';
@@ -1526,6 +1527,8 @@ export function lossCheck(galaxy: Galaxy, st: BeaconState): void {
     st.ended = true;
     st.phase = 'ended';
     arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Lost', textTag: `${TAG} Lost News`, args: [Math.round(pct)] });
+    // The Harvest Cycle (option gwHarvestCycle): the Long Night begins instead of the end; the galaxy is replaced by the next cycle's (longNight.ts).
+    if (beginLongNight(galaxy, st)) return;
     const player = galaxy.playerEmpire;
     threatGameEnd(galaxy, player, GameEndOutcome.Defeat, T('Beacon Defeat Title'), BEACON_CODE_LOST, false);
 }

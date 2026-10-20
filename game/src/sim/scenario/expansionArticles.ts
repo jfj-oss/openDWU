@@ -17,6 +17,24 @@ export interface ExpansionArticle {
     title: string;
     /** Paragraphs. */
     text: string[];
+    /** Hidden until the game reaches this age: 'age2' = the Long Night has passed (the Harvest Cycle; see setGalacticAge). */
+    gate?: 'age2';
+}
+
+let galacticAge = 1;
+
+/** The age of the game on screen (1 = the Harvest, 2 = after the Long Night): main.ts sets it when a game view starts. */
+export function setGalacticAge(age: number): void {
+    galacticAge = age;
+}
+
+export function getGalacticAge(): number {
+    return galacticAge;
+}
+
+/** Whether the article is known yet (gated ones appear with their age). */
+export function articleKnown(a: ExpansionArticle): boolean {
+    return a.gate === undefined || galacticAge >= 2;
 }
 
 /** `exp` of an article of a standalone add-on (in no expansion; the Galactopedia lists it under Expansions). */
@@ -214,6 +232,9 @@ export const EXPANSION_ARTICLES: readonly ExpansionArticle[] = [
         'What is being built is never certain before it is finished. Convoys carry cargo that hints at it (glass and water ice, superconductors, heavy engines ...); the same cargo fits several wonders, and now and then it misleads. An empire that sees two different cargoes suspects a Great Work and sees a shortlist of what it could be; a spy, an investigation or the Diet\'s inspection narrows it. Only the finished wonder is certain.',
         'With Blockades That Bite on, the Great Work can be strangled. A founding world or a wonder\'s extra supplier (the Beacon\'s corrupted worlds) that is blockaded sends no convoys, and the Compact\'s freighters, even the ones it builds for nothing, are shot by the blockaders as they leave. Every founding world the empires control (blockaded, or taken) cuts the work\'s build speed by 20%, at most 60%: with all three controlled it builds at 40% of its speed, from what the other suppliers send. An empire may declare a blockade of an independent founding world without a war (a Blockade order on it); the blockade holds while its ships keep the orbit, and the Compact\'s anger and regard follow as for any attack on its convoys. The scaffold\'s label and status show the build speed; blockaded worlds are reported as they begin and end.',
         'Protect it (warships on station for a year earn the Compact\'s regard), sabotage it (spies set it back), or destroy it: that is a war crime unless the Diet has passed Authorise demolition, and the Compact never forgets. While the Beacon is being built or before its first beam the Diet may also order the Evacuation of the worlds near it (4 sectors, 3 years): their dense populations are shipped to farther member worlds and their growth slows, but a world that takes in many evacuees earns half its revenue for 2 years afterwards. Attacking convoys counts as an attack on the independents. A finished wonder pays the empire whose territory holds it (less the Compact\'s fifth), unless the Diet internationalises it.'),
+    // Unlocked at the start of Age 2 (the Harvest Cycle's Long Night). TODO-PROSE: the in-universe history ("Archive of the Second Dawn", source attribution pending) is written by the main session.
+    { ...A('giantworks', 'Giantworks', 'mechanic', 'long-night', 'The Long Night, and After',
+        'TODO-PROSE: the history of the Long Night and what came after, as the survivors tell it.'), gate: 'age2' },
     A('giantworks', 'Giantworks', 'mechanic', 'giantworks-casino', 'The Gilded Orbit (Giantworks)',
         'The resort wonder: a gold-and-neon ring of hotels and casinos whose cargo hints are luxury goods, reinforced glass and ice, and neon and gaming tables (the glass and the luxuries fit the void aquarium too). Finished, it pays the empire whose territory holds it, or that seized it by boarding, about half an average empire\'s yearly tax revenue a year (less the Compact\'s fifth) as stock resort and tourism income. That empire\'s colonies within two sectors are happier and become tourist destinations, and its colonies within four sectors draw immigrants.',
         'It opens honest, but three to six years later the dice are rolled: half the time a smuggling empire takes it over. The Gilded Syndicate, a pirate faction with designs at the best tech level any empire has reached, fortifies the system with three huge bases and a fleet of warships, together about 45% of the strongest navy. The resort pays nothing while they hold it, destroying or seizing it is no crime, and fighting the Syndicate counts as helping against a crisis. Every month they plant a Criminal Network on a colony within six sectors (up to ten): its corruption eats the colony\'s income until the host rids itself of it. Their raiders hunt private freighters near the bases.',
