@@ -1008,6 +1008,8 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
     let mapFor: Empire | null = null;
     let mapAt = 0;
     let extraCol!: HTMLDivElement;
+    // [charactersVictory] The Interstellar Diet button under the empire list (null without the Diet add-on).
+    let dietBtn: HTMLButtonElement | null = null;
 
     function build(): void {
         body.replaceChildren();
@@ -1015,12 +1017,19 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         filterRow = place(el('div', 'dip-filters'), lay.list.x, lay.list.y, lay.list.w, 24);
         body.appendChild(filterRow);
         const listY = lay.list.y + 30;
-        const listH = lay.list.h - 30;
+        // [charactersVictory] With the Diet add-on on, the Diet button (30 px, 4 px below the list) takes the list's foot.
+        const dietRow = dietOn(player.galaxy) ? 34 : 0;
+        const listH = lay.list.h - 30 - dietRow;
         // DiplomaticRelationListView _RelationDoubleClicked (a row or its relation strip) → Main.Part2.cs:4677
         // ctlEmpireDiplomaticRelationList__RelationDoubleClicked: the alliance naming panel (Speak is the button).
         list = buildRelationList(lay, listH, (e) => select(e, false), (e) => openAllianceName(e));
         place(list.grid.el, lay.list.x, listY, lay.list.w, listH);
         body.appendChild(list.grid.el);
+        dietBtn = null;
+        if (dietRow > 0) {
+            dietBtn = glassButton('Interstellar Diet', { onClick: () => toggleDietScreen(player.galaxy, player) });
+            body.appendChild(place(dietBtn, lay.list.x, listY + listH + 4, lay.list.w, 30));
+        }
 
         // pnlEmpireDetailInfo: curve BottomRight_TopRight 20, border width 3, (96, 96, 96).
         detail = gradientPanel({ corners: { tr: true, br: true }, radius: 20, border: 'rgb(96, 96, 96)', borderWidth: 3, className: 'dip-detail' });
@@ -1127,6 +1136,7 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
                 },
             ],
             ['right column', renderExtraColumn],
+            ['diet button', renderDietButton],
             [
                 'list',
                 () => {
@@ -1169,18 +1179,6 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
             extraCol.appendChild(place(listBtn, 0, y, 195, 30));
             y += 34;
         }
-        // [charactersVictory] A fixed way into the Interstellar Diet (whatever empire is selected), whenever the Diet add-on is on.
-        if (dietOn(player.galaxy)) {
-            const diet = dietView(player.galaxy, player);
-            const why = diet === null ? 'The Diet has not been founded yet.' : !diet.member ? `Your empire is not a member of the ${diet.title}.` : '';
-            const dietBtn = glassButton('Interstellar Diet', {
-                onClick: () => toggleDietScreen(player.galaxy, player),
-                disabled: diet === null,
-                title: why !== '' ? why : 'Open the Interstellar Diet: the session, the laws in force and the members',
-            });
-            extraCol.appendChild(place(dietBtn, 0, y, 195, 30));
-            y += 34;
-        }
         // 19r: the independent leagues (19k-3) with their flags.
         const leagues = leagueSection(player.galaxy, 'diplomacy');
         if (leagues !== null) {
@@ -1188,6 +1186,15 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
             sc.appendChild(leagues);
             extraCol.appendChild(sc);
         }
+    }
+
+    /** [charactersVictory] The Diet button under the list: enabled once the Diet exists, else its tooltip says why. */
+    function renderDietButton(): void {
+        if (dietBtn === null) return;
+        const diet = dietView(player.galaxy, player);
+        const why = diet === null ? 'The Diet has not been founded yet.' : !diet.member ? `Your empire is not a member of the ${diet.title}.` : '';
+        dietBtn.disabled = diet === null;
+        dietBtn.title = why !== '' ? why : 'Open the Interstellar Diet: the session, the laws in force and the members';
     }
 
     // ---- detail (EmpireDetailView.DrawEmpireDetail) ----
