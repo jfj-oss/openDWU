@@ -45,6 +45,9 @@ import {
     addonWipReason,
     activeExpansions,
     type AddonCatalog,
+    addonSets as addonSetsNeverOn,
+    canonicalAddons as canonicalNeverOn,
+    NEVER_ON_ADDONS,
 } from '../src/sim/scenario/addons';
 import { scenarioRuns } from '../src/sim/scenario/state';
 import { parityFlags } from '../src/sim/scenario/llm/parity';
@@ -413,5 +416,17 @@ describe('Retired and disabled add-ons', () => {
             for (const e of EXPANSIONS) expect(expansionMembers(cat, e), `${e.id} lists ${id}`).not.toContain(id);
             for (const e of EXPANSIONS) expect(e.members, `${e.id} members`).not.toContain(id);
         }
+    });
+});
+
+describe('Emergent Galaxy (loyalty, ambition, plots, coups) can never be switched on', () => {
+    it('has no toggle, and no pick, toggle or including add-on switches it on', () => {
+        expect(NEVER_ON_ADDONS.has('emergent')).toBe(true);
+        expect(cat.byId.get('emergent')?.hidden).toBe(true);
+        expect(canonicalNeverOn(cat, ['emergent', 'internal-security'])).toEqual(['internal-security']);
+        expect(toggleAddon(cat, [], 'emergent', true)).not.toContain('emergent');
+        const sets = addonSetsNeverOn(cat, ['emergent', 'internal-security', 'reputation']);
+        expect(sets.picked).not.toContain('emergent');
+        expect(sets.on).not.toContain('emergent');
     });
 });

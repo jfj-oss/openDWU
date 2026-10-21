@@ -181,8 +181,9 @@ const GROUP_OF: Readonly<Record<string, AddonGroup>> = {
 // resource-crises: withdrawn from the picker (its per-luxury approval loss stacked to absurd values); saves that use it still load.
 // colony-defence: withdrawn from the picker (the user wants the original's pirate control); saves that use it still load.
 // wreckage-salvage: RETIRED (the user: it should not be enableable); saves that had it on load with it off and the debris fields removed (scenario/retired.ts).
+// emergent (Emergent Galaxy): off while reworked, no toggle and never switched on (NEVER_ON_ADDONS).
 // silence: TEMPORARILY DISABLED (the user; to come back to): code and data stay, a save that had it on loads with it off and its zone removed (scenario/retired.ts).
-export const HIDDEN_ADDONS: ReadonlySet<string> = new Set(['threat-framework', 'example', 'ai-parity', 'soak-15y', 'resource-crises', 'colony-defence', 'big-galaxies', 'galactic-council', 'themed-names', 'event-log', 'fighting-retreats', 'coordinated-landings', 'decoys-chaff', 'ambush-strike', 'critical-hits', 'damage-control', 'armour-facing', 'surrender-wrecks', 'wreckage-salvage', 'silence']);
+export const HIDDEN_ADDONS: ReadonlySet<string> = new Set(['threat-framework', 'example', 'ai-parity', 'soak-15y', 'resource-crises', 'colony-defence', 'big-galaxies', 'galactic-council', 'themed-names', 'event-log', 'fighting-retreats', 'coordinated-landings', 'decoys-chaff', 'ambush-strike', 'critical-hits', 'damage-control', 'armour-facing', 'surrender-wrecks', 'wreckage-salvage', 'silence', 'emergent']);
 
 /**
  * Add-ons set on another wizard page (not listed on the Scenario page, but named in the summaries like any other):
@@ -521,8 +522,16 @@ export function addonCycles(cat: AddonCatalog): string[][] {
 /** A selection in canonical (index) order, unknown and duplicate ids dropped. */
 export function canonicalAddons(cat: AddonCatalog, picked: readonly string[]): string[] {
     const set = new Set(picked);
-    return cat.list.filter((a) => set.has(a.id)).map((a) => a.id);
+    return cat.list.filter((a) => set.has(a.id) && !NEVER_ON_ADDONS.has(a.id)).map((a) => a.id);
 }
+
+/**
+ * Add-ons that can never be switched on in a new game, whatever the picks (a remembered selection, a ?addons= link, an
+ * expansion or another add-on): Emergent Galaxy (loyalty, ambition, plots, coups) is off while it is reworked (user
+ * 2026-10-21: "should not have a toggle and should not be toggled by any of the other toggles"). It stays loadable as a
+ * data-only include (DATA_ONLY_INCLUDES), never on.
+ */
+export const NEVER_ON_ADDONS: ReadonlySet<string> = new Set(['emergent']);
 
 /** The scenario ids a set of picks starts with: `on` = switched on, `loaded` = every overlay applied (deps-first). */
 export function addonSets(cat: AddonCatalog, picked: readonly string[]): { picked: string[]; on: string[]; loaded: string[] } {
