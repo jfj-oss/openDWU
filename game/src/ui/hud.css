@@ -138,6 +138,21 @@
     display: none;
     width: 100%;
     box-sizing: border-box;
+    /* It scrolls (.hud-options: overflow-y auto; hud.ts fits its max-height to the room above the map) and shows a thin,
+       faint scroll bar on the right when the options don't all fit (user 2026-10-21). scrollbar-width / -color are reset
+       to auto (.ow-toolstrip sets them) because Chromium ignores ::-webkit-scrollbar while they are set. */
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+}
+.hud-options-menu::-webkit-scrollbar {
+    width: 6px;
+}
+.hud-options-menu::-webkit-scrollbar-track {
+    background: rgba(32, 32, 40, 0.35);
+}
+.hud-options-menu::-webkit-scrollbar-thumb {
+    background: rgba(160, 160, 176, 0.45);
+    border-radius: 3px;
 }
 .hud-options-pop.open .hud-options-menu {
     display: block;
