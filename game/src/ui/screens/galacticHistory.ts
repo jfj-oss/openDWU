@@ -707,6 +707,12 @@ function drawHistoryMap(canvas: HTMLCanvasElement, galaxy: Galaxy, scale: number
 }
 
 /** A read-only multiline TextBox (txtMessageHistoryText: FixedSingle, vertical scroll bar). */
+/** A Subject cell: the text ellipsized at the column edge, the full text as the cell's tooltip. */
+function titleCell(c: HTMLElement, title: string): void {
+    c.title = title;
+    c.appendChild(owEl('span', 'gh-title', title));
+}
+
 function readOnlyText(x: number, y: number, w: number, h: number, extra = ''): HTMLDivElement {
     const t = owEl('div', `gh-textbox ow-scroll${extra ? ` ${extra}` : ''}`);
     return place(t, x, y, w, h);
@@ -869,7 +875,7 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
     };
     const columns: GridColumn<ViewRow>[] = [
         { id: 'icon', header: '', width: 35, align: 'center', render: (r, c) => renderIcon(r.icon, c) },
-        { id: 'title', header: text('Subject'), fill: 1, ...(logMode ? {} : { sort: (r: ViewRow) => r.title }), render: (r, c) => void (c.textContent = r.title) },
+        { id: 'title', header: text('Subject'), fill: 1, ...(logMode ? {} : { sort: (r: ViewRow) => r.title }), render: (r, c) => titleCell(c, r.title) },
         { id: 'starDate', header: text('Star Date'), width: 80, ...(logMode ? {} : { sort: (r: ViewRow) => r.starDate }), render: (r, c) => void (c.textContent = r.date) },
     ];
     const grid = new OwGrid<ViewRow>({
@@ -985,7 +991,7 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
     let chronKey = '';
     const chronGrid = new OwGrid<ChronicleRow>({
         columns: [
-            { id: 'title', header: tryGetText('Chronicle Tab Chronicle') ?? 'Chronicle', fill: 1, render: (r, c) => void (c.textContent = r.title) },
+            { id: 'title', header: tryGetText('Chronicle Tab Chronicle') ?? 'Chronicle', fill: 1, render: (r, c) => titleCell(c, r.title) },
             { id: 'year', header: text('Star Date'), width: 80, align: 'right', render: (r, c) => void (c.textContent = String(r.year)) },
         ],
         key: (r) => `${r.year}:${r.source}`,
@@ -1161,7 +1167,7 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
                     c.appendChild(sw);
                 },
             },
-            { id: 'title', header: text('Subject'), fill: 1, sort: (r) => r.title, render: (r, c) => void (c.textContent = r.title) },
+            { id: 'title', header: text('Subject'), fill: 1, sort: (r) => r.title, render: (r, c) => titleCell(c, r.title) },
             { id: 'date', header: text('Star Date'), width: 80, sort: (r) => r.report.endStarDate, render: (r, c) => void (c.textContent = r.date) },
         ],
         key: (r) => r.report.id,

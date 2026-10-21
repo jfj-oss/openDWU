@@ -19,6 +19,14 @@
     border: 1px solid rgba(0, 0, 0, 0.6);
 }
 
+/* A Subject cell's text: ellipsized at the column edge (titleCell sets the full text as the tooltip). */
+.ow-screen-galacticHistory .gh-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* lblMessageHistoryHeading: one line, clipped at the window. */
 .ow-screen-galacticHistory .gh-heading {
     overflow: hidden;
