@@ -7,7 +7,7 @@
 //   path from the ship (the fleet's lead) to its current mission target, then on to each queued target, with small
 //   numbered markers (the same numbers as the selection panel's "Then: 1. ...  2. ..." line, selectionInfo.ts).
 // - Fleet members: when the player's fleet is selected, a light ring on every member that is not drawn with its own
-//   selection circle (at galaxy / sector zoom the fleet icon stands for the whole fleet, galaxyMarkers.drawnAsFleet),
+//   selection circle (at galaxy / sector zoom only the lead ship is the fleet icon, galaxyMarkers.drawnAsFleet; members keep their symbols),
 //   and a faint line from each straggler to the lead ship, so a scattered fleet's ships are easy to find.
 //
 // Both Graphics are rebuilt only when their (rounded) screen geometry changes. Reads only the selection's ships and

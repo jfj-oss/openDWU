@@ -336,7 +336,9 @@ export class EmpireLayer {
         if (showTerritory) this.updateTerritory();
         this.territoryRoot.visible = showTerritory && this.territoryMeshes.length > 0;
         // The group is shown for the territory or the presence discs (the discs' visibility is set by GalaxyMarkerLayer, a frame later).
-        this.unionRoot.visible = this.territoryRoot.visible || this.presenceRoot.visible;
+        // presenceRoot itself stays visible: its children (GalaxyMarkerLayer's disc container) carry the toggle, so look at them —
+        // else the group and its offscreen AlphaFilter pass would run every frame at every zoom.
+        this.unionRoot.visible = this.territoryRoot.visible || this.presenceRoot.children.some((c) => c.visible);
         if (this.unionRoot.visible && this.unionAlpha === null) {
             this.unionAlpha = new AlphaFilter({ alpha: TERRITORY_ALPHA });
             this.unionRoot.filters = [this.unionAlpha];
