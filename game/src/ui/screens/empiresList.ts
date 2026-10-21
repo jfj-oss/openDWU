@@ -7,6 +7,7 @@
 
 import './empiresList.css';
 import type { Empire } from '../../sim/empire';
+import { beaconFactionHidden } from '../../sim/scenario/threats/giantworks/beaconState';
 import type { Habitat } from '../../sim/types';
 import { DiplomaticRelationType } from '../../sim/diplomacy';
 import { PirateRelationType } from '../../sim/pirateRelations';
@@ -45,13 +46,14 @@ export interface EmpireRow {
 export function knownEmpires(player: Empire): Set<Empire> {
     const known = new Set<Empire>([player]);
     const independent = player.galaxy?.independentEmpire ?? null;
+    const hidden = (e: Empire): boolean => player.galaxy != null && beaconFactionHidden(player.galaxy, e); // the Watchers stay unknown until the first beam
     for (const rel of player.diplomaticRelations ?? []) {
-        if (rel.type !== DiplomaticRelationType.NotMet && rel.otherEmpire != null && rel.otherEmpire !== independent) {
+        if (rel.type !== DiplomaticRelationType.NotMet && rel.otherEmpire != null && rel.otherEmpire !== independent && !hidden(rel.otherEmpire)) {
             known.add(rel.otherEmpire);
         }
     }
     for (const rel of player.pirateRelations ?? []) {
-        if (rel.type !== PirateRelationType.NotMet && rel.otherEmpire != null && rel.otherEmpire !== independent) {
+        if (rel.type !== PirateRelationType.NotMet && rel.otherEmpire != null && rel.otherEmpire !== independent && !hidden(rel.otherEmpire)) {
             known.add(rel.otherEmpire);
         }
     }

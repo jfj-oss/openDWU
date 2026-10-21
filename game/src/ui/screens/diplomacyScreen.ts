@@ -368,6 +368,7 @@ export function diplomacyRows(player: Empire, starDate: number, playerGovernment
         if (other === null || !other.active) continue;
         if (other === player.galaxy.independentEmpire) continue;
         if (other.pirateEmpireBaseHabitat !== null) continue;
+        if (beaconFactionHidden(player.galaxy, other)) continue; // the Watchers stay unknown until the first beam
         if (isEnforcerFaction(peekDietState(player.galaxy), other)) continue; // [charactersVictory] the Diet's enforcers are not a power
         rels.push({ other, rel, pirateType: PirateRelationType.NotMet });
         seen.add(other);
@@ -375,7 +376,7 @@ export function diplomacyRows(player: Empire, starDate: number, playerGovernment
     for (const pr of player.pirateRelations ?? []) {
         const other = pr.otherEmpire;
         if (pr.type === PirateRelationType.NotMet || other === null || !other.active) continue;
-        if (other === player.galaxy.independentEmpire || other === player || seen.has(other)) continue;
+        if (other === player.galaxy.independentEmpire || other === player || seen.has(other) || beaconFactionHidden(player.galaxy, other)) continue;
         if (other.pirateEmpireBaseHabitat === null && !piratePlayer) continue;
         rels.push({ other, rel: null, pirateType: pr.type });
         seen.add(other);
@@ -540,6 +541,9 @@ export function playerGovernmentName(player: Empire): string {
 export { proposalGroups, type ProposalGroup } from '../conversationActions';
 import { proposalGroups } from '../conversationActions';
 import { dietView } from '../../sim/scenario/charactersVictory/diet/dietView'; // [charactersVictory]
+import { beaconFactionHidden } from '../../sim/scenario/threats/giantworks/beaconState';
+import { runStages } from '../safeStages';
+import { dietOn } from '../../sim/scenario/charactersVictory/diet/dietState'; // [charactersVictory]
 import { peekDietState } from '../../sim/scenario/charactersVictory/diet/dietState'; // [charactersVictory]
 import { isEnforcerFaction } from '../../sim/scenario/charactersVictory/diet/dietEnforcers'; // [charactersVictory]
 import { toggleDietScreen } from './dietScreen'; // [charactersVictory]
@@ -1104,30 +1108,45 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
             if (caret !== null) filter.setSelectionRange(caret, caret);
         }
 
+        // Independent stages: one throwing (an add-on's extras, a relation strip of a threat faction) must not blank the list or
+        // leave the right-hand column showing the previous selection.
         const shown = filterDiplomacyRows(filterDiplomacyRowsByKind(rows, kindFilter, governmentFilter), filterQuery);
         const entries: ListEntry[] = [{ empire: player, row: null }, ...shown.map((r) => ({ empire: r.empire, row: r }))];
-        list.setData(entries, selected, player);
-        list.grid.select(selected, false);
-
-        renderDetail(rows.find((r) => r.empire === selected) ?? null);
-
-        // btnEmpireTalk (method_196).
-        if (selected === player) {
-            setButtonLabel(speakBtn, '(Your Empire)');
-            speakBtn.disabled = true;
-        } else {
-            setButtonLabel(speakBtn, `Speak with ${selected.name}`);
-            speakBtn.disabled = false;
-        }
-
-        const now = Date.now();
-        if (mapFor !== selected || now - mapAt > 5000) {
-            mapFor = selected;
-            mapAt = now;
-            drawKnownSystems(mapCanvas, player, selected);
-        }
-
-        renderExtraColumn();
+        runStages([
+            // btnEmpireTalk (method_196).
+            [
+                'speak button',
+                () => {
+                    if (selected === player) {
+                        setButtonLabel(speakBtn, '(Your Empire)');
+                        speakBtn.disabled = true;
+                    } else {
+                        setButtonLabel(speakBtn, `Speak with ${selected.name}`);
+                        speakBtn.disabled = false;
+                    }
+                },
+            ],
+            ['right column', renderExtraColumn],
+            [
+                'list',
+                () => {
+                    list.setData(entries, selected, player);
+                    list.grid.select(selected, false);
+                },
+            ],
+            ['detail', () => renderDetail(rows.find((r) => r.empire === selected) ?? null)],
+            [
+                'known systems map',
+                () => {
+                    const now = Date.now();
+                    if (mapFor !== selected || now - mapAt > 5000) {
+                        mapFor = selected;
+                        mapAt = now;
+                        drawKnownSystems(mapCanvas, player, selected);
+                    }
+                },
+            ],
+        ]);
     }
 
     function renderExtraColumn(): void {
@@ -1148,6 +1167,18 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         if (opts.onOpenEmpiresList) {
             const listBtn = glassButton('Empire list', { onClick: () => opts.onOpenEmpiresList!(), title: 'Open the list of empires with capital zoom' });
             extraCol.appendChild(place(listBtn, 0, y, 195, 30));
+            y += 34;
+        }
+        // [charactersVictory] A fixed way into the Interstellar Diet (whatever empire is selected), whenever the Diet add-on is on.
+        if (dietOn(player.galaxy)) {
+            const diet = dietView(player.galaxy, player);
+            const why = diet === null ? 'The Diet has not been founded yet.' : !diet.member ? `Your empire is not a member of the ${diet.title}.` : '';
+            const dietBtn = glassButton('Interstellar Diet', {
+                onClick: () => toggleDietScreen(player.galaxy, player),
+                disabled: diet === null,
+                title: why !== '' ? why : 'Open the Interstellar Diet: the session, the laws in force and the members',
+            });
+            extraCol.appendChild(place(dietBtn, 0, y, 195, 30));
             y += 34;
         }
         // 19r: the independent leagues (19k-3) with their flags.
@@ -1328,7 +1359,7 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
             line.style.maxWidth = `${lay.textWidth}px`;
             extras.appendChild(line);
         }
-        appendExtras(extras, empire, row);
+        runStages([['empire extras', () => appendExtras(extras, empire, row)]]); // an add-on section throwing leaves the rest of the detail
         detail.appendChild(extras);
         extras.scrollTop = extrasScroll;
         renderRestrictedLines(empire, restricted);

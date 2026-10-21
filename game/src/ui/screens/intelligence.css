@@ -235,3 +235,30 @@
 .ch-name-box:focus {
     border-color: rgb(170, 170, 170);
 }
+
+/* Page buttons (Threats / Knowledge / Characters) sit above the pages' full-body panels, so each can be clicked from either page. */
+.ch-body > .ch-page-btn {
+    z-index: 10;
+}
+/* A page with entries not seen yet: its button pulses red until the page is opened. */
+.ch-body > .ch-page-btn.ch-flash {
+    animation: ch-flash-pulse 1.1s ease-in-out infinite;
+}
+@keyframes ch-flash-pulse {
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 rgba(255, 40, 40, 0);
+        background-color: rgba(120, 10, 10, 0.35);
+    }
+    50% {
+        box-shadow: 0 0 8px 2px rgba(255, 40, 40, 0.95);
+        background-color: rgba(220, 30, 30, 0.75);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .ch-body > .ch-page-btn.ch-flash {
+        animation: none;
+        box-shadow: 0 0 6px 2px rgba(255, 40, 40, 0.95);
+        background-color: rgba(200, 30, 30, 0.6);
+    }
+}

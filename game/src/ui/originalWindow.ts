@@ -800,7 +800,11 @@ export class OwGrid<T> {
             const cellClicks: [HTMLDivElement, (row: T, e: MouseEvent) => void][] = [];
             for (const c of this.o.columns) {
                 const cell = el('div', `ow-grid-cell ow-align-${c.align ?? 'left'}`);
-                c.render(row, cell);
+                try {
+                    c.render(row, cell);
+                } catch (err) {
+                    console.error(`[ui] grid cell '${c.id}' failed`, err); // the row (and the rest of the list) still shows
+                }
                 if (c.onClick) {
                     cell.classList.add('ow-hot');
                     cellClicks.push([cell, c.onClick]);

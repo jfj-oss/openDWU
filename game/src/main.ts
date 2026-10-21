@@ -84,6 +84,7 @@ import { createCreditsScreen } from './ui/screens/credits';
 import { startMusic } from './audio/musicPlayer';
 // [audio] begin
 import { installBeaconLaunchCall } from './ui/beaconLaunchCall';
+import { installIntelWatch } from './ui/intelWatch';
 import { installGameAudio } from './audio/gameAudio';
 import { installUiClickSounds } from './audio/uiClicks';
 import { soundRequestStats } from './audio/effectsPlayer';
@@ -1328,6 +1329,8 @@ export async function startGameView(
     // Giantworks, the Beacon: the launch-day call sends the camera to the Beacon (Escape skips back) and, a minute after
     // the first, shows "The End Times" (ui/beaconLaunchCall.ts; presentation only).
     const beaconCall = installBeaconLaunchCall({ galaxy, camera, followState: view.followState });
+    // Intelligence screen pages: a quiet message when the Threats / Knowledge pages gain entries (ui/intelWatch.ts; UI side, per local player).
+    const intelWatch = installIntelWatch({ galaxy, viewers: () => (multiplayerActive() ? [localViewerEmpire(galaxy)].filter((e): e is Empire => e !== null) : humanEmpires(galaxy)) });
     const keydownHandler = (e: KeyboardEvent): void => {
         if (galaxyMap.isOpen && e.key === 'Escape') {
             e.preventDefault();
@@ -1373,6 +1376,7 @@ export async function startGameView(
         simLoop.tick(app.ticker.elapsedMS);
         shipKeys?.frame();
         renderGuard(() => beaconCall.frame());
+        renderGuard(() => intelWatch.frame());
         renderGuard(() => view.update(simLoop.renderTime));
         renderGuard(() => gameAudio.frame()); // [audio]
     });

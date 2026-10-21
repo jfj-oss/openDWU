@@ -99,6 +99,7 @@ import type { SeatName } from '../../sim/scenario/court/court'; // [court]
 import { threatInvestigatorOptions, threatLeadRows, threatsSectionVisible, type ThreatLeadRow } from '../internalSecurityView'; // [threats]
 import { landscapeImageUrl } from '../landscapeImages';
 import { knowledgeView, knowledgeVisible, type KnowledgeRow } from '../knowledgeView'; // [knowledge]
+import { intelUnseen, nextIntelPage, pollIntel, setIntelPageOpen, type IntelPage } from '../intelWatch'; // [intelwatch]
 
 const MT = IntelligenceMissionType;
 
@@ -954,6 +955,7 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
         height: 770,
         onClose: () => {
             window.clearInterval(timer);
+            setIntelPageOpen(player, 'characters'); // [intelwatch]
             historyWin?.close(); // method_426 → method_663
             open = null;
         },
@@ -1005,28 +1007,46 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
     body.appendChild(place(learn, 840, showThreats ? 0 : 12, 160, 21));
     // [threats] begin — the Threats & Leads section (threat add-ons / Internal Security on only): a toggle under the
     // link switches this screen between the characters and the known threat sites / 19m leads (no extra window).
+    // The page model is one value (nextIntelPage): from either page a click on the other page's button switches straight
+    // to it, a click on the open page's button (or "Characters") goes back to the list. The buttons sit above the
+    // pages' panels (z-index), which cover the whole body.
+    let page: IntelPage = 'characters';
     let threatsOn = false;
     const threatsBtn = showThreats
         ? glassButton(showKnowledge ? 'Threats' : 'Threats & Leads', {
-              size: FONT.small,
-              title: 'Known threat sites and security leads: investigate them with an agent, go to them, act on them',
-              className: 'ch-keep',
-              onClick: () => setThreatsView(!threatsOn),
+              size: FONT.normal,
+              title: 'Known threat sites and security leads: investigate them with an agent, go to them, act on them (click again to go back to the Characters)',
+              className: 'ch-keep ch-page-btn',
+              onClick: () => setPage(nextIntelPage(page, 'threats')),
           })
         : null;
-    if (threatsBtn !== null) body.appendChild(place(threatsBtn, 840, 19, showKnowledge ? 76 : 155, 19));
+    if (threatsBtn !== null) body.appendChild(place(threatsBtn, 840, 19, showKnowledge ? 76 : 155, 21));
     // [threats] end
     // [knowledge] the Knowledge page: what the empire has found about the Reclaimers' war (knowledgeView.ts); shares the Threats area.
     let knowledgeOn = false;
     const knowledgeBtn = showKnowledge
         ? glassButton('Knowledge', {
-              size: FONT.small,
-              title: 'What your empire knows of the Reclaimers and the Great Works: the war at a glance, known locations, recommended moves',
-              className: 'ch-keep',
-              onClick: () => setKnowledgeView(!knowledgeOn),
+              size: FONT.normal,
+              title: 'What your empire knows of the Reclaimers and the Great Works: the war at a glance, known locations, recommended moves (click again to go back to the Characters)',
+              className: 'ch-keep ch-page-btn',
+              onClick: () => setPage(nextIntelPage(page, 'knowledge')),
           })
         : null;
-    if (knowledgeBtn !== null) body.appendChild(place(knowledgeBtn, 919, 19, 76, 19));
+    if (knowledgeBtn !== null) body.appendChild(place(knowledgeBtn, 919, 19, 76, 21));
+    // Back to the Characters list (shown on a page; replaces the Galactopedia link's place).
+    const backBtn = showKnowledge
+        ? glassButton('Characters', { size: FONT.normal, title: 'Back to the Characters list', className: 'ch-keep ch-page-btn', onClick: () => setPage('characters') })
+        : null;
+    if (backBtn !== null) {
+        backBtn.style.display = 'none';
+        body.appendChild(place(backBtn, 840, 0, 155, 19));
+    }
+    // [intelwatch] a page with entries the player has not seen yet flashes red on its button until it is opened.
+    function refreshFlash(): void {
+        const u = intelUnseen(player);
+        threatsBtn?.classList.toggle('ch-flash', u.threats > 0 && page !== 'threats');
+        knowledgeBtn?.classList.toggle('ch-flash', u.knowledge > 0 && page !== 'knowledge');
+    }
 
     // --- ctlIntelligenceAgents (10, 40) 570 × 655: Image 40, Name 100, Role 100, Location 100, Mission 230. ---
     const showPolitics = politicsVisible(galaxy); // [emergent] 19d1: Loyalty / Ambition columns
@@ -1463,6 +1483,10 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
     }
 
     function render(): void {
+        if (showThreats) {
+            pollIntel(galaxy, player, performance.now(), undefined, false); // [intelwatch]
+            refreshFlash();
+        }
         if (knowledgeOn) {
             renderKnowledge(); // [knowledge]
             return;
@@ -1620,17 +1644,31 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
     let threatsDetail: HTMLDivElement | null = null;
     let threatsGrid: OwGrid<ThreatLeadRow> | null = null;
     let threatSelected: unknown = null;
-    function setThreatsView(on: boolean): void {
-        if (on && knowledgeOn) setKnowledgeView(false, true);
-        threatsOn = on;
-        threatsBtn?.classList.toggle('ow-glass-on', on);
-        if (threatsBtn !== null && !showKnowledge) setButtonLabel(threatsBtn, on ? 'Characters' : 'Threats & Leads');
-        body.classList.toggle('ch-threats-on', on || knowledgeOn);
-        if (threatsPanel !== null) threatsPanel.style.display = on ? '' : 'none';
-        if (on && threatsPanel === null) buildThreats();
+    /** The one place the page changes: Characters, Threats or Knowledge. */
+    function setPage(next: IntelPage): void {
+        if ((next === 'threats' && threatsBtn === null) || (next === 'knowledge' && knowledgeBtn === null)) next = 'characters';
+        page = next;
+        threatsOn = next === 'threats';
+        knowledgeOn = next === 'knowledge';
+        setIntelPageOpen(player, next);
+        pollIntel(galaxy, player, performance.now(), undefined, false); // marks the page seen (and settles the flash) now, not a second later
+        threatsBtn?.classList.toggle('ow-glass-on', threatsOn);
+        knowledgeBtn?.classList.toggle('ow-glass-on', knowledgeOn);
+        if (threatsBtn !== null && !showKnowledge) setButtonLabel(threatsBtn, threatsOn ? 'Characters' : 'Threats & Leads');
+        if (backBtn !== null) backBtn.style.display = next === 'characters' ? 'none' : '';
+        win.setTitle(knowledgeOn ? 'Knowledge' : T('Characters'));
+        learn.style.display = knowledgeOn || (next !== 'characters' && backBtn !== null) ? 'none' : '';
+        body.classList.toggle('ch-threats-on', next !== 'characters');
+        if (threatsOn && threatsPanel === null) buildThreats();
+        if (knowledgeOn && knowledgePanel === null) buildKnowledge();
+        if (threatsPanel !== null) threatsPanel.style.display = threatsOn ? '' : 'none';
+        if (knowledgePanel !== null) knowledgePanel.style.display = knowledgeOn ? '' : 'none';
         threatsSig = '';
-        if (on) renderThreats();
-        else if (!knowledgeOn) render();
+        knowledgeSig = '';
+        if (threatsOn) renderThreats();
+        else if (knowledgeOn) renderKnowledge();
+        else render();
+        refreshFlash();
     }
     function buildThreats(): void {
         const panel = el('div', 'ch-keep ch-threats');
@@ -1726,19 +1764,6 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
     let knowledgePanel: HTMLDivElement | null = null;
     let knowledgeBody: HTMLDivElement | null = null;
     let knowledgeSig = '';
-    function setKnowledgeView(on: boolean, fromThreats = false): void {
-        if (on && threatsOn && !fromThreats) setThreatsView(false);
-        knowledgeOn = on;
-        win.setTitle(on ? 'Knowledge' : T('Characters'));
-        learn.style.display = on ? 'none' : '';
-        knowledgeBtn?.classList.toggle('ow-glass-on', on);
-        body.classList.toggle('ch-threats-on', on || threatsOn);
-        if (on && knowledgePanel === null) buildKnowledge();
-        if (knowledgePanel !== null) knowledgePanel.style.display = on ? '' : 'none';
-        knowledgeSig = '';
-        if (on) renderKnowledge();
-        else if (!threatsOn) render();
-    }
     function buildKnowledge(): void {
         const panel = el('div', 'ch-keep ch-knowledge');
         place(panel, 0, 0, 1000, 700);

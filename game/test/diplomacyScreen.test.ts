@@ -295,3 +295,31 @@ describe('keyboard (task 15a)', () => {
         expect(isKeyActionAvailable('diplomacyScreen')).toBe(true);
     });
 });
+
+describe('render stages (a throwing stage cannot blank the screen)', () => {
+  it('runs every stage in order even when one throws, and reports it', async () => {
+    const { runStages } = await import('../src/ui/safeStages');
+    const ran: string[] = [];
+    const reported: string[] = [];
+    const failed = runStages(
+      [
+        ['a', () => ran.push('a')],
+        ['list', () => { throw new Error('boom'); }],
+        ['b', () => ran.push('b')],
+      ],
+      (n) => reported.push(n),
+    );
+    expect(ran).toEqual(['a', 'b']);
+    expect(failed).toEqual(['list']);
+    expect(reported).toEqual(['list']);
+  });
+
+  it('rapid selection changes keep the row model intact', () => {
+    const me = fake(1, 'Me');
+    const others = [2, 3, 4, 5].map((i) => fake(i, `E${i}`));
+    const all = [me, ...others];
+    (galaxy as unknown as { empires: Empire[] }).empires = all;
+    const first = diplomacyRows(me, 0, 'Republic').map((r) => r.empire.name);
+    for (let i = 0; i < 200; i++) expect(diplomacyRows(me, i, 'Republic').map((r) => r.empire.name)).toEqual(first);
+  });
+});

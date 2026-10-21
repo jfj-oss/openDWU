@@ -165,3 +165,35 @@ describe('Knowledge page model', () => {
         expect(knowledgeView(g, ai).sections.some((s) => s.id === 'watchers' && s.rows.some((r) => r.key.startsWith('sighting')))).toBe(false);
     }, 600000);
 });
+
+describe('the Watchers stay off the empire lists until the first beam', () => {
+    it('hidden from diplomacyRows and the Empires list before the war, shown after', async () => {
+        const { beaconFactionHidden } = await import('../src/sim/scenario/threats/giantworks/beaconState');
+        const { diplomacyRows } = await import('../src/ui/screens/diplomacyScreen');
+        const { knownEmpires } = await import('../src/ui/screens/empiresList');
+        const { DiplomaticRelationType } = await import('../src/sim/diplomacy');
+        const { g, site } = beaconGame();
+        beaconRolled(g, site);
+        site.progress = 1;
+        site.stage = 4;
+        site.completeDate = galaxyStarDate(g);
+        beaconComplete(g, site);
+        const st = peekBeaconState(g)!;
+        const f = st.faction!;
+        const me = g.playerEmpire!;
+        // The viewer has a (pirate-type) relation with the faction: it would list.
+        const rel = me.diplomaticRelations.byEmpire(f);
+        if (rel !== null) rel.type = DiplomaticRelationType.None;
+        expect(st.phase === 'reclamation' && st.warStarted !== false).toBe(false);
+        expect(beaconFactionHidden(g, f)).toBe(true);
+        expect(beaconFactionHidden(g, me)).toBe(false);
+        expect(diplomacyRows(me, galaxyStarDate(g), '').some((r) => r.empire === f)).toBe(false);
+        expect(knownEmpires(me).has(f)).toBe(false);
+        startWar(g, st);
+        expect(beaconFactionHidden(g, f)).toBe(false);
+        if (rel !== null) {
+            expect(diplomacyRows(me, galaxyStarDate(g), '').some((r) => r.empire === f)).toBe(true);
+            expect(knownEmpires(me).has(f)).toBe(true);
+        }
+    });
+});

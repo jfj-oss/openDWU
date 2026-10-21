@@ -867,6 +867,13 @@ export function warOn(st: BeaconState): boolean {
     return st.phase === 'reclamation' && st.warStarted !== false;
 }
 
+/** The Beacon's machine faction (the Watchers) is not a power the empires know of until the first beam: the empire / diplomacy lists leave it out. Pure. */
+export function beaconFactionHidden(galaxy: Galaxy, empire: Empire | null): boolean {
+    if (empire === null) return false;
+    const st = peekBeaconState(galaxy);
+    return st !== null && st.faction === empire && !warOn(st);
+}
+
 export function peekBeaconState(galaxy: Galaxy): BeaconState | null {
     const st = peekThreatState<BeaconState>(galaxy, BEACON_KEY);
     return st === null ? null : withDefaults(st);
