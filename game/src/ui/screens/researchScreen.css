@@ -130,7 +130,7 @@
     left: 4px;
     top: 3px;
     right: 3px;
-    font-size: 14px;
+    font-size: 13px; /* 14px ran 3-5 px past the node's 168 px title box (e.g. "Single Layer Planetary Defense") */
     font-weight: bold;
     line-height: 15px;
     white-space: nowrap;
