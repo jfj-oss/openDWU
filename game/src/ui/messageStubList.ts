@@ -30,6 +30,8 @@ import {
     stepStubList,
     syncStubs,
     visibleStubs,
+    stubScrollThumb,
+    wheelStubList,
     TICKER_ROW_PX,
     type MessageStub,
     type StubListState,
@@ -135,7 +137,11 @@ export function installMessageStubList(opts: MessageStubListOptions): void {
     root.hidden = true;
     const viewport = el('div', 'message-stubs-viewport');
     const track = el('div', 'message-stubs-track');
-    viewport.append(track);
+    // a faint scroll bar on the right while the list is longer than its window
+    const bar = el('div', 'message-stubs-scrollbar');
+    const thumb = el('div', 'message-stubs-scrollthumb');
+    bar.append(thumb);
+    viewport.append(track, bar);
     const more = el('div', 'message-stubs-more');
     root.append(viewport, more);
     document.body.append(root);
@@ -157,7 +163,7 @@ export function installMessageStubList(opts: MessageStubListOptions): void {
         (e) => {
             e.preventDefault();
             e.stopPropagation();
-            if (e.deltaY !== 0) stepStubList(state, e.deltaY > 0 ? 1 : -1);
+            if (e.deltaY !== 0) wheelStubList(state, e.deltaY > 0 ? 1 : -1, getSettings().messageStubsVisible);
             render();
         },
         { passive: false },
@@ -301,6 +307,12 @@ export function installMessageStubList(opts: MessageStubListOptions): void {
             viewport.style.height = `${win.rows.length * TICKER_ROW_PX}px`;
             more.hidden = win.more === 0;
             more.textContent = `${win.more} more`;
+        }
+        const th = stubScrollThumb(state, visible);
+        bar.hidden = th === null;
+        if (th !== null) {
+            thumb.style.top = `${th.top * 100}%`;
+            thumb.style.height = `${th.height * 100}%`;
         }
         track.style.transform = state.progress > 0 ? `translateY(${-state.progress * TICKER_ROW_PX}px)` : '';
     }

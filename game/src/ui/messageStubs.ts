@@ -64,8 +64,9 @@ export function stubListMaxHeightPx(visibleRows: number): number {
 export const STUB_DWELL_MS = 3000;
 
 /** The visible window: user direction — up to 6 stubs at once, the rest scrolling. */
-export const MAX_VISIBLE_STUBS = 6;
-export const DEFAULT_VISIBLE_STUBS = 6;
+export const MAX_VISIBLE_STUBS = 12;
+/** Twice the original's 6 (user 2026-10-20). */
+export const DEFAULT_VISIBLE_STUBS = 12;
 
 export function clampVisibleStubs(n: number): number {
     if (!Number.isFinite(n)) return DEFAULT_VISIBLE_STUBS;
@@ -516,6 +517,26 @@ export function advanceStubList(state: StubListState, dtMs: number, opts: Advanc
         }
     }
     return expired;
+}
+
+/** The wheel: moves the window by `rows` without wrapping (it stops at the newest and at the oldest page: user 2026-10-20,
+ *  scrolling on must not loop round); resets the dwell. A window the ticker has wrapped past the last page scrolls back from there. */
+export function wheelStubList(state: StubListState, rows: number, visible: number): void {
+    const n = state.stubs.length;
+    state.progress = 0;
+    state.dwellMs = 0;
+    const last = Math.max(0, n - clampVisibleStubs(visible));
+    if (rows > 0) state.offset = state.offset >= last ? state.offset : Math.min(last, state.offset + rows);
+    else state.offset = Math.max(0, Math.min(state.offset, n - 1) + rows);
+}
+
+/** The scroll bar's thumb (fractions of the track: top and height) for a window of `visible` rows; null when the list fits. */
+export function stubScrollThumb(state: StubListState, visible: number): { top: number; height: number } | null {
+    const n = state.stubs.length;
+    const v = clampVisibleStubs(visible);
+    if (n <= v) return null;
+    const height = v / n;
+    return { top: Math.min(1 - height, (state.offset % n) / n), height };
 }
 
 /** Moves the window by `rows` (wheel / auto-scroll), wrapping round; resets the dwell. */

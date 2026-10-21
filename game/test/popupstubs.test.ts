@@ -22,6 +22,9 @@ import {
     CONVERSATION_LIFETIME,
     type NewStub,
     type StubKind,
+    wheelStubList,
+    stubScrollThumb,
+    type StubListState,
 } from '../src/ui/messageStubs';
 import { messageStubsRect } from '../src/ui/messageStubList';
 import { computeHudLayout } from '../src/ui/hudLayout';
@@ -53,7 +56,7 @@ describe('ordering and the visible window', () => {
         expect(w.more).toBe(3);
         expect(w.scrolls).toBe(true);
         expect(w.next!.starDate).toBe(300);
-        expect(visibleStubs(s, 20).rows).toHaveLength(6); // capped
+        expect(clampVisibleStubs(20)).toBe(12); // capped (MAX_VISIBLE_STUBS)
         expect(clampVisibleStubs(0)).toBe(1);
         expect(clampVisibleStubs(3)).toBe(3);
     });
@@ -219,5 +222,27 @@ describe('rebuildConversationQueue (load)', () => {
         const q = rebuildConversationQueue([plain, war, oldRuins, ruins], P, now);
         expect(q.map((e) => e.message)).toEqual([ruins]);
         expect(q[0].conversation).toBe('INFO_OFFER_RUINS');
+    });
+});
+
+describe('the stub list wheel does not loop; its scroll bar', () => {
+    const many = (n: number): StubListState => {
+        const st = createStubListState();
+        for (let i = 0; i < n; i++) addStub(st, { key: { id: i } as never, kind: 'message', starDate: i, seq: i, read: false } as never);
+        return st;
+    };
+    it('stops at the oldest page going down and at the newest going up', () => {
+        const st = many(20);
+        for (let i = 0; i < 30; i++) wheelStubList(st, 1, 12);
+        expect(st.offset).toBe(8);
+        for (let i = 0; i < 30; i++) wheelStubList(st, -1, 12);
+        expect(st.offset).toBe(0);
+    });
+    it('a thumb only while the list is longer than its window', () => {
+        expect(stubScrollThumb(many(5), 12)).toBeNull();
+        const st = many(24);
+        expect(stubScrollThumb(st, 12)).toEqual({ top: 0, height: 0.5 });
+        wheelStubList(st, 1, 12);
+        expect(stubScrollThumb(st, 12)!.top).toBeCloseTo(1 / 24);
     });
 });

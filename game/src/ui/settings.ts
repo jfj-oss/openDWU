@@ -232,7 +232,7 @@ export const DEFAULT_SETTINGS: UiSettings = {
 
     // [popupstubs] begin
     openMessagesAutomatically: false,
-    messageStubsVisible: 6,
+    messageStubsVisible: 12,
     addonPopupsBigOnly: true,
     // [popupstubs] end
 
@@ -364,8 +364,10 @@ export function loadSettings(): UiSettings {
         // [popupstubs] begin
         if (typeof parsed.openMessagesAutomatically === 'boolean') out.openMessagesAutomatically = parsed.openMessagesAutomatically;
         if (typeof parsed.addonPopupsBigOnly === 'boolean') out.addonPopupsBigOnly = parsed.addonPopupsBigOnly;
-        if (typeof parsed.messageStubsVisible === 'number' && Number.isFinite(parsed.messageStubsVisible)) {
-            out.messageStubsVisible = Math.min(6, Math.max(1, Math.round(parsed.messageStubsVisible)));
+        // 12 is the default since MESSAGE_STUBS_SETTING_VERSION 2: a stored 6 from before (the old default) is ignored once.
+        const oldStubDefault = parsed.messageStubsVisible === 6 && (parsed as { messageStubsVersion?: unknown }).messageStubsVersion !== MESSAGE_STUBS_SETTING_VERSION;
+        if (typeof parsed.messageStubsVisible === 'number' && Number.isFinite(parsed.messageStubsVisible) && !oldStubDefault) {
+            out.messageStubsVisible = Math.min(12, Math.max(1, Math.round(parsed.messageStubsVisible)));
         }
         // [popupstubs] end
 
@@ -490,7 +492,7 @@ export function clampAutoSaveMinutes(v: number): number {
 
 /** Persist the given settings to storage. */
 export function saveSettings(settings: UiSettings): void {
-    storage?.setItem(STORAGE_KEY, JSON.stringify({ ...settings, simWorkerVersion: SIM_WORKER_SETTING_VERSION, newGameBackdropVersion: NEW_GAME_BACKDROP_SETTING_VERSION, weaponRangeVersion: WEAPON_RANGE_SETTING_VERSION }));
+    storage?.setItem(STORAGE_KEY, JSON.stringify({ ...settings, simWorkerVersion: SIM_WORKER_SETTING_VERSION, newGameBackdropVersion: NEW_GAME_BACKDROP_SETTING_VERSION, weaponRangeVersion: WEAPON_RANGE_SETTING_VERSION, messageStubsVersion: MESSAGE_STUBS_SETTING_VERSION }));
 }
 
 /** Stored next to `simWorker` (loadSettings): 2 = saved while the worker was the default, 3 = saved since the default
@@ -503,6 +505,9 @@ export const NEW_GAME_BACKDROP_SETTING_VERSION = 2;
 
 /** Stored next to `showWeaponRangeCircles` (loadSettings): 2 = saved since the circles became the default (a stored false without it was the old default and is ignored). */
 export const WEAPON_RANGE_SETTING_VERSION = 2;
+
+/** Stored next to `messageStubsVisible` (loadSettings): 2 = saved since 12 became the default (a stored 6 without it was the old default and is ignored). */
+export const MESSAGE_STUBS_SETTING_VERSION = 2;
 
 /** Current in-memory copy of the settings (loaded once at first use). */
 let current: UiSettings | null = null;

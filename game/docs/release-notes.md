@@ -4,6 +4,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **The notifications list is twice as long** (12 rows by default, up to 12 in Game Options), with a faint scroll bar on its right; the mouse wheel stops at the top and bottom instead of looping round.
 - **VIP shuttle rings stay on the shuttle's icon** at every zoom (they used a different position from the icon: off the ship and jittery zoomed out).
 - **Waypoint and known-location icons shrink and fade as you zoom out** across the galaxy view (to 70 % size and 60 % opacity fully zoomed out).
 - **No more herd migration notifications** (The Rim fauna): the herds still migrate, without the news line and warning.

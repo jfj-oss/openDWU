@@ -24,6 +24,28 @@
 
 .message-stubs-viewport {
     overflow: hidden;
+    position: relative;
+}
+
+/* faint scroll bar on the right (the thumb shows where the window is in the list) */
+.message-stubs-scrollbar {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 3px;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.06);
+    pointer-events: none;
+}
+.message-stubs-scrollbar[hidden] {
+    display: none;
+}
+.message-stubs-scrollthumb {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    background: rgba(255, 255, 255, 0.22);
+    border-radius: 2px;
 }
 
 .message-stub {

@@ -787,7 +787,7 @@ function createMessageSettings(empire: Empire | null): OriginalWindow {
     // Ours: add-on messages pop up only for big moments (ui/addonPopups.ts); the rest go to the ticker and history.
     check(body, 'Add-on messages: only big moments pop up', st.addonPopupsBigOnly, 14, 456, (v) => updateSettings({ addonPopupsBigOnly: v }));
     label(body, 'Message stubs shown at once', 420, 434);
-    const stubs = numericUpDown({ value: st.messageStubsVisible, min: 1, max: 6, size: F4 - 4, onChange: (v) => updateSettings({ messageStubsVisible: v }) });
+    const stubs = numericUpDown({ value: st.messageStubsVisible, min: 1, max: 12, size: F4 - 4, onChange: (v) => updateSettings({ messageStubsVisible: v }) });
     body.appendChild(place(stubs.el, 660, 431, 45, 21));
     return win;
 }
