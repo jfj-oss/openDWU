@@ -1,6 +1,7 @@
 // Faction markers, fleet icons and station-presence discs (render/galaxyMarkers.ts): pure helpers.
 
 import { describe, expect, it } from 'vitest';
+import { civilianFadeAlpha } from '../src/render/builtObjectLayer';
 import {
     brighten,
     clickSelection,
@@ -19,6 +20,7 @@ import {
     presenceDiscRadius,
     shipSymbolPx,
     stationPresenceVisible,
+    galaxyBackVisible,
     symbolAlpha,
     symbolArtFor,
     symbolBand,
@@ -178,19 +180,26 @@ describe('alpha / style by zoom band', () => {
 });
 
 describe('stationPresenceVisible', () => {
-    it('shows the discs only with their toggle on and Empire Territory off', () => {
-        expect(stationPresenceVisible({ stationPresence: true, empireTerritory: false })).toBe(true);
-        expect(stationPresenceVisible({ stationPresence: true, empireTerritory: true })).toBe(false);
-        expect(stationPresenceVisible({ stationPresence: false, empireTerritory: false })).toBe(false);
-        expect(stationPresenceVisible({ stationPresence: false, empireTerritory: true })).toBe(false);
+    it('follows its own toggle, with Empire Territory on or off', () => {
+        expect(stationPresenceVisible({ stationPresence: true })).toBe(true);
+        expect(stationPresenceVisible({ stationPresence: false })).toBe(false);
     });
-    it('defaults: both toggles on, so the discs stay hidden until territory is turned off', () => {
+    it('defaults: visible with territory on (the discs draw above it)', () => {
         const s = createMapOverlayState();
-        expect(s.factionMarkers).toBe(true);
-        expect(s.stationPresence).toBe(true);
-        expect(stationPresenceVisible(s)).toBe(false);
-        s.empireTerritory = false;
+        expect(s.empireTerritory).toBe(true);
         expect(stationPresenceVisible(s)).toBe(true);
+    });
+});
+
+describe('civilianFadeAlpha / galaxyBackVisible', () => {
+    it('fades only owner-less (private) objects, only while the toggle is on', () => {
+        expect(civilianFadeAlpha(true, { owner: null })).toBeCloseTo(144 / 255, 6);
+        expect(civilianFadeAlpha(true, { owner: {} as never })).toBe(1);
+        expect(civilianFadeAlpha(false, { owner: null })).toBe(1);
+    });
+    it('keeps the back container (gas-cloud crosses) on at galaxy zoom whatever the overlay toggles', () => {
+        expect(galaxyBackVisible(100)).toBe(true);
+        expect(galaxyBackVisible(70)).toBe(false);
     });
 });
 

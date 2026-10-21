@@ -78,7 +78,7 @@ import { useMinifyingFilter } from './assets';
 import { DrawSig, boundsOnScreen } from './drawCache';
 import { showsMapIndicators } from './mainViewDisplay';
 import { drawCrossedSwords, habitatUnderFire, shipUnderFire, SWORD_PX_FAR, SWORD_PX_NEAR } from './battleIcons';
-import { builtObjectHiddenFromPick, warEmpires } from './builtObjectLayer';
+import { builtObjectHiddenFromPick, civilianFadeAlpha, warEmpires } from './builtObjectLayer';
 import { SystemLinkLayer } from './systemLinks';
 import { galaxyViewGates } from './cleanGalaxyView';
 import { localViewerEmpire } from '../localViewer';
@@ -293,10 +293,16 @@ export function presenceBandAlpha(f: number): number {
     return f > GALAXY_OVERLAY_MIN_FACTOR ? PRESENCE_ALPHA : 0;
 }
 
-/** Station-presence discs show only with their toggle on AND Empire Territory off (MainView.2.cs 264-272: the
- * system-influence discs are the territory layer drawn while MapOverlayEmpireTerritory is off). */
-export function stationPresenceVisible(state: Pick<MapOverlayState, 'stationPresence' | 'empireTerritory'>): boolean {
-    return state.stationPresence && !state.empireTerritory;
+/** Station-presence discs show whenever their toggle is on. (They used to hide while Empire Territory was on, which made
+ * the toggle look dead since territory starts on: they are now their own layer drawn above the territory.) */
+export function stationPresenceVisible(state: Pick<MapOverlayState, 'stationPresence'>): boolean {
+    return state.stationPresence;
+}
+
+/** Whether the back container (system rings, gas-cloud crosses, links) is shown: at galaxy zoom whatever the toggles.
+ * The gas-cloud crosses never depend on an overlay toggle; only the rings and links do (updateRings / links.update). */
+export function galaxyBackVisible(f: number): boolean {
+    return f > GALAXY_OVERLAY_MIN_FACTOR;
 }
 
 /** Presence disc radius in world units for `count` known bases + colonies: the original's fixed system-influence
@@ -840,6 +846,8 @@ export class GalaxyMarkerLayer {
     readonly back = new Container();
     /** Symbols, fleet icons, name decorations: above the map layers, under the ship art. */
     readonly front = new Container();
+    /** The presence discs: above the empire territory layer (and the rings), so the toggle works with territory on. */
+    readonly top = new Container();
 
     /** Ship position for drawing / picking — swap in the interpolated render position when there is one. */
     positionOf: (bo: BuiltObject) => { x: number; y: number } = (bo) => ({ x: bo.xpos, y: bo.ypos });
@@ -926,7 +934,7 @@ export class GalaxyMarkerLayer {
     /** The refresh pass in progress (spread over frames), if any. */
     private pass: RefreshPass | null = null;
     private dataVersion = 0;
-    private ringKey = { z: NaN, v: -1, a: NaN, x0: 0, y0: 0, x1: 0, y1: 0, sig: '' };
+    private ringKey = { z: NaN, v: -1, a: NaN, on: true, x0: 0, y0: 0, x1: 0, y1: 0, sig: '' };
     /** Whether the owned / independent system rings are listed (method_250 5395: !CleanGalaxyView). */
     private ringsGated = true;
     /** The Dead Probe Swarm's faction while it has a presence the viewer knows (dark-slate discs, drawn whatever the presence toggle). */
@@ -947,7 +955,8 @@ export class GalaxyMarkerLayer {
         this.discs = new ParticleContainer({ texture: this.discTex, dynamicProperties: dyn });
         this.symbols = new ParticleContainer({ texture: Texture.WHITE, dynamicProperties: dyn });
         this.links = new SystemLinkLayer(galaxy);
-        this.back.addChild(this.discs, this.links.root, this.rings);
+        this.back.addChild(this.links.root, this.rings);
+        this.top.addChild(this.discs);
         // overlayG (redrawn when its ops change: flushOverlay) is in its own render group (renderGroups.ts). (The battle
         // bars over the ships are combatBars.ts BattleBarLayer, MainView.1.cs 1251-1295.)
         this.overlayGroup = inOwnRenderGroup(this.overlayG);
@@ -956,8 +965,10 @@ export class GalaxyMarkerLayer {
         const idx = below !== null ? world.children.indexOf(below) : -1;
         if (idx >= 0) world.addChildAt(this.back, idx);
         else world.addChild(this.back);
+        world.addChild(this.top);
         world.addChild(this.front);
         this.back.visible = false;
+        this.top.visible = false;
         this.front.visible = false;
         void this.loadArt();
     }
@@ -1135,7 +1146,8 @@ export class GalaxyMarkerLayer {
         const swarmOn = this.swarmFaction !== null;
         // GameOptions.CleanGalaxyView (method_250's flag, cleanGalaxyView.ts): no system rings, links or name decorations.
         const gates = galaxyViewGates(getSettings().cleanGalaxyView);
-        this.back.visible = f > GALAXY_OVERLAY_MIN_FACTOR && (factionOn || presenceOn || swarmOn);
+        this.back.visible = galaxyBackVisible(f);
+        this.top.visible = f > GALAXY_OVERLAY_MIN_FACTOR && (presenceOn || swarmOn);
         this.front.visible = factionOn;
         this.drawn.length = 0;
         this.overlayOps.length = 0;
@@ -1149,7 +1161,7 @@ export class GalaxyMarkerLayer {
         this.selBoxes.length = 0;
         this.decorateLabels(systems, f, z, factionOn && gates.systemNames);
         this.flushOverlay();
-        if (!this.back.visible && !this.front.visible) return;
+        if (!this.back.visible && !this.front.visible && !this.top.visible) return;
 
         const now = performance.now();
         if (gates.systemRings !== this.ringsGated) {
@@ -1174,9 +1186,10 @@ export class GalaxyMarkerLayer {
 
         this.discs.visible = (presenceOn || swarmOn) && presenceBandAlpha(f) > 0;
         if (this.discs.visible) this.updateDiscs(f, z, cam, presenceOn);
-        const ringA = factionOn ? factionRingBandAlpha(f) : 0;
-        this.rings.visible = ringA > 0;
-        if (this.rings.visible) this.updateRings(f, z, cam, ringA);
+        // The gas-cloud crosses are drawn whatever the faction toggle; only the system rings follow it.
+        const ringA = factionRingBandAlpha(f);
+        this.rings.visible = this.back.visible && ringA > 0;
+        if (this.rings.visible) this.updateRings(f, z, cam, ringA, factionOn);
         // Same gate as the rings (method_250 5237: f > num16, in the rings' block), but MainColor at full alpha.
         this.links.update(f, z, cam, factionOn && gates.systemLinks);
         if (this.front.visible && this.frames.length > 0) this.updateSymbols(f, z, cam);
@@ -1237,13 +1250,13 @@ export class GalaxyMarkerLayer {
 
     // Faction rings -------------------------------------------------------------------------------------------------
 
-    private updateRings(f: number, z: number, cam: Camera, alpha: number): void {
+    private updateRings(f: number, z: number, cam: Camera, alpha: number, ringsOn: boolean): void {
         const k = this.ringKey;
         const hw = cam.width / (2 * z);
         const hh = cam.height / (2 * z);
         const inRect = cam.x - hw >= k.x0 && cam.x + hw <= k.x1 && cam.y - hh >= k.y0 && cam.y + hh <= k.y1;
-        if (k.z === z && k.v === this.dataVersion && k.a === alpha && inRect) return;
-        if (k.z === z && k.a === alpha && inRect) {
+        if (k.z === z && k.v === this.dataVersion && k.a === alpha && k.on === ringsOn && inRect) return;
+        if (k.z === z && k.a === alpha && k.on === ringsOn && inRect) {
             // Only the data was refreshed (once a second): rebuilding this Graphics (thousands of rings at galaxy zoom)
             // costs tens of ms, so redraw only when something drawn in the cull rectangle changed.
             const sig = this.ringSignature(f, z, k.x0, k.y0, k.x1, k.y1);
@@ -1253,6 +1266,7 @@ export class GalaxyMarkerLayer {
         k.z = z;
         k.v = this.dataVersion;
         k.a = alpha;
+        k.on = ringsOn;
         // Cull to the view plus half a view on each side, so small pans reuse the geometry.
         k.x0 = cam.x - 2 * hw;
         k.x1 = cam.x + 2 * hw;
@@ -1265,6 +1279,7 @@ export class GalaxyMarkerLayer {
         const arcs = dashedCircleArcs();
         for (const r of this.ringList) {
             const star = r.sys.systemStar;
+            if (!r.cross && !ringsOn) continue;
             const width = r.pen.widthPx / z;
             if (r.cross) {
                 const h = gasCloudCrossHalfPx(f, r.tsv, maxSys) / z;
@@ -1564,7 +1579,7 @@ export class GalaxyMarkerLayer {
             if (bo.mothball !== undefined) base = mothballGreyColor(base, mothballGrey(bo, galaxyStarDate(this.galaxy))); // Mothballing add-on: a ship in reserve is greyer
             const tint = brighten(base, 48);
             // Restyle: the outline frame recedes (it must not out-shout the ship / base it frames); filled markers are a touch softer.
-            const symAlpha = symbolAlpha(f, owned, isBase);
+            const symAlpha = symbolAlpha(f, owned, isBase) * civilianFadeAlpha(this.overlays.fadeCivilianShips, bo);
             const artIdx = SYMBOL_ART.indexOf(art);
             if (!filled || mixed) {
                 this.pushSymbol(n++, SYMBOL_ART.length + artIdx, pos.x - ox, pos.y - oy, unitPx * multOutline, z, tint, symAlpha * OUTLINE_MARKER_ALPHA * (1 - blend));
@@ -1599,7 +1614,8 @@ export class GalaxyMarkerLayer {
                 let color = e !== null ? displayColorForEmpire(e) & 0xffffff : UNOWNED_SYMBOL_COLOR;
                 if (color === 0x010101) color = 0x080808;
                 if (lead.mothball !== undefined) color = mothballGreyColor(color, mothballGrey(lead, galaxyStarDate(this.galaxy)));
-                this.pushSymbol(n++, cell, pos.x - ox, pos.y - oy, iconH, z, color, 1);
+                const fleetFade = civilianFadeAlpha(this.overlays.fadeCivilianShips, lead);
+                this.pushSymbol(n++, cell, pos.x - ox, pos.y - oy, iconH, z, color, fleetFade);
                 this.pushDrawn(lead, sg, pos.x, pos.y, iconH / 2);
                 if (sg === selGroup) this.selBoxes.push(pos.x - this.ox, pos.y - this.oy, iconH); // 6395-6398 method_212 over the icon box
                 if (f < 6000) {
@@ -1610,6 +1626,7 @@ export class GalaxyMarkerLayer {
                     if (t.style.fill !== tc) t.style.fill = tc;
                     t.position.set(pos.x, pos.y - (iconH / 2 - iconH * 0.1) / z);
                     t.scale.set(1 / z);
+                    t.alpha = fleetFade;
                 }
                 // method_258 6406-6428: the fleet name above-left of the icon, in the empire colour (pirate black -> grey).
                 if (fleetNameShown(sg, g.systems)) {
@@ -1622,6 +1639,7 @@ export class GalaxyMarkerLayer {
                     if (t.style.fontSize !== fs) t.style.fontSize = fs;
                     t.position.set(pos.x - iconH / 2 / z, pos.y - iconH / 2 / z);
                     t.scale.set(1 / z);
+                    t.alpha = fleetFade;
                 }
             }
             for (let i = names; i < this.fleetNamePool.length; i++) this.fleetNamePool[i].visible = false;
@@ -1692,6 +1710,7 @@ export class GalaxyMarkerLayer {
 
     destroy(): void {
         this.back.destroy({ children: true });
+        this.top.destroy({ children: true });
         this.front.destroy({ children: true });
     }
 }

@@ -48,6 +48,13 @@ import type { SystemInfo } from '../sim/types';
 import type { MapOverlayState } from '../ui/mapOverlays';
 import { BATTLE_BARS_MAX_FACTOR, type DrawnBarShip } from './combatBars';
 
+/** Alpha factor of a civilian (private, owner-less) ship or base symbol / sprite under "Fade civilian ships and bases"
+ * (144/255, as the original's fade). */
+export const CIVILIAN_FADE_ALPHA = 144 / 255;
+export function civilianFadeAlpha(fadeCivilian: boolean, bo: Pick<BuiltObject, 'owner'>): number {
+    return fadeCivilian && bo.owner === null ? CIVILIAN_FADE_ALPHA : 1;
+}
+
 // Galaxy.BuiltObjectDrawResizeFactor (Galaxy.1.cs).
 export const BUILT_OBJECT_DRAW_RESIZE_FACTOR = 8.0;
 // Ships are only drawn while the original's zoom factor double_0 < 500.
@@ -844,7 +851,7 @@ export class BuiltObjectLayer {
             if (gwFrame !== null || (beaconOn && bo === looks.beacon)) heading = -Math.PI / 2;
             sprite.rotation = heading + Math.PI / 2;
             sprite.scale.set(px / metrics.cropSide / z);
-            sprite.alpha = this.overlays.fadeCivilianShips && bo.owner === null ? 144 / 255 : 1;
+            sprite.alpha = civilianFadeAlpha(this.overlays.fadeCivilianShips, bo);
             let tint = ancient ? ANCIENT_TINT : 0xffffff;
             // Mothballing add-on (render-only): a ship in reserve is drawn greyer and darker, fading back while it reactivates.
             if (bo.mothball !== undefined) tint = mothballGreyColor(tint, mothballGrey(bo, galaxyStarDate(this.galaxy)));

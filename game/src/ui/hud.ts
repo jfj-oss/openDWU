@@ -2270,6 +2270,7 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
     const addRow = (row: OverlayRow): void => {
         const item = toolStripItem(row.label, { tag: 'button', checked: overlays[row.key], className: 'hud-option-row', labelClassName: 'hud-option-label' });
         item.dataset.overlay = row.key;
+        if (row.hint !== undefined) item.title = row.hint;
         const check = item.querySelector<HTMLElement>('.ow-ts-check')!;
         check.classList.add('hud-option-check');
         // [freightOverlay] begin — additions to the original nine carry a "+" badge (the Improvements section's rows do
