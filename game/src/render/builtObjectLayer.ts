@@ -49,7 +49,7 @@ import type { MapOverlayState } from '../ui/mapOverlays';
 import { BATTLE_BARS_MAX_FACTOR, type DrawnBarShip } from './combatBars';
 
 /** Alpha factor of a civilian (private, owner-less) ship or base symbol / sprite under "Fade civilian ships and bases"
- * (144/255, as the original's fade). */
+ * (144/255: MainView.2.cs DrawBuiltObjectToMainXna 2024-2027, `Owner == null`: ships and bases of private companies, not empire-owned freighters etc.; the original fades only the system-zoom sprite, the galaxy symbols and fleet icons are our extension). */
 export const CIVILIAN_FADE_ALPHA = 144 / 255;
 export function civilianFadeAlpha(fadeCivilian: boolean, bo: Pick<BuiltObject, 'owner'>): number {
     return fadeCivilian && bo.owner === null ? CIVILIAN_FADE_ALPHA : 1;

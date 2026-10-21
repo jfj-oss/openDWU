@@ -125,7 +125,7 @@ export const OVERLAY_ROWS: OverlayRow[] = [
     { key: 'empireTerritory', label: 'Empire Territory', hint: 'Tints the space each empire controls with its colour, at sector and galaxy zoom.' },
     { key: 'factionMarkers', label: 'Faction markers', hint: 'At galaxy and sector zoom: rings around owned systems, links between them, and ship and base symbols in empire colours.', mod: true },
     { key: 'stationPresence', label: 'Station presence', hint: 'At galaxy zoom: a coloured disc in each system where an empire has a base or colony, sized by how many.', mod: true },
-    { key: 'fadeCivilianShips', label: 'Fade civilian ships and bases', hint: 'Draws private civilian ships and bases fainter, on the system map and at galaxy and sector zoom, so the fleets stand out.' },
+    { key: 'fadeCivilianShips', label: 'Fade civilian ships and bases', hint: 'Draws ships and bases of private companies fainter (system map, and galaxy and sector symbols), so your fleets stand out.' },
     // [freightOverlay] begin
     { key: 'freightFlows', label: 'Freight Flows', hint: 'Shows the routes freight ships are carrying goods along, at galaxy zoom.', mod: true, panel: 'tradeFlows' },
     { key: 'tradeHubs', label: 'Trade Hubs', hint: 'Marks the busiest trade systems, at galaxy zoom.', mod: true, panel: 'tradeFlows' },
