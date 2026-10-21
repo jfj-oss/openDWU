@@ -118,14 +118,20 @@
     border-color: transparent;
 }
 
-/* Map legend while Freight Flows is on: a BorderPanel ((48, 48, 64) with 3 px alpha-96 grey borders), left edge,
-   below the top bar, clear of the left toolbar column (x 7-25: at left 12 it covered its top icons). */
+/* Map legend while Freight Flows is on: a BorderPanel ((48, 48, 64) with 3 px alpha-96 grey borders). tradeFlows.ts
+   legendPlace puts it right of the left sidebar's buttons (and open panel), below the top strip and above the selection
+   frame, scaled with the UI scale; left / top here are only the first frame's. */
 .freight-legend {
     position: fixed;
     left: 40px;
     top: 120px;
     z-index: 900;
-    padding: 6px 10px 8px;
+    transform-origin: 0 0;
+    box-sizing: border-box;
+    min-width: 168px;
+    max-width: 240px;
+    overflow-y: auto;
+    padding: 6px 8px 8px;
     background: rgb(48, 48, 64);
     border: 3px solid rgba(200, 200, 200, 0.38);
     font-family: 'Forgotten Futurist', sans-serif;
@@ -133,12 +139,76 @@
     color: rgb(170, 170, 170);
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 1px;
+    user-select: none;
 }
 .freight-legend-head {
     color: rgb(255, 255, 255);
     font-weight: bold;
-    margin-bottom: 2px;
+}
+.freight-legend-sub {
+    color: rgb(190, 190, 110);
+    margin-bottom: 3px;
+}
+.freight-legend-note {
+    color: rgb(120, 120, 130);
+    margin-top: 2px;
+}
+/* Cargo rows are toggles: the original's list hover (96, 96, 96) / yellow text; the picked one framed, the rest dim. */
+.freight-legend .freight-legend-item {
+    padding: 1px 4px;
+    border: 1px solid transparent;
+    cursor: pointer;
+}
+.freight-legend .freight-legend-item:hover,
+.freight-legend-res:hover {
+    background: rgb(96, 96, 96);
+    color: rgb(255, 255, 0);
+}
+.freight-legend .freight-legend-item.selected,
+.freight-legend-res.selected {
+    color: rgb(255, 255, 255);
+    border-color: rgba(200, 200, 200, 0.6);
+    background: rgb(64, 64, 84);
+}
+.freight-legend .dimmed {
+    opacity: 0.45;
+}
+.freight-legend-all[hidden],
+.freight-legend-res-list[hidden] {
+    display: none;
+}
+.freight-legend-all {
+    color: rgb(255, 255, 255);
+}
+.freight-legend-res-list {
+    display: flex;
+    flex-direction: column;
+    margin: 0 0 2px 14px;
+}
+.freight-legend-res {
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 5px;
+    padding: 0 4px;
+    border: 1px solid transparent;
+    font-size: 12px;
+    cursor: pointer;
+}
+.freight-legend-res-icon {
+    width: 16px;
+    height: 16px;
+    object-fit: contain;
+}
+.freight-legend-res-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.freight-legend-res-value {
+    color: rgb(130, 130, 140);
+    font-size: 11px;
 }
 .freight-legend-more {
     margin-top: 4px;

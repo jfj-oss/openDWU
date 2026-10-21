@@ -127,8 +127,8 @@ export const OVERLAY_ROWS: OverlayRow[] = [
     { key: 'stationPresence', label: 'Station presence', hint: 'A disc in the colour of each empire around the systems where it has bases or colonies; larger with more of them.', mod: true },
     { key: 'fadeCivilianShips', label: 'Fade civilian ships and bases', hint: 'Draws the ships and bases of private companies fainter, so your own ships stand out.' },
     // [freightOverlay] begin
-    { key: 'freightFlows', label: 'Freight Flows', hint: 'The routes freighters carry goods along, coloured by cargo. Zoom out to see them.', mod: true, panel: 'tradeFlows' },
-    { key: 'tradeHubs', label: 'Trade Hubs', hint: 'Marks the systems that ship or receive the most freight. Zoom out to see them.', mod: true, panel: 'tradeFlows' },
+    { key: 'freightFlows', label: 'Freight Flows', hint: 'The busiest trade routes between the systems you have explored, coloured by cargo. Click a cargo in the legend to show only it, or one of its resources.', mod: true, panel: 'tradeFlows' },
+    { key: 'tradeHubs', label: 'Trade Hubs', hint: 'Marks the space ports with the most trade income this year, in the systems you have explored.', mod: true, panel: 'tradeFlows' },
     // [freightOverlay] end
     { key: 'threats', label: 'Threats', hint: 'Marks the monsters, pirates and other threats you know of. A dashed or flickering mark is only suspected.' },
     { key: 'wrecks', label: 'Wreck Fields', hint: 'Marks the wreck fields left by battles, which can be salvaged.', mod: true },

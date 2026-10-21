@@ -14,7 +14,6 @@ import type { Camera } from './camera';
 import { fogOf } from './fog';
 import { drawnPositionOf, type MotionInterpolator, type Point } from './renderInterp';
 import type { Galaxy } from '../sim/galaxy';
-import type { BuiltObject } from '../sim/builtObject';
 import { BuiltObjectSubRole } from '../sim/builtObjectTypes';
 import { GAME_DAY_LENGTH } from '../sim/scenario/hooks';
 import { galaxyStarDate } from '../sim/tick/simTime';
@@ -25,12 +24,17 @@ import {
     flowsInWindow,
     hubsInWindow,
     tradeFlowLedger,
+    tradeFlowsRemote,
     type FlowCategory,
     type FlowFilter,
     type FlowLevel,
     type FlowRow,
     type HubRow,
+    type TradeFlowLedger,
 } from '../sim/logistics/tradeFlows';
+import type { StellarObject } from '../sim/logistics/contracts';
+import { BuiltObject } from '../sim/builtObject';
+import { SystemVisibilityStatus } from '../sim/visibility';
 import type { MapOverlayState } from '../ui/mapOverlays';
 import { scenarioMapFeatures } from '../sim/scenario/mapFeatures';
 import { INDEPENDENT_RING_COLOR, toPixiColor } from './empireLayer';
@@ -38,29 +42,50 @@ import { dashSegments, TRAVEL_VECTOR_COLOR } from './overlayLayer';
 import { localViewerEmpire } from '../localViewer';
 import { DrawSig } from './drawCache';
 
-/** Default category colours (task 19e-9 §8.2). Scenario categories carry their own. */
+/** Category colours (task 19e-9 §8.2; brightened for the rework so each reads over territory shading). Scenario
+ * categories carry their own. */
 export const FLOW_COLORS: Readonly<Record<string, number>> = {
-    mineral: 0xb0b8c0,
-    gas: 0x6fd3ff,
-    luxury: 0xf2c14e,
-    restricted: 0xff7ad9,
-    component: 0x9aa0ff,
+    mineral: 0xdfe7ef,
+    gas: 0x3fd8ff,
+    luxury: 0xffc23a,
+    restricted: 0xff52c8,
+    component: 0x8cff5a,
 };
 
 export function flowColor(cat: FlowCategory): number {
     return cat.color ?? FLOW_COLORS[cat.key] ?? 0xffffff;
 }
 
-/** Most arcs drawn at once (largest first). */
-export const FLOW_ARC_CAP = 400;
+/** Routes drawn at once when the view spans the galaxy (more than FLOW_SECTOR_VIEW_SECTORS sectors across). */
+export const FLOW_ROUTES_GALAXY = 15;
+/** Routes drawn at once at sector zoom and closer. */
+export const FLOW_ROUTES_SECTOR = 25;
+/** A view wider than this many sectors (its longer side) counts as galaxy zoom. */
+export const FLOW_SECTOR_VIEW_SECTORS = 3;
+/** Routes below this share of the largest one drawn are left out. */
+export const FLOW_ROUTE_MIN_SHARE = 0.1;
+/** Line widths on screen (px), by the route's volume against the largest drawn: not scaled with the zoom. */
+export const FLOW_LINE_MIN_PX = 1.5;
+export const FLOW_LINE_MAX_PX = 6;
+/** The dark halo's width on each side of a line (px). */
+export const FLOW_HALO_PX = 1.5;
+/** Gap left at each end so the line stops short of the star (px). */
+export const FLOW_END_GAP_PX = 7;
+/** A route's return leg gets its own arrowhead from this share of the main direction's volume. */
+export const FLOW_TWO_WAY_SHARE = 0.25;
 
 /** Window the map overlay shows (months). The panel can pick 1 or 12. */
 export const MAP_FLOW_WINDOW_MONTHS = 12;
 
-/** Original's system-zoom gate (MainView.pick / overlayLayer.ts markers: zoom factor 1/z < 70): above it the arcs split
- * into per-trading-post lines. */
+/** Original's system-zoom gate (MainView.pick / overlayLayer.ts markers: zoom factor 1/z < 70): the in-flight freighter
+ * leaders are drawn at system zoom only. */
 export function flowLevelForZoom(z: number): FlowLevel {
     return 1 / z < 70 ? 'post' : 'system';
+}
+
+/** How many routes (and trade hubs) are drawn for a view `viewW` x `viewH` world units wide. */
+export function routeCountForView(viewW: number, viewH: number, sectorSize: number): number {
+    return Math.max(viewW, viewH) > FLOW_SECTOR_VIEW_SECTORS * sectorSize ? FLOW_ROUTES_GALAXY : FLOW_ROUTES_SECTOR;
 }
 
 export interface ArcGeom {
@@ -72,24 +97,129 @@ export interface ArcGeom {
     y2: number;
 }
 
-/** Quadratic arc from (x1,y1) to (x2,y2), control point 15 % of the length to the left of travel (screen space, y down),
- * so A→B and B→A do not overlap. */
+/** Quadratic arc from (x1,y1) to (x2,y2), control point 15 % of the length to the left of travel (screen space, y down)
+ * — the supply-chain highlight's routes (they are per direction). */
 export function flowArcFor(x1: number, y1: number, x2: number, y2: number): ArcGeom {
     const dx = x2 - x1;
     const dy = y2 - y1;
     return { x1, y1, x2, y2, cx: (x1 + x2) / 2 + 0.15 * dy, cy: (y1 + y2) / 2 - 0.15 * dx };
 }
 
-/** Line width in screen px: clamp(1, 8, sqrt(valuePerYear / 2000)). */
-export function flowWidthPx(valuePerYear: number): number {
-    return Math.min(8, Math.max(1, Math.sqrt(Math.max(0, valuePerYear) / 2000)));
+/**
+ * One drawn line: both directions between a pair of systems (or deep-space posts). A is the seller end of the larger
+ * direction, so the main arrowhead points A → B.
+ */
+export interface FlowRoute {
+    key: string;
+    ax: number;
+    ay: number;
+    bx: number;
+    by: number;
+    /** System index of each end (-1: a deep-space post). */
+    aSystem: number;
+    bSystem: number;
+    /** The post at each end when it is a single one (deep space, or one post in the system), else null. */
+    aPost: StellarObject | null;
+    bPost: StellarObject | null;
+    /** A → B and B → A rows (null when nothing went that way). */
+    ab: FlowRow | null;
+    ba: FlowRow | null;
+    abPerYear: number;
+    baPerYear: number;
+    /** abPerYear + baPerYear. */
+    total: number;
+    /** The larger direction's category (its largest commodity's). */
+    category: FlowCategory;
+    /** Every commodity carried either way. */
+    resourceIds: number[];
 }
 
-export interface FlowArc extends ArcGeom {
-    row: FlowRow;
-    widthPx: number;
-    alpha: number;
-    color: number;
+function rowEnds(row: FlowRow): [string, string] {
+    const i = row.key.indexOf('>');
+    return [row.key.slice(0, i), row.key.slice(i + 1)];
+}
+
+/** Merge the per-direction system rows into one route per unordered end pair, largest total first (ties: key).
+ * Zero-length rows (both ends in one system) are dropped. */
+export function mergeRouteDirections(rows: readonly FlowRow[]): FlowRoute[] {
+    const byPair = new Map<string, FlowRoute>();
+    for (const row of rows) {
+        const [from, to] = rowEnds(row);
+        if (from === to || (row.fromX === row.toX && row.fromY === row.toY)) continue;
+        const key = from < to ? `${from}|${to}` : `${to}|${from}`;
+        let r = byPair.get(key);
+        if (r === undefined) {
+            r = {
+                key,
+                ax: row.fromX,
+                ay: row.fromY,
+                bx: row.toX,
+                by: row.toY,
+                aSystem: row.sellerSystem,
+                bSystem: row.destSystem,
+                aPost: row.sellingPoint,
+                bPost: row.destination,
+                ab: row,
+                ba: null,
+                abPerYear: row.valuePerYear,
+                baPerYear: 0,
+                total: row.valuePerYear,
+                category: row.category,
+                resourceIds: row.resourceIds.slice(),
+            };
+            byPair.set(key, r);
+            continue;
+        }
+        // Rows come one per direction: this is the other one.
+        r.ba = row;
+        r.baPerYear = row.valuePerYear;
+        r.total += row.valuePerYear;
+        for (const id of row.resourceIds) if (!r.resourceIds.includes(id)) r.resourceIds.push(id);
+    }
+    const out = [...byPair.values()];
+    for (const r of out) {
+        if (r.ba !== null && r.baPerYear > r.abPerYear) {
+            const ab = r.ab!;
+            const ba = r.ba;
+            r.ab = ba;
+            r.ba = ab;
+            r.abPerYear = ba.valuePerYear;
+            r.baPerYear = ab.valuePerYear;
+            r.ax = ba.fromX;
+            r.ay = ba.fromY;
+            r.bx = ba.toX;
+            r.by = ba.toY;
+            r.aSystem = ba.sellerSystem;
+            r.bSystem = ba.destSystem;
+            r.aPost = ba.sellingPoint;
+            r.bPost = ba.destination;
+            r.category = ba.category;
+        }
+    }
+    out.sort((x, y) => y.total - x.total || (x.key < y.key ? -1 : x.key > y.key ? 1 : 0));
+    return out;
+}
+
+/**
+ * The routes to draw: the first `n` of `routes` (sorted largest first) that `accept` lets through (the viewer knows
+ * both ends, the line crosses the view), less those under `minShare` of the largest one taken.
+ */
+export function selectTopRoutes(routes: readonly FlowRoute[], n: number, accept: (r: FlowRoute) => boolean, minShare = FLOW_ROUTE_MIN_SHARE): FlowRoute[] {
+    const out: FlowRoute[] = [];
+    for (const r of routes) {
+        if (out.length >= n) break;
+        if (r.total <= 0 || !accept(r)) continue;
+        if (out.length > 0 && r.total < out[0].total * minShare) break; // sorted: every later one is smaller still
+        out.push(r);
+    }
+    return out;
+}
+
+/** Line width in screen px: FLOW_LINE_MIN_PX..FLOW_LINE_MAX_PX by sqrt(volume / the largest drawn). */
+export function routeWidthPx(total: number, max: number): number {
+    if (!(max > 0)) return FLOW_LINE_MIN_PX;
+    const t = Math.sqrt(Math.max(0, Math.min(1, total / max)));
+    return FLOW_LINE_MIN_PX + (FLOW_LINE_MAX_PX - FLOW_LINE_MIN_PX) * t;
 }
 
 export interface CullRect {
@@ -99,53 +229,35 @@ export interface CullRect {
     height: number;
 }
 
-/** Visible arcs for `rows` (sorted by value desc): zero-length ones dropped, culled by the camera's world rect (padded
- * by `padPx` screen px), capped at FLOW_ARC_CAP. */
-export function flowArcsFor(rows: readonly FlowRow[], z: number, cam: CullRect, padPx = 0, cap = FLOW_ARC_CAP): FlowArc[] {
+/** Whether the segment (x1,y1)-(x2,y2) crosses the camera's world rect (Liang-Barsky clip), padded by `padPx`. */
+export function segmentInView(x1: number, y1: number, x2: number, y2: number, z: number, cam: CullRect, padPx = 0): boolean {
     const halfW = cam.width / (2 * z) + padPx / z;
     const halfH = cam.height / (2 * z) + padPx / z;
-    const left = cam.x - halfW;
-    const right = cam.x + halfW;
-    const top = cam.y - halfH;
-    const bottom = cam.y + halfH;
-    const out: FlowArc[] = [];
-    for (const row of rows) {
-        if (out.length >= cap) break;
-        if (row.fromX === row.toX && row.fromY === row.toY) continue;
-        const g = flowArcFor(row.fromX, row.fromY, row.toX, row.toY);
-        const minX = Math.min(g.x1, g.x2, g.cx);
-        const maxX = Math.max(g.x1, g.x2, g.cx);
-        const minY = Math.min(g.y1, g.y2, g.cy);
-        const maxY = Math.max(g.y1, g.y2, g.cy);
-        if (maxX < left || minX > right || maxY < top || minY > bottom) continue;
-        out.push({ ...g, row, widthPx: flowWidthPx(row.valuePerYear), alpha: 0.35 + 0.65 * row.recency, color: flowColor(row.category) });
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    let t0 = 0;
+    let t1 = 1;
+    const p = [-dx, dx, -dy, dy];
+    const q = [x1 - (cam.x - halfW), cam.x + halfW - x1, y1 - (cam.y - halfH), cam.y + halfH - y1];
+    for (let i = 0; i < 4; i++) {
+        if (p[i] === 0) {
+            if (q[i] < 0) return false;
+            continue;
+        }
+        const t = q[i] / p[i];
+        if (p[i] < 0) {
+            if (t > t1) return false;
+            if (t > t0) t0 = t;
+        } else {
+            if (t < t0) return false;
+            if (t < t1) t1 = t;
+        }
     }
-    return out;
+    return true;
 }
 
-/** Point on the arc at t (0..1). */
-function arcPoint(a: ArcGeom, t: number, out: { x: number; y: number }): void {
-    const u = 1 - t;
-    out.x = u * u * a.x1 + 2 * u * t * a.cx + t * t * a.x2;
-    out.y = u * u * a.y1 + 2 * u * t * a.cy + t * t * a.y2;
-}
-
-const hitTmp = { x: 0, y: 0 };
-/** Hover hit test: distance (screen px) from world point (wx, wy) to the curve sampled at 16 points < `px`. */
-export function hitFlowArc(a: ArcGeom, wx: number, wy: number, z: number, px = 6): boolean {
-    const r = px / z;
-    let px0 = a.x1;
-    let py0 = a.y1;
-    for (let i = 1; i <= 16; i++) {
-        arcPoint(a, i / 16, hitTmp);
-        if (segDist2(wx, wy, px0, py0, hitTmp.x, hitTmp.y) < r * r) return true;
-        px0 = hitTmp.x;
-        py0 = hitTmp.y;
-    }
-    return false;
-}
-
-function segDist2(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+/** Squared distance from (px, py) to the segment (ax, ay)-(bx, by). */
+export function segDist2(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
     const dx = bx - ax;
     const dy = by - ay;
     const l2 = dx * dx + dy * dy;
@@ -156,9 +268,21 @@ function segDist2(px: number, py: number, ax: number, ay: number, bx: number, by
     return qx * qx + qy * qy;
 }
 
-/** Hub disc radius in screen px: clamp(6, 60, sqrt(income) / 4). */
-export function hubRadiusPx(income: number): number {
-    return Math.min(60, Math.max(6, Math.sqrt(Math.max(0, income)) / 4));
+/** Per-resource totals (cr/yr) of the routes `accept` lets through, largest first: the legend's resource list. */
+export function resourceTotals(rows: readonly FlowRow[], accept: (row: FlowRow) => boolean): Array<{ resourceId: number; perYear: number }> {
+    const m = new Map<number, number>();
+    for (const row of rows) {
+        if (row.value <= 0 || !accept(row)) continue;
+        const k = row.valuePerYear / row.value;
+        for (let i = 0; i < row.resourceIds.length; i++) m.set(row.resourceIds[i], (m.get(row.resourceIds[i]) ?? 0) + (row.resourceValues[i] ?? 0) * k);
+    }
+    return [...m.entries()].map(([resourceId, perYear]) => ({ resourceId, perYear })).sort((a, b) => b.perYear - a.perYear || a.resourceId - b.resourceId);
+}
+
+/** Hub disc radius in screen px: 5..20 by sqrt(income / the largest drawn). */
+export function hubRadiusPx(income: number, max: number): number {
+    if (!(max > 0)) return 5;
+    return 5 + 15 * Math.sqrt(Math.max(0, Math.min(1, income / max)));
 }
 
 export interface HubDisc {
@@ -170,15 +294,29 @@ export interface HubDisc {
     color: number;
 }
 
-/** Visible hub discs (owner colour; independent / none grey), culled by the camera world rect. */
-export function hubDiscsFor(hubs: readonly HubRow[], z: number, cam: CullRect, padPx = 0, independent: unknown = null): HubDisc[] {
-    const halfW = cam.width / (2 * z) + padPx / z;
-    const halfH = cam.height / (2 * z) + padPx / z;
+/** The hub discs to draw: the first `n` of `hubs` (income desc) that `accept` lets through and that lie in the camera
+ * rect, less those under `minShare` of the largest; owner colour, independent / none grey. */
+export function hubDiscsFor(
+    hubs: readonly HubRow[],
+    z: number,
+    cam: CullRect,
+    n: number,
+    accept: (h: HubRow) => boolean = () => true,
+    independent: unknown = null,
+    minShare = FLOW_ROUTE_MIN_SHARE,
+): HubDisc[] {
+    const halfW = cam.width / (2 * z);
+    const halfH = cam.height / (2 * z);
     const out: HubDisc[] = [];
+    let max = 0;
     for (const hub of hubs) {
+        if (out.length >= n) break;
         if (hub.x < cam.x - halfW || hub.x > cam.x + halfW || hub.y < cam.y - halfH || hub.y > cam.y + halfH) continue;
+        if (!accept(hub)) continue;
+        if (out.length === 0) max = hub.income;
+        else if (hub.income < max * minShare) break;
         const color = hub.owner === null || hub.owner === independent ? INDEPENDENT_RING_COLOR : toPixiColor(hub.owner.mainColor);
-        out.push({ hub, x: hub.x, y: hub.y, r: hubRadiusPx(hub.income), color });
+        out.push({ hub, x: hub.x, y: hub.y, r: hubRadiusPx(hub.income, max), color });
     }
     return out;
 }
@@ -188,7 +326,7 @@ function isFreighter(bo: BuiltObject): boolean {
     return s === BuiltObjectSubRole.SmallFreighter || s === BuiltObjectSubRole.MediumFreighter || s === BuiltObjectSubRole.LargeFreighter;
 }
 
-export type FreightHit = { kind: 'flow'; row: FlowRow } | { kind: 'hub'; hub: HubRow };
+export type FreightHit = { kind: 'flow'; route: FlowRoute } | { kind: 'hub'; hub: HubRow };
 
 /**
  * An in-flight freighter's leader, drawn from where the freighter is drawn (sx, sy) towards where its contract
@@ -202,6 +340,16 @@ export function freightLeader(sx: number, sy: number, tx: number, ty: number, z:
     if (len * z < 8) return null;
     const k = Math.min(1, 300 / z / len);
     return { x1: sx, y1: sy, x2: sx + dx * k, y2: sy + dy * k };
+}
+
+/** What the legend shows (FreightOverlay.legendInfo). */
+export interface FreightLegendInfo {
+    /** Routes drawn now. */
+    shown: number;
+    /** Routes with both ends known to the viewer (before the top-N cut), all goods / the filter. */
+    known: number;
+    category: string | null;
+    resourceId: number | null;
 }
 
 /** Owns the flows / hubs / leaders Graphics inside the overlay root. */
@@ -218,13 +366,21 @@ export class FreightOverlay {
     private highlightDrawnZ = NaN;
     private highlightDirty = false;
     private _highlight: { color: number; routes: ReadonlyArray<{ fromX: number; fromY: number; toX: number; toY: number }> } | null = null;
+    /** System rows of the current window and filter (flowsInWindow), queried at most once a second. */
     private rows: FlowRow[] = [];
+    /** `rows` with both directions merged, largest first. */
+    private merged: FlowRoute[] = [];
+    /** Of `merged`, those whose both ends the viewer knows (re-tested on each build). */
+    private knownCount = 0;
     private hubRows: HubRow[] = [];
-    private arcs: FlowArc[] = [];
-    private discs: HubDisc[] = [];
+    /** The routes drawn now (largest first). */
+    shown: FlowRoute[] = [];
+    private widths: number[] = [];
+    discs: HubDisc[] = [];
     private queriedDay = NaN;
     private queriedVersion = -1;
-    private queriedLevel: FlowLevel | null = null;
+    private queriedLedger: TradeFlowLedger | null = null;
+    private queriedAt = -Infinity;
     private builtZ = NaN;
     private builtX = NaN;
     private builtY = NaN;
@@ -232,7 +388,8 @@ export class FreightOverlay {
     private builtH = 0;
     private dirty = true;
     private leadersAt = 0;
-    private recording = false;
+    private remoteRecording = false;
+    private localRecording = false;
     /** Panel / legend filter (null category = all). */
     filter: FlowFilter;
     /** Window the map shows (months); the Trade Flows panel sets it. */
@@ -242,6 +399,8 @@ export class FreightOverlay {
     motion: MotionInterpolator | null = null;
     private fromScratch: Point = { x: 0, y: 0 };
     private toScratch: Point = { x: 0, y: 0 };
+    /** The legend's per-resource list, cached per query and category. */
+    private breakdown: { key: string; list: Array<{ resourceId: number; perYear: number }> } | null = null;
 
     constructor(
         private galaxy: Galaxy,
@@ -254,18 +413,30 @@ export class FreightOverlay {
         this.syncRecording();
     }
 
-    /** Recording runs while either toggle is on (brief §10: off → no listener, nothing recorded). The panel keeps it on
-     * via `keepRecording`. */
+    /**
+     * Contracts are recorded for the whole game, so the overlay has the last year of flows the moment it is turned on
+     * (the recorder only observes contracts: an O(1) bucket write each, no sim state, no Rnd, nothing saved). In-thread
+     * it records from here until destroy. In worker mode the worker records from its start, and this switches whether
+     * the ledger is synced to this thread: while either toggle is on, or the panel keeps it (`keepRecording`).
+     */
     keepRecording = false;
     syncRecording(): void {
+        if (!tradeFlowsRemote(this.galaxy)) {
+            if (!this.localRecording) {
+                enableTradeFlowRecording(this.galaxy, galaxyStarDate(this.galaxy));
+                this.localRecording = true;
+                this.invalidate();
+            }
+            return;
+        }
         const want = this.state.freightFlows || this.state.tradeHubs || this.keepRecording;
-        if (want && !this.recording) {
+        if (want && !this.remoteRecording) {
             enableTradeFlowRecording(this.galaxy, galaxyStarDate(this.galaxy));
-            this.recording = true;
-            this.dirty = true;
-        } else if (!want && this.recording) {
+            this.remoteRecording = true;
+            this.invalidate();
+        } else if (!want && this.remoteRecording) {
             disableTradeFlowRecording(this.galaxy);
-            this.recording = false;
+            this.remoteRecording = false;
         }
     }
 
@@ -307,7 +478,60 @@ export class FreightOverlay {
     /** Force a re-query (filter changed). */
     invalidate(): void {
         this.queriedDay = NaN;
+        this.breakdown = null;
         this.dirty = true;
+    }
+
+    /** Show only `category` (null: every cargo), and of it only `resourceId` (null: all of them). */
+    setCargoFilter(category: string | null, resourceId: number | null = null): void {
+        this.filter = { ...this.filter, category, resourceId };
+        this.invalidate();
+    }
+
+    /** What the legend shows. */
+    legendInfo(): FreightLegendInfo {
+        return { shown: this.shown.length, known: this.knownCount, category: this.filter.category ?? null, resourceId: this.filter.resourceId ?? null };
+    }
+
+    // --- What the viewer may see (fog.ts; galaxyMarkers.ts explored test) -------------------------------------------
+
+    /** The viewer has explored system `sys` (Explored or Visible); a deep-space end (-1) needs its post seen. */
+    private endKnown(sys: number, post: StellarObject | null): boolean {
+        const fog = fogOf(this.galaxy);
+        if (fog.reveal) return true;
+        const viewer = localViewerEmpire(this.galaxy);
+        if (viewer === null) return true;
+        if (sys >= 0) return viewer.visibility.checkSystemVisibilityStatus(sys) >= SystemVisibilityStatus.Explored;
+        return post instanceof BuiltObject && fog.builtObject(post);
+    }
+
+    private routeKnown(r: FlowRoute): boolean {
+        return this.endKnown(r.aSystem, r.aPost) && this.endKnown(r.bSystem, r.bPost);
+    }
+
+    /** Both ends of `row` are known to the viewer (the Trade Flows panel lists only these too). */
+    rowKnown(row: FlowRow): boolean {
+        return this.endKnown(row.sellerSystem, row.sellingPoint) && this.endKnown(row.destSystem, row.destination);
+    }
+
+    /** The viewer knows the hub's system (or sees the deep-space port). */
+    hubKnown(h: HubRow): boolean {
+        return this.endKnown(h.port.nearestSystemStar?.systemIndex ?? -1, h.port);
+    }
+
+    /**
+     * The legend's resource list for `category`: per resource, the cr/yr on the routes the viewer knows both ends of
+     * (the whole window, before the top-N cut), largest first. Cached until the next query.
+     */
+    resourceBreakdown(category: string): Array<{ resourceId: number; perYear: number }> {
+        const ledger = tradeFlowLedger(this.galaxy);
+        if (ledger === null) return [];
+        const key = `${category}:${this.queriedLedger === ledger ? this.queriedVersion : -1}:${this.queriedDay}`;
+        if (this.breakdown !== null && this.breakdown.key === key) return this.breakdown.list;
+        const rows = flowsInWindow(ledger, galaxyStarDate(this.galaxy), this.windowMonths, { ...this.filter, category, resourceId: null }, 'system');
+        const list = resourceTotals(rows, (row) => row.sellerSystem !== row.destSystem && this.rowKnown(row)).filter((x) => x.resourceId >= 0);
+        this.breakdown = { key, list };
+        return list;
     }
 
     update(z: number, cam: Camera): void {
@@ -322,8 +546,9 @@ export class FreightOverlay {
                 this.routes.clear();
                 this.highlightG.clear();
                 this.flows.visible = this.hubs.visible = this.leaders.visible = this.routes.visible = this.highlightG.visible = false;
-                this.arcs = [];
+                this.shown = [];
                 this.discs = [];
+                this.queriedDay = NaN; // re-query at once when turned back on
                 this.dirty = true;
             }
             return;
@@ -331,31 +556,36 @@ export class FreightOverlay {
         const ledger = tradeFlowLedger(this.galaxy);
         const now = galaxyStarDate(this.galaxy);
         const day = Math.floor(now / GAME_DAY_LENGTH);
-        const level = flowLevelForZoom(z);
         const version = ledger?.version ?? 0;
-        if (Number.isNaN(this.queriedDay) || level !== this.queriedLevel || (day !== this.queriedDay && version !== this.queriedVersion)) {
-            this.rows = ledger !== null ? flowsInWindow(ledger, now, this.windowMonths, this.filter, level) : [];
+        const t = performance.now();
+        // Re-query on a new ledger (the worker's first sync), a filter change, or new contracts on a new game day — at
+        // most once a second (a query walks every series of the ledger).
+        if (
+            Number.isNaN(this.queriedDay) ||
+            ledger !== this.queriedLedger ||
+            (day !== this.queriedDay && version !== this.queriedVersion && t - this.queriedAt > 1000)
+        ) {
+            this.rows = ledger !== null ? flowsInWindow(ledger, now, this.windowMonths, this.filter, 'system') : [];
+            this.merged = mergeRouteDirections(this.rows);
             this.hubRows = hubsInWindow(this.galaxy, now, { empire: this.filter.empire ?? null });
             this.queriedDay = day;
             this.queriedVersion = version;
-            this.queriedLevel = level;
+            this.queriedLedger = ledger;
+            this.queriedAt = t;
             this.dirty = true;
         }
-        // Geometry: rebuild on new rows, zoom change > 15 %, or the camera leaving the padded rect of the last build.
-        const zoomMoved = !(Math.abs(z / this.builtZ - 1) < 0.15);
-        const padX = this.builtW / (2 * this.builtZ);
-        const padY = this.builtH / (2 * this.builtZ);
-        const panned = Math.abs(cam.x - this.builtX) > padX * 0.5 || Math.abs(cam.y - this.builtY) > padY * 0.5;
-        if (this.dirty || zoomMoved || panned) {
-            this.build(z, cam, flowsOn, hubsOn);
-        }
+        // Geometry: line widths are in screen px, so rebuild on a zoom change > 3 %, a pan of > 10 % of the view (the
+        // top N are picked among the routes in view) or new rows. At most ~25 lines: a rebuild is cheap.
+        const zoomMoved = !(Math.abs(z / this.builtZ - 1) < 0.03);
+        const panned = Math.abs(cam.x - this.builtX) * z > this.builtW * 0.1 || Math.abs(cam.y - this.builtY) * z > this.builtH * 0.1;
+        const resized = cam.width !== this.builtW || cam.height !== this.builtH;
+        if (this.dirty || zoomMoved || panned || resized) this.build(z, cam, flowsOn, hubsOn);
         this.flows.visible = flowsOn;
         this.hubs.visible = hubsOn;
         this.updateRoutes(z, flowsOn);
         this.updateHighlight(z, flowsOn); // [improvements] supplyChain
         // In-flight leaders (system zoom only).
-        if (flowsOn && level === 'post' && ledger !== null) {
-            const t = performance.now();
+        if (flowsOn && flowLevelForZoom(z) === 'post' && ledger !== null) {
             if (t - this.leadersAt > 250) {
                 this.leadersAt = t;
                 this.buildLeaders(z, cam, ledger.freighterDestination);
@@ -375,38 +605,68 @@ export class FreightOverlay {
         this.builtY = cam.y;
         this.builtW = cam.width;
         this.builtH = cam.height;
-        // Pad by one viewport so short pans reuse the geometry.
-        const pad = Math.max(cam.width, cam.height) / 2;
+        const n = routeCountForView(cam.width / z, cam.height / z, this.galaxy.sectorSize);
         const f = this.flows;
         f.clear();
-        this.arcs = flowsOn ? flowArcsFor(this.rows, z, cam, pad) : [];
-        // Draw smallest first so the big flows sit on top.
-        for (let i = this.arcs.length - 1; i >= 0; i--) {
-            const a = this.arcs[i];
-            const w = a.widthPx / z;
-            f.moveTo(a.x1, a.y1).quadraticCurveTo(a.cx, a.cy, a.x2, a.y2).stroke({ width: w, color: a.color, alpha: a.alpha });
-            // Arrow head at the buyer end, along the curve's end tangent (control point → end).
-            const tx = a.x2 - a.cx;
-            const ty = a.y2 - a.cy;
-            const tl = Math.hypot(tx, ty);
-            if (tl > 0) {
-                const ux = tx / tl;
-                const uy = ty / tl;
-                const len = (6 + a.widthPx * 1.5) / z;
-                const half = (3 + a.widthPx) / z;
-                const bx = a.x2 - ux * len;
-                const by = a.y2 - uy * len;
-                f.poly([a.x2, a.y2, bx - uy * half, by + ux * half, bx + uy * half, by - ux * half]).fill({ color: a.color, alpha: a.alpha });
-            }
+        this.shown = [];
+        this.widths = [];
+        if (flowsOn) {
+            let known = 0;
+            for (const r of this.merged) if (this.routeKnown(r)) known++;
+            this.knownCount = known;
+            this.shown = selectTopRoutes(this.merged, n, (r) => segmentInView(r.ax, r.ay, r.bx, r.by, z, cam) && this.routeKnown(r));
+            const max = this.shown[0]?.total ?? 0;
+            this.widths = this.shown.map((r) => routeWidthPx(r.total, max));
+            // Halos first (one pass, so no line's halo cuts across another line), then the lines smallest first.
+            for (let i = this.shown.length - 1; i >= 0; i--) this.drawRoute(f, this.shown[i], this.widths[i], z, true);
+            for (let i = this.shown.length - 1; i >= 0; i--) this.drawRoute(f, this.shown[i], this.widths[i], z, false);
         }
         const h = this.hubs;
         h.clear();
-        this.discs = hubsOn ? hubDiscsFor(this.hubRows, z, cam, pad, this.galaxy.independentEmpire) : [];
+        this.discs = hubsOn ? hubDiscsFor(this.hubRows, z, cam, n, (hub) => this.hubKnown(hub), this.galaxy.independentEmpire) : [];
         for (let i = this.discs.length - 1; i >= 0; i--) {
             const d = this.discs[i];
             const r = d.r / z;
-            circleAtScreenRes(h, d.x, d.y, r, z).fill({ color: d.color, alpha: 0.25 }).stroke({ width: 1 / z, color: d.color, alpha: 0.9 });
+            circleAtScreenRes(h, d.x, d.y, r, z).stroke({ width: 4 / z, color: 0x000000, alpha: 0.5 });
+            circleAtScreenRes(h, d.x, d.y, r, z).fill({ color: d.color, alpha: 0.22 }).stroke({ width: 1.75 / z, color: d.color, alpha: 0.95 });
         }
+    }
+
+    /** One route: a straight line between the two ends (stopping short of the stars), an arrowhead at its middle
+     * pointing A → B, and a second one pointing back when the return leg carries FLOW_TWO_WAY_SHARE or more. */
+    private drawRoute(g: Graphics, r: FlowRoute, w: number, z: number, halo: boolean): void {
+        const dx = r.bx - r.ax;
+        const dy = r.by - r.ay;
+        const len = Math.hypot(dx, dy);
+        if (!(len > 0)) return;
+        const ux = dx / len;
+        const uy = dy / len;
+        const gap = Math.min(FLOW_END_GAP_PX / z, len * 0.2);
+        const x1 = r.ax + ux * gap;
+        const y1 = r.ay + uy * gap;
+        const x2 = r.bx - ux * gap;
+        const y2 = r.by - uy * gap;
+        const color = halo ? 0x000000 : flowColor(r.category);
+        const alpha = halo ? 0.6 : 0.95;
+        const width = halo ? w + 2 * FLOW_HALO_PX : w;
+        g.moveTo(x1, y1).lineTo(x2, y2).stroke({ width: width / z, color, alpha, cap: 'round' });
+        // Arrowheads, sized with the line; skipped when the line is too short on screen to hold them.
+        const headLen = (6 + w * 1.3) / z;
+        const headHalf = (3.5 + w * 0.9) / z;
+        if (len * z < 40 + headLen * z * 2) return;
+        const twoWay = r.ba !== null && r.baPerYear >= r.abPerYear * FLOW_TWO_WAY_SHARE;
+        const off = twoWay ? headLen * 0.9 : 0;
+        const head = (tipX: number, tipY: number, vx: number, vy: number): void => {
+            const bx = tipX - vx * headLen;
+            const by = tipY - vy * headLen;
+            const pts = [tipX, tipY, bx - vy * headHalf, by + vx * headHalf, bx + vy * headHalf, by - vx * headHalf];
+            if (halo) g.poly(pts).stroke({ width: (2 * FLOW_HALO_PX) / z, color, alpha, join: 'round' });
+            else g.poly(pts).fill({ color, alpha: 1 });
+        };
+        const mx = (r.ax + r.bx) / 2;
+        const my = (r.ay + r.by) / 2;
+        head(mx + ux * (off + headLen / 2), my + uy * (off + headLen / 2), ux, uy);
+        if (twoWay) head(mx - ux * (off + headLen / 2), my - uy * (off + headLen / 2), -ux, -uy);
     }
 
     private updateRoutes(z: number, flowsOn: boolean): void {
@@ -480,7 +740,7 @@ export class FreightOverlay {
         if (any) g.stroke({ width: f, color: TRAVEL_VECTOR_COLOR, alpha: 0.9 });
     }
 
-    /** Hover: the hub under world (wx, wy), else the topmost (largest) arc within 6 px. */
+    /** Hover: the hub under world (wx, wy), else the largest route within its half width + 4 px. */
     hitTest(wx: number, wy: number, z: number): FreightHit | null {
         if (this.hubs.visible) {
             for (const d of this.discs) {
@@ -491,13 +751,17 @@ export class FreightOverlay {
             }
         }
         if (this.flows.visible) {
-            for (const a of this.arcs) if (hitFlowArc(a, wx, wy, z, 6)) return { kind: 'flow', row: a.row };
+            for (let i = 0; i < this.shown.length; i++) {
+                const a = this.shown[i];
+                const tol = (this.widths[i] / 2 + 4) / z;
+                if (segDist2(wx, wy, a.ax, a.ay, a.bx, a.by) <= tol * tol) return { kind: 'flow', route: a };
+            }
         }
         return null;
     }
 
     destroy(): void {
-        if (this.recording) disableTradeFlowRecording(this.galaxy);
-        this.recording = false;
+        if (this.localRecording || this.remoteRecording) disableTradeFlowRecording(this.galaxy);
+        this.localRecording = this.remoteRecording = false;
     }
 }

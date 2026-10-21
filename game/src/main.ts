@@ -972,7 +972,7 @@ export async function startGameView(
         overlay: () => view.freightOverlay,
         jumpTo: (x: number, y: number) => camera.centerOn(x, y),
     };
-    const removeFreightLegend = mountFreightLegend(overlays, () => openTradeFlows(tradeFlowsOpts));
+    const removeFreightLegend = mountFreightLegend(overlays, () => openTradeFlows(tradeFlowsOpts), () => view.freightOverlay, galaxy);
     setEmpireSummaryTradeFlowsLink(() => openTradeFlows(tradeFlowsOpts));
     // [freightOverlay] end
     // [improvements] supplyChain — the resource supply panel's game-view hooks, and a dev / perf handle.

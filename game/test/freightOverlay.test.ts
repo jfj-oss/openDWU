@@ -11,6 +11,7 @@ import { galaxyStarDate } from '../src/sim/tick/simTime';
 import { contractListenersActive, registerContractListener, type ContractEvent } from '../src/sim/logistics/contractEvents';
 import {
     FLOW_CATEGORY_GAS,
+    FLOW_CATEGORY_LUXURY,
     FLOW_CATEGORY_MINERAL,
     FLOW_MONTHS,
     MONTH_LENGTH,
@@ -21,6 +22,7 @@ import {
     flowCategory,
     flowsInWindow,
     hubsInWindow,
+    pruneTradeFlowLedger,
     recordContract,
     registerFlowCategory,
     tradeFlowLedger,
@@ -29,16 +31,26 @@ import {
 } from '../src/sim/logistics/tradeFlows';
 import { YEAR_LENGTH } from '../src/sim/galaxyTime';
 import {
-    FLOW_ARC_CAP,
+    FLOW_LINE_MAX_PX,
+    FLOW_LINE_MIN_PX,
+    FLOW_ROUTE_MIN_SHARE,
+    FLOW_ROUTES_GALAXY,
+    FLOW_ROUTES_SECTOR,
+    FreightOverlay,
     flowArcFor,
-    flowArcsFor,
     flowColor,
-    flowWidthPx,
     freightLeader,
-    hitFlowArc,
     hubDiscsFor,
     hubRadiusPx,
+    mergeRouteDirections,
+    resourceTotals,
+    routeCountForView,
+    routeWidthPx,
+    segmentInView,
+    selectTopRoutes,
+    type FlowRoute,
 } from '../src/render/freightOverlay';
+import { Container } from 'pixi.js';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -257,46 +269,232 @@ describe('19e-9 ledger math (synthetic)', () => {
 
 describe('19e-9 overlay layout helpers', () => {
     const cam = { x: 0, y: 0, width: 1000, height: 1000 };
-    it('arc control point sits to the left of travel, so A→B and B→A do not overlap', () => {
+    it('arc control point sits to the left of travel (the supply-chain highlight)', () => {
         const ab = flowArcFor(0, 0, 1000, 0);
-        const ba = flowArcFor(1000, 0, 0, 0);
         expect(ab.cx).toBeCloseTo(500, 6);
         expect(ab.cy).toBeCloseTo(-150, 6); // left of +x in screen space (y down) is -y
-        expect(ba.cy).toBeCloseTo(150, 6);
     });
 
-    it('width clamps to 1..8 px', () => {
-        expect(flowWidthPx(0)).toBe(1);
-        expect(flowWidthPx(2000 * 16)).toBe(4);
-        expect(flowWidthPx(1e12)).toBe(8);
+    it('line width is FLOW_LINE_MIN_PX..FLOW_LINE_MAX_PX on screen by sqrt(volume / the largest)', () => {
+        expect(routeWidthPx(0, 100)).toBe(FLOW_LINE_MIN_PX);
+        expect(routeWidthPx(100, 100)).toBe(FLOW_LINE_MAX_PX);
+        expect(routeWidthPx(25, 100)).toBeCloseTo(FLOW_LINE_MIN_PX + (FLOW_LINE_MAX_PX - FLOW_LINE_MIN_PX) * 0.5, 9);
+        expect(routeWidthPx(1e12, 100)).toBe(FLOW_LINE_MAX_PX);
+        expect(routeWidthPx(5, 0)).toBe(FLOW_LINE_MIN_PX);
     });
 
-    it('culls arcs outside the camera and caps at 400, largest first', () => {
-        const l = createTradeFlowLedger(0);
-        for (let i = 0; i < 450; i++) {
-            recordContract(null, l, ev({ starDate: 1, sellingPoint: post(-100, i, 1000 + i), destination: post(100, i, 2000 + i), value: i + 1 }));
-        }
-        recordContract(null, l, ev({ starDate: 1, sellingPoint: post(90_000, 90_000, 1), destination: post(91_000, 90_000, 2), value: 1e9 }));
-        const rows = flowsInWindow(l, 2, 12, {}, 'post');
-        const arcs = flowArcsFor(rows, 1, cam);
-        expect(arcs).toHaveLength(FLOW_ARC_CAP);
-        expect(arcs[0].row.value).toBe(450);
-        expect(arcs.some((a) => a.row.value === 1e9)).toBe(false);
+    it('route count: 15 when the view spans more than three sectors, 25 closer in', () => {
+        expect(FLOW_ROUTES_GALAXY).toBe(15);
+        expect(FLOW_ROUTES_SECTOR).toBe(25);
+        expect(routeCountForView(10 * 1000, 6 * 1000, 1000)).toBe(FLOW_ROUTES_GALAXY);
+        expect(routeCountForView(1800, 1000, 1000)).toBe(FLOW_ROUTES_SECTOR);
     });
 
-    it('hit test finds the arc near its curve and misses far away', () => {
-        const a = flowArcFor(0, 0, 1000, 0);
-        expect(hitFlowArc(a, 500, -75, 1, 6)).toBe(true);
-        expect(hitFlowArc(a, 500, 200, 1, 6)).toBe(false);
+    it('segmentInView clips against the camera rect', () => {
+        expect(segmentInView(-100, 0, 100, 0, 1, cam)).toBe(true);
+        expect(segmentInView(-5000, 0, 5000, 0, 1, cam)).toBe(true); // passes through, both ends outside
+        expect(segmentInView(-5000, -5000, -4000, 5000, 1, cam)).toBe(false);
+        expect(segmentInView(600, 600, 5000, 600, 1, cam)).toBe(false);
+        expect(segmentInView(600, 0, 5000, 0, 1, cam, 200)).toBe(true); // within the padding
     });
 
-    it('hub discs clamp 6..60 px and use the owner colour', () => {
-        expect(hubRadiusPx(0)).toBe(6);
-        expect(hubRadiusPx(10_000)).toBe(25);
-        expect(hubRadiusPx(1e12)).toBe(60);
-        const discs = hubDiscsFor([{ port: {} as never, owner: empB, income: 1600, x: 5, y: 6 }], 1, cam);
+    it('hub discs: top n in view the viewer knows, 5..20 px by income against the largest, owner colour', () => {
+        expect(hubRadiusPx(0, 100)).toBe(5);
+        expect(hubRadiusPx(100, 100)).toBe(20);
+        const hub = (income: number, x: number, owner: Empire | null = empB) => ({ port: {} as never, owner, income, x, y: 0 });
+        const hubs = [hub(1000, 0), hub(900, 9000), hub(500, 10), hub(400, 20, null), hub(50, 30)];
+        const discs = hubDiscsFor(hubs, 1, cam, 2, (h) => h.income !== 500);
+        // 900 is out of view, 500 not known; 50 is under 10 % of 1000 (and n = 2 stops at two).
+        expect(discs.map((d) => d.hub.income)).toEqual([1000, 400]);
         expect(discs[0].color).toBe(0x00ff00);
-        expect(discs[0].r).toBe(10);
+        expect(discs[0].r).toBe(20);
+        expect(hubDiscsFor(hubs, 1, cam, 10).map((d) => d.hub.income)).toEqual([1000, 500, 400]);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Route merging, top-N, cargo / resource filters
+// ---------------------------------------------------------------------------
+
+/** A ledger whose posts sit in systems (post index = system index; the system's star at the post). */
+function systemLedger(contracts: Array<{ from: number; to: number; resourceId: number; value: number }>, starDate = 1): ReturnType<typeof createTradeFlowLedger> {
+    const l = createTradeFlowLedger(starDate - 1);
+    const posts = new Map<number, never>();
+    const at = (i: number) => {
+        let p = posts.get(i);
+        if (p === undefined) posts.set(i, (p = post((i % 10) * 1000, Math.floor(i / 10) * 1000, 500 + i)));
+        return p;
+    };
+    for (const c of contracts) recordContract(null, l, ev({ starDate, sellingPoint: at(c.from), destination: at(c.to), resourceId: c.resourceId, value: c.value }));
+    for (const e of l.entries) {
+        e.sellerSystem = (e.sellingPoint as unknown as { habitatIndex: number }).habitatIndex - 500;
+        e.destSystem = (e.destination as unknown as { habitatIndex: number }).habitatIndex - 500;
+    }
+    return l;
+}
+// 1, 2: mineral; 3: gas; 4: luxury.
+const cats4 = (r: number): FlowCategory => (r === 3 ? FLOW_CATEGORY_GAS : r === 4 ? FLOW_CATEGORY_LUXURY : FLOW_CATEGORY_MINERAL);
+
+describe('freight routes: both directions merged, top N, filters', () => {
+    it('merges A→B and B→A into one route, oriented along the larger direction', () => {
+        const l = systemLedger([
+            { from: 1, to: 2, resourceId: 1, value: 100 },
+            { from: 2, to: 1, resourceId: 3, value: 300 },
+            { from: 1, to: 3, resourceId: 4, value: 50 },
+            { from: 5, to: 5, resourceId: 1, value: 999 }, // within one system: no line
+        ]);
+        const routes = mergeRouteDirections(flowsInWindow(l, 2, 12, { categoryOf: cats4 }, 'system'));
+        expect(routes).toHaveLength(2);
+        const r = routes[0];
+        expect(r.aSystem).toBe(2);
+        expect(r.bSystem).toBe(1);
+        expect(r.abPerYear).toBe(300 * 12);
+        expect(r.baPerYear).toBe(100 * 12);
+        expect(r.total).toBe(400 * 12);
+        expect(r.category).toBe(FLOW_CATEGORY_GAS);
+        expect(r.resourceIds.sort()).toEqual([1, 3]);
+        expect([r.ax, r.ay, r.bx, r.by]).toEqual([2000, 0, 1000, 0]);
+        expect(routes[1].ba).toBeNull();
+    });
+
+    it('top N: the largest routes the filter accepts, those under 10 % of the largest dropped', () => {
+        const contracts = [];
+        for (let i = 0; i < 40; i++) contracts.push({ from: 0, to: i + 1, resourceId: 1, value: 1000 - i * 10 });
+        contracts.push({ from: 50, to: 51, resourceId: 1, value: 5000 }); // the largest, but hidden from the viewer
+        contracts.push({ from: 60, to: 61, resourceId: 1, value: 50 }); // under 10 %
+        const routes = mergeRouteDirections(flowsInWindow(createAndFill(contracts), 2, 12, { categoryOf: cats4 }, 'system'));
+        const hidden = (r: FlowRoute) => r.aSystem === 50 || r.bSystem === 50;
+        const top15 = selectTopRoutes(routes, FLOW_ROUTES_GALAXY, (r) => !hidden(r));
+        expect(top15).toHaveLength(15);
+        expect(top15[0].total).toBe(1000 * 12);
+        expect(top15.every((r) => !hidden(r))).toBe(true);
+        for (let i = 1; i < top15.length; i++) expect(top15[i].total).toBeLessThanOrEqual(top15[i - 1].total);
+        const all = selectTopRoutes(routes, 1000, (r) => !hidden(r));
+        expect(all).toHaveLength(40); // the 50 cr route is under FLOW_ROUTE_MIN_SHARE of 1000
+        expect(all.at(-1)!.total).toBeGreaterThanOrEqual(all[0].total * FLOW_ROUTE_MIN_SHARE);
+        // Accepting the hidden one makes it the largest: the cut follows it.
+        expect(selectTopRoutes(routes, 5, () => true)[0].total).toBe(5000 * 12);
+    });
+
+    it('a cargo filter draws only that cargo; a resource filter only routes carrying that resource', () => {
+        const contracts = [];
+        for (let i = 0; i < 30; i++) contracts.push({ from: i, to: i + 1, resourceId: 1 + (i % 4), value: 100 + i });
+        contracts.push({ from: 3, to: 4, resourceId: 2, value: 70 }); // mixed route: minerals 1 and 2 (and 4 one way)
+        const l = createAndFill(contracts);
+        for (const cat of ['mineral', 'gas', 'luxury']) {
+            const routes = selectTopRoutes(mergeRouteDirections(flowsInWindow(l, 2, 12, { categoryOf: cats4, category: cat }, 'system')), 25, () => true, 0);
+            expect(routes.length).toBeGreaterThan(0);
+            expect(routes.every((r) => r.category.key === cat)).toBe(true);
+            for (const r of routes) for (const id of r.resourceIds) expect(cats4(id).key).toBe(cat);
+        }
+        for (const id of [1, 2, 3, 4]) {
+            const routes = selectTopRoutes(mergeRouteDirections(flowsInWindow(l, 2, 12, { categoryOf: cats4, category: cats4(id).key, resourceId: id }, 'system')), 25, () => true, 0);
+            expect(routes.length).toBeGreaterThan(0);
+            expect(routes.every((r) => r.resourceIds.length === 1 && r.resourceIds[0] === id)).toBe(true);
+        }
+    });
+
+    it('resourceTotals sums each resource over the accepted rows, largest first', () => {
+        const l = createAndFill([
+            { from: 1, to: 2, resourceId: 1, value: 100 },
+            { from: 1, to: 2, resourceId: 2, value: 300 },
+            { from: 2, to: 3, resourceId: 1, value: 50 },
+            { from: 7, to: 8, resourceId: 2, value: 1000 }, // not accepted
+        ]);
+        const rows = flowsInWindow(l, 2, 12, { categoryOf: cats4, category: 'mineral' }, 'system');
+        const t = resourceTotals(rows, (r) => r.sellerSystem !== 7);
+        expect(t).toEqual([
+            { resourceId: 2, perYear: 300 * 12 },
+            { resourceId: 1, perYear: 150 * 12 },
+        ]);
+    });
+
+    it('pruning drops series that left every window and keeps the rest', () => {
+        const l = createTradeFlowLedger(0);
+        recordContract(null, l, ev({ starDate: 1 }));
+        recordContract(null, l, ev({ starDate: 20 * MONTH_LENGTH, destination: P3 }));
+        const entries = l.entries;
+        expect(pruneTradeFlowLedger(l, 20 * MONTH_LENGTH + 5)).toBe(1);
+        expect(l.entries).toBe(entries); // spliced in place (the worker's synced view shares it)
+        expect(l.entries).toHaveLength(1);
+        expect(l.index.get(P1)?.has(P2)).toBe(false);
+        // A new contract on the dropped pair starts a fresh series.
+        recordContract(null, l, ev({ starDate: 20 * MONTH_LENGTH + 6 }));
+        expect(l.entries).toHaveLength(2);
+        expect(flowsInWindow(l, 20 * MONTH_LENGTH + 7, 12, {}, 'post').map((r) => r.value)).toEqual([100, 100]);
+    });
+});
+
+function createAndFill(contracts: Array<{ from: number; to: number; resourceId: number; value: number }>) {
+    return systemLedger(contracts);
+}
+
+describe('FreightOverlay: fog, top N and the cargo filter on a hand-built galaxy', () => {
+    it('draws only routes / hubs in explored systems, at most N, and the filtered cargo only', () => {
+        const explored = new Set([0, 1, 2, 3, 4, 5]);
+        const viewer = { empireId: 9, visibility: { checkSystemVisibilityStatus: (i: number) => (explored.has(i) ? 2 : 1) } };
+        const port = (id: number, sys: number, income: number) => ({
+            builtObjectID: id,
+            currentYearsIncome: income,
+            dateOfLastIncome: Number.MAX_SAFE_INTEGER,
+            hasBeenDestroyed: false,
+            actualEmpire: empA,
+            empire: empA,
+            xpos: sys * 1000,
+            ypos: 0,
+            nearestSystemStar: { systemIndex: sys },
+        });
+        const galaxy = {
+            builtObjects: [port(1, 2, 5000), port(2, 8, 9000)],
+            sectorSize: 100_000,
+            independentEmpire: null,
+            playerEmpire: viewer,
+            scenario: null,
+            nowMs: 20,
+            age: 0,
+            resourceSystem: { byId: new Map(), resources: [] },
+        } as unknown as Galaxy;
+        const state = { freightFlows: true, tradeHubs: true } as never;
+        const ov = new FreightOverlay(galaxy, new Container(), state);
+        cleanups.push(() => ov.destroy());
+        const l = tradeFlowLedger(galaxy)!;
+        expect(l).not.toBeNull(); // recording from construction, overlay on or off
+        const src = systemLedger([
+            { from: 1, to: 2, resourceId: 1, value: 500 },
+            { from: 2, to: 9, resourceId: 3, value: 9000 }, // 9 unexplored: never drawn
+            { from: 3, to: 4, resourceId: 3, value: 400 },
+            { from: 4, to: 5, resourceId: 4, value: 300 },
+        ], galaxyStarDate(galaxy));
+        l.entries.push(...src.entries);
+        l.startStarDate = src.startStarDate;
+        l.version++;
+        ov.filter = { categoryOf: cats4 };
+        ov.invalidate();
+        const cam = { x: 5000, y: 0, width: 1000, height: 1000, zoom: 0.05 } as never;
+        ov.update(0.05, cam);
+        expect(ov.shown.map((r) => [r.aSystem, r.bSystem])).toEqual([
+            [1, 2],
+            [3, 4],
+            [4, 5],
+        ]);
+        expect(ov.discs.map((d) => d.hub.port.builtObjectID)).toEqual([1]);
+        expect(ov.legendInfo()).toEqual({ shown: 3, known: 3, category: null, resourceId: null });
+        ov.setCargoFilter('gas');
+        ov.update(0.05, cam);
+        expect(ov.shown.map((r) => r.category.key)).toEqual(['gas']);
+        expect(ov.resourceBreakdown('gas')).toEqual([{ resourceId: 3, perYear: 400 * 12 }]);
+        ov.setCargoFilter('mineral', 1);
+        ov.update(0.05, cam);
+        expect(ov.shown.map((r) => r.resourceIds)).toEqual([[1]]);
+        // The hover finds the drawn line near its middle.
+        const hit = ov.hitTest(1500, 0, 0.05);
+        expect(hit?.kind).toBe('flow');
+        // Off: nothing drawn, and nothing per frame but the early return.
+        (state as { freightFlows: boolean; tradeHubs: boolean }).freightFlows = false;
+        (state as { freightFlows: boolean; tradeHubs: boolean }).tradeHubs = false;
+        ov.update(0.05, cam);
+        expect(ov.shown).toEqual([]);
+        expect(tradeFlowLedger(galaxy)).toBe(l); // still recording
     });
 });
 

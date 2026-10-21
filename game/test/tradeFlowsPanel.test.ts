@@ -51,9 +51,11 @@ describe('19e-9 panel rows', () => {
         expect(t[0].x).toBe(500);
         // Year window on a ledger 10 ms old: one effective month → ×12.
         expect(t[0].perYear).toBe(formatCredits(12_400 * 12));
-        expect(freightTooltipText(names, { kind: 'flow', row: rows[0] })).toBe(
-            `Alpha → Beta: Voidstone, Hydrogen — ${formatCredits(12_400 * 12)} cr/yr contracted, 2 contracts, sellers: Independent, Oranthi`,
+        // A merged route: its main direction, then the return leg.
+        expect(freightTooltipText(names, { kind: 'flow', route: { ab: rows[0], ba: rows[1] } })).toBe(
+            `Alpha → Beta: ${formatCredits(12_400 * 12)} cr/yr (Voidstone, Hydrogen)\nBeta → Alpha: ${formatCredits(900 * 12)} cr/yr (Hydrogen)`,
         );
+        expect(freightTooltipText(names, { kind: 'flow', route: { ab: rows[1], ba: null } })).toBe(`Beta → Alpha: ${formatCredits(900 * 12)} cr/yr (Hydrogen)`);
         // Filter: gas only.
         const gas = flowTableRows(names, flowsInWindow(l, 10, 12, { categoryOf: cats, category: 'gas' }, 'system'));
         expect(gas.map((r) => r.value)).toEqual(['900', '400']);
@@ -97,7 +99,7 @@ describe('19e-9 panel rows', () => {
     });
 
     it('collecting note while the ledger is younger than the window', () => {
-        expect(collectingNote(null, 0, 1)).toMatch(/Not recording/);
+        expect(collectingNote(null, 0, 1)).toMatch(/Loading/);
         expect(collectingNote(0, 3 * MONTH_LENGTH, 1)).toBe('');
         expect(collectingNote(0, MONTH_LENGTH / 2, 12)).toMatch(/Collecting for 15 days/);
     });

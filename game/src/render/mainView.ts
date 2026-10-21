@@ -2828,7 +2828,7 @@ export class MainView {
                     const w = this.camera.screenToWorld(x, y);
                     const fh = this.overlayLayer?.freight.hitTest(w.x, w.y, this.camera.zoom) ?? null;
                     if (fh !== null) {
-                        showMapTooltip(freightTooltipText(this.galaxy, fh), e.clientX, e.clientY);
+                        showMapTooltip(freightTooltipText(this.galaxy, fh), e.clientX, e.clientY, fh.kind === 'flow');
                         return;
                     }
                     // [freightOverlay] end

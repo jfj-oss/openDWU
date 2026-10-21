@@ -7,7 +7,13 @@ import { BuiltObject } from '../sim/builtObject';
 import type { StellarObject } from '../sim/logistics/contracts';
 import type { EmpirePairRow, FlowRow, HubRow } from '../sim/logistics/tradeFlows';
 
-export type FreightHitLike = { kind: 'flow'; row: FlowRow } | { kind: 'hub'; hub: HubRow };
+/** The parts of a drawn route (render/freightOverlay.ts FlowRoute) the tooltip reads: one row per direction. */
+export interface FreightRouteLike {
+    ab: FlowRow | null;
+    ba: FlowRow | null;
+}
+
+export type FreightHitLike = { kind: 'flow'; route: FreightRouteLike } | { kind: 'hub'; hub: HubRow };
 
 type NameSource = Pick<Galaxy, 'systems' | 'resourceSystem' | 'independentEmpire'>;
 
@@ -41,18 +47,21 @@ export function empireNames(galaxy: NameSource, list: readonly Empire[], max = 3
     return names.join(', ');
 }
 
-/** Tooltip for a hovered arc / hub disc. */
+/** One direction of a route: "From → To: N cr/yr (cargo)". */
+export function flowLineText(galaxy: NameSource, r: FlowRow): string {
+    return `${flowEndName(galaxy, r, 'from')} → ${flowEndName(galaxy, r, 'to')}: ${formatCredits(r.valuePerYear)} cr/yr (${resourceNames(galaxy, r.resourceIds)})`;
+}
+
+/** Tooltip for a hovered route / hub disc: a route's main direction, then its return leg when it has one. */
 export function freightTooltipText(galaxy: NameSource, hit: FreightHitLike): string {
     if (hit.kind === 'hub') {
         const h = hit.hub;
         const owner = h.owner === null ? '' : ` (${h.owner === galaxy.independentEmpire ? 'Independent' : h.owner.name})`;
         return `${postName(h.port)}${owner} — ${formatCredits(h.income)} cr trade income this year`;
     }
-    const r = hit.row;
-    return (
-        `${flowEndName(galaxy, r, 'from')} → ${flowEndName(galaxy, r, 'to')}: ${resourceNames(galaxy, r.resourceIds)} — ` +
-        `${formatCredits(r.valuePerYear)} cr/yr contracted, ${r.count} contract${r.count === 1 ? '' : 's'}, sellers: ${empireNames(galaxy, r.sellers)}`
-    );
+    const lines: string[] = [];
+    for (const r of [hit.route.ab, hit.route.ba]) if (r !== null) lines.push(flowLineText(galaxy, r));
+    return lines.join('\n');
 }
 
 // ---------------------------------------------------------------------------
