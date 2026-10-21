@@ -34,7 +34,6 @@ import {
     withCombat2,
     COMBAT2_ADDONS,
     SUB_ADDONS,
-    addonWipReason,
     HIDDEN_ADDONS,
     ELSEWHERE_ADDONS,
     withFlagAddons,
@@ -43,6 +42,7 @@ import {
     expansionMembers,
     toggleExpansion,
     expansionRows,
+    addonWipReason,
     activeExpansions,
     type AddonCatalog,
 } from '../src/sim/scenario/addons';
@@ -280,13 +280,20 @@ describe('games', () => {
 describe('expansions', () => {
     it('one switch ticks its members; members stay individually switchable; every member is in the index', () => {
         for (const e of EXPANSIONS) for (const id of e.members) expect(cat.byId.has(id), id).toBe(true);
-        const rim = EXPANSIONS.find((e) => e.id === 'the-rim')!;
-        let p = toggleExpansion(cat, [], 'the-rim', true);
-        expect(p).toEqual(expect.arrayContaining([...rim.members]));
-        expect(expansionRows(cat, addonPickerModel(cat, p)).find((r) => r.id === 'the-rim')!.state).toBe('on');
-        p = toggleAddon(cat, p, 'rim-atmosphere', false);
-        expect(expansionRows(cat, addonPickerModel(cat, p)).find((r) => r.id === 'the-rim')!.state).toBe('partial');
-        expect(toggleExpansion(cat, p, 'the-rim', false)).toEqual([]);
+        for (const e of EXPANSIONS) for (const id of expansionMembers(cat, e)) expect(addonWipReason(id), `${e.id} member ${id} is WIP`).toBeNull();
+        // The Rim has only work-in-progress members: no switch, and the switch does nothing.
+        expect(expansionRows(cat, addonPickerModel(cat, [])).map((r) => r.id)).not.toContain('the-rim');
+        expect(toggleExpansion(cat, [], 'the-rim', true)).toEqual([]);
+        // Economy: a switch ticks its recommended members only, never the WIP ones (colony-economy, chartered-companies, corporatecoup).
+        const econ = EXPANSIONS.find((e) => e.id === 'economy')!;
+        let p = toggleExpansion(cat, [], 'economy', true);
+        expect(p).toEqual(expect.arrayContaining(expansionMembers(cat, econ)));
+        for (const id of ['colony-economy', 'chartered-companies', 'corporatecoup']) expect(p).not.toContain(id);
+        expect(expansionRows(cat, addonPickerModel(cat, p)).find((r) => r.id === 'economy')!.state).toBe('on');
+        p = toggleAddon(cat, p, 'privateers', false);
+        expect(expansionRows(cat, addonPickerModel(cat, p)).find((r) => r.id === 'economy')!.state).toBe('partial');
+        // Unticking the switch leaves a WIP add-on the player ticked alone.
+        expect(toggleExpansion(cat, toggleAddon(cat, p, 'new-fauna', true), 'economy', false)).toEqual(['new-fauna']);
         expect(toggleAddon(cat, [], 'new-fauna', true)).toEqual(['new-fauna']);
         const threats = toggleExpansion(cat, [], 'galactic-threats', true);
         expect(addonClosure(cat, threats, 'on')).toContain('threat-framework');
@@ -341,7 +348,8 @@ describe('BVR combat: one Work in progress add-on with the six combat changes as
         expect(SUB_ADDONS['bvr-combat']).toEqual(ids);
         expect(COMBAT2_ADDONS.map((a) => a.id)).toEqual(ids);
     });
-    it('the Rim add-ons are all in Work in progress', () => {
+    it('the Rim add-ons are all in Work in progress, none in an expansion switch', () => {
+        for (const e of EXPANSIONS) for (const id of ['rimTrade', 'rim-fauna', 'rim-herders', 'rim-frontier', 'rim-atmosphere']) expect(expansionMembers(cat, e)).not.toContain(id);
         const rows = addonPickerModel(cat, []).sections.flatMap((x) => x.groups.flatMap((g) => g.rows.map((r) => [x.section, r.id] as const)));
         for (const id of ['rimTrade', 'rim-fauna', 'rim-herders', 'rim-frontier', 'rim-atmosphere']) expect(rows.find(([, r]) => r === id)![0]).toBe('Work in progress');
     });

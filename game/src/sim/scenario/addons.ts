@@ -753,9 +753,13 @@ export const EXPANSIONS: readonly Expansion[] = [
  */
 export const FORCEABLE_THREATS: Readonly<Record<string, string>> = { 'generation-ships': 'generationShipsForce', cult: 'cultForce', purifier: 'purifierForce' };
 
-/** The expansion's members this index has, visible ones only (hidden infrastructure comes in as a dependency). */
+/**
+ * The expansion's members this index has, visible ones only (hidden infrastructure comes in as a dependency). Work in
+ * progress add-ons are not members for the switch: they live in the picker's closed WIP dropdown, ticked one by one
+ * (an expansion with no other member does not appear). A recommended member that needs a WIP add-on still pulls it in.
+ */
 export function expansionMembers(cat: AddonCatalog, e: Expansion): string[] {
-    return e.members.filter((id) => cat.byId.has(id) && !cat.byId.get(id)!.hidden);
+    return e.members.filter((id) => cat.byId.has(id) && !cat.byId.get(id)!.hidden && addonWipReason(id) === null);
 }
 
 /** Ticks / unticks every member of an expansion (members that conflict or are needed by others stay as they are). */

@@ -3282,13 +3282,14 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
             if (groups.length === 0) continue;
             let host: HTMLElement = listSection;
             if (sec.section === 'Work in progress') {
-                // Folded unless opened (or one of its add-ons is already ticked).
+                // Closed each time the page opens; the player opens it (ticked add-ons inside are counted in the header).
+                const nTicked = groups.reduce((n, g) => n + g.rows.filter((r) => r.checked).length, 0);
                 const fold = el('details', 'wizard-addon-wip-fold');
-                fold.open = wipOpen || groups.some((g) => g.rows.some((r) => r.checked));
+                fold.open = wipOpen;
                 fold.addEventListener('toggle', () => {
                     wipOpen = fold.open;
                 });
-                fold.appendChild(el('summary', 'wizard-addon-section', `${sec.section} (${groups.reduce((n, g) => n + g.rows.length, 0)})`));
+                fold.appendChild(el('summary', 'wizard-addon-section', `${sec.section} (${groups.reduce((n, g) => n + g.rows.length, 0)}${nTicked > 0 ? `, ${nTicked} ticked` : ''})`));
                 listSection.appendChild(fold);
                 host = fold;
             } else {
