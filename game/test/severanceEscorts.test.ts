@@ -413,6 +413,72 @@ describe('only freight is held, supplied and credited', () => {
     });
 });
 
+describe('a player\'s escort is exempt only as a live guard of the structure', () => {
+    /** A player's escort delivers its freighter: it stays on guard at the structure, recorded. */
+    function guardedBy(s: Setup): { w: BuiltObject; f: BuiltObject; base: BuiltObject } {
+        const mega = peekMega(s.g)!;
+        const base = mega.base!;
+        const [f] = fly(s, s.me, 1);
+        const w = warships(s.me)[0];
+        place(w, f.xpos, f.ypos);
+        assignMission(s.g, w, BuiltObjectMissionType.Escort, f, null, BuiltObjectMissionPriority.Normal, { manuallyAssigned: true });
+        markPlayerOrder(w);
+        f.xpos = base.xpos;
+        f.ypos = base.ypos;
+        w.xpos = base.xpos + 500;
+        w.ypos = base.ypos;
+        rebuildIndexes(s.g);
+        DAYS(s.g, 1);
+        return { w, f, base };
+    }
+
+    it('a player Patrol of the structure that never guarded a delivery gets no exemption, nor a record', () => {
+        const s = setup();
+        const mega = started(s);
+        const base = mega.base!;
+        const w = warships(s.me)[0];
+        place(w, base.xpos + 500, base.ypos);
+        assignMission(s.g, w, BuiltObjectMissionType.Patrol, base, null, BuiltObjectMissionPriority.Normal, { manuallyAssigned: true });
+        markPlayerOrder(w);
+        rebuildIndexes(s.g);
+        expect(escortsFreight(s.g, w)).toBe(false);
+        expect(mega.guards).toBeUndefined();
+    });
+
+    it('a delivery records the escort as a guard; leaving the base area, or a changed order, ends the exemption at once and the record at the next step', () => {
+        const s = setup();
+        const mega = started(s);
+        const { w, base } = guardedBy(s);
+        expect(builtMission(w)).toBe('Patrol');
+        expect(mega.guards?.length).toBe(1);
+        expect(escortsFreight(s.g, w)).toBe(true);
+        // far from the structure: the stock's, not the guard's
+        w.xpos = base.xpos + 3000000;
+        rebuildIndexes(s.g);
+        expect(escortsFreight(s.g, w)).toBe(false);
+        w.xpos = base.xpos + 500;
+        rebuildIndexes(s.g);
+        expect(escortsFreight(s.g, w)).toBe(true);
+        // the player orders it elsewhere: no longer a guard, and the record goes at the next step
+        assignMission(s.g, w, BuiltObjectMissionType.Move, base, null, BuiltObjectMissionPriority.Normal, { manuallyAssigned: true });
+        markPlayerOrder(w);
+        expect(escortsFreight(s.g, w)).toBe(false);
+        DAYS(s.g, 1);
+        expect(mega.guards).toBeUndefined();
+    });
+
+    it('the guard record runs out after megaGuardDays with no new delivery', () => {
+        const s = setup();
+        const mega = started(s);
+        const { w } = guardedBy(s);
+        expect(escortsFreight(s.g, w)).toBe(true);
+        DAYS(s.g, P.megaGuardDays(s.g) + 1);
+        expect(builtMission(w)).toBe('Patrol');
+        expect(escortsFreight(s.g, w)).toBe(false);
+        expect(mega.guards).toBeUndefined();
+    });
+});
+
 describe('switching the escorts off', () => {
     it('megaEscortOn switched off mid-game releases every group at the next step: its ships go back to stock control', () => {
         const s = setup();

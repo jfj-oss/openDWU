@@ -20,7 +20,7 @@
 //   KEEP      a freighter's mission ends when it arrives, a moment before its delivery is counted, and the stock Escort command would end with it
 //             and hand the escort to automation: the command is held while the freight is at the structure (escortHeld, cmdEscort). A delivered
 //             freighter's escort (a group ship, or a player's order still on Escort to it) goes on Patrol of the structure at once
-//             (keepEscortsOnDelivery). Kept on guard, a player's escort is supplied and not refuelled, as a group's ships are (escortsFreight).
+//             (keepEscortsOnDelivery). A player's escort is a guard only while its record is live (MegaRec.guards: no order change, in the base area, within megaGuardDays of its last delivery); a guard is supplied and not refuelled, as a group's ships are (escortsFreight).
 //   CREDIT    an arrival with an armed warship within megaEscortNear of it that really escorts THAT freighter (an Escort mission to it, or a group ship
 //             of the freighter's own empire; counted by assignment, so a group ship re-tasked a moment before still counts), of its own empire or of an
 //             empire not at war with it, is an escorted delivery: the escort's owner gets war credit (beaconWarCredit.ts), and the structure counts it
@@ -42,7 +42,8 @@ import { getNearbyBuiltObjects } from '../../../pirates/pirateAI';
 import { isHumanEmpire } from '../../../humanEmpires';
 import { GAME_DAY_LENGTH } from '../../hooks';
 import { firepowerByEmpireNear } from '../../orbital/orbitalSuperiority';
-import { P, peekBeaconState, type MegaEscortGroup, type MegaRec } from './beaconState';
+import { P, peekBeaconState, type MegaEscortGroup, type MegaGuard, type MegaRec } from './beaconState';
+import { galaxyStarDate } from '../../../tick/simTime';
 import { compactFaction } from './state';
 
 const DAY = GAME_DAY_LENGTH;
@@ -141,9 +142,44 @@ function freeEscort(galaxy: Galaxy, w: BuiltObject): void {
     w.firstExecutionOfCommand = true;
 }
 
+/** A player's escort on guard may be this far from the structure (the base area; the guard is kept to it). */
+function guardRange(galaxy: Galaxy): number {
+    return 5 * P.megaEscortNear(galaxy);
+}
+
 /**
- * The stock refuel leaves a warship alone while it escorts a contract freighter of the Severance: the refuelling point is far from the structure, so
- * the stock rule (refuel once the fuel is below the way back) would pull every escort off its freight; the freight is supplied (supplyEscorts). Pure.
+ * A player's escort on guard that is still a guard: it has a live record (no new delivery for megaGuardDays runs out), its order is still the player's
+ * Patrol of the structure, and it is in the base area. Pure.
+ */
+function guardLive(galaxy: Galaxy, mega: MegaRec, g: MegaGuard, now: number): boolean {
+    const bo = g.ship;
+    const base = mega.base;
+    if (bo.hasBeenDestroyed || base === undefined || base === null || base.hasBeenDestroyed || now - g.since > P.megaGuardDays(galaxy) * DAY) return false;
+    const m = builtObjectMission(bo.mission);
+    if (m === null || m.type !== BuiltObjectMissionType.Patrol || m.targetBuiltObject !== base || m.playerOrdered !== true) return false;
+    return galaxy.calculateDistance(bo.xpos, bo.ypos, base.xpos, base.ypos) <= guardRange(galaxy);
+}
+
+/** Records a player's escort as a guard of the structure from `now` (keepEscortsOnDelivery). Rnd: none. */
+function addGuard(galaxy: Galaxy, mega: MegaRec, bo: BuiltObject): void {
+    const now = galaxyStarDate(galaxy);
+    mega.guards ??= [];
+    const g = mega.guards.find((x) => x.ship === bo);
+    if (g !== undefined) g.since = now;
+    else mega.guards.push({ ship: bo, since: now });
+}
+
+/** Drops the guard records that no longer hold (the order was changed, the ship left the base area, or its guard time ran out). */
+function pruneGuards(galaxy: Galaxy, mega: MegaRec, now: number): void {
+    if (mega.guards === undefined) return;
+    mega.guards = mega.guards.filter((g) => guardLive(galaxy, mega, g, now));
+    if (mega.guards.length === 0) delete mega.guards;
+}
+
+/**
+ * The stock refuel leaves a warship alone while it is one of the Severance's escorts: an AI group ship, a player's escort on an Escort mission to a
+ * contract freighter (on its way to it), or a player's escort on guard at the structure (a live guard record, see addGuard). The rest of the map is the
+ * stock's: a player's Patrol elsewhere, or one without a delivery to guard, is not exempt. Pure.
  */
 export function escortsFreight(galaxy: Galaxy, bo: BuiltObject): boolean {
     const mega = peekBeaconState(galaxy)?.mega;
@@ -151,8 +187,10 @@ export function escortsFreight(galaxy: Galaxy, bo: BuiltObject): boolean {
     if (Object.values(mega.escorts ?? {}).some((g) => g.ships.includes(bo))) return true; // an AI escort group: its ships are supplied for the run
     const m = builtObjectMission(bo.mission);
     if (m === null) return false;
-    // a player's escort kept on guard at the structure after its freighter delivered (keepEscortsOnDelivery)
-    if (m.type === BuiltObjectMissionType.Patrol) return m.playerOrdered === true && m.targetBuiltObject !== null && m.targetBuiltObject === mega.base;
+    if (m.type === BuiltObjectMissionType.Patrol) {
+        const g = mega.guards?.find((x) => x.ship === bo);
+        return g !== undefined && guardLive(galaxy, mega, g, galaxyStarDate(galaxy));
+    }
     if (m.type !== BuiltObjectMissionType.Escort || m.targetBuiltObject === null) return false;
     return freightTarget(galaxy, mega, m.targetBuiltObject);
 }
@@ -193,10 +231,9 @@ export function supplyEscorts(galaxy: Galaxy, mega: MegaRec): void {
         unfleet(galaxy, w);
         if (w.fuelCapacity > 0) w.currentFuel = w.fuelCapacity;
     }
-    if (base !== undefined && base !== null && !base.hasBeenDestroyed) {
-        for (const w of getNearbyBuiltObjects(galaxy, base.xpos, base.ypos, P.megaEscortNear(galaxy))) {
-            if (w != null && !w.hasBeenDestroyed && w.fuelCapacity > 0 && escortsFreight(galaxy, w)) w.currentFuel = w.fuelCapacity;
-        }
+    for (const g of mega.guards ?? []) {
+        const w = g.ship;
+        if (!w.hasBeenDestroyed && w.fuelCapacity > 0 && escortsFreight(galaxy, w)) w.currentFuel = w.fuelCapacity;
     }
     for (const f of freight) {
         if (f.hasBeenDestroyed) continue;
@@ -316,8 +353,10 @@ function escortFor(galaxy: Galaxy, mega: MegaRec, e: Empire, base: BuiltObject, 
 export function escortStep(galaxy: Galaxy, mega: MegaRec, base: BuiltObject, now: number, blockade: boolean): void {
     if (!P.megaEscortOn(galaxy)) {
         releaseEscorts(galaxy, mega); // switched off mid-game: the groups go home at this step
+        delete mega.guards;
         return;
     }
+    pruneGuards(galaxy, mega, now);
     for (const key of Object.keys(mega.escorts ?? {})) {
         const e = getEmpireById(galaxy, Number(key));
         if (e === null || !escortContributing(galaxy, mega, e, now)) releaseGroup(galaxy, mega, key);
@@ -346,7 +385,10 @@ export function keepEscortsOnDelivery(galaxy: Galaxy, mega: MegaRec, base: Built
             const player = m.playerOrdered === true;
             if (!player && !members.has(w)) continue;
             assignMission(galaxy, w, BuiltObjectMissionType.Patrol, base, null, BuiltObjectMissionPriority.Normal);
-            if (player) markPlayerOrder(w);
+            if (player) {
+                markPlayerOrder(w);
+                addGuard(galaxy, mega, w);
+            }
         }
     }
 }

@@ -652,6 +652,12 @@ export interface PartsRec {
     sent?: Record<string, { id: number; date: number }>;
 }
 
+/** A player's escort kept on guard at the mega-station after its freighter delivered (megaEscort.ts keepEscortsOnDelivery), and the star date it became one. */
+export interface MegaGuard {
+    ship: BuiltObject;
+    since: number;
+}
+
 /** One contributing AI empire's escort group for the mega-station's freight (megaEscort.ts): the warships taken off idle duty, one group per empire. */
 export interface MegaEscortGroup {
     ships: BuiltObject[];
@@ -718,6 +724,8 @@ export interface MegaRec {
     escorts?: Record<string, MegaEscortGroup>;
     /** Freighters that arrived with an escort within megaEscortNear (any empire's). */
     escorted?: number;
+    /** The player's escorts kept on guard at the structure (megaEscort.ts): only these are exempt from the stock refuel and fleets, and supplied. */
+    guards?: MegaGuard[];
 }
 
 export interface BeaconState {
@@ -1124,6 +1132,8 @@ export const P = {
     megaEscortLingerDays: (g: Galaxy) => Math.max(0, p(g, 'megaEscortLingerDays', 30)),
     /** An escort within this range of a freighter as it arrives makes the delivery an escorted one. */
     megaEscortNear: (g: Galaxy) => Math.max(1000, p(g, 'megaEscortNear', 9000)),
+    /** Days a player's escort stays on guard at the structure with no new delivery to guard (then it goes back to the player's own orders). */
+    megaGuardDays: (g: Galaxy) => Math.max(1, p(g, 'megaGuardDays', 30)),
     // Capital pursuit (beaconPursuit.ts)
     /** 1: a Reclaimer capital (with escorts) follows an enemy that fled a fight by hyperjump and drags it out of warp (0: no pursuit). */
     pursuitOn: (g: Galaxy) => p(g, 'beaconPursuitOn', 1) > 0,
