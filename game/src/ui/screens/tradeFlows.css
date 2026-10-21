@@ -119,10 +119,10 @@
 }
 
 /* Map legend while Freight Flows is on: a BorderPanel ((48, 48, 64) with 3 px alpha-96 grey borders), left edge,
-   below the top bar. */
+   below the top bar, clear of the left toolbar column (x 7-25: at left 12 it covered its top icons). */
 .freight-legend {
     position: fixed;
-    left: 12px;
+    left: 40px;
     top: 120px;
     z-index: 900;
     padding: 6px 10px 8px;
