@@ -111,6 +111,7 @@ export const COMMAND_FAILURE: FailureTable = {
     editorRemovePirateFacilities: no,
     editorSpawnThreat: no,
     editorFinishGreatWork: no,
+    intelNotice: no,
     colonyTransferToTransport: no,
     disbandTroops: () => -1,
     garrisonTroops: zero,

@@ -6,8 +6,9 @@
 
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
-import { EmpireMessage, EmpireMessageType, sendEmpireMessage, empireMessageHistory } from '../sim/messages';
-import { galaxyStarDate } from '../sim/tick/simTime';
+import { EmpireMessage, empireMessageHistory } from '../sim/messages';
+import { issuePlayerCommand } from '../sim/player/playerCommands';
+import { intelNoticeTarget } from '../sim/player/intelNotice';
 import { threatLeadRows, threatsSectionVisible } from './internalSecurityView';
 import { knowledgeView, knowledgeVisible } from './knowledgeView';
 
@@ -164,14 +165,10 @@ export function pollIntel(galaxy: Galaxy, empire: Empire, nowMs: number, entries
     return notice;
 }
 
-/** Sends the notice as a quiet stock message (ticker and history, no popup) to `empire`. Clicking it goes to the entry when there is a single one. */
+/** Sends the notice as a quiet stock message (ticker and history, no popup) to `empire`, through the journaled command
+ *  intelNotice (sim/player/intelNotice.ts): the UI never writes sim state. Clicking it goes to the entry when there is a single one. */
 export function sendIntelNotice(galaxy: Galaxy, empire: Empire, notice: IntelNotice): void {
-    const m = new EmpireMessage(null, EmpireMessageType.GeneralNeutralEvent, notice.target);
-    m.title = 'Intelligence';
-    m.description = notice.text;
-    m.starDate = galaxyStarDate(galaxy);
-    m.supressPopup = true;
-    sendEmpireMessage(m, empire);
+    issuePlayerCommand(galaxy, empire, 'intelNotice', [notice.text, intelNoticeTarget(notice.target)]);
 }
 
 /** Forget an empire's tracking (a new game / loaded save reuses no state across galaxies, but tests do). */

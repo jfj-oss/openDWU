@@ -6,6 +6,7 @@
 // it through issuePlayerCommand. Headless: no DOM / Pixi.
 
 import { editorFinishGreatWork } from '../scenario/threats/giantworks/editorFinish';
+import { sendIntelNoticeMessage } from './intelNotice';
 import { setPenalColony } from '../slaveryReview';
 import type { Galaxy } from '../galaxy';
 import type { GalaxyLocation } from '../galaxyLocation';
@@ -412,6 +413,7 @@ export const PLAYER_OPS = {
     /** Game Editor (openDWU, not a port): starts threat `key` now, aimed at the player's own empire, even when its add-on was off at game start. */
     editorSpawnThreat: (galaxy: Galaxy, empire: Empire, key: string): boolean => spawnThreatNow(galaxy, empire, key),
     editorFinishGreatWork: (galaxy: Galaxy, _empire: Empire, id: number): boolean => editorFinishGreatWork(galaxy, id),
+    intelNotice: (galaxy: Galaxy, empire: Empire, text: string, target: Habitat | BuiltObject | null): boolean => sendIntelNoticeMessage(galaxy, empire, text, target),
     /** Main.Part6.cs 3525 btnColonyTroopTransferTransport_Click. */
     colonyTransferToTransport: (galaxy: Galaxy, empire: Empire, colony: Habitat, item: Troop | Character, transport: BuiltObject) => transferToTransport(galaxy, empire, colony, item, transport),
 
