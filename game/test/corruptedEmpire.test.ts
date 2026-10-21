@@ -3,6 +3,7 @@
 // parks at the dormant foundries, the Internal Security lead that exposes it (a confirmed one only; the Harvest Cycle switches Internal Security
 // on), the exposure through a real Diet session's tally, the endings (exposed, assassinated, captured or capitalLost, freed by a human's seat,
 // gone), the Knowledge rows, the save round trip, and the games that must stay untouched (no Age 2, flag off).
+import { reputationCauses } from '../src/sim/scenario/reputation/ledger';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import type { GameData } from '../src/sim/data/gameData';
@@ -529,8 +530,12 @@ describe('a human takes the corrupted empire', () => {
         // at once, before any pass: no vote against it, and no longer the corrupt empire
         expect(corruptedVoteScore(s.g, 37, s.corrupt, MOTION_MEGA, s.me)).toBe(37);
         expect(activeCorrupted(s.g)).toBeNull();
+        const incidentsBefore = s.ais.map((x) => obtainEmpireEvaluation(s.g, x, s.corrupt).incidentEvaluationRaw);
         corruptedPass(s.g);
         expect(peekCorrupted(s.g)!.ended).toBe('freed');
+        // no reputation scar for a human's empire: no ledger entry, and (ledger off) no incident change
+        for (const x of s.ais) expect(reputationCauses(s.g, x, s.corrupt).some((r: { cause: string }) => r.cause === 'giantworks.corrupted')).toBe(false);
+        s.ais.forEach((x, i) => expect(obtainEmpireEvaluation(s.g, x, s.corrupt).incidentEvaluationRaw).toBe(incidentsBefore[i]));
         expect(securityState(s.g).things.find((x) => x.id === t.id)!.retired).toBe(true);
         // no war for it, however many passes and wherever the Scar lies
         const target = s.ais.find((e) => e !== s.ais[0] && e.colonies.length > 0 && !atWar(e, s.corrupt))!;

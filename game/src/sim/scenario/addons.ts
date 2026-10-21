@@ -407,7 +407,8 @@ function withToggleAddon(picked: readonly string[], overrides: AddonOverrides, i
 export const DATA_ONLY_INCLUDES: Readonly<Record<string, readonly string[]>> = {
     // "Includes the hidden threats (their own flags)": the ledger reads them when they run.
     // Emergent Galaxy (internal politics) is off for now (user 2026-10-16): loaded for its shared state, never switched on.
-    'internal-security': ['cult', 'doppelgangers', 'hive', 'greytide', 'corporatecoup', 'emergent'],
+    // Refugees & Demographics (work in progress) is loaded for its state only, never switched on by Internal Security (user 2026-10-21).
+    'internal-security': ['cult', 'doppelgangers', 'hive', 'greytide', 'corporatecoup', 'emergent', 'refugees-demographics'],
     reputation: ['emergent'],
     // "Includes the rim herders (off by default)": its manifest overrides rimHerders / rimFauna to false.
     'independents-active': ['rim-herders'],

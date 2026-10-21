@@ -90,6 +90,7 @@ describe('dependencies derived from include / requires', () => {
         expect(addonClosure(cat, ['frontier-autonomy'], 'on')).toEqual(expect.arrayContaining(['threat-framework', 'frontier-autonomy']));
         const on = addonClosure(cat, ['frontier-autonomy'], 'on');
         expect(on).not.toContain('cult'); // data-only for internal-security
+        expect(on).not.toContain('refugees-demographics'); // work in progress: data-only too, never switched on by it
         expect(addonClosure(cat, ['frontier-autonomy'], 'all')).toContain('cult');
         const cyc = addonCatalog([m({ id: 'a', requires: ['b'] }), m({ id: 'b', include: ['c'] }), m({ id: 'c', requires: ['a'] })]);
         expect(addonClosure(cyc, ['a'])).toEqual(['c', 'b', 'a']);

@@ -335,7 +335,8 @@ export function endCorruption(galaxy: Galaxy, cause: 'exposed' | 'assassinated' 
     const t = corruptionThing(galaxy, e);
     if (t !== undefined) retireHiddenThing(galaxy, t, cause);
     if (cause !== 'gone') {
-        for (const x of galaxy.empires) {
+        // No scar when a human takes the seat (user 2026-10-21): the player did not serve the Watchers.
+        for (const x of cause === 'freed' ? [] : galaxy.empires) {
             if (x === null || x === e || !x.active || x === galaxy.independentEmpire) continue;
             applyReputation(galaxy, x, e, -CORRUPT_P.reputationScar(galaxy), { cause: 'giantworks.corrupted', labelKey: 'Reputation Cause giantworks.corrupted', source: 'gwCorrupt', decayPerYear: 2 });
         }
