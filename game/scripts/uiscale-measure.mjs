@@ -51,10 +51,19 @@ for (const size of sizes.split(',')) {
                     hud.selectStellarObject(own[0] ?? player.builtObjects[0], false);
                 }
             }, kind);
+            let openState = '';
             if (process.env.OPEN) {
-                // A sidebar category panel and the View popup open (the tallest HUD state).
-                await page.evaluate(() => document.querySelectorAll('.ls-button')[1]?.click());
-                await page.evaluate(() => document.querySelector('[data-hud="pnlOptionsList"] .hud-options-toggle')?.click());
+                // A sidebar category panel and the View popup open (the tallest HUD state), by real clicks; verified in the DOM.
+                await page.locator('.ls-button').nth(1).click({ force: true }).catch(() => {});
+                await page.locator('[data-hud="pnlOptionsList"] .hud-options-toggle').click({ force: true }).catch(() => {});
+                await page.waitForTimeout(600);
+                const st = await page.evaluate(() => {
+                    const vis = (e) => { const r = e?.getBoundingClientRect(); return !!r && r.width > 4 && r.height > 4; };
+                    const pop = document.querySelector('[data-hud="pnlOptionsList"] .hud-options-pop, [data-hud="pnlOptionsList"].hud-options-pop');
+                    return { sidebarPanel: vis(document.querySelector('.ls-title')) || vis(document.querySelector('.ls-panel > *')), viewList: !!pop?.classList.contains('open') && vis(document.querySelector('.hud-options-menu')) };
+                });
+                openState = ` open[sidebarPanel=${st.sidebarPanel} viewList=${st.viewList}]`;
+                if (!st.sidebarPanel || !st.viewList) openState += ' NOT-OPEN';
             }
             await page.waitForTimeout(800);
             const res = await page.evaluate(async ([NAMES, UNIONS, W, H]) => {
@@ -103,13 +112,14 @@ for (const size of sizes.split(',')) {
                 }
                 const off = keys.filter((k) => rects[k].x < -1 || rects[k].y < -1 || rects[k].r > W + 1 || rects[k].b > H + 1).map((k) => `${k} ${JSON.stringify(rects[k])}`);
                 const btn = document.querySelector('.ls-button')?.getBoundingClientRect();
+                const ico = document.querySelector('.ls-button-icon')?.getBoundingClientRect();
                 const sc = document.querySelector('.sel-scroll');
                 const selScroll = sc ? `scroll ${sc.clientWidth}x${sc.clientHeight} content ${sc.scrollWidth}x${sc.scrollHeight} fontPx ${Math.round(parseFloat(getComputedStyle(sc.querySelector('.sel-row') ?? sc).fontSize) * (parseFloat(sc.style.zoom) || 1) * 10) / 10}` : 'no sel-scroll';
-                return { rects, overlaps, off, btn: btn ? Math.round(btn.width) : 0, selScroll };
+                return { rects, overlaps, off, btn: btn ? Math.round(btn.width) : 0, ico: ico ? Math.round(ico.width) : 0, selScroll };
             }, [NAMES, UNIONS, w, h]);
             const file = `${outDir}/${w}x${h}-s${scale}${process.env.TEXT ? '-t' + process.env.TEXT : ''}${process.env.OPEN ? '-open' : ''}-${kind}.png`;
             await page.screenshot({ path: file });
-            console.log(`${w}x${h} @${scale}% ${kind}: sidebarButton=${res.btn}px selection[${res.selScroll}] overlaps=${res.overlaps.length ? res.overlaps.join('; ') : 'none'} | offscreen=${res.off.length ? res.off.join('; ') : 'none'} -> ${file}`);
+            console.log(`${w}x${h} @${scale}% ${kind}: sidebarButton=${res.btn}px icon=${res.ico}px${openState} selection[${res.selScroll}] overlaps=${res.overlaps.length ? res.overlaps.join('; ') : 'none'} | offscreen=${res.off.length ? res.off.join('; ') : 'none'} -> ${file}`);
             if (process.env.VERBOSE) console.log(JSON.stringify(res.rects));
         }
         for (const l of logs) console.log(l);

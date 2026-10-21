@@ -259,3 +259,13 @@
     white-space: nowrap;
     line-height: 1.1;
 }
+
+/* The category column is taller than its region (large UI scale): it scrolls, wheel only. */
+.ls-buttons.ls-buttons-scroll {
+    overflow-y: auto;
+    scrollbar-width: none;
+    pointer-events: auto;
+}
+.ls-buttons.ls-buttons-scroll::-webkit-scrollbar {
+    display: none;
+}

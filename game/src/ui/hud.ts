@@ -2151,6 +2151,12 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     const gameData = wiring.gameData;
     const resourceDef = (id: number): { name: string; pictureRef: number } | null => gameData?.resources.find((d) => d.resourceId === id) ?? null;
     let lastScroll = 0;
+    /** The Text size setting times what the frame lost to the large-scale fit (hudFit.ts), so the text still reaches the requested size. */
+    const effectiveTextScale = (): number => {
+        const wanted = selectionFrameScale(window.innerHeight, uiScaleFactor(), selectionPanelSmall());
+        const fitted = fitSelectionScale(wanted, window.innerWidth, window.innerHeight, uiScaleFactor());
+        return textScaleFactor() * Math.round((wanted / fitted) * 100) / 100;
+    };
     const refresh = (): void => {
         const sel = currentSelection;
         const galaxy = wiring.galaxy;
@@ -2161,7 +2167,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             renderInfoModel(content, null, { galaxy: galaxy as Galaxy, onTarget });
         } else {
             const model = buildInfoModel({ galaxy, player, resource: resourceDef }, sel, sel.creature ? creaturePictureUrl(sel.creature) : null);
-            renderInfoModel(content, model, { galaxy, onTarget, onAutomate: model.automated ? toggleAutomation : undefined, hoverMessage: true, textScale: textScaleFactor() });
+            renderInfoModel(content, model, { galaxy, onTarget, onAutomate: model.automated ? toggleAutomation : undefined, hoverMessage: true, textScale: effectiveTextScale() });
             const next = content.querySelector('.sel-scroll');
             if (next !== null) next.scrollTop = lastScroll;
         }
@@ -2258,11 +2264,11 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     }, 500);
     rebuildExtras();
     refresh();
-    let shownTextScale = textScaleFactor();
+    let shownTextScale = effectiveTextScale();
     onHudDestroyed(
         onSettingsChange(() => {
-            if (textScaleFactor() === shownTextScale) return;
-            shownTextScale = textScaleFactor();
+            if (effectiveTextScale() === shownTextScale) return;
+            shownTextScale = effectiveTextScale();
             refresh();
         }),
     );

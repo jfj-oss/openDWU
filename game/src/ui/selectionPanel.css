@@ -656,3 +656,9 @@ span.sel-corner.sel-text {
     min-height: 19px;
     white-space: normal;
 }
+.sel-scroll.sel-zoomed .sel-fixed {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}

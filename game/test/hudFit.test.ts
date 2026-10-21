@@ -119,6 +119,17 @@ describe('itemListArea with a squeezed region', () => {
     });
 });
 
+describe('itemListArea minButton', () => {
+    it('never goes below the floor, however short the region, and the column then overflows the area', () => {
+        const a = itemListArea(505, 226, 1, 126, 283, true, 16);
+        expect(a.button).toBe(16);
+        expect(a.icon).toBe(13);
+        expect(a.h).toBeLessThanOrEqual(283 - 126);
+        expect(15 * a.button).toBeGreaterThan(a.h);
+        expect(itemListArea(1261, 941, 1, 150, 891, true, 10).button).toBe(26); // roomy: unchanged
+    });
+});
+
 describe('Text size setting', () => {
     it('offers 100..200% in 25% steps, defaulting to 100', () => {
         expect(TEXT_SCALES).toEqual([100, 125, 150, 175, 200]);

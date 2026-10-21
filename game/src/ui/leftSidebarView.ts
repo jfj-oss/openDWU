@@ -26,7 +26,7 @@ import { BuiltObject } from '../sim/builtObject';
 import { ShipGroup } from '../sim/fleets/shipGroup';
 import { Habitat } from '../sim/types';
 import { hudScale } from './originalWindow';
-import { FIT_GAP, fitSelectionScale, topClearancePx } from './hudFit';
+import { FIT_GAP, SIDEBAR_MIN_BUTTON_PX, fitSelectionScale, topClearancePx } from './hudFit';
 import { EmpireActivity } from '../sim/pirates/empireActivity';
 import { pirateMissionBidZoneActive, pirateMissionsPanelData, type PirateMissionsPanelData } from '../sim/pirates/pirateMissionsPanel';
 import { issuePlayerCommand } from '../sim/player/playerCommands';
@@ -251,7 +251,7 @@ export function createLeftSidebar(wiring: LeftSidebarWiring): HTMLElement {
         const clearV = (topClearancePx(window.innerWidth, window.innerHeight, s, sidebarRight) - FIT_GAP) / k;
         const topLimit = ks < wantedKs ? clearV : Math.max(150, clearV); // squeezed: start right under the strip
         const bottomLimit = Math.min(infoTop - 50, (window.innerHeight - 10 - 310 * ks - FIT_GAP) / k);
-        area = itemListArea(clientH, infoTop, state.sizeFactor, topLimit, bottomLimit, true);
+        area = itemListArea(clientH, infoTop, state.sizeFactor, topLimit, bottomLimit, true, Math.ceil(SIDEBAR_MIN_BUTTON_PX * Math.min(s, 1.5) * Math.max(0.5, window.innerHeight / 1080) / k));
         root.style.left = `${area.x * k}px`;
         root.style.top = `${area.y * k}px`;
         root.style.width = `${area.w}px`;
@@ -269,6 +269,11 @@ export function createLeftSidebar(wiring: LeftSidebarWiring): HTMLElement {
         if (state.open !== null && !defs.some((d) => d.id === state.open)) state.open = null;
         const top = buttonColumnTop(area, defs.length);
         buttons.replaceChildren();
+        // Too short a region for the column at its minimum size: the column scrolls instead of shrinking.
+        const need = top + defs.length * area.button;
+        buttons.style.height = `${area.h}px`;
+        buttons.style.width = `${area.button + 1}px`;
+        buttons.classList.toggle('ls-buttons-scroll', need > area.h && area.h > 0);
         defs.forEach((d, i) => {
             const b = document.createElement('button');
             b.type = 'button';

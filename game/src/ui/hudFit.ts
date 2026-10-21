@@ -11,6 +11,8 @@ import { TOP_ROW_BUTTONS, topBarScreenLayout } from './topBar';
 /** Room the left sidebar needs between the top strip and the selection frame, CSS px at a 1080 px tall window
  *  (about fifteen 22 px category buttons); grows with the window height like the HUD does. */
 export const SIDEBAR_MIN_ROOM = 340;
+/** Smallest sidebar category button, CSS px at a 1080 px tall window: its size at 100% UI scale (26 original px × 0.855), times the UI scale up to 150%. */
+export const SIDEBAR_MIN_BUTTON_PX = 22;
 /** Gap kept between neighbouring HUD blocks. */
 export const FIT_GAP = 6;
 /** The selection frame's height in the original's pixels (hud.ts SELECTION_FRAME) and its distance from the bottom edge. */

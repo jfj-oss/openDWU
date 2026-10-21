@@ -259,13 +259,15 @@ export interface ItemListArea {
  * panel (pnlInfoPanel) starts at `infoPanelTop`. num3..num7 come from Panels[0] exactly as the source reads them
  * (DefaultItemHeight unscaled, the bars scaled).
  */
-export function itemListArea(clientHeight: number, infoPanelTop: number, sizeFactor: number, topLimit = 150, bottomLimit = infoPanelTop - 50, keepButtons = false): ItemListArea {
+export function itemListArea(clientHeight: number, infoPanelTop: number, sizeFactor: number, topLimit = 150, bottomLimit = infoPanelTop - 50, keepButtons = false, minButton = 1): ItemListArea {
     const f = snapSizeFactor(sizeFactor);
     const m = panelMetrics(f);
     // The original's region is [150, infoPanelTop - 50]; at large UI scales the caller narrows it (topLimit / bottomLimit,
     // original pixels) so the tool stays clear of the top strip and the selection frame.
     const num = bottomLimit - topLimit;
-    const button = Math.max(1, Math.min(Math.trunc(26 * f), Math.trunc(num / 15)));
+    // minButton: the caller's floor (original pixels) so the buttons never shrink below their normal on-screen size; the
+    // column then scrolls when the region is too short for it.
+    const button = Math.max(1, minButton, Math.min(Math.trunc(26 * f), Math.trunc(num / 15)));
     const num8 = m.titleBar + 1 + m.scrollUp + 1 + m.scrollDown + m.gap;
     const num9 = 41 + m.gap;
     const num10 = Math.min(10, 5 + Math.trunc((clientHeight - 793) / num9));
@@ -273,7 +275,7 @@ export function itemListArea(clientHeight: number, infoPanelTop: number, sizeFac
     // keepButtons: the area is never shorter than the button column (the original lets the buttons run out of a short area).
     const h = Math.max(0, Math.min(num, keepButtons ? Math.max(val2, 15 * button) : val2));
     const y = topLimit + Math.trunc((num - h) / 2);
-    return { x: 8, y, w: Math.trunc(300 * f), h, button, icon: Math.max(1, Math.min(button - 6, Math.trunc(16 * f))) };
+    return { x: 8, y, w: Math.trunc(300 * f), h, button, icon: Math.max(1, Math.min(button - (minButton > 1 ? 3 : 6), Math.trunc(16 * f))) };
 }
 
 /** Top of the button column inside the area (DrawPanel: (Area.Height - count × button) / 2, clamped to 0 when it
