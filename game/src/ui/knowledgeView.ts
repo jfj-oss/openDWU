@@ -163,7 +163,7 @@ registerKnowledgeSection('stillness', 'The Stillness Engine', (galaxy) => {
     return rows.length > 0 ? rows : null;
 });
 // The corrupted empire (corrupted.ts): only what the viewer knows (the pattern it has seen, a confirmed lead, an ending it was told of).
-registerKnowledgeSection('corrupted', 'Under suspicion', (galaxy, empire) => {
+registerKnowledgeSection('corrupted', 'The Watchers\' hand', (galaxy, empire) => {
     const rows = corruptedRowsOf(galaxy, empire).map((r): KnowledgeRow => ({ ...knowledgeRow(r.key, r.what, r.where, r.status), goTo: r.goTo, point: r.point }));
     return rows.length > 0 ? rows : null;
 });

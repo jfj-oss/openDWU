@@ -697,29 +697,28 @@ Stillness Locked Scrap;The Stillness Engine cannot be scrapped. To stop it, swit
 Stillness Locked Retrofit;The Stillness Engine cannot be refitted: its base is built around the dampers, and any change would wreck them.
 Stillness Protect War News;The {0} have declared war on the {1} for attacking the Stillness Engine near {2}.
 ' The Harvest Cycle's corrupted empire (giantworks/corrupted*.ts): the Diet motion, the war and pattern messages, the endings and the Knowledge rows.
-' TODO-PROSE (placeholders, the final prose is written by the user): Corrupt Pattern Title, Corrupt Pattern Body, Corrupt Pattern Vote, Corrupt Pattern War, Corrupt Pattern Raid, Corrupt Ended Title, Corrupt Ended Body, Corrupt Cause exposed, Corrupt Cause assassinated, Corrupt Cause captured, Corrupt Cause gone, Corrupt Cause capitalLost, Corrupt Cause freed, Corrupt War News, Corrupt War Reason Scar, Corrupt War Reason Severance, Corrupt Motion Text, Corrupt Motion Effect, Corrupt Motion News, Corrupt Row Name, Corrupt Row Suspected, Corrupt Row Confirmed, Corrupt Row Ended, Security Kind corruption, Reputation Cause giantworks.corrupted
-Corrupt Pattern Title;Something in the Diet
-Corrupt Pattern Body;{0} keeps doing things that do not add up: {1}. Nothing is proven yet.
-Corrupt Pattern Vote;{0} voted against {1}.
-Corrupt Pattern War;{0} declared war on {1}.
-Corrupt Pattern Raid;{0} sent a strike fleet after the Severance's freighters of {1}.
-Corrupt Ended Title;The Hand Lifts
-Corrupt Ended Body;{0} has stopped: {1}.
-Corrupt Cause exposed;exposed in the Diet
-Corrupt Cause assassinated;its leader was assassinated
-Corrupt Cause captured;its capital was taken
-Corrupt Cause capitalLost;its capital was lost
-Corrupt Cause freed;a human took its seat
-Corrupt Cause gone;the empire is gone
-Corrupt War News;{0} declares war on {1}, because of {2}.
-Corrupt War Reason Scar;the old harvest world at {0}
-Corrupt War Reason Severance;the Severance led by the {0}
-Corrupt Motion Text;Expose {0} as a corrupted member
-Corrupt Motion Effect;The Diet names the corrupted member and ends its hidden work. Every other AI member of the Diet declares war on it.
-Corrupt Motion News;The Interstellar Diet has exposed {0}. Its hidden work is over, and its neighbours have declared war on it.
-Corrupt Row Name;{0}, under suspicion
-Corrupt Row Suspected;suspected: its pattern is visible
-Corrupt Row Confirmed;confirmed: an Internal Security lead on its leader
-Corrupt Row Ended;ended: {0}
+Corrupt Pattern Title;A Pattern in the Diet
+Corrupt Pattern Body;The {0} keep acting against everyone's interest, and always in the Watchers' favour: {1}. It may be chance. Our analysts do not think so, but nothing is proven.
+Corrupt Pattern Vote;the {0} voted against {1}
+Corrupt Pattern War;the {0} declared war on the {1}
+Corrupt Pattern Raid;the {0} sent warships against the Severance freighters of the {1}
+Corrupt Ended Title;The Watchers' Hand Is Gone
+Corrupt Ended Body;Whatever held the {0} has let go: {1}. They act as themselves again, but the galaxy will not quickly forget what they did.
+Corrupt Cause exposed;the Interstellar Diet exposed them
+Corrupt Cause assassinated;the leader who served the Watchers is dead
+Corrupt Cause captured;their capital has fallen
+Corrupt Cause capitalLost;their capital is lost
+Corrupt Cause freed;a new ruler has taken their throne
+Corrupt Cause gone;the empire is no more
+Corrupt War News;The {0} have declared war on the {1}, over {2}.
+Corrupt War Reason Scar;the harvest world at {0}
+Corrupt War Reason Severance;the Severance the {0} are building
+Corrupt Motion Text;Expose the {0} as the Watchers' servants
+Corrupt Motion Effect;The Diet names the {0} as an empire secretly working for the Watchers, and their hidden work ends. Every other AI member of the Diet declares war on them.
+Corrupt Motion News;The Interstellar Diet has exposed the {0} as servants of the Watchers. Their hidden work is over, and the other members have declared war on them.
+Corrupt Row Name;The {0}: under suspicion
+Corrupt Row Suspected;suspected: their actions follow the Watchers' interest
+Corrupt Row Confirmed;confirmed: an Internal Security lead on their leader
+Corrupt Row Ended;no longer: {0}
 Security Kind corruption;the leader of a corrupted empire
 Reputation Cause giantworks.corrupted;a corrupted empire's hidden work
