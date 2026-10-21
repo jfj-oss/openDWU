@@ -12,7 +12,7 @@ import {
     recordContract,
 } from '../src/sim/logistics/tradeFlows';
 import { YEAR_LENGTH } from '../src/sim/galaxyTime';
-import { flowTableRows, formatCredits, freightTooltipText, hubTableRows, pairTableRows } from '../src/ui/freightText';
+import { flowTableRows, formatCredits, freightTooltipText, hubTableRows, pairTableRows, sharePercent } from '../src/ui/freightText';
 import { collectingNote } from '../src/ui/screens/tradeFlows';
 
 const indep = { empireId: 0, name: 'Independents' } as unknown as Empire;
@@ -63,10 +63,32 @@ describe('19e-9 panel rows', () => {
         expect(flowTableRows(names, flowsInWindow(l, 10, 12, { categoryOf: cats }, 'post'))[0].route).toBe('Port A → Colony B');
     });
 
+    it('tooltip shares: each direction against all known trade of its cargo (or the picked resource)', () => {
+        const rows = flowsInWindow(l, 10, 12, { categoryOf: cats }, 'system');
+        const ab = { cargoLabel: 'mineral', cargoValue: 12_000 * 12, total: 48_000 * 12, otherValue: 400 * 12 };
+        const ba = { cargoLabel: 'gas', cargoValue: 900 * 12, total: 1300 * 12, otherValue: 0 };
+        expect(freightTooltipText(names, { kind: 'flow', route: { ab: rows[0], ba: rows[1] }, abShare: ab, baShare: ba })).toBe(
+            `Alpha → Beta: ${formatCredits(144_000)} cr/yr mineral (25% of all mineral trade), + ${formatCredits(4800)} cr/yr other goods\n` +
+                `Beta → Alpha: ${formatCredits(10_800)} cr/yr gas (69% of all gas trade)`,
+        );
+        const hydrogen = { cargoLabel: 'Hydrogen', cargoValue: 900 * 12, total: 900 * 12, otherValue: 0 };
+        expect(freightTooltipText(names, { kind: 'flow', route: { ab: rows[1], ba: null }, abShare: hydrogen, baShare: null })).toBe(
+            `Beta → Alpha: ${formatCredits(10_800)} cr/yr Hydrogen (100% of all Hydrogen trade)`,
+        );
+        expect(sharePercent(18, 100)).toBe('18%');
+        expect(sharePercent(0.4, 100)).toBe('<1%');
+        expect(sharePercent(150, 100)).toBe('100%');
+        expect(sharePercent(5, 0)).toBeNull();
+        expect(sharePercent(0, 100)).toBeNull();
+    });
+
     it('hub rows and tooltip', () => {
         const hub = { port: { name: 'Port A' } as never, owner: a, income: 8200.4, x: 1, y: 2 };
         expect(hubTableRows(names, [hub])).toEqual([{ name: 'Port A', owner: 'Oranthi', income: '8,200', x: 1, y: 2 }]);
         expect(freightTooltipText(names, { kind: 'hub', hub })).toBe('Port A (Oranthi) — 8,200 cr trade income this year');
+        expect(freightTooltipText(names, { kind: 'hub', hub, volume: 30_000, allTrade: 120_000 })).toBe(
+            'Port A (Oranthi) — 8,200 cr trade income this year\n30,000 cr/yr of freight shipped and received (25% of all known trade)',
+        );
     });
 
     it("empire-pair totals from relation trade values; the player's pairs first", () => {

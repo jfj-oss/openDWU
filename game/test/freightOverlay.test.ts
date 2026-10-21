@@ -49,9 +49,12 @@ import {
     routeWidthPx,
     segmentInView,
     selectTopRoutes,
+    flowShare,
+    tradeTotals,
     type FlowRoute,
 } from '../src/render/freightOverlay';
 import { Container } from 'pixi.js';
+import { sharePercent } from '../src/ui/freightText';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -431,6 +434,36 @@ describe('freight routes: both directions merged, top N, filters', () => {
     });
 });
 
+describe('freight tooltip shares (known totals, not only the drawn top N)', () => {
+    it('totals per cargo / resource / post over the known rows; a direction against its cargo or the picked resource', () => {
+        const l = createAndFill([
+            { from: 1, to: 2, resourceId: 1, value: 300 }, // mineral
+            { from: 1, to: 2, resourceId: 3, value: 100 }, // gas on the same direction
+            { from: 2, to: 3, resourceId: 2, value: 600 }, // mineral
+            { from: 3, to: 4, resourceId: 3, value: 300 }, // gas
+            { from: 8, to: 9, resourceId: 1, value: 5000 }, // unknown to the viewer: in no total
+        ]);
+        const rows = flowsInWindow(l, 2, 12, { categoryOf: cats4 }, 'post');
+        const known = (r: { sellerSystem: number }) => r.sellerSystem !== 8;
+        const t = tradeTotals(rows, known, cats4);
+        expect(t.all).toBe(1300 * 12);
+        expect(t.byCategory.get('mineral')).toBe(900 * 12);
+        expect(t.byCategory.get('gas')).toBe(400 * 12);
+        expect(t.byResource.get(1)).toBe(300 * 12);
+        const p2 = rows.find((r) => r.sellerSystem === 2)!.sellingPoint!;
+        expect(t.byPost.get(p2)).toBe((400 + 600) * 12); // received 400, sold 600
+        const r12 = rows.find((r) => r.sellerSystem === 1)!;
+        // All cargo: the row's category is mineral (its largest), 300 of 900 known mineral; 100 of gas besides.
+        const s = flowShare(r12, t, cats4, null);
+        expect(s).toEqual({ cargoLabel: 'mineral', cargoValue: 300 * 12, total: 900 * 12, otherValue: 100 * 12 });
+        // A picked resource: gas #3, 100 of its 400.
+        const g = flowShare(r12, t, cats4, { id: 3, name: 'Hydrogen' });
+        expect(g).toEqual({ cargoLabel: 'Hydrogen', cargoValue: 100 * 12, total: 400 * 12, otherValue: 300 * 12 });
+        expect(sharePercent(g.cargoValue, g.total)).toBe('25%');
+        expect(sharePercent(s.cargoValue, s.total)).toBe('33%');
+    });
+});
+
 function createAndFill(contracts: Array<{ from: number; to: number; resourceId: number; value: number }>) {
     return systemLedger(contracts);
 }
@@ -495,6 +528,24 @@ describe('FreightOverlay: fog, top N and the cargo filter on a hand-built galaxy
         // The hover finds the drawn line near its middle.
         const hit = ov.hitTest(1500, 0, 0.05);
         expect(hit?.kind).toBe('flow');
+        // Resource 1 picked: the line's 500 is all the known resource-1 trade (the unexplored route is not counted).
+        if (hit?.kind === 'flow') expect(hit.abShare).toMatchObject({ cargoValue: 500 * 12, total: 500 * 12 });
+        // All cargo: the gas route's 400 of the known 400 gas (the 9000 to unexplored system 9 left out).
+        ov.setCargoFilter(null);
+        ov.update(0.05, cam);
+        const gasHit = ov.hitTest(3500, 0, 0.05);
+        expect(gasHit?.kind === 'flow' && gasHit.abShare).toMatchObject({ cargoLabel: 'gas', cargoValue: 400 * 12, total: 400 * 12 });
+        expect(ov.knownTotals().all).toBe((500 + 400 + 300) * 12);
+        // The hub's volume: port 1 is neither end of a contract here.
+        const hubHit = ov.hitTest(2000, 0, 0.05);
+        expect(hubHit).toMatchObject({ kind: 'hub', volume: null, allTrade: 1200 * 12 });
+        // Hubs off, then on again with the flows still on: rebuilt at once (no new query needed).
+        (state as { tradeHubs: boolean }).tradeHubs = false;
+        ov.update(0.05, cam);
+        expect(ov.discs).toEqual([]);
+        (state as { tradeHubs: boolean }).tradeHubs = true;
+        ov.update(0.05, cam);
+        expect(ov.discs.map((d) => d.hub.port.builtObjectID)).toEqual([1]);
         // Off: nothing drawn, and nothing per frame but the early return.
         (state as { freightFlows: boolean; tradeHubs: boolean }).freightFlows = false;
         (state as { freightFlows: boolean; tradeHubs: boolean }).tradeHubs = false;

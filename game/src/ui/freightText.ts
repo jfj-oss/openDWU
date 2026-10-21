@@ -13,7 +13,21 @@ export interface FreightRouteLike {
     ba: FlowRow | null;
 }
 
-export type FreightHitLike = { kind: 'flow'; route: FreightRouteLike } | { kind: 'hub'; hub: HubRow };
+/** One direction's cargo and its share of that cargo's known trade (render/freightOverlay.ts flowShare). */
+export interface FlowShareInfo {
+    /** "gas", "restricted luxury", or the picked resource's name. */
+    cargoLabel: string;
+    /** cr/yr of that cargo on this direction. */
+    cargoValue: number;
+    /** cr/yr of that cargo on every route the viewer knows. */
+    total: number;
+    /** cr/yr of the other goods on this direction. */
+    otherValue: number;
+}
+
+export type FreightHitLike =
+    | { kind: 'flow'; route: FreightRouteLike; abShare?: FlowShareInfo | null; baShare?: FlowShareInfo | null }
+    | { kind: 'hub'; hub: HubRow; volume?: number | null; allTrade?: number };
 
 type NameSource = Pick<Galaxy, 'systems' | 'resourceSystem' | 'independentEmpire'>;
 
@@ -47,20 +61,38 @@ export function empireNames(galaxy: NameSource, list: readonly Empire[], max = 3
     return names.join(', ');
 }
 
-/** One direction of a route: "From → To: N cr/yr (cargo)". */
-export function flowLineText(galaxy: NameSource, r: FlowRow): string {
-    return `${flowEndName(galaxy, r, 'from')} → ${flowEndName(galaxy, r, 'to')}: ${formatCredits(r.valuePerYear)} cr/yr (${resourceNames(galaxy, r.resourceIds)})`;
+/** A share as a whole percentage: "<1%" for a sliver, never over 100 %; null when there is no total. */
+export function sharePercent(value: number, total: number): string | null {
+    if (!(total > 0) || !(value > 0)) return null;
+    const p = Math.min(100, Math.round((100 * value) / total));
+    return p < 1 ? '<1%' : `${p}%`;
 }
 
-/** Tooltip for a hovered route / hub disc: a route's main direction, then its return leg when it has one. */
+/** One direction of a route: "From → To: N cr/yr gas (18% of all gas trade)" (with the other goods it also carries),
+ * or without shares "From → To: N cr/yr (cargo)". */
+export function flowLineText(galaxy: NameSource, r: FlowRow, share: FlowShareInfo | null = null): string {
+    const ends = `${flowEndName(galaxy, r, 'from')} → ${flowEndName(galaxy, r, 'to')}`;
+    if (share === null) return `${ends}: ${formatCredits(r.valuePerYear)} cr/yr (${resourceNames(galaxy, r.resourceIds)})`;
+    const pct = sharePercent(share.cargoValue, share.total);
+    let text = `${ends}: ${formatCredits(share.cargoValue)} cr/yr ${share.cargoLabel}${pct !== null ? ` (${pct} of all ${share.cargoLabel} trade)` : ''}`;
+    if (share.otherValue >= 1) text += `, + ${formatCredits(share.otherValue)} cr/yr other goods`;
+    return text;
+}
+
+/** Tooltip for a hovered route / hub disc: a route's main direction, then its return leg when it has one; a hub's
+ * income, then the freight it ships and receives and its share of all known trade. */
 export function freightTooltipText(galaxy: NameSource, hit: FreightHitLike): string {
     if (hit.kind === 'hub') {
         const h = hit.hub;
         const owner = h.owner === null ? '' : ` (${h.owner === galaxy.independentEmpire ? 'Independent' : h.owner.name})`;
-        return `${postName(h.port)}${owner} — ${formatCredits(h.income)} cr trade income this year`;
+        const head = `${postName(h.port)}${owner} — ${formatCredits(h.income)} cr trade income this year`;
+        if (hit.volume == null || hit.allTrade === undefined) return head;
+        const pct = sharePercent(hit.volume, hit.allTrade);
+        return `${head}\n${formatCredits(hit.volume)} cr/yr of freight shipped and received${pct !== null ? ` (${pct} of all known trade)` : ''}`;
     }
     const lines: string[] = [];
-    for (const r of [hit.route.ab, hit.route.ba]) if (r !== null) lines.push(flowLineText(galaxy, r));
+    if (hit.route.ab !== null) lines.push(flowLineText(galaxy, hit.route.ab, hit.abShare ?? null));
+    if (hit.route.ba !== null) lines.push(flowLineText(galaxy, hit.route.ba, hit.baShare ?? null));
     return lines.join('\n');
 }
 

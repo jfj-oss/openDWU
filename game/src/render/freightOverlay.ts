@@ -40,6 +40,7 @@ import { scenarioMapFeatures } from '../sim/scenario/mapFeatures';
 import { INDEPENDENT_RING_COLOR, toPixiColor } from './empireLayer';
 import { dashSegments, TRAVEL_VECTOR_COLOR } from './overlayLayer';
 import { localViewerEmpire } from '../localViewer';
+import type { FlowShareInfo } from '../ui/freightText';
 import { DrawSig } from './drawCache';
 
 /** Category colours (task 19e-9 §8.2; brightened for the rework so each reads over territory shading). Scenario
@@ -285,6 +286,57 @@ export function resourceTotals(rows: readonly FlowRow[], accept: (row: FlowRow) 
     return [...m.entries()].map(([resourceId, perYear]) => ({ resourceId, perYear })).sort((a, b) => b.perYear - a.perYear || a.resourceId - b.resourceId);
 }
 
+/** Known trade totals (cr/yr) for the tooltip's shares: per cargo category, per resource, per trading post, and all. */
+export interface TradeTotals {
+    all: number;
+    byCategory: Map<string, number>;
+    byResource: Map<number, number>;
+    /** Per trading post / destination: the trade it sold or received (a contract counts for both its ends). */
+    byPost: Map<StellarObject, number>;
+}
+
+/** Totals over the rows `accept` lets through (the routes the viewer knows both ends of: every one, not only those
+ * drawn). Post-level rows give byPost; system rows with several posts at an end leave that end out of it. */
+export function tradeTotals(rows: readonly FlowRow[], accept: (row: FlowRow) => boolean, categoryOf: (resourceId: number) => FlowCategory): TradeTotals {
+    const t: TradeTotals = { all: 0, byCategory: new Map(), byResource: new Map(), byPost: new Map() };
+    for (const row of rows) {
+        if (row.value <= 0 || !accept(row)) continue;
+        const k = row.valuePerYear / row.value;
+        t.all += row.valuePerYear;
+        for (let i = 0; i < row.resourceIds.length; i++) {
+            const id = row.resourceIds[i];
+            const v = (row.resourceValues[i] ?? 0) * k;
+            t.byResource.set(id, (t.byResource.get(id) ?? 0) + v);
+            const cat = categoryOf(id).key;
+            t.byCategory.set(cat, (t.byCategory.get(cat) ?? 0) + v);
+        }
+        for (const o of [row.sellingPoint, row.destination]) if (o !== null) t.byPost.set(o, (t.byPost.get(o) ?? 0) + row.valuePerYear);
+    }
+    return t;
+}
+
+/**
+ * One direction's share for the tooltip: with a resource picked, that resource against all of it; otherwise the row's
+ * own cargo (its largest commodity's category) against all trade of that cargo, the rest of the row as `otherValue`.
+ */
+export function flowShare(
+    row: FlowRow,
+    totals: TradeTotals,
+    categoryOf: (resourceId: number) => FlowCategory,
+    resource: { id: number; name: string } | null,
+): FlowShareInfo {
+    const k = row.value > 0 ? row.valuePerYear / row.value : 0;
+    if (resource !== null) {
+        const i = row.resourceIds.indexOf(resource.id);
+        const v = i >= 0 ? (row.resourceValues[i] ?? 0) * k : 0;
+        return { cargoLabel: resource.name, cargoValue: v, total: totals.byResource.get(resource.id) ?? 0, otherValue: Math.max(0, row.valuePerYear - v) };
+    }
+    const key = row.category.key;
+    let v = 0;
+    for (let i = 0; i < row.resourceIds.length; i++) if (categoryOf(row.resourceIds[i]).key === key) v += (row.resourceValues[i] ?? 0) * k;
+    return { cargoLabel: row.category.label.toLowerCase(), cargoValue: v, total: totals.byCategory.get(key) ?? 0, otherValue: Math.max(0, row.valuePerYear - v) };
+}
+
 /** Hub disc radius in screen px: 5..20 by sqrt(income / the largest drawn). */
 export function hubRadiusPx(income: number, max: number): number {
     if (!(max > 0)) return 5;
@@ -332,7 +384,11 @@ function isFreighter(bo: BuiltObject): boolean {
     return s === BuiltObjectSubRole.SmallFreighter || s === BuiltObjectSubRole.MediumFreighter || s === BuiltObjectSubRole.LargeFreighter;
 }
 
-export type FreightHit = { kind: 'flow'; route: FlowRoute } | { kind: 'hub'; hub: HubRow };
+/** A hovered route (with each direction's share of its cargo's known trade) or hub (with its freight volume and share
+ * of all known trade). */
+export type FreightHit =
+    | { kind: 'flow'; route: FlowRoute; abShare: FlowShareInfo | null; baShare: FlowShareInfo | null }
+    | { kind: 'hub'; hub: HubRow; volume: number | null; allTrade: number };
 
 /**
  * An in-flight freighter's leader, drawn from where the freighter is drawn (sx, sy) towards where its contract
@@ -392,6 +448,8 @@ export class FreightOverlay {
     private builtY = NaN;
     private builtW = 0;
     private builtH = 0;
+    private builtFlows = false;
+    private builtHubs = false;
     private dirty = true;
     private leadersAt = 0;
     private remoteRecording = false;
@@ -405,6 +463,8 @@ export class FreightOverlay {
     motion: MotionInterpolator | null = null;
     private fromScratch: Point = { x: 0, y: 0 };
     private toScratch: Point = { x: 0, y: 0 };
+    /** Known trade totals for the tooltip (every cargo, the current empire filter), cached per query. */
+    private totals: { key: string; totals: TradeTotals } | null = null;
     /** The legend's per-resource list, cached per query and category. */
     private breakdown: { key: string; list: Array<{ resourceId: number; perYear: number }> } | null = null;
 
@@ -485,6 +545,7 @@ export class FreightOverlay {
     invalidate(): void {
         this.queriedDay = NaN;
         this.breakdown = null;
+        this.totals = null;
         this.dirty = true;
     }
 
@@ -540,6 +601,30 @@ export class FreightOverlay {
         return list;
     }
 
+    /**
+     * Totals of the trade the viewer knows (both ends known; every cargo, the empire filter kept), over the window, for
+     * the hover shares: all routes, not only the drawn top N. Post level, so the hubs get their own volume too. Cached
+     * until the next query.
+     */
+    knownTotals(): TradeTotals {
+        const ledger = tradeFlowLedger(this.galaxy);
+        const key = `${this.queriedLedger === ledger ? this.queriedVersion : -1}:${this.queriedDay}:${this.windowMonths}:${this.filter.empire?.empireId ?? -1}`;
+        if (this.totals !== null && this.totals.key === key) return this.totals.totals;
+        const categoryOf = this.filter.categoryOf ?? ((r: number) => flowCategory(this.galaxy, r, -1));
+        const rows = ledger === null ? [] : flowsInWindow(ledger, galaxyStarDate(this.galaxy), this.windowMonths, { ...this.filter, category: null, resourceId: null }, 'post');
+        const totals = tradeTotals(rows, (row) => this.rowKnown(row), (r) => categoryOf(r, -1));
+        this.totals = { key, totals };
+        return totals;
+    }
+
+    private shareOf(row: FlowRow | null, totals: TradeTotals): FlowShareInfo | null {
+        if (row === null) return null;
+        const categoryOf = this.filter.categoryOf ?? ((r: number) => flowCategory(this.galaxy, r, -1));
+        const id = this.filter.resourceId ?? null;
+        const resource = id === null ? null : { id, name: this.galaxy.resourceSystem.byId.get(id)?.name ?? `#${id}` };
+        return flowShare(row, totals, (r) => categoryOf(r, -1), resource);
+    }
+
     update(z: number, cam: Camera): void {
         const flowsOn = this.state.freightFlows;
         const hubsOn = this.state.tradeHubs;
@@ -585,7 +670,9 @@ export class FreightOverlay {
         const zoomMoved = !(Math.abs(z / this.builtZ - 1) < 0.03);
         const panned = Math.abs(cam.x - this.builtX) * z > this.builtW * 0.1 || Math.abs(cam.y - this.builtY) * z > this.builtH * 0.1;
         const resized = cam.width !== this.builtW || cam.height !== this.builtH;
-        if (this.dirty || zoomMoved || panned || resized) this.build(z, cam, flowsOn, hubsOn);
+        // One of the two toggles switched while the other stays on: its half was not built.
+        const toggled = flowsOn !== this.builtFlows || hubsOn !== this.builtHubs;
+        if (this.dirty || zoomMoved || panned || resized || toggled) this.build(z, cam, flowsOn, hubsOn);
         this.flows.visible = flowsOn;
         this.hubs.visible = hubsOn;
         this.updateRoutes(z, flowsOn);
@@ -606,6 +693,8 @@ export class FreightOverlay {
 
     private build(z: number, cam: Camera, flowsOn: boolean, hubsOn: boolean): void {
         this.dirty = false;
+        this.builtFlows = flowsOn;
+        this.builtHubs = hubsOn;
         this.builtZ = z;
         this.builtX = cam.x;
         this.builtY = cam.y;
@@ -761,14 +850,20 @@ export class FreightOverlay {
                 const r = d.r / z;
                 const dx = wx - d.x;
                 const dy = wy - d.y;
-                if (dx * dx + dy * dy <= r * r) return { kind: 'hub', hub: d.hub };
+                if (dx * dx + dy * dy <= r * r) {
+                    const t = this.knownTotals();
+                    return { kind: 'hub', hub: d.hub, volume: t.byPost.get(d.hub.port) ?? null, allTrade: t.all };
+                }
             }
         }
         if (this.flows.visible) {
             for (let i = 0; i < this.shown.length; i++) {
                 const a = this.shown[i];
                 const tol = (this.widths[i] / 2 + 4) / z;
-                if (segDist2(wx, wy, a.ax, a.ay, a.bx, a.by) <= tol * tol) return { kind: 'flow', route: a };
+                if (segDist2(wx, wy, a.ax, a.ay, a.bx, a.by) <= tol * tol) {
+                    const t = this.knownTotals();
+                    return { kind: 'flow', route: a, abShare: this.shareOf(a.ab, t), baShare: this.shareOf(a.ba, t) };
+                }
             }
         }
         return null;
