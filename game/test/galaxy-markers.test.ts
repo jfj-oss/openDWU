@@ -371,8 +371,9 @@ import { DEFAULT_SETTINGS } from '../src/ui/settings';
 describe('fleet ships at galaxy zoom', () => {
     const lead = {} as BuiltObject;
     const fleet = { leadShip: lead, ships: [lead, {} as BuiltObject] } as unknown as ShipGroup;
-    it('every ship of a live fleet is drawn as the fleet icon, not individually', () => {
-        expect(drawnAsFleet({ shipGroup: fleet })).toBe(true);
+    it('only the lead ship is drawn as the fleet icon; the other members keep their own symbols (the original)', () => {
+        expect(drawnAsFleet(Object.assign(lead, { shipGroup: fleet }))).toBe(true);
+        expect(drawnAsFleet({ shipGroup: fleet } as unknown as BuiltObject)).toBe(false); // a member
         expect(drawnAsFleet({ shipGroup: null })).toBe(false);
         expect(drawnAsFleet({ shipGroup: { leadShip: null, ships: [] } as unknown as ShipGroup })).toBe(false);
     });

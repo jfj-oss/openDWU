@@ -451,11 +451,12 @@ export function doubleClickFleet(bo: Pick<BuiltObject, 'empire' | 'shipGroup'>, 
     return g ?? null;
 }
 
-/** Galaxy/sector zoom: a ship in a fleet is represented by the fleet icon alone (user rule; the original skips only
- * the lead ship, MainView.2.cs 5932-5935, and draws the members under the icon). At system zoom every ship draws. */
+/** Galaxy/sector zoom: only a fleet's LEAD ship is represented by the fleet icon; the other members keep their own
+ * symbols, drawn under the icon (MainView.2.cs 5932-5935; user 2026-10-21: fleet ships keep their individual icons —
+ * this reverts the earlier fleet-icon-only rule). At system zoom every ship draws. */
 export function drawnAsFleet(bo: Pick<BuiltObject, 'shipGroup'>): boolean {
     const g = bo.shipGroup as ShipGroup | null;
-    return g != null && g.leadShip != null && g.ships.length > 0;
+    return g != null && g.leadShip != null && g.ships.length > 0 && g.leadShip === bo;
 }
 
 /** XnaDrawingHelper.DrawCircle(..., dashed) (XnaDrawingHelper.cs 777-810, 30 segments via the Rectangle overload
