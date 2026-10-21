@@ -15,7 +15,10 @@ import { YEAR_LENGTH, GalaxyTime } from '../src/sim/galaxyTime';
 import { deserializeGame, serializeGame } from '../src/sim/save/gameSave';
 import type { StartGameOptions } from '../src/sim/startGameOptions';
 import { empireMessages } from '../src/sim/messages';
-import { DiplomaticRelationType, obtainDiplomaticRelation } from '../src/sim/diplomacy';
+import { DiplomaticRelationType, obtainDiplomaticRelation, obtainEmpireEvaluation } from '../src/sim/diplomacy';
+import { CharacterTraitType } from '../src/sim/data/races';
+import { empireShipGroups } from '../src/sim/fleets/shipGroup';
+import { BuiltObjectMissionType } from '../src/sim/missions/mission';
 import { councilState, type Council } from '../src/sim/scenario/emergent/council';
 import { dietMotionKindDef, dietState, lawInForce, peekDietState, type DietMotion } from '../src/sim/scenario/charactersVictory/diet/dietState';
 import { beaconRolled } from '../src/sim/scenario/threats/giantworks/beacon';
@@ -27,9 +30,11 @@ import type { GreatWorkSite } from '../src/sim/scenario/threats/giantworks/frame
 import { availableThreatActions, runThreatAction } from '../src/sim/scenario/threats/framework';
 import { longNightState } from '../src/sim/scenario/threats/giantworks/longNightState';
 import {
-    ACTION_BUILD, ACTION_OFF, ACTION_ON, LAW_DEMOLISH_STILL, SP, STILL_KEY, beaconFinished, cannotBuild, engineOf, engineProgress, engineRunning, startEngine, stillState, stillnessActive,
-    stillnessFactor, stillnessKnowledgeRows, stillnessStep, switchEngine, scrapEngine, peekStill,
+    ACTION_BUILD, ACTION_OFF, ACTION_ON, SP, beaconFinished, cannotBuild, engineOf, engineProgress, engineRunning, startEngine, stillState, stillnessActive,
+    demolishLegal, stillnessFactor, stillnessKnowledgeRows, stillnessStep,
 } from '../src/sim/scenario/threats/giantworks/stillness';
+import { AP, aiMaybeBuild, attackEngine, engineLean, isolationist, sendPatrol, sideOf, stillnessReview } from '../src/sim/scenario/threats/giantworks/stillnessAi';
+import { MOTION_DEMOLISH } from '../src/sim/scenario/threats/giantworks/stillnessDiet';
 
 let base: GameData;
 beforeAll(async () => {
@@ -84,6 +89,17 @@ function setup(): Setup {
     const st = peekBeaconState(g)!;
     const ais = g.empires.filter((e): e is Empire => e !== null && e !== g.independentEmpire && e !== me && e.pirateEmpireBaseHabitat === null && e.active && e !== st.faction);
     return { game, gameData: savedData, g, me, ais };
+}
+
+/** A motion of `kind` by `proposer` passes: the kind's effect runs with a law-maker like the Diet's. */
+function pass(g: Galaxy, kind: string, proposer: Empire): void {
+    const st = dietState(g);
+    const m = { id: 1, kind, proposer, target: proposer, other: null, colony: null, resourceId: -1, text: kind, votes: [], status: 'passed', yes: 1, no: 0 } as unknown as DietMotion;
+    dietMotionKindDef(kind)!.apply(g, st, m, (k, empire, other, colony, until) => {
+        const law = { id: st.nextId++, kind: k, empire, other, colony, since: galaxyStarDate(g), until, text: kind };
+        st.laws.push(law);
+        return law;
+    });
 }
 
 const advance = (g: Galaxy, days: number): void => {
@@ -234,5 +250,168 @@ describe('the Severance sink is not slowed', () => {
         expect(slow.blueprint).toBeCloseTo(plain.blueprint, 6);
         expect(slow.node).toBeCloseTo(plain.node * 0.5, 4);
         expect(plain.node).toBeGreaterThan(0);
+    });
+});
+
+/** Makes `e` lean to destroy (an expansionist leader) or protect (an isolationist one), whatever its people. */
+function lean(e: Empire, to: 'destroy' | 'protect'): void {
+    const leader = e.leader!;
+    leader.traits = leader.traits.filter((t) => t !== CharacterTraitType.Expansionist && t !== CharacterTraitType.Isolationist);
+    leader.traits.push(to === 'destroy' ? CharacterTraitType.Expansionist : CharacterTraitType.Isolationist);
+    e.dominantRace = { ...e.dominantRace!, expanding: to === 'destroy', aggression: to === 'destroy' ? 140 : 60 };
+}
+
+function standing(g: Galaxy, a: Empire, of: Empire, bias: number): void {
+    obtainEmpireEvaluation(g, a, of).bias = bias;
+}
+
+describe('the AI takes a side', () => {
+    it('expansionists lean to destroy and isolationists to protect, shifted by how they rate the owner', () => {
+        const s = setup();
+        const [owner, a, b] = s.ais;
+        lean(a, 'destroy');
+        lean(b, 'protect');
+        standing(s.g, a, owner, -40);
+        standing(s.g, b, owner, 40);
+        expect(engineLean(s.g, a, owner)).toBeGreaterThan(AP.sideAt(s.g));
+        expect(sideOf(s.g, a, owner)).toBe('destroy');
+        expect(sideOf(s.g, b, owner)).toBe('protect');
+        // the same people: a liked owner is less attacked, a hated one more
+        standing(s.g, a, owner, 90);
+        const liked = engineLean(s.g, a, owner);
+        standing(s.g, a, owner, -90);
+        expect(engineLean(s.g, a, owner)).toBeGreaterThan(liked + 20);
+        standing(s.g, b, owner, -90);
+        const hated = engineLean(s.g, b, owner);
+        standing(s.g, b, owner, 90);
+        expect(engineLean(s.g, b, owner)).toBeLessThan(hated);
+        expect(isolationist(s.g, b)).toBe(true);
+        expect(isolationist(s.g, a)).toBe(false);
+    });
+
+    it('the review records the sides; protectors and attackers show on the Knowledge page', () => {
+        const s = setup();
+        const [owner, a, b] = s.ais;
+        lean(a, 'destroy');
+        lean(b, 'protect');
+        standing(s.g, a, owner, -40);
+        standing(s.g, b, owner, 40);
+        s.g.scenario!.params.stillnessAiStrikeMarginPct = 100000; // no strike this month: the sides only
+        expect(startEngine(s.g, owner, colonyOf(owner))).toBe(true);
+        stillnessReview(s.g);
+        const eng = engineOf(s.g)!;
+        expect(eng.sides[String(a.empireId)]).toBe('destroy');
+        expect(eng.sides[String(b.empireId)]).toBe('protect');
+        expect(eng.sides[String(owner.empireId)]).toBeUndefined();
+        const rows = stillnessKnowledgeRows(s.g);
+        expect(rows.find((r) => r.key === 'still:protect')!.status).toContain(b.name);
+        expect(rows.find((r) => r.key === 'still:destroy')!.status).toContain(a.name);
+        expect(rows.find((r) => r.key === 'still:engine')!.goTo).toBe(eng.base);
+        expect(rows.find((r) => r.key === 'still:owner')!.status).toBe(owner.name);
+        // a switched off Engine is left alone
+        eng.status = 'off';
+        const wars = stillState(s.g).stats.wars;
+        stillnessReview(s.g);
+        expect(stillState(s.g).stats.wars).toBe(wars);
+    });
+});
+
+describe('the attackers', () => {
+    it('an attacker not at war declares it over the Engine (a stated reason), then strikes the base; the Diet raises no emergency', () => {
+        const s = setup();
+        const [owner, a] = s.ais;
+        lean(a, 'destroy');
+        standing(s.g, a, owner, -60);
+        for (const x of [owner, a]) for (const y of [owner, a]) if (x !== y) obtainDiplomaticRelation(x, y).type = DiplomaticRelationType.None;
+        s.g.scenario!.params.stillnessAiStrikeMarginPct = 1;
+        expect(startEngine(s.g, owner, colonyOf(owner))).toBe(true);
+        const eng = engineOf(s.g)!;
+        const before = empireMessages(s.me).length;
+        expect(attackEngine(s.g, a, owner, eng)).toBe(true);
+        expect(obtainDiplomaticRelation(a, owner).type).toBe(DiplomaticRelationType.War);
+        expect(eng.warOver).toContain(a.empireId);
+        expect(empireMessages(s.me).slice(before).some((m) => m.description.includes(`${a.name} declares war on ${owner.name} because of the Stillness Engine`))).toBe(true);
+        expect(peekDietState(s.g)!.pendingEmergency ?? null).toBeNull();
+        const missions = empireShipGroups(a).filter((grp) => grp !== null && grp.mission !== null && grp.mission.targetBuiltObject === eng.base);
+        expect(missions.length).toBeGreaterThan(0);
+        expect(stillnessKnowledgeRows(s.g).some((r) => r.key === 'still:wars')).toBe(true);
+    });
+
+    it('does not declare war when it has no force that can win', () => {
+        const s = setup();
+        const [owner, a] = s.ais;
+        for (const x of [owner, a]) for (const y of [owner, a]) if (x !== y) obtainDiplomaticRelation(x, y).type = DiplomaticRelationType.None;
+        s.g.scenario!.params.stillnessAiStrikeMarginPct = 1e9;
+        startEngine(s.g, owner, colonyOf(owner));
+        expect(attackEngine(s.g, a, owner, engineOf(s.g)!)).toBe(false);
+        expect(obtainDiplomaticRelation(a, owner).type).toBe(DiplomaticRelationType.None);
+        expect(engineOf(s.g)!.warOver).toEqual([]);
+    });
+
+    it('with the Diet\'s demolition in force a member strikes without a war', () => {
+        const s = setup();
+        const [owner, a] = s.ais;
+        for (const x of [owner, a]) for (const y of [owner, a]) if (x !== y) obtainDiplomaticRelation(x, y).type = DiplomaticRelationType.None;
+        s.g.scenario!.params.stillnessAiStrikeMarginPct = 1;
+        startEngine(s.g, owner, colonyOf(owner));
+        const eng = engineOf(s.g)!;
+        expect(demolishLegal(s.g, a)).toBe(false);
+        pass(s.g, MOTION_DEMOLISH, s.me);
+        expect(demolishLegal(s.g, a)).toBe(true);
+        expect(attackEngine(s.g, a, owner, eng)).toBe(true);
+        expect(obtainDiplomaticRelation(a, owner).type).toBe(DiplomaticRelationType.None); // no war
+        expect(eng.warOver).toEqual([]);
+    });
+});
+
+describe('the protectors', () => {
+    it('keep one patrol fleet at the base', () => {
+        const s = setup();
+        const [owner, b] = s.ais;
+        startEngine(s.g, owner, colonyOf(owner));
+        const eng = engineOf(s.g)!;
+        const groups = empireShipGroups(b).filter((x) => x !== null).length;
+        const sent = sendPatrol(s.g, b, eng.base!);
+        if (groups >= 3) {
+            expect(sent).toBe(true);
+            expect(empireShipGroups(b).some((grp) => grp !== null && grp.mission !== null && grp.mission.type === BuiltObjectMissionType.Patrol && grp.mission.targetBuiltObject === eng.base)).toBe(true);
+        } else expect(sent).toBe(false);
+    });
+});
+
+describe('the AI builders', () => {
+    it('only an isolationist AI at peace with the money, after the first years, by a low roll; never a human; never when banned', () => {
+        const s = setup();
+        const [x, y, z] = s.ais;
+        lean(x, 'protect');
+        lean(y, 'destroy');
+        lean(z, 'destroy');
+        s.g.scenario!.params.stillnessAiChancePct = 100;
+        s.g.scenario!.params.stillnessAiMinYears = 3;
+        for (const e of s.ais) for (const o of s.ais) if (e !== o) obtainDiplomaticRelation(e, o).type = DiplomaticRelationType.None;
+        expect(aiMaybeBuild(s.g)).toBe(false); // too early in the age
+        advance(s.g, 360 * 3 + 5);
+        stillState(s.g).start = galaxyStarDate(s.g) - 3 * YEAR_LENGTH - 1;
+        x.stateMoney = SP.cost(s.g) * 2; // not enough
+        expect(aiMaybeBuild(s.g)).toBe(false);
+        x.stateMoney = SP.cost(s.g) * 4;
+        stillState(s.g).banned = true;
+        expect(aiMaybeBuild(s.g)).toBe(false);
+        stillState(s.g).banned = false;
+        expect(aiMaybeBuild(s.g)).toBe(true);
+        expect(engineOf(s.g)!.ownerId).toBe(x.empireId);
+        expect(aiMaybeBuild(s.g)).toBe(false); // one per galaxy
+        expect(s.me.stateMoney).toBeGreaterThan(0);
+    });
+
+    it('the chance is low by default', () => {
+        const s = setup();
+        const [x] = s.ais;
+        lean(x, 'protect');
+        stillState(s.g).start = galaxyStarDate(s.g) - 20 * YEAR_LENGTH;
+        let n = 0;
+        for (let i = 0; i < 200 && engineOf(s.g) === null; i++) if (aiMaybeBuild(s.g)) n++;
+        expect(n).toBeLessThanOrEqual(1);
+        expect(AP.chancePct(s.g)).toBeLessThanOrEqual(2);
     });
 });
