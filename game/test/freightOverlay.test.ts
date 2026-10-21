@@ -37,6 +37,7 @@ import {
     FLOW_ROUTES_GALAXY,
     FLOW_ROUTES_SECTOR,
     FreightOverlay,
+    clipSegmentToView,
     flowArcFor,
     flowColor,
     freightLeader,
@@ -296,6 +297,11 @@ describe('19e-9 overlay layout helpers', () => {
         expect(segmentInView(-5000, -5000, -4000, 5000, 1, cam)).toBe(false);
         expect(segmentInView(600, 600, 5000, 600, 1, cam)).toBe(false);
         expect(segmentInView(600, 0, 5000, 0, 1, cam, 200)).toBe(true); // within the padding
+        // The on-screen part (where the arrowhead goes): x -500..500 of -1500..2500.
+        const c = clipSegmentToView(-1500, 0, 2500, 0, 1, cam)!;
+        expect(c[0]).toBeCloseTo(0.25, 9);
+        expect(c[1]).toBeCloseTo(0.5, 9);
+        expect(clipSegmentToView(0, 0, 100, 0, 1, cam)).toEqual([0, 1]);
     });
 
     it('hub discs: top n in view the viewer knows, 5..20 px by income against the largest, owner colour', () => {

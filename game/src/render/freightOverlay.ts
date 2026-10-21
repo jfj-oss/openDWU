@@ -229,8 +229,9 @@ export interface CullRect {
     height: number;
 }
 
-/** Whether the segment (x1,y1)-(x2,y2) crosses the camera's world rect (Liang-Barsky clip), padded by `padPx`. */
-export function segmentInView(x1: number, y1: number, x2: number, y2: number, z: number, cam: CullRect, padPx = 0): boolean {
+/** The part of the segment (x1,y1)-(x2,y2) inside the camera's world rect padded by `padPx` (Liang-Barsky clip), as
+ * [t0, t1] along it, or null when it misses the rect. */
+export function clipSegmentToView(x1: number, y1: number, x2: number, y2: number, z: number, cam: CullRect, padPx = 0): [number, number] | null {
     const halfW = cam.width / (2 * z) + padPx / z;
     const halfH = cam.height / (2 * z) + padPx / z;
     const dx = x2 - x1;
@@ -241,19 +242,24 @@ export function segmentInView(x1: number, y1: number, x2: number, y2: number, z:
     const q = [x1 - (cam.x - halfW), cam.x + halfW - x1, y1 - (cam.y - halfH), cam.y + halfH - y1];
     for (let i = 0; i < 4; i++) {
         if (p[i] === 0) {
-            if (q[i] < 0) return false;
+            if (q[i] < 0) return null;
             continue;
         }
         const t = q[i] / p[i];
         if (p[i] < 0) {
-            if (t > t1) return false;
+            if (t > t1) return null;
             if (t > t0) t0 = t;
         } else {
-            if (t < t0) return false;
+            if (t < t0) return null;
             if (t < t1) t1 = t;
         }
     }
-    return true;
+    return [t0, t1];
+}
+
+/** Whether the segment (x1,y1)-(x2,y2) crosses the camera's world rect, padded by `padPx`. */
+export function segmentInView(x1: number, y1: number, x2: number, y2: number, z: number, cam: CullRect, padPx = 0): boolean {
+    return clipSegmentToView(x1, y1, x2, y2, z, cam, padPx) !== null;
 }
 
 /** Squared distance from (px, py) to the segment (ax, ay)-(bx, by). */
@@ -618,8 +624,15 @@ export class FreightOverlay {
             const max = this.shown[0]?.total ?? 0;
             this.widths = this.shown.map((r) => routeWidthPx(r.total, max));
             // Halos first (one pass, so no line's halo cuts across another line), then the lines smallest first.
-            for (let i = this.shown.length - 1; i >= 0; i--) this.drawRoute(f, this.shown[i], this.widths[i], z, true);
-            for (let i = this.shown.length - 1; i >= 0; i--) this.drawRoute(f, this.shown[i], this.widths[i], z, false);
+            // The arrowheads sit on the part of each line on screen (a long route's own middle is often off it), staggered
+            // between 35 % and 65 % of it so the heads of lines leaving one star do not bunch up.
+            const mids = this.shown.map((r, i) => {
+                const c = clipSegmentToView(r.ax, r.ay, r.bx, r.by, z, cam, -24);
+                const k = 0.35 + 0.3 * ((i * 0.618034) % 1);
+                return c === null ? 0.5 : c[0] + (c[1] - c[0]) * k;
+            });
+            for (let i = this.shown.length - 1; i >= 0; i--) this.drawRoute(f, this.shown[i], this.widths[i], z, true, mids[i]);
+            for (let i = this.shown.length - 1; i >= 0; i--) this.drawRoute(f, this.shown[i], this.widths[i], z, false, mids[i]);
         }
         const h = this.hubs;
         h.clear();
@@ -627,14 +640,15 @@ export class FreightOverlay {
         for (let i = this.discs.length - 1; i >= 0; i--) {
             const d = this.discs[i];
             const r = d.r / z;
-            circleAtScreenRes(h, d.x, d.y, r, z).stroke({ width: 4 / z, color: 0x000000, alpha: 0.5 });
-            circleAtScreenRes(h, d.x, d.y, r, z).fill({ color: d.color, alpha: 0.22 }).stroke({ width: 1.75 / z, color: d.color, alpha: 0.95 });
+            // Owner-colour disc in a white ring (over a dark halo): it reads apart from the owner-coloured faction rings.
+            circleAtScreenRes(h, d.x, d.y, r, z).stroke({ width: 4.5 / z, color: 0x000000, alpha: 0.55 });
+            circleAtScreenRes(h, d.x, d.y, r, z).fill({ color: d.color, alpha: 0.35 }).stroke({ width: 1.75 / z, color: 0xffffff, alpha: 0.9 });
         }
     }
 
-    /** One route: a straight line between the two ends (stopping short of the stars), an arrowhead at its middle
-     * pointing A → B, and a second one pointing back when the return leg carries FLOW_TWO_WAY_SHARE or more. */
-    private drawRoute(g: Graphics, r: FlowRoute, w: number, z: number, halo: boolean): void {
+    /** One route: a straight line between the two ends (stopping short of the stars), an arrowhead at `mid` (0..1 along
+     * it) pointing A → B, and a second one pointing back when the return leg carries FLOW_TWO_WAY_SHARE or more. */
+    private drawRoute(g: Graphics, r: FlowRoute, w: number, z: number, halo: boolean, mid: number): void {
         const dx = r.bx - r.ax;
         const dy = r.by - r.ay;
         const len = Math.hypot(dx, dy);
@@ -663,8 +677,8 @@ export class FreightOverlay {
             if (halo) g.poly(pts).stroke({ width: (2 * FLOW_HALO_PX) / z, color, alpha, join: 'round' });
             else g.poly(pts).fill({ color, alpha: 1 });
         };
-        const mx = (r.ax + r.bx) / 2;
-        const my = (r.ay + r.by) / 2;
+        const mx = r.ax + dx * mid;
+        const my = r.ay + dy * mid;
         head(mx + ux * (off + headLen / 2), my + uy * (off + headLen / 2), ux, uy);
         if (twoWay) head(mx - ux * (off + headLen / 2), my - uy * (off + headLen / 2), -ux, -uy);
     }
