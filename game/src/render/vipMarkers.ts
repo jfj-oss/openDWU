@@ -9,7 +9,8 @@ import type { MapOverlayState } from '../ui/mapOverlays';
 import { vipMarkers, type VipMarker } from '../sim/scenario/charactersVictory/vip';
 import { builtObjectVisibleToPlayer } from './fog';
 import { circleAtScreenRes } from './screenCircle';
-import { drawnPositionOf, type MotionInterpolator, type Point } from './renderInterp';
+import { drawnBuiltObjectPos, drawnPositionOf, type MotionInterpolator, type Point } from './renderInterp';
+import type { BuiltObject } from '../sim/builtObject';
 import { localViewerEmpire } from '../localViewer';
 
 /** The ring colour (a very dark orange) and its opacity: a faint marker, not a gold beacon. */
@@ -53,6 +54,16 @@ export class VipMarkerLayer {
         return g;
     }
 
+    /** Where the shuttle's symbol is drawn: the galaxy markers' position (drawnBuiltObjectPos), so the ring stays on the icon
+     *  at galaxy zoom too, where a ship that is not drawn as a sprite is sampled along its route instead of snapshot-lerped. */
+    private shuttlePos(bo: BuiltObject): Point {
+        if (this.motion === null) return drawnPositionOf(null, bo, this.pt);
+        const p = drawnBuiltObjectPos(this.motion, bo);
+        this.pt.x = p.x;
+        this.pt.y = p.y;
+        return this.pt;
+    }
+
     /** Re-reads the marker list 4 times a second; the rings follow the drawn ships every frame. */
     update(z: number): void {
         const g = this.g;
@@ -75,7 +86,7 @@ export class VipMarkerLayer {
         let n = 0;
         for (const m of this.list) {
             if (m.shuttle.hasBeenDestroyed) continue;
-            const p = drawnPositionOf(this.motion, m.shuttle, this.pt);
+            const p = this.shuttlePos(m.shuttle);
             if (this.state.vipTraffic && m.destination !== null) {
                 g.moveTo(p.x, p.y).lineTo(m.destination.x, m.destination.y).stroke({ width: 1.5 / z, color: VIP_RING_COLOR, alpha: 0.45 });
             }
@@ -105,7 +116,7 @@ export class VipMarkerLayer {
         const r = 14 / z;
         for (const m of this.list) {
             if (m.shuttle.hasBeenDestroyed) continue;
-            const p = drawnPositionOf(this.motion, m.shuttle, this.pt);
+            const p = this.shuttlePos(m.shuttle);
             if ((p.x - x) ** 2 + (p.y - y) ** 2 <= r * r) return m.label;
         }
         return null;

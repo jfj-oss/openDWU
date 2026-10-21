@@ -4,6 +4,8 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **VIP shuttle rings stay on the shuttle's icon** at every zoom (they used a different position from the icon: off the ship and jittery zoomed out).
+- **Waypoint and known-location icons shrink and fade as you zoom out** across the galaxy view (to 70 % size and 60 % opacity fully zoomed out).
 - **No more herd migration notifications** (The Rim fauna): the herds still migrate, without the news line and warning.
 - **The Founders' Compact seal is much fainter**, and zoomed out to the galaxy a threat marker on a world sits on its system's star instead of off to one side.
 - **Game Editor: finish a Great Work.** A "Finish" button for every Great Work under construction completes it at once through its normal completion (for the Beacon: the countdown to the first beam starts).

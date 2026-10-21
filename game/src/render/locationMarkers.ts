@@ -19,6 +19,7 @@
 
 import { Container, Graphics, Text } from 'pixi.js';
 import type { Camera } from './camera';
+import { SYSTEM_RING_MIN_FACTOR } from './galaxyMarkers';
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
 import { hintSource, hintSubject } from '../sim/player/hintSubjects';
@@ -306,7 +307,10 @@ export class LocationMarkerLayer {
                 this.rebuild(mapMarkers(this.galaxy, localViewerEmpire(this.galaxy), showW, showK, this.reveal));
             }
         }
-        const inv = 1 / z;
+        // Zoomed out across the galaxy view the icons shrink (to 70 %) and fade (to 60 %) (user 2026-10-20).
+        const far = galaxyZoomOutFraction(1 / z, 1 / cam.minZoom);
+        const inv = (1 - 0.3 * far) / z;
+        this.markersRoot.alpha = 1 - 0.4 * far;
         const halfW = cam.width / 2;
         const halfH = cam.height / 2;
         const kept = this.kept;
@@ -430,4 +434,10 @@ export class LocationMarkerLayer {
         this.order = [];
         this.root.destroy({ children: true });
     }
+}
+
+/** 0 at the galaxy band's start (SYSTEM_RING_MIN_FACTOR) to 1 fully zoomed out (`maxF`, the camera's 1/minZoom), by log zoom. */
+export function galaxyZoomOutFraction(f: number, maxF: number): number {
+    if (!(maxF > SYSTEM_RING_MIN_FACTOR) || f <= SYSTEM_RING_MIN_FACTOR) return 0;
+    return Math.min(1, Math.log(f / SYSTEM_RING_MIN_FACTOR) / Math.log(maxF / SYSTEM_RING_MIN_FACTOR));
 }

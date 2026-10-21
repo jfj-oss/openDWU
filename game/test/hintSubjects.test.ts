@@ -13,7 +13,7 @@ import { answerConversationReply, galaxyLocationKey } from '../src/sim/player/co
 import { builtObjectSubject, hintSource, hintSubject, locationSubject, ruinsSubject, subjectLabel } from '../src/sim/player/hintSubjects';
 import { hintSubjectOf, knownLocationTooltip, knownLocations } from '../src/sim/player/knownLocations';
 import { expectSameGame, inThread, inWorker } from './helpers/simWorkerSides';
-import { mapMarkers } from '../src/render/locationMarkers';
+import { galaxyZoomOutFraction, mapMarkers } from '../src/render/locationMarkers';
 
 let gameData: GameData;
 beforeAll(async () => {
