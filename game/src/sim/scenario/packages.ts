@@ -47,6 +47,8 @@ import './threats/silence';
 import './threats/giantworks/longNight'; // Giantworks: the Harvest Cycle's Long Night (flag gwHarvestCycle)
 import './threats/giantworks/beaconDesign'; // Giantworks: AI designs against the Reclaimers' plates
 import './threats/giantworks/beacon'; // Giantworks: the Beacon wonder (registers against the contract stub until the framework lands)
+import './threats/giantworks/corruptedDiet'; // Giantworks: the Harvest Cycle's corrupted empire, the Diet's side (flag gwHarvestCycle)
+import './threats/giantworks/corruptedAi'; // Giantworks: the Harvest Cycle's corrupted empire, its wars, raids, parks and leads (flag gwHarvestCycle)
 import './threats/crisis'; // crisis interactions: reputation for helping or ignoring, opportunists (reads every threat's faction)
 import './threats/crisisCouncil'; // crisis interactions: the council reacts (extension of emergent/council)
 import './lively/livelyGalaxy';
