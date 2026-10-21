@@ -275,6 +275,15 @@ export function isStoryRace(race: Race): boolean {
     return STORY_RACE_NAMES.includes(race.name);
 }
 
+/** Galaxy.1.cs DetermineSystemInfo's per-habitat `flag` test (the non-independent branch): the player can colonise the
+ * habitat (Empire.4.cs CanEmpireColonizeHabitat, with range, territory, colony-ship design or colonizable type), and it is
+ * worth it (quality >= 0.5, superluxury resources, or a ruin bonus). Read-only; the render's Potential Colonies overlay
+ * uses it too (overlayLayer.ts). */
+export function isPlayerPotentialColony(galaxy: Galaxy, playerEmpire: Empire, h: Habitat, colonizableHabitatTypes: readonly HabitatType[], latestColonyDesign: Design | null): boolean {
+    if (!(h.quality >= 0.5 || (h.resources != null && habitatResourcesHaveSuperLuxury(galaxy, h)) || (h.ruin !== null && (h.ruin.bonusDefensive > 0.0 || h.ruin.bonusDiplomacy > 0.0 || h.ruin.bonusHappiness > 0.0 || h.ruin.bonusResearchEnergy > 0.0 || h.ruin.bonusResearchHighTech > 0.0 || h.ruin.bonusResearchWeapons > 0.0 || h.ruin.bonusWealth > 0.0)))) return false;
+    return canEmpireColonizeHabitat(galaxy, playerEmpire, playerEmpire, h, colonizableHabitatTypes, latestColonyDesign);
+}
+
 export class Galaxy {
     rnd: Random;
     // Port of Galaxy.cs static CryptoRnd (CryptoRandom, unseeded). The C#
@@ -615,21 +624,7 @@ export class Galaxy {
             // C#: Empire == IndependentEmpire — also true while both are null.
             if (h.empire === this.independentEmpire) {
                 num4++;
-            } else if (
-                playerEmpire !== null &&
-                !flag &&
-                canEmpireColonizeHabitat(this, playerEmpire, playerEmpire, h, colonizableHabitatTypes, latestColonyDesign) &&
-                (h.quality >= 0.5 ||
-                    (h.resources != null && habitatResourcesHaveSuperLuxury(this, h)) ||
-                    (h.ruin !== null &&
-                        (h.ruin.bonusDefensive > 0.0 ||
-                            h.ruin.bonusDiplomacy > 0.0 ||
-                            h.ruin.bonusHappiness > 0.0 ||
-                            h.ruin.bonusResearchEnergy > 0.0 ||
-                            h.ruin.bonusResearchHighTech > 0.0 ||
-                            h.ruin.bonusResearchWeapons > 0.0 ||
-                            h.ruin.bonusWealth > 0.0)))
-            ) {
+            } else if (playerEmpire !== null && !flag && isPlayerPotentialColony(this, playerEmpire, h, colonizableHabitatTypes, latestColonyDesign)) {
                 flag = true;
             }
             if (h.empire !== null && h.empire !== this.independentEmpire) {
