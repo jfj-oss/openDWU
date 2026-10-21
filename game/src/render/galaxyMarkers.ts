@@ -766,8 +766,8 @@ async function buildSymbolAtlas(): Promise<{ frames: Texture[]; aspect: number[]
     return { frames, aspect };
 }
 
-/** The presence disc: a flat white disc (tinted per empire, drawn at PRESENCE_ALPHA) with an anti-aliased edge and
- * nothing else: no glow and no rim, so it reads as a flat patch of the empire's territory shade. */
+/** The presence disc: a flat white disc (tinted per empire; opaque in the empire layer's union group, which fades it to
+ * PRESENCE_ALPHA) with an anti-aliased edge and nothing else: no glow and no rim, a flat patch of the territory shade. */
 function buildDiscFallback(): Texture {
     const c = makeCanvas(DISC_SIZE, DISC_SIZE);
     const ctx = c.getContext('2d')!;
