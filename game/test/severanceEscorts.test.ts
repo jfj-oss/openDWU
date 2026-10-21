@@ -437,31 +437,43 @@ describe('the recruits are spare warships at home', () => {
         const s = setup();
         const mega = started(s);
         const [ai, raider] = s.ais;
+        s.g.scenario!.params.megaEscortBase = 50;
+        s.g.scenario!.params.megaEscortMax = 60;
+        s.g.scenario!.params.megaEscortHomePct = 0;
         contributor(s, ai);
         warOf(raider, ai);
         fly(s, ai, 4);
         place(warships(raider)[0], midOf(s, ai).x, midOf(s, ai).y);
-        rebuildIndexes(s.g);
         // the stock fleet maintenance folds the idle warships into fleets
         maintainShipGroups(s.g, ai);
-        const fleeted = new Set(warships(ai).filter((w) => w.shipGroup !== null));
-        expect(fleeted.size).toBeGreaterThan(0);
+        const fleeted = warships(ai).filter((w) => w.shipGroup !== null);
+        expect(fleeted.length).toBeGreaterThan(0);
+        // the fleets' ships are the nearest to the route's start: were they spares, they would be recruited first
+        const c = colonyOf(s, ai);
+        fleeted.forEach((w, i) => {
+            w.xpos = Math.round(c.x) + i * 10;
+            w.ypos = Math.round(c.y);
+        });
+        rebuildIndexes(s.g);
         DAYS(s.g, 1);
         const grp = escortGroupOf(mega, ai);
-        for (const w of grp?.ships ?? []) expect(fleeted.has(w)).toBe(false);
-        for (const w of fleeted) if (!(grp?.ships ?? []).includes(w)) expect(w.shipGroup).not.toBeNull();
+        expect(grp?.ships.length ?? 0).toBeGreaterThan(0);
+        for (const w of grp?.ships ?? []) expect(fleeted.includes(w)).toBe(false);
+        for (const w of fleeted) expect(w.shipGroup).not.toBeNull();
     });
 
     it('while at war, a spare warship near a war front stays home', () => {
         const s = setup();
         const mega = started(s);
         const [ai, raider] = s.ais;
+        s.g.scenario!.params.megaEscortBase = 50;
+        s.g.scenario!.params.megaEscortMax = 60;
+        s.g.scenario!.params.megaEscortHomePct = 0; // (every idle spare would be taken, but not one on a front)
         contributor(s, ai);
         warOf(raider, ai);
         fly(s, ai, 4);
         const mid = midOf(s, ai);
-        const threat = warships(raider)[0];
-        place(threat, mid.x, mid.y);
+        place(warships(raider)[0], mid.x, mid.y);
         // an idle warship of the empire sits on the raider: a war front
         const front = warships(ai)[0];
         place(front, mid.x + 500, mid.y);
@@ -481,15 +493,16 @@ describe('the recruits are spare warships at home', () => {
         warOf(raider, ai);
         fly(s, ai, 4);
         place(warships(raider)[0], midOf(s, ai).x, midOf(s, ai).y);
-        // all but four of its warships are away on missions: only four are at home
+        // four warships stay idle at home; the rest are away on missions
         const all = warships(ai);
-        const away = all.slice(0, all.length - 4);
-        for (const w of away) assignMission(s.g, w, BuiltObjectMissionType.Move, mega.base!, null, BuiltObjectMissionPriority.Normal, { manuallyAssigned: true });
+        for (const w of all.slice(0, 4)) place(w, w.xpos, w.ypos);
+        for (const w of all.slice(4)) assignMission(s.g, w, BuiltObjectMissionType.Move, mega.base!, null, BuiltObjectMissionPriority.Normal, { manuallyAssigned: true });
         rebuildIndexes(s.g);
         DAYS(s.g, 1);
-        // half of the four at home stay home: at most two recruits, though four are wanted
-        expect(escortGroupOf(mega, ai)?.ships.length ?? 0).toBeGreaterThan(0);
-        expect(escortGroupOf(mega, ai)!.ships.length).toBeLessThanOrEqual(2);
+        // half of the four at home stay home: two recruits at most, though four are wanted
+        const n = escortGroupOf(mega, ai)?.ships.length ?? 0;
+        expect(n).toBeGreaterThan(0);
+        expect(n).toBeLessThanOrEqual(2);
     });
 });
 
