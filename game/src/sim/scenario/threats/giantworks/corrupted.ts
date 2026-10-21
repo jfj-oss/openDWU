@@ -11,8 +11,10 @@
 //   - the leader's hidden thing (kind 'corruption', package giantworks.corrupted): an Internal Security lead on the leader (security.ts rolls
 //     it: corruptedAi.ts leadRolls, on its own stream). A CONFIRMED lead held by a human lets that human propose the exposure motion
 //     (corruptedDiet.ts). With the internalSecurity flag off there are no leads: exposure is then not possible.
-//   - the endings (endCorruption): exposed (the Diet), assassinated (the leader, by an agent's mission), captured (its capital taken). Each
-//     ends the corruption for good: the empire is a normal AI again, with a reputation scar (the ledger, decaying slowly).
+//   - the endings (endCorruption): exposed (the Diet), assassinated (the leader, by an agent's mission), captured (its capital taken by a
+//     captor; capitalLost when none did), freed (a human holds its seat: a player joined or took it back, checked every pass), gone (the empire
+//     was eliminated, quietly). Each ends the corruption for good: the empire is a normal AI again (or the human's), with a reputation scar
+//     (the ledger, decaying slowly); the hidden thing closes with it.
 // Rnd: none on galaxy.rnd. The choice and the rolls draw from age2Random streams seeded from the galaxy seed (salts below).
 
 import type { Galaxy } from '../../../galaxy';
@@ -77,8 +79,11 @@ export interface CorruptedState {
     chosen: boolean;
     /** Star date of the choice. */
     since: number;
-    /** How it ended ('' while it is corrupt): exposed by the Diet, its leader assassinated, its capital captured, or the empire gone. */
-    ended: '' | 'exposed' | 'assassinated' | 'captured' | 'gone';
+    /**
+     * How it ended ('' while it is corrupt): exposed by the Diet, its leader assassinated, its capital captured, its capital lost with no
+     * captor, the empire gone, or a human holding its seat (freed: a player joined or took the seat back).
+     */
+    ended: '' | 'exposed' | 'assassinated' | 'captured' | 'capitalLost' | 'gone' | 'freed';
     endDate: number;
     /** The human empire whose motion exposed it (-1: none). */
     exposedBy: number;
@@ -169,12 +174,20 @@ export function threatEmpireIds(galaxy: Galaxy): Set<number> {
     return ids;
 }
 
-/** The corrupted empire, while it is corrupt (null: none chosen, or the corruption has ended). Pure. */
-export function activeCorrupted(galaxy: Galaxy): Empire | null {
+/** The empire the live corruption names, whether it is still an AI empire or a human holds it now (null: none chosen, or it has ended). Pure. */
+export function liveEmpire(galaxy: Galaxy): Empire | null {
     const st = peekCorrupted(galaxy);
     if (st === null || st.empireId === null || st.ended !== '') return null;
-    const e = galaxy.empires.find((x): x is Empire => x !== null && x.empireId === st.empireId) ?? null;
-    return e !== null && e.active ? e : null;
+    return galaxy.empires.find((x): x is Empire => x !== null && x.empireId === st.empireId) ?? null;
+}
+
+/**
+ * The corrupted empire, while it is corrupt: alive, and run by the AI (a human who holds its seat frees it, see corruptedAi's pass). Null: none
+ * chosen, or the corruption has ended. Pure.
+ */
+export function activeCorrupted(galaxy: Galaxy): Empire | null {
+    const e = liveEmpire(galaxy);
+    return e !== null && e.active && !isHumanEmpire(galaxy, e) ? e : null;
 }
 
 export function isCorrupted(galaxy: Galaxy, e: Empire | null | undefined): boolean {
@@ -305,12 +318,13 @@ export function corruptedTallyObserver(galaxy: Galaxy, m: { kind: string; text: 
 // ---------------------------------------------------------------------------------------------------------------
 
 /**
- * The corruption ends for good: the empire is a normal AI again, its leader's hidden thing closes (its leads with it), every other empire's
- * regard for it takes a reputation scar, and the humans who knew of it (met it, or saw its pattern) are told. False when it was not corrupt.
+ * The corruption ends for good: the empire is a normal AI again (or, freed, a human's), its leader's hidden thing closes (its leads with it),
+ * every other empire's regard for it takes a reputation scar, and the humans who knew of it (met it, or saw its pattern) are told. False when
+ * it was not corrupt.
  */
-export function endCorruption(galaxy: Galaxy, cause: 'exposed' | 'assassinated' | 'captured' | 'gone', by: Empire | null = null): boolean {
+export function endCorruption(galaxy: Galaxy, cause: 'exposed' | 'assassinated' | 'captured' | 'capitalLost' | 'gone' | 'freed', by: Empire | null = null): boolean {
     const st = peekCorrupted(galaxy);
-    const e = activeCorrupted(galaxy);
+    const e = liveEmpire(galaxy);
     if (st === null || e === null) return false;
     const now = galaxyStarDate(galaxy);
     st.ended = cause;

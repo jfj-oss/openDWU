@@ -27,7 +27,7 @@ import { BuiltObjectMissionPriority, BuiltObjectMissionType } from '../../../mis
 import { isAiControlled } from '../../../missions/playerOrder';
 import { getEmpireById } from '../../../logistics/contracts';
 import { galaxyStarDate } from '../../../tick/simTime';
-import { humanEmpires } from '../../../humanEmpires';
+import { humanEmpires, isHumanEmpire } from '../../../humanEmpires';
 import { GAME_DAY_LENGTH, registerScenarioEvent, registerScenarioFramePeriodic } from '../../hooks';
 import { scenarioNews, scenarioText as T } from '../../messages';
 import { detectionChance, empireSecurityStrength, onLeadChanged } from '../../security/security';
@@ -47,6 +47,7 @@ import {
     corruptionOn,
     corruptionThing,
     endCorruption,
+    liveEmpire,
     recordAct,
     registerPreparationMotion,
     threatEmpireIds,
@@ -201,10 +202,17 @@ export function corruptedPass(galaxy: Galaxy): void {
         chooseCorrupted(galaxy);
         return;
     }
+    // A human holds its seat (a player joined, or took the seat back): the corruption ends at once, for good, and no AI acts on it again.
+    const held = liveEmpire(galaxy);
+    if (held !== null && isHumanEmpire(galaxy, held)) {
+        endCorruption(galaxy, 'freed');
+        return;
+    }
     const e = activeCorrupted(galaxy);
     if (e === null) {
-        // Its empire was eliminated (not by the Watchers' endings): the corruption is over, quietly.
+        // Its empire was eliminated (not by the Watchers' endings): the corruption is over, quietly, and its hidden thing closes with it.
         if (st.ended === '') {
+            if (held !== null) retireHiddenThing(galaxy, corruptionThing(galaxy, held), 'gone');
             st.ended = 'gone';
             st.endDate = now;
         }
@@ -232,9 +240,9 @@ export function onAssassinated(galaxy: Galaxy, c: Character, empire: Empire): vo
     endCorruption(galaxy, 'assassinated');
 }
 
-/** The corrupted empire lost its capital: the corruption ends. */
-export function onCorruptCapitalLost(galaxy: Galaxy, empire: Empire): void {
-    if (activeCorrupted(galaxy) === empire) endCorruption(galaxy, 'captured');
+/** The corrupted empire lost its capital: the corruption ends ('captured' when a captor took it, 'capitalLost' when nobody did). */
+export function onCorruptCapitalLost(galaxy: Galaxy, empire: Empire, capturer: Empire | null): void {
+    if (activeCorrupted(galaxy) === empire) endCorruption(galaxy, capturer !== null ? 'captured' : 'capitalLost');
 }
 
 // The Severance's motions are the preparation motions the corrupted empire votes against (megaStation.ts registers both kinds).
@@ -243,4 +251,4 @@ registerPreparationMotion(MOTION_MEGA_RESUME);
 registerDietTallyObserver((g, m) => corruptedTallyObserver(g, m));
 registerScenarioFramePeriodic({ id: 'corrupted.pass', flag: HARVEST_CYCLE_FLAG, order: 29, periodDays: 1, run: (g) => corruptedPass(g) });
 registerScenarioEvent({ id: 'corrupted.assassin', flag: HARVEST_CYCLE_FLAG, event: 'characterAssassinated', run: (g, e) => onAssassinated(g, e.character, e.empire) });
-registerScenarioEvent({ id: 'corrupted.capital', flag: HARVEST_CYCLE_FLAG, event: 'capitalLost', run: (g, e) => onCorruptCapitalLost(g, e.empire) });
+registerScenarioEvent({ id: 'corrupted.capital', flag: HARVEST_CYCLE_FLAG, event: 'capitalLost', run: (g, e) => onCorruptCapitalLost(g, e.empire, e.capturer) });

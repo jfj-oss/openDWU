@@ -20,7 +20,7 @@ import { scenarioText } from '../src/sim/scenario/messages';
 import { CharacterRole, getEmpireCharacters, type Character } from '../src/sim/characters';
 import { DiplomaticRelationType, obtainDiplomaticRelation, obtainEmpireEvaluation } from '../src/sim/diplomacy';
 import { declareWar } from '../src/sim/diplomacyTick';
-import { isHumanEmpire, isHumanSeat, setAiSeat, setHumanEmpires } from '../src/sim/humanEmpires';
+import { addHumanSeat, isHumanEmpire, isHumanSeat, setAiSeat, setHumanEmpires } from '../src/sim/humanEmpires';
 import { councilState, type Council } from '../src/sim/scenario/emergent/council';
 import { dietMotionKindDef, dietState, type DietMotion } from '../src/sim/scenario/charactersVictory/diet/dietState';
 import { dietPropose } from '../src/sim/scenario/charactersVictory/diet/diet';
@@ -387,6 +387,23 @@ describe('the three endings', () => {
         expect(isCorrupted(s.g, s.corrupt)).toBe(false);
     }, 600000);
 
+    it('a capital lost with no captor is capitalLost, not captured', () => {
+        const s = setup();
+        scenarioEmit(s.g, 'capitalLost', { empire: s.corrupt, colony: s.corrupt.capital!, capturer: null });
+        expect(peekCorrupted(s.g)!.ended).toBe('capitalLost');
+        expect(isCorrupted(s.g, s.corrupt)).toBe(false);
+    }, 600000);
+
+    it('a destroyed empire ends it as gone, and its hidden thing is retired (as the other endings retire it)', () => {
+        const s = setup();
+        const t = corruptionThing(s.g, s.corrupt)!;
+        s.corrupt.active = false;
+        corruptedPass(s.g);
+        expect(peekCorrupted(s.g)!.ended).toBe('gone');
+        expect(securityState(s.g).things.find((x) => x.id === t.id)!.retired).toBe(true);
+        expect(corruptionThing(s.g, s.corrupt)).toBeUndefined();
+    }, 600000);
+
     it('assassinated: an agent killing its leader ends it; killing another character does not', () => {
         const s = setup();
         const other = getEmpireCharacters(s.corrupt).find((c: Character) => c.role !== CharacterRole.Leader && c.active);
@@ -418,8 +435,44 @@ describe('the three endings', () => {
         const s = setup();
         const t = corruptionThing(s.g, s.corrupt)!;
         setLeadLevel(s.g, t, s.me, 'confirmed', 'roll');
-        onCorruptCapitalLost(s.g, s.corrupt);
+        onCorruptCapitalLost(s.g, s.corrupt, s.me);
         expect(securityState(s.g).leads.filter((l) => l.thingId === t.id).every((l) => l.closed)).toBe(true);
+    }, 600000);
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+describe('a human takes the corrupted empire', () => {
+    it('a player who joins and takes its seat ends the corruption at once (freed): no war for it afterwards, no vote against, the thing retired', () => {
+        const s = setup();
+        const t = corruptionThing(s.g, s.corrupt)!;
+        // a player joins the running game: the seats are the primary human and the AI empire the player takes (a multiplayer game)
+        setHumanEmpires(s.g, [s.me, s.ais[0]]);
+        expect(addHumanSeat(s.g, s.corrupt)).toBe(true);
+        expect(isHumanEmpire(s.g, s.corrupt)).toBe(true);
+        // at once, before any pass: no vote against it, and no longer the corrupt empire
+        expect(corruptedVoteScore(s.g, 37, s.corrupt, MOTION_MEGA, s.me)).toBe(37);
+        expect(activeCorrupted(s.g)).toBeNull();
+        corruptedPass(s.g);
+        expect(peekCorrupted(s.g)!.ended).toBe('freed');
+        expect(securityState(s.g).things.find((x) => x.id === t.id)!.retired).toBe(true);
+        // no war for it, however many passes and wherever the Scar lies
+        const target = s.ais.find((e) => e !== s.ais[0] && e.colonies.length > 0 && !atWar(e, s.corrupt))!;
+        remember(s.g, [target.colonies[0]]);
+        for (let i = 0; i < 3; i++) corruptedPass(s.g);
+        expect(atWar(s.corrupt, target)).toBe(false);
+        expect(s.st.wars.length).toBe(0);
+        // its votes against the preparation motions stop applying at once
+        expect(corruptedVoteScore(s.g, 37, s.corrupt, MOTION_MEGA, s.me)).toBe(37);
+        expect(isCorrupted(s.g, s.corrupt)).toBe(false);
+    }, 600000);
+
+    it('after the takeover a Diet vote against a preparation motion is no pattern act (the tally observer reads only the live corruption)', () => {
+        const s = setup();
+        setHumanEmpires(s.g, [s.me, s.ais[0]]);
+        addHumanSeat(s.g, s.corrupt);
+        corruptedTallyObserver(s.g, motion(s.g, MOTION_MEGA, s.me, s.me, [{ empire: s.corrupt, vote: 'no' }]));
+        expect(s.st.acts).toBe(0);
+        expect(s.st.votes.length).toBe(0);
     }, 600000);
 });
 

@@ -697,7 +697,7 @@ Stillness Locked Scrap;The Stillness Engine cannot be scrapped. To stop it, swit
 Stillness Locked Retrofit;The Stillness Engine cannot be refitted: its base is built around the dampers, and any change would wreck them.
 Stillness Protect War News;The {0} have declared war on the {1} for attacking the Stillness Engine near {2}.
 ' The Harvest Cycle's corrupted empire (giantworks/corrupted*.ts): the Diet motion, the war and pattern messages, the endings and the Knowledge rows.
-' TODO-PROSE (placeholders, the final prose is written by the user): Corrupt Pattern Title, Corrupt Pattern Body, Corrupt Pattern Vote, Corrupt Pattern War, Corrupt Pattern Raid, Corrupt Ended Title, Corrupt Ended Body, Corrupt Cause exposed, Corrupt Cause assassinated, Corrupt Cause captured, Corrupt Cause gone, Corrupt War News, Corrupt War Reason Scar, Corrupt War Reason Severance, Corrupt Motion Text, Corrupt Motion Effect, Corrupt Motion News, Corrupt Row Name, Corrupt Row Suspected, Corrupt Row Confirmed, Corrupt Row Ended, Security Kind corruption, Reputation Cause giantworks.corrupted
+' TODO-PROSE (placeholders, the final prose is written by the user): Corrupt Pattern Title, Corrupt Pattern Body, Corrupt Pattern Vote, Corrupt Pattern War, Corrupt Pattern Raid, Corrupt Ended Title, Corrupt Ended Body, Corrupt Cause exposed, Corrupt Cause assassinated, Corrupt Cause captured, Corrupt Cause gone, Corrupt Cause capitalLost, Corrupt Cause freed, Corrupt War News, Corrupt War Reason Scar, Corrupt War Reason Severance, Corrupt Motion Text, Corrupt Motion Effect, Corrupt Motion News, Corrupt Row Name, Corrupt Row Suspected, Corrupt Row Confirmed, Corrupt Row Ended, Security Kind corruption, Reputation Cause giantworks.corrupted
 Corrupt Pattern Title;Something in the Diet
 Corrupt Pattern Body;{0} keeps doing things that do not add up: {1}. Nothing is proven yet.
 Corrupt Pattern Vote;{0} voted against {1}.
@@ -708,6 +708,8 @@ Corrupt Ended Body;{0} has stopped: {1}.
 Corrupt Cause exposed;exposed in the Diet
 Corrupt Cause assassinated;its leader was assassinated
 Corrupt Cause captured;its capital was taken
+Corrupt Cause capitalLost;its capital was lost
+Corrupt Cause freed;a human took its seat
 Corrupt Cause gone;the empire is gone
 Corrupt War News;{0} declares war on {1}, because of {2}.
 Corrupt War Reason Scar;the old harvest world at {0}
