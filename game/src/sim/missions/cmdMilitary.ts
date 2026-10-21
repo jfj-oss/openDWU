@@ -167,7 +167,7 @@ export const cmdEscort: CommandHandler = (ctx) => {
         threatEvaluation(galaxy, bo, ctx.time);
     }
     const targetMission = builtObjectMission(targetBuiltObject5.mission);
-    if (targetMission === null || targetMission.type === BuiltObjectMissionType.Undefined) {
+    if ((targetMission === null || targetMission.type === BuiltObjectMissionType.Undefined) && !scenarioQuery(galaxy, 'escortCommandHeld', false, { builtObject: bo, target: targetBuiltObject5 })) {
         mission.completeCommand();
         bo.firstExecutionOfCommand = true;
     }

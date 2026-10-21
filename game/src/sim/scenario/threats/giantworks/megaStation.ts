@@ -56,13 +56,13 @@ import { spawnShip } from './beaconFleet';
 import { compactFaction } from './state';
 import { galaxyAgeOf } from './longNightState';
 import { harvestPledges, severanceVoteBonus } from './agePrep';
-import { escortAtArrival, escortStep, escortsFreight, keepEscortsOnDelivery, releaseEscorts, supplyEscorts } from './megaEscort';
+import { escortAtArrival, escortHeld, escortStep, escortsFreight, keepEscortsOnDelivery, releaseEscorts, supplyEscorts } from './megaEscort';
 import { warCreditEscort } from './beaconWarCredit';
 
 export const MOTION_MEGA = 'megaBuild';
 export const MOTION_MEGA_RESUME = 'megaResume';
 export const MEGA_HANDLER_IDS = ['beacon.megaStep'] as const;
-export const MEGA_QUERY_IDS = ['beacon.megaInvulnerable', 'beacon.escortRefuel', 'beacon.escortFleet'] as const;
+export const MEGA_QUERY_IDS = ['beacon.megaInvulnerable', 'beacon.escortRefuel', 'beacon.escortFleet', 'beacon.escortHeld'] as const;
 const TAG = 'Mega';
 /** A freighter within this distance of the structure has delivered. */
 export const MEGA_DELIVER_RANGE = 9000;
@@ -811,4 +811,5 @@ export function registerMega(): void {
     registerScenarioQuery({ id: 'beacon.megaInvulnerable', flag: BEACON_FLAG, query: 'builtObjectInvulnerable', run: (g, v, a) => v || isMegaBase(g, a.builtObject) });
     registerScenarioQuery({ id: 'beacon.escortRefuel', flag: BEACON_FLAG, query: 'shipRefuelExempt', run: (g, v, a) => v || escortsFreight(g, a.builtObject) });
     registerScenarioQuery({ id: 'beacon.escortFleet', flag: BEACON_FLAG, query: 'shipFleetExempt', run: (g, v, a) => v || escortsFreight(g, a.builtObject) });
+    registerScenarioQuery({ id: 'beacon.escortHeld', flag: BEACON_FLAG, query: 'escortCommandHeld', run: (g, v, a) => v || escortHeld(g, a.builtObject, a.target) });
 }

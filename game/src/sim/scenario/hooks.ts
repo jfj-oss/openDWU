@@ -682,6 +682,8 @@ export interface ScenarioQueries {
     shipRefuelExempt: { value: boolean; args: { builtObject: BuiltObject } };
     /** fleets/shipGroupTasks.ts maintainShipGroups: true = the ship is not folded into a stock fleet (the Severance's escorts keep their own missions: a fleet's waypoint or refuel would override them). Stock false. Pure; never draws. */
     shipFleetExempt: { value: boolean; args: { builtObject: BuiltObject } };
+    /** missions/cmdMilitary.ts cmdEscort: true = the Escort command is not ended when its target's mission has ended (the Severance's escorts, whose freight arrives under them: the delivery is counted a moment later). Stock false. Pure; never draws. */
+    escortCommandHeld: { value: boolean; args: { builtObject: BuiltObject; target: BuiltObject } };
     /** 19j: movement.ts rechargeReactors (BuiltObject.1.cs 2509 RechargeReactors): true = recharging burns no fuel. */
     builtObjectSelfFuelling: { value: boolean; args: { builtObject: BuiltObject } };
     /**

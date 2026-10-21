@@ -17,9 +17,10 @@
 //   SPARES    only idle warships of the empire (no mission) that it can spare: it keeps megaEscortHomePct % of its warships at home, and never takes
 //             one on a war mission (Attack, Blockade, Refuel...). A group ship left on an Undefined, Escort, Patrol or Move mission (the stock AI
 //             sends an idle ship home by a Move) is re-tasked; a fight, a repair or a refuel is left alone.
-//   KEEP      a delivered freighter's escort (a group ship, or a player's order still on Escort to it) goes on Patrol of the structure at once
-//             (keepEscortsOnDelivery): the stock Escort command would end with its freighter's mission and hand the ship to automation. Kept on
-//             guard, a player's escort is supplied and not refuelled, as a group's ships are (escortsFreight, supplyEscorts).
+//   KEEP      a freighter's mission ends when it arrives, a moment before its delivery is counted, and the stock Escort command would end with it
+//             and hand the escort to automation: the command is held while the freight is at the structure (escortHeld, cmdEscort). A delivered
+//             freighter's escort (a group ship, or a player's order still on Escort to it) goes on Patrol of the structure at once
+//             (keepEscortsOnDelivery). Kept on guard, a player's escort is supplied and not refuelled, as a group's ships are (escortsFreight).
 //   CREDIT    an arrival with an armed warship within megaEscortNear of it, on an Escort mission (any empire's) or a member of an escort group of the
 //             structure (counted by assignment, so a group ship re-tasked a moment before still counts), is an escorted delivery: the escort's owner gets
 //             war credit (beaconWarCredit.ts), and the structure counts it (MegaRec.escorted).
@@ -163,6 +164,19 @@ function freightTarget(galaxy: Galaxy, mega: MegaRec, t: BuiltObject): boolean {
     if (mega.contracts.some((c) => c.ship === t)) return true;
     const base = mega.base;
     return base !== undefined && base !== null && !base.hasBeenDestroyed && galaxy.calculateDistance(t.xpos, t.ypos, base.xpos, base.ypos) <= P.megaEscortNear(galaxy);
+}
+
+/**
+ * The stock Escort command ends once its freighter's mission has ended (cmdEscort), and a freighter's mission ends when it arrives at the structure, a
+ * moment before its delivery is counted (megaStep, daily). So a group ship or a player's escort still on its Escort to a freighter of the Severance's
+ * freight keeps the command there; the delivery then puts it on Patrol (keepEscortsOnDelivery). Pure.
+ */
+export function escortHeld(galaxy: Galaxy, bo: BuiltObject, target: BuiltObject): boolean {
+    const mega = peekBeaconState(galaxy)?.mega;
+    if (mega === undefined || mega.status === 'dormant' || mega.status === 'fired') return false;
+    const m = builtObjectMission(bo.mission);
+    const ours = (m !== null && m.playerOrdered === true) || Object.values(mega.escorts ?? {}).some((g) => g.ships.includes(bo));
+    return ours && freightTarget(galaxy, mega, target);
 }
 
 /**

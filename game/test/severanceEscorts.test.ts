@@ -10,6 +10,7 @@ import type { BuiltObject } from '../src/sim/builtObject';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission } from '../src/sim/missions/mission';
 import { assignMission } from '../src/sim/missions/assign';
+import { executeCommands } from '../src/sim/missions/executeCommands';
 import type { CreateGameOptions, Game } from '../src/sim/game';
 import { comboOverlayFs, createScenarioGame } from './helpers/scenarioGame';
 import { GAME_DAY_LENGTH } from '../src/sim/scenario/hooks';
@@ -400,6 +401,36 @@ describe('the player escorts a contract freighter', () => {
         checkForRefuelling(s.g, w, true);
         expect(builtMission(w)).toBe('Patrol');
         expect(w.refuelForNextMission).toBeFalsy();
+    });
+});
+
+describe('the escort of a freighter that has arrived', () => {
+    it('keeps its Escort command when its freighter\'s mission has ended on arrival, before the delivery is counted: the escort is then put on guard', () => {
+        const s = setup();
+        const mega = started(s);
+        const me = s.me;
+        const [f] = fly(s, me, 1);
+        const w = warships(me)[0];
+        place(w, f.xpos, f.ypos);
+        assignMission(s.g, w, BuiltObjectMissionType.Escort, f, null, BuiltObjectMissionPriority.Normal, { manuallyAssigned: true });
+        markPlayerOrder(w);
+        rebuildIndexes(s.g);
+        // the freighter arrives: its Move ends (the stock arrival), a moment before the daily megaStep counts the delivery
+        const base = mega.base!;
+        f.xpos = base.xpos;
+        f.ypos = base.ypos;
+        builtObjectMission(f.mission)?.clear();
+        w.xpos = base.xpos + 500;
+        w.ypos = base.ypos;
+        rebuildIndexes(s.g);
+        for (let i = 0; i < 6; i++) executeCommands(s.g, w, 1, 0, galaxyStarDate(s.g)); // (the escort's own ticks)
+        expect(builtMission(w)).toBe('Escort');
+        expect(builtObjectMission(w.mission)!.targetBuiltObject).toBe(f);
+        // the delivery is counted with the escort still beside it, and the escort goes on guard
+        DAYS(s.g, 1);
+        expect(mega.escorted).toBe(1);
+        expect(builtMission(w)).toBe('Patrol');
+        expect(isAiControlled(w)).toBe(false);
     });
 });
 
