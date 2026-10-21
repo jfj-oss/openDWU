@@ -255,11 +255,13 @@ describe('sim worker chunk 3: the trade-flow ledger through the host', () => {
         expect((rl.freighterDestination as unknown as Map<BuiltObject, StellarObject>).size).toBe(live.size);
         console.log(`[sw chunk 3] ${rl.entries.length} flow series, version ${rl.version}, ${live.size} freighters in flight`);
 
-        // Recording off: the worker drops its listener and ledger; the replica reads null at once.
+        // Sync off: the replica reads null at once; the worker keeps recording (the overlay has the flows the moment it
+        // is turned back on).
         disableTradeFlowRecording(rg);
         expect(tradeFlowLedger(rg)).toBeNull();
-        expect(w.host.tradeFlows.isRecording).toBe(false);
-        expect(tradeFlowLedger(game.galaxy)).toBeNull();
+        expect(w.host.tradeFlows.isPublishing).toBe(false);
+        expect(w.host.tradeFlows.isRecording).toBe(true);
+        expect(tradeFlowLedger(game.galaxy)).toBe(authLedger);
         // Back on before the "off" synced: the old view is not shown again; a fresh placeholder is.
         const again = enableTradeFlowRecording(rg, galaxyStarDate(rg));
         expect(again).not.toBe(rl);
@@ -269,11 +271,15 @@ describe('sim worker chunk 3: the trade-flow ledger through the host', () => {
         const fresh = tradeFlowLedger(rg)!;
         expect(fresh).not.toBe(rl);
         expect(fresh).not.toBe(again);
-        expect(fresh.startStarDate).toBe(galaxyStarDate(game.galaxy));
+        // The whole ledger recorded since the host started, at once.
+        expect(fresh.startStarDate).toBe(refLedger.startStarDate);
+        expect(canonicalLedger(fresh)).toBe(canonicalLedger(refLedger));
         disableTradeFlowRecording(rg);
         w.settle();
         expect((w.client.replica.decoder.object(1) as Record<string, unknown>)[TRADE_FLOWS_SIDE_KEY]).toBeUndefined();
         disableTradeFlowRecording(ref.galaxy);
+        w.client.dispose();
+        w.host.dispose();
         expect(contractListenersActive()).toBe(false);
     }, 1_200_000);
 

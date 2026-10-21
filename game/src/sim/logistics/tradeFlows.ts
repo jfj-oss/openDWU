@@ -157,6 +157,39 @@ export function recordContract(galaxy: Galaxy | null, ledger: TradeFlowLedger, e
     e.postToY = ev.destination.ypos;
     if (ev.freighter !== null) ledger.freighterDestination.set(ev.freighter, ev.destination);
     ledger.version++;
+    // Recording runs for the whole game (render/freightOverlay.ts), so series that fell out of every window are dropped
+    // now and then: the ledger holds what the last FLOW_MONTHS months traded, not the whole game.
+    if ((ledger.version & (PRUNE_EVERY - 1)) === 0) pruneTradeFlowLedger(ledger, ev.starDate);
+}
+
+/** Contracts between two prunes (a power of two). */
+export const PRUNE_EVERY = 4096;
+
+/**
+ * Drop the series whose last contract is older than the FLOW_MONTHS-month window as of `nowStarDate` (they add nothing
+ * to any query). `entries` is spliced in place: the sim worker's synced view shares the array (tradeFlowSync.ts).
+ */
+export function pruneTradeFlowLedger(ledger: TradeFlowLedger, nowStarDate: number): number {
+    const cutoff = (monthIndex(nowStarDate) - FLOW_MONTHS + 1) * MONTH_LENGTH;
+    let w = 0;
+    const list = ledger.entries;
+    for (let i = 0; i < list.length; i++) {
+        const e = list[i];
+        if (e.lastStarDate >= cutoff) {
+            list[w++] = e;
+            continue;
+        }
+        const byDest = ledger.index.get(e.sellingPoint);
+        const byCommodity = byDest?.get(e.destination);
+        if (byCommodity !== undefined) {
+            byCommodity.delete(commodityKey(e.resourceId, e.componentId));
+            if (byCommodity.size === 0) byDest!.delete(e.destination);
+            if (byDest!.size === 0) ledger.index.delete(e.sellingPoint);
+        }
+    }
+    const removed = list.length - w;
+    list.length = w;
+    return removed;
 }
 
 // ---------------------------------------------------------------------------
@@ -223,6 +256,11 @@ export function disableTradeFlowRecording(galaxy: Galaxy): void {
         unregister = null;
         enabledCount = 0;
     }
+}
+
+/** True when the galaxy is a sim-worker replica: its ledger is recorded in the worker and synced on request. */
+export function tradeFlowsRemote(galaxy: Galaxy): boolean {
+    return remotes.has(galaxy);
 }
 
 export function tradeFlowLedger(galaxy: Galaxy): TradeFlowLedger | null {
@@ -312,8 +350,10 @@ export interface FlowRow {
     /** Set for post-level rows (and system rows made of a single post pair). */
     sellingPoint: StellarObject | null;
     destination: StellarObject | null;
-    /** Commodities in this flow, largest value first. */
+    /** Commodities in this flow, largest value first (-1: components). */
     resourceIds: number[];
+    /** Value of each of `resourceIds` over the window (same order). */
+    resourceValues: number[];
     /** Category of the largest commodity. */
     category: FlowCategory;
     value: number;
@@ -398,6 +438,7 @@ export function flowsInWindow(
                     sellingPoint: e.sellingPoint,
                     destination: e.destination,
                     resourceIds: [],
+                    resourceValues: [],
                     category: cat,
                     value: 0,
                     amount: 0,
@@ -432,6 +473,7 @@ export function flowsInWindow(
         const r = a.row;
         const commodities = [...a.byCommodity.entries()].sort((x, y) => y[1] - x[1] || x[0] - y[0]);
         r.resourceIds = commodities.map((c) => c[0]);
+        r.resourceValues = commodities.map((c) => c[1]);
         const top = commodities[0][0];
         r.category = categoryOf(top, top < 0 ? (a.comp.keys().next().value ?? -1) : -1);
         r.valuePerYear = (r.value * 12) / effMonths;

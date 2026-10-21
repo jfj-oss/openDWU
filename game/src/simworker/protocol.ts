@@ -151,8 +151,8 @@ export interface CommandLogRequest {
 }
 
 /**
- * Trade-flow recording on / off (render/freightOverlay.ts through sim/logistics/tradeFlows.ts setRemoteTradeFlows): not
- * a player command (in-thread it is not journaled either; it observes contracts and changes no sim state).
+ * Trade-flow ledger sync on / off (render/freightOverlay.ts through sim/logistics/tradeFlows.ts setRemoteTradeFlows; the
+ * worker records contracts all game, tradeFlowSync.ts, and syncs the ledger while `record` is on): not a player command (in-thread it is not journaled either; it observes contracts and changes no sim state).
  */
 export interface TradeFlowsMessage {
     type: 'tradeFlows';

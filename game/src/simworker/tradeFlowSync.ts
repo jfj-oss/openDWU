@@ -4,8 +4,9 @@
 // Trade Flows panel (ui/screens/tradeFlows.ts) read the ledger, which sim/logistics/tradeFlows.ts keeps in a module
 // WeakMap beside the galaxy, outside the object graph. In worker mode the contracts are made in the worker, so:
 //
-// - **Worker** (TradeFlowSyncSource): the main thread's `tradeFlows` message switches recording on the authoritative
-//   galaxy. The ledger is synced as a side table: a view object in the side-tables root (`TRADE_FLOWS_SIDE_KEY`)
+// - **Worker** (TradeFlowSyncSource): contracts are recorded on the authoritative galaxy from the host's start (so the
+//   overlay has a year of flows the moment it is turned on); the main thread's `tradeFlows` message switches whether
+//   the ledger is synced. It is synced as a side table: a view object in the side-tables root (`TRADE_FLOWS_SIDE_KEY`)
 //   that shares the ledger's `entries` array (diffed in place, like any synced array) and carries `version`,
 //   `startStarDate` and the freighters' contract destinations. The sim keeps those in a WeakMap, which cannot be
 //   iterated, so the view holds a Map of the live freighters with contracts (all the overlay's leaders read),
@@ -40,36 +41,44 @@ export interface TradeFlowSyncView {
     startStarDate: number;
 }
 
-/** Worker side: recording on the authoritative galaxy and the side-table view of its ledger. */
+/** Worker side: recording on the authoritative galaxy (always) and the side-table view of its ledger (on request). */
 export class TradeFlowSyncSource {
-    private recording = false;
+    private publishing = false;
     private view: TradeFlowSyncView | null = null;
     private viewOf: TradeFlowLedger | null = null;
     private ticksSinceRefresh = 0;
+    private disposed = false;
 
     constructor(
         private readonly galaxy: Galaxy,
         /** Sets (or clears, with null) the view in the side-tables root. */
         private readonly publish: (view: TradeFlowSyncView | null) => void,
-    ) {}
-
-    get isRecording(): boolean {
-        return this.recording;
+    ) {
+        // The recorder only observes contracts (no graph write, no Rnd): recording from the start moves no digest.
+        enableTradeFlowRecording(galaxy, galaxyStarDate(galaxy));
     }
 
-    /** The main thread's toggle. The ledger starts at the worker's own star date (in-thread: the overlay's). */
+    /** Whether contracts are being recorded (from construction until dispose). */
+    get isRecording(): boolean {
+        return !this.disposed;
+    }
+
+    /** Whether the ledger is synced to the main thread (the freight overlay / Trade Flows panel asked for it). */
+    get isPublishing(): boolean {
+        return this.publishing;
+    }
+
+    /** The main thread's toggle: sync the ledger (recorded since the host started) or stop syncing it. */
     setRecording(on: boolean): void {
-        if (on === this.recording) return;
-        this.recording = on;
-        if (on) enableTradeFlowRecording(this.galaxy, galaxyStarDate(this.galaxy));
-        else disableTradeFlowRecording(this.galaxy);
+        if (on === this.publishing || this.disposed) return;
+        this.publishing = on;
         this.refresh(true);
     }
 
-    /** Before each delta: keep the view current (cheap unless the ledger changed). */
+    /** Before each delta: keep the view current (cheap unless the ledger changed; nothing while not publishing). */
     refresh(force = false): void {
         this.ticksSinceRefresh++;
-        const ledger = this.recording ? tradeFlowLedger(this.galaxy) : null;
+        const ledger = this.publishing ? tradeFlowLedger(this.galaxy) : null;
         if (ledger === null) {
             if (this.view !== null) {
                 this.view = null;
@@ -94,8 +103,9 @@ export class TradeFlowSyncSource {
     }
 
     dispose(): void {
-        if (this.recording) disableTradeFlowRecording(this.galaxy);
-        this.recording = false;
+        if (!this.disposed) disableTradeFlowRecording(this.galaxy);
+        this.disposed = true;
+        this.publishing = false;
         this.view = null;
         this.viewOf = null;
     }
