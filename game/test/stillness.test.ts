@@ -31,10 +31,11 @@ import { availableThreatActions, runThreatAction } from '../src/sim/scenario/thr
 import { longNightState } from '../src/sim/scenario/threats/giantworks/longNightState';
 import {
     ACTION_BUILD, ACTION_OFF, ACTION_ON, SP, beaconFinished, cannotBuild, engineOf, engineProgress, engineRunning, startEngine, stillState, stillnessActive,
-    demolishLegal, stillnessFactor, stillnessKnowledgeRows, stillnessStep,
+    LAW_DEMOLISH_STILL, STILL_KEY, demolishLegal, peekStill, stillnessFactor, stillnessKnowledgeRows, stillnessStep,
 } from '../src/sim/scenario/threats/giantworks/stillness';
 import { AP, aiMaybeBuild, attackEngine, engineLean, isolationist, sendPatrol, sideOf, stillnessReview } from '../src/sim/scenario/threats/giantworks/stillnessAi';
-import { MOTION_DEMOLISH } from '../src/sim/scenario/threats/giantworks/stillnessDiet';
+import { dietView } from '../src/sim/scenario/charactersVictory/diet/dietView';
+import { MOTION_DEMOLISH, MOTION_SILENCE } from '../src/sim/scenario/threats/giantworks/stillnessDiet';
 
 let base: GameData;
 beforeAll(async () => {
@@ -413,5 +414,129 @@ describe('the AI builders', () => {
         for (let i = 0; i < 200 && engineOf(s.g) === null; i++) if (aiMaybeBuild(s.g)) n++;
         expect(n).toBeLessThanOrEqual(1);
         expect(AP.chancePct(s.g)).toBeLessThanOrEqual(2);
+    });
+});
+
+/** An AI-owned Engine, running. */
+function runningEngine(s: Setup, owner: Empire = s.ais[0]): void {
+    startEngine(s.g, owner, colonyOf(owner));
+    advance(s.g, 360 * 5 + 1);
+    stillnessStep(s.g);
+    expect(engineRunning(s.g)).toBe(true);
+}
+
+describe('Silence the Stillness Engine', () => {
+    it('may be moved for a running Engine of an AI owner only; the owner votes no, the destroyers yes, the protectors no; it switches the Engine off', () => {
+        const s = setup();
+        const [owner, a, b] = s.ais;
+        const def = dietMotionKindDef(MOTION_SILENCE)!;
+        expect(def.proposable!(s.g)).toBe(false); // no Engine
+        startEngine(s.g, owner, colonyOf(owner));
+        expect(def.proposable!(s.g)).toBe(false); // still building
+        advance(s.g, 360 * 5 + 1);
+        stillnessStep(s.g);
+        expect(def.proposable!(s.g)).toBe(true);
+        expect(dietView(s.g, s.me)!.proposable.some((k) => k.kind === MOTION_SILENCE)).toBe(true);
+        lean(a, 'destroy');
+        lean(b, 'protect');
+        standing(s.g, a, owner, -40);
+        standing(s.g, b, owner, 40);
+        const m = { id: 1, kind: MOTION_SILENCE, proposer: s.me, target: null, other: null, colony: null, resourceId: -1, text: '', votes: [], status: 'voting', yes: 0, no: 0 } as unknown as DietMotion;
+        expect(def.voteScore(s.g, dietState(s.g), owner, m)).toBe(-100);
+        expect(def.voteScore(s.g, dietState(s.g), s.me, m)).toBe(100);
+        expect(def.voteScore(s.g, dietState(s.g), a, m)).toBeGreaterThan(5);
+        expect(def.voteScore(s.g, dietState(s.g), b, m)).toBeLessThan(-5);
+        expect(def.candidates!(s.g, dietState(s.g), a).length).toBe(1);
+        expect(def.candidates!(s.g, dietState(s.g), b)).toEqual([]);
+        pass(s.g, MOTION_SILENCE, s.me);
+        expect(engineOf(s.g)!.status).toBe('off');
+        expect(stillnessFactor(s.g)).toBe(1);
+        expect(def.proposable!(s.g)).toBe(false);
+    });
+
+    it('is not offered for the player\'s own Engine (the player switches it off at will)', () => {
+        const s = setup();
+        runningEngine(s, s.me);
+        expect(dietMotionKindDef(MOTION_SILENCE)!.proposable!(s.g)).toBe(false);
+    });
+});
+
+describe('Demolish the Stillness Engine', () => {
+    it('makes destroying it legal for members and bans a new one for ever, even if the law is repealed', () => {
+        const s = setup();
+        const def = dietMotionKindDef(MOTION_DEMOLISH)!;
+        expect(def.proposable!(s.g)).toBe(false); // nothing to demolish
+        runningEngine(s);
+        expect(def.proposable!(s.g)).toBe(true);
+        const [owner, a, b] = s.ais;
+        lean(a, 'destroy');
+        lean(b, 'protect');
+        standing(s.g, a, owner, -60);
+        standing(s.g, b, owner, 60);
+        const m = { id: 1, kind: MOTION_DEMOLISH, proposer: a, target: null, other: null, colony: null, resourceId: -1, text: '', votes: [], status: 'voting', yes: 0, no: 0 } as unknown as DietMotion;
+        expect(def.voteScore(s.g, dietState(s.g), owner, m)).toBe(-100);
+        expect(def.voteScore(s.g, dietState(s.g), b, m)).toBeLessThan(-5);
+        expect(def.candidates!(s.g, dietState(s.g), a).length).toBe(1);
+        expect(demolishLegal(s.g, a)).toBe(false);
+        pass(s.g, MOTION_DEMOLISH, a);
+        expect(lawInForce(peekDietState(s.g), LAW_DEMOLISH_STILL)).not.toBeNull();
+        expect(demolishLegal(s.g, a)).toBe(true);
+        expect(demolishLegal(s.g, s.me)).toBe(true);
+        expect(stillState(s.g).banned).toBe(true);
+        expect(def.proposable!(s.g)).toBe(false);
+        // destroyed: no new one, ever
+        const eng = engineOf(s.g)!;
+        eng.base!.hasBeenDestroyed = true;
+        stillnessStep(s.g);
+        expect(engineOf(s.g)).toBeNull();
+        expect(cannotBuild(s.g, b, colonyOf(b))).toBe('banned');
+        expect(startEngine(s.g, b, colonyOf(b))).toBe(false);
+        expect(availableThreatActions(s.g, s.me, colonyOf(s.me)).some((x) => x.kind === ACTION_BUILD)).toBe(false);
+        expect(aiMaybeBuild(s.g)).toBe(false);
+        peekDietState(s.g)!.laws = [];
+        expect(cannotBuild(s.g, b, colonyOf(b))).toBe('banned');
+        expect(stillnessKnowledgeRows(s.g).some((r) => r.key === 'still:banned')).toBe(true);
+    });
+});
+
+describe('the Knowledge page rows', () => {
+    it('list the Engine, its owner, status and effect; nothing before it exists', () => {
+        const s = setup();
+        expect(stillnessKnowledgeRows(s.g)).toEqual([]);
+        startEngine(s.g, s.ais[0], colonyOf(s.ais[0]));
+        const rows = stillnessKnowledgeRows(s.g);
+        expect(rows.map((r) => r.key)).toEqual(['still:engine', 'still:owner', 'still:effect']);
+        expect(rows[0].status).toContain('under construction');
+        advance(s.g, 360 * 5 + 1);
+        stillnessStep(s.g);
+        const done = stillnessKnowledgeRows(s.g);
+        expect(done[0].status).toBe('running');
+        expect(done[2].status).toContain('50%');
+        engineOf(s.g)!.status = 'off';
+        expect(stillnessKnowledgeRows(s.g)[0].status).toBe('switched off');
+    });
+});
+
+describe('the save', () => {
+    it('keeps the Engine, its sides, the ban and the clock through a round trip', () => {
+        const s = setup();
+        runningEngine(s);
+        const eng = engineOf(s.g)!;
+        eng.sides = { '1': 'protect', '2': 'destroy' };
+        eng.warOver = [2];
+        stillState(s.g).banned = true;
+        const back = deserializeGame(serializeGame(s.game, new GalaxyTime(), {} as StartGameOptions), savedData).game.galaxy;
+        const st = back.scenario!.state[STILL_KEY] as NonNullable<ReturnType<typeof peekStill>>;
+        expect(st.banned).toBe(true);
+        expect(st.engine!.status).toBe('running');
+        expect(st.engine!.ownerId).toBe(eng.ownerId);
+        expect(st.engine!.sides).toEqual({ '1': 'protect', '2': 'destroy' });
+        expect(st.engine!.warOver).toEqual([2]);
+        expect(st.engine!.base).not.toBeNull();
+        expect(st.engine!.base!.hasBeenDestroyed).toBe(false);
+        expect(back.empires.some((e) => e !== null && e.builtObjects.includes(st.engine!.base!))).toBe(true);
+        expect(stillnessFactor(back)).toBeCloseTo(0.5);
+        stillnessStep(back); // keeps running after the load
+        expect(engineRunning(back)).toBe(true);
     });
 });
