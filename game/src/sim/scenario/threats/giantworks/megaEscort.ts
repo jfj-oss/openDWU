@@ -49,6 +49,25 @@ import { compactFaction } from './state';
 
 const DAY = GAME_DAY_LENGTH;
 
+/**
+ * The group ships of a structure as a Set: the stock queries ask about one ship at a time, many times a tick. Rebuilt after each change of the groups
+ * (dropGroupSetMemo, at each escortStep and release), so it never outlives a change.
+ */
+const groupSetMemo = new WeakMap<MegaRec, Set<BuiltObject>>();
+
+function groupShipSet(mega: MegaRec): Set<BuiltObject> {
+    let set = groupSetMemo.get(mega);
+    if (set === undefined) {
+        set = new Set<BuiltObject>(Object.values(mega.escorts ?? {}).flatMap((g) => g.ships));
+        groupSetMemo.set(mega, set);
+    }
+    return set;
+}
+
+function dropGroupSetMemo(mega: MegaRec): void {
+    groupSetMemo.delete(mega);
+}
+
 /** The escort group of `e` (its record in mega.escorts), if it has one. */
 export function escortGroupOf(mega: MegaRec, e: Empire): MegaEscortGroup | undefined {
     return mega.escorts?.[String(e.empireId)];
@@ -196,7 +215,7 @@ function pruneGuards(galaxy: Galaxy, mega: MegaRec, now: number): void {
 export function escortsFreight(galaxy: Galaxy, bo: BuiltObject): boolean {
     const mega = peekBeaconState(galaxy)?.mega;
     if (mega === undefined || mega.status === 'dormant' || mega.status === 'fired' || !P.megaEscortOn(galaxy)) return false;
-    if (Object.values(mega.escorts ?? {}).some((g) => g.ships.includes(bo))) return true; // an AI escort group: its ships are supplied for the run
+    if (groupShipSet(mega).has(bo)) return true; // an AI escort group: its ships are supplied for the run
     const m = builtObjectMission(bo.mission);
     if (m === null) return false;
     if (m.type === BuiltObjectMissionType.Patrol) {
@@ -225,31 +244,30 @@ export function escortHeld(galaxy: Galaxy, bo: BuiltObject, target: BuiltObject)
     const mega = peekBeaconState(galaxy)?.mega;
     if (mega === undefined || mega.status === 'dormant' || mega.status === 'fired' || !P.megaEscortOn(galaxy)) return false;
     const m = builtObjectMission(bo.mission);
-    const ours = (m !== null && m.playerOrdered === true) || Object.values(mega.escorts ?? {}).some((g) => g.ships.includes(bo));
+    const ours = (m !== null && m.playerOrdered === true) || groupShipSet(mega).has(bo);
     return ours && freightTarget(galaxy, mega, target);
 }
 
 /**
- * The escorts of the freight are supplied as the freight is (stepContracts keeps a contract freighter's fuel full): an Escort-mission warship, of any
- * empire, within megaEscortNear of a contract freighter has its fuel kept full, so the stock refuel does not pull it off the escort on the way in.
+ * The escorts of the freight are supplied as the freight is (stepContracts keeps a contract freighter's fuel full): the group ships and the guards
+ * (escortsFreight) have their fuel kept full, and so does an Escort-mission warship, of any empire, on a contract freighter (one pass over the empires'
+ * warships per tick), so the stock refuel does not pull the escort off the freight on the way in.
  */
 export function supplyEscorts(galaxy: Galaxy, mega: MegaRec): void {
-    const base = mega.base;
-    const freight = new Set<BuiltObject>(mega.contracts.map((c) => c.ship));
-    if (base !== undefined && base !== null && !base.hasBeenDestroyed) {
-        for (const f of getNearbyBuiltObjects(galaxy, base.xpos, base.ypos, P.megaEscortNear(galaxy))) if (f != null && f.role === BuiltObjectRole.Freight && freightTarget(galaxy, mega, f)) freight.add(f);
-    }
     for (const g of Object.values(mega.escorts ?? {})) for (const w of g.ships) if (!w.hasBeenDestroyed && w.fuelCapacity > 0) w.currentFuel = w.fuelCapacity;
     for (const g of mega.guards ?? []) {
         const w = g.ship;
         if (!w.hasBeenDestroyed && w.fuelCapacity > 0 && escortsFreight(galaxy, w)) w.currentFuel = w.fuelCapacity;
     }
-    for (const f of freight) {
-        if (f.hasBeenDestroyed) continue;
-        for (const w of getNearbyBuiltObjects(galaxy, f.xpos, f.ypos, P.megaEscortNear(galaxy))) {
-            if (w == null || w === f || w.hasBeenDestroyed || !(w.fuelCapacity > 0)) continue;
+    const freight = new Set<BuiltObject>(mega.contracts.map((c) => c.ship));
+    if (freight.size === 0) return;
+    // one pass over the warships of the empires per tick: an Escort-mission warship on a contract freighter has its fuel kept full
+    for (const e of galaxy.empires) {
+        if (e === null) continue;
+        for (const w of e.builtObjects) {
+            if (w == null || w.hasBeenDestroyed || !(w.fuelCapacity > 0)) continue;
             const m = builtObjectMission(w.mission);
-            if (m !== null && m.type === BuiltObjectMissionType.Escort && m.targetBuiltObject === f) w.currentFuel = w.fuelCapacity;
+            if (m !== null && m.type === BuiltObjectMissionType.Escort && m.targetBuiltObject !== null && freight.has(m.targetBuiltObject)) w.currentFuel = w.fuelCapacity;
         }
     }
 }
@@ -260,6 +278,7 @@ function releaseGroup(galaxy: Galaxy, mega: MegaRec, key: string): void {
     if (grp === undefined) return;
     for (const w of grp.ships) freeEscort(galaxy, w);
     delete mega.escorts![key];
+    dropGroupSetMemo(mega);
 }
 
 /** Releases every group (the structure is done, dormant or gone). */
@@ -349,20 +368,26 @@ function escortFor(galaxy: Galaxy, mega: MegaRec, e: Empire, base: BuiltObject, 
  * and points each contributing AI empire's group. Nothing happens without an escort switch, a structure with a base, or a contributor.
  */
 export function escortStep(galaxy: Galaxy, mega: MegaRec, base: BuiltObject, now: number, blockade: boolean): void {
-    if (!P.megaEscortOn(galaxy)) {
-        releaseEscorts(galaxy, mega); // switched off mid-game: the groups go home at this step
-        delete mega.guards;
-        return;
-    }
-    pruneGuards(galaxy, mega, now);
-    for (const key of Object.keys(mega.escorts ?? {})) {
-        const e = getEmpireById(galaxy, Number(key));
-        if (e === null || !escortContributing(galaxy, mega, e, now)) releaseGroup(galaxy, mega, key);
-    }
-    for (const id of mega.contributors) {
-        const e = getEmpireById(galaxy, id);
-        if (e === null || !escortContributing(galaxy, mega, e, now)) continue;
-        escortFor(galaxy, mega, e, base, now, blockade);
+    dropGroupSetMemo(mega);
+    try {
+        if (!P.megaEscortOn(galaxy)) {
+            releaseEscorts(galaxy, mega); // switched off mid-game: the groups go home at this step
+            delete mega.guards;
+            return;
+        }
+        pruneGuards(galaxy, mega, now);
+        for (const key of Object.keys(mega.escorts ?? {})) {
+            const e = getEmpireById(galaxy, Number(key));
+            if (e === null || !escortContributing(galaxy, mega, e, now)) releaseGroup(galaxy, mega, key);
+        }
+        for (const id of mega.contributors) {
+            const e = getEmpireById(galaxy, id);
+            if (e === null || !escortContributing(galaxy, mega, e, now)) continue;
+            escortFor(galaxy, mega, e, base, now, blockade);
+            dropGroupSetMemo(mega);
+        }
+    } finally {
+        dropGroupSetMemo(mega);
     }
 }
 
@@ -373,7 +398,7 @@ export function escortStep(galaxy: Galaxy, mega: MegaRec, base: BuiltObject, now
  * released; a player's order stays a player's order. Empires by index, ships by array order. Rnd: none.
  */
 export function keepEscortsOnDelivery(galaxy: Galaxy, mega: MegaRec, base: BuiltObject, freighter: BuiltObject): void {
-    const members = new Set<BuiltObject>(Object.values(mega.escorts ?? {}).flatMap((g) => g.ships));
+    const members = groupShipSet(mega);
     for (const e of galaxy.empires) {
         if (e === null) continue;
         for (const w of e.builtObjects) {

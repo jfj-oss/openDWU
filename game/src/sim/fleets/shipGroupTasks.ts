@@ -3397,7 +3397,7 @@ export function maintainShipGroups(galaxy: Galaxy, empire: Empire): void {
     let builtObjectList: BuiltObject[] = [];
     for (let i = 0; i < empire.builtObjects.length; i++) {
         const bo = empire.builtObjects[i];
-        if (bo != null && FLEET_SUB_ROLES.includes(bo.subRole) && !scenarioQuery(galaxy, 'shipFleetExempt', false, { builtObject: bo })) builtObjectList.push(bo);
+        if (bo != null && FLEET_SUB_ROLES.includes(bo.subRole) && !(galaxy.scenario !== null && scenarioQuery(galaxy, 'shipFleetExempt', false, { builtObject: bo }))) builtObjectList.push(bo);
     }
     const builtObjectList2: BuiltObject[] = [];
     for (const item of builtObjectList) {

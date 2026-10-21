@@ -32,7 +32,7 @@ import { P, peekBeaconState, type BeaconState } from '../src/sim/scenario/threat
 import { partsOf } from '../src/sim/scenario/threats/giantworks/beaconComponents';
 import type { GreatWorkSite } from '../src/sim/scenario/threats/giantworks/framework';
 import { MOTION_MEGA, fire, megaStep, peekMega, voidPointNear } from '../src/sim/scenario/threats/giantworks/megaStation';
-import { escortAtArrival, escortGroupCount, escortGroupOf, escortHeld, escortsFreight, supplyEscorts } from '../src/sim/scenario/threats/giantworks/megaEscort';
+import { escortAtArrival, escortGroupCount, escortGroupOf, escortHeld, escortsFreight, releaseEscorts, supplyEscorts } from '../src/sim/scenario/threats/giantworks/megaEscort';
 import { WC, warCreditActive, warCreditLabel, warCreditOf } from '../src/sim/scenario/threats/giantworks/beaconWarCredit';
 import { dietMotionKindDef, type DietMotion } from '../src/sim/scenario/charactersVictory/diet/dietState';
 
@@ -410,6 +410,25 @@ describe('only freight is held, supplied and credited', () => {
         DAYS(s.g, 1);
         expect(mega.contracts.some((c) => c.ship === f)).toBe(false);
         expect(mega.escorted).toBe(1);
+    });
+});
+
+describe('the exemption follows the groups at once', () => {
+    it('a released group\'s ships are not exempt from the stock refuel or fleets at once (the group set is not stale)', () => {
+        const s = setup();
+        const mega = started(s);
+        const [ai, raider] = s.ais;
+        contributor(s, ai);
+        warOf(raider, ai);
+        fly(s, ai, 4);
+        place(warships(raider)[0], midOf(s, ai).x, midOf(s, ai).y);
+        rebuildIndexes(s.g);
+        DAYS(s.g, 1);
+        const grp = escortGroupOf(mega, ai)!;
+        expect(grp.ships.length).toBeGreaterThan(0);
+        for (const w of grp.ships) expect(escortsFreight(s.g, w)).toBe(true);
+        releaseEscorts(s.g, mega);
+        for (const w of grp.ships) expect(escortsFreight(s.g, w)).toBe(false);
     });
 });
 
