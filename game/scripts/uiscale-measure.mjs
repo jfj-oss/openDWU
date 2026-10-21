@@ -8,6 +8,8 @@ const [base = 'http://localhost:5173/', outDir = 'shots/uiscale', sizes = '1920x
 mkdirSync(outDir, { recursive: true });
 const browser = await chromium.launch({
     executablePath: process.env.CHROMIUM || '/usr/bin/chromium',
+    // Playwright's default --hide-scrollbars would hide every scroll bar in the screenshots (and make them 0 px wide).
+    ignoreDefaultArgs: ['--hide-scrollbars'],
     args: ['--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist', '--enable-gpu'],
 });
 const kinds = (process.env.KIND ?? 'planet,ship').split(',');

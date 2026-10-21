@@ -74,6 +74,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 - **The Reclamation rolls out from the Beacon.** Every season's strike groups now pick their targets from the worlds nearest the Beacon (no longer spread one per empire) and cluster round the first pick, and the Watcher fleets' offensives favour the nearer worlds, so the conquest is one wave spreading outward rather than skirmishes all over the galaxy.
 - **A detected cloaked Watcher stays a mystery.** Spotting a cloaked Watcher now shows only its faint outline and the bend in the stars: no icon, ring or map symbol, and a fleet it leads loses its fleet icon. If you click it, the panel and the stacked-object list say only "Unidentified contact": no name, empire, design or stats. It returns to normal once it has fully decloaked. Only with the Beacon on.
 - **Every moving Reclaimer ship shows its lilac engine plumes.** Before, only the 4 biggest on screen had them, so most of a fleet flew without. Reclaimer troop transports and explorers get their own ship art in the fleet's style, and construction and supply ships get plumes too. Only with the Beacon on.
+- **Scroll bars at large UI scales.** The left toolbar's category column and the View list show a thin, faint scroll bar (left and right) when they are taller than their room. The toolbar column also scrolls with the mouse wheel now: at the large scales its lower buttons could not be reached before.
 
 ## 0.1.33
 
