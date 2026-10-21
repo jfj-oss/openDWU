@@ -93,6 +93,8 @@ describe('war credit in the Galactic Diet', () => {
         const foundry = st.foundries!.list[0];
         scenarioEmit(g, 'foundryDestroyed', { empire: me, foundry });
         expect(rec.points[String(me.empireId)].foundries).toBe(30);
+        scenarioEmit(g, 'depotDestroyed', { empire: me, depot: { id: 1 } as never });
+        expect(rec.points[String(me.empireId)].depots).toBe(10);
         warCreditPeople(g, st, me, 4_000_000);
         expect(rec.points[String(me.empireId)].freed).toBeCloseTo(4, 9);
         warCreditRefugees(g, others[1], 6_000_000);

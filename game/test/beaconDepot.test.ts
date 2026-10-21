@@ -23,6 +23,11 @@ import { coresOf, designateCore, fuelOf } from '../src/sim/scenario/threats/gian
 import { D, depotCap, depotCountFor, depotPass, depotShare, depotSummary, depotThreats, depotsDestroyedBy, depotsKnownTo, liveDepots, perCore } from '../src/sim/scenario/threats/giantworks/beaconDepot';
 import { foundryCountFor } from '../src/sim/scenario/threats/giantworks/beaconFoundry';
 import { empireMessages } from '../src/sim/messages';
+import { coalitionMembers, coalitionPass } from '../src/sim/scenario/threats/giantworks/beaconAi';
+import { registerScenarioQuery } from '../src/sim/scenario/hooks';
+import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
+import { BuiltObjectMissionType, builtObjectMission } from '../src/sim/missions/mission';
+import { rebuildIndexes } from '../src/sim/indexRebuild';
 import { knowledgeView } from '../src/ui/knowledgeView';
 
 let base: GameData;
@@ -335,5 +340,46 @@ describe('the Reclaimer biofuel depots', () => {
         expect(liveDepots(ls).length).toBe(liveDepots(st).length);
         expect(fuelOf(ls).fleet).toBeCloseTo(fuelOf(st).fleet, 6);
         expect(depotsDestroyedBy(lg, lg.playerEmpire!)).toBe(1);
+    }, 600000);
+
+    it('the AI coalition strikes a depot it can see, and only with a force that beats it by the ratio', () => {
+        const w = world();
+        const { g, st } = w;
+        withDepots(w);
+        const d = liveDepots(st)[0];
+        const base = d.base!;
+        st.popEliminated = st.popBaseline * 0.2;
+        g.scenario!.params.beaconAiSharePct = 100;
+        g.scenario!.params.beaconAiRatioPct = 100000;
+        g.scenario!.params.beaconAiCoreRatioPct = 100000;
+        const ai = coalitionMembers(g, st)[0];
+        const war = ai.builtObjects.filter((b) => !b.hasBeenDestroyed && b.role === BuiltObjectRole.Military && b.topSpeed > 0 && b.warpSpeed > 0);
+        expect(war.length).toBeGreaterThan(0);
+        for (const b of war) {
+            b.xpos = base.xpos + 4000;
+            b.ypos = base.ypos;
+        }
+        rebuildIndexes(g);
+        registerScenarioQuery({ id: 'test.depotSee', flag: 'zzTestSeeDepot', query: 'objectVisibleToAll', run: (_g, v, x) => v || (x.object as unknown) === base });
+        g.scenario!.flags.zzTestSeeDepot = true;
+        // a hopeless ratio: nothing is sent
+        g.scenario!.params.beaconAiDepotRatioPct = 1e9;
+        coalitionPass(g);
+        expect(st.stats.aiDepot ?? 0).toBe(0);
+        // switched off: nothing even with a tiny ratio
+        g.scenario!.params.beaconAiDepotRatioPct = 1;
+        g.scenario!.params.beaconAiDepotOn = 0;
+        coalitionPass(g);
+        expect(st.stats.aiDepot ?? 0).toBe(0);
+        g.scenario!.params.beaconAiDepotOn = 1;
+        coalitionPass(g);
+        g.scenario!.flags.zzTestSeeDepot = false;
+        expect(st.stats.aiDepot).toBeGreaterThan(0);
+        expect(st.stats.aiDepot).toBeLessThanOrEqual(2); // beaconAiDepotMax
+        const atDepot = war.some((b) => {
+            const m = ((b.shipGroup as { mission?: unknown } | null)?.mission ?? builtObjectMission(b.mission)) as { type: number; targetBuiltObject: unknown } | null;
+            return m !== null && m.type === BuiltObjectMissionType.Attack && m.targetBuiltObject === base;
+        });
+        expect(atDepot).toBe(true);
     }, 600000);
 });

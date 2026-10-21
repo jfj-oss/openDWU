@@ -581,6 +581,7 @@ export interface BeaconStats {
     troopRegiments?: number;
     aiCattle?: number;
     aiCore?: number;
+    aiDepot?: number;
     aiRetake?: number;
     /** Siphon and purge: tech-5 knowledge siphoned in all; purges attempted / won / lost; dwells restarted after an attack. */
     siphoned?: number;
@@ -835,7 +836,7 @@ export function newStats(): BeaconStats {
         planetsDestroyed: 0, popDrained: 0, popDestroyed: 0, raids: 0, offers: 0, accepted: 0, refused: 0, discoveries: 0, salvageSteps: 0, stagingHits: 0, thrallIntercepted: 0,
         stagingSeen: 0, retaken: 0, aiStrikes: 0, aiRelief: 0, stagingKills: 0, watcherRehomed: 0,
         coresDesignated: 0, coresRetaken: 0, coresBroken: 0, coresLost: 0, cattleLaunched: 0, cattleArrived: 0, cattleKilled: 0, cattleBoarded: 0, captivesKilled: 0, captivesFreed: 0, captivesRescued: 0,
-        processed: 0, fuelIncome: 0, fuelShips: 0, fuelTroops: 0, troopRegiments: 0, aiCattle: 0, aiCore: 0, aiRetake: 0,
+        processed: 0, fuelIncome: 0, fuelShips: 0, fuelTroops: 0, troopRegiments: 0, aiCattle: 0, aiCore: 0, aiDepot: 0, aiRetake: 0,
         siphoned: 0, purgeTried: 0, purgeFailed: 0, dwellResets: 0, moratoriums: 0, moratoriumBreaches: 0, escortLight: 0, escortMid: 0, escortHeavy: 0, escortBuilt: 0, escortLost: 0,
     };
 }
@@ -1243,6 +1244,10 @@ export const P = {
     aiCattleReachSectors: (g: Galaxy) => p(g, 'beaconAiCattleReachSectors', 3),
     aiCattleMax: (g: Galaxy) => Math.max(0, Math.trunc(p(g, 'beaconAiCattleMax', 6))),
     aiCoreRatioPct: (g: Galaxy) => p(g, 'beaconAiCoreRatioPct', 150),
+    /** The coalition strikes Reclaimer biofuel depots (on / off, force as % of the depot and its guard, depots struck at once); lightest priority: the force left after every other operation. */
+    aiDepotOn: (g: Galaxy) => p(g, 'beaconAiDepotOn', 1),
+    aiDepotRatioPct: (g: Galaxy) => p(g, 'beaconAiDepotRatioPct', 200),
+    aiDepotMax: (g: Galaxy) => Math.max(0, Math.trunc(p(g, 'beaconAiDepotMax', 2))),
     aiRetakeOn: (g: Galaxy) => p(g, 'beaconAiRetakeOn', 1),
     salvageKill: (g: Galaxy) => p(g, 'beaconSalvageKill', 1),
     salvageBoard: (g: Galaxy) => p(g, 'beaconSalvageBoard', 6),

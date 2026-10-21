@@ -52,6 +52,7 @@ import { calculateDefendingStrength, determineRequiredTroopStrength, findNearest
 import { shipGroupTotalOverallStrengthFactor } from '../../../fleets/shipGroup';
 import { isAiControlled } from '../../../missions/playerOrder';
 import { isSmarterAIStrategist } from '../../smarterAI/common';
+import { liveDepots } from './beaconDepot';
 import { warCreditAiFactor } from './beaconWarCredit';
 
 const TAG = 'Beacon';
@@ -544,6 +545,52 @@ function cores(p: Pass): number {
     return sent;
 }
 
+/**
+ * DEPOTS (the lightest priority: it runs last, on the units no other operation took): a Reclaimer biofuel depot a member can see, struck as a core is
+ * (gather, then all at once) with beaconAiDepotRatioPct % of the depot, its guard and the warships near it, and only when that force can be had.
+ * At most beaconAiDepotMax depots at once. Returns the strikes on.
+ */
+function depots(p: Pass): number {
+    const { galaxy, st } = p;
+    if (P.aiDepotOn(galaxy) <= 0) return 0;
+    const max = P.aiDepotMax(galaxy);
+    const now = galaxyStarDate(galaxy);
+    const live = new Set<string>();
+    let sent = 0;
+    for (const d of liveDepots(st)) {
+        const base = d.base;
+        if (base === null || base.hasBeenDestroyed) continue;
+        const key = `depot:${d.id}`;
+        live.add(key);
+        if (!p.members.some((e) => isObjectVisibleToThisEmpire(galaxy, e, base))) continue;
+        const op = opState(st, key);
+        const active = op.wx !== undefined;
+        if (!active && op.cooldown !== undefined && now < op.cooldown) continue;
+        if (!active && sent >= max) continue;
+        const enemy = strengthOf(base) + factionStrengthNear(p, base.xpos, base.ypos, GUARD_RADIUS);
+        const need = (enemy * P.aiDepotRatioPct(galaxy) * (1 - 0.3 * p.urg)) / 100;
+        const got = pick(p, base.xpos, base.ypos, need, P.aiReachSectors(galaxy) * galaxy.sectorSize, null, active ? 0.4 : 1);
+        if (got === null) {
+            abort(op, now, active);
+            continue;
+        }
+        if (active && !op.go && op.since !== undefined && now - op.since > PATIENCE_DAYS * GAME_DAY_LENGTH) {
+            abort(op, now, true);
+            continue;
+        }
+        const was = op.go;
+        if (gatherAndStrike(p, key, got.units, need, base, P.aiStagingGatherPct(galaxy))) {
+            sent++;
+            if (!was) {
+                st.stats.aiDepot = (st.stats.aiDepot ?? 0) + 1;
+                st.stats.aiStrikes = (st.stats.aiStrikes ?? 0) + 1;
+            }
+        }
+    }
+    for (const k of Object.keys(st.ai?.ops ?? {})) if (k.startsWith('depot:') && !live.has(k)) delete st.ai!.ops[k];
+    return sent;
+}
+
 /** CATTLE: free units near a cattle ship a member can see, that can catch it before it docks, are sent at it (one per ship). */
 function cattle(p: Pass): number {
     const { galaxy, st } = p;
@@ -648,6 +695,7 @@ export function coalitionPass(galaxy: Galaxy): number {
     for (const c of liveCores(st)) if (c.harvester !== null) targets.add(c.harvester);
     for (const c of cattleOf(st)) targets.add(c.ship);
     if (beacon !== null) targets.add(beacon);
+    for (const d of liveDepots(st)) if (d.base !== null) targets.add(d.base);
     for (const g of groupsInFlight(st)) if (g.target !== null) targets.add(starOf(galaxy, g.target));
     for (const op of Object.values(st.ai?.ops ?? {})) {
         const star = op.rally >= 0 ? galaxy.systems[op.rally]?.systemStar ?? null : null;
@@ -669,6 +717,7 @@ export function coalitionPass(galaxy: Galaxy): number {
         n += relief(p);
         n += cattle(p);
         n += watchers(p);
+        n += depots(p);
     }
     releaseIdle(galaxy, st, p, onOrder);
     return n;

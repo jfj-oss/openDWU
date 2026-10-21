@@ -32,8 +32,8 @@ import { strengthOf } from './beaconFleet';
 
 const TAG = 'Beacon';
 
-export type WarCreditKind = 'warships' | 'capitals' | 'watchers' | 'harvesters' | 'foundries' | 'cores' | 'freed' | 'refugees' | 'cattle';
-export const WAR_CREDIT_KINDS: readonly WarCreditKind[] = ['warships', 'capitals', 'watchers', 'harvesters', 'foundries', 'cores', 'freed', 'refugees', 'cattle'];
+export type WarCreditKind = 'warships' | 'capitals' | 'watchers' | 'harvesters' | 'foundries' | 'depots' | 'cores' | 'freed' | 'refugees' | 'cattle';
+export const WAR_CREDIT_KINDS: readonly WarCreditKind[] = ['warships', 'capitals', 'watchers', 'harvesters', 'foundries', 'depots', 'cores', 'freed', 'refugees', 'cattle'];
 
 export const WAR_CREDIT_LABEL: Record<WarCreditKind, string> = {
     warships: 'warships',
@@ -41,6 +41,7 @@ export const WAR_CREDIT_LABEL: Record<WarCreditKind, string> = {
     watchers: 'Watchers',
     harvesters: 'harvesters',
     foundries: 'foundries',
+    depots: 'biofuel depots',
     cores: 'cores retaken',
     freed: 'people freed',
     refugees: 'refugees saved',
@@ -77,6 +78,8 @@ export const WC = {
     watcher: (g: Galaxy) => scenarioParam(g, 'beaconWarCreditWatcher', 40),
     harvester: (g: Galaxy) => scenarioParam(g, 'beaconWarCreditHarvester', 15),
     foundry: (g: Galaxy) => scenarioParam(g, 'beaconWarCreditFoundry', 30),
+    /** A biofuel depot destroyed (beaconDepot.ts). */
+    depot: (g: Galaxy) => scenarioParam(g, 'beaconWarCreditDepot', 10),
     core: (g: Galaxy) => scenarioParam(g, 'beaconWarCreditCore', 30),
     cattle: (g: Galaxy) => scenarioParam(g, 'beaconWarCreditCattle', 3),
     freedPerMillion: (g: Galaxy) => scenarioParam(g, 'beaconWarCreditFreedPerMillion', 1),
@@ -168,6 +171,11 @@ export function warCreditKilled(g: Galaxy, st: BeaconState, bo: BuiltObject, des
 /** A foundry was destroyed by `empire`. */
 export function warCreditFoundry(g: Galaxy, st: BeaconState, empire: Empire | null): void {
     warCreditAdd(g, st, empire, 'foundries', WC.foundry(g));
+}
+
+/** A biofuel depot was destroyed by `empire`. */
+export function warCreditDepot(g: Galaxy, st: BeaconState, empire: Empire | null): void {
+    warCreditAdd(g, st, empire, 'depots', WC.depot(g));
 }
 
 /** A harvest core was retaken by `by`, with `freed` people released from its pens. */
@@ -331,6 +339,10 @@ export function registerWarCredit(): void {
     registerScenarioEvent({ id: 'beacon.warCreditFoundry', flag: BEACON_FLAG, event: 'foundryDestroyed', run: (g, e) => {
         const st = peekBeaconState(g);
         if (st !== null) warCreditFoundry(g, st, e.empire);
+    } });
+    registerScenarioEvent({ id: 'beacon.warCreditDepot', flag: BEACON_FLAG, event: 'depotDestroyed', run: (g, e) => {
+        const st = peekBeaconState(g);
+        if (st !== null) warCreditDepot(g, st, e.empire);
     } });
     dietWarCreditLine.fn = dietLine;
 }
