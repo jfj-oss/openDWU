@@ -22,7 +22,7 @@ import type { Character } from '../../../characters';
 import { CharacterRole, getEmpireCharacters } from '../../../characters';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../../../diplomacy';
 import { EmpireMessageType } from '../../../messages';
-import { humanEmpires, isHumanEmpire } from '../../../humanEmpires';
+import { humanEmpires, isHumanEmpire, isHumanSeat } from '../../../humanEmpires';
 import { galaxyStarDate } from '../../../tick/simTime';
 import { scenarioFlag, scenarioParam, scenarioState } from '../../state';
 import { scenarioMessage, scenarioText as T } from '../../messages';
@@ -233,7 +233,7 @@ export function pickCorrupted(galaxy: Galaxy): Empire | null {
     const members = council === null ? null : dietMembership(galaxy, council);
     const eligible: Empire[] = [];
     for (const e of all) {
-        if (!isAiEmpire(galaxy, e) || threats.has(e.empireId)) continue;
+        if (!isAiEmpire(galaxy, e) || isHumanSeat(galaxy, e) || threats.has(e.empireId)) continue; // a human seat is never chosen, even while the AI runs it
         if (e.capital === null || e.colonies.length < CORRUPT_P.minColonies(galaxy)) continue;
         if (members !== null && !members.includes(e)) continue;
         const wars = all.filter((x) => x !== e && obtainDiplomaticRelation(e, x).type === DiplomaticRelationType.War).length;

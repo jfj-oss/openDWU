@@ -20,7 +20,7 @@ import { scenarioText } from '../src/sim/scenario/messages';
 import { CharacterRole, getEmpireCharacters, type Character } from '../src/sim/characters';
 import { DiplomaticRelationType, obtainDiplomaticRelation, obtainEmpireEvaluation } from '../src/sim/diplomacy';
 import { declareWar } from '../src/sim/diplomacyTick';
-import { isHumanEmpire } from '../src/sim/humanEmpires';
+import { isHumanEmpire, isHumanSeat, setAiSeat, setHumanEmpires } from '../src/sim/humanEmpires';
 import { councilState, type Council } from '../src/sim/scenario/emergent/council';
 import { dietMotionKindDef, dietState, type DietMotion } from '../src/sim/scenario/charactersVictory/diet/dietState';
 import { dietPropose } from '../src/sim/scenario/charactersVictory/diet/diet';
@@ -144,6 +144,29 @@ describe('the choice', () => {
         expect(chooseCorrupted(g)).toBe(false);
         expect(peekCorrupted(g)!.chosen).toBe(false);
         expect(activeCorrupted(g)).toBeNull();
+    }, 600000);
+
+    it('a human seat the AI runs while its player is away is never chosen (the only candidates in the Diet are two such seats)', () => {
+        const { game } = createScenarioGame(base, { scenario: comboOverlayFs(ids), flags: FLAGS, options: age3 });
+        const g = game.galaxy;
+        g.scenario!.flags.gwHarvestCycle = true;
+        longNightState(g).age = AGE_PREPARATION;
+        g.scenario!.params.corruptMinColonies = 1;
+        const me = g.playerEmpire!;
+        const other = g.empires.find((e): e is Empire => e !== null && e !== g.independentEmpire && e !== me && e.active && e.pirateEmpireBaseHabitat === null && e.capital !== null && e.colonies.length >= 1)!;
+        expect(other).toBeDefined();
+        // two human seats, both run by the AI (their players are away): AI branches decide for them, but they stay seats
+        setHumanEmpires(g, [me, other]);
+        setAiSeat(g, me, true);
+        setAiSeat(g, other, true);
+        expect(isHumanEmpire(g, other)).toBe(false);
+        expect(isHumanSeat(g, other)).toBe(true);
+        const cs = councilState(g);
+        cs.councils.push({ id: cs.nextId++, name: 'Interstellar Diet', foundedYear: 0, members: [me, other], chair: null, motion: null, results: [], blocs: [], coLosses: {}, losses: {}, sanctions: [], threats: [], recognised: [], condemned: {}, splitFrom: 0 });
+        dietState(g);
+        expect(pickCorrupted(g)).toBeNull();
+        expect(chooseCorrupted(g)).toBe(false);
+        expect(peekCorrupted(g)!.chosen).toBe(false);
     }, 600000);
 
     it('is an AI empire, never a human, and the seed decides it (the same galaxy picks the same empire)', () => {
