@@ -53,7 +53,7 @@ import { yardProgress } from './screens/constructionYards';
 import type { ConstructionQueue } from '../sim/construction/constructionQueue';
 import { builtObjectImageUrl, resolveDrawPictureRef } from '../render/builtObjectLayer';
 import { threatArtUrl } from '../render/threatArt';
-import { CONTACT_NAME, CONTACT_NOTE, isCloakedContact } from '../render/beaconCloakFx';
+import { CONTACT_NAME, CONTACT_NOTE, isUnidentifiedContact } from '../render/beaconCloakFx';
 import { directiveView } from '../sim/scenario/threats/giantworks/ultramind';
 import { captureView } from '../sim/scenario/threats/giantworks/capture';
 import { fighterImageUrl } from '../render/fighterLayer';
@@ -1684,13 +1684,13 @@ export function unidentifiedContactInfo(): InfoModel {
 export function buildInfoModel(ctx: InfoContext, sel: InfoSelection, creaturePicture: string | null = null, extended = false): InfoModel {
     if (sel.builtObjects !== undefined && sel.builtObjects.length > 0) {
         // a cloaked Watcher in a box selection is left out of the list (alone: just the contact)
-        const known = sel.builtObjects.filter((b) => !isCloakedContact(b, ctx.player));
+        const known = sel.builtObjects.filter((b) => !isUnidentifiedContact(b, ctx.player));
         return known.length === 0 ? unidentifiedContactInfo() : multiShipInfo(ctx, known);
     }
     if (sel.creature !== undefined) return creatureInfo(ctx, sel.creature, creaturePicture);
     if (sel.fighter !== undefined) return fighterInfo(ctx, sel.fighter);
-    if (sel.shipGroup !== undefined) return sel.shipGroup.leadShip !== null && isCloakedContact(sel.shipGroup.leadShip, ctx.player) ? unidentifiedContactInfo() : shipGroupInfo(ctx, sel.shipGroup, extended);
-    if (sel.builtObject !== undefined) return isCloakedContact(sel.builtObject, ctx.player) ? unidentifiedContactInfo() : builtObjectInfo(ctx, sel.builtObject, extended);
+    if (sel.shipGroup !== undefined) return sel.shipGroup.leadShip !== null && isUnidentifiedContact(sel.shipGroup.leadShip, ctx.player) ? unidentifiedContactInfo() : shipGroupInfo(ctx, sel.shipGroup, extended);
+    if (sel.builtObject !== undefined) return isUnidentifiedContact(sel.builtObject, ctx.player) ? unidentifiedContactInfo() : builtObjectInfo(ctx, sel.builtObject, extended);
     if (sel.systemInfo === true && sel.habitat === sel.system.systemStar) return systemInfoModel(ctx, sel.system);
     return habitatInfo(ctx, sel.habitat);
 }

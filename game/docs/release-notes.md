@@ -4,6 +4,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **A Watcher stays a mystery until the war.** Before the Beacon's first beam a Watcher showing itself over a world is still an "Unidentified contact" in the selection panel, lists and orders (no name, empire or stats); once the war begins it is known.
 - **Weapon range circles are on by default** (Settings). Players who had them off by the old default get them on once; switching them off again sticks.
 - **Fix: crash merging maps with a destroyed empire.** A long game could throw in the map merge when a diplomatic relation changed with an empire that had since been destroyed (its resource map is cleared by the teardown). The merge now skips an empire without its maps, as the original does.
 - **Holdouts: the AI weighs the defence bases too.** An AI fleet goes for a precursor holdout's world only when it is clearly stronger (125 %, holdoutAiRatioPct) than the holdout's home fleet and its defence bases together.

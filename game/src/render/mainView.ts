@@ -65,7 +65,7 @@ import {
     type GasCloudFrameBudget,
 } from './stellarFx';
 import { DeepStarfield, deepStarfieldAlpha, systemPatchZoomAlpha, type PatchSystem } from './deepStarfield';
-import { CONTACT_NAME, StarLens, isCloakedContact, observeWatchers } from './beaconCloakFx';
+import { CONTACT_NAME, StarLens, isCloakedContact, isUnidentifiedContact, observeWatchers } from './beaconCloakFx';
 import { WatcherPulseFx } from './beaconPulseFx';
 import { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
@@ -1710,7 +1710,7 @@ export class MainView {
         return hits.map((h) => {
             const it = h.item;
             // Giantworks' Beacon: a detected cloaked Watcher is a bare contact in the list: no name, kind or owner
-            if (it instanceof BuiltObject && isCloakedContact(it, localViewerEmpire(this.galaxy))) return { icon: icons.other, name: CONTACT_NAME, type: '', owner: '', onPick: () => choose(it) };
+            if (it instanceof BuiltObject && isUnidentifiedContact(it, localViewerEmpire(this.galaxy))) return { icon: icons.other, name: CONTACT_NAME, type: '', owner: '', onPick: () => choose(it) };
             const owner = it instanceof BuiltObject || it instanceof Habitat ? (it.empire?.name ?? '') : '';
             const type = pickTypeLabel(it);
             const name = it.name !== '' ? it.name : type !== '' ? type : h.kind;

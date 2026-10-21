@@ -1,6 +1,6 @@
 // beaconCloakFx.ts: the Watchers' cloak visuals (render only): the reveal's pace, the lights' gate, the sightings' fade.
 import { describe, expect, it } from 'vitest';
-import { CLOAK_RECLOAK_S, CLOAK_TRANSITION_S, CONTACT_NAME, DECLOAK_HIT_S, PULSE_FAR, isCloakedContact, isCloakedContactFleet, cloakGlow, cloakLightGate, cloakStep, decloaksSince, noteDecloak, pulseLevel, watcherSightings, type DecloakEvent } from '../src/render/beaconCloakFx';
+import { CLOAK_RECLOAK_S, CLOAK_TRANSITION_S, CONTACT_NAME, DECLOAK_HIT_S, PULSE_FAR, isCloakedContact, isCloakedContactFleet, isUnidentifiedContact, cloakGlow, cloakLightGate, cloakStep, decloaksSince, noteDecloak, pulseLevel, watcherSightings, type DecloakEvent } from '../src/render/beaconCloakFx';
 import { unidentifiedContactInfo, rowText } from '../src/ui/selectionInfo';
 import { enemyTargetItems } from '../src/ui/leftSidebar';
 import { pulseRing, pulseVignette } from '../src/render/beaconPulseFx';
@@ -98,6 +98,19 @@ describe('a detected, cloaked Watcher is a bare contact', () => {
         expect(isCloakedContact(watcher(true), null)).toBe(false);
         expect(isCloakedContact(watcher(false), viewer)).toBe(false);
         expect(isCloakedContact(watcher(undefined), viewer)).toBe(false);
+    });
+
+    it('a Beacon Watcher stays unidentified in the panels before the war, even uncloaked; once the war begins it is known (icons follow the cloak only)', () => {
+        const ship = watcher(false);
+        const st = { phase: 'watching', warStarted: false, watchers: [{ ship }], stats: {} };
+        const seer = { empireId: 3, galaxy: { scenario: { state: { beacon: st } } } } as unknown as Empire;
+        expect(isCloakedContact(ship, seer)).toBe(false); // drawn, with its icon
+        expect(isUnidentifiedContact(ship, seer)).toBe(true); // but nameless in the panels
+        expect(isUnidentifiedContact(ship, owner)).toBe(false);
+        st.phase = 'reclamation';
+        st.warStarted = true;
+        expect(isUnidentifiedContact(ship, seer)).toBe(false); // the beam has fired: it leads the Reclaimers openly
+        expect(isUnidentifiedContact(watcher(false), viewer)).toBe(false); // a viewer without a galaxy (and an ordinary ship): never
     });
 
     it('a fleet led by one is one; a fleet without a lead is not', () => {

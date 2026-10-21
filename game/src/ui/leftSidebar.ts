@@ -56,7 +56,7 @@ import { determineResearchStationLocation } from '../sim/stationPlacement';
 import { resolveSectorDescription } from '../sim/empireEvents';
 import { builtObjectImageUrl, resolveDrawPictureRef } from '../render/builtObjectLayer';
 import { fighterImageUrl } from '../render/fighterLayer';
-import { isCloakedContact } from '../render/beaconCloakFx';
+import { isUnidentifiedContact } from '../render/beaconCloakFx';
 import { troopImageUrl } from '../render/troopImages';
 import { mapStarUrls, cloudUrls } from '../render/assets';
 import { racePortraitUrl } from './empireEmblem';
@@ -421,7 +421,7 @@ export function enemyTargetItems(targets: readonly (PrioritizedTargetObject | nu
         if (t == null || (t as { hasBeenDestroyed?: boolean }).hasBeenDestroyed) continue;
         // Giantworks' Beacon: a detected cloaked Watcher (or its fleet) is a bare contact, never a named row
         const ship = t instanceof BuiltObject ? t : t instanceof ShipGroup ? t.leadShip : null;
-        if (ship !== null && isCloakedContact(ship, viewer)) continue;
+        if (ship !== null && isUnidentifiedContact(ship, viewer)) continue;
         out.push(new EnemyTargetItem(t));
     }
     return out;
