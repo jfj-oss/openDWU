@@ -275,6 +275,9 @@ const CONFIGS = [
     SCN('ai-parity', { name: 'long-ai-parity-15y', set: 'long', seed: 67, years: 15, flagsOff: ['darkFarmsGameEnd'] }),
     SCN('internal-security', { name: 'long-internal-security-15y', set: 'long', seed: 79, years: 15 }),
     SCN('independents-active', { name: 'long-independents-15y', set: 'long', seed: 83, years: 15 }),
+    // `--set everything`: every RECOMMENDED add-on on at once with all its options (no work-in-progress add-ons; user 2026-10-21),
+    // the Giantworks Harvest Cycle included; the dark farms' game-ending victory off so the run lasts.
+    ...[1, 7, 13].map((seed) => ({ name: `everything-s${seed}`, set: 'everything', seed, years: 25, wizard: { starCountIndex: 3, dimensionIndex: 3, otherEmpires: { empireCount: 11 } }, scenario: ['threat-framework', 'smarter-ai', 'cult', 'hive', 'doppelgangers', 'darkfarms', 'robotmutiny', 'internal-security', 'reputation', 'espionage-consequences', 'exchange', 'privateers', 'characters-victory', 'generation-ships', 'purifier', 'archive-cores', 'probe-swarm', 'giantworks', 'slavery', 'war-crimes'], flags: 'all', flagsOff: ['darkFarmsGameEnd'] })),
 ];
 
 // `--set regress` (scripts/regress-soak-hook.mjs; the 2026-10-17 regression / balance campaign of the Cult / Hive / Generation Ships /
