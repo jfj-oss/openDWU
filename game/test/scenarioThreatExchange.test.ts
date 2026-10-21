@@ -140,7 +140,7 @@ describe('The Exchange: forced appearance on seed 1 (shared game, in order)', ()
         expect(f).not.toBeNull();
         expect(g.empires).toContain(f);
         expect(f.pirateEmpireBaseHabitat).toBeNull();
-        expect(f.name.length).toBeGreaterThan(0);
+        expect(f.name).toBe('The Exchange'); // not a generated race-and-government empire name ("Boskara Hive")
         expect(f.leader).not.toBeNull(); // stock starting characters (portrait)
         expect(st.station!.bo.actualEmpire).toBe(f);
         expect(st.station!.bo.isResearchLab).toBe(true); // lab components on the station

@@ -562,6 +562,9 @@ export function exchangePlace(galaxy: Galaxy, st: ExchangeState, year: number = 
         configurePolicy,
     });
     if (faction === null) return;
+    // The Empire ctor generated a race-and-government name (GenerateEmpireName draws galaxy.rnd — kept, so the random stream is
+    // unchanged); rename it so the colony-less faction reads as the trading house it is, not as a normal empire ("Boskara Hive").
+    faction.name = scenarioText(`${TAG} Faction Name`);
     faction.capital = habitat; // stand-in capital (stock AI reads Capital without a null check; 19b precedent)
     switchOffStockAi(faction);
     const now = galaxyStarDate(galaxy);
