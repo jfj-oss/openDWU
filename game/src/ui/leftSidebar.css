@@ -260,12 +260,25 @@
     line-height: 1.1;
 }
 
-/* The category column is taller than its region (large UI scale): it scrolls, wheel only. */
+/* The category column is taller than its region (large UI scale): it scrolls by the wheel and shows a thin, faint scroll
+   bar on its LEFT side (user 2026-10-21). direction rtl puts the bar on the left while the buttons stay ltr; the column
+   is widened by the bar in leftSidebarView.ts (LS_COLUMN_BAR_PX). No scrollbar-width / scrollbar-color here: Chromium
+   then ignores ::-webkit-scrollbar, which is what sets the bar's width and colours. */
 .ls-buttons.ls-buttons-scroll {
     overflow-y: auto;
-    scrollbar-width: none;
+    direction: rtl;
     pointer-events: auto;
 }
+.ls-buttons.ls-buttons-scroll > * {
+    direction: ltr;
+}
 .ls-buttons.ls-buttons-scroll::-webkit-scrollbar {
-    display: none;
+    width: 6px;
+}
+.ls-buttons.ls-buttons-scroll::-webkit-scrollbar-track {
+    background: rgba(32, 32, 40, 0.35);
+}
+.ls-buttons.ls-buttons-scroll::-webkit-scrollbar-thumb {
+    background: rgba(160, 160, 176, 0.45);
+    border-radius: 3px;
 }

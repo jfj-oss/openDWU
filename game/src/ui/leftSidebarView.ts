@@ -91,6 +91,8 @@ const SCROLL_DOWN_URL = '/assets/dwu/images/ui/chrome/scrolldownarrow.png';
 const ALPHA = 0.6;
 /** Main.Part13.cs: a second click within this time on the same item is a double click (SystemInformation default). */
 const DOUBLE_CLICK_MS = 500;
+/** The category column's scroll bar width (layout px, leftSidebar.css .ls-buttons-scroll::-webkit-scrollbar). */
+const LS_COLUMN_BAR_PX = 6;
 
 function load<T>(key: string, fallback: T): T {
     try {
@@ -189,6 +191,8 @@ export function createLeftSidebar(wiring: LeftSidebarWiring): HTMLElement {
         lastClick: { item: null, at: 0 },
     };
     let area: ItemListArea = itemListArea(800, 600, 1);
+    /** The sidebar's on-screen scale (layout px → screen px), for the wheel over the category column. */
+    let sidebarK = 1;
     /** When the pending 'enemyTargetList' command was issued (one at a time; asked again after 2 s without a reply). */
     let targetsAsked: number | null = null;
     /** The empires' flag pictures (async composites) for the Enemy Targets rows. */
@@ -239,6 +243,7 @@ export function createLeftSidebar(wiring: LeftSidebarWiring): HTMLElement {
     const layout = (): void => {
         const s = uiScaleFactor();
         const k = hudScale(window.innerHeight, s);
+        sidebarK = k;
         const clientH = window.innerHeight / k;
         // pnlInfoPanel.Top: the selection frame's top + 36 (hud.ts SELECTION_FRAME: y (num - 36) .. bottom + 30), the
         // frame anchored 10 px above the window bottom and scaled by selectionFrameScale.
@@ -271,9 +276,14 @@ export function createLeftSidebar(wiring: LeftSidebarWiring): HTMLElement {
         buttons.replaceChildren();
         // Too short a region for the column at its minimum size: the column scrolls instead of shrinking.
         const need = top + defs.length * area.button;
+        const scroll = need > area.h && area.h > 0;
+        // A scrolling column shows its scroll bar on the left (leftSidebar.css): the column grows by the bar's width
+        // to the left, so the buttons keep their place and are not cut off by the bar.
+        const bar = scroll ? LS_COLUMN_BAR_PX : 0;
         buttons.style.height = `${area.h}px`;
-        buttons.style.width = `${area.button + 1}px`;
-        buttons.classList.toggle('ls-buttons-scroll', need > area.h && area.h > 0);
+        buttons.style.width = `${area.button + 1 + bar}px`;
+        buttons.style.left = `${-bar}px`;
+        buttons.classList.toggle('ls-buttons-scroll', scroll);
         defs.forEach((d, i) => {
             const b = document.createElement('button');
             b.type = 'button';
@@ -506,6 +516,11 @@ export function createLeftSidebar(wiring: LeftSidebarWiring): HTMLElement {
         (e) => {
             e.preventDefault();
             e.stopPropagation();
+            // The category column scrolls too (the wheel over it used to be swallowed here): one notch is ~1.2 buttons.
+            if (buttons.classList.contains('ls-buttons-scroll') && buttons.contains(e.target as Node)) {
+                buttons.scrollTop += (e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY) / sidebarK;
+                return;
+            }
             if (!panelEls || !panel.contains(e.target as Node)) return;
             // CheckScrollWheel: ScrollAmountPerClick × Delta / 100 (one notch = 120 → 1.2 steps).
             const notch = e.deltaMode === 1 ? e.deltaY / 3 : e.deltaY / 100;
