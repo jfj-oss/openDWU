@@ -467,7 +467,7 @@ describe('the escorted delivery in the war credit', () => {
         expect(mega.delivered).toBe(delivered + 1);
         expect(mega.escorted).toBe(1);
         expect(warCreditOf(s.st).points[String(ai.empireId)]?.escorts).toBe(WC.escort(s.g));
-        expect(warCreditLabel('escorts')).toBe('escorted deliveries');
+        expect(warCreditLabel('escorts')).toBe('Severance freighters escorted safely');
     });
 });
 
