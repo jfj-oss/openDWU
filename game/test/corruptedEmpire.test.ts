@@ -52,6 +52,8 @@ import {
 import { corruptedPass, dormantFoundries, declareCorruptWar, leadRolls, onAssassinated, onCorruptCapitalLost, parkAtFoundries, raidContracts, reviewWars } from '../src/sim/scenario/threats/giantworks/corruptedAi';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
 import { empireShipGroups } from '../src/sim/fleets/shipGroup';
+import { addonCatalog, resolveAddonSwitches, withFlagAddons } from '../src/sim/scenario/addons';
+import { scenarioIndexFs } from './helpers/scenarioGame';
 
 let base: GameData;
 beforeAll(async () => {
@@ -84,8 +86,8 @@ function seatDiet(g: Galaxy): void {
 }
 
 /** A seed-1 Giantworks game in Age 2 (the Preparation), the Diet seated, the corrupted empire chosen by the first pass of the Preparation. */
-function setup(): Setup {
-    const { game, gameData } = createScenarioGame(base, { scenario: comboOverlayFs(ids), flags: FLAGS, options: age3 });
+function setup(flags: Record<string, boolean> = FLAGS): Setup {
+    const { game, gameData } = createScenarioGame(base, { scenario: comboOverlayFs(ids), flags, options: age3 });
     const g = game.galaxy;
     g.scenario!.flags.gwHarvestCycle = true;
     longNightState(g).age = AGE_PREPARATION;
@@ -375,6 +377,29 @@ describe('the Internal Security lead and the exposure motion', () => {
         corruptedPass(s.g);
         expect(s.st.wars.length).toBe(wars);
         expect(corruptedVoteScore(s.g, 37, s.corrupt, MOTION_MEGA, s.me)).toBe(37);
+    }, 600000);
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+describe('the Harvest Cycle switches Internal Security on (its leads are how the corruption is exposed)', () => {
+    it('with the switches the add-on picker resolves for the Harvest Cycle on: the corruption thing registers, a lead is confirmed, and the exposure is reachable', () => {
+        const cat = addonCatalog(scenarioIndexFs());
+        const overrides = { flags: { gwHarvestCycle: true }, params: {} };
+        const flags = resolveAddonSwitches(cat, withFlagAddons(cat, ['giantworks'], overrides), overrides).flags;
+        expect(flags.internalSecurity).toBe(true);
+        const s = setup(flags);
+        expect(corruptionThing(s.g, s.corrupt)).toBeDefined();
+        expect(canExpose(s.g, s.me)).toBe(false);
+        const prev = securitySlots.strengthBonus;
+        securitySlots.strengthBonus = (_g, e) => (e === s.me ? 5000 : 0);
+        try {
+            for (let i = 0; i < 400 && confirmedLeadOf(s.g, s.me) === null; i++) leadRolls(s.g, s.st, s.corrupt);
+        } finally {
+            securitySlots.strengthBonus = prev;
+        }
+        expect(confirmedLeadOf(s.g, s.me)).not.toBeNull();
+        expect(canExpose(s.g, s.me)).toBe(true);
+        expect(dietPropose(s.g, s.me, { kind: MOTION_EXPOSE, target: null, other: null, colony: null, resourceId: -1 })).toBe(true);
     }, 600000);
 });
 
