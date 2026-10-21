@@ -92,7 +92,7 @@ import { threatLeadRows, threatsSectionVisible } from '../src/ui/internalSecurit
 import { CharacterRole, getEmpireCharacters } from '../src/sim/characters';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
 import { shouldAttack } from '../src/sim/combat/attackAI';
-import { inflictDamage } from '../src/sim/combat/damage';
+import { destroyHabitat, inflictDamage } from '../src/sim/combat/damage';
 import { sparedObjects } from '../src/sim/combat/spared';
 import { clearHostility, forgetGuardians, guardiansOf, normalEmpires, threatEmpires } from '../src/sim/scenario/threats/framework';
 import { buildActionMenu } from '../src/sim/player/orderMenu';
@@ -1525,6 +1525,49 @@ describe('purifier', () => {
         runGameSeconds(lg, 60);
         expect(stateDigest(lg)).toBe(stateDigest(g));
         expect(peekPurifierState(lg)!.worlds).toBe(peekPurifierState(g)!.worlds);
+    }, 900000);
+    it('a world it destroys stays destroyed (removed, an asteroid field left, also after a save / load) and its blast spares its own ships but not others', () => {
+        const { game, gameData } = createScenarioGame(base, { scenario: comboOverlayFs(ids), flags: { threatPurifier: true }, params: PARAMS, options: age3 });
+        const g = game.galaxy;
+        purifierPeriodic(g);
+        const st = purifierState(g);
+        expect(purifierWake(g, st, g.empires.find((e) => e !== null && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null && e !== g.playerEmpire)!)).toBe(true);
+        const faction = st.faction!;
+        const target = purifierTargets(g, st)[0] ?? g.habitats.find((h) => h.empire !== null && h.empire !== g.independentEmpire && h.population.totalAmount > 0 && h.category === HabitatCategoryType.Planet)!;
+        const escort = st.escorts[0];
+        const other = g.playerEmpire!;
+        const bystander = other.builtObjects.find((b) => !b.hasBeenDestroyed && b.role === BuiltObjectRole.Military)!;
+        for (const v of [escort, st.destroyer!, bystander]) {
+            v.xpos = target.xpos;
+            v.ypos = target.ypos;
+            for (const col of g.builtObjectIndexGrid) for (const cell of col) if (cell.includes(v)) cell.splice(cell.indexOf(v), 1);
+            const at = g.resolveIndex(v.xpos, v.ypos);
+            g.builtObjectIndexGrid[at.x][at.y].push(v);
+        }
+        const asteroids = (): number => g.habitats.filter((h) => h.category === HabitatCategoryType.Asteroid).length;
+        const before = { escort: calculateOverallStrengthFactor(escort), destroyer: calculateOverallStrengthFactor(st.destroyer!), bystander: calculateOverallStrengthFactor(bystander), asteroids: asteroids() };
+        destroyHabitat(g, st.destroyer!, target);
+        // The stock blast (inflictHabitatDestructionAreaDamage) hits the bystander and leaves the Purifier's own ships whole.
+        expect(escort.hasBeenDestroyed).toBe(false);
+        expect(calculateOverallStrengthFactor(escort)).toBe(before.escort);
+        expect(calculateOverallStrengthFactor(st.destroyer!)).toBe(before.destroyer);
+        expect(bystander.hasBeenDestroyed || calculateOverallStrengthFactor(bystander) < before.bystander).toBe(true);
+        expect(faction.active).toBe(true);
+        runGameSeconds(g, 40);
+        expect(target.hasBeenDestroyed).toBe(true);
+        expect(target.explosion).toBeNull();
+        expect(g.habitats.includes(target)).toBe(false);
+        expect(g.systems[target.systemIndex]?.habitats.includes(target) ?? false).toBe(false);
+        expect(asteroids()).toBeGreaterThan(before.asteroids);
+        expect(st.worlds).toBeGreaterThanOrEqual(1);
+        // A save / load keeps it destroyed: the planet does not come back, the asteroid field stays.
+        const time = new GalaxyTime();
+        time.bindGalaxy(g);
+        const lg = deserializeGame(serializeGame(game, time, {} as StartGameOptions), gameData).game.galaxy;
+        expect(lg.habitats.some((h) => h.name === target.name && h.category === target.category)).toBe(false);
+        expect(lg.habitats.filter((h) => h.category === HabitatCategoryType.Asteroid).length).toBe(asteroids());
+        runGameSeconds(lg, 30);
+        expect(lg.habitats.some((h) => h.name === target.name && h.category === target.category)).toBe(false);
     }, 900000);
     it('the Ancient Guardians and the Purifier never interact: no target, no shot, no damage, no war, no capture, in either direction', () => {
         const { g, st } = woken();

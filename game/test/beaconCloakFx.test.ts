@@ -1,6 +1,6 @@
 // beaconCloakFx.ts: the Watchers' cloak visuals (render only): the reveal's pace, the lights' gate, the sightings' fade.
 import { describe, expect, it } from 'vitest';
-import { CLOAK_RECLOAK_S, CLOAK_TRANSITION_S, CONTACT_NAME, DECLOAK_HIT_S, PULSE_FAR, isCloakedContact, isCloakedContactFleet, isUnidentifiedContact, cloakGlow, cloakLightGate, cloakStep, decloaksSince, noteDecloak, pulseLevel, watcherSightings, type DecloakEvent } from '../src/render/beaconCloakFx';
+import { CLOAK_RECLOAK_S, CLOAK_TRANSITION_S, CONTACT_NAME, DECLOAK_HIT_S, PULSE_FAR, isCloakedContact, isCloakedContactFleet, isUnidentifiedContact, withoutCloakedContacts, cloakGlow, cloakLightGate, cloakStep, decloaksSince, noteDecloak, pulseLevel, watcherSightings, type DecloakEvent } from '../src/render/beaconCloakFx';
 import { unidentifiedContactInfo, rowText } from '../src/ui/selectionInfo';
 import { enemyTargetItems } from '../src/ui/leftSidebar';
 import { pulseRing, pulseVignette } from '../src/render/beaconPulseFx';
@@ -111,6 +111,14 @@ describe('a detected, cloaked Watcher is a bare contact', () => {
         st.warStarted = true;
         expect(isUnidentifiedContact(ship, seer)).toBe(false); // the beam has fired: it leads the Reclaimers openly
         expect(isUnidentifiedContact(watcher(false), viewer)).toBe(false); // a viewer without a galaxy (and an ordinary ship): never
+    });
+
+    it('the Threats overlay drops a cloaked Watcher\'s site (any zoom), keeps decloaked ships and colonies, and the owner keeps its own', () => {
+        const colony = { empire: owner, name: 'Colony' };
+        const sites = [{ target: watcher(true) }, { target: watcher(false) }, { target: colony }];
+        expect(withoutCloakedContacts(sites, viewer).map((s) => s.target)).toEqual([sites[1].target, colony]);
+        expect(withoutCloakedContacts(sites, owner).length).toBe(3);
+        expect(withoutCloakedContacts(sites, null).length).toBe(3);
     });
 
     it('a fleet led by one is one; a fleet without a lead is not', () => {

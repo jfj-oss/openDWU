@@ -191,6 +191,11 @@ export function isUnidentifiedContact(bo: BuiltObject, viewer: Empire | null): b
     return !war && st.watchers.some((w) => w.ship === bo);
 }
 
+/** The threat sites without the cloaked contacts (a site whose target is a cloaked Watcher): the Threats overlay's marker would give it away at any zoom. */
+export function withoutCloakedContacts<T extends { target: unknown }>(sites: readonly T[], viewer: Empire | null): T[] {
+    return sites.filter((s) => !(typeof s.target === 'object' && s.target !== null && isCloakedContact(s.target as BuiltObject, viewer))); // a colony target has no `cloaked`, no render track: false
+}
+
 /** Whether a fleet's lead is such a contact (the fleet icon, name and count would give the Watcher away). */
 export function isCloakedContactFleet(sg: { leadShip: BuiltObject | null }, viewer: Empire | null): boolean {
     return sg.leadShip !== null && isCloakedContact(sg.leadShip, viewer);

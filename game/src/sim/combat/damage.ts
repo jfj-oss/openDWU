@@ -1663,6 +1663,7 @@ export function inflictHabitatDestructionAreaDamage(galaxy: Galaxy, self: BuiltO
     const cell = galaxy.builtObjectIndexGrid[num4][num5];
     for (let i = 0; i < cell.length; i++) {
         const builtObject = cell[i];
+        if (galaxy.scenario !== null && scenarioQuery(galaxy, 'habitatBlastSpared', false, { destroyer: self, builtObject })) continue; // mod layer (the Purifier's own ships)
         if (checkWithinDistancePotential(csInt(num), habitat.xpos, habitat.ypos, builtObject.xpos, builtObject.ypos)) {
             const num6 = galaxy.calculateDistance(habitat.xpos, habitat.ypos, builtObject.xpos, builtObject.ypos);
             const num7 = habitat.diameter * 40.0 * ((num3 - (num6 - num2)) / num3);

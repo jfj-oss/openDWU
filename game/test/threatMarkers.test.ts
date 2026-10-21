@@ -303,6 +303,16 @@ describe('purifier art', () => {
     const bo = (subRole: BuiltObjectSubRole, empire: Empire | null, role = BuiltObjectRole.Military, isPlanetDestroyer = false): BuiltObject =>
         ({ subRole, role, actualEmpire: empire, isPlanetDestroyer }) as unknown as BuiltObject;
     const ESCORTS = ['frigate', 'destroyer', 'cruiser', 'capitalship', 'carrier', 'trooptransport'];
+    it('the Purifier ship itself keeps the planet-destroyer art whoever owns it (disabled, abandoned, captured); other planet destroyers stay stock', () => {
+        const ship = bo(BuiltObjectSubRole.CapitalShip, faction, BuiltObjectRole.Military, true);
+        const l: ThreatLooks = { genFactions: [], worldShips: [], swarmFaction: null, mothercore: null, purifierFaction: faction, purifierDock: null, purifierShip: ship };
+        expect(purifierArtUrl(ship, l)).toBe('/art/purifier/planetdestroyer.png');
+        (ship as { actualEmpire: Empire | null }).actualEmpire = null;
+        expect(purifierArtUrl(ship, l)).toBe('/art/purifier/planetdestroyer.png');
+        (ship as { actualEmpire: Empire | null }).actualEmpire = other;
+        expect(purifierArtUrl(ship, l)).toBe('/art/purifier/planetdestroyer.png');
+        expect(purifierArtUrl(bo(BuiltObjectSubRole.CapitalShip, other, BuiltObjectRole.Military, true), l)).toBeNull();
+    });
     it('picked by subRole for the faction (the dock base_1, other bases base_0, its planet destroyer the crescent)', () => {
         const dock = bo(BuiltObjectSubRole.GenericBase, faction, BuiltObjectRole.Base);
         const l: ThreatLooks = { genFactions: [], worldShips: [], swarmFaction: null, mothercore: null, purifierFaction: faction, purifierDock: dock };

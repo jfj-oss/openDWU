@@ -79,6 +79,8 @@ export interface ThreatLooks {
     /** The Purifier's faction (its escorts / guards / station wear the bundled art) and its repair station. */
     purifierFaction: Empire | null;
     purifierDock: BuiltObject | null;
+    /** The Purifier itself (its planet destroyer): it keeps its own art whoever owns it (disabled, abandoned, captured). */
+    purifierShip?: BuiltObject | null;
     /** The Beacon (Giantworks): the Reclaimers' faction, the two Watchers, the Watchers seen uncloaked now (null: the sim
      * does not say, a Watcher opens while it sits still) and the finished Beacon. Optional: absent = none. */
     reclaimers?: Empire | null;
@@ -111,6 +113,7 @@ const looks: ThreatLooks = {
     mothercore: null,
     purifierFaction: null,
     purifierDock: null,
+    purifierShip: null,
     reclaimers: null,
     hulks: [],
     watchers: [],
@@ -197,7 +200,7 @@ export function threatLooks(galaxy: Galaxy): ThreatLooks {
     looks.genFactions.length = 0;
     looks.worldShips.length = 0;
     looks.swarmFaction = looks.mothercore = null;
-    looks.purifierFaction = looks.purifierDock = null;
+    looks.purifierFaction = looks.purifierDock = looks.purifierShip = null;
     looks.reclaimers = null;
     looks.hulks!.length = 0;
     const w2 = peekThreatState<{ hulks?: BuiltObject[] }>(galaxy, AGE2_WORLD_KEY);
@@ -284,6 +287,7 @@ export function threatLooks(galaxy: Galaxy): ThreatLooks {
     if (pu !== null && pu.faction !== null) {
         looks.purifierFaction = pu.faction;
         looks.purifierDock = identifyPirateBase(pu.faction);
+        looks.purifierShip = pu.destroyer;
     }
     return looks;
 }
@@ -320,6 +324,7 @@ function purifierFile(bo: BuiltObject, dock: BuiltObject | null): string | null 
  * hand agree with the map.
  */
 export function purifierArtUrl(bo: BuiltObject, l: ThreatLooks = looks): string | null {
+    if (l.purifierShip != null && bo === l.purifierShip) return `${PURIFIER_ART_DIR}planetdestroyer.png`; // never the fleet frame it falls back to once it leaves the faction
     if (l.purifierFaction === null || bo.actualEmpire !== l.purifierFaction) return null;
     const f = purifierFile(bo, l.purifierDock);
     return f === null ? null : `${PURIFIER_ART_DIR}${f}.png`;

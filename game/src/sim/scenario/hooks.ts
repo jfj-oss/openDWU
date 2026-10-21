@@ -670,6 +670,8 @@ export interface ScenarioQueries {
      * empires never fight each other (the Purifier and the Ancient Guardians). Symmetric. Stock false. Pure; never draws.
      */
     empiresSpared: { value: boolean; args: { a: Empire; b: Empire } };
+    /** combat/damage.ts inflictHabitatDestructionAreaDamage: true = the `builtObject` is out of the blast of the planet `destroyer` just destroyed (the Purifier's own ships). Stock false. Pure; never draws. */
+    habitatBlastSpared: { value: boolean; args: { destroyer: BuiltObject; builtObject: BuiltObject } };
     /** combat/damage.ts inflictDamageFull: true = the `builtObject` takes no damage from any weapon (the mega-station, Giantworks). Stock false. Pure; never draws. */
     builtObjectInvulnerable: { value: boolean; args: { builtObject: BuiltObject } };
     /** 19j: events.ts applyLocationEffects (BuiltObject.cs 3934 ApplyLocationEffects): true = no lightning / ship-damage effects. */

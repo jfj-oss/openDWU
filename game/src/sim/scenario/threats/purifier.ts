@@ -1500,6 +1500,7 @@ export const PURIFIER_HANDLER_IDS = [
     'purifier.attacked',
     'purifier.passive',
     'purifier.noProtection',
+    'purifier.blastSpared',
     'purifier.noCapture',
     'purifier.noRepair',
     'purifier.rudder',
@@ -1516,6 +1517,7 @@ export function registerPurifier(): void {
     registerScenarioEvent({ id: 'purifier.attacked', flag: PURIFIER_FLAG, event: 'builtObjectAttacked', run: (g, e) => onAttacked(g, e.builtObject, e.attackingEmpire) });
     registerScenarioQuery({ id: 'purifier.passive', flag: PURIFIER_FLAG, query: 'pirateFactionPassive', run: (g, v, a) => v || isFaction(g, a.empire) });
     registerScenarioQuery({ id: 'purifier.noProtection', flag: PURIFIER_FLAG, query: 'pirateProtectionDesired', run: (g, v, a) => v && !isFaction(g, a.pirate) });
+    registerScenarioQuery({ id: 'purifier.blastSpared', flag: PURIFIER_FLAG, query: 'habitatBlastSpared', run: (g, v, a) => v || (isFaction(g, a.destroyer.actualEmpire) && isFaction(g, a.builtObject.actualEmpire)) }); // its blast spares its own escorts
     registerScenarioQuery({ id: 'purifier.noCapture', flag: PURIFIER_FLAG, query: 'combatCaptureAllowed', run: (g, v, a) => v && !isFaction(g, a.capturingEmpire) });
     registerScenarioQuery({ id: 'purifier.noRepair', flag: PURIFIER_FLAG, query: 'repairRateFactor', run: (g, v, a) => (isFaction(g, a.builtObject.actualEmpire) ? v * 1e-9 : v) });
     registerScenarioQuery({

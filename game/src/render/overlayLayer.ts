@@ -74,7 +74,7 @@ import { LRS_DISC_URL, LRS_LAYER_ALPHA, POSTURE_ALPHA, POSTURE_LINE_WIDTH_PX, fl
 import { WEAPON_CIRCLES_MIN_FACTOR, drawRangeCircle, gravityWellRing, weaponRangeCircles } from './weaponRangeCircles';
 import { interdictionRing } from '../sim/scenario/interdiction/jumpInterdiction';
 import { isObjectVisibleToThisEmpire } from '../sim/independentTraders';
-import { isCloakedContact } from './beaconCloakFx';
+import { isCloakedContact, withoutCloakedContacts } from './beaconCloakFx';
 import { BuiltObjectMission, BuiltObjectMissionType, CommandAction, type Command } from '../sim/missions/mission';
 import { baconMovementSettings, calculateGravityWellSize } from '../sim/movement';
 import { getSettings } from '../ui/settings';
@@ -1176,7 +1176,8 @@ export class OverlayLayer {
             return;
         }
         // The markers follow moving carriers: rebuilt only when one moved (or the zoom / list changed).
-        const marks = this.threatSites.map((site) => threatMarker(site, z));
+        // Giantworks' Beacon: a cloaked Watcher is a contact (beaconCloakFx.ts): the overlay's ring/diamond would give it away at any zoom.
+        const marks = withoutCloakedContacts(this.threatSites, player).map((site) => threatMarker(site, z));
         const k = this.threatSig;
         k.begin();
         k.push(z);
