@@ -42,7 +42,10 @@ for (const size of sizes.split(',')) {
         for (const kind of kinds) {
             await page.evaluate(async (kind) => {
                 const { galaxy, camera } = window.__dwu;
-                const hud = await import('/src/ui/hud.ts');
+                // The app's own hud.ts instance: after a dev-server hot reload the app loads hud.ts?t=… while a plain
+                // import('/src/ui/hud.ts') gives a second copy, whose selection the panel never reads (an empty panel).
+                const hudUrl = performance.getEntriesByType('resource').map((e) => e.name).find((n) => /\/src\/ui\/hud\.ts(\?|$)/.test(n)) ?? '/src/ui/hud.ts';
+                const hud = await import(hudUrl);
                 const player = galaxy.playerEmpire;
                 const cap = player.capital;
                 camera.centerOn(cap.xpos, cap.ypos);
