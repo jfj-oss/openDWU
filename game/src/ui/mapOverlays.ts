@@ -115,33 +115,33 @@ export interface OverlayRow {
 
 /** Human label per overlay key, in display order for the options list. */
 export const OVERLAY_ROWS: OverlayRow[] = [
-    { key: 'fleetPostures', label: 'Fleet Postures', hint: 'Marks each of your fleets with its posture (attack, defend, hold...) at system zoom.' },
-    { key: 'travelVectorsState', label: 'Travel Vectors (State)', hint: 'Draws lines from state-owned ships to where they are heading, at system and sector zoom.' },
-    { key: 'travelVectorsPrivate', label: 'Travel Vectors (Private)', hint: 'Draws lines from private (civilian) ships to where they are heading, at system and sector zoom.' },
-    { key: 'potentialColonies', label: 'Potential Colonies', hint: 'Highlights planets your colony ships could settle, at system zoom.' },
-    { key: 'scenicLocations', label: 'Scenic Locations', hint: 'Highlights places of scenic beauty that tourists would visit, at system and sector zoom.' },
-    { key: 'researchLocations', label: 'Research Locations', hint: 'Highlights places a research ship could study, at system and sector zoom.' },
-    { key: 'longRangeScanners', label: 'Long Range Scanners', hint: 'Shows the detection range of your long range scanners, at sector and galaxy zoom.' },
-    { key: 'empireTerritory', label: 'Empire Territory', hint: 'Tints the space each empire controls with its colour, at sector and galaxy zoom.' },
-    { key: 'factionMarkers', label: 'Faction markers', hint: 'At galaxy and sector zoom: rings around owned systems, links between them, and ship and base symbols in empire colours.', mod: true },
-    { key: 'stationPresence', label: 'Station presence', hint: 'At galaxy zoom: a coloured disc in each system where an empire has a base or colony, sized by how many.', mod: true },
-    { key: 'fadeCivilianShips', label: 'Fade civilian ships and bases', hint: 'Draws ships and bases of private companies fainter (system map, and galaxy and sector symbols), so your fleets stand out.' },
+    { key: 'fleetPostures', label: 'Fleet Postures', hint: "Each of your fleets' standing orders (attack, defend, hold position and so on)." },
+    { key: 'travelVectorsState', label: 'Travel Vectors (State)', hint: "Lines from your empire's ships to where they are going." },
+    { key: 'travelVectorsPrivate', label: 'Travel Vectors (Private)', hint: 'Lines from private ships (freighters, passenger liners, miners of private companies) to where they are going.' },
+    { key: 'potentialColonies', label: 'Potential Colonies', hint: 'Rings the planets you could colonise. Zoom into a system to see them.' },
+    { key: 'scenicLocations', label: 'Scenic Locations', hint: 'Rings the scenic places that resort bases can be built at. Zoom into a system to see them.' },
+    { key: 'researchLocations', label: 'Research Locations', hint: 'Rings the places that research stations can study. Zoom into a system to see them.' },
+    { key: 'longRangeScanners', label: 'Long Range Scanners', hint: 'How far your long range scanners can see.' },
+    { key: 'empireTerritory', label: 'Empire Territory', hint: 'Shades the space each empire holds in its colour.' },
+    { key: 'factionMarkers', label: 'Faction markers', hint: 'Empire-coloured symbols for ships, bases and fleets, rings around owned systems, and the lines between them.', mod: true },
+    { key: 'stationPresence', label: 'Station presence', hint: 'A disc in the colour of each empire around the systems where it has bases or colonies; larger with more of them.', mod: true },
+    { key: 'fadeCivilianShips', label: 'Fade civilian ships and bases', hint: 'Draws the ships and bases of private companies fainter, so your own ships stand out.' },
     // [freightOverlay] begin
-    { key: 'freightFlows', label: 'Freight Flows', hint: 'Shows the routes freight ships are carrying goods along, at galaxy zoom.', mod: true, panel: 'tradeFlows' },
-    { key: 'tradeHubs', label: 'Trade Hubs', hint: 'Marks the busiest trade systems, at galaxy zoom.', mod: true, panel: 'tradeFlows' },
+    { key: 'freightFlows', label: 'Freight Flows', hint: 'The routes freighters carry goods along, coloured by cargo. Zoom out to see them.', mod: true, panel: 'tradeFlows' },
+    { key: 'tradeHubs', label: 'Trade Hubs', hint: 'Marks the systems that ship or receive the most freight. Zoom out to see them.', mod: true, panel: 'tradeFlows' },
     // [freightOverlay] end
-    { key: 'threats', label: 'Threats', hint: 'Marks monsters, pirates and other threats you know of, at galaxy and sector zoom.' },
-    { key: 'wrecks', label: 'Wreck Fields', hint: 'Marks wreck fields of destroyed ships that can be salvaged, at system zoom.', mod: true },
-    { key: 'vipTraffic', label: 'VIP traffic', hint: 'Marks VIP shuttles and other VIP travel, at sector zoom.', mod: true },
-    { key: 'colonyDesignations', label: 'Colony Designations', hint: 'Marks colonies by their designation (what the colony is set up to specialise in), at system zoom.', mod: true },
+    { key: 'threats', label: 'Threats', hint: 'Marks the monsters, pirates and other threats you know of. A dashed or flickering mark is only suspected.' },
+    { key: 'wrecks', label: 'Wreck Fields', hint: 'Marks the wreck fields left by battles, which can be salvaged.', mod: true },
+    { key: 'vipTraffic', label: 'VIP traffic', hint: 'Lines from each VIP shuttle to where it is going.', mod: true },
+    { key: 'colonyDesignations', label: 'Colony Designations', hint: 'A badge on each of your colonies showing what it is designated for.', mod: true },
     // Improvements section (ui/improvements.ts): rows with `improvement: '<id>'` go here.
     // [dw2overlays] begin
-    { key: 'colonyScores', label: 'Colony Target Scores', hint: 'Rings the planets the Expansion Planner wants to colonise, coloured by score (green is best), at system zoom.', improvement: 'colonyTargetScores' },
-    { key: 'resources', label: 'Resources', hint: 'Shows the resources you know of in each system, with rarity and abundance, at galaxy and sector zoom.', improvement: 'resourcesOverlay', panel: 'resources' },
-    { key: 'fuelRange', label: 'Fuel Range', hint: 'Shows how far the selected ship or fleet can travel on its fuel, and where it can refuel, at galaxy and sector zoom.', improvement: 'fuelRangeOverlay' },
+    { key: 'colonyScores', label: 'Colony Target Scores', hint: 'Rings the planets your Expansion Planner wants to colonise, coloured by how good each one is (green is best). Zoomed out, each system shows its best target.', improvement: 'colonyTargetScores' },
+    { key: 'resources', label: 'Resources', hint: 'The resources you know of in each system and on each planet.', improvement: 'resourcesOverlay', panel: 'resources' },
+    { key: 'fuelRange', label: 'Fuel Range', hint: 'How far the selected ship or fleet can go on its fuel, and where it can refuel.', improvement: 'fuelRangeOverlay' },
     // [dw2overlays] end
-    { key: 'supplyShortages', label: 'Supply Shortages', hint: 'Marks colonies and bases that are short of goods, at galaxy and sector zoom.', improvement: 'supplyChain', panel: 'supplyShortages' },
-    { key: 'waypoints', label: 'Waypoints & Known Locations', hint: 'Shows your own named map pins and the locations you were told of, at all zoom levels.', improvement: 'waypoints', panel: 'waypoints' },
+    { key: 'supplyShortages', label: 'Supply Shortages', hint: 'Marks your shipyards waiting for resources and your colonies short of luxuries.', improvement: 'supplyChain', panel: 'supplyShortages' },
+    { key: 'waypoints', label: 'Waypoints & Known Locations', hint: 'Your own map pins (right-click empty space to add one) and the places you have learned of.', improvement: 'waypoints', panel: 'waypoints' },
 ];
 
 // Waypoints (ui/waypoints.ts): named map pins of the player's own, and the locations the player knows of.
