@@ -204,6 +204,7 @@ describe('the stranded Watchers', () => {
     it('boarding gives the captor the ship and a foundry (a Truth when none is left)', () => {
         const mem = memoryRecordOf(g)!;
         mem.foundries.located = [{ name: 'Foundry 1', systemName: '', x: 100, y: 100 }];
+        delete mem.foundries.alive; // a record from before the alive list: the located ones are shown
         const r = rec();
         onStrandedOwnerChanged(g, r.ship!, faction(), me);
         expect(r.status).toBe('taken');
@@ -218,5 +219,22 @@ describe('the stranded Watchers', () => {
         void ({} as BuiltObject);
         void ({} as StrandedState);
         void BuiltObjectMissionType;
+    });
+
+    it('boarding shows a surviving foundry the old player never found (the alive list, less the located ones), then the Truth', () => {
+        const mem = memoryRecordOf(g)!;
+        const a = { name: 'Foundry 1', systemName: '', x: 100, y: 100 };
+        const b = { name: 'Foundry 2', systemName: '', x: 300, y: 300 };
+        mem.foundries.located = [a];
+        mem.foundries.alive = [a, b];
+        const r = rec();
+        r.status = 'stranded';
+        peekStranded(g)!.revealed = {};
+        onStrandedOwnerChanged(g, r.ship!, faction(), me);
+        expect(peekStranded(g)!.revealed[String(me.empireId)]).toEqual([b]);
+        r.status = 'stranded';
+        onStrandedOwnerChanged(g, r.ship!, faction(), me);
+        expect(peekStranded(g)!.revealed[String(me.empireId)].length).toBe(1);
+        expect(truthsOf(g, me)).toContain(STRANDED_TRUTH);
     });
 });

@@ -82,7 +82,7 @@ export interface MemoryRecord {
     eliminatedPct: number;
     scars: ScarRec[];
     /** Reclaimer foundries (not built yet: the hooks): located and destroyed ones, by position, so the next Reclamation draws only on the survivors. */
-    foundries: { located: PlaceRec[]; destroyed: PlaceRec[] };
+    foundries: { located: PlaceRec[]; destroyed: PlaceRec[]; /** Every foundry still standing at the Long Night, found or not (absent in a record made before it was kept). Not shown on the Knowledge page. */ alive?: PlaceRec[] };
     megaStation: MegaStationMemory;
     /** The empires of Age 1 that Age 2 rebuilds (absent in a record made before the placement was built: the stock placement). */
     survivors?: SurvivorRec[];

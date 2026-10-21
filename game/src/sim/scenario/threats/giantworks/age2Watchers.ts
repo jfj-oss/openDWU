@@ -310,11 +310,17 @@ function recOf(galaxy: Galaxy, bo: BuiltObject): StrandedRec | undefined {
     return peekStranded(galaxy)?.list.find((r) => r.ship === bo);
 }
 
-/** The captor learns one foundry of the memory record (one it has not been shown), else the Truth of the ledger. */
+/**
+ * The captor learns one foundry that survived the Long Night and that the old player never found (the record's `alive` list, less the located ones and the
+ * ones this captor was already shown); a record from before `alive` was kept shows its located list as it always did; with none left, the Truth of the ledger.
+ */
 function prize(galaxy: Galaxy, st: StrandedState, to: Empire, ship: BuiltObject): void {
     const mem = memoryRecordOf(galaxy);
     const shown = (st.revealed[String(to.empireId)] ??= []);
-    const place = (mem?.foundries.located ?? []).find((f) => !shown.some((s) => s.x === f.x && s.y === f.y));
+    const fo = mem?.foundries;
+    const located = fo?.located ?? [];
+    const pool = fo?.alive !== undefined ? fo.alive.filter((a) => !located.some((l) => l.x === a.x && l.y === a.y)) : located;
+    const place = pool.find((f) => !shown.some((s) => s.x === f.x && s.y === f.y));
     if (place !== undefined) {
         shown.push(place);
         if (isHumanEmpire(galaxy, to)) {

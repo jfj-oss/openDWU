@@ -129,14 +129,17 @@ export function playerIdentityOf(galaxy: Galaxy): PlayerIdentityRec | null {
     return { name: p.name, race: p.dominantRace.name, primaryColor: p.mainColor, secondaryColor: p.secondaryColor, flagShape: p.flagShape };
 }
 
-/** The Reclaimers' foundries (beaconFoundry.ts, kept in the Beacon state): the destroyed ones, and the living ones a human player had found. */
+/** The Reclaimers' foundries (beaconFoundry.ts, kept in the Beacon state): the destroyed ones, the living ones a human player had found, and every living one (`alive`, for the stranded Watchers' prize). */
 function foundriesOf(galaxy: Galaxy, st: BeaconState): MemoryRecord['foundries'] {
-    const out: MemoryRecord['foundries'] = { located: [], destroyed: [] };
+    const out: MemoryRecord['foundries'] = { located: [], destroyed: [], alive: [] };
     const humans = new Set(humanEmpires(galaxy).map((e) => e.empireId));
     for (const f of st.foundries?.list ?? []) {
         const place = { name: T('Beacon Foundry Name', f.id), systemName: '', x: f.x, y: f.y };
         if (f.status === 'destroyed') out.destroyed.push(place);
-        else if (f.knowledge.some((k) => humans.has(k.empireId) && k.level >= 2)) out.located.push(place);
+        else {
+            out.alive!.push(place);
+            if (f.knowledge.some((k) => humans.has(k.empireId) && k.level >= 2)) out.located.push(place);
+        }
     }
     return out;
 }

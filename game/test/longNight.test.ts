@@ -163,7 +163,7 @@ describe('the reset', () => {
         expect(mem.scars[0].name.length).toBeGreaterThan(0);
         expect(mem.truths).toEqual(['age1-harvest']);
         expect(mem.megaStation).toEqual({ components: {}, blueprintPoints: 0 });
-        expect(mem.foundries).toEqual({ located: [], destroyed: [] });
+        expect(mem.foundries).toEqual({ located: [], destroyed: [], alive: [] });
         expect(mem.extra['test']).toEqual({ foundries: [1, 2] });
         expect(g.scenario!.state['testRestored']).toEqual({ foundries: [1, 2] });
         expect(peekLongNight(g)!.pending).toBeFalsy();
