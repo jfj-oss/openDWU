@@ -678,6 +678,8 @@ export interface ScenarioQueries {
     builtObjectInvulnerable: { value: boolean; args: { builtObject: BuiltObject } };
     /** 19j: events.ts applyLocationEffects (BuiltObject.cs 3934 ApplyLocationEffects): true = no lightning / ship-damage effects. */
     builtObjectStormImmune: { value: boolean; args: { builtObject: BuiltObject } };
+    /** logistics/refuel.ts autoRefuelRepairShip: true = the ship is not refuelled automatically (the Severance's escorts, which are supplied on their way). Stock false. Pure; never draws. */
+    shipRefuelExempt: { value: boolean; args: { builtObject: BuiltObject } };
     /** 19j: movement.ts rechargeReactors (BuiltObject.1.cs 2509 RechargeReactors): true = recharging burns no fuel. */
     builtObjectSelfFuelling: { value: boolean; args: { builtObject: BuiltObject } };
     /**

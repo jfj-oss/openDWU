@@ -56,11 +56,13 @@ import { spawnShip } from './beaconFleet';
 import { compactFaction } from './state';
 import { galaxyAgeOf } from './longNightState';
 import { harvestPledges, severanceVoteBonus } from './agePrep';
+import { escortAtArrival, escortStep, escortsFreight, releaseEscorts, supplyEscorts } from './megaEscort';
+import { warCreditEscort } from './beaconWarCredit';
 
 export const MOTION_MEGA = 'megaBuild';
 export const MOTION_MEGA_RESUME = 'megaResume';
 export const MEGA_HANDLER_IDS = ['beacon.megaStep'] as const;
-export const MEGA_QUERY_IDS = ['beacon.megaInvulnerable'] as const;
+export const MEGA_QUERY_IDS = ['beacon.megaInvulnerable', 'beacon.escortRefuel'] as const;
 const TAG = 'Mega';
 /** A freighter within this distance of the structure has delivered. */
 export const MEGA_DELIVER_RANGE = 9000;
@@ -447,8 +449,8 @@ function distance(galaxy: Galaxy, a: { xpos: number; ypos: number }, b: { xpos: 
     return galaxy.calculateDistance(a.xpos, a.ypos, b.xpos, b.ypos);
 }
 
-/** Arrivals: a freighter within range delivers, the lost (shot down) and stale ones are dropped, idle ones are sent on. Returns the deliveries. */
-function stepContracts(galaxy: Galaxy, mega: MegaRec, base: BuiltObject, now: number): number {
+/** Arrivals: a freighter within range delivers (an escort within megaEscortNear makes it an escorted one), the lost (shot down) and stale ones are dropped, idle ones are sent on. Returns the deliveries. */
+function stepContracts(galaxy: Galaxy, st: BeaconState, mega: MegaRec, base: BuiltObject, now: number): number {
     let delivered = 0;
     const keep: typeof mega.contracts = [];
     for (const c of mega.contracts) {
@@ -456,10 +458,15 @@ function stepContracts(galaxy: Galaxy, mega: MegaRec, base: BuiltObject, now: nu
         const owner = getEmpireById(galaxy, c.empireId);
         if (b.hasBeenDestroyed || owner === null || b.actualEmpire !== owner) continue; // lost (shot down) or taken
         if (distance(galaxy, b, base) <= MEGA_DELIVER_RANGE) {
+            const escort = escortAtArrival(galaxy, b);
             release(b);
             delivered++;
             mega.delivered++;
             mega.deliveredBy[String(c.empireId)] = (mega.deliveredBy[String(c.empireId)] ?? 0) + 1;
+            if (escort !== null) {
+                mega.escorted = (mega.escorted ?? 0) + 1;
+                warCreditEscort(galaxy, st, escort);
+            }
             continue;
         }
         if (now - c.sent > 2 * P.megaDecayAfterDays(galaxy) * DAY) {
@@ -603,6 +610,7 @@ export function megaStep(galaxy: Galaxy): void {
     const dt = Math.max(0, Math.min(60, (now - mega.lastStep) / DAY));
     mega.lastStep = now;
     if (mega.status === 'dormant') {
+        releaseEscorts(galaxy, mega);
         findCheck(galaxy, mega);
         return;
     }
@@ -611,7 +619,7 @@ export function megaStep(galaxy: Galaxy): void {
     if (base === null) return;
     const holder = megaBlockader(galaxy, st, mega);
     if (holder !== null) shootFreighters(galaxy, holder, mega, base);
-    const delivered = stepContracts(galaxy, mega, base, now);
+    const delivered = stepContracts(galaxy, st, mega, base, now);
     if (delivered > 0) {
         mega.lastArrival = now;
         mega.starvedDays = 0;
@@ -637,6 +645,7 @@ export function megaStep(galaxy: Galaxy): void {
         const name = baseName(mega);
         if (base.name !== name) base.name = name;
     }
+    escortStep(galaxy, mega, base, now, holder !== null);
     if (mega.progress >= 1 - 1e-9) {
         fire(galaxy, st, mega);
         return;
@@ -655,6 +664,7 @@ export function fire(galaxy: Galaxy, st: BeaconState, mega: MegaRec): void {
     mega.progress = 1;
     for (const c of mega.contracts) release(c.ship);
     mega.contracts = [];
+    releaseEscorts(galaxy, mega);
     if (mega.announced !== true) {
         mega.announced = true;
         tellHumans(galaxy, allHumans(galaxy), T(`${TAG} Fired Title`), T(`${TAG} Fired`, mega.builderName), { good: true, popup: true, subject: mega.base ?? undefined });
@@ -795,5 +805,8 @@ export function megaKnowledgeRows(galaxy: Galaxy, viewer: Empire): MegaKnowledge
 
 export function registerMega(): void {
     registerScenarioFramePeriodic({ id: 'beacon.megaStep', flag: BEACON_FLAG, order: 26, periodDays: 1, run: (g) => megaStep(g) });
+    // the escorts' fuel is kept full several times a day, between the daily steps (megaEscort.ts supplyEscorts)
+    registerScenarioFramePeriodic({ id: 'beacon.escortSupply', flag: BEACON_FLAG, order: 26, periodDays: 0.05, run: (g) => { const mega = peekMega(g); if (mega !== null && mega.status !== 'dormant' && mega.status !== 'fired') supplyEscorts(g, mega); } });
     registerScenarioQuery({ id: 'beacon.megaInvulnerable', flag: BEACON_FLAG, query: 'builtObjectInvulnerable', run: (g, v, a) => v || isMegaBase(g, a.builtObject) });
+    registerScenarioQuery({ id: 'beacon.escortRefuel', flag: BEACON_FLAG, query: 'shipRefuelExempt', run: (g, v, a) => v || escortsFreight(g, a.builtObject) });
 }

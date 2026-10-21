@@ -31,6 +31,7 @@ import { REAL_SECONDS_IN_GALACTIC_YEAR } from '../galaxyTime';
 import { galaxyStarDate } from '../tick/simTime';
 import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission, isBuiltObject, isHabitat, type BuiltObjectMission, type StellarObject } from '../missions/mission';
 import { assignMission } from '../missions/assign';
+import { scenarioQuery } from '../scenario/hooks';
 import { assignRepairMission } from '../construction/repair';
 import {
     calculateFuelPortionMarginFromRefuellingPoint,
@@ -390,6 +391,7 @@ function sendNeedsRefuellingMessage(builtObject: BuiltObject): void {
 
 /** BuiltObject.cs 4940 CheckForRefuelling(useCachedRefuellingLocation). */
 export function checkForRefuelling(galaxy: Galaxy, builtObject: BuiltObject, useCachedRefuellingLocation: boolean): void {
+    if (scenarioQuery(galaxy, 'shipRefuelExempt', false, { builtObject })) return;
     let num = 0.05;
     if (builtObject.role === BuiltObjectRole.Base) {
         num = 0.4;
@@ -573,6 +575,7 @@ function getRefuelRevertExcluded(): readonly BuiltObjectMissionType[] {
 /** BuiltObject.2.cs 4706 AutoRefuelRepairShip(useCachedRefuellingLocation). */
 export function autoRefuelRepairShip(galaxy: Galaxy, builtObject: BuiltObject, useCachedRefuellingLocation: boolean): boolean {
     const owner = builtObject.owner;
+    if (scenarioQuery(galaxy, 'shipRefuelExempt', false, { builtObject })) return false;
     if (builtObject.shipGroup === null && builtObject.role !== BuiltObjectRole.Base && owner !== null && owner.autoRefuelStateShips) {
         let mission = builtObjectMission(builtObject.mission);
         if (mission !== null && mission.type === BuiltObjectMissionType.Colonize) {

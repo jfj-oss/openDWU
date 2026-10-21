@@ -652,6 +652,15 @@ export interface PartsRec {
     sent?: Record<string, { id: number; date: number }>;
 }
 
+/** One contributing AI empire's escort group for the mega-station's freight (megaEscort.ts): the warships taken off idle duty, one group per empire. */
+export interface MegaEscortGroup {
+    ships: BuiltObject[];
+    /** Star date the group formed. */
+    since: number;
+    /** Star date its danger was first gone (0: it is still wanted). */
+    quietSince: number;
+}
+
 /** One contributor's convoy freighter on its way to the mega-station (a construction contract the private sector fulfils). */
 export interface MegaContract {
     empireId: number;
@@ -705,6 +714,10 @@ export interface MegaRec {
     refused: string[];
     /** The firing was announced. */
     announced?: boolean;
+    /** AI escort groups by empire id (megaEscort.ts; absent until one forms). */
+    escorts?: Record<string, MegaEscortGroup>;
+    /** Freighters that arrived with an escort within megaEscortNear (any empire's). */
+    escorted?: number;
 }
 
 export interface BeaconState {
@@ -1099,6 +1112,18 @@ export const P = {
     megaReach: (g: Galaxy) => Math.max(1000, p(g, 'megaReach', 30000)),
     /** A hostile armed force within this range of the structure that outweighs the contributors' by the orbit ratio (1.5) holds the space and shoots the freighters (the Blockades that bite rule). */
     megaOrbitRange: (g: Galaxy) => Math.max(1000, p(g, 'megaOrbitRange', 20000)),
+    /** AI escort groups (megaEscort.ts): 1 switches them on; the route is sampled this far either side of its line; a hostile fleet on it adds ships per its firepower (one per average warship); the structure's blockade adds megaEscortBlockade more; at most megaEscortMax. */
+    megaEscortOn: (g: Galaxy) => p(g, 'megaEscortOn', 1) > 0,
+    megaEscortRange: (g: Galaxy) => Math.max(1000, p(g, 'megaEscortRange', 20000)),
+    megaEscortBase: (g: Galaxy) => Math.max(0, Math.trunc(p(g, 'megaEscortBase', 1))),
+    megaEscortBlockade: (g: Galaxy) => Math.max(0, Math.trunc(p(g, 'megaEscortBlockade', 2))),
+    megaEscortMax: (g: Galaxy) => Math.max(1, Math.trunc(p(g, 'megaEscortMax', 6))),
+    /** The share (%) of its warships a contributor keeps at home: an escort group only takes idle ships beyond it. */
+    megaEscortHomePct: (g: Galaxy) => Math.max(0, Math.min(100, p(g, 'megaEscortHomePct', 50))),
+    /** Days a group with no danger left stays on before it goes home (no churn over a passing raider). */
+    megaEscortLingerDays: (g: Galaxy) => Math.max(0, p(g, 'megaEscortLingerDays', 30)),
+    /** An escort within this range of a freighter as it arrives makes the delivery an escorted one. */
+    megaEscortNear: (g: Galaxy) => Math.max(1000, p(g, 'megaEscortNear', 9000)),
     // Capital pursuit (beaconPursuit.ts)
     /** 1: a Reclaimer capital (with escorts) follows an enemy that fled a fight by hyperjump and drags it out of warp (0: no pursuit). */
     pursuitOn: (g: Galaxy) => p(g, 'beaconPursuitOn', 1) > 0,
