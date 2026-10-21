@@ -12,7 +12,8 @@
 //             empires at war with it hold near the route (the worst of three sample points). At most megaEscortMax. A group whose danger has gone
 //             lingers megaEscortLingerDays before it goes home.
 //   FLEETS    the stock maintainShipGroups folds an idle warship into a fleet, and a fleet's refuel and waypoint missions override its members: a
-//             group ship is taken out of its fleet (unfleet) when it is recruited and whenever it is found in one.
+//             group ship is taken out of its fleet (unfleet) when it is recruited and whenever it is found in one, and maintainShipGroups leaves
+//             it out (the shipFleetExempt query).
 //   SPARES    only idle warships of the empire (no mission) that it can spare: it keeps megaEscortHomePct % of its warships at home, and never takes
 //             one on a war mission (Attack, Blockade, Refuel...). A group ship left on an Undefined, Escort, Patrol or Move mission (the stock AI
 //             sends an idle ship home by a Move) is re-tasked; a fight, a repair or a refuel is left alone.

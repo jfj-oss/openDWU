@@ -19,6 +19,7 @@ import { GalaxyTime } from '../src/sim/galaxyTime';
 import type { StartGameOptions } from '../src/sim/startGameOptions';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../src/sim/diplomacy';
 import { rebuildIndexes } from '../src/sim/indexRebuild';
+import { maintainShipGroups } from '../src/sim/fleets/shipGroup';
 import { autoRefuelRepairShip, checkForRefuelling } from '../src/sim/logistics/refuel';
 import { setGameEndHandler, type GameEndEventArgs } from '../src/sim/victory';
 import { threatGameEndPolicy } from '../src/sim/scenario/threats/framework';
@@ -219,6 +220,25 @@ describe('one escort group per contributing AI empire', () => {
         expect(targets.size).toBe(1);
         expect([...targets][0]).toBe(near);
         for (const w of escortGroupOf(mega, ai)!.ships) expect(builtMission(w)).toBe('Escort');
+    });
+
+    it('a group ship is not folded into a stock fleet: a fleet\'s waypoint and refuel missions would override its escort', () => {
+        const s = setup();
+        const mega = started(s);
+        const [ai, raider] = s.ais;
+        contributor(s, ai);
+        warOf(raider, ai);
+        fly(s, ai, 4);
+        place(warships(raider)[0], midOf(s, ai).x, midOf(s, ai).y);
+        rebuildIndexes(s.g);
+        DAYS(s.g, 1);
+        const grp = escortGroupOf(mega, ai)!;
+        expect(grp.ships.length).toBeGreaterThan(0);
+        // the stock fleet maintenance (run every day by the empire tick) folds idle warships into fleets: the group's ships are left out of it
+        maintainShipGroups(s.g, ai);
+        for (const w of grp.ships) expect(w.shipGroup).toBeNull();
+        DAYS(s.g, 1);
+        for (const w of grp.ships) expect(builtMission(w)).toBe('Patrol');
     });
 
     it('no group when the route is safe, and none when the empire has no spare warship (a raider on the route does not make one)', () => {

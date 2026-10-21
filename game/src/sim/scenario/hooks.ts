@@ -680,6 +680,8 @@ export interface ScenarioQueries {
     builtObjectStormImmune: { value: boolean; args: { builtObject: BuiltObject } };
     /** logistics/refuel.ts autoRefuelRepairShip: true = the ship is not refuelled automatically (the Severance's escorts, which are supplied on their way). Stock false. Pure; never draws. */
     shipRefuelExempt: { value: boolean; args: { builtObject: BuiltObject } };
+    /** fleets/shipGroupTasks.ts maintainShipGroups: true = the ship is not folded into a stock fleet (the Severance's escorts keep their own missions: a fleet's waypoint or refuel would override them). Stock false. Pure; never draws. */
+    shipFleetExempt: { value: boolean; args: { builtObject: BuiltObject } };
     /** 19j: movement.ts rechargeReactors (BuiltObject.1.cs 2509 RechargeReactors): true = recharging burns no fuel. */
     builtObjectSelfFuelling: { value: boolean; args: { builtObject: BuiltObject } };
     /**

@@ -62,7 +62,7 @@ import { warCreditEscort } from './beaconWarCredit';
 export const MOTION_MEGA = 'megaBuild';
 export const MOTION_MEGA_RESUME = 'megaResume';
 export const MEGA_HANDLER_IDS = ['beacon.megaStep'] as const;
-export const MEGA_QUERY_IDS = ['beacon.megaInvulnerable', 'beacon.escortRefuel'] as const;
+export const MEGA_QUERY_IDS = ['beacon.megaInvulnerable', 'beacon.escortRefuel', 'beacon.escortFleet'] as const;
 const TAG = 'Mega';
 /** A freighter within this distance of the structure has delivered. */
 export const MEGA_DELIVER_RANGE = 9000;
@@ -809,4 +809,5 @@ export function registerMega(): void {
     registerScenarioFramePeriodic({ id: 'beacon.escortSupply', flag: BEACON_FLAG, order: 26, periodDays: 0.05, run: (g) => { const mega = peekMega(g); if (mega !== null && mega.status !== 'dormant' && mega.status !== 'fired') supplyEscorts(g, mega); } });
     registerScenarioQuery({ id: 'beacon.megaInvulnerable', flag: BEACON_FLAG, query: 'builtObjectInvulnerable', run: (g, v, a) => v || isMegaBase(g, a.builtObject) });
     registerScenarioQuery({ id: 'beacon.escortRefuel', flag: BEACON_FLAG, query: 'shipRefuelExempt', run: (g, v, a) => v || escortsFreight(g, a.builtObject) });
+    registerScenarioQuery({ id: 'beacon.escortFleet', flag: BEACON_FLAG, query: 'shipFleetExempt', run: (g, v, a) => v || escortsFreight(g, a.builtObject) });
 }
