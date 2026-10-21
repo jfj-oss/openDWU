@@ -631,7 +631,9 @@ export interface SetFleetCombo {
 export function createSetFleetCombo(galaxy: Galaxy, empire: Empire, ships: () => BuiltObject[], onApplied: () => void): SetFleetCombo {
     const sel = el('select', 'ow-input ow-select dt-setfleet');
     sel.title = 'Put the selected military ships in a new fleet, an existing fleet, or no fleet';
-    sel.addEventListener('keydown', (e) => e.stopPropagation());
+    sel.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') e.stopPropagation();
+    });
     let items: string[] = [];
     const fill = (index: number): void => {
         items = setFleetItems(empire);

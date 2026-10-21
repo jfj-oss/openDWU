@@ -151,7 +151,9 @@ function select(options: { value: string; label: string; group?: string }[], val
     }
     s.value = value;
     s.addEventListener('change', () => onChange(s.value));
-    s.addEventListener('keydown', (e) => e.stopPropagation());
+    s.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') e.stopPropagation();
+    });
     return s;
 }
 
