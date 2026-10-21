@@ -229,7 +229,9 @@ function eyesIndependents(galaxy: Galaxy, e: Empire): number {
 export function dietVoteScore(galaxy: Galaxy, c: Council, st: DietState, voter: Empire, m: DietMotion): number {
     const base = dietVoteScoreBase(galaxy, c, st, voter, m);
     // A real motion (id >= 0; the pseudo motions of lawScore / the AI's own cases have none) is also weighed by who moved it.
-    return m.id >= 0 && m.kind !== 'repeal' ? base + proposerBias(galaxy, voter, m.proposer).value : base;
+    const score = m.id >= 0 && m.kind !== 'repeal' ? base + proposerBias(galaxy, voter, m.proposer).value : base;
+    // Mod layer (giantworks corrupted empire): a query on the score; with no scenario, or no add-on answering, it is the score.
+    return galaxy.scenario === null ? score : scenarioQuery(galaxy, 'dietVoteScore', score, { voter, kind: m.kind, proposer: m.proposer });
 }
 
 /** Proposer attitude weight (score per point of attitude, -100..100) and the reputation ledger's (per point, clamped to +-50). */

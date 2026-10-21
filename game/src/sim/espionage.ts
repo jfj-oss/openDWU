@@ -1737,6 +1737,7 @@ export function applyIntelligenceMissionEffect(galaxy: Galaxy, self: Empire, mis
             if (targetIsCharacter(mission)) {
                 const character = intelligenceMissionTarget(mission) as Character;
                 if (character !== null && character.active) {
+                    if (galaxy.scenario !== null && character.empire !== null) scenarioEmit(galaxy, 'characterAssassinated', { character, empire: character.empire }); // mod layer (corrupted empire)
                     characterSendDeathMessage(galaxy, character, CharacterDeathType.Assassination);
                     character.kill(galaxy);
                 }

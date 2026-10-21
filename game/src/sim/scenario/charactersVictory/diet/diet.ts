@@ -85,6 +85,7 @@ import {
     dietParam,
     dietState,
     lawInForce,
+    notifyDietTally,
     peekDietState,
 } from './dietState';
 import { asCouncilMotion, atWar, dietMembership, inDiet, attacksDelegates, dietCandidates, dietVoteScore, emergencyCase, emperorBidBlock, emperorBidBlockHard, emperorContenders, emperorYearsElapsed, memberScores, voteWeight } from './dietAi';
@@ -460,6 +461,7 @@ export function closeSession(galaxy: Galaxy, st: DietState, c: Council, s: DietS
     const lines: string[] = [];
     for (const m of s.motions) {
         if (m.status !== 'vetoed') m.status = m.yes > m.no ? 'passed' : 'failed';
+        notifyDietTally(galaxy, m);
         const passed = m.status === 'passed';
         st.history.push({ sessionId: s.id, starDate: now, kind: m.kind, text: m.text, result: m.status as 'passed' | 'failed' | 'vetoed', yes: m.yes, no: m.no, proposer: m.proposer, year, target: m.target });
         if (STOCK_KINDS.has(m.kind) && m.target !== null) {

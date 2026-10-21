@@ -220,6 +220,19 @@ var dietKindStore: DietMotionKindDef[] | undefined;
 // eslint-disable-next-line no-var
 var dietSeatExclusionStore: ((galaxy: Galaxy, e: Empire) => boolean)[] | undefined;
 
+// eslint-disable-next-line no-var
+var dietTallyStore: ((galaxy: Galaxy, m: DietMotion) => void)[] | undefined;
+
+/** A tally observer (read-only): called once per motion when a session closes, after its status is final. Mod layer; no Rnd. */
+export function registerDietTallyObserver(f: (galaxy: Galaxy, m: DietMotion) => void): void {
+    (dietTallyStore ??= []).push(f);
+}
+
+/** Runs the tally observers of a finished motion. */
+export function notifyDietTally(galaxy: Galaxy, m: DietMotion): void {
+    for (const f of dietTallyStore ?? []) f(galaxy, m);
+}
+
 export function registerDietMotionKind(def: DietMotionKindDef): void {
     const list = (dietKindStore ??= []);
     const i = list.findIndex((x) => x.kind === def.kind);

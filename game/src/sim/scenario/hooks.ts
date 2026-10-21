@@ -283,6 +283,8 @@ export interface ScenarioEvents {
     lockedBaseOrder: { empire: Empire; builtObject: BuiltObject; order: 'scrap' | 'retrofit' };
     /** combat/ownership.ts takeOwnershipOfColony (after the stock capital reassignment): `empire` lost its capital `colony` to `capturer` (null: no new owner). */
     capitalLost: { empire: Empire; colony: Habitat; capturer: Empire | null };
+    /** espionage.ts applyIntelligenceMissionEffect, AssassinateCharacter: `character` (of `empire`) was killed by an agent's mission, just before its death. No Rnd in handlers. */
+    characterAssassinated: { character: Character; empire: Empire };
     /** researchTick.ts performResearchProjects: `points` of `empire`'s research (one industry) were taken by the sink (researchSinkShare) instead of its projects. */
     researchSunk: { empire: Empire; industry: number; points: number };
     /** tradeItems.ts giveTradeableItem: a scenario part (trade item type ScenarioPart) changed hands. */
@@ -1036,6 +1038,8 @@ export interface ScenarioQueries {
     colonyFortressBonus: { value: number; args: { habitat: Habitat } };
     /** Characters & Victory's Diet (dietAi.ts voteWeight): a factor on the empire's vote weight. */
     dietVoteWeightFactor: { value: number; args: { empire: Empire } };
+    /** Characters & Victory's Diet (dietAi.ts dietVoteScore, end): the voter's score on a motion of `kind` its `proposer` moved. Giantworks' corrupted empire votes against preparation motions here. */
+    dietVoteScore: { value: number; args: { voter: Empire; kind: string; proposer: Empire } };
     /** frontier/frontier.ts autonomyDrift: extra signed drift terms at the colony (cause, amount). */
     frontierDriftTerms: { value: { cause: string; amount: number }[]; args: { habitat: Habitat } };
     // [colonyEconomy] end

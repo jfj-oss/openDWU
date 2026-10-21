@@ -285,6 +285,8 @@ export function detectionChance(galaxy: Galaxy, strength: number, concealment: n
 
 /** The empire that looks for `t` (its own empire; for a thing in nobody's territory the nearest colony's owner). */
 export function detectingEmpire(galaxy: Galaxy, t: HiddenThing): Empire | null {
+    // A corrupted empire's leader (giantworks/corruptedEmpire.ts) is rolled by its own package on its own stream, never here.
+    if (t.kind === 'corruption') return null;
     if (t.empire !== null) return isNormal(galaxy, t.empire) ? t.empire : null;
     if (!isHabitat(t.target)) return null;
     const near = galaxy.findNearestColony(t.target.xpos, t.target.ypos, null, false);
