@@ -896,7 +896,7 @@ describe('wars over the Engine', () => {
     protectorsReact(s.g);
     expect(obtainDiplomaticRelation(b, a).type).toBe(DiplomaticRelationType.War);
     expect(stillState(s.g).wars!.some((w) => w.a === b.empireId && w.b === a.empireId && w.kind === 'protect')).toBe(true);
-    expect(empireMessages(s.me).slice(before).some((m) => m.description.includes(`The ${b.name} have declared war on the ${a.name} for striking the Stillness Engine`))).toBe(true);
+    expect(empireMessages(s.me).slice(before).some((m) => m.description.includes(`The ${b.name} have declared war on the ${a.name} for attacking the Stillness Engine`))).toBe(true);
     // too weak against the attacker: no
     obtainDiplomaticRelation(b, a).type = DiplomaticRelationType.None;
     stillState(s.g).wars = [];
