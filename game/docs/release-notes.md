@@ -4,6 +4,8 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+## 0.1.34
+
 - **The Beacon replaces the Return of the Shakturi storyline:** when Giantworks' Beacon will come (guaranteed, or a galaxy with at least six empires), a new game starts without the Shakturi story (its option is greyed out on the Victory page). The Distant Worlds and Shadows storylines are unaffected.
 - **Ships in a fleet keep their own icons on the galaxy map** (as in the original): only the fleet's lead ship is shown as the fleet icon, and the other members are drawn with their own symbols under it.
 - **The Purifier is tougher and slower in normal space:** its planet destroyer has 5,000 shields (was about 1,800) and a sub-light speed of 3 (was 5); its hyperdrive is unchanged.
