@@ -32,7 +32,7 @@ import { P, peekBeaconState, type BeaconState } from '../src/sim/scenario/threat
 import { partsOf } from '../src/sim/scenario/threats/giantworks/beaconComponents';
 import type { GreatWorkSite } from '../src/sim/scenario/threats/giantworks/framework';
 import { MOTION_MEGA, fire, megaStep, peekMega, voidPointNear } from '../src/sim/scenario/threats/giantworks/megaStation';
-import { escortGroupCount, escortGroupOf, supplyEscorts } from '../src/sim/scenario/threats/giantworks/megaEscort';
+import { escortAtArrival, escortGroupCount, escortGroupOf, escortHeld, escortsFreight, supplyEscorts } from '../src/sim/scenario/threats/giantworks/megaEscort';
 import { WC, warCreditActive, warCreditLabel, warCreditOf } from '../src/sim/scenario/threats/giantworks/beaconWarCredit';
 import { dietMotionKindDef, type DietMotion } from '../src/sim/scenario/charactersVictory/diet/dietState';
 
@@ -342,6 +342,74 @@ describe('one escort group per contributing AI empire', () => {
         } finally {
             threatGameEndPolicy.restrict = keep;
         }
+    });
+});
+
+describe('only freight is held, supplied and credited', () => {
+    it('an Escort on a warship parked by the structure (not freight) is not held, supplied or credited', () => {
+        const s = setup();
+        const mega = started(s);
+        const me = s.me;
+        const base = mega.base!;
+        const [f] = fly(s, me, 1);
+        const [w, parked] = warships(me);
+        place(parked, base.xpos + 300, base.ypos);
+        place(w, base.xpos + 500, base.ypos);
+        assignMission(s.g, w, BuiltObjectMissionType.Escort, parked, null, BuiltObjectMissionPriority.Normal, { manuallyAssigned: true });
+        markPlayerOrder(w);
+        rebuildIndexes(s.g);
+        expect(escortHeld(s.g, w, parked)).toBe(false);
+        expect(escortsFreight(s.g, w)).toBe(false);
+        w.currentFuel = 0.01 * w.fuelCapacity;
+        supplyEscorts(s.g, mega);
+        expect(w.currentFuel).toBeLessThan(w.fuelCapacity);
+        // a freighter arriving with it beside it: the parked ship is not an escort of that freighter
+        f.xpos = base.xpos;
+        f.ypos = base.ypos;
+        rebuildIndexes(s.g);
+        expect(escortAtArrival(s.g, mega, f)).toBeNull();
+    });
+
+    it('an escort of an enemy (at war with the freighter\'s owner) or a pirate gets no credit; a neutral escort on the freighter does', () => {
+        const s = setup();
+        const mega = started(s);
+        const me = s.me;
+        const base = mega.base!;
+        const [f] = fly(s, me, 1);
+        const [neutral, raider] = s.ais;
+        const enemyShip = warships(raider)[0];
+        const friendly = warships(neutral)[0];
+        warOf(raider, me);
+        place(enemyShip, base.xpos + 400, base.ypos);
+        assignMission(s.g, enemyShip, BuiltObjectMissionType.Escort, f, null, BuiltObjectMissionPriority.Normal, { manuallyAssigned: true });
+        f.xpos = base.xpos;
+        f.ypos = base.ypos;
+        rebuildIndexes(s.g);
+        expect(escortAtArrival(s.g, mega, f)).toBeNull();
+        // the same arrival with a neutral empire's escort on the freighter: credited to that empire
+        place(friendly, base.xpos + 600, base.ypos);
+        assignMission(s.g, friendly, BuiltObjectMissionType.Escort, f, null, BuiltObjectMissionPriority.Normal, { manuallyAssigned: true });
+        rebuildIndexes(s.g);
+        expect(escortAtArrival(s.g, mega, f)).toBe(neutral);
+    });
+
+    it('two real escorts on one delivery give one escorted delivery, not two', () => {
+        const s = setup();
+        const mega = started(s);
+        const me = s.me;
+        const base = mega.base!;
+        const [f] = fly(s, me, 1);
+        const [a, b] = warships(me);
+        f.xpos = base.xpos;
+        f.ypos = base.ypos;
+        for (const w of [a, b]) {
+            place(w, base.xpos + 400, base.ypos + 100);
+            assignMission(s.g, w, BuiltObjectMissionType.Escort, f, null, BuiltObjectMissionPriority.Normal, { manuallyAssigned: true });
+        }
+        rebuildIndexes(s.g);
+        DAYS(s.g, 1);
+        expect(mega.contracts.some((c) => c.ship === f)).toBe(false);
+        expect(mega.escorted).toBe(1);
     });
 });
 

@@ -21,9 +21,10 @@
 //             and hand the escort to automation: the command is held while the freight is at the structure (escortHeld, cmdEscort). A delivered
 //             freighter's escort (a group ship, or a player's order still on Escort to it) goes on Patrol of the structure at once
 //             (keepEscortsOnDelivery). Kept on guard, a player's escort is supplied and not refuelled, as a group's ships are (escortsFreight).
-//   CREDIT    an arrival with an armed warship within megaEscortNear of it, on an Escort mission (any empire's) or a member of an escort group of the
-//             structure (counted by assignment, so a group ship re-tasked a moment before still counts), is an escorted delivery: the escort's owner gets
-//             war credit (beaconWarCredit.ts), and the structure counts it (MegaRec.escorted).
+//   CREDIT    an arrival with an armed warship within megaEscortNear of it that really escorts THAT freighter (an Escort mission to it, or a group ship
+//             of the freighter's own empire; counted by assignment, so a group ship re-tasked a moment before still counts), of its own empire or of an
+//             empire not at war with it, is an escorted delivery: the escort's owner gets war credit (beaconWarCredit.ts), and the structure counts it
+//             (MegaRec.escorted). One credit at most per delivery. Freight is a contract freighter only (freightTarget).
 // Rnd: none (fixed iteration orders: contributors in pledge order, ships by builtObjectID; the stock mission assignments draw what they draw).
 
 import type { Galaxy } from '../../../galaxy';
@@ -157,13 +158,12 @@ export function escortsFreight(galaxy: Galaxy, bo: BuiltObject): boolean {
 }
 
 /**
- * A freighter of the Severance's freight: one on its way (a contract), or one that has just delivered and waits by the structure (within
- * megaEscortNear of it: its escort is still with it). Pure.
+ * A freighter of the Severance's freight: one on its way or arrived and not yet counted (a contract). Any other ship near the structure is not freight
+ * (a warship parked there does not hold an escort, nor does its escort get fuel or a credit). Pure.
  */
 function freightTarget(galaxy: Galaxy, mega: MegaRec, t: BuiltObject): boolean {
-    if (mega.contracts.some((c) => c.ship === t)) return true;
-    const base = mega.base;
-    return base !== undefined && base !== null && !base.hasBeenDestroyed && galaxy.calculateDistance(t.xpos, t.ypos, base.xpos, base.ypos) <= P.megaEscortNear(galaxy);
+    void galaxy;
+    return mega.contracts.some((c) => c.ship === t);
 }
 
 /**
@@ -352,19 +352,23 @@ export function keepEscortsOnDelivery(galaxy: Galaxy, mega: MegaRec, base: Built
 }
 
 /**
- * The escort that is with a freighter as it arrives: the nearest armed warship within megaEscortNear of it that is either on an Escort mission (any
- * empire's) or a member of an escort group of the structure (counted by assignment, so a group ship re-tasked a moment before still counts), or null.
- * Returns the empire that controls it (the war credit's owner).
+ * The escort that is with a freighter as it arrives: the nearest armed warship within megaEscortNear of it that really escorts THAT freighter (on an
+ * Escort mission to it, or a group ship of the freighter's own empire), and that is of the freighter's own empire or of an empire not at war with it
+ * (no pirate or enemy credit). Returns the empire that controls it (the war credit's owner), or null. One credit at most per delivery.
  */
 export function escortAtArrival(galaxy: Galaxy, mega: MegaRec, freighter: BuiltObject): Empire | null {
     const range = P.megaEscortNear(galaxy);
-    const members = new Set<BuiltObject>(Object.values(mega.escorts ?? {}).flatMap((g) => g.ships));
+    const owner = freighter.actualEmpire;
+    const group = owner === null ? undefined : escortGroupOf(mega, owner);
     let best: BuiltObject | null = null;
     let bd = Number.MAX_VALUE;
     for (const w of getNearbyBuiltObjects(galaxy, freighter.xpos, freighter.ypos, range)) {
         if (w == null || w === freighter || w.hasBeenDestroyed || !(w.firepowerRaw > 0) || w.actualEmpire === null) continue;
         const m = builtObjectMission(w.mission);
-        if (!members.has(w) && (m === null || m.type !== BuiltObjectMissionType.Escort)) continue;
+        const real = (m !== null && m.type === BuiltObjectMissionType.Escort && m.targetBuiltObject === freighter) || (group !== undefined && group.ships.includes(w));
+        if (!real) continue;
+        const e = w.actualEmpire;
+        if (e !== owner && (e.pirateEmpireBaseHabitat !== null || (owner !== null && obtainDiplomaticRelation(e, owner).type === DiplomaticRelationType.War))) continue;
         const d = galaxy.calculateDistance(w.xpos, w.ypos, freighter.xpos, freighter.ypos);
         if (d < bd || (d === bd && best !== null && w.builtObjectID < best.builtObjectID)) {
             bd = d;
