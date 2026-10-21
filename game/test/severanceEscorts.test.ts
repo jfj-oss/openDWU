@@ -413,6 +413,67 @@ describe('only freight is held, supplied and credited', () => {
     });
 });
 
+describe('the recruits are spare warships at home', () => {
+    it('a warship in a stock fleet is not recruited, and a fleet is not broken up for the group', () => {
+        const s = setup();
+        const mega = started(s);
+        const [ai, raider] = s.ais;
+        contributor(s, ai);
+        warOf(raider, ai);
+        fly(s, ai, 4);
+        place(warships(raider)[0], midOf(s, ai).x, midOf(s, ai).y);
+        rebuildIndexes(s.g);
+        // the stock fleet maintenance folds the idle warships into fleets
+        maintainShipGroups(s.g, ai);
+        const fleeted = new Set(warships(ai).filter((w) => w.shipGroup !== null));
+        expect(fleeted.size).toBeGreaterThan(0);
+        DAYS(s.g, 1);
+        const grp = escortGroupOf(mega, ai);
+        for (const w of grp?.ships ?? []) expect(fleeted.has(w)).toBe(false);
+        for (const w of fleeted) if (!(grp?.ships ?? []).includes(w)) expect(w.shipGroup).not.toBeNull();
+    });
+
+    it('while at war, a spare warship near a war front stays home', () => {
+        const s = setup();
+        const mega = started(s);
+        const [ai, raider] = s.ais;
+        contributor(s, ai);
+        warOf(raider, ai);
+        fly(s, ai, 4);
+        const mid = midOf(s, ai);
+        const threat = warships(raider)[0];
+        place(threat, mid.x, mid.y);
+        // an idle warship of the empire sits on the raider: a war front
+        const front = warships(ai)[0];
+        place(front, mid.x + 500, mid.y);
+        rebuildIndexes(s.g);
+        DAYS(s.g, 1);
+        const grp = escortGroupOf(mega, ai);
+        expect(grp?.ships.length ?? 0).toBeGreaterThan(0);
+        expect(grp?.ships.includes(front) ?? false).toBe(false);
+    });
+
+    it('the home floor is counted over the idle ships at home, not over all the warships', () => {
+        const s = setup();
+        const mega = started(s);
+        const [ai, raider] = s.ais;
+        s.g.scenario!.params.megaEscortBase = 4;
+        contributor(s, ai);
+        warOf(raider, ai);
+        fly(s, ai, 4);
+        place(warships(raider)[0], midOf(s, ai).x, midOf(s, ai).y);
+        // all but four of its warships are away on missions: only four are at home
+        const all = warships(ai);
+        const away = all.slice(0, all.length - 4);
+        for (const w of away) assignMission(s.g, w, BuiltObjectMissionType.Move, mega.base!, null, BuiltObjectMissionPriority.Normal, { manuallyAssigned: true });
+        rebuildIndexes(s.g);
+        DAYS(s.g, 1);
+        // half of the four at home stay home: at most two recruits, though four are wanted
+        expect(escortGroupOf(mega, ai)?.ships.length ?? 0).toBeGreaterThan(0);
+        expect(escortGroupOf(mega, ai)!.ships.length).toBeLessThanOrEqual(2);
+    });
+});
+
 describe('a player\'s escort is exempt only as a live guard of the structure', () => {
     /** A player's escort delivers its freighter: it stays on guard at the structure, recorded. */
     function guardedBy(s: Setup): { w: BuiltObject; f: BuiltObject; base: BuiltObject } {

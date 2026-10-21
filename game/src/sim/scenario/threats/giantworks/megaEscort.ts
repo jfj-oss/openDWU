@@ -12,11 +12,13 @@
 //             empires at war with it hold near the route (the worst of three sample points). At most megaEscortMax. A group whose danger has gone
 //             lingers megaEscortLingerDays before it goes home.
 //   FLEETS    the stock maintainShipGroups folds an idle warship into a fleet, and a fleet's refuel and waypoint missions override its members: a
-//             group ship is taken out of its fleet (unfleet) when it is recruited and whenever it is found in one, and maintainShipGroups leaves
-//             it out (the shipFleetExempt query).
-//   SPARES    only idle warships of the empire (no mission) that it can spare: it keeps megaEscortHomePct % of its warships at home, and never takes
-//             one on a war mission (Attack, Blockade, Refuel...). A group ship left on an Undefined, Escort, Patrol or Move mission (the stock AI
-//             sends an idle ship home by a Move) is re-tasked; a fight, a repair or a refuel is left alone.
+//             group ship is never folded into one (maintainShipGroups leaves it out, the shipFleetExempt query), and a warship already in a fleet is not
+//             recruited (it is the fleet's; a group ship that joins one leaves the group).
+//   SPARES    only idle warships of the empire (no mission at all, not in a fleet) that it can spare: it keeps megaEscortHomePct % of its idle warships
+//             at home (the floor is counted over the ships at home, not over all its warships), and, while it is at war, never takes one near a war
+//             front (hostile firepower within megaEscortRange). It never takes one on a war mission (Attack, Blockade, Refuel...). A group ship left on
+//             an Undefined, Escort, Patrol or Move mission (the stock AI sends an idle ship home by a Move) is re-tasked; a fight, a repair or a refuel
+//             is left alone.
 //   KEEP      a freighter's mission ends when it arrives, a moment before its delivery is counted, and the stock Escort command would end with it
 //             and hand the escort to automation: the command is held while the freight is at the structure (escortHeld, cmdEscort). A delivered
 //             freighter's escort (a group ship, or a player's order still on Escort to it) goes on Patrol of the structure at once
@@ -35,7 +37,6 @@ import { BuiltObjectRole } from '../../../data/designSpecifications';
 import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission } from '../../../missions/mission';
 import { assignMission, clearPreviousMissionRequirements } from '../../../missions/assign';
 import { isAiControlled, markPlayerOrder } from '../../../missions/playerOrder';
-import { leaveShipGroup } from '../../../fleets/shipGroup';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../../../diplomacy';
 import { getEmpireById } from '../../../logistics/contracts';
 import { getNearbyBuiltObjects } from '../../../pirates/pirateAI';
@@ -88,22 +89,30 @@ function warshipsOf(e: Empire): BuiltObject[] {
     return e.builtObjects.filter((b) => b !== null && !b.hasBeenDestroyed && b.role === BuiltObjectRole.Military && b.topSpeed > 0 && b.firepowerRaw > 0 && b.builtAt == null && b.actualEmpire === e);
 }
 
+/** The firepower of the pirates and the empires at war with `e` within `range` of (x, y). Pure apart from the relation records. */
+function hostileFireNear(galaxy: Galaxy, e: Empire, x: number, y: number, range: number): number {
+    const compact = compactFaction(galaxy);
+    let sum = 0;
+    for (const [o, v] of firepowerByEmpireNear(galaxy, x, y, range)) {
+        if (o === e || o === compact || o === galaxy.independentEmpire || !o.active) continue;
+        if (o.pirateEmpireBaseHabitat !== null || obtainDiplomaticRelation(e, o).type === DiplomaticRelationType.War) sum += v;
+    }
+    return sum;
+}
+
 /** The most hostile firepower on the route, at its three inner sample points (the worst one). Pure apart from the relation records. */
 function routeHostileFire(galaxy: Galaxy, e: Empire, route: { x: number; y: number }, base: BuiltObject): number {
     const range = P.megaEscortRange(galaxy);
-    const compact = compactFaction(galaxy);
     let worst = 0;
     for (const f of [0.25, 0.5, 0.75]) {
-        const x = route.x + (base.xpos - route.x) * f;
-        const y = route.y + (base.ypos - route.y) * f;
-        let sum = 0;
-        for (const [o, v] of firepowerByEmpireNear(galaxy, x, y, range)) {
-            if (o === e || o === compact || o === galaxy.independentEmpire || !o.active) continue;
-            if (o.pirateEmpireBaseHabitat !== null || obtainDiplomaticRelation(e, o).type === DiplomaticRelationType.War) sum += v;
-        }
-        worst = Math.max(worst, sum);
+        worst = Math.max(worst, hostileFireNear(galaxy, e, route.x + (base.xpos - route.x) * f, route.y + (base.ypos - route.y) * f, range));
     }
     return worst;
+}
+
+/** `e` is at war with a real empire (a pirate is hostile without it). Pure apart from the relation records. */
+function atWarWithAnyone(galaxy: Galaxy, e: Empire): boolean {
+    return galaxy.empires.some((o) => o !== null && o !== e && o.active && o !== galaxy.independentEmpire && obtainDiplomaticRelation(e, o).type === DiplomaticRelationType.War);
 }
 
 /** The ships the group wants on the route now: 0 when it is safe. Pure apart from the relation records. */
@@ -117,15 +126,18 @@ export function escortWant(galaxy: Galaxy, e: Empire, base: BuiltObject, route: 
 }
 
 /**
- * An idle warship of `e` that may take an escort: AI-controlled, no mission at all. Its fuel is not checked: the structure lies beyond any warship's
+ * An idle warship of `e` that may take an escort: AI-controlled, no mission at all, not in a stock fleet (a fleet's ships are the fleet's), and, while `e`
+ * is at war, not near a war front (hostile firepower within megaEscortRange of it). Its fuel is not checked: the structure lies beyond any warship's
  * range from the colonies, and the freight it guards is supplied the same way (sendTo / stepContracts keep a contract freighter's fuel full).
  */
 function spareShips(galaxy: Galaxy, e: Empire, near: { x: number; y: number }, taken: ReadonlySet<BuiltObject>): BuiltObject[] {
     const out: BuiltObject[] = [];
+    const atWar = atWarWithAnyone(galaxy, e);
     for (const w of warshipsOf(e)) {
-        if (taken.has(w) || !isAiControlled(w)) continue;
+        if (taken.has(w) || !isAiControlled(w) || w.shipGroup !== null) continue;
         const m = builtObjectMission(w.mission);
         if (m !== null && m.type !== BuiltObjectMissionType.Undefined) continue;
+        if (atWar && hostileFireNear(galaxy, e, w.xpos, w.ypos, P.megaEscortRange(galaxy)) > 0) continue;
         out.push(w);
     }
     const d = (w: BuiltObject): number => galaxy.calculateDistance(w.xpos, w.ypos, near.x, near.y);
@@ -227,10 +239,7 @@ export function supplyEscorts(galaxy: Galaxy, mega: MegaRec): void {
     if (base !== undefined && base !== null && !base.hasBeenDestroyed) {
         for (const f of getNearbyBuiltObjects(galaxy, base.xpos, base.ypos, P.megaEscortNear(galaxy))) if (f != null && f.role === BuiltObjectRole.Freight && freightTarget(galaxy, mega, f)) freight.add(f);
     }
-    for (const g of Object.values(mega.escorts ?? {})) for (const w of g.ships) if (!w.hasBeenDestroyed) {
-        unfleet(galaxy, w);
-        if (w.fuelCapacity > 0) w.currentFuel = w.fuelCapacity;
-    }
+    for (const g of Object.values(mega.escorts ?? {})) for (const w of g.ships) if (!w.hasBeenDestroyed && w.fuelCapacity > 0) w.currentFuel = w.fuelCapacity;
     for (const g of mega.guards ?? []) {
         const w = g.ship;
         if (!w.hasBeenDestroyed && w.fuelCapacity > 0 && escortsFreight(galaxy, w)) w.currentFuel = w.fuelCapacity;
@@ -243,14 +252,6 @@ export function supplyEscorts(galaxy: Galaxy, mega: MegaRec): void {
             if (m !== null && m.type === BuiltObjectMissionType.Escort && m.targetBuiltObject === f) w.currentFuel = w.fuelCapacity;
         }
     }
-}
-
-/**
- * A group ship is taken out of any stock fleet: the fleet's own refuel and waypoint missions (militaryAI assignFleetRefuelling, shipGroupTasks
- * assignFleetWaypointMission) would otherwise override its escort, and maintainShipGroups folds an idle warship back into a fleet.
- */
-function unfleet(galaxy: Galaxy, w: BuiltObject): void {
-    if (w.shipGroup !== null && !w.hasBeenDestroyed) leaveShipGroup(galaxy, w);
 }
 
 /** Releases `e`'s group (the group record goes; its ships go back to their empire's stock control). */
@@ -287,7 +288,7 @@ function escortFor(galaxy: Galaxy, mega: MegaRec, e: Empire, base: BuiltObject, 
     const key = String(e.empireId);
     const route = routeStart(galaxy, e, base);
     let grp = escortGroupOf(mega, e);
-    if (grp !== undefined) grp.ships = grp.ships.filter((w) => !w.hasBeenDestroyed && w.actualEmpire === e);
+    if (grp !== undefined) grp.ships = grp.ships.filter((w) => !w.hasBeenDestroyed && w.actualEmpire === e && w.shipGroup === null); // (a ship that joined a fleet leaves the group, its fleet's)
     let want = route === null ? 0 : escortWant(galaxy, e, base, route, blockade);
     if (want === 0 && grp !== undefined && grp.ships.length > 0) {
         if (grp.quietSince === 0) grp.quietSince = now;
@@ -305,18 +306,16 @@ function escortFor(galaxy: Galaxy, mega: MegaRec, e: Empire, base: BuiltObject, 
         mega.escorts ??= {};
         mega.escorts[key] = grp;
     }
-    // recruit: idle spares beyond the home share, nearest the route's start
+    // recruit: idle spares nearest the route's start, but only the share beyond the home floor, counted over the ships AT HOME (the idle warships
+    // with no mission, not in a group), so a fleet away on missions does not let the group take the home ships
     const have = grp.ships.length;
     if (have < want) {
-        const warships = warshipsOf(e).length;
-        const floor = Math.ceil((warships * P.megaEscortHomePct(galaxy)) / 100);
-        const allowance = warships - have - floor;
         const taken = new Set(grp.ships);
+        const atHome = warshipsOf(e).filter((w) => !taken.has(w) && (builtObjectMission(w.mission)?.type ?? BuiltObjectMissionType.Undefined) === BuiltObjectMissionType.Undefined).length;
+        const floor = Math.ceil((atHome * P.megaEscortHomePct(galaxy)) / 100);
+        const allowance = atHome - floor;
         const fresh = spareShips(galaxy, e, route, taken).slice(0, Math.max(0, Math.min(want - have, allowance)));
-        for (const w of fresh) {
-            unfleet(galaxy, w);
-            grp.ships.push(w);
-        }
+        for (const w of fresh) grp.ships.push(w);
     }
     // shrink: the latest recruits go first
     while (grp.ships.length > want) {
@@ -329,7 +328,6 @@ function escortFor(galaxy: Galaxy, mega: MegaRec, e: Empire, base: BuiltObject, 
     const nearest = escortTarget(mega, e, base, galaxy);
     const target = nearest !== null && galaxy.calculateDistance(nearest.xpos, nearest.ypos, base.xpos, base.ypos) <= 5 * P.megaEscortNear(galaxy) ? nearest : null;
     for (const w of grp.ships) {
-        unfleet(galaxy, w);
         if (w.fuelCapacity > 0) w.currentFuel = w.fuelCapacity;
         w.refuelForNextMission = false; // (the civilian AI would send a flagged idle ship to refuel)
         const m = builtObjectMission(w.mission);
