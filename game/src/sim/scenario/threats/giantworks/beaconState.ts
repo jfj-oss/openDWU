@@ -869,7 +869,7 @@ export function warOn(st: BeaconState): boolean {
 
 /** The Beacon's machine faction (the Watchers) is not a power the empires know of until the first beam: the empire / diplomacy lists leave it out. Pure. */
 export function beaconFactionHidden(galaxy: Galaxy, empire: Empire | null): boolean {
-    if (empire === null) return false;
+    if (empire === null || galaxy.scenario == null) return false; // (a test galaxy may have no scenario field at all)
     const st = peekBeaconState(galaxy);
     return st !== null && st.faction === empire && !warOn(st);
 }
