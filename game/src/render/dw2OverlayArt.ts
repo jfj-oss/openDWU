@@ -11,6 +11,7 @@ import { HabitatCategoryType } from '../sim/types';
 import { moonDotPx, planetSpritePx, starSpritePx } from './mainView';
 import { useMinifyingFilter } from './assets';
 import { resourceIconPath } from '../ui/resourceIcons';
+import { PIE_STEPS, pieWedge } from './resourceOverlayLayout';
 
 /** ui/hud.ts resourceIconUrl (not imported: hud.ts pulls the whole HUD). */
 export function resourceIconUrl(pictureRef: number): string {
@@ -95,6 +96,42 @@ export function ringTexture(): Texture | null {
     ringTex = Texture.from(c);
     useMinifyingFilter(ringTex); // the thin ring is drawn ~20 px wide: mips keep it from breaking up
     return ringTex;
+}
+
+const pieTexs = new Map<number, (Texture | null)[]>();
+/** A pie disc for an abundance step (0..PIE_STEPS tenths of a full circle): a dark disc with the wedge from 12 o'clock
+ * clockwise in `colour`. Pre-baked per colour and step (11 textures a colour, made on first use); our own procedural
+ * art. Null headless. */
+export function abundancePieTexture(colour: number, step: number): Texture | null {
+    let row = pieTexs.get(colour);
+    if (row === undefined) pieTexs.set(colour, (row = new Array<Texture | null>(PIE_STEPS + 1).fill(null)));
+    const have = row[step];
+    if (have !== null) return have;
+    if (typeof document === 'undefined') return null;
+    const c = document.createElement('canvas');
+    c.width = c.height = 32;
+    const ctx = c.getContext('2d');
+    if (ctx === null) return null;
+    const r = 15.5;
+    ctx.fillStyle = '#0a0d12';
+    ctx.globalAlpha = 0.85;
+    ctx.beginPath();
+    ctx.arc(16, 16, r, 0, Math.PI * 2);
+    ctx.fill();
+    if (step > 0) {
+        const w = pieWedge(step);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = `#${colour.toString(16).padStart(6, '0')}`;
+        ctx.beginPath();
+        ctx.moveTo(16, 16);
+        ctx.arc(16, 16, r, w.start, w.end);
+        ctx.closePath();
+        ctx.fill();
+    }
+    const tex = Texture.from(c);
+    useMinifyingFilter(tex); // drawn ~12-16 px across
+    row[step] = tex;
+    return tex;
 }
 
 /** Sprites reused frame to frame: take() the next one, end() hides the rest. */

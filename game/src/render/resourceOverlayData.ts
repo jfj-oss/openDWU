@@ -156,7 +156,7 @@ export function systemsForFilter(index: KnownResourceIndex, resourceId: number |
     return index.systems.filter((s) => s.resources.some((r) => r.resourceId === resourceId));
 }
 
-/** The icons one system shows: the filtered resource alone, else its first `max` (rarest / most abundant). */
+/** The icons one system's ring offers: the filtered resource alone, else its first `max` (rarest / most abundant). */
 export function systemIcons(sys: KnownSystemResources, resourceId: number | null, max: number): KnownSystemResource[] {
     if (resourceId !== null) {
         const r = sys.resources.find((x) => x.resourceId === resourceId);
@@ -165,17 +165,9 @@ export function systemIcons(sys: KnownSystemResources, resourceId: number | null
     return sys.resources.slice(0, Math.max(0, max));
 }
 
-/** The icons one habitat shows (system zoom): the filtered resource alone, else all of them. */
+/** The icons one habitat's ring offers (system zoom): the filtered resource alone, else all of them. */
 export function habitatIcons(h: KnownHabitatResources, resourceId: number | null): KnownHabitatResources['resources'] {
     return resourceId === null ? h.resources : h.resources.filter((r) => r.resourceId === resourceId);
-}
-
-/** Galaxy / sector zoom: how many icons per system fit at zoom factor f (world units per pixel). */
-export function maxSystemIcons(f: number): number {
-    if (f > 2500) return 1;
-    if (f > 900) return 2;
-    if (f > 300) return 3;
-    return 4;
 }
 
 export interface ResourcePickerOption {

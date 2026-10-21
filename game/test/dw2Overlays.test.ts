@@ -19,19 +19,20 @@ import {
     habitatIcons,
     knownResourceIndexFor,
     knownResourceSignature,
-    maxSystemIcons,
     resourcePickerOptions,
     resourceRarity,
     resourceTooltipText,
     systemIcons,
     systemsForFilter,
+    type KnownSystemResources,
 } from '../src/render/resourceOverlayData';
+import { RING_MAX_ICONS } from '../src/render/resourceOverlayLayout';
 import { colonyTargetScoresFor, colonyTargetSignature, colonyTargetTooltip, computeColonyTargetScores, heatColor, scoreColonyTargets } from '../src/render/colonyTargets';
 import { identifyColonizationTargetsFull } from '../src/sim/civilianAI';
 import { expansionTargets } from '../src/ui/screens/expansionPlanner';
 import { RefuelReach, fleetRangeRadii, fuelOverlayData, fuelReferenceShip, playerShipsOfSelection, refuelReach, shipFuelTypes } from '../src/render/rangeRings';
 import { fuelLabelText, refuelPointStyle, refuelPointTooltip, shortDistance, FUEL_COLORS } from '../src/render/fuelOverlay';
-import { iconRowLayout, resourceIconPx } from '../src/render/resourceOverlay';
+import { resourceIconPx } from '../src/render/resourceOverlay';
 import { keyedAlpha } from '../src/render/dw2OverlayArt';
 import { currentRange, ultraFastFindNearestRefuellingLocation } from '../src/sim/movement';
 import { improvementById, isImprovementEnabled, onImprovementsChange, overlayRowSections, setImprovementEnabled } from '../src/ui/improvements';
@@ -112,16 +113,12 @@ describe('Resources overlay data', () => {
         expect(habitatIcons(alpha.habitats[0], null)).toHaveLength(2);
     });
 
-    it('shows fewer icons per system as the view widens', () => {
-        expect(maxSystemIcons(100)).toBe(4);
-        expect(maxSystemIcons(500)).toBe(3);
-        expect(maxSystemIcons(1500)).toBe(2);
-        expect(maxSystemIcons(4000)).toBe(1);
+    it('icons stay readable at every zoom, and a system offers up to six', () => {
         expect(resourceIconPx(100)).toBeGreaterThan(resourceIconPx(4000));
-        const L = iconRowLayout(1000, 0, 3, 10, 5, 0.5);
-        expect(L.step).toBeCloseTo(26);
-        expect(L.x0 + L.step).toBeCloseTo(1000); // centred
-        expect(L.y).toBeCloseTo(20);
+        for (const f of [1, 70, 300, 900, 2500, 1e6]) expect(resourceIconPx(f)).toBeGreaterThanOrEqual(10);
+        const sys = { resources: Array.from({ length: 9 }, (_, i) => ({ resourceId: i, maxAbundance: 100, habitatCount: 1, rarity: 0 })) } as unknown as KnownSystemResources;
+        expect(systemIcons(sys, null, RING_MAX_ICONS)).toHaveLength(6);
+        expect(systemIcons(sys, null, RING_MAX_ICONS)[0].resourceId).toBe(0); // the rarest / most abundant first
     });
 
     it('picker: "All" first, then very rare / rare / common, known ones before the rest, with system counts', () => {
