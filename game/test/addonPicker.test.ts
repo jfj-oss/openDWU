@@ -113,6 +113,17 @@ describe('flag-level add-on dependencies', () => {
         expect(addonChoiceFor(cat, ['llm-layer'], none)!.addons).not.toContain('reputation');
         expect(withFlagAddons(cat, [], on)).toEqual([]);
     });
+
+    it('the Harvest Cycle on pulls in Internal Security and switches its flag on (the corrupted empire needs its leads); off it does not', () => {
+        const hc = { flags: { gwHarvestCycle: true }, params: {} };
+        const p = withFlagAddons(cat, ['giantworks'], hc);
+        expect(p).toContain('characters-victory');
+        expect(p).toContain('internal-security');
+        expect(resolveAddonSwitches(cat, p, hc).flags.internalSecurity).toBe(true);
+        expect(resolveAddonSwitches(cat, p, hc).flags.gwHarvestCycle).toBe(true);
+        const off = { flags: { gwHarvestCycle: false }, params: {} };
+        expect(withFlagAddons(cat, ['giantworks'], off)).not.toContain('internal-security');
+    });
 });
 
 describe('flag-level requiresFlags (LLM layer forces war goals)', () => {
