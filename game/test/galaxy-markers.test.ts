@@ -207,10 +207,10 @@ describe('presenceDiscRadius', () => {
     it("is the original's system-influence radius (150000 * 1.1 / 2) for one, growing with sqrt(count)", () => {
         expect(SYSTEM_INFLUENCE_RADIUS).toBe(82500);
         expect(presenceDiscRadius(0)).toBe(0);
-        // Scaled 1.8x from the original's size (user call).
-        expect(presenceDiscRadius(1)).toBeCloseTo(1.8 * 82500);
-        expect(presenceDiscRadius(4)).toBeCloseTo(1.8 * 82500 * 1.4);
-        expect(presenceDiscRadius(9)).toBeCloseTo(1.8 * 82500 * 1.8);
+        // Scaled 1.35x from the original's size (user call: 1.8x, cut by 25 %).
+        expect(presenceDiscRadius(1)).toBeCloseTo(1.35 * 82500);
+        expect(presenceDiscRadius(4)).toBeCloseTo(1.35 * 82500 * 1.4);
+        expect(presenceDiscRadius(9)).toBeCloseTo(1.35 * 82500 * 1.8);
     });
     it('grows monotonically and stays a small fraction of the 0.5 M+ colony influence range', () => {
         let prev = 0;
@@ -219,7 +219,7 @@ describe('presenceDiscRadius', () => {
             expect(r).toBeGreaterThanOrEqual(prev);
             prev = r;
         }
-        expect(prev).toBeLessThanOrEqual(1.8 * 82500 * 2.5);
+        expect(prev).toBeLessThanOrEqual(1.35 * 82500 * 2.5);
     });
 });
 

@@ -310,16 +310,16 @@ export function galaxyBackVisible(f: number): boolean {
  * range of a colony). */
 export function presenceDiscRadius(count: number): number {
     if (count <= 0) return 0;
-    // 1.8x the original's system-influence size (user call: more noticeable).
+    // 1.35x the original's system-influence size (user call: 1.8x, cut by 25 %).
     return PRESENCE_SIZE_SCALE * SYSTEM_INFLUENCE_RADIUS * Math.min(2.5, 0.6 + 0.4 * Math.sqrt(count));
 }
 
-/** Presence discs drawn larger than the original's system-influence radius (user call). */
-export const PRESENCE_SIZE_SCALE = 1.8;
-/** Minimum on-screen presence disc radius (px), so stations stay visible fully zoomed out (user call). */
-export const PRESENCE_MIN_SCREEN_PX = 9;
-/** The minimum radius (px, for one base / colony) once fully at galaxy zoom (user call: larger at galaxy view). */
-export const PRESENCE_GALAXY_MIN_SCREEN_PX = 13;
+/** Presence discs drawn larger than the original's system-influence radius (user call: 1.8x, then 25 % smaller). */
+export const PRESENCE_SIZE_SCALE = 1.35;
+/** Minimum on-screen presence disc radius (px), so stations stay visible fully zoomed out (user call; 0.75 x 9). */
+export const PRESENCE_MIN_SCREEN_PX = 6.75;
+/** The minimum radius (px, for one base / colony) once fully at galaxy zoom (user call; 0.75 x 13). */
+export const PRESENCE_GALAXY_MIN_SCREEN_PX = 9.75;
 /** Alpha of the vivid galaxy-zoom disc (its texture has a 0.55 fill and a full-alpha rim in the empire colour). */
 export const PRESENCE_GALAXY_ALPHA = 0.8;
 /** Zoom factors over which the discs blend from the soft system-level glow (t = 0) to the vivid galaxy look (t = 1). */
