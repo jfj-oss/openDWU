@@ -12,6 +12,7 @@ import {
     pieWedge,
     ringAngle,
     ringRadiusPx,
+    type RingPlacement,
     type RingSite,
 } from '../src/render/resourceOverlayLayout';
 
@@ -24,12 +25,19 @@ function rng(seed: number): () => number {
     };
 }
 
-/** Icon centres of a site's ring of n icons (the same geometry the overlay places). */
-function iconCentres(site: RingSite, n: number, iconPx: number): { x: number; y: number }[] {
+/** Icon centres of a site's ring of n icons turned by `phase` (the same geometry the overlay places). */
+function iconCentres(site: RingSite, n: number, phase: number, iconPx: number): { x: number; y: number }[] {
     const r = ringRadiusPx(n, site.bodyPx, pieDiscPx(iconPx));
     const out: { x: number; y: number }[] = [];
-    for (let i = 0; i < n; i++) out.push({ x: site.x + Math.cos(ringAngle(i, n)) * r, y: site.y + Math.sin(ringAngle(i, n)) * r });
+    for (let i = 0; i < n; i++) out.push({ x: site.x + Math.cos(ringAngle(i, n, phase)) * r, y: site.y + Math.sin(ringAngle(i, n, phase)) * r });
     return out;
+}
+
+/** The counts chooseRingCounts keeps for some sites. */
+function counts(sites: RingSite[], iconPx = 10): number[] {
+    const out: RingPlacement[] = [];
+    chooseRingCounts(sites, iconPx, out);
+    return out.map((p) => p.count);
 }
 
 describe('Resources overlay ring geometry', () => {
@@ -60,9 +68,7 @@ describe('Resources overlay screen-space LOD', () => {
             { x: 500, y: 0, bodyPx: 6, want: 6 },
             { x: 0, y: 500, bodyPx: 6, want: 3 },
         ];
-        const out: number[] = [];
-        chooseRingCounts(sites, 10, out);
-        expect(out).toEqual([6, 6, 3]);
+        expect(counts(sites)).toEqual([6, 6, 3]);
     });
 
     it('falls back to fewer icons where a neighbour ring would crowd it, and never below one', () => {
@@ -70,20 +76,30 @@ describe('Resources overlay screen-space LOD', () => {
             { x: 0, y: 0, bodyPx: 6, want: 6 },
             { x: 40, y: 0, bodyPx: 6, want: 6 },
         ];
-        const out: number[] = [];
-        chooseRingCounts(near, 10, out);
+        const out = counts(near);
         expect(out[0]).toBe(6); // the first one (most important) keeps its ring
         expect(out[1]).toBeLessThan(6);
         expect(out[1]).toBeGreaterThanOrEqual(1);
         // Bodies on top of each other: the second keeps a lone icon, which may still overlap.
-        chooseRingCounts([{ x: 0, y: 0, bodyPx: 6, want: 6 }, { x: 0, y: 0, bodyPx: 6, want: 6 }], 10, out);
-        expect(out).toEqual([6, 1]);
+        expect(counts([{ x: 0, y: 0, bodyPx: 6, want: 6 }, { x: 0, y: 0, bodyPx: 6, want: 6 }])).toEqual([6, 1]);
+    });
+
+    it('a lone icon turns away from a neighbour instead of crowding it', () => {
+        // Two single-icon bodies 16 px apart: each can turn its icon to the far side, so both keep their icon clear.
+        const pair: RingSite[] = [
+            { x: 0, y: 0, bodyPx: 6, want: 1 },
+            { x: 16, y: 0, bodyPx: 6, want: 1 },
+        ];
+        const out: RingPlacement[] = [];
+        chooseRingCounts(pair, 10, out);
+        expect(out.map((p) => p.count)).toEqual([1, 1]);
+        const a = iconCentres(pair[0], 1, out[0].phase, 10)[0];
+        const b = iconCentres(pair[1], 1, out[1].phase, 10)[0];
+        expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThanOrEqual(pieDiscPx(10) + RING_GAP_PX - 1e-9);
     });
 
     it('never offers more icons than a body has, or than RING_MAX_ICONS', () => {
-        const out: number[] = [];
-        chooseRingCounts([{ x: 0, y: 0, bodyPx: 6, want: 1 }, { x: 300, y: 0, bodyPx: 6, want: 20 }], 15, out);
-        expect(out).toEqual([1, RING_MAX_ICONS]);
+        expect(counts([{ x: 0, y: 0, bodyPx: 6, want: 1 }, { x: 300, y: 0, bodyPx: 6, want: 20 }], 15)).toEqual([1, RING_MAX_ICONS]);
     });
 
     it('no two icons of rings that kept two or more overlap (random layouts, dense and sparse)', () => {
@@ -95,13 +111,13 @@ describe('Resources overlay screen-space LOD', () => {
         ] as const) {
             const sites: RingSite[] = [];
             for (let i = 0; i < count; i++) sites.push({ x: rand() * spread, y: rand() * spread, bodyPx: 4 + rand() * 26, want: 1 + Math.floor(rand() * 6) });
-            const out: number[] = [];
+            const out: RingPlacement[] = [];
             chooseRingCounts(sites, iconPx, out);
             const reach = pieDiscPx(iconPx) + RING_GAP_PX;
             const icons: { x: number; y: number; site: number }[] = [];
             sites.forEach((s, si) => {
-                if (out[si] < 2) return; // a lone icon is allowed to crowd (never below one)
-                for (const c of iconCentres(s, out[si], iconPx)) icons.push({ ...c, site: si });
+                if (out[si].count < 2) return; // a lone icon is allowed to crowd (never below one)
+                for (const c of iconCentres(s, out[si].count, out[si].phase, iconPx)) icons.push({ ...c, site: si });
             });
             let closest = Infinity;
             for (let a = 0; a < icons.length; a++) {
@@ -112,8 +128,8 @@ describe('Resources overlay screen-space LOD', () => {
             }
             expect(closest).toBeGreaterThanOrEqual(reach - 1e-9);
             // The count is never below one, and a crowded layout does shrink some rings.
-            expect(Math.min(...out)).toBeGreaterThanOrEqual(1);
-            if (spread === 120) expect(out.some((n) => n < RING_MAX_ICONS)).toBe(true);
+            expect(Math.min(...out.map((p) => p.count))).toBeGreaterThanOrEqual(1);
+            if (spread === 120) expect(out.some((p) => p.count < RING_MAX_ICONS)).toBe(true);
         }
     });
 });

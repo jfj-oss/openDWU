@@ -13,6 +13,8 @@ export const RING_GAP_PX = 3;
 export const PIE_RIM_PX = 4;
 /** The abundance pies are pre-baked in steps of one tenth of a full circle (0..PIE_STEPS). */
 export const PIE_STEPS = 10;
+/** A ring may be turned to any of this many equal phases to find room for its icons (the LOD tries them in turn). */
+export const RING_PHASE_STEPS = 24;
 
 /** Pie disc width for an icon `iconPx` wide. */
 export function pieDiscPx(iconPx: number): number {
@@ -28,9 +30,10 @@ export function ringRadiusPx(n: number, bodyPx: number, discPx: number): number 
     return Math.max(clear, slot / (2 * Math.sin(Math.PI / n)));
 }
 
-/** Angle of icon `i` of `n` on its ring: icon 0 at 12 o'clock, the others clockwise (screen y points down). */
-export function ringAngle(i: number, n: number): number {
-    return -Math.PI / 2 + (2 * Math.PI * i) / n;
+/** Angle of icon `i` of `n` on its ring: icon 0 at 12 o'clock (turned by `phase`), the others clockwise (screen y
+ * points down). */
+export function ringAngle(i: number, n: number, phase = 0): number {
+    return -Math.PI / 2 + phase + (2 * Math.PI * i) / n;
 }
 
 /** One body (a system's star or a habitat) that wants a ring: its centre and drawn width, px, and how many icons it has. */
@@ -65,24 +68,30 @@ function hitsPlaced(grid: Map<number, number[]>, x: number, y: number, reach: nu
     return false;
 }
 
-/** Walks the `n` icon centres of a site's ring; `visit` gets each one (no allocation per icon). */
-function forRingIcons(site: RingSite, n: number, discPx: number, visit: (x: number, y: number) => boolean): boolean {
+/** Walks the `n` icon centres of a site's ring turned by `phase`; `visit` returns true to stop (then so does this). */
+function forRingIcons(site: RingSite, n: number, phase: number, discPx: number, visit: (x: number, y: number) => boolean): boolean {
     const r = ringRadiusPx(n, site.bodyPx, discPx);
     for (let i = 0; i < n; i++) {
-        const a = ringAngle(i, n);
+        const a = ringAngle(i, n, phase);
         if (visit(site.x + Math.cos(a) * r, site.y + Math.sin(a) * r)) return true;
     }
     return false;
 }
 
+/** Where a site's ring goes: how many icons it keeps and the phase it is turned to. */
+export interface RingPlacement {
+    count: number;
+    phase: number;
+}
+
 /**
- * Screen-space LOD for the Resources overlay: how many icons each site's ring keeps. Sites are taken in the order given
- * (put the most important first). A site keeps as many of its `want` icons (at most RING_MAX_ICONS) as fit without any
- * of its icons' discs touching an icon already placed for an earlier site; it never keeps fewer than one (a lone icon
- * may still overlap a neighbour when the two bodies are closer than an icon). Writes the count per site into `out`, in
- * the same order.
+ * Screen-space LOD for the Resources overlay: how many icons each site's ring keeps, and where it is turned. Sites are
+ * taken in the order given (put the most important first). A site keeps as many of its `want` icons (at most
+ * RING_MAX_ICONS) as fit without any of its icons' discs touching an icon already placed for an earlier site, turning
+ * the ring through RING_PHASE_STEPS phases (12 o'clock first) to find room; it never keeps fewer than one (a lone icon
+ * may still overlap a neighbour when no phase clears it). Writes the placement per site into `out`, in the same order.
  */
-export function chooseRingCounts(sites: readonly RingSite[], iconPx: number, out: number[]): void {
+export function chooseRingCounts(sites: readonly RingSite[], iconPx: number, out: RingPlacement[]): void {
     const disc = pieDiscPx(iconPx);
     const reach = disc + RING_GAP_PX; // icon centres closer than this overlap their discs' gap
     const grid = new Map<number, number[]>();
@@ -90,9 +99,22 @@ export function chooseRingCounts(sites: readonly RingSite[], iconPx: number, out
     for (let s = 0; s < sites.length; s++) {
         const site = sites[s];
         let n = Math.min(RING_MAX_ICONS, Math.max(1, Math.floor(site.want)));
-        while (n > 1 && forRingIcons(site, n, disc, (x, y) => hitsPlaced(grid, x, y, reach))) n--;
-        out[s] = n;
-        forRingIcons(site, n, disc, (x, y) => {
+        let phase = 0;
+        for (;;) {
+            let free: number | null = null;
+            for (let k = 0; k < RING_PHASE_STEPS && free === null; k++) {
+                const p = (2 * Math.PI * k) / RING_PHASE_STEPS;
+                if (!forRingIcons(site, n, p, disc, (x, y) => hitsPlaced(grid, x, y, reach))) free = p;
+            }
+            if (free !== null) {
+                phase = free;
+                break;
+            }
+            if (n === 1) break; // a lone icon with no clear phase stays where it is
+            n--;
+        }
+        out[s] = { count: n, phase };
+        forRingIcons(site, n, phase, disc, (x, y) => {
             const key = cellKey(Math.floor(x / reach), Math.floor(y / reach));
             let cell = grid.get(key);
             if (cell === undefined) grid.set(key, (cell = []));
