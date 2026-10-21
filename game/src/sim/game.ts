@@ -1094,6 +1094,21 @@ function storylinesOff(opts: CreateGameOptions): CreateGameOptions {
     return { ...opts, storyReturnOfTheShakturiEnabled: false, storyDistantWorldsEnabled: false, storyShadowsEnabled: false, victoryConditions };
 }
 
+/** Whether the resolved scenario flags have Giantworks' Beacon on, which replaces the Shakturi storyline. */
+export function shakturiReplacedByBeacon(flags: Readonly<Record<string, boolean>>): boolean {
+    return flags['threatGiantworks'] === true && flags['gwBeacon'] === true;
+}
+
+/** createGame's options with only the Return of the Shakturi storyline off (Giantworks' Beacon on). */
+export function shakturiOff(opts: CreateGameOptions): CreateGameOptions {
+    let victoryConditions = opts.victoryConditions;
+    if (victoryConditions !== undefined && victoryConditions !== null) {
+        victoryConditions = Object.assign(Object.create(Object.getPrototypeOf(victoryConditions) as object) as VictoryConditions, victoryConditions);
+        victoryConditions.enableStoryEvents = false;
+    }
+    return { ...opts, storyReturnOfTheShakturiEnabled: false, victoryConditions };
+}
+
 export function createGame(opts: CreateGameOptions): Game {
     const steps = createGameSteps(opts);
     for (;;) {
@@ -1112,6 +1127,12 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
     // one protagonist, so they are off with more than one human (docs/MULTIPLAYER.md §4.4).
     const extraHumanStarts = opts.humanPlayers ?? [];
     if (extraHumanStarts.length > 0) opts = storylinesOff(opts);
+    // Giantworks' Beacon (the Reclaimers' harvest) replaces the Return of the Shakturi storyline: with the Beacon on at
+    // game start the Shakturi story is off (user 2026-10-21; two galaxy-ending arcs at once). Other storylines stay.
+    if (opts.gameData.scenario !== undefined) {
+        const f = resolvedScenarioFlags(opts.gameData, opts.scenarioFlags);
+        if (shakturiReplacedByBeacon(f)) opts = shakturiOff(opts);
+    }
     yield { step: 'Generating galaxy', fraction: 0 };
     // Mod layer: a package's data additions for the chosen flags (scenario/hooks.ts scenarioExtendGameData; none = the same data).
     if (opts.gameData.scenario !== undefined) {

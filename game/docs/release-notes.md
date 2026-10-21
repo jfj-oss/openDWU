@@ -4,6 +4,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **The Beacon replaces the Return of the Shakturi storyline:** with Giantworks' Beacon on, a new game starts without the Shakturi story (its option is greyed out on the Victory page). The Distant Worlds and Shadows storylines are unaffected.
 - **Ships in a fleet keep their own icons on the galaxy map** (as in the original): only the fleet's lead ship is shown as the fleet icon, and the other members are drawn with their own symbols under it.
 - **The Work in progress add-ons carry a warning** inside their dropdown: they are experiments, barely functional, and may break a game or its saves.
 - **Emergent Galaxy (loyalty, ambition, plots and coups) can no longer be switched on** while it is reworked: it has no toggle in the add-ons list, and no expansion, add-on or remembered selection turns it on. A save that used it loads with it switched off (its loyalty and ambition state and any pending plot decision removed; what it already caused stays).
