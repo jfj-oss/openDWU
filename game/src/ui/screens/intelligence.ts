@@ -1178,6 +1178,8 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
 
     function wrapCell(cell: HTMLDivElement, value: string, title: string): void {
         const s = el('span', 'ch-wrap', value);
+        // The two-line clamp ellipsizes a long value; its full text is the tooltip (over the span, so the cell's hint stays on the padding).
+        s.title = title === '' ? value : `${value}\n${title}`;
         cell.title = title;
         cell.appendChild(s);
     }
