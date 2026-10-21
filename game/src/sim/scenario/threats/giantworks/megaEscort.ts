@@ -17,6 +17,8 @@
 //   SPARES    only idle warships of the empire (no mission) that it can spare: it keeps megaEscortHomePct % of its warships at home, and never takes
 //             one on a war mission (Attack, Blockade, Refuel...). A group ship left on an Undefined, Escort, Patrol or Move mission (the stock AI
 //             sends an idle ship home by a Move) is re-tasked; a fight, a repair or a refuel is left alone.
+//   KEEP      a delivered freighter's escort (a group ship, or a player's order still on Escort to it) goes on Patrol of the structure at once
+//             (keepEscortsOnDelivery): the stock Escort command would end with its freighter's mission and hand the ship to automation.
 //   CREDIT    an arrival with an armed warship within megaEscortNear of it, on an Escort mission (any empire's) or a member of an escort group of the
 //             structure (counted by assignment, so a group ship re-tasked a moment before still counts), is an escorted delivery: the escort's owner gets
 //             war credit (beaconWarCredit.ts), and the structure counts it (MegaRec.escorted).
@@ -29,7 +31,7 @@ import type { Habitat } from '../../../types';
 import { BuiltObjectRole } from '../../../data/designSpecifications';
 import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission } from '../../../missions/mission';
 import { assignMission, clearPreviousMissionRequirements } from '../../../missions/assign';
-import { isAiControlled } from '../../../missions/playerOrder';
+import { isAiControlled, markPlayerOrder } from '../../../missions/playerOrder';
 import { leaveShipGroup } from '../../../fleets/shipGroup';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../../../diplomacy';
 import { getEmpireById } from '../../../logistics/contracts';
@@ -298,6 +300,28 @@ export function escortStep(galaxy: Galaxy, mega: MegaRec, base: BuiltObject, now
         const e = getEmpireById(galaxy, id);
         if (e === null || !escortContributing(galaxy, mega, e, now)) continue;
         escortFor(galaxy, mega, e, base, now, blockade);
+    }
+}
+
+/**
+ * The escorts of a freighter that has just delivered stay on guard at the structure. The stock Escort command ends by itself once its freighter's mission is
+ * cleared (cmdEscort), and a command that has ended hands its warship back to automation, which reassigned a player's escort in a full tick. So each
+ * warship still on an Escort mission to the freighter that is a group ship or a player's order is put on Patrol of the structure before the freighter is
+ * released; a player's order stays a player's order. Empires by index, ships by array order. Rnd: none.
+ */
+export function keepEscortsOnDelivery(galaxy: Galaxy, mega: MegaRec, base: BuiltObject, freighter: BuiltObject): void {
+    const members = new Set<BuiltObject>(Object.values(mega.escorts ?? {}).flatMap((g) => g.ships));
+    for (const e of galaxy.empires) {
+        if (e === null) continue;
+        for (const w of e.builtObjects) {
+            if (w == null || w.hasBeenDestroyed) continue;
+            const m = builtObjectMission(w.mission);
+            if (m === null || m.type !== BuiltObjectMissionType.Escort || m.targetBuiltObject !== freighter) continue;
+            const player = m.playerOrdered === true;
+            if (!player && !members.has(w)) continue;
+            assignMission(galaxy, w, BuiltObjectMissionType.Patrol, base, null, BuiltObjectMissionPriority.Normal);
+            if (player) markPlayerOrder(w);
+        }
     }
 }
 

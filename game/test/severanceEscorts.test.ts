@@ -19,6 +19,7 @@ import { GalaxyTime } from '../src/sim/galaxyTime';
 import type { StartGameOptions } from '../src/sim/startGameOptions';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../src/sim/diplomacy';
 import { rebuildIndexes } from '../src/sim/indexRebuild';
+import { isAiControlled, markPlayerOrder } from '../src/sim/missions/playerOrder';
 import { maintainShipGroups } from '../src/sim/fleets/shipGroup';
 import { autoRefuelRepairShip, checkForRefuelling } from '../src/sim/logistics/refuel';
 import { setGameEndHandler, type GameEndEventArgs } from '../src/sim/victory';
@@ -352,6 +353,7 @@ describe('the player escorts a contract freighter', () => {
         const w = warships(me)[0];
         place(w, f.xpos, f.ypos);
         assignMission(s.g, w, BuiltObjectMissionType.Escort, f, null, BuiltObjectMissionPriority.Normal, { manuallyAssigned: true });
+        markPlayerOrder(w); // (as the player's command marks it: executeShipAction)
         rebuildIndexes(s.g);
         DAYS(s.g, 3);
         expect(mega.contracts.some((c) => c.ship === f)).toBe(true);
@@ -381,12 +383,14 @@ describe('the player escorts a contract freighter', () => {
         DAYS(s.g, 1);
         expect(mega.contracts.some((c) => c.ship === f)).toBe(false);
         expect(mega.escorted).toBe(1);
-        expect(builtMission(w)).toBe('Escort'); // it is still with the freighter that delivered
-        expect(builtObjectMission(w.mission)!.targetBuiltObject).toBe(f);
-        // the freighter waits by the structure: its escort is still on it, and the refuel rule still leaves it there
-        w.currentFuel = 0.01 * w.fuelCapacity;
-        expect(autoRefuelRepairShip(s.g, w, true)).toBe(false);
-        expect(builtMission(w)).toBe('Escort');
+        // its freighter has delivered: the escort stays on guard at the structure, still the player's order (the stock Escort command would end here, and
+        // automation would take the ship)
+        expect(builtMission(w)).toBe('Patrol');
+        expect(builtObjectMission(w.mission)!.targetBuiltObject).toBe(base);
+        expect(isAiControlled(w)).toBe(false);
+        DAYS(s.g, 2);
+        expect(builtMission(w)).toBe('Patrol');
+        expect(isAiControlled(w)).toBe(false);
     });
 });
 

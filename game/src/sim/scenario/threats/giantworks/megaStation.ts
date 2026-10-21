@@ -56,7 +56,7 @@ import { spawnShip } from './beaconFleet';
 import { compactFaction } from './state';
 import { galaxyAgeOf } from './longNightState';
 import { harvestPledges, severanceVoteBonus } from './agePrep';
-import { escortAtArrival, escortStep, escortsFreight, releaseEscorts, supplyEscorts } from './megaEscort';
+import { escortAtArrival, escortStep, escortsFreight, keepEscortsOnDelivery, releaseEscorts, supplyEscorts } from './megaEscort';
 import { warCreditEscort } from './beaconWarCredit';
 
 export const MOTION_MEGA = 'megaBuild';
@@ -459,6 +459,7 @@ function stepContracts(galaxy: Galaxy, st: BeaconState, mega: MegaRec, base: Bui
         if (b.hasBeenDestroyed || owner === null || b.actualEmpire !== owner) continue; // lost (shot down) or taken
         if (distance(galaxy, b, base) <= MEGA_DELIVER_RANGE) {
             const escort = escortAtArrival(galaxy, mega, b);
+            keepEscortsOnDelivery(galaxy, mega, base, b);
             release(b);
             delivered++;
             mega.delivered++;
