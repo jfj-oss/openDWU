@@ -959,6 +959,9 @@ export function exchangePeriodic(galaxy: Galaxy): void {
     const st = peekExchangeState(galaxy);
     if (st === null || st.ended || st.faction === null || st.station === null) return;
     if (!st.faction.active) return;
+    // A save from before the faction was named keeps its generated race name ("Boskara Hive"): renamed here, no draws.
+    const name = scenarioText(`${TAG} Faction Name`);
+    if (st.faction.name !== name) st.faction.name = name;
     if (st.station.bo.hasBeenDestroyed) {
         collapse(galaxy, st, null);
         return;
