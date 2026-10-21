@@ -512,8 +512,17 @@ export class ArtBundleLayer {
                 if (isWatcher(bo) && (isCloakedContact(bo, viewer) || !builtObjectVisibleToPlayer(this.galaxy, viewer, bo))) continue;
             }
             let r = threatMarkerRadius(s.site, z);
-            const x = s.site.target.xpos;
-            const y = s.site.target.ypos;
+            let x = s.site.target.xpos;
+            let y = s.site.target.ypos;
+            // Zoomed out past the planets (mainView: bodies drawn while 1/z < 500) a world's marker sits on its system's star,
+            // not off-centre where the unseen planet is.
+            if (s.site.kind === 'colony' && 1 / z >= 500) {
+                const star = this.galaxy.systems[(s.site.target as Habitat).systemIndex]?.systemStar;
+                if (star !== undefined) {
+                    x = star.xpos;
+                    y = star.ypos;
+                }
+            }
             if (s.style.kind === 'greatWork') {
                 // threatArt.ts: the site's stage and progress, live; the ring round the whole structure as drawn.
                 const gw = greatWorkAt(s.site.target);

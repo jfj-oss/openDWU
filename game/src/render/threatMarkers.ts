@@ -77,7 +77,8 @@ export function threatMarkerStyle(threat: string, level: number, kind: 'colony' 
     if (k === 'compact') {
         if (!(level >= KNOWLEDGE_RUMOUR)) return null;
         const sure = level >= KNOWLEDGE_SUSPECTED;
-        return { kind: k, colour: THREAT_MARKER_COLOURS[k], solid: sure, alpha: sure ? 0.9 : 0.55, dashes: sure ? 0 : 18 };
+        // very faint (user 2026-10-20: the seal was too much over a founding world)
+        return { kind: k, colour: THREAT_MARKER_COLOURS[k], solid: sure, alpha: sure ? 0.3 : 0.2, dashes: sure ? 0 : 18 };
     }
     if (!(level >= KNOWLEDGE_SUSPECTED)) return null;
     const solid = level >= KNOWLEDGE_CONFIRMED;
