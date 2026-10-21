@@ -17,13 +17,13 @@ import type { StartGameOptions } from '../src/sim/startGameOptions';
 import { empireMessages } from '../src/sim/messages';
 import { GAME_DAY_LENGTH, scenarioEmit } from '../src/sim/scenario/hooks';
 import { scenarioText } from '../src/sim/scenario/messages';
-import { CharacterRole, getEmpireCharacters, type Character } from '../src/sim/characters';
+import { CharacterRole, generateNewCharacter, getEmpireCharacters, type Character } from '../src/sim/characters';
 import { DiplomaticRelationType, obtainDiplomaticRelation, obtainEmpireEvaluation } from '../src/sim/diplomacy';
 import { declareWar } from '../src/sim/diplomacyTick';
 import { addHumanSeat, isHumanEmpire, isHumanSeat, setAiSeat, setHumanEmpires } from '../src/sim/humanEmpires';
 import { councilState, type Council } from '../src/sim/scenario/emergent/council';
-import { dietMotionKindDef, dietState, type DietMotion } from '../src/sim/scenario/charactersVictory/diet/dietState';
-import { dietPropose } from '../src/sim/scenario/charactersVictory/diet/diet';
+import { dietMotionKindDef, dietState, type DietMotion, type DietSession, type DietState } from '../src/sim/scenario/charactersVictory/diet/dietState';
+import { callSession, closeSession, dietPlayerVote, dietPropose } from '../src/sim/scenario/charactersVictory/diet/diet';
 import { dietCouncil } from '../src/sim/scenario/charactersVictory/diet/diet';
 import { dietMembership, dietVoteScore } from '../src/sim/scenario/charactersVictory/diet/dietAi';
 import { reputationOn } from '../src/sim/scenario/reputation/ledger';
@@ -375,6 +375,57 @@ describe('the Internal Security lead and the exposure motion', () => {
         corruptedPass(s.g);
         expect(s.st.wars.length).toBe(wars);
         expect(corruptedVoteScore(s.g, 37, s.corrupt, MOTION_MEGA, s.me)).toBe(37);
+    }, 600000);
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+describe('the exposure in a real Diet session (the tally, not only the motion\'s apply)', () => {
+    /** A Diet session called on the seated Diet, its delegates at its world, and the human's exposure motion in it (a confirmed lead), voted yes. */
+    function exposureAtSession(s: Setup): { session: DietSession; m: DietMotion; st: DietState; c: Council } {
+        const st = dietState(s.g);
+        const c = dietCouncil(s.g)!;
+        // a colony governor each: the delegates (the characters test seats the Diet the same way)
+        for (const e of c.members) if (!getEmpireCharacters(e).some((x) => x.active && x.role === CharacterRole.ColonyGovernor)) generateNewCharacter(s.g, e, CharacterRole.ColonyGovernor, e.capital!);
+        const session = callSession(s.g, st, c, false, null, null)!;
+        expect(session).not.toBeNull();
+        for (const d of session.delegates) if (d.character !== null) d.character.completeLocationTransfer(session.world, s.g);
+        setLeadLevel(s.g, corruptionThing(s.g, s.corrupt)!, s.me, 'confirmed', 'roll');
+        expect(dietPropose(s.g, s.me, { kind: MOTION_EXPOSE, target: null, other: null, colony: null, resourceId: -1 })).toBe(true);
+        const m = session.motions.find((x) => x.kind === MOTION_EXPOSE)!;
+        expect(m).toBeDefined();
+        expect(dietPlayerVote(s.g, s.me, m.id, 'yes')).toBe(true);
+        return { session, m, st, c };
+    }
+
+    it('a confirmed lead proposes it, the session tallies it, and the members carry it: the corruption ends, exposed by the human', () => {
+        const s = setup();
+        const { session, m, st, c } = exposureAtSession(s);
+        closeSession(s.g, st, c, session);
+        expect(m.status).toBe('passed');
+        expect(activeCorrupted(s.g)).toBeNull();
+        expect(peekCorrupted(s.g)!.ended).toBe('exposed');
+        expect(peekCorrupted(s.g)!.exposedBy).toBe(s.me.empireId);
+    }, 600000);
+
+    it('a lead lost between the proposal and the session: the tally fails it, and the corruption stands', () => {
+        const s = setup();
+        const { session, m, st, c } = exposureAtSession(s);
+        setLeadLevel(s.g, corruptionThing(s.g, s.corrupt)!, s.me, 'cleared', 'investigation');
+        expect(confirmedLeadOf(s.g, s.me)).toBeNull();
+        closeSession(s.g, st, c, session);
+        expect(m.status).toBe('failed');
+        expect(activeCorrupted(s.g)).toBe(s.corrupt);
+        expect(peekCorrupted(s.g)!.ended).toBe('');
+    }, 600000);
+
+    it('a lead lost before the motion is applied: apply has no effect (the corruption stands, no war for the members)', () => {
+        const s = setup();
+        setLeadLevel(s.g, corruptionThing(s.g, s.corrupt)!, s.me, 'confirmed', 'roll');
+        setLeadLevel(s.g, corruptionThing(s.g, s.corrupt)!, s.me, 'cleared', 'investigation');
+        dietMotionKindDef(MOTION_EXPOSE)!.apply(s.g, dietState(s.g), motion(s.g, MOTION_EXPOSE, s.me, s.corrupt) as DietMotion, (() => undefined) as never);
+        expect(activeCorrupted(s.g)).toBe(s.corrupt);
+        expect(peekCorrupted(s.g)!.ended).toBe('');
+        for (const x of s.ais) expect(atWar(x, s.corrupt)).toBe(false);
     }, 600000);
 });
 

@@ -37,10 +37,13 @@ function exposable(galaxy: Galaxy): Empire | null {
 
 /**
  * The corrupted empire's vote. Pure: the score it replaces on a preparation or exposure motion, unchanged otherwise. Ballots by other voters and
- * the proposer's own 100 are untouched.
+ * the proposer's own 100 are untouched. An exposure whose proposer no longer holds a confirmed lead on the corrupted leader (lost between the
+ * proposal and the session) is a sure 'no' from every voter, so it fails.
  */
 export function corruptedVoteScore(galaxy: Galaxy, score: number, voter: Empire, kind: string, proposer: Empire): number {
-    if (!on(galaxy) || voter !== activeCorrupted(galaxy) || voter === proposer) return score;
+    if (!on(galaxy)) return score;
+    if (kind === MOTION_EXPOSE && confirmedLeadOf(galaxy, proposer) === null) return Math.min(score, AGAINST);
+    if (voter !== activeCorrupted(galaxy) || voter === proposer) return score;
     return isPreparationMotion(kind) || kind === MOTION_EXPOSE ? Math.min(score, AGAINST) : score;
 }
 
@@ -66,7 +69,8 @@ registerDietMotionKind({
     effect: () => T('Corrupt Motion Effect'),
     apply: (g, _st, m: DietMotion) => {
         const target = m.target;
-        if (target === null || activeCorrupted(g) !== target) return;
+        // Only while the proposer still holds its confirmed lead on the current leader: a lead lost since the proposal makes it no effect.
+        if (target === null || activeCorrupted(g) !== target || confirmedLeadOf(g, m.proposer) === null) return;
         const council = dietCouncil(g);
         const members = council === null ? [] : dietMembership(g, council);
         endCorruption(g, 'exposed', m.proposer);
