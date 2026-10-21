@@ -251,17 +251,24 @@ function engineLost(galaxy: Galaxy, st: StillnessState, eng: EngineRec): void {
     tellHuman(galaxy, getEmpireById(galaxy, eng.ownerId), T(`${STILL_TAG} Lost Title`), T(`${STILL_TAG} Lost`, sector), { bad: true, popup: true });
 }
 
-/** The owner's base was captured or given: the new owner holds the Engine. */
-function followOwner(galaxy: Galaxy, eng: EngineRec): void {
+/** The owner's base was captured or given: the new owner holds the Engine (false: a faction that is no player took it, and the project ends). */
+function followOwner(galaxy: Galaxy, st: StillnessState, eng: EngineRec): boolean {
     const b = eng.base;
-    if (b === null || b.hasBeenDestroyed) return;
+    if (b === null || b.hasBeenDestroyed) return true;
     const o = b.actualEmpire;
-    if (o === null || o.empireId === eng.ownerId) return;
+    if (o === null || o.empireId === eng.ownerId) return true;
+    if (!stillnessPlayer(galaxy, o)) {
+        eng.killedBy = (o as Empire).empireId;
+        removeBase(galaxy, eng);
+        engineLost(galaxy, st, eng);
+        return false;
+    }
     eng.ownerId = o.empireId;
     eng.ownerName = o.name;
     eng.sides = {};
     eng.warOver = [];
     scenarioNews(galaxy, null, T(`${STILL_TAG} Taken News`, o.name, resolveSectorDescription(galaxy, b.xpos, b.ypos)), () => true, b);
+    return true;
 }
 
 /** Daily: the construction timer, the loss of the base, the Beacon's end. */
@@ -279,7 +286,7 @@ export function stillnessStep(galaxy: Galaxy): void {
         engineLost(galaxy, st, eng);
         return;
     }
-    followOwner(galaxy, eng);
+    if (!followOwner(galaxy, st, eng)) return;
     if (eng.status !== 'building') return;
     const now = galaxyStarDate(galaxy);
     const progress = Math.max(0, Math.min(1, (now - eng.start) / (SP.years(galaxy) * YEAR_LENGTH)));

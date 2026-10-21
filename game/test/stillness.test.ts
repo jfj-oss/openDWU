@@ -34,6 +34,7 @@ import {
     LAW_DEMOLISH_STILL, STILL_KEY, demolishLegal, peekStill, stillnessFactor, stillnessKnowledgeRows, stillnessStep,
 } from '../src/sim/scenario/threats/giantworks/stillness';
 import { AP, aiMaybeBuild, attackEngine, engineLean, isolationist, sendPatrol, sideOf, stillnessReview } from '../src/sim/scenario/threats/giantworks/stillnessAi';
+import { takeOwnershipOfBuiltObject } from '../src/sim/combat/ownership';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import { dietCouncil } from '../src/sim/scenario/charactersVictory/diet/diet';
 import { dietVoteScore } from '../src/sim/scenario/charactersVictory/diet/dietAi';
@@ -740,4 +741,22 @@ describe('in a running game', () => {
         expect([...eng.warOver].sort()).toEqual([y.empireId, z.empireId].sort());
         expect(obtainDiplomaticRelation(y, x).type).toBe(DiplomaticRelationType.War);
     }, 90000);
+});
+
+describe('a captured base', () => {
+  it('passes the Engine to the capturer, the sides start over; a faction that is no player ends the project', () => {
+    const s = setup();
+    const [owner, a] = s.ais;
+    runningEngine(s, owner);
+    const eng = engineOf(s.g)!;
+    eng.sides = { '9': 'destroy' };
+    takeOwnershipOfBuiltObject(s.g, a, eng.base!, a, false);
+    stillnessStep(s.g);
+    expect(engineOf(s.g)!.ownerId).toBe(a.empireId);
+    expect(engineOf(s.g)!.sides).toEqual({});
+    const faction = peekBeaconState(s.g)!.faction!;
+    takeOwnershipOfBuiltObject(s.g, faction, eng.base!, faction, false);
+    stillnessStep(s.g);
+    expect(engineOf(s.g)).toBeNull();
+  });
 });
