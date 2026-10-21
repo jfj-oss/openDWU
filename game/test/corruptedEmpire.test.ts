@@ -1,7 +1,8 @@
 // The Harvest Cycle's corrupted empire (threats/giantworks/corrupted*.ts): the choice (an AI empire, never a human, seeded), the Diet's votes
 // against the preparation motions, the wars on the Scar holders and the Severance's builders, the raids on the Severance's freighters, the
-// parks at the dormant foundries, the Internal Security lead that exposes it (a confirmed one only), the three endings (exposed, assassinated,
-// captured), the Knowledge rows, the save round trip, and the games that must stay untouched (no Age 2, flag off).
+// parks at the dormant foundries, the Internal Security lead that exposes it (a confirmed one only; the Harvest Cycle switches Internal Security
+// on), the exposure through a real Diet session's tally, the endings (exposed, assassinated, captured or capitalLost, freed by a human's seat,
+// gone), the Knowledge rows, the save round trip, and the games that must stay untouched (no Age 2, flag off).
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import type { GameData } from '../src/sim/data/gameData';
