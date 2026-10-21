@@ -42,21 +42,20 @@
 // the same yellow as the selection ring (MainView.cs field color_2 default,
 // System.Drawing.Color.FromArgb(255, 255, 255, 0)). This renderer marks the
 // individual flagged *habitat* (star, planet or moon) with that same ring
-// style instead of the whole system, since the Main View shows habitats
-// individually at system/planet zoom (unlike the original's separate
-// SystemView screen) — the per-habitat marker is strictly more precise and
-// uses the identical visual language.
+// style instead of the whole system at system/planet zoom, since the Main View shows habitats
+// individually there (unlike the original's separate SystemView screen); at galaxy/sector zoom the star
+// itself is ringed, as the original does (see the eligibility note below).
 //
-// Potential Colonies eligibility ports the per-habitat test inside
-// DetermineSystemInfo (`flag`), which is Empire.4.cs
-// CanEmpireColonizeHabitat: unowned (or owned by the independent empire),
-// system explored, and either a colonizable habitat type for the player race
-// or buildable by the player's newest colony-ship design, further gated by
-// quality >= 0.5 (or superluxury resources, or positive ruin bonuses). This
-// renderer does not carry colony-ship designs or ruins yet, so it checks
-// unowned + explored + colonizable type + quality >= 0.5 only.
-// TODO(overlay): fold in colony-ship design range and ruin/superluxury
-// bonuses once those are ported.
+// Potential Colonies eligibility is the original's per-habitat `flag` test in DetermineSystemInfo (Galaxy.1.cs; the sim's
+// isPlayerPotentialColony): Empire.4.cs CanEmpireColonizeHabitat (explored, unowned or independent-owned, territory, range,
+// and a colonizable habitat type or the newest colony-ship design) and quality >= 0.5 (or superluxury resources, or a
+// ruin bonus). Only planets and moons qualify. Independent-owned habitats are kept here (the planner lists them as
+// colonisable); the original counts them in IndependentColonyCount instead, which the galaxy-zoom ring below follows.
+//
+// Galaxy / sector zoom (factor >= 70, the Colony Target Scores gate): the original rings every star whose system holds a
+// flagged habitat (MainView.2.cs method_250, the flag18 block: `PlayerPotentialColonies`, plus systems with independent
+// colonies that are unowned or the player's), the same yellow ring around the star icon. This renderer does that too
+// (potentialSystems); the per-habitat rings show at system zoom only.
 //
 // [dw2overlays] The three marker sets are rebuilt when the player's knowledge changes (colonyTargets.ts
 // colonyTargetSignature: systems explored, colonies founded / lost, designs, a game month) instead of once at
@@ -79,7 +78,12 @@ import { BuiltObjectMission, BuiltObjectMissionType, CommandAction, type Command
 import { baconMovementSettings, calculateGravityWellSize } from '../sim/movement';
 import { getSettings } from '../ui/settings';
 import type { Camera } from './camera';
-import type { Galaxy } from '../sim/galaxy';
+import { isPlayerPotentialColony, type Galaxy } from '../sim/galaxy';
+import type { Design } from '../sim/design';
+import { findNewestCanBuild } from '../sim/designGeneration';
+import { checkSystemOwnershipEmpire } from '../sim/stationPlacement';
+import { BuiltObjectSubRole } from '../sim/builtObjectTypes';
+import { withPureSimReads } from '../sim/readOnlyQuery';
 import { Habitat, HabitatCategoryType } from '../sim/types';
 import { onOverlayChange, setOverlay, type MapOverlayState, type OverlayKey } from '../ui/mapOverlays';
 import type { EmpireLayer } from './empireLayer';
@@ -217,18 +221,20 @@ export function colonyTechNameFor(empire: Empire, type: HabitatType): string | n
     return rs?.getLowestProjectForColonization(rs.techTree, type)?.def.name ?? null;
 }
 
-/** UI only: 'now' = colonisable today (isPotentialColony); 'future' = same test but the empire lacks the colonisation
- * tech for the habitat type (one exists to research); null = not a potential colony. Read-only. */
-export function potentialColonyKind(h: Habitat, galaxy: Galaxy, colonizable?: readonly HabitatType[]): 'now' | 'future' | null {
+/** UI only: 'now' = colonisable today (isPotentialColony); 'future' = the same test with the habitat's type counted as
+ * colonizable, and the empire lacks the colonisation tech for it (one exists to research); null = not a potential colony.
+ * `colonizable` and `design` (the newest colony-ship design, findNewestCanBuild) are computed once for a whole pass. Read-only. */
+export function potentialColonyKind(h: Habitat, galaxy: Galaxy, colonizable?: readonly HabitatType[], design?: Design | null): 'now' | 'future' | null {
     const empire = localViewerEmpire(galaxy);
     if (empire === null) return null;
     if (h.category !== HabitatCategoryType.Planet && h.category !== HabitatCategoryType.Moon) return null;
     const owner = h.owner ?? h.empire;
     if (owner !== null && owner !== undefined && owner !== galaxy.independentEmpire) return null;
     if (!empire.visibility.checkSystemExplored(h.systemIndex)) return null;
-    if (h.quality < 0.5) return null;
-    // `colonizable`: ColonizableHabitatTypesForEmpire computed once for a whole pass.
-    if ((colonizable ?? empire.colonizableHabitatTypesForEmpire()).includes(h.type)) return 'now';
+    const types = colonizable ?? empire.colonizableHabitatTypesForEmpire();
+    const latest = design !== undefined ? design : findNewestCanBuild(empire.designs, BuiltObjectSubRole.ColonyShip, empire);
+    if (isPlayerPotentialColony(galaxy, empire, h, types, latest)) return 'now';
+    if (!isPlayerPotentialColony(galaxy, empire, h, [...types, h.type], latest)) return null;
     return colonyTechNameFor(empire, h.type) !== null ? 'future' : null;
 }
 
@@ -633,6 +639,8 @@ export class OverlayLayer {
     /** World-space layer: marker rings live above everything else. */
     root = new Container();
     private potentialColonies: MarkerRing[] = [];
+    /** Galaxy / sector zoom: a ring on the star of each system holding a potential colony (MarkerRing.habitat = the star). */
+    private potentialSystems: MarkerRing[] = [];
     /** Potential colonies that need a colonisation tech the player lacks (drawn dim and dashed). */
     private futureColonies: MarkerRing[] = [];
     private futureTechSig = 0;
@@ -795,19 +803,38 @@ export class OverlayLayer {
         const reveal = fogOf(galaxy).reveal;
         const explored = (h: Habitat): boolean => player === null || reveal || player.visibility.checkSystemExplored(h.systemIndex);
         const colonizable = player !== null ? player.colonizableHabitatTypesForEmpire() : [];
+        const design = player !== null ? findNewestCanBuild(player.designs, BuiltObjectSubRole.ColonyShip, player) : null;
         this.futureTechSig = player !== null ? colonizable.length : 0;
         const pc: Habitat[] = [];
         const fc: Habitat[] = [];
         const sc: Habitat[] = [];
         const rs: Habitat[] = [];
-        for (const h of galaxy.habitats) {
-            if (h.category !== HabitatCategoryType.Planet && h.category !== HabitatCategoryType.Moon && h.category !== HabitatCategoryType.Star) continue;
-            const kind = potentialColonyKind(h, galaxy, colonizable);
-            if (kind === 'now') pc.push(h);
-            else if (kind === 'future') fc.push(h);
-            if (isScenicLocation(h) && explored(h)) sc.push(h);
-            if (isResearchLocation(h) && explored(h)) rs.push(h);
+        // Systems holding a 'now' potential colony (the galaxy-zoom ring is on their star).
+        const pcSystems = new Set<number>();
+        withPureSimReads(() => {
+            for (const h of galaxy.habitats) {
+                if (h.category !== HabitatCategoryType.Planet && h.category !== HabitatCategoryType.Moon && h.category !== HabitatCategoryType.Star) continue;
+                const kind = potentialColonyKind(h, galaxy, colonizable, design);
+                if (kind === 'now') {
+                    pc.push(h);
+                    pcSystems.add(h.systemIndex);
+                } else if (kind === 'future') fc.push(h);
+                if (isScenicLocation(h) && explored(h)) sc.push(h);
+                if (isResearchLocation(h) && explored(h)) rs.push(h);
+            }
+        });
+        // Galaxy.1.cs DetermineSystemInfo's IndependentColonyCount, as MainView.2.cs method_250 uses it: a system with
+        // independent colonies and no territory owner (Galaxy.cs CheckSystemOwnership) or the player's is ringed too.
+        // Explored systems only.
+        const systemStars: Habitat[] = [];
+        if (player !== null) {
+            galaxy.systems.forEach((sys, i) => {
+                const owner = checkSystemOwnershipEmpire(galaxy, sys.systemStar);
+                const independent = (sys.independentColonyCount ?? 0) > 0 && (owner === null || owner === player);
+                if ((pcSystems.has(i) || independent) && player.visibility.checkSystemExplored(i)) systemStars.push(sys.systemStar);
+            });
         }
+        this.potentialSystems = this.syncMarkers(this.potentialSystems, systemStars);
         this.potentialColonies = this.syncMarkers(this.potentialColonies, pc);
         this.futureColonies = this.syncMarkers(this.futureColonies, fc);
         this.scenicLocations = this.syncMarkers(this.scenicLocations, sc);
@@ -837,6 +864,15 @@ export class OverlayLayer {
         const player = localViewerEmpire(this.galaxy);
         if (player === null) return;
         if (colonyTargetSignature(this.galaxy, player) !== this.markersSig || player.colonizableHabitatTypesForEmpire().length !== this.futureTechSig) this.rebuildMarkers();
+    }
+
+    /** The Potential Colonies marks drawn by the last update: rings on systems (galaxy / sector zoom) and on habitats
+     * (system zoom). For tests and the headless self-check. */
+    potentialColonyMarks(): { systems: number; habitats: number } {
+        return {
+            systems: this.potentialSystems.filter((m) => m.graphics.visible).length,
+            habitats: this.potentialColonies.filter((m) => m.graphics.visible).length,
+        };
     }
 
     /** Hover text of an Improvements overlay mark under world (wx, wy) (nothing picked there), or null. */
@@ -871,7 +907,7 @@ export class OverlayLayer {
         this.empireLayer.setTerritoryEnabled(this.state.empireTerritory);
     }
 
-    private updateGroup(markers: MarkerRing[], enabled: boolean, z: number, cam: Camera, skip: ReadonlyMap<Habitat, unknown> | null = null, future = false): void {
+    private updateGroup(markers: MarkerRing[], enabled: boolean, z: number, cam: Camera, skip: ((h: Habitat) => boolean) | null = null, future = false): void {
         for (const m of markers) {
             if (!enabled) {
                 m.graphics.visible = false;
@@ -879,7 +915,7 @@ export class OverlayLayer {
             }
             const h = m.habitat;
             // [dw2overlays] a habitat the Colony Target Scores overlay rings in its heat colour.
-            if (skip !== null && skip.has(h)) {
+            if (skip !== null && skip(h)) {
                 m.graphics.visible = false;
                 continue;
             }
@@ -934,8 +970,11 @@ export class OverlayLayer {
         this.fuel.getSelection = this.getSelection;
         this.runOverlay('Fuel Range', FUEL_KEYS, () => this.fuel.update(z, cam));
         // [dw2overlays] end
-        this.updateGroup(this.potentialColonies, atSystemZoom && this.state.potentialColonies, z, cam, this.colonyScores.active?.byHabitat ?? null);
-        this.updateGroup(this.futureColonies, atSystemZoom && this.state.potentialColonies, z, cam, this.colonyScores.active?.byHabitat ?? null, true);
+        // Colony Target Scores takes over the ring of each habitat it scores (at system zoom) and of each system it scores (galaxy zoom).
+        const scores = this.colonyScores.active;
+        this.updateGroup(this.potentialColonies, atSystemZoom && this.state.potentialColonies, z, cam, scores !== null ? (h) => scores.byHabitat.has(h) : null);
+        this.updateGroup(this.futureColonies, atSystemZoom && this.state.potentialColonies, z, cam, scores !== null ? (h) => scores.byHabitat.has(h) : null, true);
+        this.updateGroup(this.potentialSystems, !atSystemZoom && this.state.potentialColonies, z, cam, scores !== null ? (star) => scores.bySystem.has(star.systemIndex) : null);
         this.updateGroup(this.scenicLocations, atSystemZoom && this.state.scenicLocations, z, cam);
         this.updateGroup(this.researchLocations, atSystemZoom && this.state.researchLocations, z, cam);
         const f = 1 / z;
