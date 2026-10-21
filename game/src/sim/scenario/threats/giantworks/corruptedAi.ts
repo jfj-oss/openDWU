@@ -61,11 +61,11 @@ function systemNameOf(galaxy: Galaxy, h: Habitat): string {
     return galaxy.systems[h.systemIndex]?.systemStar?.name ?? h.name;
 }
 
-/** A fleet of `e` already has `target` as its mission target. Pure. */
+/** A fleet of `e` already has `target` (a ship, a base or a world) as its mission's target. Pure. */
 function targeted(e: Empire, target: unknown): boolean {
     for (const grp of empireShipGroups(e)) {
-        const m = grp === null ? null : grp.mission;
-        if (m !== null && (m as { targetBuiltObject?: unknown }).targetBuiltObject === target) return true;
+        const m = grp === null ? null : (grp.mission as { targetBuiltObject?: unknown; targetHabitat?: unknown } | null);
+        if (m !== null && (m.targetBuiltObject === target || m.targetHabitat === target)) return true;
     }
     return false;
 }
@@ -150,7 +150,7 @@ export function parkAtFoundries(galaxy: Galaxy, st: CorruptedState, e: Empire): 
     for (const place of dormantFoundries(galaxy)) {
         const h = galaxy.findNearestHabitatOfType(place.x, place.y, HabitatType.Undefined);
         if (h === null || targeted(e, h)) continue;
-        const fleet = findNearestAvailableFleet(galaxy, e, h.xpos, h.ypos, BuiltObjectMissionPriority.Low, 0, FleetPosture.Defend, true, 0.1, false, true, false, false);
+        const fleet = findNearestAvailableFleet(galaxy, e, h.xpos, h.ypos, BuiltObjectMissionPriority.Low, 0, FleetPosture.Defend, true, 0.1, false, true, false, false) ?? formStrikeFleet(galaxy, e, h.xpos, h.ypos, 1);
         if (fleet === null || fleet.leadShip === null || !isAiControlled(fleet.leadShip)) continue;
         if (!shipGroupCheckFleetTargetWithinFuelRangeAndRefuel(galaxy, fleet, h.xpos, h.ypos, 0.1)) continue;
         if (shipGroupAssignMission(galaxy, fleet, BuiltObjectMissionType.Patrol, h, null, BuiltObjectMissionPriority.Normal, true)) {
