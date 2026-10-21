@@ -2336,7 +2336,9 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
             if (race !== null && race.preferredStartingGovernment !== -1 && offered.some((g) => g.governmentId === race.preferredStartingGovernment)) m.governmentId = race.preferredStartingGovernment;
             fillGovernments();
         });
-        raceSelect.addEventListener('keydown', (e) => e.stopPropagation());
+        raceSelect.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape') e.stopPropagation();
+        });
         raceCell.appendChild(raceSelect);
         row.appendChild(raceCell);
 
@@ -2359,7 +2361,9 @@ function buildOtherEmpiresPage(ctx: WizardCtx): HTMLDivElement {
         govSelect.addEventListener('change', () => {
             m.governmentId = parseInt(govSelect.value, 10);
         });
-        govSelect.addEventListener('keydown', (e) => e.stopPropagation());
+        govSelect.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape') e.stopPropagation();
+        });
         govCell.appendChild(govSelect);
         row.appendChild(govCell);
 

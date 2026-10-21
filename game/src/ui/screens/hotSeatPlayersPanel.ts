@@ -110,7 +110,9 @@ export function buildHotSeatPlayersPanel(d: HotSeatPlayersPanelDeps): HotSeatPla
             d.onChange();
         });
         nameInput.classList.add('wizard-hotseat-name-input');
-        nameInput.addEventListener('keydown', (e) => e.stopPropagation());
+        nameInput.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape') e.stopPropagation();
+        });
         nameCell.appendChild(nameInput);
         row.appendChild(nameCell);
 
@@ -160,8 +162,12 @@ export function buildHotSeatPlayersPanel(d: HotSeatPlayersPanelDeps): HotSeatPla
             h.governmentId = parseInt(govSelect.value, 10);
             d.onChange();
         });
-        raceSelect.addEventListener('keydown', (e) => e.stopPropagation());
-        govSelect.addEventListener('keydown', (e) => e.stopPropagation());
+        raceSelect.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape') e.stopPropagation();
+        });
+        govSelect.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape') e.stopPropagation();
+        });
         govCell.appendChild(govSelect);
         row.appendChild(govCell);
 
