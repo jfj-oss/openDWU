@@ -617,7 +617,7 @@ Holdout Row Colony Held;held
 Holdout Row Colony Fled;held; its colonists are fleeing
 Holdout Row Colony Taken;taken
 Holdout Row Colony Blown;destroyed
-'TODO-PROSE (Age 2 arks and stranded Watchers; placeholder text for the author to polish): LongNight Ark Contact Line, LongNight Stranded Faction, LongNight Stranded Name, LongNight Stranded Found Title, LongNight Stranded Found Body, LongNight Stranded Gone Title, LongNight Stranded Gone Body, LongNight Stranded Prize Title, LongNight Stranded Prize Foundry Body, LongNight Stranded Prize Truth Body, LongNight Truth age2-watcher-ledger Title, LongNight Truth age2-watcher-ledger Text, LongNight Stranded Row Stranded, LongNight Stranded Row Taken, LongNight Stranded Row Destroyed, LongNight Stranded Row Gone, LongNight Stranded Row Foundry
+' Age 2 survivor arks and stranded Watchers (age2Arks.ts, age2Watchers.ts).
 LongNight Ark Contact Line;This ship is a survivor of the old age: an ark of the Long Night. It kept the old knowledge, and its weapons and shields are the weapons and shields of that age.
 LongNight Stranded Faction;The Left Behind
 LongNight Stranded Name;a damaged Watcher
