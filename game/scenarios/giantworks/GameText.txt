@@ -608,6 +608,8 @@ Holdout News Core Taken;{2} has taken {0}, the seat of the {1}, and with it thei
 Holdout Row Core;{0}, core of the {1}
 Holdout Row Core Shielded;shielded; cannot be invaded until its {0} colonies are taken
 Holdout Row Core Open;the shield is down; it can be invaded
+Holdout Row Fleet;a home fleet of about {0} warships
+Holdout Row Fleet None;no home fleet left
 Holdout Row Core Taken;conquered by {0}
 Holdout Row Core Destroyed;destroyed
 Holdout Row Colony;{0}, a colony

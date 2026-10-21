@@ -21,6 +21,7 @@ import { scenarioParam, scenarioState } from '../../state';
 import { scenarioMessage, scenarioNews, scenarioText as T } from '../../messages';
 import { HARVEST_CYCLE_FLAG, memoryRecordOf, registerMemoryContributor } from './longNightState';
 import type { Galaxy } from '../../../galaxy';
+import type { ShipGroup } from '../../../fleets/shipGroup';
 import type { Empire } from '../../../empire';
 import { AutomationLevel } from '../../../empire';
 import type { Race } from '../../../data/races';
@@ -33,10 +34,13 @@ import { isHumanEmpire, humanEmpires } from '../../../humanEmpires';
 import { galaxyStarDate } from '../../../tick/simTime';
 import { makeHabitatIntoColony } from '../../../colony';
 import { builtObjectCompleteTeardown } from '../../../combat/teardown';
-import { BuiltObjectMissionPriority, BuiltObjectMissionType } from '../../../missions/mission';
+import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission } from '../../../missions/mission';
 import { assignMission } from '../../../missions/assign';
 import { obtainDiplomaticRelation, DiplomaticRelationType } from '../../../diplomacy';
 import { createEmpireMidGame } from '../../empireMidGame';
+import { registerCouncilExtension } from '../../emergent/council';
+import { calculateOverallStrengthFactor } from '../../../combat/threats';
+import { shipGroupTotalOverallStrengthFactor } from '../../../fleets/shipGroup';
 import { maxDesignTechLevel, empireTechLevel } from '../robotMutiny';
 import { detonateHabitat } from '../timeBomb';
 import { age2Random } from './age2World';
@@ -60,6 +64,14 @@ const DEFAULTS = {
     holdoutDefences: 3,
     /** Sectors a holdout's colonies lie within of its core. */
     holdoutColonySectors: 2,
+    /** The home fleet's size at the start (a roll between the two), in warships. */
+    holdoutFleetMin: 15,
+    holdoutFleetMax: 20,
+    /** Days between two free rebuilds at the core (a roll between the two, each time). */
+    holdoutRebuildMin: 90,
+    holdoutRebuildMax: 120,
+    /** An AI fleet invades a holdout world only when it is at least this percent of the holdout's whole home fleet (the stock check sees only the ships in the system). */
+    holdoutAiRatioPct: 100,
 } as const;
 export type HoldoutParamName = keyof typeof DEFAULTS;
 
@@ -83,6 +95,12 @@ export const WARN_SECTORS = 0.3;
 /** Freighters that leave a rigged colony, and the days they stay before they are gone. */
 export const EVAC_FREIGHTERS = 3;
 export const EVAC_DAYS = 15;
+/** The warship mix of a home fleet, by slot (cycled): heavy, medium and light ships. */
+export const FLEET_MIX: readonly BuiltObjectSubRole[] = [BuiltObjectSubRole.Cruiser, BuiltObjectSubRole.Destroyer, BuiltObjectSubRole.Frigate, BuiltObjectSubRole.Escort, BuiltObjectSubRole.Destroyer, BuiltObjectSubRole.Frigate];
+/** A patrolling ship further than this many sectors from every world of its holdout is called back. */
+export const STRAY_SECTORS = 0.6;
+/** Salt of the rebuild rolls (age2Random). */
+const REBUILD_SALT = 5000;
 /** Days between two "the shield holds" notes to one empire. */
 const HELD_NOTE_DAYS = 10;
 
@@ -106,6 +124,21 @@ export interface HoldoutRec {
     coreFate: 'held' | 'taken' | 'destroyed';
     /** The empire the core's tech went to (empire id), -1 none. */
     techTo: number;
+    /** The home fleet: one slot per ship it started with (a lost ship leaves its slot empty until the core rebuilds it). */
+    fleet: FleetSlot[];
+    /** Star date of the next free rebuild at the core, -1 none due. */
+    nextRebuild: number;
+    /** Rebuilds so far (keys the rebuild rolls). */
+    rebuilds: number;
+    /** The core's shield dropped: no more rebuilding, for good. */
+    rebuildStopped: boolean;
+}
+
+export interface FleetSlot {
+    role: BuiltObjectSubRole;
+    ship: BuiltObject | null;
+    /** The index (into the holdout's worlds, core first) of the world it patrols next / now. */
+    stop: number;
 }
 
 export interface Evacuee {
@@ -242,7 +275,7 @@ export function pickCores(galaxy: Galaxy, avoid: readonly { x: number; y: number
 /** The tech level the holdouts are made at: the best ordinary empire's plus the bonus, at least HOLDOUT_MIN_TECH, at most the generator's top. Pure. */
 export function holdoutTechLevel(galaxy: Galaxy): number {
     let best = 1;
-    for (const e of ordinaryEmpires(galaxy)) best = Math.max(best, empireTechLevel(e));
+    for (const e of ordinaryEmpires(galaxy)) if (!isHoldout(galaxy, e)) best = Math.max(best, empireTechLevel(e));
     const top = Math.max(HOLDOUT_MIN_TECH, maxDesignTechLevel(galaxy));
     return Math.min(top, Math.max(HOLDOUT_MIN_TECH, best + Math.trunc(holdoutParam(galaxy, 'holdoutTechBonus'))));
 }
@@ -332,8 +365,9 @@ export function createHoldout(galaxy: Galaxy, core: Habitat, race: Race, rnd: ()
     const home = empire.capital ?? core;
     const pct = holdoutParam(galaxy, 'holdoutRiggedPct');
     const colonies = empire.colonies.filter((c) => c !== home).map((h): HoldoutColony => ({ habitat: h, rigged: rnd() * 100 < pct, fled: false, fate: 'held' }));
-    const rec: HoldoutRec = { id: st.holdouts.length, empire, core: home, colonies, shield: colonies.length > 0, coreFate: 'held', techTo: -1 };
+    const rec: HoldoutRec = { id: st.holdouts.length, empire, core: home, colonies, shield: colonies.length > 0, coreFate: 'held', techTo: -1, fleet: [], nextRebuild: -1, rebuilds: 0, rebuildStopped: false };
     st.holdouts.push(rec);
+    raiseFleet(galaxy, rec, rnd);
     return rec;
 }
 
@@ -355,6 +389,132 @@ function restoreHoldouts(galaxy: Galaxy): void {
     const avoid = [...memory.scars.map((s) => ({ x: s.x, y: s.y })), ...(memory.beaconSite != null ? [{ x: memory.beaconSite.x, y: memory.beaconSite.y }] : [])];
     holdoutsState(galaxy);
     placeHoldouts(galaxy, avoid);
+}
+
+
+// ---------------------------------------------------------------------------------------------------------------
+// The home fleet
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The worlds the holdout still holds, the core first. Pure. */
+export function holdoutWorlds(rec: HoldoutRec): Habitat[] {
+    const out: Habitat[] = [];
+    if (!rec.core.hasBeenDestroyed && rec.core.empire === rec.empire) out.push(rec.core);
+    for (const c of rec.colonies) if (!colonyGone(rec, c)) out.push(c.habitat);
+    return out;
+}
+
+/** Ships of the home fleet afloat. Pure. */
+export function fleetAlive(rec: HoldoutRec): BuiltObject[] {
+    const out: BuiltObject[] = [];
+    for (const f of rec.fleet) if (f.ship !== null && !f.ship.hasBeenDestroyed && f.ship.empire === rec.empire) out.push(f.ship);
+    return out;
+}
+
+/** The home fleet's strength (the stock overall strength factor summed). Pure. */
+export function fleetStrength(rec: HoldoutRec): number {
+    let sum = 0;
+    for (const b of fleetAlive(rec)) sum += calculateOverallStrengthFactor(b);
+    return sum;
+}
+
+function fleetDesign(galaxy: Galaxy, e: Empire, role: BuiltObjectSubRole): ReturnType<typeof factionDesign> {
+    return factionDesign(galaxy, e, role) ?? factionDesign(galaxy, e, BuiltObjectSubRole.Destroyer) ?? factionDesign(galaxy, e, BuiltObjectSubRole.Frigate);
+}
+
+/**
+ * One warship of `role` at `at`: the holdout's own frozen-tech design, state-owned (no upkeep) and kept off the empire AI's hands, so that only
+ * the daily patrol orders move it (a patrolling ship still answers any attack: the stock threat evaluation).
+ */
+function buildWarship(galaxy: Galaxy, rec: HoldoutRec, role: BuiltObjectSubRole, at: Habitat): BuiltObject | null {
+    const design = fleetDesign(galaxy, rec.empire, role);
+    if (design === null) return null;
+    const bo = placeObject(galaxy, rec.empire, design, at, null, true);
+    bo.isAutoControlled = false;
+    return bo;
+}
+
+/** The starting fleet: `holdoutFleetMin`..`holdoutFleetMax` ships in the FLEET_MIX, slot i starting at world i (round the core and the colonies). Draws `rnd` once and galaxy.rnd (the ships). */
+function raiseFleet(galaxy: Galaxy, rec: HoldoutRec, rnd: () => number): void {
+    const lo = Math.max(0, Math.trunc(holdoutParam(galaxy, 'holdoutFleetMin')));
+    const hi = Math.max(lo, Math.trunc(holdoutParam(galaxy, 'holdoutFleetMax')));
+    const size = lo + Math.floor(rnd() * (hi - lo + 1));
+    const worlds = holdoutWorlds(rec);
+    for (let i = 0; i < size; i++) {
+        const role = FLEET_MIX[i % FLEET_MIX.length];
+        const stop = worlds.length === 0 ? 0 : i % worlds.length;
+        rec.fleet.push({ role, ship: worlds.length === 0 ? null : buildWarship(galaxy, rec, role, worlds[stop]), stop });
+    }
+}
+
+function isIdle(bo: BuiltObject): boolean {
+    const m = builtObjectMission(bo.mission);
+    return m === null || m.type === BuiltObjectMissionType.Undefined || m.type === BuiltObjectMissionType.Hold;
+}
+
+/** Orders the ship round to `worlds[stop]` (Patrol: the stock orbit, a dozen loops). */
+function patrol(galaxy: Galaxy, bo: BuiltObject, worlds: readonly Habitat[], stop: number): void {
+    assignMission(galaxy, bo, BuiltObjectMissionType.Patrol, worlds[stop], null, BuiltObjectMissionPriority.Normal, { manuallyAssigned: true });
+}
+
+/** True when `bo` is further than STRAY_SECTORS from every world in `worlds`. */
+function strayed(galaxy: Galaxy, bo: BuiltObject, worlds: readonly Habitat[]): boolean {
+    const limit = galaxy.sectorSize * STRAY_SECTORS;
+    return !worlds.some((w) => galaxy.calculateDistance(bo.xpos, bo.ypos, w.xpos, w.ypos) <= limit);
+}
+
+/**
+ * The patrol rotation: a ship with nothing to do (its round done), or called off its worlds (a chase), or on a world that is gone, is ordered
+ * to the next world of the holdout (core, colonies, core ...). Ships stay topped up on fuel (the old drives; they never need the port).
+ */
+function patrolFleet(galaxy: Galaxy, rec: HoldoutRec): void {
+    const worlds = holdoutWorlds(rec);
+    if (worlds.length === 0) return;
+    for (const slot of rec.fleet) {
+        const bo = slot.ship;
+        if (bo === null || bo.hasBeenDestroyed) continue;
+        if (bo.currentFuel < bo.fuelCapacity * 0.5) bo.currentFuel = bo.fuelCapacity;
+        const m = builtObjectMission(bo.mission);
+        const onWorld = m !== null && m.type === BuiltObjectMissionType.Patrol && m.targetHabitat !== null && worlds.includes(m.targetHabitat);
+        if (isIdle(bo)) {
+            slot.stop = (slot.stop + 1) % worlds.length;
+            patrol(galaxy, bo, worlds, slot.stop);
+        } else if (!onWorld && m !== null && m.type === BuiltObjectMissionType.Patrol) {
+            slot.stop = slot.stop % worlds.length;
+            patrol(galaxy, bo, worlds, slot.stop);
+        } else if (strayed(galaxy, bo, worlds)) {
+            slot.stop = slot.stop % worlds.length;
+            patrol(galaxy, bo, worlds, slot.stop);
+        }
+    }
+}
+
+/** Days until the next rebuild: a roll in [holdoutRebuildMin, holdoutRebuildMax] keyed by the holdout and its rebuild count (pure, no galaxy.rnd; a save repeats it). */
+export function rebuildDays(galaxy: Galaxy, rec: HoldoutRec): number {
+    const lo = Math.max(1, Math.trunc(holdoutParam(galaxy, 'holdoutRebuildMin')));
+    const hi = Math.max(lo, Math.trunc(holdoutParam(galaxy, 'holdoutRebuildMax')));
+    return lo + Math.floor(age2Random(galaxy.randomSeed, REBUILD_SALT + rec.id * 1009 + rec.rebuilds)() * (hi - lo + 1));
+}
+
+/** Free rebuilds: one lost ship comes back at the core every rebuildDays, until the starting size is back. They stop for good once the core's shield drops. */
+function rebuildFleet(galaxy: Galaxy, rec: HoldoutRec, now: number): void {
+    if (rec.rebuildStopped) return;
+    if (!coreShielded(rec)) {
+        rec.rebuildStopped = true;
+        rec.nextRebuild = -1;
+        return;
+    }
+    const slot = rec.fleet.find((f) => f.ship === null || f.ship.hasBeenDestroyed || f.ship.empire !== rec.empire);
+    if (slot === undefined) {
+        rec.nextRebuild = -1;
+        return;
+    }
+    if (rec.nextRebuild < 0) rec.nextRebuild = now + rebuildDays(galaxy, rec) * GAME_DAY_LENGTH;
+    if (now < rec.nextRebuild) return;
+    slot.ship = buildWarship(galaxy, rec, slot.role, rec.core);
+    slot.stop = 0;
+    rec.rebuilds++;
+    rec.nextRebuild = -1;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -566,6 +726,10 @@ export function holdoutsDaily(galaxy: Galaxy): void {
             rec.coreFate = rec.core.hasBeenDestroyed ? 'destroyed' : 'taken';
         }
         reviewShield(galaxy, rec, null);
+        if (rec.empire.active) {
+            rebuildFleet(galaxy, rec, now);
+            patrolFleet(galaxy, rec);
+        }
     }
 }
 
@@ -598,7 +762,9 @@ export function holdoutKnowledgeRows(galaxy: Galaxy, viewer: Empire): HoldoutRow
                       : coreShielded(rec)
                         ? T(`${HOLDOUT_TAG} Row Core Shielded`, coloniesLeft(rec))
                         : T(`${HOLDOUT_TAG} Row Core Open`);
-            rows.push({ key: `holdout:${rec.id}:core`, what: T(`${HOLDOUT_TAG} Row Core`, rec.core.name, rec.empire.name), where: systemName(galaxy, rec.core), status, goTo: rec.core });
+            const alive = fleetAlive(rec).length;
+            const fleet = rec.coreFate === 'held' ? '; ' + (alive === 0 ? T(`${HOLDOUT_TAG} Row Fleet None`) : T(`${HOLDOUT_TAG} Row Fleet`, Math.max(5, Math.round(alive / 5) * 5))) : '';
+            rows.push({ key: `holdout:${rec.id}:core`, what: T(`${HOLDOUT_TAG} Row Core`, rec.core.name, rec.empire.name), where: systemName(galaxy, rec.core), status: status + fleet, goTo: rec.core });
         }
         for (const [i, c] of rec.colonies.entries()) {
             if (!seen(c.habitat)) continue;
@@ -620,13 +786,24 @@ function targetOk(galaxy: Galaxy, value: boolean, empire: Empire, target: Habita
     if (st === null) return true;
     if (st.holdouts.some((h) => h.empire === empire)) return false;
     const rec = st.holdouts.find((h) => h.core === target);
-    return rec === undefined || !coreShielded(rec);
+    if (rec !== undefined && coreShielded(rec)) return false;
+    return true;
+}
+
+/** AI sanity: an AI fleet goes for a holdout's world only when it is as strong as the holdout's whole home fleet (the stock test sees just the ships in the system). */
+function fleetStrongEnough(galaxy: Galaxy, fleet: ShipGroup, target: Habitat): boolean {
+    const rec = holdoutOf(galaxy, target.empire);
+    if (rec === null) return true;
+    const need = fleetStrength(rec) * (holdoutParam(galaxy, 'holdoutAiRatioPct') / 100);
+    return need <= 0 || shipGroupTotalOverallStrengthFactor(galaxy, fleet) >= need;
 }
 
 export function registerAge2Holdouts(): void {
     registerMemoryContributor({ id: 'age2.holdouts', capture: () => undefined, restore: (g, _data: unknown) => restoreHoldouts(g) });
     registerScenarioQuery({ id: 'age2.holdouts.shield', flag: HARVEST_CYCLE_FLAG, query: 'invasionBlocked', run: (g, v, a) => v || onInvasionBlocked(g, a.habitat, a.invader) });
-    registerScenarioQuery({ id: 'age2.holdouts.targets', flag: HARVEST_CYCLE_FLAG, query: 'invasionTargetOrbitOk', run: (g, v, a) => targetOk(g, v, a.empire, a.target) });
+    registerScenarioQuery({ id: 'age2.holdouts.targets', flag: HARVEST_CYCLE_FLAG, query: 'invasionTargetOrbitOk', run: (g, v, a) => targetOk(g, v, a.empire, a.target) && (!v || fleetStrongEnough(g, a.fleet, a.target)) });
+    registerScenarioQuery({ id: 'age2.holdouts.victory', flag: HARVEST_CYCLE_FLAG, query: 'victoryExcluded', run: (g, v, a) => v || isHoldout(g, a.empire) });
+    registerCouncilExtension({ id: 'age2.holdouts', excluded: (g, e) => isHoldout(g, e) }); // not Diet members: no seat, vote or dues (the Ancient Guardians' rule)
     registerScenarioEvent({ id: 'age2.holdouts.owner', flag: HARVEST_CYCLE_FLAG, event: 'colonyOwnerChanged', run: (g, e) => onColonyOwnerChanged(g, e.colony, e.from, e.to) });
     registerScenarioFramePeriodic({ id: 'age2.holdouts.daily', flag: HARVEST_CYCLE_FLAG, order: 27, periodDays: 1, run: (g) => holdoutsDaily(g) });
 }

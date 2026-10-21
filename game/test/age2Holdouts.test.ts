@@ -22,12 +22,19 @@ import { declareWar } from '../src/sim/diplomacyTick';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import { factionDesign, placeObject } from '../src/sim/scenario/threats/giantworks/lifecycle';
+import { generateVictoryConditionProgresses } from '../src/sim/victory';
+import type { Habitat } from '../src/sim/types';
 import { SystemVisibilityStatus } from '../src/sim/visibility';
 import { scenarioQuery } from '../src/sim/scenario/hooks';
+import { ShipGroup } from '../src/sim/fleets/shipGroup';
+import { builtObjectCompleteTeardown } from '../src/sim/combat/teardown';
+import { isCouncilEmpire } from '../src/sim/scenario/emergent/council';
+import { BuiltObjectMissionType, builtObjectMission } from '../src/sim/missions/mission';
+import { GAME_DAY_LENGTH } from '../src/sim/scenario/hooks';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
 import { empireTechLevel } from '../src/sim/scenario/threats/robotMutiny';
 import {
-    HOLDOUT_MIN_TECH, COLONIES_MIN, COLONIES_MAX, EVAC_FREIGHTERS, coloniesLeft, coreShielded, holdoutCount, holdoutKnowledgeRows, holdoutsDaily, peekHoldouts, type HoldoutRec,
+    FLEET_MIX, HOLDOUT_MIN_TECH, COLONIES_MIN, COLONIES_MAX, EVAC_FREIGHTERS, coloniesLeft, coreShielded, fleetAlive, holdoutWorlds, rebuildDays, holdoutCount, holdoutKnowledgeRows, holdoutsDaily, peekHoldouts, type HoldoutRec,
 } from '../src/sim/scenario/threats/giantworks/age2Holdouts';
 import { peekLongNight } from '../src/sim/scenario/threats/giantworks/longNightState';
 
@@ -237,6 +244,122 @@ describe('the Precursor holdouts', () => {
         }
     });
 
+    it('are out of the Galactic Diet and the race for victory, but stay ordinary for contact', () => {
+        const g = built.galaxy;
+        const me = g.playerEmpire!;
+        for (const rec of peekHoldouts(g)!.holdouts) {
+            expect(isCouncilEmpire(g, rec.empire)).toBe(false);
+            expect(scenarioQuery(g, 'victoryExcluded', false, { empire: rec.empire })).toBe(true);
+            expect(rec.empire.active).toBe(true);
+        }
+        expect(isCouncilEmpire(g, me)).toBe(true);
+        expect(scenarioQuery(g, 'victoryExcluded', false, { empire: me })).toBe(false);
+        if (g.globalVictoryConditions !== null) {
+            const list = generateVictoryConditionProgresses(g, g.globalVictoryConditions, false);
+            for (const rec of peekHoldouts(g)!.holdouts) expect(list.some((p) => p.empire === rec.empire)).toBe(false);
+        }
+    });
+
+    it('start with a home fleet of 15 to 20 warships of their own designs, spread over their worlds', () => {
+        const g = world().galaxy;
+        for (const rec of peekHoldouts(g)!.holdouts) {
+            const ships = fleetAlive(rec);
+            expect(ships.length).toBeGreaterThanOrEqual(15);
+            expect(ships.length).toBeLessThanOrEqual(20);
+            expect(rec.fleet.length).toBe(ships.length);
+            for (const b of ships) {
+                expect(b.role).toBe(BuiltObjectRole.Military);
+                expect(b.empire).toBe(rec.empire);
+                expect(b.isAutoControlled).toBe(false);
+                expect(FLEET_MIX).toContain(b.subRole);
+            }
+            const worlds = holdoutWorlds(rec);
+            const where = new Set(ships.map((b) => worlds.reduce((best, w) => (g.calculateDistance(b.xpos, b.ypos, w.xpos, w.ypos) < g.calculateDistance(b.xpos, b.ypos, best.xpos, best.ypos) ? w : best), worlds[0])));
+            expect(where.size).toBe(worlds.length);
+        }
+    });
+
+    it('patrol only their own worlds, rotating, through a long run', () => {
+        const game = world();
+        const g = game.galaxy;
+        const rec = peekHoldouts(g)!.holdouts[0];
+        const seen = new Set<Habitat>();
+        const limit = 0.7 * g.sectorSize;
+        for (let i = 0; i < 6; i++) {
+            runGameSeconds(game, 300);
+            const worlds = holdoutWorlds(rec);
+            for (const b of fleetAlive(rec)) {
+                expect(worlds.some((w) => g.calculateDistance(b.xpos, b.ypos, w.xpos, w.ypos) <= limit)).toBe(true);
+                const m = builtObjectMission(b.mission);
+                if (m !== null && m.type === BuiltObjectMissionType.Patrol && m.targetHabitat !== null) {
+                    expect(worlds).toContain(m.targetHabitat);
+                    seen.add(m.targetHabitat);
+                }
+            }
+        }
+        expect(seen.size).toBeGreaterThanOrEqual(2);
+    }, 600000);
+
+    it('rebuild one ship at the core every 90 to 120 days up to the starting size, and stop for good once the shield drops', () => {
+        const game = world();
+        const g = game.galaxy;
+        const rec = peekHoldouts(g)!.holdouts[0];
+        const size = rec.fleet.length;
+        for (let i = 0; i < 3; i++) rec.rebuilds = i, expect(rebuildDays(g, rec)).toBeGreaterThanOrEqual(90), expect(rebuildDays(g, rec)).toBeLessThanOrEqual(120);
+        rec.rebuilds = 0;
+        for (const b of fleetAlive(rec).slice(0, 2)) builtObjectCompleteTeardown(g, b);
+        expect(fleetAlive(rec).length).toBe(size - 2);
+        const now = galaxyStarDate(g);
+        holdoutsDaily(g);
+        expect(rec.nextRebuild).toBeGreaterThanOrEqual(now + 90 * GAME_DAY_LENGTH);
+        expect(rec.nextRebuild).toBeLessThanOrEqual(now + 120 * GAME_DAY_LENGTH);
+        expect(fleetAlive(rec).length).toBe(size - 2);
+        rec.nextRebuild = now - 1;
+        holdoutsDaily(g);
+        expect(fleetAlive(rec).length).toBe(size - 1);
+        expect(rec.rebuilds).toBe(1);
+        expect(rec.nextRebuild).toBeLessThan(0);
+        holdoutsDaily(g); // the next one is scheduled
+        expect(rec.nextRebuild).toBeGreaterThan(now);
+        rec.nextRebuild = now - 1;
+        holdoutsDaily(g);
+        expect(fleetAlive(rec).length).toBe(size);
+        holdoutsDaily(g);
+        expect(rec.nextRebuild).toBeLessThan(0); // full again: nothing to rebuild
+        // the shield drops: no more
+        builtObjectCompleteTeardown(g, fleetAlive(rec)[0]);
+        rec.shield = false;
+        holdoutsDaily(g);
+        expect(rec.rebuildStopped).toBe(true);
+        rec.nextRebuild = now - 1;
+        holdoutsDaily(g);
+        expect(fleetAlive(rec).length).toBe(size - 1);
+        rec.shield = true; // even a restored shield changes nothing
+        holdoutsDaily(g);
+        expect(fleetAlive(rec).length).toBe(size - 1);
+    }, 300000);
+
+    it('keep the AI from throwing a fleet at a holdout it cannot beat', () => {
+        const g = world().galaxy;
+        const me = g.playerEmpire!;
+        const rec = peekHoldouts(g)!.holdouts[0];
+        rec.colonies.forEach((c) => (c.rigged = false));
+        const target = rec.colonies[0].habitat;
+        const fleetOf = (ships: ReturnType<typeof fleetAlive>): ShipGroup => {
+            const sg = new ShipGroup(g);
+            sg.empire = me;
+            sg.ships.push(...ships);
+            sg.leadShip = ships[0];
+            return sg;
+        };
+        const mine = [placeObject(g, me, factionDesign(g, me, BuiltObjectSubRole.Frigate, true)!, me.capital!, null, true)];
+        expect(scenarioQuery(g, 'invasionTargetOrbitOk', true, { empire: me, fleet: fleetOf(mine), target })).toBe(false);
+        // a force as strong as the whole home fleet may go
+        expect(scenarioQuery(g, 'invasionTargetOrbitOk', true, { empire: me, fleet: fleetOf(fleetAlive(rec)), target })).toBe(true);
+        // other empires' worlds are not affected
+        expect(scenarioQuery(g, 'invasionTargetOrbitOk', true, { empire: me, fleet: fleetOf(mine), target: otherEmpire(g, rec).capital! })).toBe(true);
+    });
+
     it('survive a save and load with their references intact', () => {
         const game = world();
         const a = peekHoldouts(built.galaxy)!;
@@ -248,5 +371,10 @@ describe('the Precursor holdouts', () => {
             expect(r.core.empire).toBe(r.empire);
             expect(coreShielded(r)).toBe(true);
         }
+        b.holdouts.forEach((r, i) => {
+            expect(r.fleet.map((f) => [f.role, f.stop, f.ship === null ? -1 : f.ship.name])).toEqual(a.holdouts[i].fleet.map((f) => [f.role, f.stop, f.ship === null ? -1 : f.ship.name]));
+            for (const f of r.fleet) expect(f.ship === null || (game.galaxy.empires.includes(f.ship.empire!) && f.ship.empire === r.empire)).toBe(true);
+            expect([r.nextRebuild, r.rebuilds, r.rebuildStopped]).toEqual([a.holdouts[i].nextRebuild, a.holdouts[i].rebuilds, a.holdouts[i].rebuildStopped]);
+        });
     }, 300000);
 });

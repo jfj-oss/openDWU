@@ -55,6 +55,7 @@ import { reviewAchievements } from './achievements';
 import type { Troop } from './cargo';
 import { decimateEmpire } from './story/freedomAlliance';
 import { guardiansDepart } from './empireAbsorb';
+import { scenarioQuery } from './scenario/hooks';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Model classes
@@ -804,6 +805,11 @@ export function gameVictoryArgs(galaxy: Galaxy): GalaxyVictoryArgs {
     };
 }
 
+/** Mod layer: `e` does not count in the race for victory (the Precursor holdouts). */
+function victoryExcluded(galaxy: Galaxy, e: Empire): boolean {
+    return galaxy.scenario !== null && scenarioQuery(galaxy, 'victoryExcluded', false, { empire: e });
+}
+
 /** Galaxy.1.cs 88 CheckVictoryConditions(playerEmpire, globalVictoryConditions, playerConditionsToAchieve, playerConditionsToPrevent). */
 export function checkVictoryConditions(galaxy: Galaxy, playerEmpire: Empire | null, args: GalaxyVictoryArgs | null = null): void {
     const globalVictoryConditions = args?.globalVictoryConditions ?? null;
@@ -821,7 +827,7 @@ export function checkVictoryConditions(galaxy: Galaxy, playerEmpire: Empire | nu
             let num2 = 0;
             for (let i = 0; i < galaxy.empires.length; i++) {
                 const empire2 = galaxy.empires[i];
-                if (totalColonyStrategicValue(empire2) > num2 && empire2.dominantRace !== null && empire2.dominantRace.playable) {
+                if (totalColonyStrategicValue(empire2) > num2 && empire2.dominantRace !== null && empire2.dominantRace.playable && !victoryExcluded(galaxy, empire2)) {
                     empire = empire2;
                     num2 = totalColonyStrategicValue(empire2);
                 }
@@ -912,7 +918,7 @@ export function checkVictoryConditionsHumans(galaxy: Galaxy, args: GalaxyVictory
             let empire: Empire | null = null;
             let num2 = 0;
             for (const e of galaxy.empires) {
-                if (totalColonyStrategicValue(e) > num2 && e.dominantRace !== null && e.dominantRace.playable) {
+                if (totalColonyStrategicValue(e) > num2 && e.dominantRace !== null && e.dominantRace.playable && !victoryExcluded(galaxy, e)) {
                     empire = e;
                     num2 = totalColonyStrategicValue(e);
                 }
@@ -989,7 +995,7 @@ export function generateVictoryConditionProgresses(galaxy: Galaxy, globalVictory
         let num3 = 0.0;
         for (let i = 0; i < empireList.length; i++) {
             const empire3 = empireList[i];
-            if (empire3 != null && empire3.active && empire3 !== galaxy.independentEmpire && empire3 !== empire && empire3 !== empire2) {
+            if (empire3 != null && empire3.active && empire3 !== galaxy.independentEmpire && empire3 !== empire && empire3 !== empire2 && !victoryExcluded(galaxy, empire3)) {
                 if (playerEmpire.pirateEmpireBaseHabitat !== null) {
                     const pc = habitatListGetPirateControlledColonies(empire3.colonies, empire3);
                     const num4 = habitatListTotalPopulation(pc.ownedColonies);
@@ -1014,7 +1020,7 @@ export function generateVictoryConditionProgresses(galaxy: Galaxy, globalVictory
         victoryConditionProgressList = [];
         for (let j = 0; j < empireList.length; j++) {
             const empire4 = empireList[j];
-            if (empire4 == null || !empire4.active || empire4 === galaxy.independentEmpire || empire4 === empire || empire4 === empire2) continue;
+            if (empire4 == null || !empire4.active || empire4 === galaxy.independentEmpire || empire4 === empire || empire4 === empire2 || victoryExcluded(galaxy, empire4)) continue;
             let flag = true;
             if (filterOutUnmetEmpires && empire4 !== playerEmpire) {
                 if (empire4.pirateEmpireBaseHabitat === null && playerEmpire.pirateEmpireBaseHabitat === null) {
@@ -1664,7 +1670,7 @@ export function raceVictoryConditionMetCompareEmpires(galaxy: Galaxy, empire: Em
         if (empire.pirateEmpireBaseHabitat !== null) empireList = galaxy.pirateEmpires;
         for (let k = 0; k < empireList.length; k++) {
             const empire2 = empireList[k];
-            if (empire2 == null || !empire2.active || (empire2 as unknown) === obj || empire2.dominantRace === null || !empire2.dominantRace.playable || empire2.counters == null) continue;
+            if (empire2 == null || !empire2.active || (empire2 as unknown) === obj || empire2.dominantRace === null || !empire2.dominantRace.playable || empire2.counters == null || victoryExcluded(galaxy, empire2)) continue;
             const rival = compareEmpiresValue(galaxy, empire, empire2, condition, currentStarDate, false);
             const num4 = rival.num;
             const obj3 = rival.obj;

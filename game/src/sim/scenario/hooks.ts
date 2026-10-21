@@ -624,6 +624,11 @@ export interface ScenarioQueries {
      */
     invasionBlocked: { value: boolean; args: { habitat: Habitat; invader: Empire | null } };
     /**
+     * victory.ts (the victory progress lists, the compare-empires conditions and the time-limit winner): true = `empire` does not count
+     * in the race for victory, like the Ancient Guardians and the Shakturi (the Precursor holdouts). Stock false. Pure.
+     */
+    victoryExcluded: { value: boolean; args: { empire: Empire } };
+    /**
      * player/orderMenu.ts troop "Attack" menu (Main.Part8.cs 2206 method_332 lists nearby foreign colonies): the objects that
      * are not colonies but that `empire`'s troops can land on now, near (x, y) within `range` (Giantworks: a finished Great
      * Work whose shields are down; its ground war is the add-on's own). Stock: none. Pure.
