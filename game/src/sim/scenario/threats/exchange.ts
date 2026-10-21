@@ -818,7 +818,9 @@ function resolveBuyIntel(galaxy: Galaxy, d: ScenarioDecision, optionId: string):
     const st = peekExchangeState(galaxy);
     if (st === null || st.faction === null || st.ended) return;
     if (optionId === 'decline') {
-        // Refusing repeatedly (the second refusal on) breeds a grudge.
+        // Refusing repeatedly (the second refusal on) breeds a grudge; a decline answered automatically (Policy: add-on
+        // decisions) is not a refusal the player made, so it breeds none.
+        if (d.answeredBy === 'auto') return;
         const r = (st.refusals ??= {});
         r[d.empire.empireId] = (r[d.empire.empireId] ?? 0) + 1;
         if (r[d.empire.empireId] >= 2) addGrudge(galaxy, st, d.empire, EXCHANGE_GRUDGE.refusal, 'refusal');

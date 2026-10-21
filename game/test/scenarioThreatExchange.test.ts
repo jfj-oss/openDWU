@@ -469,6 +469,9 @@ describe('The Exchange: Defend contracts for any client, grudges (shared game, i
         const player = g.playerEmpire!;
         const rival = others.find((e) => e.colonies.length > 0)!;
         if (obtainDiplomaticRelation(player, rival).type !== DiplomaticRelationType.War) declareWar(g, player, rival);
+        // ... but declines answered automatically (Policy: add-on decisions) are no refusals of the player's
+        for (let i = 0; i < 3; i++) answerScenarioDecision(g, offerPlayerIntel(g, st)!.id, 'decline', 'auto');
+        expect(gr(player)).toBe(0);
         const d1 = offerPlayerIntel(g, st)!;
         answerScenarioDecision(g, d1.id, 'decline', 'player');
         expect(gr(player)).toBe(0);
