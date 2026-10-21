@@ -14,7 +14,7 @@
 import { circleAtScreenRes } from './screenCircle';
 import { fogOf } from './fog';
 import type { MotionInterpolator } from './renderInterp';
-import { BufferImageSource, Container, Graphics, Mesh, MeshGeometry, Rectangle, RendererType, Sprite, Texture, type Renderer } from 'pixi.js';
+import { AlphaFilter, BufferImageSource, Container, Graphics, Mesh, MeshGeometry, Rectangle, RendererType, Sprite, Texture, type Renderer } from 'pixi.js';
 import type { Camera } from './camera';
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
@@ -121,6 +121,8 @@ export function territoryColorFn(galaxy: Galaxy): (owner: number) => number {
 const TEXEL_SOFT = 4;
 const TEXEL_SHARP = 12;
 
+/** World units the union group's filter area extends beyond the galaxy (more than the largest presence disc radius). */
+const UNION_MARGIN = 1_000_000;
 /** Main-thread time a territory rebuild may take per frame (ms); a rebuild spans as many frames as it needs. */
 const TERRITORY_BUILD_BUDGET_MS = 4;
 /** Minimum wall time between two territory rebuilds (ms), however often the influence changes. */
@@ -143,6 +145,14 @@ export class EmpireLayer {
     root = new Container();
     /** Render interpolation (renderInterp.ts; set by MainView): colony rings follow the drawn planet / moon. */
     motion: MotionInterpolator | null = null;
+    /** The territory fill and the station-presence discs (GalaxyMarkerLayer.top, moved here by MainView) as one group:
+     * drawn opaque, then faded once by TERRITORY_ALPHA through an offscreen filter. A container's own alpha only
+     * multiplies into each child, so overlapping parts (a disc inside its empire's territory) would blend twice. */
+    private unionRoot = new Container();
+    /** Made on the first frame the group is shown: Pixi compiles the filter's shader when it is created (no GL in tests). */
+    private unionAlpha: AlphaFilter | null = null;
+    /** The station-presence discs, drawn in the union group (see unionRoot). */
+    readonly presenceRoot = new Container();
     /** Territory fill (territoryField.ts): one mesh per owning empire, regions disjoint, faded as a whole. */
     private territoryRoot = new Container();
     private territoryMeshes: Mesh[] = [];
@@ -179,7 +189,13 @@ export class EmpireLayer {
     constructor(private galaxy: Galaxy, world: Container, private renderer: Renderer | null = null) {
         world.addChild(this.root);
         this.territoryRoot.visible = false;
-        this.root.addChild(this.territoryRoot);
+        this.unionRoot.visible = false;
+        // The filter area is the galaxy plus a margin for the largest disc: the discs' particle bounds are not
+        // computed from their particles (zero size at galaxy zoom), which would make the filter skip them.
+        const pad = UNION_MARGIN;
+        this.unionRoot.filterArea = new Rectangle(-pad, -pad, galaxy.sizeX + 2 * pad, galaxy.sizeY + 2 * pad);
+        this.unionRoot.addChild(this.territoryRoot, this.presenceRoot);
+        this.root.addChild(this.unionRoot);
         this.influence = new InfluenceBorderLayer(galaxy);
         this.root.addChild(this.influence.root);
         this.territoryRoot.addChild(this.meshRoot);
@@ -319,8 +335,14 @@ export class EmpireLayer {
         const showTerritory = !atSystemZoom && this.territoryEnabled && fade > 0 && !influenceOn;
         if (showTerritory) this.updateTerritory();
         this.territoryRoot.visible = showTerritory && this.territoryMeshes.length > 0;
+        // The group is shown for the territory or the presence discs (the discs' visibility is set by GalaxyMarkerLayer, a frame later).
+        this.unionRoot.visible = this.territoryRoot.visible || this.presenceRoot.visible;
+        if (this.unionRoot.visible && this.unionAlpha === null) {
+            this.unionAlpha = new AlphaFilter({ alpha: TERRITORY_ALPHA });
+            this.unionRoot.filters = [this.unionAlpha];
+        }
         if (this.territoryRoot.visible) {
-            this.territoryRoot.alpha = TERRITORY_ALPHA * fade * fade * (3 - 2 * fade);
+            this.territoryRoot.alpha = fade * fade * (3 - 2 * fade); // the group's TERRITORY_ALPHA fades it once
             // Crossfade soft bitmap (galaxy zoom) <-> crisp meshes (zoomed in) by the bitmap pixel's screen size.
             if (this.softSprite !== null) {
                 const t = Math.max(0, Math.min(1, (this.softCell * z - TEXEL_SOFT) / (TEXEL_SHARP - TEXEL_SOFT)));

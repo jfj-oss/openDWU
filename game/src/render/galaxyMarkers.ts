@@ -831,7 +831,7 @@ export class GalaxyMarkerLayer {
     readonly back = new Container();
     /** Symbols, fleet icons, name decorations: above the map layers, under the ship art. */
     readonly front = new Container();
-    /** The presence discs: above the empire territory layer (and the rings), so the toggle works with territory on. */
+    /** The presence discs (MainView moves this into the empire layer's union group, above the rings; empireLayer.ts). */
     readonly top = new Container();
     /** Presence colour per empire: the territory colour (EmpireLayer.colourOf, wired by MainView), so a disc has its
      * empire's territory shade. */
@@ -1192,9 +1192,10 @@ export class GalaxyMarkerLayer {
         k.z = z;
         k.x = cam.x;
         k.y = cam.y;
-        // Flat discs at the territory's alpha; their minimum on-screen size grows as the view widens (presenceGalaxyBlend).
+        // Flat opaque discs (the territory's alpha is the union group's, empireLayer.ts); their minimum on-screen size
+        // grows as the view widens (presenceGalaxyBlend). Drawn only past system zoom (presenceBandAlpha).
         const t = presenceGalaxyBlend(f);
-        const alpha = presenceBandAlpha(f);
+        const visible = presenceBandAlpha(f) > 0;
         const out = this.discs.particleChildren;
         const prev = out.length;
         let n = 0;
@@ -1221,7 +1222,7 @@ export class GalaxyMarkerLayer {
             const r = Math.max(presenceDiscRadius(cnt), presenceMinScreenPx(cnt, t) / z);
             if (!boundsOnScreen(star.xpos, star.ypos, r, 0, cam.x, cam.y, cam.width, cam.height, z)) continue;
             const tint = isSwarm ? SWARM_SLATE : this.discColor(p.empire);
-            if (alpha > 0.004) put(star.xpos, star.ypos, r, tint, alpha, this.discTex);
+            if (visible) put(star.xpos, star.ypos, r, tint, 1, this.discTex);
         }
         // Pooled particles keep their slot, so the container only needs a structural update when the count changes.
         if (prev !== n) {

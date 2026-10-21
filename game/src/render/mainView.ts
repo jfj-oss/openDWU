@@ -1968,6 +1968,8 @@ export class MainView {
         // rings draw above the territory discs and colony rings.
         this.overlayLayer = new OverlayLayer(this.galaxy, this.world, this.empireLayer, this.overlays);
         this.galaxyMarkers = new GalaxyMarkerLayer(this.galaxy, this.world, this.overlays, this.empireLayer.root); // [galaxymarkers]
+        // The discs join the territory's union group (empireLayer.ts): one shade where they overlap their empire's territory.
+        this.empireLayer.presenceRoot.addChild(this.galaxyMarkers.top); // [galaxymarkers]
         this.galaxyMarkers.shipPxOf = (bo) => this.builtObjectLayer.drawnSizePx(bo); // [galaxymarkers]
         // [galaxymarkers] symbols (and so their pick boxes) follow the render-interpolated ship: BuiltObjectLayer's
         // sample this frame, else (galaxy / sector zoom, where the ship art is not drawn) a sample taken here.
