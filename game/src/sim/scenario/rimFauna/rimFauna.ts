@@ -99,8 +99,6 @@ function herdSparesStations(galaxy: Galaxy, herd: RimHerd): boolean {
     return false;
 }
 
-/** Empires with a colony or mining station this close to a migration target get the warning message. */
-const MIGRATION_WARN_RANGE = 150000;
 
 function dist(galaxy: Galaxy, x1: number, y1: number, x2: number, y2: number): number {
     return galaxy.calculateDistance(x1, y1, x2, y2);
@@ -470,20 +468,7 @@ export function rimFaunaMigrationSeason(galaxy: Galaxy): number {
         started.push(herd);
     }
     if (started.length === 0) return 0;
-    scenarioNews(galaxy, null, scenarioText('Scenario RimFauna News Migration', started.length));
-    for (const e of activeEmpires(galaxy)) {
-        const names: string[] = [];
-        for (const herd of started) {
-            const m = herd.migration;
-            if (m === null || m.homeward) continue;
-            const near =
-                e.colonies.some((c) => dist(galaxy, c.xpos, c.ypos, m.x, m.y) <= MIGRATION_WARN_RANGE) ||
-                e.miningStations.some((b) => b != null && dist(galaxy, b.xpos, b.ypos, m.x, m.y) <= MIGRATION_WARN_RANGE);
-            const name = galaxy.systems[m.toSystemIndex].systemStar.name;
-            if (near && !names.includes(name)) names.push(name);
-        }
-        if (names.length > 0) scenarioMessage(galaxy, e, scenarioText('Scenario RimFauna Title'), scenarioText('Scenario RimFauna Migration Warning', names.join(', ')), { type: EmpireMessageType.GeneralWarning });
-    }
+    // No news or warning (user 2026-10-20: the migration notifications were noise); the herds just move.
     return started.length;
 }
 

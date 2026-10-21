@@ -100,7 +100,7 @@ describe('19g-7 rim fauna — herds', () => {
         const started = rimFaunaMigrationSeason(g);
         g.scenario!.params.rimFaunaMigrationChance = 0.5;
         expect(started).toBeGreaterThan(0);
-        expect(g.empires.some((e) => e !== null && empireMessages(e).some((m) => m.description.includes('creature herds are on the move')))).toBe(true);
+        expect(g.empires.some((e) => e !== null && empireMessages(e).some((m) => m.description.includes('creature herds are on the move')))).toBe(false); // no migration notifications (user 2026-10-20)
         const herd = st.herds.find((h) => h.migration !== null && !h.migration.homeward)!;
         expect(herd).toBeDefined();
         const m = herd.migration!;
