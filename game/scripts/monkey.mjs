@@ -304,7 +304,8 @@ function installHelpers([denySrc, denyIdSrc]) {
                 if ((cs.overflowX === 'hidden' || cs.overflowX === 'clip') && cs.textOverflow !== 'ellipsis') add('text-clipped', p, `${over}px cut off: "${(p.innerText || '').replace(/\s+/g, ' ').slice(0, 50)}"`);
                 else if (cs.overflowX === 'visible' && cs.whiteSpace.startsWith('no') && over > 6) add('text-spill', p, `${over}px past the box: "${(p.innerText || '').replace(/\s+/g, ' ').slice(0, 50)}"`);
             }
-            if ((cs.overflowY === 'hidden' || cs.overflowY === 'clip') && p.scrollHeight - p.clientHeight > 3 && p.clientHeight > 0 && cs.textOverflow !== 'ellipsis' && !/-webkit-box/.test(cs.display)) add('text-clipped-y', p, `${p.scrollHeight - p.clientHeight}px cut off: "${(p.innerText || '').replace(/\s+/g, ' ').slice(0, 50)}"`);
+            // A -webkit-line-clamp cell clamps on purpose (Chromium reports its display as flow-root, not -webkit-box).
+            if ((cs.overflowY === 'hidden' || cs.overflowY === 'clip') && p.scrollHeight - p.clientHeight > 3 && p.clientHeight > 0 && cs.textOverflow !== 'ellipsis' && !/-webkit-box/.test(cs.display) && !/^\d+$/.test(cs.webkitLineClamp)) add('text-clipped-y', p, `${p.scrollHeight - p.clientHeight}px cut off: "${(p.innerText || '').replace(/\s+/g, ' ').slice(0, 50)}"`);
         }
         for (const e of scope.querySelectorAll(CLICKABLE)) {
             if (!vis(e) || clipped(e)) continue;
