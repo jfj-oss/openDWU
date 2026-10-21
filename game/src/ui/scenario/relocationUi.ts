@@ -86,7 +86,9 @@ export function renderRelocationBlock(parent: HTMLElement, galaxy: Galaxy, empir
     slider.type = 'range';
     slider.min = '0';
     slider.max = '1000';
-    slider.addEventListener('keydown', (e) => e.stopPropagation());
+    slider.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') e.stopPropagation();
+    });
     box.appendChild(place(slider, 200, 24, 110, 18));
     const field = textBox('', 'million', (v) => {
         const n = Number(v.replace(/,/g, ''));
