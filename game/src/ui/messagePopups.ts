@@ -456,7 +456,7 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
             const recommended = recommendedOption(galaxy, decision);
             for (const o of decision.options) {
                 buttons.push(
-                    glassButton(o.id === recommended ? `${o.label} ${gt('TODO-PROSE (Recommended)')}` : o.label, {
+                    glassButton(o.id === recommended ? `${o.label} ${gt('(Recommended)')}` : o.label, {
                         onClick: () => {
                             // A player command (journaled, applied at the next frame boundary) so seed + command log replays it.
                             issuePlayerCommand(galaxy, decision.empire, 'answerScenarioDecision', [decision.id, o.id]);

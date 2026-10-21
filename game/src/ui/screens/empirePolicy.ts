@@ -128,8 +128,8 @@ function createEmpirePolicy(opts: EmpirePolicyOptions): OpenState {
     const autoRow: PolicyRow | null =
         galaxy.scenario === null
             ? null
-            : { name: 'autoDecide', label: policyText('TODO-PROSE Decide threat and add-on decisions automatically (recommended option)'), suffix: '', control: { kind: 'check', checked: autoDecideOn(galaxy, empire) }, note: policyText('TODO-PROSE Automatic decisions explanation') };
-    const shownSections: PolicySection[] = autoRow === null ? sections : [...sections, { title: policyText('TODO-PROSE Add-on decisions'), automation: [], rows: [autoRow] }];
+            : { name: 'autoDecide', label: policyText('Answer add-on decisions automatically'), suffix: '', control: { kind: 'check', checked: autoDecideOn(galaxy, empire) }, note: policyText('Threats, intrigue and other add-on events that ask for a decision are answered at once with the recommended option, and a message says what was chosen. Choices of war and peace, ceding worlds, plots at court and Council votes are always left to you.') };
+    const shownSections: PolicySection[] = autoRow === null ? sections : [...sections, { title: policyText('Add-on decisions'), automation: [], rows: [autoRow] }];
     const playerIsPirate = (localViewerEmpire(galaxy) ?? empire).pirateEmpireBaseHabitat !== null;
 
     // The automation values this panel sent, until their replies land (pendingCommands.ts): a change X → Y → X within

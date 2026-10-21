@@ -139,7 +139,7 @@ export function raiseScenarioDecision(galaxy: Galaxy, empire: Empire, spec: Rais
         const choice = recommendedOption(galaxy, d);
         answerScenarioDecision(galaxy, d.id, choice, 'auto');
         const label = d.options.find((o) => o.id === choice)?.label ?? choice;
-        scenarioMessage(galaxy, empire, scenarioText('TODO-PROSE Decided automatically: {0}', d.title), scenarioText('TODO-PROSE Decided automatically ({0}): {1}', d.title, label), {
+        scenarioMessage(galaxy, empire, scenarioText('Decided automatically: {0}', d.title), scenarioText('{0}: we chose "{1}", the recommended answer. (Decisions are being made automatically; switch this off on the Policy screen, under Add-on decisions.)', d.title, label), {
             popup: false,
         });
     } else if (isHumanEmpire(galaxy, empire)) {
