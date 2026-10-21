@@ -26,7 +26,7 @@ import { peekGwState } from '../sim/scenario/threats/giantworks/state';
 import { megaKnowledgeRows } from '../sim/scenario/threats/giantworks/megaStation';
 import { foundriesKnownTo } from '../sim/scenario/threats/giantworks/beaconFoundry';
 import { memoryRecordOf } from '../sim/scenario/threats/giantworks/longNightState';
-import { WAR_CREDIT_KINDS, WAR_CREDIT_LABEL, warCreditActive, warCreditRanking } from '../sim/scenario/threats/giantworks/beaconWarCredit';
+import { WAR_CREDIT_KINDS, warCreditActive, warCreditLabel, warCreditRanking } from '../sim/scenario/threats/giantworks/beaconWarCredit';
 import { DiplomaticRelationType } from '../sim/diplomacy';
 import { milestoneRowsOf } from '../sim/scenario/threats/giantworks/age2Milestones';
 import { holdoutKnowledgeRows } from '../sim/scenario/threats/giantworks/age2Holdouts';
@@ -140,7 +140,7 @@ registerKnowledgeSection('warCredit', 'Share of the war', (galaxy, empire) => {
     if (rows.length === 0) return null;
     return rows.map((r, i) => {
         const fx = st.warCredit?.effect[String(r.empire.empireId)];
-        const parts = WAR_CREDIT_KINDS.filter((k) => (r.by[k] ?? 0) > 0).sort((a, b) => (r.by[b] ?? 0) - (r.by[a] ?? 0)).slice(0, 3).map((k) => `${WAR_CREDIT_LABEL[k]} ${Math.round(r.by[k] ?? 0)}`);
+        const parts = WAR_CREDIT_KINDS.filter((k) => (r.by[k] ?? 0) > 0).sort((a, b) => (r.by[b] ?? 0) - (r.by[a] ?? 0)).slice(0, 3).map((k) => `${warCreditLabel(k)} ${Math.round(r.by[k] ?? 0)}`);
         const standing = fx === undefined ? '' : fx.why === 'top' ? `, Diet weight +${fx.votePct}%` : `, Diet weight ${fx.votePct}% (lagging)`;
         return knowledgeRow(`warCredit:${r.empire.empireId}`, `${i + 1}. ${r.empire.name}`, parts.join(', '), `${Math.round(r.total)} points (${Math.round(r.sharePct)}%)${standing}`);
     });

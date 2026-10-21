@@ -5,6 +5,8 @@
 //              (beaconFoundry.ts foundryDestroyed), harvest cores retaken, the people freed (cattle ship boarded, pens opened), the refugees its
 //              relocation transports brought to safety (beaconRelocation.ts relocationArrive) and cattle ships killed. Credit goes to the empire whose
 //              ship made the kill / the capture (the same rule as the mega-station parts, beaconComponents.ts). Saved in BeaconState.warCredit.
+//              A freighter of the Severance that arrives with an escort within megaEscortNear (any empire's) is an escorted delivery: a small item
+//              for the escort's owner (megaEscort.ts).
 //   THE DIET   once a year (beaconWarCreditReviewDays) the Diet reviews the tally of its members: the top beaconWarCreditTopN contributors get a vote
 //              weight bonus (dietVoteWeightFactor) for the year and a reputation gain with every other member (reputation/ledger.ts applyReputation);
 //              a member far below its share of the war, measured against its share of the members' military, loses a little weight and standing.
@@ -32,10 +34,10 @@ import { strengthOf } from './beaconFleet';
 
 const TAG = 'Beacon';
 
-export type WarCreditKind = 'warships' | 'capitals' | 'watchers' | 'harvesters' | 'foundries' | 'depots' | 'cores' | 'freed' | 'refugees' | 'cattle';
-export const WAR_CREDIT_KINDS: readonly WarCreditKind[] = ['warships', 'capitals', 'watchers', 'harvesters', 'foundries', 'depots', 'cores', 'freed', 'refugees', 'cattle'];
+export type WarCreditKind = 'warships' | 'capitals' | 'watchers' | 'harvesters' | 'foundries' | 'depots' | 'cores' | 'freed' | 'refugees' | 'cattle' | 'escorts';
+export const WAR_CREDIT_KINDS: readonly WarCreditKind[] = ['warships', 'capitals', 'watchers', 'harvesters', 'foundries', 'depots', 'cores', 'freed', 'refugees', 'cattle', 'escorts'];
 
-export const WAR_CREDIT_LABEL: Record<WarCreditKind, string> = {
+export const WAR_CREDIT_LABEL: Record<Exclude<WarCreditKind, 'escorts'>, string> = {
     warships: 'warships',
     capitals: 'capital ships',
     watchers: 'Watchers',
@@ -47,6 +49,11 @@ export const WAR_CREDIT_LABEL: Record<WarCreditKind, string> = {
     refugees: 'refugees saved',
     cattle: 'cattle ships',
 };
+
+/** The Knowledge page's name for a kind (the escorted deliveries' name is a GameText line). */
+export function warCreditLabel(k: WarCreditKind): string {
+    return k === 'escorts' ? T(`${TAG} War Credit Escorts`) : WAR_CREDIT_LABEL[k];
+}
 
 /** An empire's standing from the last review: the vote weight change (%) and what it was for. */
 export interface WarCreditEffect {
@@ -82,6 +89,8 @@ export const WC = {
     depot: (g: Galaxy) => scenarioParam(g, 'beaconWarCreditDepot', 10),
     core: (g: Galaxy) => scenarioParam(g, 'beaconWarCreditCore', 30),
     cattle: (g: Galaxy) => scenarioParam(g, 'beaconWarCreditCattle', 3),
+    /** A freighter of the Severance delivered under an escort (megaEscort.ts): a small item. */
+    escort: (g: Galaxy) => scenarioParam(g, 'beaconWarCreditEscort', 1),
     freedPerMillion: (g: Galaxy) => scenarioParam(g, 'beaconWarCreditFreedPerMillion', 1),
     refugeesPerMillion: (g: Galaxy) => scenarioParam(g, 'beaconWarCreditRefugeesPerMillion', 0.5),
     /** The review needs this many points in all, and credits this many top contributors (each also needs beaconWarCreditTopMinSharePct % of the total). */
@@ -193,6 +202,11 @@ export function warCreditPeople(g: Galaxy, st: BeaconState, by: Empire | null, p
 export function warCreditCattleTaken(g: Galaxy, st: BeaconState, by: Empire | null, people: number): void {
     warCreditAdd(g, st, by, 'cattle', WC.cattle(g));
     warCreditPeople(g, st, by, people);
+}
+
+/** A freighter of the mega-station arrived under an escort of `escort` (megaStation.ts stepContracts). */
+export function warCreditEscort(g: Galaxy, st: BeaconState, escort: Empire | null): void {
+    warCreditAdd(g, st, escort, 'escorts', WC.escort(g));
 }
 
 /** `people` of a relocation order of `empire` reached a safe world (beaconRelocation.ts relocationArrive). */

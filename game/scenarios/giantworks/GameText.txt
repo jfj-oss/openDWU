@@ -592,6 +592,8 @@ Beacon War Credit Diet;The {0} lead with {1} % of the work ({2} points); yours: 
 Beacon War Credit Diet None;No one has yet done anything against the Reclaimers.
 Beacon Reputation War Credit Top;carried a great share of the war against the Reclaimers
 Beacon Reputation War Credit Slack;left the war against the Reclaimers to others
+'TODO-PROSE: Beacon War Credit Escorts (the Knowledge page's name for escorted deliveries)
+Beacon War Credit Escorts;escorted deliveries
 Holdout Empire Name;The {0} Holdouts
 Holdout Shield Held Title;The core cannot be invaded
 Holdout Shield Held Body;Our landing forces on {0} were destroyed before they reached the ground. An old shield, older than anything the {1} should still be able to power, stands over the world and nothing we land can pass it. It is fed from their colonies. {2} of them still stand.
