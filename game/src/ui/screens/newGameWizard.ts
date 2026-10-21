@@ -3001,7 +3001,7 @@ function buildVictoryPage(ctx: WizardCtx): HTMLDivElement {
         distantWorlds.input.disabled = multiHuman;
         distantWorlds.input.checked = !multiHuman && v.enableStoryDistantWorlds === true;
         // Giantworks' Beacon replaces the Shakturi storyline: with it picked the story is off (game.ts shakturiOff).
-        const beacon = beaconPicked(options.scenario);
+        const beacon = beaconPicked(options.scenario, otherEmpireTotal(options));
         shakturi.input.disabled = isPirate || multiHuman || beacon;
         shakturi.input.checked = !isPirate && !multiHuman && !beacon && v.enableStoryEvents === true;
         shakturi.input.title = beacon ? 'Off while the Beacon (Giantworks) is on: the Beacon replaces the Shakturi storyline.' : '';
@@ -3450,7 +3450,7 @@ function buildStartPage(ctx: WizardCtx): HTMLDivElement {
         const multiHuman = (options.humanPlayers?.length ?? 0) > 0; // decision §4.4: no storylines with more than one human
         const stories = multiHuman ? '' : [
             options.victory.enableStoryDistantWorlds === true && 'Distant Worlds',
-            !isPirate && !beaconPicked(options.scenario) && options.victory.enableStoryEvents === true && 'Return of the Shakturi',
+            !isPirate && !beaconPicked(options.scenario, otherEmpireTotal(options)) && options.victory.enableStoryEvents === true && 'Return of the Shakturi',
             (options.galaxyExpansionIndex ?? 1) === 0 && options.victory.enableStoryEventsShadows === true && 'Shadows',
         ].filter(Boolean).join(', ');
         const rows: Array<[string, string]> = [
@@ -3535,8 +3535,15 @@ function buildStartPage(ctx: WizardCtx): HTMLDivElement {
 export { starCountFor, sectorsFor };
 
 /** Giantworks with The Beacon on (its gwBeacon flag defaults on): the Return of the Shakturi storyline is then off (game.ts shakturiOff). */
-function beaconPicked(scenario: { addons?: readonly string[]; id?: string; flags?: Readonly<Record<string, boolean>> } | null | undefined): boolean {
+function beaconPicked(scenario: { addons?: readonly string[]; id?: string; flags?: Readonly<Record<string, boolean>>; params?: Readonly<Record<string, number>> } | null | undefined, aiEmpireCount: number): boolean {
     if (scenario === null || scenario === undefined) return false;
     const ids = scenario.addons ?? (scenario.id !== undefined ? [scenario.id] : []);
-    return ids.includes('giantworks') && scenario.flags?.['gwBeacon'] !== false;
+    if (!ids.includes('giantworks') || scenario.flags?.['gwBeacon'] === false) return false;
+    // as game.ts shakturiReplacedByBeacon: guaranteed (the default), or enough empires to roll it
+    return scenario.flags?.['gwBeaconGuaranteed'] !== false || 1 + aiEmpireCount >= (scenario.params?.['giantworksBeaconMinEmpires'] ?? 6);
+}
+
+/** The AI empires the galaxy will start with (manual entries when any, else the count), for beaconPicked. */
+function otherEmpireTotal(options: { otherEmpires: { empireCount: number; manual: readonly unknown[] } }): number {
+    return options.otherEmpires.manual.length > 0 ? options.otherEmpires.manual.length : options.otherEmpires.empireCount;
 }

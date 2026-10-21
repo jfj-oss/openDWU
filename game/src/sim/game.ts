@@ -1094,9 +1094,12 @@ function storylinesOff(opts: CreateGameOptions): CreateGameOptions {
     return { ...opts, storyReturnOfTheShakturiEnabled: false, storyDistantWorldsEnabled: false, storyShadowsEnabled: false, victoryConditions };
 }
 
-/** Whether the resolved scenario flags have Giantworks' Beacon on, which replaces the Shakturi storyline. */
-export function shakturiReplacedByBeacon(flags: Readonly<Record<string, boolean>>): boolean {
-    return flags['threatGiantworks'] === true && flags['gwBeacon'] === true;
+/** Whether Giantworks' Beacon will come in this galaxy, which replaces the Shakturi storyline (user 2026-10-21): the Beacon
+ *  on and either guaranteed ("Guarantee the Beacon" ignores the empire minimum) or the galaxy has at least the minimum
+ *  number of empires it is rolled with (giantworksBeaconMinEmpires, 6; founders.ts kindRollWeight). */
+export function shakturiReplacedByBeacon(flags: Readonly<Record<string, boolean>>, empires: number, minEmpires: number): boolean {
+    if (flags['threatGiantworks'] !== true || flags['gwBeacon'] !== true) return false;
+    return flags['gwBeaconGuaranteed'] === true || empires >= minEmpires;
 }
 
 /** createGame's options with only the Return of the Shakturi storyline off (Giantworks' Beacon on). */
@@ -1131,7 +1134,8 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
     // game start the Shakturi story is off (user 2026-10-21; two galaxy-ending arcs at once). Other storylines stay.
     if (opts.gameData.scenario !== undefined) {
         const f = resolvedScenarioFlags(opts.gameData, opts.scenarioFlags);
-        if (shakturiReplacedByBeacon(f)) opts = shakturiOff(opts);
+        const empires = 1 + opts.aiEmpires.length + extraHumanStarts.length;
+        if (shakturiReplacedByBeacon(f, empires, opts.scenarioParams?.['giantworksBeaconMinEmpires'] ?? 6)) opts = shakturiOff(opts);
     }
     yield { step: 'Generating galaxy', fraction: 0 };
     // Mod layer: a package's data additions for the chosen flags (scenario/hooks.ts scenarioExtendGameData; none = the same data).

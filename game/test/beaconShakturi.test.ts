@@ -3,11 +3,13 @@ import { shakturiOff, shakturiReplacedByBeacon, type CreateGameOptions } from '.
 import { VictoryConditions } from '../src/sim/victory';
 
 describe("Giantworks' Beacon replaces the Return of the Shakturi storyline", () => {
-    it('is on only with Giantworks and its Beacon both on', () => {
-        expect(shakturiReplacedByBeacon({ threatGiantworks: true, gwBeacon: true })).toBe(true);
-        expect(shakturiReplacedByBeacon({ threatGiantworks: true, gwBeacon: false })).toBe(false);
-        expect(shakturiReplacedByBeacon({ gwBeacon: true })).toBe(false);
-        expect(shakturiReplacedByBeacon({})).toBe(false);
+    it('only when the Beacon will come: guaranteed, or at least the six-empire minimum', () => {
+        const on = { threatGiantworks: true, gwBeacon: true };
+        expect(shakturiReplacedByBeacon({ ...on, gwBeaconGuaranteed: true }, 3, 6)).toBe(true); // guaranteed ignores the minimum
+        expect(shakturiReplacedByBeacon({ ...on, gwBeaconGuaranteed: false }, 6, 6)).toBe(true);
+        expect(shakturiReplacedByBeacon({ ...on, gwBeaconGuaranteed: false }, 5, 6)).toBe(false); // too few empires to roll it
+        expect(shakturiReplacedByBeacon({ threatGiantworks: true, gwBeacon: false, gwBeaconGuaranteed: true }, 10, 6)).toBe(false);
+        expect(shakturiReplacedByBeacon({ gwBeacon: true }, 10, 6)).toBe(false);
     });
     it('turns only the Shakturi story off; the Distant Worlds and Shadows stories stay', () => {
         const vc = new VictoryConditions();
