@@ -1115,7 +1115,7 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
     summary.appendChild(sName);
     sName.addEventListener('focus', () => sName.select());
     sName.addEventListener('keydown', (e) => {
-        e.stopPropagation();
+        if (e.key !== 'Escape') e.stopPropagation();
         if (e.key === 'Enter') {
             e.preventDefault();
             sName.blur();

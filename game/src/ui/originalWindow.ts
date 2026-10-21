@@ -522,7 +522,10 @@ export function dropDown(options: readonly { value: string; label: string }[], v
     s.value = value;
     if (title) s.title = title;
     s.addEventListener('change', () => onChange(s.value));
-    s.addEventListener('keydown', (e) => e.stopPropagation());
+    // Escape passes through to the window (it closes the topmost window, as from a text box); other keys stay in the combo.
+    s.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') e.stopPropagation();
+    });
     return s;
 }
 
