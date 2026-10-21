@@ -40,15 +40,17 @@
 //    across (the 8-argument overload passes systemInfluenceSizeFactor 1.0, line 309), drawn at 0.25 alpha
 //    (method_236(0.25), MainView.2.cs 241 / 365). Here one disc per empire with KNOWN bases or colonies in the
 //    system, its radius growing with sqrt(count) from that size (addition: the original draws one fixed disc).
-//    Additions (user calls) for galaxy-zoom visibility: 1.8x the size at 0.4 alpha, a minimum on-screen radius that
-//    grows from 9 to 13 px (x up to 1.5 by count) as the view widens, and a cross-fade from the soft glow to a vivid
-//    disc (0.55 fill, crisp full-alpha rim in the empire colour) between f = 300 and f = 2500 (presenceGalaxyBlend).
+//    Drawn as flat discs in the territory's own colour (EmpireLayer.colourOf) and opacity, in the empire layer's union
+//    group with the territory (empireLayer.ts), so a disc inside its empire's territory merges into one shade.
+//    Additions (user calls): 1.35x the size (25 % below the earlier 1.8x), and a minimum on-screen radius that grows
+//    from 6.75 to 9.75 px (x up to 1.5 by count) as the view widens (presenceGalaxyBlend, f = 300 .. 2500).
 //
 // 6. System link lines — method_250 5237-5336: the dotted lines in each empire's MainColor between its linked systems
 //    (SystemVisibility.LinkSystemStars), at f > 150 under the rings: systemLinks.ts.
 //
 // Batching: the symbols (and fleet icons) are particles of one ParticleContainer over a runtime atlas of the
-// original symbol art (procedural shapes when the art is missing), the discs a second one; rings one Graphics
+// original symbol art (procedural shapes when the art is missing), the discs a second one (in the empire layer's
+// union group); rings one Graphics
 // rebuilt only on zoom / data / view changes. Everything lives in world space and is sized by /z in screen px.
 
 import type { BuiltObjectIndex } from './builtObjectIndex';
