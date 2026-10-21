@@ -345,6 +345,27 @@ describe('one escort group per contributing AI empire', () => {
     });
 });
 
+describe('switching the escorts off', () => {
+    it('megaEscortOn switched off mid-game releases every group at the next step: its ships go back to stock control', () => {
+        const s = setup();
+        const mega = started(s);
+        const [ai, raider] = s.ais;
+        contributor(s, ai);
+        warOf(raider, ai);
+        fly(s, ai, 4);
+        place(warships(raider)[0], midOf(s, ai).x, midOf(s, ai).y);
+        rebuildIndexes(s.g);
+        DAYS(s.g, 1);
+        expect(escortGroupCount(mega)).toBe(1);
+        const grp = escortGroupOf(mega, ai)!;
+        expect(grp.ships.length).toBeGreaterThan(0);
+        s.g.scenario!.params.megaEscortOn = 0;
+        DAYS(s.g, 1);
+        expect(escortGroupCount(mega)).toBe(0);
+        for (const w of grp.ships) expect(builtMission(w)).toBe('Undefined');
+    });
+});
+
 describe('the player escorts a contract freighter', () => {
     it('a player escort on a contract freighter stays with it through the contract code; an arrival under it is an escorted delivery', () => {
         const s = setup();

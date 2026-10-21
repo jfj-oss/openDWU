@@ -146,7 +146,7 @@ function freeEscort(galaxy: Galaxy, w: BuiltObject): void {
  */
 export function escortsFreight(galaxy: Galaxy, bo: BuiltObject): boolean {
     const mega = peekBeaconState(galaxy)?.mega;
-    if (mega === undefined || mega.status === 'dormant' || mega.status === 'fired') return false;
+    if (mega === undefined || mega.status === 'dormant' || mega.status === 'fired' || !P.megaEscortOn(galaxy)) return false;
     if (Object.values(mega.escorts ?? {}).some((g) => g.ships.includes(bo))) return true; // an AI escort group: its ships are supplied for the run
     const m = builtObjectMission(bo.mission);
     if (m === null) return false;
@@ -173,7 +173,7 @@ function freightTarget(galaxy: Galaxy, mega: MegaRec, t: BuiltObject): boolean {
  */
 export function escortHeld(galaxy: Galaxy, bo: BuiltObject, target: BuiltObject): boolean {
     const mega = peekBeaconState(galaxy)?.mega;
-    if (mega === undefined || mega.status === 'dormant' || mega.status === 'fired') return false;
+    if (mega === undefined || mega.status === 'dormant' || mega.status === 'fired' || !P.megaEscortOn(galaxy)) return false;
     const m = builtObjectMission(bo.mission);
     const ours = (m !== null && m.playerOrdered === true) || Object.values(mega.escorts ?? {}).some((g) => g.ships.includes(bo));
     return ours && freightTarget(galaxy, mega, target);
@@ -314,7 +314,10 @@ function escortFor(galaxy: Galaxy, mega: MegaRec, e: Empire, base: BuiltObject, 
  * and points each contributing AI empire's group. Nothing happens without an escort switch, a structure with a base, or a contributor.
  */
 export function escortStep(galaxy: Galaxy, mega: MegaRec, base: BuiltObject, now: number, blockade: boolean): void {
-    if (!P.megaEscortOn(galaxy)) return;
+    if (!P.megaEscortOn(galaxy)) {
+        releaseEscorts(galaxy, mega); // switched off mid-game: the groups go home at this step
+        return;
+    }
     for (const key of Object.keys(mega.escorts ?? {})) {
         const e = getEmpireById(galaxy, Number(key));
         if (e === null || !escortContributing(galaxy, mega, e, now)) releaseGroup(galaxy, mega, key);
