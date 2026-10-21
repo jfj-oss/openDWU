@@ -13,7 +13,7 @@
     border-radius: 0;
     padding: calc(6px * var(--ow-hud-k, 0.856));
     font-family: 'Forgotten Futurist', sans-serif;
-    font-size: calc(18.67px * var(--ow-hud-k, 0.856));
+    font-size: calc(18.67px * var(--ow-hud-k, 0.856) * var(--ow-text-k, 1)); /* --ow-text-k: the Text size setting */
     line-height: 1.2;
     color: #fff;
     text-shadow: 1px 1px 0 #000;

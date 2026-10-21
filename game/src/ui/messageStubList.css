@@ -130,3 +130,8 @@
 .message-stub-message {
     border-left-color: var(--stub-color, transparent);
 }
+
+/* The "View" list is open over a full-height stub list (hud.ts fitOptionsBelowStubs): the stubs step aside. */
+.hud-view-covers-stubs .message-stubs {
+    visibility: hidden;
+}

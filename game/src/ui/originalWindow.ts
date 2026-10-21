@@ -58,7 +58,7 @@
 
 import './originalWindow.css';
 import { HUD_FRAME_SIZE, TOP_BASE_SCALE } from './topBar';
-import { onSettingsChange, uiScaleFactor } from './settings';
+import { onSettingsChange, textScaleFactor, uiScaleFactor } from './settings';
 import { autoPauseClose, autoPauseOpen } from './autoPause';
 
 // -------------------------------------------------------------------------------------------------------------------
@@ -424,6 +424,7 @@ export function installHudScaleVar(): void {
     if (typeof document === 'undefined' || typeof window === 'undefined') return;
     const apply = (): void => {
         document.documentElement.style.setProperty('--ow-hud-k', String(hudScale(window.innerHeight, uiScaleFactor())));
+        document.documentElement.style.setProperty('--ow-text-k', String(textScaleFactor())); // Text size setting: popup text only
     };
     apply();
     if (hudScaleVarInstalled) return;

@@ -26,6 +26,7 @@ import { BuiltObject } from '../sim/builtObject';
 import { ShipGroup } from '../sim/fleets/shipGroup';
 import { Habitat } from '../sim/types';
 import { hudScale } from './originalWindow';
+import { FIT_GAP, fitSelectionScale, topClearancePx } from './hudFit';
 import { EmpireActivity } from '../sim/pirates/empireActivity';
 import { pirateMissionBidZoneActive, pirateMissionsPanelData, type PirateMissionsPanelData } from '../sim/pirates/pirateMissionsPanel';
 import { issuePlayerCommand } from '../sim/player/playerCommands';
@@ -241,9 +242,16 @@ export function createLeftSidebar(wiring: LeftSidebarWiring): HTMLElement {
         const clientH = window.innerHeight / k;
         // pnlInfoPanel.Top: the selection frame's top + 36 (hud.ts SELECTION_FRAME: y (num - 36) .. bottom + 30), the
         // frame anchored 10 px above the window bottom and scaled by selectionFrameScale.
-        const ks = selectionFrameScale(window.innerHeight, s, selectionPanelSmall());
+        const wantedKs = selectionFrameScale(window.innerHeight, s, selectionPanelSmall());
+        const ks = fitSelectionScale(wantedKs, window.innerWidth, window.innerHeight, s);
         const infoTop = (window.innerHeight - 10 - (310 - 36) * ks) / k;
-        area = itemListArea(clientH, infoTop, state.sizeFactor);
+        // Clear of the top strip above and the selection frame below at large UI scales (hudFit.ts); the original's
+        // region [150, infoTop - 50] when there is room.
+        const sidebarRight = (8 + 330 * state.sizeFactor) * k;
+        const clearV = (topClearancePx(window.innerWidth, window.innerHeight, s, sidebarRight) - FIT_GAP) / k;
+        const topLimit = ks < wantedKs ? clearV : Math.max(150, clearV); // squeezed: start right under the strip
+        const bottomLimit = Math.min(infoTop - 50, (window.innerHeight - 10 - 310 * ks - FIT_GAP) / k);
+        area = itemListArea(clientH, infoTop, state.sizeFactor, topLimit, bottomLimit, true);
         root.style.left = `${area.x * k}px`;
         root.style.top = `${area.y * k}px`;
         root.style.width = `${area.w}px`;

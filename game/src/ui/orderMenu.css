@@ -121,7 +121,7 @@
     color: rgb(255, 255, 0);
     text-shadow: 1px 1px 0 #000;
     font-family: 'Forgotten Futurist', sans-serif;
-    font-size: calc(16.67px * var(--ow-hud-k, 0.856));
+    font-size: calc(16.67px * var(--ow-hud-k, 0.856) * var(--ow-text-k, 1));
     white-space: nowrap;
 }
 .order-status[hidden] {

@@ -36,13 +36,13 @@ import {
     type MessageStub,
     type StubListState,
 } from './messageStubs';
+import { STUB_LIST_MARGIN, STUB_LIST_W, stubListLeftPx, stubListTopPx } from './hudFit';
 import { pingMessage, unpingMessage } from './messageGoto';
 import { closeMessageCardFor, conversationHeading, conversationQueue, dismissConversation, openConversation, openMessageCard, openMessageKey } from './messagePopups';
 import { advisorSuggestionView, openAdvisorSuggestion, openAdvisorSuggestionKey } from './advisorSuggestions';
 
 /** The list's width (unscaled CSS px) and its margin from the right edge. */
-export const STUB_LIST_W = 230;
-const STUB_LIST_MARGIN = 10;
+export { STUB_LIST_W };
 
 /** Where the list sits: directly under the top-right money block + system name (hudLayout.ts pnlMoney, the
  *  original's pixels scaled with the top strip), right-aligned with a 10 px margin. The transform origin is the
@@ -177,7 +177,7 @@ export function installMessageStubList(opts: MessageStubListOptions): void {
         const money = document.querySelector<HTMLElement>('[data-hud="pnlMoney"]')?.getBoundingClientRect();
         const r = messageStubsRect(window.innerWidth, window.innerHeight);
         const right = money ? Math.max(STUB_LIST_MARGIN, window.innerWidth - money.right) : r.right;
-        const top = money ? money.bottom + 4 * s : r.top;
+        const top = money ? stubListTopPx(window.innerWidth, window.innerHeight, s, money.bottom, stubListLeftPx(window.innerWidth, s)) : r.top;
         const w = r.w;
         const key = `${right},${top},${w},${s}`;
         if (key === placed) return;

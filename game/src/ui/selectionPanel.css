@@ -618,3 +618,41 @@ span.sel-corner.sel-text {
 .sel-frame .sel-ic-list .sel-more-on .ow-ts-label {
     color: #ffd700;
 }
+
+/* Text size above 100%: the rows are laid out larger (selectionInfoView.ts textScale, CSS zoom) and a long panel scrolls
+   with a thin visible scrollbar so the overflow shows. */
+.sel-scroll.sel-zoomed {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(200, 200, 200, 0.45) transparent;
+}
+.sel-scroll.sel-zoomed::-webkit-scrollbar {
+    display: block;
+    width: 4px;
+}
+.sel-scroll.sel-zoomed::-webkit-scrollbar-thumb {
+    background: rgba(200, 200, 200, 0.45);
+    border-radius: 2px;
+}
+/* ... and the lines wrap instead of being cut off at the panel's edge. */
+.sel-scroll.sel-zoomed .sel-row,
+.sel-scroll.sel-zoomed .sel-content,
+.sel-scroll.sel-zoomed .sel-text {
+    white-space: normal;
+}
+.sel-scroll.sel-zoomed .sel-row {
+    align-items: flex-start;
+}
+.sel-scroll.sel-zoomed .sel-content {
+    flex-wrap: wrap;
+    align-items: center;
+    overflow: visible;
+}
+.sel-scroll.sel-zoomed .sel-strip {
+    height: auto;
+    min-height: 14px;
+}
+.sel-scroll.sel-zoomed .sel-title {
+    height: auto;
+    min-height: 19px;
+    white-space: normal;
+}

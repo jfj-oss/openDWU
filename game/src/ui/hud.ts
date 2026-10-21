@@ -7,8 +7,9 @@ import { openGameOptionsPanel, toggleGameOptionsPanel } from './screens/gameOpti
 import { toggleAdvisorPanel } from './advisorPanel';
 import { empireFlagUrl } from './selectionInfoView';
 import { threatKnownSites } from '../sim/scenario/threats/framework';
-import { getSettings, onSettingsChange, uiScaleFactor } from './settings';
+import { getSettings, onSettingsChange, textScaleFactor, uiScaleFactor } from './settings';
 import { stubListMaxHeightPx } from './messageStubs';
+import { fitSelectionScale, fitSystemMapScale, stubListLeftPx, stubListTopPx } from './hudFit';
 import { destroyHudListeners, hudInterval, hudSignal, onHudDestroyed } from './hudLifetime';
 export { destroyHudListeners } from './hudLifetime';
 import { bindAutoPauseClock } from './autoPause';
@@ -292,8 +293,15 @@ function placeTopStrip(refs: HudRefs): void {
 export function applyHudScale(refs: HudRefs): void {
     const s = uiScaleFactor();
     const layout = computeHudLayout(window.innerWidth, window.innerHeight);
-    const selScale = selectionFrameScale(window.innerHeight, s, selectionPanelSmall());
-    const mapScale = systemMapFrameScale(window.innerWidth, window.innerHeight, s, systemMapSmall(), selScale);
+    // Each bottom block shrinks (only itself) when, at a large UI scale, it would crowd the left sidebar or the right column (hudFit.ts).
+    const selScale = fitSelectionScale(selectionFrameScale(window.innerHeight, s, selectionPanelSmall()), window.innerWidth, window.innerHeight, s);
+    const mapScale = fitSystemMapScale(
+        systemMapFrameScale(window.innerWidth, window.innerHeight, s, systemMapSmall(), selScale),
+        window.innerWidth,
+        window.innerHeight,
+        s,
+        getSettings().messageStubsVisible,
+    );
     for (const [name, el] of refs.elements) {
         if (TOP_NAMES.has(name)) continue;
         const rect = layout[name];
@@ -314,6 +322,8 @@ export function applyHudScale(refs: HudRefs): void {
 const OPTIONS_BELOW_STUBS_GAP = 8;
 /** The "View" button's height plus the popup's gap above it (hud.css .hud-options-toggle, .hud-options-pop). */
 const OPTIONS_TOGGLE_H = 24 + 4;
+/** The open "View" list's smallest height (CSS px at UI scale 1): about seven rows. */
+const OPTIONS_MIN_LIST_H = 160;
 
 /** The open "View" list never reaches the message stub list (messageStubList.ts: right under the money block, the same
  *  right-hand column): its height is capped so its top stays OPTIONS_BELOW_STUBS_GAP below the stub list at its tallest
@@ -329,10 +339,15 @@ function fitOptionsBelowStubs(refs: HudRefs, s: number): void {
         list.style.maxHeight = ''; // not laid out yet (hidden HUD): hud.css's fallback until the next fit
         return;
     }
-    const stubsTop = moneyRect.bottom + 4 * s; // messageStubList.ts place()
+    const stubsTop = stubListTopPx(window.innerWidth, window.innerHeight, s, moneyRect.bottom, stubListLeftPx(window.innerWidth, s)); // messageStubList.ts place()
     const stubsBottom = stubsTop + stubListMaxHeightPx(getSettings().messageStubsVisible) * s;
     const room = (popupBottom - stubsBottom) / s - OPTIONS_BELOW_STUBS_GAP - OPTIONS_TOGGLE_H;
-    list.style.maxHeight = `${Math.max(0, Math.floor(room))}px`;
+    // At a large UI scale the stub list can take the whole column above the map: the list then keeps a usable height
+    // (up to the stub list's top) and covers the stub list while it is open.
+    const aboveRoom = (popupBottom - stubsTop) / s - OPTIONS_BELOW_STUBS_GAP - OPTIONS_TOGGLE_H;
+    const floor = Math.max(0, Math.min(OPTIONS_MIN_LIST_H, aboveRoom));
+    document.body.classList.toggle('hud-view-covers-stubs', opts.classList.contains('open') && room < floor);
+    list.style.maxHeight = `${Math.max(0, Math.floor(Math.max(room, floor)))}px`;
 }
 
 /** The "View" popup sits right above the system mini-map's top-right corner: its bottom is the map's scaled top (the
@@ -2146,7 +2161,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             renderInfoModel(content, null, { galaxy: galaxy as Galaxy, onTarget });
         } else {
             const model = buildInfoModel({ galaxy, player, resource: resourceDef }, sel, sel.creature ? creaturePictureUrl(sel.creature) : null);
-            renderInfoModel(content, model, { galaxy, onTarget, onAutomate: model.automated ? toggleAutomation : undefined, hoverMessage: true });
+            renderInfoModel(content, model, { galaxy, onTarget, onAutomate: model.automated ? toggleAutomation : undefined, hoverMessage: true, textScale: textScaleFactor() });
             const next = content.querySelector('.sel-scroll');
             if (next !== null) next.scrollTop = lastScroll;
         }
@@ -2243,6 +2258,14 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     }, 500);
     rebuildExtras();
     refresh();
+    let shownTextScale = textScaleFactor();
+    onHudDestroyed(
+        onSettingsChange(() => {
+            if (textScaleFactor() === shownTextScale) return;
+            shownTextScale = textScaleFactor();
+            refresh();
+        }),
+    );
     return panel;
 }
 
@@ -2421,7 +2444,7 @@ function buildOptionsPopup(list: HTMLElement): HTMLElement {
     btn.title = 'View and map overlays';
     const setOpen = (open: boolean): void => {
         wrap.classList.toggle('open', open);
-        if (open) wrap.dispatchEvent(new Event('options-open')); // hud.ts fitOptionsBelowStubs: re-fit as it opens
+        wrap.dispatchEvent(new Event('options-open')); // hud.ts fitOptionsBelowStubs: re-fit as it opens / closes
         btn.textContent = open ? 'View ▾' : 'View ▴';
         btn.setAttribute('aria-expanded', String(open));
         try {

@@ -16,7 +16,7 @@
     border-radius: 0;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
     padding: calc(8px * var(--ow-hud-k, 0.856)) calc(16px * var(--ow-hud-k, 0.856));
-    font-size: calc(15.33px * var(--ow-hud-k, 0.856));
+    font-size: calc(15.33px * var(--ow-hud-k, 0.856) * var(--ow-text-k, 1));
     color: rgb(200, 200, 200);
     text-shadow: 1px 1px 0 #000;
     -webkit-font-smoothing: antialiased;

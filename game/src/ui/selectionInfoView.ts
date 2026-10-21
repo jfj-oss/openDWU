@@ -33,7 +33,13 @@ export interface InfoViewOptions {
     /** Hotspot messages as `data-hover` for a hover-message line (the main view's selection panel) instead of tool
      *  tips. */
     hoverMessage?: boolean;
+    /** Text size factor (1 = the original's 10 px text): the content is laid out `textScale` times larger inside the same
+     *  panel (CSS zoom), so lines wrap / ellipsize earlier and a long panel scrolls. */
+    textScale?: number;
 }
+
+/** The width the rows lay out in: the panel's, divided by the text zoom (set per render). */
+let contentWidth = 0; // set by renderInfoModelInner before any row is built (INFO is not initialised yet at import time)
 
 // ---------------------------------------------------------------------------------------------------------------
 // Empire flags (Empire.LargeFlagPicture: the flag shape in the secondary colour on the main colour)
@@ -182,7 +188,7 @@ function barElement(row: Extract<InfoRow, { kind: 'bar' }>, labelWidth: number):
     line.className = 'sel-row sel-bar-row';
     line.appendChild(labelElement(row.label, labelWidth));
     // InfoPanel.cs 2497 DrawBarGraph: the bar spans overallWidth - (descriptionWidth + 10 + width("99999") + 5).
-    const barWidth = INFO.width - 10 - (labelWidth + 10 + 32);
+    const barWidth = contentWidth - 10 - (labelWidth + 10 + 32);
     const bar = document.createElement('span');
     bar.className = 'sel-bar';
     bar.style.width = `${barWidth}px`;
@@ -222,7 +228,7 @@ function coloniesElement(row: Extract<InfoRow, { kind: 'colonies' }>, labelWidth
     box.className = 'sel-colonies';
     const size = INFO.habitatImageSize;
     const n = row.items.length;
-    const span = INFO.width - labelWidth - 10;
+    const span = contentWidth - labelWidth - 10;
     const fit = Math.trunc(span / size);
     const pad = Math.max(1, Math.trunc((span - size * n) / (n + 1)));
     let x = labelWidth + pad - 5; // rows start at x = 5
@@ -436,6 +442,12 @@ function renderInfoModelInner(panel: HTMLElement, model: InfoModel | null, o: In
     }
     const scroll = document.createElement('div');
     scroll.className = 'sel-scroll';
+    const zoom = Math.max(1, o.textScale ?? 1);
+    contentWidth = INFO.width / zoom;
+    if (zoom !== 1) {
+        scroll.classList.add('sel-zoomed');
+        scroll.style.zoom = String(zoom);
+    }
     // Title line + corner.
     const title = document.createElement('div');
     title.className = 'sel-title';

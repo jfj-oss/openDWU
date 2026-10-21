@@ -26,6 +26,9 @@ export interface UiSettings {
     notifyVolume: number;
     /** UI scale percentage applied as `--ui-scale` on the HUD root. */
     uiScale: number;
+    /** Text size percentage (100 / 125 / 150 / 175 / 200): enlarges the text of the HUD panels (selection panel, tooltips)
+     *  without enlarging their frames. */
+    textScale: number;
     /** Show system name labels on the map (mainView.ts reads per frame). */
     showSystemNames: boolean;
     /** Show region label overlays on the map (mainView.ts reads per frame). */
@@ -202,6 +205,18 @@ export type GalaxyViewDisplayKey = (typeof GALAXY_VIEW_DISPLAY_KEYS)[number];
 
 const STORAGE_KEY = 'dwu-ui-settings';
 
+/** GUI Scale slider range, percent (the layout clamps panels that no longer fit, so it goes past 200). */
+export const UI_SCALE_MIN = 50;
+export const UI_SCALE_MAX = 250;
+/** Text size choices, percent (Game Options "Text size"). */
+export const TEXT_SCALES: readonly number[] = [100, 125, 150, 175, 200];
+
+/** A stored text size snapped to the nearest choice; 100 for anything that is not a number. */
+export function clampTextScale(v: unknown): number {
+    if (typeof v !== 'number' || !Number.isFinite(v)) return 100;
+    return TEXT_SCALES.reduce((best, c) => (Math.abs(c - v) < Math.abs(best - v) ? c : best), 100);
+}
+
 /** Default values when nothing has been stored yet. */
 export const DEFAULT_SETTINGS: UiSettings = {
     musicVolume: 0.5,
@@ -211,6 +226,7 @@ export const DEFAULT_SETTINGS: UiSettings = {
     soundMuted: false,
     notifyVolume: 1,
     uiScale: 100,
+    textScale: 100,
     showSystemNames: true,
     showRegionLabels: false,
     // [advisor] begin
@@ -340,8 +356,9 @@ export function loadSettings(): UiSettings {
         }
         if (typeof parsed.soundMuted === 'boolean') out.soundMuted = parsed.soundMuted;
         if (typeof parsed.uiScale === 'number' && Number.isFinite(parsed.uiScale)) {
-            out.uiScale = Math.min(200, Math.max(50, parsed.uiScale));
+            out.uiScale = Math.min(UI_SCALE_MAX, Math.max(UI_SCALE_MIN, parsed.uiScale));
         }
+        if (parsed.textScale !== undefined) out.textScale = clampTextScale(parsed.textScale);
         if (typeof parsed.showSystemNames === 'boolean') out.showSystemNames = parsed.showSystemNames;
         if (typeof parsed.showRegionLabels === 'boolean') out.showRegionLabels = parsed.showRegionLabels;
         // [advisor] begin
@@ -614,6 +631,11 @@ export function showRegionLabels(): boolean {
 /** UI scale as a CSS custom-property value (e.g. `1.25` for 125%). */
 export function uiScaleFactor(): number {
     return getSettings().uiScale / 100;
+}
+
+/** Text size factor (1 = 100%). */
+export function textScaleFactor(): number {
+    return getSettings().textScale / 100;
 }
 
 /** Sound effects volume, 0..1 (EffectsPlayer range). */

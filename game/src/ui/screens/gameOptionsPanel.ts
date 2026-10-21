@@ -51,7 +51,7 @@ import {
     type AttackRangeField,
     type EmpireSettingField,
 } from '../../sim/player/empireSettings';
-import { clampAutoSaveMinutes, clampMaximumFramerate, getSettings, resetAutomationResponses, updateSettings, type GalaxyViewDisplayKey, type UiSettings } from '../settings';
+import { clampAutoSaveMinutes, clampMaximumFramerate, clampTextScale, getSettings, TEXT_SCALES, UI_SCALE_MAX, UI_SCALE_MIN, resetAutomationResponses, updateSettings, type GalaxyViewDisplayKey, type UiSettings } from '../settings';
 import { copyMessageOptions, getMessageOptions, MessageCategory, setMessageOption, setSuppressAllPopups, type MessageOptions } from '../messageRouting';
 import { COLORS, checkBox, dropDown, el, glassButton, messageBox, numericUpDown, openOriginalWindow, place, text, type OriginalWindow } from '../originalWindow';
 import { checkBoxRight, colorSlider, groupBox, labelledTrackBar } from '../originalWindowControls';
@@ -417,12 +417,16 @@ function createGameOptionsPanel(opts: GameOptionsPanelOptions): OpenState {
         ['Scroll Speed', s.mainViewScrollSpeed, 1, 100, (v) => updateSettings({ mainViewScrollSpeed: v })],
         ['Zoom Speed', s.mainViewZoomSpeed, 1, 100, (v) => updateSettings({ mainViewZoomSpeed: v })],
         ['Star Density', s.starFieldSize, 50, 2000, (v) => updateSettings({ starFieldSize: v })],
-        ['GUI Scale', s.uiScale, 50, 200, (v) => updateSettings({ uiScale: v })],
+        ['GUI Scale', s.uiScale, UI_SCALE_MIN, UI_SCALE_MAX, (v) => updateSettings({ uiScale: v })],
     ];
     rows.forEach(([name, value, min, max, fn], i) => {
         label(display, name, 10, 24 + 22 * i);
-        slider(display, value, min, max, 130, 26 + 22 * i, 515, fn);
+        // The GUI Scale row shares its line with the Text size choice (HUD panel text only, not the frames).
+        slider(display, value, min, max, 130, 26 + 22 * i, name === 'GUI Scale' ? 300 : 515, fn);
     });
+    label(display, 'Text size', 450, 24 + 22 * 3);
+    const textSize = combo(display, TEXT_SCALES.map((t) => `${t}%`), TEXT_SCALES.indexOf(clampTextScale(s.textScale)), 530, 24 + 22 * 3, 115, 20, (i) => updateSettings({ textScale: TEXT_SCALES[i] ?? 100 }));
+    textSize.title = 'Size of the text in the selection panel and tooltips, without changing the panel frames';
     // btnHotKeys / btnGameOptionsAdvancedDisplaySettings (Main.Part6.cs:1787-1790: 250 × 26 at x 15 / 395), below the
     // fourth row. HotKeys opens the remapping screen (hotkeysScreen.ts; the "?" overlay lists the current keys).
     button(display, 'HotKeys', 15, 110, 250, 22, () => openHotkeysScreen());
