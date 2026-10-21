@@ -4,17 +4,20 @@
 //   GROUPS    one escort group per CONTRIBUTING AI empire, never one per freighter (freighters leave one at a time; a group per freighter would be
 //             hundreds of tiny fleets). Contributing: pledged to the structure, not a human, and it has a freighter on the way or sent one within
 //             megaActiveWindowDays. When it stops contributing (or the structure is done, or goes dormant) its group is released.
-//   ROUTE     the line from the empire's nearest colony (its capital if it has none) to the structure. Its escort works the route: while one of its
-//             freighters is on the way the group takes the one nearest the structure on an Escort mission (stock: it follows the freighter in);
-//             between freighters it Patrols the structure, guarding the arrival point.
+//   ROUTE     the line from the empire's nearest colony (its capital if it has none) to the structure. The group guards the structure's arrival point:
+//             it Patrols the structure, and while a freighter of the empire is within five megaEscortNear of it, takes that one on an Escort mission
+//             (stock: it follows the freighter in). It does not chase a freighter across the hyperjumps of the route (see escortFor).
 //   DANGER    the group wants 0 ships when the route is safe. Otherwise: megaEscortBase, plus megaEscortBlockade when a hostile armed force holds
 //             the structure's orbit (megaStation.ts megaBlockader), plus one ship per average warship of the empire's firepower that pirates or
 //             empires at war with it hold near the route (the worst of three sample points). At most megaEscortMax. A group whose danger has gone
 //             lingers megaEscortLingerDays before it goes home.
+//   FLEETS    the stock maintainShipGroups folds an idle warship into a fleet, and a fleet's refuel and waypoint missions override its members: a
+//             group ship is taken out of its fleet (unfleet) when it is recruited and whenever it is found in one.
 //   SPARES    only idle warships of the empire (no mission) that it can spare: it keeps megaEscortHomePct % of its warships at home, and never takes
 //             one on a war mission (Attack, Blockade, Refuel...). A group ship left on an Undefined, Escort, Patrol or Move mission (the stock AI
 //             sends an idle ship home by a Move) is re-tasked; a fight, a repair or a refuel is left alone.
-//   CREDIT    an arrival with an Escort-mission warship (any empire's) within megaEscortNear of it is an escorted delivery: the escort's owner gets
+//   CREDIT    an arrival with an armed warship within megaEscortNear of it, on an Escort mission (any empire's) or a member of an escort group of the
+//             structure (counted by assignment, so a group ship re-tasked a moment before still counts), is an escorted delivery: the escort's owner gets
 //             war credit (beaconWarCredit.ts), and the structure counts it (MegaRec.escorted).
 // Rnd: none (fixed iteration orders: contributors in pledge order, ships by builtObjectID; the stock mission assignments draw what they draw).
 
@@ -26,6 +29,7 @@ import { BuiltObjectRole } from '../../../data/designSpecifications';
 import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission } from '../../../missions/mission';
 import { assignMission, clearPreviousMissionRequirements } from '../../../missions/assign';
 import { isAiControlled } from '../../../missions/playerOrder';
+import { leaveShipGroup } from '../../../fleets/shipGroup';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../../../diplomacy';
 import { getEmpireById } from '../../../logistics/contracts';
 import { getNearbyBuiltObjects } from '../../../pirates/pirateAI';
@@ -164,7 +168,10 @@ export function supplyEscorts(galaxy: Galaxy, mega: MegaRec): void {
     if (base !== undefined && base !== null && !base.hasBeenDestroyed) {
         for (const f of getNearbyBuiltObjects(galaxy, base.xpos, base.ypos, P.megaEscortNear(galaxy))) if (f != null && f.role === BuiltObjectRole.Freight && freightTarget(galaxy, mega, f)) freight.add(f);
     }
-    for (const g of Object.values(mega.escorts ?? {})) for (const w of g.ships) if (!w.hasBeenDestroyed && w.fuelCapacity > 0) w.currentFuel = w.fuelCapacity;
+    for (const g of Object.values(mega.escorts ?? {})) for (const w of g.ships) if (!w.hasBeenDestroyed) {
+        unfleet(galaxy, w);
+        if (w.fuelCapacity > 0) w.currentFuel = w.fuelCapacity;
+    }
     for (const f of freight) {
         if (f.hasBeenDestroyed) continue;
         for (const w of getNearbyBuiltObjects(galaxy, f.xpos, f.ypos, P.megaEscortNear(galaxy))) {
@@ -173,6 +180,14 @@ export function supplyEscorts(galaxy: Galaxy, mega: MegaRec): void {
             if (m !== null && m.type === BuiltObjectMissionType.Escort && m.targetBuiltObject === f) w.currentFuel = w.fuelCapacity;
         }
     }
+}
+
+/**
+ * A group ship is taken out of any stock fleet: the fleet's own refuel and waypoint missions (militaryAI assignFleetRefuelling, shipGroupTasks
+ * assignFleetWaypointMission) would otherwise override its escort, and maintainShipGroups folds an idle warship back into a fleet.
+ */
+function unfleet(galaxy: Galaxy, w: BuiltObject): void {
+    if (w.shipGroup !== null && !w.hasBeenDestroyed) leaveShipGroup(galaxy, w);
 }
 
 /** Releases `e`'s group (the group record goes; its ships go back to their empire's stock control). */
@@ -235,16 +250,23 @@ function escortFor(galaxy: Galaxy, mega: MegaRec, e: Empire, base: BuiltObject, 
         const allowance = warships - have - floor;
         const taken = new Set(grp.ships);
         const fresh = spareShips(galaxy, e, route, taken).slice(0, Math.max(0, Math.min(want - have, allowance)));
-        for (const w of fresh) grp.ships.push(w);
+        for (const w of fresh) {
+            unfleet(galaxy, w);
+            grp.ships.push(w);
+        }
     }
     // shrink: the latest recruits go first
     while (grp.ships.length > want) {
         const w = grp.ships.pop()!;
         freeEscort(galaxy, w);
     }
-    // point the group: its freighter on the way, else the structure (fuel kept full, as the freight's is)
-    const target = escortTarget(mega, e, base, galaxy);
+    // point the group: its freighter on the last stretch to the structure (within five megaEscortNear of it), else the structure. A group ship sent
+    // after a freighter across a hyperjump was left stranded far behind it (the freight's hyperspace exit is not the escort's), so the escort keeps
+    // to the structure's arrival point and goes out to meet the freight only as it comes in. Fuel kept full, as the freight's is.
+    const nearest = escortTarget(mega, e, base, galaxy);
+    const target = nearest !== null && galaxy.calculateDistance(nearest.xpos, nearest.ypos, base.xpos, base.ypos) <= 5 * P.megaEscortNear(galaxy) ? nearest : null;
     for (const w of grp.ships) {
+        unfleet(galaxy, w);
         if (w.fuelCapacity > 0) w.currentFuel = w.fuelCapacity;
         w.refuelForNextMission = false; // (the civilian AI would send a flagged idle ship to refuel)
         const m = builtObjectMission(w.mission);
@@ -279,17 +301,19 @@ export function escortStep(galaxy: Galaxy, mega: MegaRec, base: BuiltObject, now
 }
 
 /**
- * The escort that is with a freighter as it arrives: the nearest warship within megaEscortNear of it on an Escort mission (any empire's), or null.
+ * The escort that is with a freighter as it arrives: the nearest armed warship within megaEscortNear of it that is either on an Escort mission (any
+ * empire's) or a member of an escort group of the structure (counted by assignment, so a group ship re-tasked a moment before still counts), or null.
  * Returns the empire that controls it (the war credit's owner).
  */
-export function escortAtArrival(galaxy: Galaxy, freighter: BuiltObject): Empire | null {
+export function escortAtArrival(galaxy: Galaxy, mega: MegaRec, freighter: BuiltObject): Empire | null {
     const range = P.megaEscortNear(galaxy);
+    const members = new Set<BuiltObject>(Object.values(mega.escorts ?? {}).flatMap((g) => g.ships));
     let best: BuiltObject | null = null;
     let bd = Number.MAX_VALUE;
     for (const w of getNearbyBuiltObjects(galaxy, freighter.xpos, freighter.ypos, range)) {
         if (w == null || w === freighter || w.hasBeenDestroyed || !(w.firepowerRaw > 0) || w.actualEmpire === null) continue;
         const m = builtObjectMission(w.mission);
-        if (m === null || m.type !== BuiltObjectMissionType.Escort) continue;
+        if (!members.has(w) && (m === null || m.type !== BuiltObjectMissionType.Escort)) continue;
         const d = galaxy.calculateDistance(w.xpos, w.ypos, freighter.xpos, freighter.ypos);
         if (d < bd || (d === bd && best !== null && w.builtObjectID < best.builtObjectID)) {
             bd = d;

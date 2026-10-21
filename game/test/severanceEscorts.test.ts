@@ -202,11 +202,23 @@ describe('one escort group per contributing AI empire', () => {
         const grp = escortGroupOf(mega, ai)!;
         expect(grp.ships.length).toBeGreaterThan(0);
         expect(grp.ships.length).toBeLessThanOrEqual(P.megaEscortMax(s.g));
-        const targets = new Set(grp.ships.map((w) => builtObjectMission(w.mission)?.targetBuiltObject));
-        expect(targets.size).toBe(1); // one freighter at a time
-        const [target] = [...targets];
-        expect(flying).toContain(target);
-        for (const w of grp.ships) expect(builtMission(w)).toBe('Escort');
+        // the freight is far on its route: the group guards the structure, one group for all of them
+        const base = mega.base!;
+        for (const w of grp.ships) {
+            expect(builtMission(w)).toBe('Patrol');
+            expect(builtObjectMission(w.mission)!.targetBuiltObject).toBe(base);
+        }
+        // a freighter comes in: the group takes the one nearest the structure (one at a time), and only that one
+        const near = flying[0];
+        near.xpos = base.xpos + 20000; // (inside five megaEscortNear, outside the delivery range)
+        near.ypos = base.ypos;
+        rebuildIndexes(s.g);
+        DAYS(s.g, 1);
+        expect(escortGroupCount(mega)).toBe(1);
+        const targets = new Set(escortGroupOf(mega, ai)!.ships.map((w) => builtObjectMission(w.mission)?.targetBuiltObject));
+        expect(targets.size).toBe(1);
+        expect([...targets][0]).toBe(near);
+        for (const w of escortGroupOf(mega, ai)!.ships) expect(builtMission(w)).toBe('Escort');
     });
 
     it('no group when the route is safe, and none when the empire has no spare warship (a raider on the route does not make one)', () => {

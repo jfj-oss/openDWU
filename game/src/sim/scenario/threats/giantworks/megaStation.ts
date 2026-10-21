@@ -458,7 +458,7 @@ function stepContracts(galaxy: Galaxy, st: BeaconState, mega: MegaRec, base: Bui
         const owner = getEmpireById(galaxy, c.empireId);
         if (b.hasBeenDestroyed || owner === null || b.actualEmpire !== owner) continue; // lost (shot down) or taken
         if (distance(galaxy, b, base) <= MEGA_DELIVER_RANGE) {
-            const escort = escortAtArrival(galaxy, b);
+            const escort = escortAtArrival(galaxy, mega, b);
             release(b);
             delivered++;
             mega.delivered++;
