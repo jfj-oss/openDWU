@@ -292,6 +292,22 @@ describe('Game Editor: finish a Great Work under construction', () => {
     }, 600000);
 });
 
+describe('Game Editor: the Beacon\'s "Finish" also finishes one under construction', () => {
+    it('a Beacon being built is completed where it stands; once finished, Finish is unavailable', () => {
+        const { g } = beaconGame();
+        expect(spawnThreatNow(g, g.playerEmpire!, 'giantworks:beacon')).toBe(true);
+        const work = greatWorks(g).find((w) => w.wonder === 'beacon')!;
+        expect(work.phase).toBe('building');
+        const entry = spawnableThreats(g).find((t) => t.key === BEACON_FINISHED_SPAWN)!;
+        expect(entry.note).toBeNull(); // available while one is under construction (it used to say "Already under way")
+        expect(spawnThreatNow(g, g.playerEmpire!, BEACON_FINISHED_SPAWN)).toBe(true);
+        expect(work.phase).toBe('complete');
+        expect(greatWorks(g).filter((w) => w.wonder === 'beacon')).toHaveLength(1); // finished in place, no second Beacon
+        expect(peekBeaconState(g)!.phase).toBe('reclamation');
+        expect(spawnableThreats(g).find((t) => t.key === BEACON_FINISHED_SPAWN)!.note).toBe('Already finished');
+    }, 600000);
+});
+
 describe('Game Editor: Great Work: beacon (finished)', () => {
     it('is listed, and spawns the Beacon complete: the Reclamation begun, the Watchers cloaked and mustering, the first beam ten days off', () => {
         const { g } = beaconGame();

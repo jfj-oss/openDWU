@@ -1387,7 +1387,9 @@ export const BEACON_FINISHED_SPAWN = `${GW_KEY}:${BEACON_KIND}-finished`;
  * from the rim) and the first mega beam is beaconBeamDelayDays (10) away. A failed spawn leaves no work behind.
  */
 export function spawnFinishedBeacon(galaxy: Galaxy): boolean {
-    if (!spawnGreatWork(galaxy, BEACON_KIND)) return false;
+    // A Beacon already under construction is finished where it stands (the editor's "Finish" beside "Spawn"); else one is placed first.
+    const building = greatWorks(galaxy).some((w) => w.wonder === BEACON_KIND && w.phase === 'building');
+    if (!building && !spawnGreatWork(galaxy, BEACON_KIND)) return false;
     const work = greatWorks(galaxy).find((w) => w.wonder === BEACON_KIND && w.phase === 'building');
     if (work === undefined) return false;
     completeWork(galaxy, work);
@@ -1399,6 +1401,14 @@ export function spawnFinishedBeacon(galaxy: Galaxy): boolean {
         w.ship.ypos = at.y;
     }
     return st.phase === 'reclamation';
+}
+
+/** Why the editor's Beacon "Finish" is unavailable (null: it can finish one under construction or place one finished). */
+function finishedBeaconNote(galaxy: Galaxy): string | null {
+    const works = greatWorks(galaxy).filter((w) => w.wonder === BEACON_KIND);
+    if (works.some((w) => w.phase === 'building')) return null;
+    if (works.some((w) => w.phase === 'complete')) return 'Already finished';
+    return kindTaken(galaxy, BEACON_KIND) ? 'Not under construction yet' : null;
 }
 
 export const beaconKind: GreatWorkKind = {
@@ -1428,7 +1438,8 @@ export function registerBeacon(): void {
         label: 'Great Work: beacon (finished)',
         group: 'galactic',
         addons: [GW_KEY],
-        note: (g) => spawnNote(g) ?? (kindTaken(g, BEACON_KIND) ? 'Already under way (one per galaxy)' : null),
+        // Finishes one under construction, or places one finished; not once it is finished (or only seeded, not yet building).
+        note: (g) => spawnNote(g) ?? finishedBeaconNote(g),
         spawn: (g) => spawnFinishedBeacon(g),
     });
     registerScenarioPeriodic({ id: 'beacon.watchers', flag: BEACON_FLAG, order: 20, periodDays: WATCHER_DAYS, run: (g) => watchersPeriodic(g) });

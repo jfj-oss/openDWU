@@ -44,8 +44,22 @@ export function toggleGameEditor(empire: Empire): void {
         for (const [group, heading] of [['empire', 'Spawn a threat against your empire:'], ['galactic', 'Spawn a galactic threat:']] as const) {
             line(heading, y);
             y += 28;
-            for (const t of threats.filter((x) => x.group === group)) {
+            // A "<key>-finished" entry is not a row of its own: it is the "Finish" button left of its Great Work's "Spawn".
+            const finishOf = (key: string) => threats.find((x) => x.key === `${key}-finished`);
+            for (const t of threats.filter((x) => x.group === group && !x.key.endsWith('-finished'))) {
                 line(t.label, y + 4);
+                const fin = finishOf(t.key);
+                if (fin !== undefined) {
+                    const fb = glassButton('Finish', {
+                        disabled: fin.note !== null,
+                        onClick: () => {
+                            ensureThreatTexts(fin.key);
+                            issuePlayerCommand(empire.galaxy as Galaxy, empire, 'editorSpawnThreat', [fin.key], render);
+                        },
+                    });
+                    if (fin.note !== null) fb.title = fin.note;
+                    win.body.appendChild(place(fb, 315, y, 110, 22));
+                }
                 if (t.note !== null) {
                     const n = document.createElement('div');
                     n.textContent = t.note;
