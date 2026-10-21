@@ -681,6 +681,8 @@ export interface ScenarioQueries {
     researchFrozen: { value: boolean; args: { empire: Empire; industry: number } };
     /** Factor on an empire's research output of one industry (the Interstellar Diet's research moratorium; 1 = unchanged). */
     researchPowerFactor: { value: number; args: { empire: Empire; industry: number } };
+    /** Factor on an empire's research output of one industry applied AFTER the scenario sink took its share, so the sink is not slowed (the Stillness Engine; 1 = unchanged). */
+    researchSlowdownFactor: { value: number; args: { empire: Empire; industry: number } };
     /** The share (0..1) of an empire's research output of one industry a scenario sink takes (the Beacon's mega-station blueprint); 0 = none. */
     researchSinkShare: { value: number; args: { empire: Empire; industry: number } };
     /** Scenario parts `giver` could hand `receiver` in a trade (tradeItems.ts resolveTradeableItems): plain records with the part id, its label and its value. */

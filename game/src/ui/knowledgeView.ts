@@ -31,6 +31,7 @@ import { DiplomaticRelationType } from '../sim/diplomacy';
 import { milestoneRowsOf } from '../sim/scenario/threats/giantworks/age2Milestones';
 import { holdoutKnowledgeRows } from '../sim/scenario/threats/giantworks/age2Holdouts';
 import { strandedRowsOf } from '../sim/scenario/threats/giantworks/age2Watchers';
+import { stillnessKnowledgeRows } from '../sim/scenario/threats/giantworks/stillness';
 
 /** The Galactopedia article on the Great Works (expansionArticles.ts). */
 export const KNOWLEDGE_ARTICLE = 'The Great Work (Giantworks)';
@@ -154,6 +155,10 @@ registerKnowledgeSection('ageMemory', 'What We Remember', (galaxy) => {
 });
 registerKnowledgeSection('leftBehind', 'Left behind', (galaxy, empire) => {
     const rows = strandedRowsOf(galaxy, empire).map((r): KnowledgeRow => ({ ...knowledgeRow(r.key, r.what, r.where, r.status), goTo: r.goTo, point: r.point }));
+    return rows.length > 0 ? rows : null;
+});
+registerKnowledgeSection('stillness', 'The Stillness Engine', (galaxy) => {
+    const rows = stillnessKnowledgeRows(galaxy).map((r): KnowledgeRow => ({ ...knowledgeRow(r.key, r.what, r.where, r.status), goTo: r.goTo, point: r.point }));
     return rows.length > 0 ? rows : null;
 });
 registerKnowledgeSection('newAge', 'The New Age', (galaxy, empire) => {

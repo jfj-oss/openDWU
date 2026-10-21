@@ -209,6 +209,9 @@ export interface DietMotionKindDef {
 /** The Diet window's war-crimes line (War Crimes, diet/warCrimes.ts fills it; '' = none). */
 export const dietWarCrimesLine: { fn: ((galaxy: Galaxy) => string) | null } = { fn: null };
 
+/** A war declared on a member that the Diet does not treat as an outrage (the Stillness Engine's stated casus belli): true = no emergency case for the Regent. */
+export const dietWarExcuse: { fn: ((galaxy: Galaxy, attacker: Empire, target: Empire) => boolean) | null } = { fn: null };
+
 /** The Diet window's war-credit line (the Beacon's share of the war, threats/giantworks/beaconWarCredit.ts fills it; '' = none). */
 export const dietWarCreditLine: { fn: ((galaxy: Galaxy) => string) | null } = { fn: null };
 

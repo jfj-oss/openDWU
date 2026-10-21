@@ -81,6 +81,7 @@ import {
     dietMotionKindDef,
     dietOn,
     dietSeatExcluded,
+    dietWarExcuse,
     dietParam,
     dietState,
     lawInForce,
@@ -1366,7 +1367,7 @@ function onWarDeclared(galaxy: Galaxy, ev: { empire: Empire; target: Empire }): 
     const x = sessionMember(galaxy);
     if (x === null) return;
     // A war started on a Diet member (not on the Emperor, not by the enforcers): an emergency case for the Regent.
-    if (members(galaxy, x.c, x.st).includes(ev.target) && ev.empire !== x.st.faction && ev.target !== x.st.emperor?.empire && ev.empire.pirateEmpireBaseHabitat === null && ev.empire !== galaxy.independentEmpire) {
+    if (members(galaxy, x.c, x.st).includes(ev.target) && ev.empire !== x.st.faction && ev.target !== x.st.emperor?.empire && ev.empire.pirateEmpireBaseHabitat === null && ev.empire !== galaxy.independentEmpire && dietWarExcuse.fn?.(galaxy, ev.empire, ev.target) !== true) {
         const kind: DietMotionKind = inDiet(galaxy, x.c, ev.empire) ? 'condemn' : 'sanction';
         x.st.pendingEmergency ??= { kind, target: ev.empire, other: ev.target, at: galaxyStarDate(galaxy), why: 'war' };
     }

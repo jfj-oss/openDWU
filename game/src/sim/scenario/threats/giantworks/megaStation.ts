@@ -55,6 +55,7 @@ import { ensureCompactFor, factionDesign } from './lifecycle';
 import { spawnShip } from './beaconFleet';
 import { compactFaction } from './state';
 import { galaxyAgeOf } from './longNightState';
+import { harvestPledges, severanceVoteBonus } from './agePrep';
 
 export const MOTION_MEGA = 'megaBuild';
 export const MOTION_MEGA_RESUME = 'megaResume';
@@ -303,7 +304,7 @@ function pledge(galaxy: Galaxy, st: BeaconState, mega: MegaRec, m: DietMotion, b
     for (const v of members) {
         if (v === builder || !v.active) continue;
         const holds = holdsParts(st, v);
-        if (voteYes(m, v) && (isHumanEmpire(galaxy, v) || partTradeAllowed(galaxy, v, builder))) {
+        if (voteYes(m, v) && (isHumanEmpire(galaxy, v) || partTradeAllowed(galaxy, v, builder) || harvestPledges(galaxy, v, builder))) {
             if (!mega.contributors.includes(v.empireId)) mega.contributors.push(v.empireId);
             if (pool(st, mega, v)) handed.push(v.name);
         } else if (holds) refused.push(v.name);
@@ -383,7 +384,7 @@ function resumeMega(galaxy: Galaxy, st: DietState, m: DietMotion): void {
 function voteScore(galaxy: Galaxy, voter: Empire, m: DietMotion): number {
     if (voter === m.proposer) return 100;
     const attitude = obtainEmpireEvaluation(galaxy, voter, m.proposer).overallAttitude;
-    return 4 + 0.5 * attitude + 8 * ((friendlinessLevel(voter) - 100) / 50) - 6 * ((aggressionLevel(voter) - 100) / 50);
+    return 4 + 0.5 * attitude + 8 * ((friendlinessLevel(voter) - 100) / 50) - 6 * ((aggressionLevel(voter) - 100) / 50) + severanceVoteBonus(galaxy, voter); // "Recognise the Harvest" (agePrep.ts): the AI members contribute
 }
 
 function failedNews(galaxy: Galaxy, m: DietMotion): void {

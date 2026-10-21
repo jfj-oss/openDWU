@@ -1449,6 +1449,8 @@ export function performResearchProjects(galaxy: Galaxy, empire: Empire, timePass
             researchPower -= sunk;
             scenarioEmit(galaxy, 'researchSunk', { empire, industry, points: ((sunk * timePassed) / REAL_SECONDS_IN_GALACTIC_YEAR) * galaxy.researchSpeedModifier * num2 });
         }
+        // mod layer (the Stillness Engine): a galaxy-wide slowdown of what is left after the sink (the sink is not slowed)
+        researchPower *= scenarioQuery(galaxy, 'researchSlowdownFactor', 1, { empire, industry });
     }
     let num = ((researchPower * timePassed) / REAL_SECONDS_IN_GALACTIC_YEAR) * galaxy.researchSpeedModifier;
     num *= num2;
