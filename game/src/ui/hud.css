@@ -261,6 +261,71 @@
 .hud-option-select .hud-option-none {
     color: rgb(110, 110, 120);
 }
+.hud-option-picker-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.hud-option-summary {
+    flex: 1;
+    min-width: 0;
+}
+.hud-option-button {
+    font: inherit;
+    color: rgb(170, 170, 170);
+    background: rgb(48, 48, 64);
+    border: 1px solid rgb(96, 96, 112);
+    border-radius: 0;
+    padding: 0 6px;
+    cursor: pointer;
+}
+.hud-option-button:hover:not(:disabled) {
+    border-color: rgb(140, 140, 160);
+}
+.hud-option-button:disabled {
+    color: rgb(110, 110, 120);
+    cursor: default;
+}
+.hud-option-list {
+    max-height: 16em;
+    overflow-y: auto;
+    margin-top: 4px;
+    padding-right: 2px;
+}
+.hud-option-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+    font-weight: bold;
+    cursor: pointer;
+}
+.hud-option-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-left: 14px;
+    cursor: pointer;
+}
+.hud-option-icon {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 18px;
+    object-fit: contain;
+}
+.hud-option-item-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.hud-option-item-count {
+    color: rgb(140, 140, 150);
+    font-size: 0.9em;
+    white-space: nowrap;
+}
 .hud-option-panel-note {
     margin-top: 3px;
     color: rgb(140, 140, 150);

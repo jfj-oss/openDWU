@@ -19,7 +19,7 @@ import {
     habitatIcons,
     knownResourceIndexFor,
     knownResourceSignature,
-    resourcePickerOptions,
+    resourceGroups,
     resourceRarity,
     resourceTooltipText,
     systemIcons,
@@ -102,31 +102,40 @@ describe('Resources overlay data', () => {
     });
 
     it('filters systems and icons by a chosen resource', () => {
-        expect(systemsForFilter(index, null)).toBe(index.systems);
-        expect(systemsForFilter(index, 2).map((s) => s.star.name)).toEqual(['Beta']);
-        expect(systemsForFilter(index, 99)).toEqual([]);
+        expect(systemsForFilter(index, [])).toBe(index.systems);
+        expect(systemsForFilter(index, [2]).map((s) => s.star.name)).toEqual(['Beta']);
+        expect(systemsForFilter(index, [99])).toEqual([]);
         const alpha = index.bySystem.get(0)!;
-        expect(systemIcons(alpha, null, 1).map((r) => r.resourceId)).toEqual([3]);
-        expect(systemIcons(alpha, 1, 4).map((r) => r.maxAbundance)).toEqual([700]);
-        expect(systemIcons(alpha, 2, 4)).toEqual([]);
-        expect(habitatIcons(alpha.habitats[0], 1).map((r) => r.abundance)).toEqual([300]);
-        expect(habitatIcons(alpha.habitats[0], null)).toHaveLength(2);
+        expect(systemIcons(alpha, [], 1).map((r) => r.resourceId)).toEqual([3]);
+        expect(systemIcons(alpha, [1], 4).map((r) => r.maxAbundance)).toEqual([700]);
+        expect(systemIcons(alpha, [2], 4)).toEqual([]);
+        expect(habitatIcons(alpha.habitats[0], [1]).map((r) => r.abundance)).toEqual([300]);
+        expect(habitatIcons(alpha.habitats[0], [])).toHaveLength(2);
+    });
+
+    it('a selection of several resources: the systems with any of them, their selected icons rarest first', () => {
+        expect(systemsForFilter(index, [1, 4]).map((s) => s.star.name)).toEqual(['Alpha', 'Beta']);
+        expect(systemsForFilter(index, [2, 99]).map((s) => s.star.name)).toEqual(['Beta']);
+        const alpha = index.bySystem.get(0)!;
+        expect(systemIcons(alpha, [1, 3], 4).map((r) => r.resourceId)).toEqual([3, 1]); // Silk (rare) before Iron
+        expect(systemIcons(alpha, [1, 3], 1).map((r) => r.resourceId)).toEqual([3]); // capped at max
+        expect(habitatIcons(alpha.habitats[0], [3]).map((r) => r.resourceId)).toEqual([3]);
     });
 
     it('icons stay readable at every zoom, and a system offers up to six', () => {
         expect(resourceIconPx(100)).toBeGreaterThan(resourceIconPx(4000));
         for (const f of [1, 70, 300, 900, 2500, 1e6]) expect(resourceIconPx(f)).toBeGreaterThanOrEqual(10);
         const sys = { resources: Array.from({ length: 9 }, (_, i) => ({ resourceId: i, maxAbundance: 100, habitatCount: 1, rarity: 0 })) } as unknown as KnownSystemResources;
-        expect(systemIcons(sys, null, RING_MAX_ICONS)).toHaveLength(6);
-        expect(systemIcons(sys, null, RING_MAX_ICONS)[0].resourceId).toBe(0); // the rarest / most abundant first
+        expect(systemIcons(sys, [], RING_MAX_ICONS)).toHaveLength(6);
+        expect(systemIcons(sys, [], RING_MAX_ICONS)[0].resourceId).toBe(0); // the rarest / most abundant first
     });
 
-    it('picker: "All" first, then very rare / rare / common, known ones before the rest, with system counts', () => {
-        const opts = resourcePickerOptions([...RES.values(), res(5, 'Aculon', 0)], index);
-        expect(opts[0]).toMatchObject({ resourceId: null, systems: 2 });
-        expect(opts.slice(1).map((o) => o.resourceId)).toEqual([4, 3, 2, 1, 5]);
-        expect(opts.find((o) => o.resourceId === 5)!.label).toBe('Aculon — none known');
-        expect(opts.find((o) => o.resourceId === 1)!.label).toBe('Iron — 1 system');
+    it('picker: the known resources grouped by type (Mineral, Gas, Luxury), rarest first, with system counts', () => {
+        const groups = resourceGroups([...RES.values(), res(5, 'Aculon', 0)], index);
+        expect(groups.map((g) => g.label)).toEqual(['Mineral', 'Gas', 'Luxury']);
+        expect(groups.map((g) => g.items.map((it) => it.resourceId))).toEqual([[1], [2], [4, 3]]); // Aculon: known nowhere, left out
+        expect(groups[0].items[0]).toMatchObject({ name: 'Iron', systems: 1 });
+        expect(groups[2].items[0]).toMatchObject({ name: 'Loros Fruit', rarity: ResourceRarity.VeryRare });
     });
 
     it('tooltip lists name, abundance %, rarity and the source count', () => {
@@ -337,21 +346,26 @@ describe('Improvements registry and overlay state', () => {
         expect(improvements.every((r) => r.mod === undefined)).toBe(true); // no "+" badge: the section says it
     });
 
-    it('the resource filter belongs to one overlay state and notifies like a toggle', () => {
+    it('the resource selection belongs to one overlay state and notifies like a toggle', () => {
         const s = createMapOverlayState();
         const t = createMapOverlayState();
-        expect(overlayOptionsOf(s).resourceFilter).toBeNull();
+        expect(overlayOptionsOf(s).resourceFilter).toEqual([]);
         let calls = 0;
         const off = onOverlayChange(() => calls++);
-        setOverlayResourceFilter(s, 2);
-        setOverlayResourceFilter(s, 2);
+        setOverlayResourceFilter(s, [2]);
+        setOverlayResourceFilter(s, [2]);
         expect(calls).toBe(1);
-        expect(overlayOptionsOf(s).resourceFilter).toBe(2);
-        expect(overlayOptionsOf(t).resourceFilter).toBeNull();
+        expect(overlayOptionsOf(s).resourceFilter).toEqual([2]);
+        expect(overlayOptionsOf(t).resourceFilter).toEqual([]);
+        setOverlayResourceFilter(s, [4, 2, 2]); // sorted, unique
+        expect(overlayOptionsOf(s).resourceFilter).toEqual([2, 4]);
+        setOverlayResourceFilter(s, []); // back to every known resource
+        expect(overlayOptionsOf(s).resourceFilter).toEqual([]);
+        expect(calls).toBe(3);
         setOverlay(s, 'resources', true);
         setOverlay(s, 'resources', true);
         expect(s.resources).toBe(true);
-        expect(calls).toBe(2);
+        expect(calls).toBe(4);
         off();
     });
 });

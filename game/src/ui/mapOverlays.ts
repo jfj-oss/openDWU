@@ -203,27 +203,30 @@ export function onOverlayChange(fn: OverlayChangeListener): () => void {
 // [dw2overlays] begin
 /** The non-boolean overlay settings of one MapOverlayState (the "…" panels). */
 export interface MapOverlayOptions {
-    /** Resources overlay: show only this resource id (null = every known resource). */
-    resourceFilter: number | null;
+    /** Resources overlay: the resource ids the player is looking for, sorted; empty = every known resource. UI-side only. */
+    resourceFilter: readonly number[];
 }
 
+const NO_FILTER: readonly number[] = [];
 const overlayOptions = new WeakMap<MapOverlayState, MapOverlayOptions>();
 
 /** The options that go with `state` (created on first use: no filter). */
 export function overlayOptionsOf(state: MapOverlayState): MapOverlayOptions {
     let o = overlayOptions.get(state);
     if (o === undefined) {
-        o = { resourceFilter: null };
+        o = { resourceFilter: NO_FILTER };
         overlayOptions.set(state, o);
     }
     return o;
 }
 
-/** Set the Resources overlay's resource filter (null = all) and notify the subscribers, as a toggle does. */
-export function setOverlayResourceFilter(state: MapOverlayState, resourceId: number | null): void {
+/** Set the Resources overlay's selection (empty = all) and notify the subscribers, as a toggle does. The ids are kept
+ * sorted and unique; the array is replaced on a change, so a renderer can compare it by identity. */
+export function setOverlayResourceFilter(state: MapOverlayState, resourceIds: readonly number[]): void {
     const o = overlayOptionsOf(state);
-    if (o.resourceFilter === resourceId) return;
-    o.resourceFilter = resourceId;
+    const next = [...new Set(resourceIds)].sort((a, b) => a - b);
+    if (next.length === o.resourceFilter.length && next.every((id, i) => id === o.resourceFilter[i])) return;
+    o.resourceFilter = next.length === 0 ? NO_FILTER : next;
     for (const fn of listeners) fn();
 }
 

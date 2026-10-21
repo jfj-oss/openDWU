@@ -18,6 +18,7 @@ import { fogOf } from './fog';
 import { overlayActive, overlayOptionsOf, type MapOverlayState } from '../ui/mapOverlays';
 import { SpritePool, abundancePieTexture, drawnHabitatPx, resourceIconTexture, ringTexture, sizeSprite } from './dw2OverlayArt';
 import {
+    NO_RESOURCE_FILTER,
     RARITY_COLORS,
     habitatIcons,
     knownResourceIndexFor,
@@ -26,9 +27,10 @@ import {
     systemsForFilter,
     type KnownResourceIndex,
     type KnownSystemResources,
+    type ResourceFilter,
     type ResourceRarity,
 } from './resourceOverlayData';
-import { RING_MAX_ICONS, abundancePieStep, chooseRingCounts, pieDiscPx, ringAngle, ringRadiusPx, type RingPlacement, type RingSite } from './resourceOverlayLayout';
+import { RING_MAX_ICONS, abundancePieStep, chooseRingCounts, pieDiscPx, ringAngle, ringRadiusPx, ringsShownAt, type RingPlacement, type RingSite } from './resourceOverlayLayout';
 import { MAX_SOLAR_SYSTEM_SIZE } from '../sim/movement';
 import { localViewerEmpire } from '../localViewer';
 
@@ -67,8 +69,9 @@ interface DrawnCluster {
     cx: number;
     cy: number;
     r: number;
-    /** Icons the ring shows (fewer than its resources where it would crowd a neighbour). */
+    /** Icons the ring shows (fewer than its resources where it would crowd a neighbour), and which resources they are. */
     icons: number;
+    ids: number[];
     title: string;
     resources: Parameters<typeof resourceTooltipText>[1];
 }
@@ -82,13 +85,13 @@ export class ResourceOverlay {
     private indexAt = -Infinity;
     private frame = 0;
     /** What the sprites were last placed for. */
-    private built = { valid: false, z: 0, x: 0, y: 0, w: 0, h: 0, filter: null as number | null, indexAt: 0, tex: 0 };
+    private built = { valid: false, z: 0, x: 0, y: 0, w: 0, h: 0, filter: NO_RESOURCE_FILTER as ResourceFilter, indexAt: 0, tex: 0 };
     /** The rings drawn last, for the hover text (and the audit's icons-per-ring count). */
     private clusters: DrawnCluster[] = [];
     /** Scratch: where each ring goes (chooseRingCounts), in placement order. */
     private ringCounts: RingPlacement[] = [];
     /** The galaxy / sector layout kept for the zoom, filter and index it was made for. */
-    private lodKey: { z: number; filter: number | null; index: KnownResourceIndex } | null = null;
+    private lodKey: { z: number; filter: ResourceFilter; index: KnownResourceIndex } | null = null;
     private lodRows: RingRow[] = [];
     motion: MotionInterpolator | null = null;
 
@@ -127,6 +130,12 @@ export class ResourceOverlay {
         const f = 1 / z;
         const filter = overlayOptionsOf(this.state).resourceFilter;
         const systemZoom = f < 70;
+        // Galaxy / sector zoom: zoomed out past the quarter view the galaxy's rings are too dense to read, so they hide
+        // (a picked selection still shows; resourceOverlayLayout.ts RINGS_MAX_VIEW_SIDE).
+        if (!systemZoom && !ringsShownAt(z, Math.min(cam.width, cam.height), Math.max(cam.boundsW, cam.boundsH), filter.length)) {
+            this.hide();
+            return;
+        }
         // Galaxy / sector zoom: static positions; rebuild only on a change.
         const k = this.built;
         if (!systemZoom && k.valid && k.z === z && k.x === cam.x && k.y === cam.y && k.w === cam.width && k.h === cam.height && k.filter === filter && k.indexAt === this.indexAt && k.tex === this.texturesPending) {
@@ -154,7 +163,7 @@ export class ResourceOverlay {
         return t;
     }
 
-    private build(z: number, cam: Camera, filter: number | null, systemZoom: boolean): void {
+    private build(z: number, cam: Camera, filter: ResourceFilter, systemZoom: boolean): void {
         const index = this.index!;
         const ringTex = ringTexture();
         this.rings.begin();
@@ -179,7 +188,7 @@ export class ResourceOverlay {
     /** The rings to draw for the view. Galaxy / sector: one ring per system, laid out (screen-space LOD) once per zoom,
      * filter and index, so a pan costs only the drawing. System zoom: the habitats of the systems in view, laid out
      * each frame (the planets orbit). */
-    private layoutRows(index: KnownResourceIndex, z: number, px: number, filter: number | null, systemZoom: boolean, cam: Camera): RingRow[] {
+    private layoutRows(index: KnownResourceIndex, z: number, px: number, filter: ResourceFilter, systemZoom: boolean, cam: Camera): RingRow[] {
         if (!systemZoom) {
             const k = this.lodKey;
             if (k !== null && k.z === z && k.filter === filter && k.index === index) return this.lodRows;
@@ -202,7 +211,7 @@ export class ResourceOverlay {
         return rows;
     }
 
-    private collectSystemRow(sys: KnownSystemResources, filter: number | null, z: number, rows: RingRow[]): void {
+    private collectSystemRow(sys: KnownSystemResources, filter: ResourceFilter, z: number, rows: RingRow[]): void {
         const list = systemIcons(sys, filter, RING_MAX_ICONS);
         if (list.length === 0) return;
         const s = sys.star;
@@ -212,13 +221,13 @@ export class ResourceOverlay {
             bodyPx: Math.max(6, drawnHabitatPx(s, z)),
             icons: list.map((r) => ({ resourceId: r.resourceId, abundance: r.maxAbundance, rarity: r.rarity })),
             title: `${s.name}: known resources`,
-            resources: filter === null ? sys.resources : list,
+            resources: filter.length === 0 ? sys.resources : list,
             count: 0,
             phase: 0,
         });
     }
 
-    private collectHabitatRows(sys: KnownSystemResources, filter: number | null, z: number, rows: RingRow[]): void {
+    private collectHabitatRows(sys: KnownSystemResources, filter: ResourceFilter, z: number, rows: RingRow[]): void {
         for (const hr of sys.habitats) {
             const list = habitatIcons(hr, filter);
             if (list.length === 0) continue;
@@ -230,7 +239,7 @@ export class ResourceOverlay {
                 bodyPx: Math.max(4, drawnHabitatPx(h, z)),
                 icons: list,
                 title: `${h.name}: known resources`,
-                resources: filter === null ? hr.resources : list,
+                resources: filter.length === 0 ? hr.resources : list,
                 count: 0,
                 phase: 0,
             });
@@ -254,11 +263,11 @@ export class ResourceOverlay {
     }
 
     /** One body's ring: its first `count` icons, turned by `phase`, with the highlight ring when a resource is picked. */
-    private placeRow(row: RingRow, z: number, px: number, ringTex: Texture | null, filter: number | null): void {
+    private placeRow(row: RingRow, z: number, px: number, ringTex: Texture | null, filter: ResourceFilter): void {
         const n = row.count;
         const disc = pieDiscPx(px);
         const R = ringRadiusPx(n, row.bodyPx, disc);
-        if (filter !== null && ringTex !== null) {
+        if (filter.length > 0 && ringTex !== null) {
             const ring = this.rings.take(ringTex);
             ring.position.set(row.wx, row.wy);
             sizeSprite(ring, (2 * R) / RING_TEX_RADIUS, z); // the highlight runs through the icons' centres
@@ -269,7 +278,7 @@ export class ResourceOverlay {
             const a = ringAngle(i, n, row.phase);
             this.placeIcon(row.wx + (Math.cos(a) * R) / z, row.wy + (Math.sin(a) * R) / z, row.icons[i], px, z);
         }
-        this.clusters.push({ cx: row.wx, cy: row.wy, r: (R + disc / 2) / z, icons: n, title: row.title, resources: row.resources });
+        this.clusters.push({ cx: row.wx, cy: row.wy, r: (R + disc / 2) / z, icons: n, ids: row.icons.slice(0, n).map((it) => it.resourceId), title: row.title, resources: row.resources });
     }
 
     /** One icon at (x, y) in front of its abundance pie (a dark disc with the rarity-coloured share). */

@@ -150,43 +150,59 @@ export function knownResourceIndexFor(galaxy: Galaxy, player: Empire | null, rev
     return index;
 }
 
-/** The systems to draw for a filter (null = all known), in index order. */
-export function systemsForFilter(index: KnownResourceIndex, resourceId: number | null): KnownSystemResources[] {
-    if (resourceId === null) return index.systems;
-    return index.systems.filter((s) => s.resources.some((r) => r.resourceId === resourceId));
+/** The Resources overlay's selection: the resource ids to show, sorted; empty = every known resource (the default). */
+export type ResourceFilter = readonly number[];
+export const NO_RESOURCE_FILTER: ResourceFilter = [];
+
+/** The systems to draw for a selection (empty = all known), in index order: those with at least one selected resource. */
+export function systemsForFilter(index: KnownResourceIndex, ids: ResourceFilter): KnownSystemResources[] {
+    if (ids.length === 0) return index.systems;
+    return index.systems.filter((s) => s.resources.some((r) => ids.includes(r.resourceId)));
 }
 
-/** The icons one system's ring offers: the filtered resource alone, else its first `max` (rarest / most abundant). */
-export function systemIcons(sys: KnownSystemResources, resourceId: number | null, max: number): KnownSystemResource[] {
-    if (resourceId !== null) {
-        const r = sys.resources.find((x) => x.resourceId === resourceId);
-        return r === undefined ? [] : [r];
-    }
-    return sys.resources.slice(0, Math.max(0, max));
+/** The icons one system's ring offers: the selected resources only (empty selection: all), rarest / most abundant first,
+ * at most `max`. */
+export function systemIcons(sys: KnownSystemResources, ids: ResourceFilter, max: number): KnownSystemResource[] {
+    const list = ids.length === 0 ? sys.resources : sys.resources.filter((r) => ids.includes(r.resourceId));
+    return list.length <= max ? list : list.slice(0, Math.max(0, max));
 }
 
-/** The icons one habitat's ring offers (system zoom): the filtered resource alone, else all of them. */
-export function habitatIcons(h: KnownHabitatResources, resourceId: number | null): KnownHabitatResources['resources'] {
-    return resourceId === null ? h.resources : h.resources.filter((r) => r.resourceId === resourceId);
+/** The icons one habitat's ring offers (system zoom): the selected resources only (empty selection: all). */
+export function habitatIcons(h: KnownHabitatResources, ids: ResourceFilter): KnownHabitatResources['resources'] {
+    return ids.length === 0 ? h.resources : h.resources.filter((r) => ids.includes(r.resourceId));
 }
 
-export interface ResourcePickerOption {
-    resourceId: number | null;
-    label: string;
-    rarity: ResourceRarity | null;
+/** The resource types (Resource.type), in the picker's order. */
+export const RESOURCE_TYPE_LABELS: readonly string[] = ['Mineral', 'Gas', 'Luxury'];
+
+export interface ResourcePickerItem {
+    resourceId: number;
+    name: string;
+    pictureRef: number;
+    rarity: ResourceRarity;
+    /** Systems where the player knows of it (at least one: the picker lists only known resources). */
     systems: number;
 }
 
-/** The "…" picker: every resource (rarest group first, then by name) with the count of systems where the player knows
- * of it; the ones known nowhere come last in their group. */
-export function resourcePickerOptions(resources: readonly Resource[], index: KnownResourceIndex): ResourcePickerOption[] {
-    const out: ResourcePickerOption[] = [{ resourceId: null, label: 'All known resources', rarity: null, systems: index.systems.length }];
-    const rows = resources.map((r) => ({ r, rarity: resourceRarity(r), systems: index.systemCountByResource.get(r.resourceId) ?? 0 }));
-    rows.sort((a, b) => b.rarity - a.rarity || Number(b.systems > 0) - Number(a.systems > 0) || a.r.name.localeCompare(b.r.name));
-    for (const x of rows) {
-        out.push({ resourceId: x.r.resourceId, label: `${x.r.name} — ${x.systems === 0 ? 'none known' : `${x.systems} system${x.systems === 1 ? '' : 's'}`}`, rarity: x.rarity, systems: x.systems });
+export interface ResourcePickerGroup {
+    type: number;
+    label: string;
+    items: ResourcePickerItem[];
+}
+
+/** The picker's list: the resources the player knows of in at least one system, grouped by type (Mineral, Gas, Luxury;
+ * a group with none known is left out), each group rarest first, then by name. */
+export function resourceGroups(resources: readonly Resource[], index: KnownResourceIndex): ResourcePickerGroup[] {
+    const groups: ResourcePickerGroup[] = RESOURCE_TYPE_LABELS.map((label, type) => ({ type, label, items: [] }));
+    for (const r of resources) {
+        const systems = index.systemCountByResource.get(r.resourceId) ?? 0;
+        if (systems === 0) continue;
+        const g = groups[r.type];
+        if (g === undefined) continue;
+        g.items.push({ resourceId: r.resourceId, name: r.name, pictureRef: r.pictureRef, rarity: resourceRarity(r), systems });
     }
-    return out;
+    for (const g of groups) g.items.sort((a, b) => b.rarity - a.rarity || a.name.localeCompare(b.name));
+    return groups.filter((g) => g.items.length > 0);
 }
 
 /** Hover text for a system's (or one habitat's) known resources. */

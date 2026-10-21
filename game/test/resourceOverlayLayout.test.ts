@@ -9,9 +9,11 @@ import {
     abundancePieStep,
     chooseRingCounts,
     pieDiscPx,
+    RINGS_MAX_VIEW_SIDE,
     pieWedge,
     ringAngle,
     ringRadiusPx,
+    ringsShownAt,
     type RingPlacement,
     type RingSite,
 } from '../src/render/resourceOverlayLayout';
@@ -151,5 +153,29 @@ describe('Resources overlay abundance pie', () => {
         expect(full.end - full.start).toBeCloseTo(2 * Math.PI);
         expect(pieWedge(0).end - pieWedge(0).start).toBeCloseTo(0);
         expect(pieWedge(3).end - pieWedge(3).start).toBeCloseTo((2 * Math.PI * 3) / 10);
+    });
+});
+
+describe('Resources overlay quarter-view threshold', () => {
+    const GALAXY = 8e6; // the galaxy's larger side, world units
+    const SHORT = 900; // the view's shorter side, px
+    const quarterZoom = SHORT / (GALAXY * RINGS_MAX_VIEW_SIDE); // the audit's quarter view: the view spans G/4
+
+    it('the rings show at the quarter view and closer, and hide zoomed out past it', () => {
+        expect(RINGS_MAX_VIEW_SIDE).toBe(0.25);
+        expect(ringsShownAt(quarterZoom, SHORT, GALAXY, 0)).toBe(true);
+        expect(ringsShownAt(quarterZoom * 2, SHORT, GALAXY, 0)).toBe(true);
+        expect(ringsShownAt(quarterZoom * 0.99, SHORT, GALAXY, 0)).toBe(false);
+        expect(ringsShownAt(quarterZoom / 4, SHORT, GALAXY, 0)).toBe(false); // the full galaxy view
+    });
+
+    it('a picked selection keeps its rings at the full galaxy view', () => {
+        expect(ringsShownAt(quarterZoom / 4, SHORT, GALAXY, 1)).toBe(true);
+        expect(ringsShownAt(quarterZoom / 4, SHORT, GALAXY, 3)).toBe(true);
+    });
+
+    it('an unbounded or empty galaxy never hides them', () => {
+        expect(ringsShownAt(1e-9, SHORT, Infinity, 0)).toBe(true);
+        expect(ringsShownAt(1e-9, SHORT, 0, 0)).toBe(true);
     });
 });

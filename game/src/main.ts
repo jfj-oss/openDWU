@@ -36,7 +36,7 @@ import { setTextIfChanged } from './render/drawCache';
 import { Habitat, HabitatCategoryType } from './sim/types';
 import { setOverlayErrorNotifier } from './render/overlayLayer';
 import { installGpuGuards, type FramebufferWatchdogState, type GuardedApp } from './render/gpuGuards';
-import { createMapOverlayState, overlayOptionsOf, type MapOverlayState, type OverlayKey } from './ui/mapOverlays';
+import { createMapOverlayState, setOverlayResourceFilter, type MapOverlayState, type OverlayKey } from './ui/mapOverlays';
 import { buildDefaultHandlers, createShortcutsOverlay, dispatchKey, setCycleHandler, setGameMenuHandler } from './ui/keyboard';
 import { closeEmpiresList } from './ui/screens/empiresList';
 import { closeCharterPanels } from './ui/screens/charters'; // [charters]
@@ -635,14 +635,18 @@ function applyOverlaysUrlParam(overlays: MapOverlayState): void {
     }
 }
 
-/** [dw2overlays] Screenshot / dev hook: `?resourceFilter=Caslon` (a resource name or id) picks the Resources overlay's
- * resource, as its "…" panel does. */
+/** [dw2overlays] Screenshot / dev hook: `?resourceFilter=Caslon,Iron` (resource names or ids, comma-separated) selects the
+ * Resources overlay's resources, as the "…" panel's checkboxes do. */
 function applyResourceFilterUrlParam(overlays: MapOverlayState, galaxy: Galaxy): void {
     const raw = new URLSearchParams(window.location.search).get('resourceFilter');
     if (raw === null || raw === '') return;
-    const n = Number(raw);
-    const r = Number.isInteger(n) ? galaxy.resourceSystem.byId.get(n) : galaxy.resourceSystem.resources.find((x) => x.name.toLowerCase() === raw.toLowerCase());
-    if (r !== undefined) overlayOptionsOf(overlays).resourceFilter = r.resourceId;
+    const ids: number[] = [];
+    for (const token of raw.split(',').map((t) => t.trim()).filter(Boolean)) {
+        const n = Number(token);
+        const r = Number.isInteger(n) ? galaxy.resourceSystem.byId.get(n) : galaxy.resourceSystem.resources.find((x) => x.name.toLowerCase() === token.toLowerCase());
+        if (r !== undefined) ids.push(r.resourceId);
+    }
+    if (ids.length > 0) setOverlayResourceFilter(overlays, ids);
 }
 
 /** Task C3: the Galaxy Map screen for a game view (G key / HUD row); closes

@@ -135,3 +135,16 @@ export function pieWedge(step: number): { start: number; end: number } {
     const start = -Math.PI / 2;
     return { start, end: start + (2 * Math.PI * step) / PIE_STEPS };
 }
+
+/** Galaxy / sector zoom: the rings of every known resource show while the view's shorter side spans at most this share of
+ * the galaxy's larger side (the audit's "quarter" view is 0.25). Zoomed out past it, the galaxy's rings are hidden (too
+ * dense to read); a picked selection still shows. */
+export const RINGS_MAX_VIEW_SIDE = 0.25;
+
+/** Whether the rings show at this zoom: `zoom` in px per world unit, the view's shorter side `viewMinSidePx` px, the
+ * galaxy's larger side `galaxySide` world units, and how many resources the player has picked (0 = every known one). */
+export function ringsShownAt(zoom: number, viewMinSidePx: number, galaxySide: number, picked: number): boolean {
+    if (picked > 0) return true;
+    if (!Number.isFinite(galaxySide) || galaxySide <= 0) return true;
+    return viewMinSidePx / zoom <= galaxySide * RINGS_MAX_VIEW_SIDE * (1 + 1e-9); // the quarter view itself counts as shown
+}
