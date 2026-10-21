@@ -269,27 +269,33 @@ export function legendShownText(shown: number, known: number, filtered: boolean)
 }
 
 /** Where the legend goes (screen px): right of the left sidebar's buttons / open panel, below the top strip, above the
- * selection frame. Read from the HUD's laid-out boxes, so it follows the UI scale. */
+ * selection frame. Read from the HUD's laid-out boxes, so it follows the UI scale. It scales with the UI scale as far
+ * as it fits that room (never below 100 %; past that its list scrolls). */
 function legendPlace(box: HTMLElement): void {
-    const s = uiScaleFactor();
+    const ui = uiScaleFactor();
     let left = 40;
     for (const e of document.querySelectorAll<HTMLElement>('.ls-root .ls-button, .ls-root .ls-panel:not([hidden]) > *')) {
         const r = e.getBoundingClientRect();
         if (r.width > 0 && r.height > 0) left = Math.max(left, Math.ceil(r.right) + 8);
     }
-    const w = box.offsetWidth * s;
-    const top = topClearancePx(window.innerWidth, window.innerHeight, s, left + w) + 4;
+    const w = box.offsetWidth * ui;
+    const top = topClearancePx(window.innerWidth, window.innerHeight, ui, left + w) + 4;
     let bottom = window.innerHeight - 8;
     const sel = document.querySelector<HTMLElement>('.sel-frame');
     if (sel !== null) {
         const r = sel.getBoundingClientRect();
         if (r.height > 0 && r.left < left + w) bottom = Math.min(bottom, Math.floor(r.top) - 8);
     }
+    const room = Math.max(80, bottom - top);
+    const s = Math.max(1, Math.min(ui, room / Math.max(LEGEND_MIN_FIT_PX, box.scrollHeight)));
     box.style.left = `${left}px`;
     box.style.top = `${top}px`;
     box.style.transform = s === 1 ? '' : `scale(${s})`;
-    box.style.maxHeight = `${Math.max(80, (bottom - top) / s)}px`;
+    box.style.maxHeight = `${room / s}px`;
 }
+
+/** The legend's height (layout px) that legendPlace fits at the very least: its rows with a few resources open. */
+const LEGEND_MIN_FIT_PX = 300;
 
 /**
  * Mount the Freight Flows legend: the cargo colours as toggles (click a cargo to show only it, again for all; a cargo
