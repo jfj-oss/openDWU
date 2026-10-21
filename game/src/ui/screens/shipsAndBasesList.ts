@@ -513,7 +513,7 @@ function flagCell(galaxy: Galaxy, cell: HTMLElement, empire: Empire | null): voi
 }
 
 function textCell(cell: HTMLElement, text: string, title = text): void {
-    cell.textContent = text;
+    cell.appendChild(el('span', 'ships-cell-text', text));
     if (title) cell.title = title;
 }
 
@@ -633,7 +633,9 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
             width: 140,
             sort: (r) => r.name,
             render: (r, c) => {
-                textCell(c, r.name, r.nameTip || r.name);
+                // A name longer than the column is ellipsized; the full name (then the state's tip) is the tooltip.
+                c.title = r.nameTip ? `${r.name}\n${r.nameTip}` : r.name;
+                c.appendChild(el('span', 'ships-cell-text', r.name));
                 const col = nameColor(r);
                 if (col) c.style.color = col;
             },

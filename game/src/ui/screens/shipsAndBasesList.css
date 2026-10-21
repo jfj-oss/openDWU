@@ -27,6 +27,13 @@
 .ow-screen-ships .ships-namebox:disabled {
     opacity: 0.6;
 }
+/* The main list's text cells: ellipsized at the column edge (the full text is the cell's tooltip). */
+.ow-screen-ships .ships-grid .ships-cell-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 
 /* gmapBuiltObject: black (BackColor 1..3 Black). */
 .ow-screen-ships .ships-map {
