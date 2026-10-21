@@ -340,7 +340,7 @@ describe('the attackers', () => {
         expect(attackEngine(s.g, a, owner, eng)).toBe(true);
         expect(obtainDiplomaticRelation(a, owner).type).toBe(DiplomaticRelationType.War);
         expect(eng.warOver).toContain(a.empireId);
-        expect(empireMessages(s.me).slice(before).some((m) => m.description.includes(`${a.name} declares war on ${owner.name} because of the Stillness Engine`))).toBe(true);
+        expect(empireMessages(s.me).slice(before).some((m) => m.description.includes(`The ${a.name} have declared war on the ${owner.name} over the Stillness Engine`))).toBe(true);
         expect(peekDietState(s.g)!.pendingEmergency ?? null).toBeNull();
         const missions = empireShipGroups(a).filter((grp) => grp !== null && grp.mission !== null && grp.mission.targetBuiltObject === eng.base);
         expect(missions.length).toBeGreaterThan(0);

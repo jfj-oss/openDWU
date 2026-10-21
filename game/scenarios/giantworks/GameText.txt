@@ -636,7 +636,6 @@ LongNight Stranded Row Destroyed;destroyed
 LongNight Stranded Row Gone;mended its drive and left
 LongNight Stranded Row Foundry;shown by a captured Watcher
 ' The Stillness Engine (stillness*.ts) and the Diet preparation votes (agePrep.ts).
-'TODO-PROSE (the Stillness Engine and the Diet preparation votes; placeholder text for the author to polish): Stillness Design Name, Stillness Base Name, Stillness Base Name Done, Stillness Marker, Stillness Action Build, Stillness Action Off, Stillness Action On, Stillness Cannot Title, Stillness Cannot Off, Stillness Cannot Banned, Stillness Cannot Exists, Stillness Cannot Empire, Stillness Cannot Colony, Stillness Cannot Funds, Stillness Cannot Design, Stillness Started News, Stillness Started Title, Stillness Started, Stillness Done News, Stillness Done Title, Stillness Done, Stillness Lost News, Stillness Lost News Unknown, Stillness Lost Title, Stillness Lost, Stillness Taken News, Stillness Scrapped News, Stillness On News, Stillness Off News, Stillness Silenced News, Stillness War News, Stillness Diet Silence, Stillness Diet Silence Effect, Stillness Diet Demolish, Stillness Diet Demolish Effect, Stillness Diet Demolish News, Stillness Row Engine, Stillness Row Owner, Stillness Row Effect, Stillness Row Effect On, Stillness Row Effect None, Stillness Row Building, Stillness Row Running, Stillness Row Off, Stillness Row Protectors, Stillness Row Attackers, Stillness Row Wars, Stillness Row Banned, Stillness Row Banned Status, Prep Recognise, Prep Recognise Effect, Prep Recognise News, Prep Guard, Prep Guard Effect, Prep Guard News
 Stillness Design Name;Stillness Engine
 Stillness Base Name;Stillness Engine ({0})
 Stillness Base Name Done;Stillness Engine
@@ -645,34 +644,34 @@ Stillness Action Build;Build the Stillness Engine here
 Stillness Action Off;Switch off the Stillness Engine
 Stillness Action On;Switch on the Stillness Engine
 Stillness Cannot Title;The Stillness Engine cannot be built
-Stillness Cannot Off;The Stillness Engine does not exist in this age.
-Stillness Cannot Banned;The Diet has banned the Stillness Engine. No new one may ever be built.
-Stillness Cannot Exists;A Stillness Engine is already being built or stands. Only one may exist.
-Stillness Cannot Empire;This empire cannot build the Stillness Engine.
-Stillness Cannot Colony;The Stillness Engine can only be built at one of our own inhabited colonies.
-Stillness Cannot Funds;The Stillness Engine costs {0}, and the treasury cannot pay for it.
-Stillness Cannot Design;No base can be designed for the Stillness Engine here.
-Stillness Started News;{0} has begun to build a Stillness Engine near {1}. It will take {2} years.
+Stillness Cannot Off;There is nothing in this age to build a Stillness Engine against.
+Stillness Cannot Banned;The Diet has banned the Stillness Engine for all time. No member will let another be raised.
+Stillness Cannot Exists;A Stillness Engine already stands, or is being raised. The galaxy will not tolerate two.
+Stillness Cannot Empire;Our empire cannot raise a Stillness Engine.
+Stillness Cannot Colony;A Stillness Engine must be raised over one of our own inhabited worlds.
+Stillness Cannot Funds;The Stillness Engine will cost {0} credits, paid up front. Our treasury cannot cover it.
+Stillness Cannot Design;Our shipyards cannot lay down a base for the Stillness Engine here.
+Stillness Started News;The {0} have begun raising a Stillness Engine near {1}. In {2} years it will dampen the hyperspace field that every laboratory in the galaxy relies on.
 Stillness Started Title;The Stillness Engine
-Stillness Started;Work has begun on a Stillness Engine at {0}. In {1} years it will slow the research of every empire by {2}%, ours included, until we switch it off. Others may come to destroy it, or to guard it.
-Stillness Done News;{0}'s Stillness Engine near {1} is running. Research everywhere is slowed by {2}%.
+Stillness Started;Work has begun on the Stillness Engine at {0}.\n\nIn {1} years it will dampen the subspace field our laboratories and everyone else's depend on: research across the galaxy will run {2}% slower, our own included. Only the work on the Severance escapes it.\n\nEvery year of slowed research is a year more before the next ripening. Not everyone will thank us. Some empires will come to guard it; others will come to tear it down.
+Stillness Done News;The Stillness Engine of the {0} near {1} is running. Every laboratory in the galaxy is {2}% slower.
 Stillness Done Title;The Stillness Engine runs
-Stillness Done;The Stillness Engine at {0} is running. Every empire's research is slowed by {1}%. We can switch it off from the order menu of its base.
-Stillness Lost News;The Stillness Engine near {0} has been destroyed by {1}.
-Stillness Lost News Unknown;The Stillness Engine near {0} has been destroyed.
-Stillness Lost Title;Our Stillness Engine is lost
-Stillness Lost;The Stillness Engine at {0} has fallen. Research is no longer slowed, and a new one may be started.
-Stillness Taken News;{0} has taken over the Stillness Engine near {1}.
-Stillness Scrapped News;The Beacon is finished. The Stillness Engine near {0} has been scrapped; nobody has a reason left to fight over it.
-Stillness On News;{0} has switched the Stillness Engine near {1} back on.
-Stillness Off News;{0} has switched off the Stillness Engine near {1}. Research is no longer slowed.
-Stillness Silenced News;The Diet has silenced {0}'s Stillness Engine near {1}. Research is no longer slowed.
-Stillness War News;{0} declares war on {1} because of the Stillness Engine near {2}.
+Stillness Done;The Stillness Engine at {0} is running. Research everywhere, ours included, is {1}% slower.\n\nWe can switch it off, and on again, from its base's orders. While it runs, the galaxy ripens more slowly.
+Stillness Lost News;The Stillness Engine near {0} has been destroyed by the {1}. The galaxy's research runs at full speed again.
+Stillness Lost News Unknown;The Stillness Engine near {0} has been destroyed. The galaxy's research runs at full speed again.
+Stillness Lost Title;The Stillness Engine has fallen
+Stillness Lost;Our Stillness Engine at {0} has been destroyed. Research is no longer slowed, and the galaxy ripens at its old pace.\n\nAnother may yet be raised, by us or by anyone.
+Stillness Taken News;The {0} have seized the Stillness Engine near {1}. It is silent now.
+Stillness Scrapped News;The Beacon is complete. The Stillness Engine near {0} has been broken up: there is no more time to buy.
+Stillness On News;The {0} have switched the Stillness Engine near {1} back on. Research across the galaxy slows again.
+Stillness Off News;The {0} have switched off the Stillness Engine near {1}. Research across the galaxy runs at full speed again.
+Stillness Silenced News;By order of the Diet, the Stillness Engine of the {0} near {1} has been switched off. Research across the galaxy runs at full speed again.
+Stillness War News;The {0} have declared war on the {1} over the Stillness Engine near {2}.
 Stillness Diet Silence;Silence the Stillness Engine
-Stillness Diet Silence Effect;The running Stillness Engine is switched off. Its owner cannot stop this.
+Stillness Diet Silence Effect;The Stillness Engine is switched off, whatever its owner wants.
 Stillness Diet Demolish;Demolish the Stillness Engine
-Stillness Diet Demolish Effect;Destroying the Stillness Engine is no longer a cause for war between members, and no new Stillness Engine may ever be built in this galaxy.
-Stillness Diet Demolish News;The Diet has voted to demolish the Stillness Engine near {0}. Members may destroy it without a war, and no other may ever be built.
+Stillness Diet Demolish Effect;Members may destroy the Stillness Engine without it being an act of war, and no Stillness Engine may ever be raised again.
+Stillness Diet Demolish News;The Diet has voted to demolish the Stillness Engine near {0}. Any member may destroy it without war, and none may ever be raised again.
 Stillness Row Engine;Stillness Engine
 Stillness Row Owner;Owner
 Stillness Row Effect;Effect
@@ -685,10 +684,10 @@ Stillness Row Protectors;Protecting it
 Stillness Row Attackers;Marked to be destroyed by
 Stillness Row Wars;At war over it
 Stillness Row Banned;Banned
-Stillness Row Banned Status;the Diet has banned it for good; none may be built
+Stillness Row Banned Status;banned by the Diet for all time
 Prep Recognise;Recognise the Harvest
-Prep Recognise Effect;The members take the preparation seriously: they value the Harvest Scar worlds higher and will contribute to the Severance when it is moved.
-Prep Recognise News;The Diet recognises the Harvest. The members will prepare.
+Prep Recognise Effect;The members accept that the Harvest will return. They will value the Harvest Scar worlds more, and will help with the Severance when it is moved.
+Prep Recognise News;The Diet recognises the Harvest. Its members have agreed to prepare for the next ripening.
 Prep Guard;Guard the Scars
-Prep Guard Effect;The members will not attack each other's Harvest Scar worlds. Breaking this costs standing with every member.
-Prep Guard News;The Diet has agreed to guard the Harvest Scars. No member may attack another's.
+Prep Guard Effect;No member may attack another member's Harvest Scar worlds. A member who does breaks the Diet's law.
+Prep Guard News;The Diet has voted to guard the Harvest Scars. No member may attack another's Scar worlds.
