@@ -32,9 +32,10 @@ import { isCouncilEmpire } from '../src/sim/scenario/emergent/council';
 import { BuiltObjectMissionType, builtObjectMission } from '../src/sim/missions/mission';
 import { GAME_DAY_LENGTH } from '../src/sim/scenario/hooks';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
+import { shipGroupTotalOverallStrengthFactor } from '../src/sim/fleets/shipGroup';
 import { empireTechLevel } from '../src/sim/scenario/threats/robotMutiny';
 import {
-    FLEET_MIX, HOLDOUT_MIN_TECH, COLONIES_MIN, COLONIES_MAX, EVAC_FREIGHTERS, coloniesLeft, coreShielded, fleetAlive, holdoutWorlds, rebuildDays, holdoutCount, holdoutKnowledgeRows, holdoutsDaily, peekHoldouts, type HoldoutRec,
+    FLEET_MIX, HOLDOUT_MIN_TECH, COLONIES_MIN, COLONIES_MAX, EVAC_FREIGHTERS, coloniesLeft, coreShielded, fleetAlive, basesAlive, defenceStrength, holdoutWorlds, rebuildDays, holdoutCount, holdoutKnowledgeRows, holdoutsDaily, peekHoldouts, type HoldoutRec,
 } from '../src/sim/scenario/threats/giantworks/age2Holdouts';
 import { peekLongNight } from '../src/sim/scenario/threats/giantworks/longNightState';
 
@@ -354,8 +355,16 @@ describe('the Precursor holdouts', () => {
         };
         const mine = [placeObject(g, me, factionDesign(g, me, BuiltObjectSubRole.Frigate, true)!, me.capital!, null, true)];
         expect(scenarioQuery(g, 'invasionTargetOrbitOk', true, { empire: me, fleet: fleetOf(mine), target })).toBe(false);
-        // a force as strong as the whole home fleet may go
-        expect(scenarioQuery(g, 'invasionTargetOrbitOk', true, { empire: me, fleet: fleetOf(fleetAlive(rec)), target })).toBe(true);
+        // a force only as strong as the home fleet alone is not enough: the bases and the ratio count
+        expect(scenarioQuery(g, 'invasionTargetOrbitOk', true, { empire: me, fleet: fleetOf(fleetAlive(rec)), target })).toBe(false);
+        // one clearly stronger than the fleet, the bases and the ratio may go
+        const need = defenceStrength(rec) * 1.25;
+        let strong = fleetAlive(rec);
+        expect(shipGroupTotalOverallStrengthFactor(g, fleetOf(strong))).toBeLessThan(need);
+        strong = [...strong, ...basesAlive(rec), ...strong];
+        const big = fleetOf(strong);
+        expect(shipGroupTotalOverallStrengthFactor(g, big)).toBeGreaterThanOrEqual(need);
+        expect(scenarioQuery(g, 'invasionTargetOrbitOk', true, { empire: me, fleet: big, target })).toBe(true);
         // other empires' worlds are not affected
         expect(scenarioQuery(g, 'invasionTargetOrbitOk', true, { empire: me, fleet: fleetOf(mine), target: otherEmpire(g, rec).capital! })).toBe(true);
     });

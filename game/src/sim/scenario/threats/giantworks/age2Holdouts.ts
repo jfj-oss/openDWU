@@ -70,8 +70,8 @@ const DEFAULTS = {
     /** Days between two free rebuilds at the core (a roll between the two, each time). */
     holdoutRebuildMin: 90,
     holdoutRebuildMax: 120,
-    /** An AI fleet invades a holdout world only when it is at least this percent of the holdout's whole home fleet (the stock check sees only the ships in the system). */
-    holdoutAiRatioPct: 100,
+    /** An AI fleet invades a holdout world only when it is at least this percent of the holdout's whole home fleet plus its defence bases (the stock check sees only the ships in the system). */
+    holdoutAiRatioPct: 125,
 } as const;
 export type HoldoutParamName = keyof typeof DEFAULTS;
 
@@ -415,6 +415,18 @@ export function fleetAlive(rec: HoldoutRec): BuiltObject[] {
 export function fleetStrength(rec: HoldoutRec): number {
     let sum = 0;
     for (const b of fleetAlive(rec)) sum += calculateOverallStrengthFactor(b);
+    return sum;
+}
+
+/** The holdout's defence bases still standing (Pure). */
+export function basesAlive(rec: HoldoutRec): BuiltObject[] {
+    return rec.empire.builtObjects.filter((b) => !b.hasBeenDestroyed && b.subRole === BuiltObjectSubRole.DefensiveBase);
+}
+
+/** What an attacker faces: the home fleet and the defence bases (Pure). */
+export function defenceStrength(rec: HoldoutRec): number {
+    let sum = fleetStrength(rec);
+    for (const b of basesAlive(rec)) sum += calculateOverallStrengthFactor(b);
     return sum;
 }
 
@@ -790,11 +802,11 @@ function targetOk(galaxy: Galaxy, value: boolean, empire: Empire, target: Habita
     return true;
 }
 
-/** AI sanity: an AI fleet goes for a holdout's world only when it is as strong as the holdout's whole home fleet (the stock test sees just the ships in the system). */
+/** AI sanity: an AI fleet goes for a holdout's world only when it is clearly stronger (holdoutAiRatioPct) than the holdout's whole home fleet and defence bases (the stock test sees just the ships in the system). */
 function fleetStrongEnough(galaxy: Galaxy, fleet: ShipGroup, target: Habitat): boolean {
     const rec = holdoutOf(galaxy, target.empire);
     if (rec === null) return true;
-    const need = fleetStrength(rec) * (holdoutParam(galaxy, 'holdoutAiRatioPct') / 100);
+    const need = defenceStrength(rec) * (holdoutParam(galaxy, 'holdoutAiRatioPct') / 100);
     return need <= 0 || shipGroupTotalOverallStrengthFactor(galaxy, fleet) >= need;
 }
 

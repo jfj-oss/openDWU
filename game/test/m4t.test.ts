@@ -10,6 +10,7 @@ import type { GameData } from '../src/sim/data/gameData';
 import { HabitatCategoryType, type Habitat } from '../src/sim/types';
 import { SystemVisibilityStatus } from '../src/sim/visibility';
 import { DiplomaticRelationType } from '../src/sim/diplomacy';
+import { clearEmpireSharedVisibility, setEmpireSharedVisibility } from '../src/sim/diplomacyTick';
 import { EmpireMessageType, empireMessages } from '../src/sim/messages';
 import { obtainEmpireEvaluation } from '../src/sim/taxes';
 import { strategicValue } from '../src/sim/territory';
@@ -299,4 +300,20 @@ describe('harness smoke (seed 1, 600 game-s, ships parked)', () => {
         expect(m4t).toEqual([]);
         for (const e of g.empires) expect(e.systemExploredCount).toBeGreaterThan(0);
     }, 1800000);
+});
+
+describe('Galaxy.4.cs 3702 MergeGalaxyMap with an empire whose maps are gone', () => {
+    it('does nothing when the giver was destroyed (its resource map is nulled by the teardown), also through ClearEmpireSharedVisibility (change of relation)', () => {
+        const g = cachedTickGame(gameData).galaxy;
+        const [, a, b] = g.empires;
+        setEmpireSharedVisibility(g, a, b);
+        expect(a.visibility.empiresSharedVisibility).toContain(b.visibility);
+        const before = a.resourceMap.resourcesKnown.slice();
+        (b.visibility as { resourceMap: unknown }).resourceMap = null;
+        expect(() => clearEmpireSharedVisibility(g, a, b)).not.toThrow();
+        expect(a.visibility.empiresSharedVisibility).not.toContain(b.visibility);
+        expect(() => mergeGalaxyMap(g, a, b)).not.toThrow();
+        expect(() => mergeGalaxyMap(g, b, a)).not.toThrow();
+        expect(Array.from(a.resourceMap.resourcesKnown)).toEqual(Array.from(before));
+    });
 });

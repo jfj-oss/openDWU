@@ -416,7 +416,10 @@ export function mergeKnownPirateBasesForSharedVisibilityEmpires(galaxy: Galaxy, 
 
 /** Galaxy.4.cs 3700 MergeGalaxyMap(giver, receiver): the receiver learns the giver's surveyed habitats and systems. */
 export function mergeGalaxyMap(galaxy: Galaxy, giver: Empire | null, receiver: Empire | null): void {
+    // Galaxy.4.cs 3702: the stock guard also skips an empire whose maps are gone (a destroyed empire's teardown nulls its resource map, events.ts)
     if (giver === null || receiver === null || giver.visibility == null || receiver.visibility == null) return;
+    if (giver.visibility.resourceMap == null || receiver.visibility.resourceMap == null || giver.visibility.resourceMap.resourcesKnown == null || receiver.visibility.resourceMap.resourcesKnown == null) return;
+    if (giver.systemVisibility == null || receiver.systemVisibility == null || giver.visibility.knownGalaxyLocations == null || receiver.visibility.knownGalaxyLocations == null) return;
     receiver.resourceMap.mergeMap(giver.resourceMap.resourcesKnown);
     const giverSv = giver.systemVisibility;
     const receiverSv = receiver.systemVisibility;
