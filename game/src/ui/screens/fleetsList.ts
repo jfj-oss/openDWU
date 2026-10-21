@@ -566,7 +566,7 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
     };
     nameBox.addEventListener('blur', commitName);
     nameBox.addEventListener('keydown', (e) => {
-        e.stopPropagation(); // typing must not trigger the game's hotkeys
+        if (e.key !== 'Escape') e.stopPropagation(); // typing must not trigger the game's hotkeys
         if (e.key === 'Enter') nameBox.blur();
         else if (e.key === 'Escape') {
             nameBox.value = selectedFleet()?.name ?? '';
