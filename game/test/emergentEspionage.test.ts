@@ -143,6 +143,9 @@ describe('rules (pure)', () => {
         expect(chooseDemand(30, 1e6)).toEqual({ demand: 'apology', amount: 0 });
         expect(chooseDemand(45, 1e6)).toEqual({ demand: 'reparations', amount: 45000 });
         expect(chooseDemand(45, 100000)).toEqual({ demand: 'reparations', amount: 20000 });
+        // a broke offender (0.2 × its treasury under the minimum) is asked for an apology, never "0 credits"
+        expect(chooseDemand(45, 0)).toEqual({ demand: 'apology', amount: 0 });
+        expect(chooseDemand(45, 4000)).toEqual({ demand: 'apology', amount: 0 });
     });
     it('false-flag detection chance is clamped to [0.05, 0.95]', () => {
         expect(falseFlagSeenThroughChance(0, 1000, O.FailDetect)).toBe(0.05);
@@ -177,7 +180,7 @@ describe('A. exposed agents → diplomatic crises', () => {
         expect(c).not.toBeNull();
         expect(c.severity).toBeCloseTo(mine.reduce((s, x) => s + x.weight, 0));
         expect(c.stage).toBe('demand');
-        expect(c.demand).toBe(chooseDemand(c.severity, 0).demand);
+        expect(c.demand).toBe(chooseDemand(c.severity, a.stateMoney).demand);
         expect(aiOffenderComplies(c)).toBe(false);
         expect(c.response).toBe('refused');
         expect(c.cause).toContain(mine[0].agentName);

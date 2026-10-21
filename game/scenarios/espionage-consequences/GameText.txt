@@ -1,7 +1,7 @@
 ' [19d3] begin — espionage consequences (tasks/19d3-espionage-consequences.md). Tags start with "Emergent ".
-Emergent Exposure Captured;captured while
-Emergent Exposure Detected;caught while
-Emergent Exposure Detected After;exposed after
+Emergent Exposure Captured;captured while trying to
+Emergent Exposure Detected;caught trying to
+Emergent Exposure Detected After;exposed after having
 Emergent Exposure Cause;agent {0} {1} {2}
 Emergent Spy Crisis Title;Espionage crisis: {0}
 Emergent Spy Crisis Demand;The {0} have exposed our covert operations against them ({1}).\n\nThey demand that we {2} within one year. You will pay for this perfidy, they warn, if we refuse!

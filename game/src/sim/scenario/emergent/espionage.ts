@@ -218,11 +218,17 @@ export function exposureWeight(incident: number, missionType: number, outcome: n
     return incident * exposureTypeWeight(missionType) * (outcome === IntelligenceMissionOutcome.Capture ? 1.5 : 1);
 }
 
-/** §A2 demand by severity: recall (< 25), apology (< 40), else reparations of min(money × 0.2, severity × 1000). */
+/** The least a reparations demand asks for; an offender that cannot pay that much is asked for an apology instead. */
+export const MIN_REPARATIONS = 1000;
+
+/** §A2 demand by severity: recall (< 25), apology (< 40), else reparations of min(money × 0.2, severity × 1000) — or an apology
+ *  when the offender's treasury makes that less than MIN_REPARATIONS (a demand for 0 credits read as nonsense). */
 export function chooseDemand(severity: number, offenderMoney: number): { demand: CrisisDemand; amount: number } {
     if (severity < 25) return { demand: 'recall', amount: 0 };
     if (severity < 40) return { demand: 'apology', amount: 0 };
-    return { demand: 'reparations', amount: Math.max(0, Math.floor(Math.min(offenderMoney * 0.2, severity * 1000))) };
+    const amount = Math.max(0, Math.floor(Math.min(offenderMoney * 0.2, severity * 1000)));
+    if (amount < MIN_REPARATIONS) return { demand: 'apology', amount: 0 };
+    return { demand: 'reparations', amount };
 }
 
 /** militaryPotency(a) / militaryPotency(b) (both ≥ 1 — militaryPotency floors at 0, guarded here). */
