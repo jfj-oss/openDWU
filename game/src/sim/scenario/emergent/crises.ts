@@ -603,6 +603,7 @@ registerScenarioEvent({
 registerScenarioDecision({
     id: FUEL_DECISION,
     kind: FUEL_DECISION,
+    aiPure: true,
     flag: CRISES_FLAG,
     resolve: resolveFuelDecision,
     aiChoose: () => 'wait',

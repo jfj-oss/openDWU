@@ -63,6 +63,7 @@ import {
     type PolicySection,
 } from './empirePolicyModel';
 import { localViewerEmpire } from '../../localViewer';
+import { autoDecideOn } from '../../sim/scenario/decisions';
 
 export interface EmpirePolicyOptions {
     /** localViewerEmpire(galaxy) (method_595 edits _Game.PlayerEmpire). */
@@ -122,6 +123,13 @@ function createEmpirePolicy(opts: EmpirePolicyOptions): OpenState {
     const ctx: PolicyPanelContext = { facilities: planetaryFacilityDefinitionsStatic(galaxy) };
     const sections: PolicySection[] = buildPolicyPanel(empire, empire.policy ?? defaultEmpirePolicy(), ctx);
     const controls = panelControls(sections);
+    // Add-on decisions: one more band with one row, shown in a game with a scenario (add-ons); not a policy field, so it
+    // is not in `controls` and goes through its own journaled command (setAutoDecide).
+    const autoRow: PolicyRow | null =
+        galaxy.scenario === null
+            ? null
+            : { name: 'autoDecide', label: policyText('TODO-PROSE Decide threat and add-on decisions automatically (recommended option)'), suffix: '', control: { kind: 'check', checked: autoDecideOn(galaxy, empire) }, note: policyText('TODO-PROSE Automatic decisions explanation') };
+    const shownSections: PolicySection[] = autoRow === null ? sections : [...sections, { title: policyText('TODO-PROSE Add-on decisions'), automation: [], rows: [autoRow] }];
     const playerIsPirate = (localViewerEmpire(galaxy) ?? empire).pirateEmpireBaseHabitat !== null;
 
     // The automation values this panel sent, until their replies land (pendingCommands.ts): a change X → Y → X within
@@ -132,6 +140,10 @@ function createEmpirePolicy(opts: EmpirePolicyOptions): OpenState {
         const issued = issuePolicyPanel(empire, playerIsPirate, controls, ctx, sentControls);
         // Main.Part3.cs:4179-4198: gameOptions_0.Control*Default = the empire's, ApplyDesignUpgradePoliciesToGameOptions.
         updateSettings({ newGameOptions: gameOptionsAfterPolicyApply(getSettings().newGameOptions, empire, issued.policy, issued.automation) });
+    };
+
+    const applyAutoDecide = (): void => {
+        if (autoRow !== null && autoRow.control.kind === 'check') issuePlayerCommand(galaxy, empire, 'setAutoDecide', [autoRow.control.checked]);
     };
 
     let picker: OriginalWindow | null = null;
@@ -166,7 +178,7 @@ function createEmpirePolicy(opts: EmpirePolicyOptions): OpenState {
     // (the pirate layout starts with one, Main.Part3.cs:4590).
     const bandTops: number[] = [];
     let y = 5;
-    sections.forEach((s, i) => {
+    shownSections.forEach((s, i) => {
         if (i > 0 || playerIsPirate) y += ROW_H;
         // method_622 (the band's automation combos at num2, the first of two at num2 - 200), then method_611.
         const band = place(el('div', 'ep-band policy-band'), 0, y - 4, PANEL_W, 34);
@@ -189,7 +201,7 @@ function createEmpirePolicy(opts: EmpirePolicyOptions): OpenState {
                 panel.appendChild(note);
                 y += Math.ceil(note.offsetHeight) + 2;
             }
-            panel.appendChild(rowElement(r, y, galaxy, apply));
+            panel.appendChild(rowElement(r, y, galaxy, r === autoRow ? applyAutoDecide : apply));
             y += ROW_H;
         }
     });
@@ -207,7 +219,7 @@ function createEmpirePolicy(opts: EmpirePolicyOptions): OpenState {
         },
     });
     nav.el.classList.add('ep-nav', 'policy-nav');
-    nav.setRows(sections.map((s, i) => ({ i, title: s.title })));
+    nav.setRows(shownSections.map((s, i) => ({ i, title: s.title })));
     nav.setSelection([0]);
     body.appendChild(place(nav.el, NAV.x, NAV.y, NAV.w, NAV.h));
     container.addEventListener('scroll', () => {

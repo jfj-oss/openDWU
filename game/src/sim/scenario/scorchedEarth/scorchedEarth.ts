@@ -284,6 +284,7 @@ export function scorchTick(g: Galaxy): void {
 
 registerScenarioDecision({
     kind: CHOICE,
+    alwaysAsk: true, aiPure: true,
     flag: SCORCHED_EARTH_FLAG,
     id: CHOICE,
     resolve: resolveSiege,
@@ -299,6 +300,7 @@ registerScenarioDecision({
 
 registerScenarioDecision({
     kind: CANCEL,
+    alwaysAsk: true, aiPure: true,
     flag: SCORCHED_EARTH_FLAG,
     id: CANCEL,
     resolve: (g, d, option) => {

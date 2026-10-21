@@ -646,6 +646,7 @@ function resolvePeace(galaxy: Galaxy, player: Empire, other: Empire, option: str
 registerScenarioDecision({
     id: PEACE_DECISION,
     kind: PEACE_DECISION,
+    alwaysAsk: true, aiPure: true,
     scenarioId: LIVELY_GALAXY_ID,
     flag: WAR_GOALS_FLAG,
     resolve: (g, d, optionId) => {

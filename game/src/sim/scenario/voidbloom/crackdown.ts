@@ -686,7 +686,7 @@ function penaltyWaived(galaxy: Galaxy, v: boolean, a: { self: Empire; target: Em
 
 concordHooks().missionExempt = (galaxy, bo) => vbOn(galaxy) && isTaskForceShip(galaxy, bo);
 
-registerScenarioDecision({ id: CRISIS_DECISION, kind: CRISIS_DECISION, flag: VOIDBLOOM_FLAG, resolve: resolveCrisis, aiChoose: (g, d) => {
+registerScenarioDecision({ id: CRISIS_DECISION, kind: CRISIS_DECISION, alwaysAsk: true, aiPure: true, flag: VOIDBLOOM_FLAG, resolve: resolveCrisis, aiChoose: (g, d) => {
     const e = empireById(g, Number(d.context.targetId));
     return e === null ? 'tolerate' : aiCrisisChoice(g, e);
 } });

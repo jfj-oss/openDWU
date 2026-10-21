@@ -439,6 +439,7 @@ registerScenarioDecision({
     id: 'emergent.demographics.decision.asylum',
     flag: 'refugees',
     kind: 'refugees.asylum',
+    alwaysAsk: true, aiPure: true,
     resolve: (galaxy, decision, optionId) => {
         const st = demographicsState(galaxy);
         const flow = st.flows.find((f) => f.id === decision.context.flowId);

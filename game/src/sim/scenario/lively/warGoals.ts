@@ -391,6 +391,7 @@ export function enemySideOf(ledger: WarLedger, e: Empire): WarSide {
 registerScenarioDecision({
     id: WAR_GOAL_DECISION,
     kind: WAR_GOAL_DECISION,
+    alwaysAsk: true, aiPure: true,
     scenarioId: LIVELY_GALAXY_ID,
     flag: WAR_GOALS_FLAG,
     resolve: (g, d: ScenarioDecision, optionId) => {

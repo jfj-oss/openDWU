@@ -1111,6 +1111,7 @@ export function proposeTie(galaxy: Galaxy, from: Empire, to: Empire, kind: TieKi
 registerScenarioDecision({
     id: TIE_DECISION,
     kind: TIE_DECISION,
+    alwaysAsk: true, aiPure: true,
     flag: INTRIGUE_FLAG,
     resolve: (galaxy, d: ScenarioDecision, optionId) => {
         if (optionId !== 'accept') return;

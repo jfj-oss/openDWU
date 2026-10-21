@@ -2013,6 +2013,7 @@ export function registerGenerationShips(): void {
     registerScenarioDecision({
         id: 'genShips.decision',
         kind: DECISION_KIND,
+        alwaysAsk: true, aiPure: true,
         flag: GEN_SHIPS_FLAG,
         resolve: resolveUltimatum,
         aiChoose: (g, d) => {

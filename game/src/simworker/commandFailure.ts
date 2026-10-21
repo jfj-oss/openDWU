@@ -154,6 +154,7 @@ export const COMMAND_FAILURE: FailureTable = {
         }),
     diplomatCounter: (_message, [, , counterId]) => ({ id: counterId, status: 'stale', proposes: '', message: null }),
     answerScenarioDecision: no,
+    setAutoDecide: no,
     charterCompany: no,
     charterRenew: no,
     charterRelease: no,

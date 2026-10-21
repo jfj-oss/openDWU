@@ -105,7 +105,7 @@ import { issueMakeFlagship } from '../scenario/veterans/veterans';
 import { ESPIONAGE_FLAG } from '../scenario/emergent/espionageHooks';
 import { setMissionFrame } from '../scenario/emergent/espionage';
 import { grantAutonomy, runPoliticsAction, type PoliticsActionName } from '../scenario/emergent/politicsActions';
-import { answerScenarioDecision, pendingScenarioDecisions } from '../scenario/decisions';
+import { answerScenarioDecision, pendingScenarioDecisions, setAutoDecide } from '../scenario/decisions';
 import { proposePeaceTerms } from '../scenario/lively/peaceTerms';
 import type { PeaceTerms } from '../scenario/lively/warGoals';
 import { runSecurityAction, startInvestigation, type SecurityActionName } from '../scenario/security/security';
@@ -586,6 +586,8 @@ export const PLAYER_OPS = {
         const d = pendingScenarioDecisions(galaxy, empire).find((x) => x.id === decisionId);
         return d !== undefined && answerScenarioDecision(galaxy, decisionId, optionId, 'player');
     },
+    /** Empire Policy: "Decide threat and add-on decisions automatically" on / off for this empire (scenario/decisions.ts). */
+    setAutoDecide: (galaxy: Galaxy, empire: Empire, on: boolean) => setAutoDecide(galaxy, empire, on),
     /** 19c: charter a company to settle `target` (tasks/19c-chartered-companies.md §4.4). */
     charterCompany: (galaxy: Galaxy, empire: Empire, target: Habitat, terms: CharterTerms) => grantCharter(galaxy, empire, target, terms).ok,
     /** 19c Charters screen: Renew / Release / Nationalise (§4.10 / §4.11). */

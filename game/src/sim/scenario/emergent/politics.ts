@@ -646,6 +646,7 @@ export function setPoliticsActions(a: PoliticsActionImpl): void {
 registerScenarioDecision({
     id: PLOT_DECISION,
     kind: PLOT_DECISION,
+    alwaysAsk: true, aiPure: true,
     flag: POLITICS_FLAG,
     resolve: (galaxy, d, optionId) => {
         const c = d.context.character as Character | undefined;

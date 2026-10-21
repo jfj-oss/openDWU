@@ -1159,6 +1159,6 @@ registerScenarioQuery({
     },
 });
 registerScenarioQuery({ id: 'rimHerders.spare', flag: RIM_HERDERS_FLAG, query: 'builtObjectSparesCreature', run: (g, v, a) => v || herderHerdSpared(g, a.builtObject, a.creature) });
-registerScenarioDecision({ id: DECISION_PROTECTORATE, kind: DECISION_PROTECTORATE, flag: RIM_HERDERS_FLAG, resolve: resolveProtectorate, aiChoose: (g, d) => (empirePrefersProtectorate(g, d.empire) ? 'accept' : 'decline') });
-registerScenarioDecision({ id: DECISION_CHARACTERS, kind: DECISION_CHARACTERS, flag: RIM_HERDERS_FLAG, resolve: resolveCharacters, aiChoose: () => 'accept' });
+registerScenarioDecision({ id: DECISION_PROTECTORATE, kind: DECISION_PROTECTORATE, alwaysAsk: true, aiPure: true, flag: RIM_HERDERS_FLAG, resolve: resolveProtectorate, aiChoose: (g, d) => (empirePrefersProtectorate(g, d.empire) ? 'accept' : 'decline') });
+registerScenarioDecision({ id: DECISION_CHARACTERS, kind: DECISION_CHARACTERS, aiPure: true, flag: RIM_HERDERS_FLAG, resolve: resolveCharacters, aiChoose: () => 'accept' });
 

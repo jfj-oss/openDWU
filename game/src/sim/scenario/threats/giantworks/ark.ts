@@ -717,6 +717,14 @@ function aiChoose(galaxy: Galaxy, d: ScenarioDecision): string {
     return plan === 'accommodate' ? 'accommodate' : 'refuse';
 }
 
+/** The popup's recommendation: aiChoose without its side effect (it stores the plan on the target). Pure. */
+function recommendArk(galaxy: Galaxy, d: ScenarioDecision): string {
+    const workId = typeof d.context.workId === 'number' ? d.context.workId : -1;
+    const rec = arkRecOf(galaxy, workId);
+    if (rec === null) return d.defaultOption;
+    return arkAiChoice(galaxy, rec, d.empire) === 'accommodate' ? 'accommodate' : 'refuse';
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // The siphon
 // ---------------------------------------------------------------------------------------------------------------
@@ -1166,7 +1174,7 @@ registerScenarioQuery({
     run: (g, v, a) => (recOfShip(g, a.builtObject) !== null ? { ...v, hyperjumpSpeed: Math.min(v.hyperjumpSpeed, arkParam(g, 'gwArkSpeedPct')) } : v),
 });
 registerScenarioQuery({ id: 'giantworks.ark.fights', flag: GW_FLAG, query: 'attackWithoutWar', run: (g, v, a) => v || arkFightsAgainst(g, a.empire, a.target) });
-registerScenarioDecision({ id: 'giantworks.ark.decision', kind: ARK_DECISION_KIND, flag: GW_FLAG, resolve: resolveDecision, aiChoose });
+registerScenarioDecision({ id: 'giantworks.ark.decision', kind: ARK_DECISION_KIND, alwaysAsk: true, recommend: recommendArk, flag: GW_FLAG, resolve: resolveDecision, aiChoose });
 
 export const ARK_HANDLER_IDS = ['giantworks.ark.start', 'giantworks.ark.step', 'giantworks.ark.attacked', 'giantworks.ark.killed'] as const;
 export const ARK_QUERY_IDS = ['giantworks.ark.speed', 'giantworks.ark.fights'] as const;

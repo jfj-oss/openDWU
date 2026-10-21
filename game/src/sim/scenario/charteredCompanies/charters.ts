@@ -520,6 +520,7 @@ registerScenarioDecision({
     id: CHARTER_EXPIRY_DECISION,
     flag: CHARTER_FLAG,
     kind: CHARTER_EXPIRY_DECISION,
+    alwaysAsk: true, aiPure: true,
     resolve: (galaxy, d, optionId) => {
         const p = decisionPair(galaxy, d);
         if (p === null) return;

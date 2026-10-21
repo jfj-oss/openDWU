@@ -66,7 +66,7 @@ import { selectShipGroup, selectStellarObject } from './hud';
 // [popupstubs] begin
 import { pushMessageStub, markMessageStubRead } from './messageStubList';
 import { getSettings } from './settings';
-import { isScenarioDecision } from '../sim/scenario/decisions';
+import { isScenarioDecision, recommendedOption } from '../sim/scenario/decisions';
 // [popupstubs] end
 // The game-state half of ReceiveMessageInternal (the advisor queue, the defeat game end, the star-date stamps) runs in
 // the sim tick (sim/playerMessages.ts, every mode); the tick here reads what it handled (the PlayerMessageStream) and
@@ -453,9 +453,10 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
         // Mod layer: a pending scenario decision shows its options; a click answers it (scenario/decisions.ts).
         const decision = m.subject;
         if (isScenarioDecision(decision) && decision.answer === null) {
+            const recommended = recommendedOption(galaxy, decision);
             for (const o of decision.options) {
                 buttons.push(
-                    glassButton(o.label, {
+                    glassButton(o.id === recommended ? `${o.label} ${gt('TODO-PROSE (Recommended)')}` : o.label, {
                         onClick: () => {
                             // A player command (journaled, applied at the next frame boundary) so seed + command log replays it.
                             issuePlayerCommand(galaxy, decision.empire, 'answerScenarioDecision', [decision.id, o.id]);

@@ -164,6 +164,7 @@ registerScenarioYearly({ id: 'voidbloom.legal', flag: VOIDBLOOM_FLAG, order: 44,
 registerScenarioDecision({
     id: TEMPERANCE_DECISION,
     kind: TEMPERANCE_DECISION,
+    aiPure: true,
     flag: VOIDBLOOM_FLAG,
     resolve: resolveTemperance,
     aiChoose: (g, d) => {

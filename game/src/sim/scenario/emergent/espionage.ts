@@ -873,9 +873,9 @@ function resolveEscalateDecision(galaxy: Galaxy, d: ScenarioDecision, optionId: 
 // ---------------------------------------------------------------------------------------------------------------
 
 registerScenarioYearly({ id: 'emergent.espionage', flag: ESPIONAGE_FLAG, order: 30, run: reviewEspionage });
-registerScenarioDecision({ id: 'emergent.espionage.demand', kind: 'espionage.demand', flag: ESPIONAGE_FLAG, resolve: resolveDemandDecision, aiChoose: () => 'refuse' });
+registerScenarioDecision({ id: 'emergent.espionage.demand', kind: 'espionage.demand', aiPure: true, flag: ESPIONAGE_FLAG, resolve: resolveDemandDecision, aiChoose: () => 'refuse' });
 registerScenarioDecision({ id: 'emergent.espionage.response', kind: 'espionage.response', flag: ESPIONAGE_FLAG, resolve: resolveResponseDecision });
-registerScenarioDecision({ id: 'emergent.espionage.escalate', kind: 'espionage.escalate', flag: ESPIONAGE_FLAG, resolve: resolveEscalateDecision });
+registerScenarioDecision({ id: 'emergent.espionage.escalate', kind: 'espionage.escalate', alwaysAsk: true, aiPure: true, flag: ESPIONAGE_FLAG, resolve: resolveEscalateDecision });
 
 espionageHooks.exposure = recordExposure;
 espionageHooks.attribution = (galaxy, self, target, mission, agent, outcome) => falseFlagAttribution(galaxy, self, target, mission, agent, outcome);

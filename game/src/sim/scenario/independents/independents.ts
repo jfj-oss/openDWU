@@ -1109,6 +1109,7 @@ registerScenarioEvent({ id: 'independents.founded', flag: ACTORS_FLAG, event: 'c
 registerScenarioDecision({
     id: DECISION_FRICTION,
     kind: DECISION_FRICTION,
+    aiPure: true,
     flag: ACTORS_FLAG,
     resolve: resolveFrictionDecision,
     aiChoose: (g, d) => {
@@ -1116,4 +1117,4 @@ registerScenarioDecision({
         return rec === undefined ? 'tolerate' : aiFrictionChoice(g, d.empire, rec.station);
     },
 });
-registerScenarioDecision({ id: DECISION_OFFER, kind: DECISION_OFFER, flag: LEAGUES_FLAG, resolve: resolveOfferDecision, aiChoose: (g, d) => aiOfferChoice(g, d.empire) });
+registerScenarioDecision({ id: DECISION_OFFER, kind: DECISION_OFFER, aiPure: true, flag: LEAGUES_FLAG, resolve: resolveOfferDecision, aiChoose: (g, d) => aiOfferChoice(g, d.empire) });

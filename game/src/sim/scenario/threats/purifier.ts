@@ -1532,7 +1532,7 @@ export function registerPurifier(): void {
         },
     });
     registerScenarioQuery({ id: 'purifier.keepFaction', flag: PURIFIER_FLAG, query: 'pirateTerminationBlocked', run: (g, v, a) => v || (isFaction(g, a.empire) && peekPurifierState(g)?.phase === 'awake' && peekPurifierState(g)?.destroyer?.hasBeenDestroyed === false) });
-    registerScenarioDecision({ id: 'purifier.decision', kind: DECISION_KIND, flag: PURIFIER_FLAG, resolve: resolveChoice, aiChoose: (g, d) => `fam:${aiPickFamily(g, d.empire)}` });
+    registerScenarioDecision({ id: 'purifier.decision', kind: DECISION_KIND, alwaysAsk: true, aiPure: true, flag: PURIFIER_FLAG, resolve: resolveChoice, aiChoose: (g, d) => `fam:${aiPickFamily(g, d.empire)}` });
     registerThreatKnownSites(PURIFIER_KEY, purifierKnownSites);
     registerScenarioMapFeatures('purifier', purifierMapFeatures);
 }

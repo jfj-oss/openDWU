@@ -546,6 +546,7 @@ registerScenarioQuery({
 registerScenarioDecision({
     id: BOUNTY_PAYOFF_DECISION,
     kind: BOUNTY_PAYOFF_DECISION,
+    aiPure: true,
     flag: BOUNTY_FLAG,
     resolve: resolvePayoff,
     aiChoose,

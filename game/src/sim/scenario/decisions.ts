@@ -11,7 +11,7 @@ import type { Empire } from '../empire';
 import { EmpireMessageType } from '../messages';
 import { galaxyStarDate } from '../tick/simTime';
 import { GAME_DAY_LENGTH, scenarioGateOpen, type ScenarioHandlerGate } from './hooks';
-import { scenarioMessage } from './messages';
+import { scenarioMessage, scenarioText } from './messages';
 import { scenarioState } from './state';
 import { isHumanEmpire } from '../humanEmpires';
 
@@ -37,7 +37,7 @@ export interface ScenarioDecision {
     context: Record<string, unknown>;
     answer: string | null;
     answeredStarDate: number;
-    answeredBy: 'player' | 'ai' | 'expired' | null;
+    answeredBy: 'player' | 'ai' | 'expired' | 'auto' | null;
 }
 
 interface DecisionState {
@@ -45,6 +45,8 @@ interface DecisionState {
     pending: ScenarioDecision[];
     /** Answered decisions, oldest first (kept for replay / the chronicle; trimmed to the last 200). */
     history: ScenarioDecision[];
+    /** Auto-decide switch per human empire id ("Decide automatically"; absent = Ask me, so older saves read as off). */
+    auto?: Record<string, true>;
 }
 
 export interface ScenarioDecisionHandler extends ScenarioHandlerGate {
@@ -54,6 +56,15 @@ export interface ScenarioDecisionHandler extends ScenarioHandlerGate {
     resolve: (galaxy: Galaxy, decision: ScenarioDecision, optionId: string) => void;
     /** An AI empire's choice (default: the decision's default option). */
     aiChoose?: (galaxy: Galaxy, decision: ScenarioDecision) => string;
+    /**
+     * The option the popup marks "(Recommended)" and Policy's automatic answering takes. Must be pure: no Rnd, no state
+     * change (the UI calls it). Default: aiChoose when `aiPure` is set, else the decision's default option.
+     */
+    recommend?: (galaxy: Galaxy, decision: ScenarioDecision) => string;
+    /** True when aiChoose is pure (no Rnd, no mutation), so recommend defaults to it. */
+    aiPure?: boolean;
+    /** True: a moral or dramatic choice (cede, war / peace, characters, ...) that is never answered automatically. */
+    alwaysAsk?: boolean;
 }
 
 // Registry. `var` + accessor on purpose: a scenario package (e.g. charteredCompanies/charters.ts, imported through
@@ -123,7 +134,15 @@ export function raiseScenarioDecision(galaxy: Galaxy, empire: Empire, spec: Rais
         answeredBy: null,
     };
     st.pending.push(d);
-    if (isHumanEmpire(galaxy, empire)) {
+    if (isHumanEmpire(galaxy, empire) && autoDecideApplies(galaxy, empire, d.kind)) {
+        // Policy: "Decide automatically": answered at once with the recommendation, and the player is told (no popup).
+        const choice = recommendedOption(galaxy, d);
+        answerScenarioDecision(galaxy, d.id, choice, 'auto');
+        const label = d.options.find((o) => o.id === choice)?.label ?? choice;
+        scenarioMessage(galaxy, empire, scenarioText('TODO-PROSE Decided automatically: {0}', d.title), scenarioText('TODO-PROSE Decided automatically ({0}): {1}', d.title, label), {
+            popup: false,
+        });
+    } else if (isHumanEmpire(galaxy, empire)) {
         scenarioMessage(galaxy, empire, spec.title, spec.text, { type: EmpireMessageType.GeneralDecision, subject: d });
     } else {
         const h = handlers().find((x) => x.kind === d.kind);
@@ -144,7 +163,7 @@ export function pendingScenarioDecisions(galaxy: Galaxy, empire?: Empire): reado
  * Answers a pending decision (player input from the popup, an AI choice, or expiry) and runs its handler's resolve.
  * Returns false when the decision is not pending or the option does not exist.
  */
-export function answerScenarioDecision(galaxy: Galaxy, decisionId: number, optionId: string, by: 'player' | 'ai' | 'expired' = 'player'): boolean {
+export function answerScenarioDecision(galaxy: Galaxy, decisionId: number, optionId: string, by: 'player' | 'ai' | 'expired' | 'auto' = 'player'): boolean {
     if (galaxy.scenario === null) return false;
     const st = decisionState(galaxy);
     const i = st.pending.findIndex((d) => d.id === decisionId);
@@ -169,4 +188,47 @@ export function expireScenarioDecisions(galaxy: Galaxy): void {
     for (const d of [...decisionState(galaxy).pending]) {
         if (d.expiresStarDate > 0 && now >= d.expiresStarDate) answerScenarioDecision(galaxy, d.id, d.defaultOption, 'expired');
     }
+}
+
+/**
+ * The recommended option of a decision (pure: no Rnd, no state change, safe to call from the UI): the handler's
+ * `recommend`, else its aiChoose when that is marked pure, else the decision's default option. Always one of the options.
+ */
+export function recommendedOption(galaxy: Galaxy, d: ScenarioDecision): string {
+    const h = handlers().find((x) => x.kind === d.kind);
+    let choice = d.defaultOption;
+    if (h !== undefined) {
+        try {
+            choice = h.recommend?.(galaxy, d) ?? (h.aiPure === true ? h.aiChoose?.(galaxy, d) : undefined) ?? d.defaultOption;
+        } catch {
+            choice = d.defaultOption;
+        }
+    }
+    return d.options.some((o) => o.id === choice) ? choice : d.defaultOption;
+}
+
+/** True when this kind may be answered automatically (a handler exists and it is not a moral / dramatic choice). */
+export function decisionKindAutomatable(kind: string): boolean {
+    const h = handlers().find((x) => x.kind === kind);
+    return h !== undefined && h.alwaysAsk !== true;
+}
+
+/** True when `empire` has switched on automatic answering (Policy). Reads only; false without a scenario. */
+export function autoDecideOn(galaxy: Galaxy, empire: Empire): boolean {
+    if (galaxy.scenario === null || !('decisions' in galaxy.scenario.state)) return false;
+    return decisionState(galaxy).auto?.[String(empire.empireId)] === true;
+}
+
+/** Sets the switch (journaled player command setAutoDecide). False without a scenario. */
+export function setAutoDecide(galaxy: Galaxy, empire: Empire, on: boolean): boolean {
+    if (galaxy.scenario === null) return false;
+    const st = decisionState(galaxy);
+    const auto = (st.auto ??= {});
+    if (on) auto[String(empire.empireId)] = true;
+    else delete auto[String(empire.empireId)];
+    return true;
+}
+
+function autoDecideApplies(galaxy: Galaxy, empire: Empire, kind: string): boolean {
+    return autoDecideOn(galaxy, empire) && decisionKindAutomatable(kind);
 }

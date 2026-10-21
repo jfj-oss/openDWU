@@ -261,6 +261,7 @@ export function registerArchiveCores(): void {
     registerScenarioDecision({
         id: 'archiveCores.decision',
         kind: DECISION_KIND,
+        aiPure: true,
         flag: ARCHIVE_CORES_FLAG,
         resolve: resolveChoice,
         aiChoose: (_g, d) => aiArchiveChoice(d.empire),

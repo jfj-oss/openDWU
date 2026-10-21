@@ -373,7 +373,7 @@ export function expose(galaxy: Galaxy, st: BeaconState, b: BargainRec, dealer: E
 // ---------------------------------------------------------------------------------------------------------------
 
 export function registerCounterplay(): void {
-    registerScenarioDecision({ id: 'beacon.decision', kind: DECISION_KIND, flag: BEACON_FLAG, resolve: resolveBargain, aiChoose: aiBargainChoice });
+    registerScenarioDecision({ id: 'beacon.decision', kind: DECISION_KIND, alwaysAsk: true, aiPure: true, flag: BEACON_FLAG, resolve: resolveBargain, aiChoose: aiBargainChoice });
     // A protectorate cannot make peace with its patron's enemies (and they not with it) while the bargain stands.
     registerScenarioQuery({
         id: 'beacon.noPeace',

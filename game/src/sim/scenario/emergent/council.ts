@@ -1005,8 +1005,8 @@ export function reviewCouncil(galaxy: Galaxy, year: number): void {
 // ---------------------------------------------------------------------------------------------------------------
 
 registerScenarioYearly({ id: 'emergent.council', flag: COUNCIL_FLAG, order: 40, run: reviewCouncil });
-registerScenarioDecision({ id: 'emergent.council.vote', kind: COUNCIL_VOTE_DECISION, flag: COUNCIL_FLAG, resolve: resolveVoteDecision, aiChoose: () => 'abstain' });
-registerScenarioDecision({ id: 'emergent.council.leave', kind: COUNCIL_LEAVE_DECISION, flag: COUNCIL_FLAG, resolve: resolveLeaveDecision, aiChoose: () => 'stay' });
+registerScenarioDecision({ id: 'emergent.council.vote', kind: COUNCIL_VOTE_DECISION, alwaysAsk: true, aiPure: true, flag: COUNCIL_FLAG, resolve: resolveVoteDecision, aiChoose: () => 'abstain' });
+registerScenarioDecision({ id: 'emergent.council.leave', kind: COUNCIL_LEAVE_DECISION, alwaysAsk: true, aiPure: true, flag: COUNCIL_FLAG, resolve: resolveLeaveDecision, aiChoose: () => 'stay' });
 
 /** Days → star-date span (UI deadline of a vote). */
 export function voteDeadline(galaxy: Galaxy, m: Motion): number {

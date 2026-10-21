@@ -1567,7 +1567,7 @@ export function registerExchange(): void {
             return f !== null && a.activity.requestingEmpire === f && a.activity.type === EmpireActivityType.Defend ? a.activity.targetEmpire : v;
         },
     });
-    registerScenarioDecision({ id: EXCHANGE_BUY_INTEL_DECISION, kind: EXCHANGE_BUY_INTEL_DECISION, flag: EXCHANGE_FLAG, resolve: resolveBuyIntel, aiChoose: () => 'decline' });
+    registerScenarioDecision({ id: EXCHANGE_BUY_INTEL_DECISION, kind: EXCHANGE_BUY_INTEL_DECISION, aiPure: true, flag: EXCHANGE_FLAG, resolve: resolveBuyIntel, aiChoose: () => 'decline' });
     registerCouncilExtension({
         id: 'exchange',
         excluded: (g, e) => exchangeFaction(g) === e,

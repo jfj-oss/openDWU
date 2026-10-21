@@ -1880,6 +1880,7 @@ export function registerUltramind(): void {
     registerScenarioDecision({
         id: 'gwUltramind.decision',
         kind: DECISION_KIND,
+        aiPure: true,
         flag: GW_FLAG,
         resolve: resolveRequest,
         aiChoose: (g, d) => {
@@ -1892,6 +1893,7 @@ export function registerUltramind(): void {
     registerScenarioDecision({
         id: 'gwUltramind.dealDecision',
         kind: DEAL_KIND,
+        aiPure: true,
         flag: GW_FLAG,
         resolve: resolveDeal,
         aiChoose: (g, d) => {

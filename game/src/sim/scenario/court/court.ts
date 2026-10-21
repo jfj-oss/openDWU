@@ -1144,6 +1144,7 @@ export function aiFactionChoice(galaxy: Galaxy, empire: Empire, f: Faction): 'co
 registerScenarioDecision({
     id: FACTION_DECISION,
     kind: FACTION_DECISION,
+    alwaysAsk: true, aiPure: true,
     flag: COURT_FLAG,
     resolve: (galaxy, d: ScenarioDecision, optionId) => {
         const f = peekCourtState(galaxy)?.factions.find((x) => x.id === d.context.factionId);
