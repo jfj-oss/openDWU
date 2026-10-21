@@ -692,7 +692,7 @@ Prep Guard;Guard the Scars
 Prep Guard Effect;No member may attack another member's Harvest Scar worlds. A member who does breaks the Diet's law.
 Prep Guard News;The Diet has voted to guard the Harvest Scars. No member may attack another's Scar worlds.
 ' Stillness Engine follow-ups: the locked base and the protectors' war.
-Stillness Locked Title;The Stillness Engine
+Stillness Locked Title;The Stillness Engine cannot be changed
 Stillness Locked Scrap;The Stillness Engine cannot be scrapped. To stop it, switch it off.
 Stillness Locked Retrofit;The Stillness Engine cannot be refitted: its base is built around the dampers, and any change would wreck them.
 Stillness Protect War News;The {0} have declared war on the {1} for attacking the Stillness Engine near {2}.

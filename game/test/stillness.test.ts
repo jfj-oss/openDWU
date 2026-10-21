@@ -815,7 +815,7 @@ describe('the base is locked', () => {
     expect(base.hasBeenDestroyed).toBe(false);
     expect(scrapBuiltObjects(s.g, s.me, [base])).toBe(0);
     expect(base.hasBeenDestroyed).toBe(false);
-    expect(popups(s.me, 'The Stillness Engine cannot be altered').length).toBeGreaterThanOrEqual(1);
+    expect(popups(s.me, 'The Stillness Engine cannot be changed').length).toBeGreaterThanOrEqual(1);
     base.name = 'Renamed';
     stillnessStep(s.g);
     expect(base.name).toContain('Stillness Engine');
