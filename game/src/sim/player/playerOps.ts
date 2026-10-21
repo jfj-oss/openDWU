@@ -5,7 +5,7 @@
 // Adding an op: a new key here, plain arguments the codec can write (sim objects, data), and the UI call site issues
 // it through issuePlayerCommand. Headless: no DOM / Pixi.
 
-import { editorFinishGreatWork } from '../scenario/threats/giantworks/framework';
+import { editorFinishGreatWork } from '../scenario/threats/giantworks/editorFinish';
 import { setPenalColony } from '../slaveryReview';
 import type { Galaxy } from '../galaxy';
 import type { GalaxyLocation } from '../galaxyLocation';

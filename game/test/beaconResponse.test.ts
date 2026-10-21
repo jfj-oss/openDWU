@@ -18,7 +18,8 @@ import { BEACON_FINISHED_SPAWN, beaconComplete, beaconRolled } from '../src/sim/
 import { beaconPosition, isBeamCountdown, peekBeaconState, type BeaconState } from '../src/sim/scenario/threats/giantworks/beaconState';
 import { beginSeason, seasonBudget, startWar } from '../src/sim/scenario/threats/giantworks/beaconFleet';
 import { driveResponse, fleetCounts, patrolRoute, responseOf, responseShips, responseSummary } from '../src/sim/scenario/threats/giantworks/beaconResponse';
-import { editorFinishGreatWork, finishableGreatWorks, greatWorks } from '../src/sim/scenario/threats/giantworks/framework';
+import { greatWorks } from '../src/sim/scenario/threats/giantworks/framework';
+import { editorFinishGreatWork, finishableGreatWorks } from '../src/sim/scenario/threats/giantworks/editorFinish';
 import { liveCores } from '../src/sim/scenario/threats/giantworks/beaconHarvest';
 
 let base: GameData;

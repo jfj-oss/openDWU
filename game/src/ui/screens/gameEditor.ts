@@ -8,7 +8,7 @@ import type { Galaxy } from '../../sim/galaxy';
 import type { Habitat } from '../../sim/types';
 import { PlanetaryFacilityType } from '../../sim/researchSystem';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
-import { finishableGreatWorks } from '../../sim/scenario/threats/giantworks/framework';
+import { finishableGreatWorks } from '../../sim/scenario/threats/giantworks/editorFinish';
 import { ensureThreatTexts, spawnableThreats } from '../../sim/scenario/threats/framework';
 import { glassButton, openOriginalWindow, place, type OriginalWindow } from '../originalWindow';
 

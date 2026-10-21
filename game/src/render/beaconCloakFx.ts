@@ -19,7 +19,6 @@
 import { Container, DisplacementFilter, Rectangle, Sprite, Texture } from 'pixi.js';
 import type { BuiltObject } from '../sim/builtObject';
 import type { Empire } from '../sim/empire';
-import { peekBeaconState, warOn } from '../sim/scenario/threats/giantworks/beaconState';
 import { SpritePool } from './fxCommon';
 import { textureFromRgbaPixels } from './textureCanvas';
 import { loadRgba } from '../ui/empireEmblem';
@@ -184,8 +183,12 @@ export function isCloakedContact(bo: BuiltObject, viewer: Empire | null): boolea
 export function isUnidentifiedContact(bo: BuiltObject, viewer: Empire | null): boolean {
     if (isCloakedContact(bo, viewer)) return true;
     if (viewer === null || bo.empire === viewer || viewer.galaxy === undefined || viewer.galaxy === null) return false;
-    const st = peekBeaconState(viewer.galaxy);
-    return st !== null && !warOn(st) && st.watchers.some((w) => w.ship === bo);
+    // The Beacon's state read in place (beaconState.ts BEACON_KEY / warOn): importing that module from here pulls the
+    // threat framework into the renderer's load order (an import cycle at start).
+    const st = viewer.galaxy.scenario?.state['beacon'] as { phase?: string; warStarted?: boolean; watchers?: { ship: BuiltObject | null }[] } | undefined;
+    if (st === undefined || st.watchers === undefined) return false;
+    const war = st.phase === 'reclamation' && st.warStarted !== false;
+    return !war && st.watchers.some((w) => w.ship === bo);
 }
 
 /** Whether a fleet's lead is such a contact (the fleet icon, name and count would give the Watcher away). */
