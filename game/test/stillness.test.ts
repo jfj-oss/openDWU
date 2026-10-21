@@ -9,7 +9,7 @@ import type { Empire } from '../src/sim/empire';
 import type { Habitat } from '../src/sim/types';
 import type { CreateGameOptions, Game } from '../src/sim/game';
 import { comboOverlayFs, createScenarioGame } from './helpers/scenarioGame';
-import { GAME_DAY_LENGTH, scenarioQuery } from '../src/sim/scenario/hooks';
+import { GAME_DAY_LENGTH, scenarioEmit, scenarioQuery } from '../src/sim/scenario/hooks';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
 import { YEAR_LENGTH, GalaxyTime } from '../src/sim/galaxyTime';
 import { deserializeGame, serializeGame } from '../src/sim/save/gameSave';
@@ -34,6 +34,14 @@ import {
     LAW_DEMOLISH_STILL, STILL_KEY, demolishLegal, peekStill, stillnessFactor, stillnessKnowledgeRows, stillnessStep,
 } from '../src/sim/scenario/threats/giantworks/stillness';
 import { AP, aiMaybeBuild, attackEngine, engineLean, isolationist, sendPatrol, sideOf, stillnessReview } from '../src/sim/scenario/threats/giantworks/stillnessAi';
+import { runGameSeconds } from '../src/sim/tick/harness';
+import { dietCouncil } from '../src/sim/scenario/charactersVictory/diet/diet';
+import { dietVoteScore } from '../src/sim/scenario/charactersVictory/diet/dietAi';
+import { MOTION_RECOGNISE, MOTION_GUARD, LAW_GUARD, harvestPledges, harvestRecognised, scarsGuarded, severanceVoteBonus } from '../src/sim/scenario/threats/giantworks/agePrep';
+import { MOTION_MEGA, peekMega } from '../src/sim/scenario/threats/giantworks/megaStation';
+import { partTradeAllowed } from '../src/sim/scenario/threats/giantworks/beaconComponents';
+import { reputationOn, reputationSum } from '../src/sim/scenario/reputation/ledger';
+import type { ShipGroup } from '../src/sim/fleets/shipGroup';
 import { dietView } from '../src/sim/scenario/charactersVictory/diet/dietView';
 import { MOTION_DEMOLISH, MOTION_SILENCE } from '../src/sim/scenario/threats/giantworks/stillnessDiet';
 
@@ -539,4 +547,197 @@ describe('the save', () => {
         stillnessStep(back); // keeps running after the load
         expect(engineRunning(back)).toBe(true);
     });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// The preparation votes
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The player holds an Age 1 memory record whose Scars are the capitals of the first two AI empires (scar worlds held by Diet members). */
+function withMemory(s: Setup): Habitat[] {
+    const scars = [s.ais[0].capital!, s.ais[1].capital!];
+    longNightState(s.g).memory = {
+        age: 2, seed: 1, fromDate: 0, eliminatedPct: 50,
+        scars: scars.map((h) => ({ name: h.name, systemName: h.name, x: h.xpos, y: h.ypos, fate: 'live' as const, knownToPlayer: true })),
+        foundries: { located: [], destroyed: [] }, megaStation: { components: {}, blueprintPoints: 0 }, truths: [], player: null, extra: {},
+    };
+    return scars;
+}
+
+describe('Recognise the Harvest', () => {
+    it('only a human holding the memory record may move it; once at a time', () => {
+        const s = setup();
+        const def = dietMotionKindDef(MOTION_RECOGNISE)!;
+        expect(def.proposable!(s.g)).toBe(false); // no memory record
+        withMemory(s);
+        expect(def.proposable!(s.g)).toBe(true);
+        expect(def.proposableBy!(s.g, s.me)).toBe(true);
+        for (const ai of s.ais) expect(def.proposableBy!(s.g, ai)).toBe(false);
+        expect(dietView(s.g, s.me)!.proposable.some((k) => k.kind === MOTION_RECOGNISE)).toBe(true);
+        longNightState(s.g).age = 1;
+        expect(def.proposable!(s.g)).toBe(false);
+        longNightState(s.g).age = 2;
+        pass(s.g, MOTION_RECOGNISE, s.me);
+        expect(harvestRecognised(s.g)).toBe(true);
+        expect(def.proposable!(s.g)).toBe(false);
+    });
+
+    it('AI members vote by their caution and their standing with the proposer', () => {
+        const s = setup();
+        withMemory(s);
+        const def = dietMotionKindDef(MOTION_RECOGNISE)!;
+        const [a] = s.ais;
+        const m = { id: 1, kind: MOTION_RECOGNISE, proposer: s.me, target: s.me, other: null, colony: null, resourceId: -1, text: '', votes: [], status: 'voting', yes: 0, no: 0 } as unknown as DietMotion;
+        expect(def.voteScore(s.g, dietState(s.g), s.me, m)).toBe(100);
+        const cautious = (c: number): number => {
+            a.dominantRace = { ...a.dominantRace!, caution: c };
+            return def.voteScore(s.g, dietState(s.g), a, m);
+        };
+        expect(cautious(140)).toBeGreaterThan(cautious(60) + 10);
+        // the proposer's standing is the Diet's own addition to every score
+        standing(s.g, a, s.me, 80);
+        const liked = dietVoteScore(s.g, dietCouncil(s.g)!, dietState(s.g), a, m);
+        standing(s.g, a, s.me, -80);
+        expect(liked).toBeGreaterThan(dietVoteScore(s.g, dietCouncil(s.g)!, dietState(s.g), a, m) + 10);
+    });
+
+    it('once passed, the AI value the Scar worlds higher as targets; the player\'s view and other worlds are unchanged', () => {
+        const s = setup();
+        const scars = withMemory(s);
+        const other = s.ais[2].capital!;
+        const val = (e: Empire, h: Habitat): number => scenarioQuery(s.g, 'colonizationTargetValue', 100, { empire: e, habitat: h, filterOutDangerousTargets: false });
+        expect(val(s.ais[2], scars[0])).toBe(100);
+        pass(s.g, MOTION_RECOGNISE, s.me);
+        expect(val(s.ais[2], scars[0])).toBeCloseTo(150);
+        expect(val(s.ais[2], other)).toBe(100);
+        expect(val(s.me, scars[0])).toBe(100);
+    });
+
+    it('the AI members contribute to the Severance: a higher vote score, and their parts are handed over even when the part-trade attitude rule says no', () => {
+        const s = setup();
+        withMemory(s);
+        const bs = peekBeaconState(s.g)!;
+        const [a] = s.ais;
+        partsOf(bs).held[String(s.me.empireId)] = { blueprint: { since: 1, progress: 1, sharePct: 25, done: true } };
+        partsOf(bs).held[String(a.empireId)] = { cloakLattice: true };
+        obtainDiplomaticRelation(a, s.me).type = DiplomaticRelationType.None;
+        standing(s.g, a, s.me, -80); // it dislikes the builder: it refuses parts
+        expect(partTradeAllowed(s.g, a, s.me)).toBe(false);
+        const mega = dietMotionKindDef(MOTION_MEGA)!;
+        const m = { id: 1, kind: MOTION_MEGA, proposer: s.me, target: s.me, other: null, colony: null, resourceId: -1, text: '', votes: [{ empire: a, vote: 'yes', weight: 1, score: 0 }], status: 'passed', yes: 1, no: 0, place: { x: s.g.sizeX / 2, y: s.g.sizeY / 2 } } as unknown as DietMotion;
+        const before = mega.voteScore(s.g, dietState(s.g), a, m);
+        pass(s.g, MOTION_RECOGNISE, s.me);
+        expect(mega.voteScore(s.g, dietState(s.g), a, m)).toBeCloseTo(before + 30);
+        expect(mega.voteScore(s.g, dietState(s.g), s.me, m)).toBe(100);
+        expect(severanceVoteBonus(s.g, s.me)).toBe(0);
+        expect(harvestPledges(s.g, a, s.me)).toBe(true);
+        obtainDiplomaticRelation(a, s.me).type = DiplomaticRelationType.War;
+        expect(harvestPledges(s.g, a, s.me)).toBe(false); // not at war with the builder
+        obtainDiplomaticRelation(a, s.me).type = DiplomaticRelationType.None;
+        const startMegaApply = (): void => mega.apply(s.g, dietState(s.g), m, (() => undefined) as never);
+        startMegaApply();
+        const pool = peekMega(s.g)!.pool;
+        expect(pool[a.name]?.cloakLattice).toBe(true);
+        expect(peekMega(s.g)!.contributors).toContain(a.empireId);
+    });
+});
+
+describe('Guard the Scars', () => {
+    it('may be moved only once the Harvest is recognised; holders of Scars and the cautious vote for it, the covetous against', () => {
+        const s = setup();
+        const scars = withMemory(s);
+        void scars;
+        const def = dietMotionKindDef(MOTION_GUARD)!;
+        expect(def.proposable!(s.g)).toBe(false);
+        pass(s.g, MOTION_RECOGNISE, s.me);
+        expect(def.proposable!(s.g)).toBe(true);
+        expect(dietView(s.g, s.me)!.proposable.some((k) => k.kind === MOTION_GUARD)).toBe(true);
+        const [holder, , bystander] = s.ais;
+        const m = { id: 1, kind: MOTION_GUARD, proposer: s.me, target: null, other: null, colony: null, resourceId: -1, text: '', votes: [], status: 'voting', yes: 0, no: 0 } as unknown as DietMotion;
+        holder.dominantRace = { ...holder.dominantRace!, aggression: 100, caution: 100, friendliness: 100 };
+        bystander.dominantRace = { ...bystander.dominantRace!, aggression: 140, caution: 100, friendliness: 100 };
+        expect(def.voteScore(s.g, dietState(s.g), holder, m)).toBeGreaterThan(20);
+        expect(def.voteScore(s.g, dietState(s.g), bystander, m)).toBeLessThan(0);
+        expect(def.candidates!(s.g, dietState(s.g), holder).length).toBe(1);
+        expect(def.candidates!(s.g, dietState(s.g), s.me)).toEqual([]); // a human moves its own
+        pass(s.g, MOTION_GUARD, holder);
+        expect(scarsGuarded(s.g)).toBe(true);
+        expect(def.proposable!(s.g)).toBe(false);
+    });
+
+    it('AI members take no hostile mission against another member\'s Scar world and do not invade it; a human is free, other worlds are free; only while the law stands', () => {
+        const s = setup();
+        const [x, y, z] = s.ais;
+        const scars = withMemory(s);
+        const hab = scars[0];
+        expect(hab.empire).toBe(x);
+        const ship = (e: Empire) => e.builtObjects.find((b) => !b.hasBeenDestroyed && b.topSpeed > 0)!;
+        const may = (e: Empire, target: Habitat, type = BuiltObjectMissionType.Attack): boolean =>
+            scenarioQuery(s.g, 'assignMissionAllowed', true, { builtObject: ship(e), missionType: type, target, x: -2000000001, y: -2000000001 });
+        pass(s.g, MOTION_RECOGNISE, s.me);
+        expect(may(y, hab)).toBe(true); // not guarded yet
+        pass(s.g, MOTION_GUARD, y);
+        expect(may(y, hab)).toBe(false);
+        expect(may(y, hab, BuiltObjectMissionType.UnloadTroops)).toBe(false);
+        expect(may(y, hab, BuiltObjectMissionType.Move)).toBe(true);
+        expect(may(x, hab)).toBe(true); // its own world
+        expect(may(y, z.capital!)).toBe(true); // not a Scar
+        expect(may(s.me, hab)).toBe(true); // a human decides for itself
+        const fleet = {} as ShipGroup;
+        expect(scenarioQuery(s.g, 'invasionTargetOrbitOk', true, { empire: y, fleet, target: hab })).toBe(false);
+        expect(scenarioQuery(s.g, 'invasionTargetOrbitOk', true, { empire: y, fleet, target: z.capital! })).toBe(true);
+        expect(scenarioQuery(s.g, 'invasionTargetOrbitOk', true, { empire: s.me, fleet, target: hab })).toBe(true);
+        peekDietState(s.g)!.laws = peekDietState(s.g)!.laws.filter((l) => l.kind !== LAW_GUARD);
+        expect(may(y, hab)).toBe(true);
+    });
+
+    it('a member that takes a member\'s Scar world breaks the law: the violation path (grievance, standing with every member), once a year per world', () => {
+        const s = setup();
+        const [x, y] = s.ais;
+        const scars = withMemory(s);
+        pass(s.g, MOTION_RECOGNISE, s.me);
+        pass(s.g, MOTION_GUARD, y);
+        const st = dietState(s.g);
+        const g0 = st.grievances[y.empireId] ?? 0;
+        const rep = (a: Empire, b: Empire): number => reputationSum(s.g, a, b);
+        const r0 = rep(s.ais[2], y);
+        scenarioEmit(s.g, 'colonyOwnerChanged', { colony: scars[0], from: x, to: y });
+        expect(st.grievances[y.empireId] ?? 0).toBe(g0 + 40);
+        if (reputationOn(s.g)) expect(rep(s.ais[2], y)).toBeLessThan(r0);
+        scenarioEmit(s.g, 'colonyOwnerChanged', { colony: scars[0], from: y, to: x });
+        scenarioEmit(s.g, 'colonyOwnerChanged', { colony: scars[0], from: x, to: y }); // again within the year
+        expect(st.grievances[y.empireId] ?? 0).toBe(g0 + 40);
+        advance(s.g, 361);
+        scenarioEmit(s.g, 'colonyOwnerChanged', { colony: scars[0], from: x, to: y });
+        expect(st.grievances[y.empireId] ?? 0).toBe(g0 + 80);
+        // a world that is no Scar, or taken from a non-member, costs nothing
+        scenarioEmit(s.g, 'colonyOwnerChanged', { colony: s.ais[2].capital!, from: s.ais[2], to: y });
+        scenarioEmit(s.g, 'colonyOwnerChanged', { colony: scars[1], from: null, to: y });
+        expect(st.grievances[y.empireId] ?? 0).toBe(g0 + 80);
+    });
+});
+
+describe('in a running game', () => {
+    it('an isolationist AI builds it, the sides form, wars and strikes follow, and the clock keeps the research slowed (a short run)', () => {
+        const s = setup();
+        const [x, y, z] = s.ais;
+        lean(x, 'protect');
+        lean(y, 'destroy');
+        lean(z, 'destroy');
+        standing(s.g, y, x, -80);
+        standing(s.g, z, x, -80);
+        Object.assign(s.g.scenario!.params, { stillnessAiChancePct: 100, stillnessAiMinYears: 0, stillnessYears: 0.02, stillnessAiStrikeMarginPct: 1 });
+        for (const e of s.ais) e.stateMoney = 1e9;
+        const state = stillState(s.g);
+        state.start = galaxyStarDate(s.g) - YEAR_LENGTH;
+        runGameSeconds(s.game, 120);
+        expect(state.stats.built).toBe(1);
+        const eng = engineOf(s.g)!;
+        expect(eng.ownerId).toBe(x.empireId);
+        expect(eng.status).toBe('running');
+        expect(stillnessFactor(s.g)).toBeCloseTo(0.5);
+        expect(eng.sides).toEqual({ [String(y.empireId)]: 'destroy', [String(z.empireId)]: 'destroy' });
+        expect([...eng.warOver].sort()).toEqual([y.empireId, z.empireId].sort());
+        expect(obtainDiplomaticRelation(y, x).type).toBe(DiplomaticRelationType.War);
+    }, 90000);
 });
