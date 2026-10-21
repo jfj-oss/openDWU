@@ -383,6 +383,16 @@
 .wizard-addon-wip-fold > summary {
     cursor: pointer;
 }
+/* The warning at the top of the opened Work in progress fold. */
+.wizard-addon-wip-warning {
+    margin: 4px 0 8px;
+    padding: 6px 8px;
+    font-size: 14px;
+    color: rgb(255, 192, 0);
+    border: 1px solid rgba(255, 192, 0, 0.55);
+    border-radius: 3px;
+    background: rgba(255, 192, 0, 0.08);
+}
 .wizard-addon-wip {
     font-size: 11px;
     font-weight: bold;

@@ -3290,6 +3290,8 @@ function buildScenarioPage(ctx: WizardCtx): HTMLDivElement {
                     wipOpen = fold.open;
                 });
                 fold.appendChild(el('summary', 'wizard-addon-section', `${sec.section} (${groups.reduce((n, g) => n + g.rows.length, 0)}${nTicked > 0 ? `, ${nTicked} ticked` : ''})`));
+                // A plain warning inside the fold (user 2026-10-21): these are tests, not finished add-ons.
+                fold.appendChild(el('div', 'wizard-addon-wip-warning', 'Warning: these add-ons are experiments and barely functional. They may not work, may unbalance or break your game, and saves made with them may not load in later versions. Tick them only to try them out.'));
                 listSection.appendChild(fold);
                 host = fold;
             } else {

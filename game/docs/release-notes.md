@@ -4,7 +4,8 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
-- **Emergent Galaxy (loyalty, ambition, plots and coups) can no longer be switched on** while it is reworked: it has no toggle in the add-ons list, and no expansion, add-on or remembered selection turns it on. Saves that already use it still load as they are.
+- **The Work in progress add-ons carry a warning** inside their dropdown: they are experiments, barely functional, and may break a game or its saves.
+- **Emergent Galaxy (loyalty, ambition, plots and coups) can no longer be switched on** while it is reworked: it has no toggle in the add-ons list, and no expansion, add-on or remembered selection turns it on. A save that used it loads with it switched off (its loyalty and ambition state and any pending plot decision removed; what it already caused stays).
 - **The notifications list is twice as long** (12 rows by default, up to 12 in Game Options), with a faint scroll bar on its right; the mouse wheel stops at the top and bottom instead of looping round.
 - **VIP shuttle rings stay on the shuttle's icon** at every zoom (they used a different position from the icon: off the ship and jittery zoomed out).
 - **Waypoint and known-location icons shrink and fade as you zoom out** across the galaxy view (to 70 % size and 60 % opacity fully zoomed out).
