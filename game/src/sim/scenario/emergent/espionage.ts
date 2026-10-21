@@ -157,8 +157,13 @@ function peekState(galaxy: Galaxy): EspionageState | null {
 // Small pure helpers
 // ---------------------------------------------------------------------------------------------------------------
 
+/**
+ * A normal empire: not the independents, a pirate faction or a colony-less scenario faction (the Exchange, the Founders' Compact,
+ * the Watchers: a stand-in capital and bases only). Those have no treasury or standing for a crisis (reparations, a framed party)
+ * and run their own agent rules (exchange.ts exchangeAgentCaught).
+ */
 function isNormalEmpire(galaxy: Galaxy, e: Empire | null): e is Empire {
-    return e !== null && e !== galaxy.independentEmpire && e.pirateEmpireBaseHabitat === null && e.active;
+    return e !== null && e !== galaxy.independentEmpire && e.pirateEmpireBaseHabitat === null && e.active && e.colonies.length > 0;
 }
 
 /** `a` has met `b` (a diplomatic relation other than NotMet), without creating a relation. */

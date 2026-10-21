@@ -302,7 +302,8 @@ function onGameStart(galaxy: Galaxy): void {
     if (!on(galaxy, THEMED_NAMES_EMPIRES_FLAG)) return;
     const all = (): Empire[] => [...galaxy.empires, ...galaxy.pirateEmpires].filter((e): e is Empire => e !== null);
     for (const empire of galaxy.empires) {
-        if (!isThemedNamesEmpire(galaxy, empire)) continue;
+        // A colony-less scenario faction (the Exchange, the Compact) keeps its own name.
+        if (!isThemedNamesEmpire(galaxy, empire) || empire.colonies.length === 0) continue;
         const name = themedEmpireName(galaxy, empire, (n) => all().some((e) => e !== empire && e.name === n));
         renameEmpireEverywhere(galaxy, empire, name);
     }

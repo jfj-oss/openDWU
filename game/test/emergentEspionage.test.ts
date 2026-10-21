@@ -192,6 +192,20 @@ describe('A. exposed agents → diplomatic crises', () => {
         expect(empireSpyCrises(g, a)).toContain(c);
     });
 
+    it('a colony-less scenario faction (the Exchange) is no party to a crisis: no exposure is recorded', () => {
+        const [a, b] = refusingPair(g);
+        meet(a, b);
+        const st = espionageState(g);
+        const n0 = st.exposures.length;
+        const colonies = a.colonies.splice(0, a.colonies.length); // a stands in for a faction with no worlds
+        try {
+            forceCaptures(g, a, b, 3);
+        } finally {
+            a.colonies.push(...colonies);
+        }
+        expect(st.exposures.length).toBe(n0);
+    });
+
     it('war only with the attitude and strength gates, never against a mutual-defence partner', () => {
         const [a, b] = refusingPair(g);
         meet(a, b);
