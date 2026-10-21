@@ -40,8 +40,9 @@
 //    across (the 8-argument overload passes systemInfluenceSizeFactor 1.0, line 309), drawn at 0.25 alpha
 //    (method_236(0.25), MainView.2.cs 241 / 365). Here one disc per empire with KNOWN bases or colonies in the
 //    system, its radius growing with sqrt(count) from that size (addition: the original draws one fixed disc).
-//    Drawn as flat discs in the territory's own colour (EmpireLayer.colourOf) and opacity, in the empire layer's union
-//    group with the territory (empireLayer.ts), so a disc inside its empire's territory merges into one shade.
+//    Drawn as the soft glow (full alpha at the centre, fading to nothing at the rim) in the territory's own colour
+//    (EmpireLayer.colourOf), in the empire layer's union group with the territory (empireLayer.ts): the group caps the
+//    glow at the territory's 0.25, and a glow inside its empire's territory merges into the same shade.
 //    Additions (user calls): 1.35x the size (25 % below the earlier 1.8x), and a minimum on-screen radius that grows
 //    from 6.75 to 9.75 px (x up to 1.5 by count) as the view widens (presenceGalaxyBlend, f = 300 .. 2500).
 //
@@ -766,16 +767,21 @@ async function buildSymbolAtlas(): Promise<{ frames: Texture[]; aspect: number[]
     return { frames, aspect };
 }
 
-/** The presence disc: a flat white disc (tinted per empire; opaque in the empire layer's union group, which fades it to
- * PRESENCE_ALPHA) with an anti-aliased edge and nothing else: no glow and no rim, a flat patch of the territory shade. */
+/** The presence disc: the soft glow (a Gaussian-like falloff from full alpha at the centre to nothing at the rim, the
+ * system-level look). It is drawn opaque inside the empire layer's union group, which caps it at PRESENCE_ALPHA (the
+ * territory shade), so the glow never exceeds the territory and has no rim. */
 function buildDiscFallback(): Texture {
     const c = makeCanvas(DISC_SIZE, DISC_SIZE);
     const ctx = c.getContext('2d')!;
     const h = DISC_SIZE / 2;
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(h, h, h, 0, Math.PI * 2);
-    ctx.fill();
+    const g = ctx.createRadialGradient(h, h, 0, h, h, h);
+    // Gaussian-like falloff to nothing at the rim: reads as a glow, never as a filled circle.
+    for (let i = 0; i <= 16; i++) {
+        const t = i / 16;
+        g.addColorStop(t, `rgba(255,255,255,${(Math.exp(-3.2 * t * t) * (1 - t * t)).toFixed(4)})`);
+    }
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, DISC_SIZE, DISC_SIZE);
     const tex = textureFromCanvas(c);
     useMinifyingFilter(tex);
     return tex;
@@ -1194,7 +1200,7 @@ export class GalaxyMarkerLayer {
         k.z = z;
         k.x = cam.x;
         k.y = cam.y;
-        // Flat opaque discs (the territory's alpha is the union group's, empireLayer.ts); their minimum on-screen size
+        // Glow discs drawn opaque (the territory alpha is the union group's, empireLayer.ts); their minimum on-screen size
         // grows as the view widens (presenceGalaxyBlend). Drawn only past system zoom (presenceBandAlpha).
         const t = presenceGalaxyBlend(f);
         const visible = presenceBandAlpha(f) > 0;
