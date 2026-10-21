@@ -448,6 +448,9 @@ describe('the recruits are spare warships at home', () => {
         maintainShipGroups(s.g, ai);
         const fleeted = warships(ai).filter((w) => w.shipGroup !== null);
         expect(fleeted.length).toBeGreaterThan(0);
+        // their fleet's Move has ended: the ships are idle, but still the fleet's
+        for (const w of fleeted) place(w, w.xpos, w.ypos);
+        expect(fleeted.every((w) => w.shipGroup !== null)).toBe(true);
         // the fleets' ships are the nearest to the route's start: were they spares, they would be recruited first
         const c = colonyOf(s, ai);
         fleeted.forEach((w, i) => {
