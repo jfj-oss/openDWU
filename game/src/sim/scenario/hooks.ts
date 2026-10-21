@@ -1024,6 +1024,8 @@ export interface ScenarioQueries {
     troopMaintenanceFactor: { value: number; args: { empire: Empire } };
     /** builtObject.ts annualSupportCost (BuiltObject.cs 782): a factor on the ship's / base's upkeep. */
     shipMaintenanceFactor: { value: number; args: { builtObject: BuiltObject } };
+    /** A scenario's fixed stats for one ship, applied at the end of its reDefine (null: the component-derived stats stand). */
+    builtObjectStatOverride: { value: { shields?: number; topSpeed?: number } | null; args: { builtObject: BuiltObject } };
     /** diplomacyTick.ts determineRelativeStrength (Empire.7.cs 4975): the rival's MilitaryPotency as weighed (mothballing: its reserve counts less). */
     rivalMilitaryPotency: { value: number; args: { other: Empire } };
     /** forceStructure.ts projectPrivateForceStructure (Empire.9.cs 4767): a factor on the freighter targets and caps. */

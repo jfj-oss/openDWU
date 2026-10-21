@@ -1410,6 +1410,18 @@ describe('purifier', () => {
         return { g, st };
     }
 
+    it('its planet destroyer has fixed shields (5,000) and sub-light speed (3), kept through a refit, escorts unchanged', () => {
+        const { st } = woken();
+        const d = st.destroyer!;
+        expect(d.shieldsCapacity).toBe(5000);
+        expect(d.topSpeed).toBe(3);
+        expect(d.cruiseSpeed).toBeLessThanOrEqual(3);
+        expect(d.warpSpeed).toBeGreaterThan(0); // hyperdrive untouched
+        d.reDefine();
+        expect([d.shieldsCapacity, d.topSpeed]).toEqual([5000, 3]);
+        for (const b of st.guards) expect(b.shieldsCapacity).not.toBe(5000);
+    }, 300000);
+
     it('flag off: no state, no faction', () => {
         const g = pfGame(false);
         const n = g.empires.length + g.pirateEmpires.length;

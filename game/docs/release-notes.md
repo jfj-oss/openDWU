@@ -6,6 +6,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 - **The Beacon replaces the Return of the Shakturi storyline:** when Giantworks' Beacon will come (guaranteed, or a galaxy with at least six empires), a new game starts without the Shakturi story (its option is greyed out on the Victory page). The Distant Worlds and Shadows storylines are unaffected.
 - **Ships in a fleet keep their own icons on the galaxy map** (as in the original): only the fleet's lead ship is shown as the fleet icon, and the other members are drawn with their own symbols under it.
+- **The Purifier is tougher and slower in normal space:** its planet destroyer has 5,000 shields (was about 1,800) and a sub-light speed of 3 (was 5); its hyperdrive is unchanged.
 - **Game Editor: the Beacon's Finish button** sits left of its Spawn button and also finishes a Beacon already under construction (it only worked before one was started).
 - **The Work in progress add-ons carry a warning** inside their dropdown: they are experiments, barely functional, and may break a game or its saves.
 - **Emergent Galaxy (loyalty, ambition, plots and coups) can no longer be switched on** while it is reworked: it has no toggle in the add-ons list, and no expansion, add-on or remembered selection turns it on. A save that used it loads with it switched off (its loyalty and ambition state and any pending plot decision removed; what it already caused stays).

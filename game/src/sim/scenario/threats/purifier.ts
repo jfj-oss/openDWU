@@ -237,6 +237,9 @@ const P = {
     wakeYears: (g: Galaxy) => p(g, 'purifierWakeYears', 12),
     techBonus: (g: Galaxy) => Math.trunc(p(g, 'purifierTechBonus', 1)),
     destroyerPct: (g: Galaxy) => Math.max(10, p(g, 'purifierDestroyerPct', 60)),
+    /** The planet destroyer's fixed shields and sub-light top speed (user 2026-10-21: more shields, a bit slower out of warp). */
+    destroyerShields: (g: Galaxy) => p(g, 'purifierDestroyerShields', 5000),
+    destroyerSpeed: (g: Galaxy) => p(g, 'purifierDestroyerSpeed', 3),
     escortPct: (g: Galaxy) => p(g, 'purifierEscortPct', 50),
     minEscorts: (g: Galaxy) => Math.trunc(p(g, 'purifierMinEscorts', 3)),
     maxEscorts: (g: Galaxy) => Math.trunc(p(g, 'purifierMaxEscorts', 40)),
@@ -497,6 +500,8 @@ export function purifierWake(galaxy: Galaxy, st: PurifierState, waker: Empire | 
     }
     st.faction = faction;
     st.destroyer = destroyer;
+    destroyer.reDefine(); // its fixed shields and speed (purifier.stats query) now that it is the Purifier's
+    destroyer.currentShields = destroyer.shieldsCapacity;
     destroyer.currentFuel = destroyer.fuelCapacity;
     let strength = calculateOverallStrengthFactorWithoutShields(destroyer);
     const want = (median3(normals.map((e) => militaryPotency(e))) * P.escortPct(galaxy)) / 100;
@@ -1517,6 +1522,12 @@ export function registerPurifier(): void {
     registerScenarioEvent({ id: 'purifier.attacked', flag: PURIFIER_FLAG, event: 'builtObjectAttacked', run: (g, e) => onAttacked(g, e.builtObject, e.attackingEmpire) });
     registerScenarioQuery({ id: 'purifier.passive', flag: PURIFIER_FLAG, query: 'pirateFactionPassive', run: (g, v, a) => v || isFaction(g, a.empire) });
     registerScenarioQuery({ id: 'purifier.noProtection', flag: PURIFIER_FLAG, query: 'pirateProtectionDesired', run: (g, v, a) => v && !isFaction(g, a.pirate) });
+    registerScenarioQuery({
+        id: 'purifier.stats',
+        flag: PURIFIER_FLAG,
+        query: 'builtObjectStatOverride',
+        run: (g, v, a) => (peekPurifierState(g)?.destroyer === a.builtObject ? { shields: P.destroyerShields(g), topSpeed: P.destroyerSpeed(g) } : v),
+    });
     registerScenarioQuery({ id: 'purifier.blastSpared', flag: PURIFIER_FLAG, query: 'habitatBlastSpared', run: (g, v, a) => v || (isFaction(g, a.destroyer.actualEmpire) && isFaction(g, a.builtObject.actualEmpire)) }); // its blast spares its own escorts
     registerScenarioQuery({ id: 'purifier.noCapture', flag: PURIFIER_FLAG, query: 'combatCaptureAllowed', run: (g, v, a) => v && !isFaction(g, a.capturingEmpire) });
     registerScenarioQuery({ id: 'purifier.noRepair', flag: PURIFIER_FLAG, query: 'repairRateFactor', run: (g, v, a) => (isFaction(g, a.builtObject.actualEmpire) ? v * 1e-9 : v) });

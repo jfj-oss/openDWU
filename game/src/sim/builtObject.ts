@@ -1233,6 +1233,20 @@ export class BuiltObject {
         this._cruiseSpeedBase = num12;
         this.cruiseSpeedFuelBurn = toShort(num17);
         this.warpSpeed = num13;
+        // openDWU mod layer (not in the original): a scenario's fixed stats for this ship (the Purifier's planet destroyer).
+        if (this._galaxy !== null) {
+            const o = scenarioQuery(this._galaxy, 'builtObjectStatOverride', null, { builtObject: this });
+            if (o !== null) {
+                if (o.shields !== undefined) {
+                    this.shieldsCapacity = o.shields;
+                    if (this.currentShields > o.shields) this.currentShields = o.shields;
+                }
+                if (o.topSpeed !== undefined) {
+                    this.topSpeed = this._topSpeedBase = o.topSpeed;
+                    if (this.cruiseSpeed > o.topSpeed) this.cruiseSpeed = this._cruiseSpeedBase = o.topSpeed;
+                }
+            }
+        }
         this.warpSpeedFuelBurn = num21;
         this.impulseSpeedFuelBurn = toShort(Math.trunc(this.cruiseSpeedFuelBurn / 4));
         this.hyperjumpInitiate = Math.min(15, num22);
