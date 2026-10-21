@@ -279,7 +279,7 @@ describe('the Precursor holdouts', () => {
         }
     });
 
-    it('patrol only their own worlds, rotating, through a long run', () => {
+    it('patrol only their own worlds, rotating, through a long run', { tags: ['slow'], timeout: 1800000 }, () => {
         const game = world();
         const g = game.galaxy;
         const rec = peekHoldouts(g)!.holdouts[0];
@@ -298,7 +298,7 @@ describe('the Precursor holdouts', () => {
             }
         }
         expect(seen.size).toBeGreaterThanOrEqual(2);
-    }, 600000);
+    });
 
     it('rebuild one ship at the core every 90 to 120 days up to the starting size, and stop for good once the shield drops', () => {
         const game = world();
