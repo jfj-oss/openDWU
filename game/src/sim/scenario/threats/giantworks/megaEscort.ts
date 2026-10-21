@@ -18,7 +18,8 @@
 //             one on a war mission (Attack, Blockade, Refuel...). A group ship left on an Undefined, Escort, Patrol or Move mission (the stock AI
 //             sends an idle ship home by a Move) is re-tasked; a fight, a repair or a refuel is left alone.
 //   KEEP      a delivered freighter's escort (a group ship, or a player's order still on Escort to it) goes on Patrol of the structure at once
-//             (keepEscortsOnDelivery): the stock Escort command would end with its freighter's mission and hand the ship to automation.
+//             (keepEscortsOnDelivery): the stock Escort command would end with its freighter's mission and hand the ship to automation. Kept on
+//             guard, a player's escort is supplied and not refuelled, as a group's ships are (escortsFreight, supplyEscorts).
 //   CREDIT    an arrival with an armed warship within megaEscortNear of it, on an Escort mission (any empire's) or a member of an escort group of the
 //             structure (counted by assignment, so a group ship re-tasked a moment before still counts), is an escorted delivery: the escort's owner gets
 //             war credit (beaconWarCredit.ts), and the structure counts it (MegaRec.escorted).
@@ -147,7 +148,10 @@ export function escortsFreight(galaxy: Galaxy, bo: BuiltObject): boolean {
     if (mega === undefined || mega.status === 'dormant' || mega.status === 'fired') return false;
     if (Object.values(mega.escorts ?? {}).some((g) => g.ships.includes(bo))) return true; // an AI escort group: its ships are supplied for the run
     const m = builtObjectMission(bo.mission);
-    if (m === null || m.type !== BuiltObjectMissionType.Escort || m.targetBuiltObject === null) return false;
+    if (m === null) return false;
+    // a player's escort kept on guard at the structure after its freighter delivered (keepEscortsOnDelivery)
+    if (m.type === BuiltObjectMissionType.Patrol) return m.playerOrdered === true && m.targetBuiltObject !== null && m.targetBuiltObject === mega.base;
+    if (m.type !== BuiltObjectMissionType.Escort || m.targetBuiltObject === null) return false;
     return freightTarget(galaxy, mega, m.targetBuiltObject);
 }
 
@@ -174,6 +178,11 @@ export function supplyEscorts(galaxy: Galaxy, mega: MegaRec): void {
     for (const g of Object.values(mega.escorts ?? {})) for (const w of g.ships) if (!w.hasBeenDestroyed) {
         unfleet(galaxy, w);
         if (w.fuelCapacity > 0) w.currentFuel = w.fuelCapacity;
+    }
+    if (base !== undefined && base !== null && !base.hasBeenDestroyed) {
+        for (const w of getNearbyBuiltObjects(galaxy, base.xpos, base.ypos, P.megaEscortNear(galaxy))) {
+            if (w != null && !w.hasBeenDestroyed && w.fuelCapacity > 0 && escortsFreight(galaxy, w)) w.currentFuel = w.fuelCapacity;
+        }
     }
     for (const f of freight) {
         if (f.hasBeenDestroyed) continue;

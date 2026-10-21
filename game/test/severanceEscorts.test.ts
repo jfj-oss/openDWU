@@ -391,6 +391,15 @@ describe('the player escorts a contract freighter', () => {
         DAYS(s.g, 2);
         expect(builtMission(w)).toBe('Patrol');
         expect(isAiControlled(w)).toBe(false);
+        // on guard it is kept supplied and is not sent to refuel (the refuelling point is far from the structure)
+        w.currentFuel = 0.01 * w.fuelCapacity;
+        supplyEscorts(s.g, mega);
+        expect(w.currentFuel).toBe(w.fuelCapacity);
+        w.currentFuel = 0.01 * w.fuelCapacity;
+        expect(autoRefuelRepairShip(s.g, w, true)).toBe(false);
+        checkForRefuelling(s.g, w, true);
+        expect(builtMission(w)).toBe('Patrol');
+        expect(w.refuelForNextMission).toBeFalsy();
     });
 });
 
