@@ -85,7 +85,7 @@ export interface UiSettings {
     influenceSharedEdges: 'darker' | 'off';
     /** Cosmetic (not in the original): draw stations pulled in toward their planet's / moon's centre. */
     pullStationsToCentre: boolean;
-    /** Bacon mod (BaconMain.cs 442 DrawWeaponRanges, opt-in like its showRangeCircles / "!rangecircles"): weapon-range
+    /** Bacon mod (BaconMain.cs 442 DrawWeaponRanges, on by default here (user 2026-10-20; opt-in in the mod: showRangeCircles / "!rangecircles")): weapon-range
      *  circles around the selected ship (render/weaponRangeCircles.ts). */
     showWeaponRangeCircles: boolean;
     /** Ours: scroll the map when the mouse is at a screen edge (the original always does; default on). */
@@ -250,7 +250,7 @@ export const DEFAULT_SETTINGS: UiSettings = {
     influenceBorderNames: true,
     influenceSharedEdges: 'darker',
     pullStationsToCentre: false,
-    showWeaponRangeCircles: false,
+    showWeaponRangeCircles: true,
     edgeScroll: true,
     autoPauseInPopup: true,
     improvements: {}, // [improvements]
@@ -394,7 +394,8 @@ export function loadSettings(): UiSettings {
         if (typeof parsed.moodLevel === 'number' && Number.isFinite(parsed.moodLevel)) out.moodLevel = Math.min(1, Math.max(0, parsed.moodLevel));
         if (typeof parsed.musicSource === 'string' && (parsed.musicSource === 'original' || parsed.musicSource === 'off' || parsed.musicSource.startsWith('playlist:'))) out.musicSource = parsed.musicSource;
         if (typeof parsed.musicShuffle === 'boolean') out.musicShuffle = parsed.musicShuffle;
-        if (typeof parsed.showWeaponRangeCircles === 'boolean') out.showWeaponRangeCircles = parsed.showWeaponRangeCircles;
+        // On by default since WEAPON_RANGE_SETTING_VERSION 2: a stored false from before (the old default, never chosen) is ignored.
+        if (typeof parsed.showWeaponRangeCircles === 'boolean' && (parsed.showWeaponRangeCircles || (parsed as { weaponRangeVersion?: unknown }).weaponRangeVersion === WEAPON_RANGE_SETTING_VERSION)) out.showWeaponRangeCircles = parsed.showWeaponRangeCircles;
         if (typeof parsed.edgeScroll === 'boolean') out.edgeScroll = parsed.edgeScroll;
         if (typeof parsed.autoPauseInPopup === 'boolean') out.autoPauseInPopup = parsed.autoPauseInPopup;
         // [improvements] begin
@@ -489,7 +490,7 @@ export function clampAutoSaveMinutes(v: number): number {
 
 /** Persist the given settings to storage. */
 export function saveSettings(settings: UiSettings): void {
-    storage?.setItem(STORAGE_KEY, JSON.stringify({ ...settings, simWorkerVersion: SIM_WORKER_SETTING_VERSION, newGameBackdropVersion: NEW_GAME_BACKDROP_SETTING_VERSION }));
+    storage?.setItem(STORAGE_KEY, JSON.stringify({ ...settings, simWorkerVersion: SIM_WORKER_SETTING_VERSION, newGameBackdropVersion: NEW_GAME_BACKDROP_SETTING_VERSION, weaponRangeVersion: WEAPON_RANGE_SETTING_VERSION }));
 }
 
 /** Stored next to `simWorker` (loadSettings): 2 = saved while the worker was the default, 3 = saved since the default
@@ -499,6 +500,9 @@ export const SIM_WORKER_SETTING_VERSION = 3;
 /** Stored next to `newGameBackdrop` (loadSettings): 2 = saved since Deep Azure became the default (a stored 'deep' without it
  *  was the old default and is ignored). */
 export const NEW_GAME_BACKDROP_SETTING_VERSION = 2;
+
+/** Stored next to `showWeaponRangeCircles` (loadSettings): 2 = saved since the circles became the default (a stored false without it was the old default and is ignored). */
+export const WEAPON_RANGE_SETTING_VERSION = 2;
 
 /** Current in-memory copy of the settings (loaded once at first use). */
 let current: UiSettings | null = null;

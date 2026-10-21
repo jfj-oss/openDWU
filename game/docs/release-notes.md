@@ -4,6 +4,7 @@ Notes for the next release, to copy into the GitHub release (RELEASING.md step 2
 
 ## Unreleased
 
+- **Weapon range circles are on by default** (Settings). Players who had them off by the old default get them on once; switching them off again sticks.
 - **Fix: crash merging maps with a destroyed empire.** A long game could throw in the map merge when a diplomatic relation changed with an empire that had since been destroyed (its resource map is cleared by the teardown). The merge now skips an empire without its maps, as the original does.
 - **Holdouts: the AI weighs the defence bases too.** An AI fleet goes for a precursor holdout's world only when it is clearly stronger (125 %, holdoutAiRatioPct) than the holdout's home fleet and its defence bases together.
 - **Stranded Watchers show foundries you never found (Harvest Cycle).** The Long Night now records every Reclaimer foundry still standing, not only the ones you located; boarding a stranded Watcher in Age 2 reveals one of those you never found (then the Truth of the ledger). The Knowledge page still lists only what you knew.
