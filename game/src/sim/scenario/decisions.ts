@@ -102,6 +102,8 @@ export interface RaiseDecisionSpec {
     /** Game days until the default applies (omitted / 0: never). */
     expiresDays?: number;
     context?: Record<string, unknown>;
+    /** 'force': the human's decision card opens by itself and the message is never held back (a moment the player must not miss). */
+    popupMode?: 'force' | 'quiet';
 }
 
 /** True for a ScenarioDecision (message subjects). */
@@ -143,13 +145,23 @@ export function raiseScenarioDecision(galaxy: Galaxy, empire: Empire, spec: Rais
             popup: false,
         });
     } else if (isHumanEmpire(galaxy, empire)) {
-        scenarioMessage(galaxy, empire, spec.title, spec.text, { type: EmpireMessageType.GeneralDecision, subject: d });
+        scenarioMessage(galaxy, empire, spec.title, spec.text, { type: EmpireMessageType.GeneralDecision, subject: d, popupMode: spec.popupMode });
     } else {
         const h = handlers().find((x) => x.kind === d.kind);
         const choice = h?.aiChoose?.(galaxy, d) ?? d.defaultOption;
         answerScenarioDecision(galaxy, d.id, choice, 'ai');
     }
     return d;
+}
+
+/** Drops the pending decisions of `kind` that `match` accepts without answering them (the question no longer applies). Returns how many. */
+export function withdrawScenarioDecisions(galaxy: Galaxy, kind: string, match: (d: ScenarioDecision) => boolean): number {
+    if (galaxy.scenario === null || !('decisions' in galaxy.scenario.state)) return 0;
+    const st = decisionState(galaxy);
+    const keep = st.pending.filter((d) => d.kind !== kind || !match(d));
+    const n = st.pending.length - keep.length;
+    st.pending = keep;
+    return n;
 }
 
 /** Pending (unanswered) decisions, optionally for one empire. */

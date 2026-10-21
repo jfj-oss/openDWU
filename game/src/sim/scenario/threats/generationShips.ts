@@ -65,7 +65,7 @@ import { Population, PopulationList } from '../../population';
 import { generateDebrisField } from '../../story/storyStart';
 import { isHumanEmpire } from '../../humanEmpires';
 import { registerGuardianPeace, GAME_DAY_LENGTH, gameYear, registerScenarioEvent, registerScenarioPeriodic, registerScenarioQuery, scenarioEmit } from '../hooks';
-import { registerScenarioDecision, raiseScenarioDecision, type ScenarioDecision } from '../decisions';
+import { registerScenarioDecision, raiseScenarioDecision, withdrawScenarioDecisions, type ScenarioDecision } from '../decisions';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
 import { scenarioFlag, scenarioParam } from '../state';
 import { applyReputation } from '../reputation/ledger';
@@ -914,14 +914,14 @@ function ownerMessage(galaxy: Galaxy, st: GenShipsState, stage: string, args: un
     got.push(owner.empireId);
     const fl = flavourText(st);
     const age2 = stage === 'Contact' ? age2ArkFlavour(galaxy) : '';
-    scenarioMessage(galaxy, owner, scenarioText(`${TAG} ${stage} Title ${fl}`), scenarioText(`${TAG} ${stage} ${fl}`, ...args) + age2, { type, subject: st.worldShip ?? st.target, popup });
+    scenarioMessage(galaxy, owner, scenarioText(`${TAG} ${stage} Title ${fl}`), scenarioText(`${TAG} ${stage} ${fl}`, ...args) + age2, { type, subject: st.worldShip ?? st.target, ...(popup ? { popupMode: 'force' as const } : { popup: false }) });
 }
 
-function contact(galaxy: Galaxy, st: GenShipsState): void {
+function contact(galaxy: Galaxy, st: GenShipsState, windowDays: number = P.ultimatumDays(galaxy)): void {
     st.phase = 'contact';
-    st.ultimatumDate = galaxyStarDate(galaxy) + P.ultimatumDays(galaxy) * GAME_DAY_LENGTH;
+    st.ultimatumDate = galaxyStarDate(galaxy) + windowDays * GAME_DAY_LENGTH;
     const target = st.target!;
-    ownerMessage(galaxy, st, 'Contact', [st.faction!.name, target.name, months(P.ultimatumDays(galaxy)), fmt(st.fleetStrength), st.regiments], EmpireMessageType.GeneralWarning, true);
+    ownerMessage(galaxy, st, 'Contact', [st.faction!.name, target.name, months(windowDays), fmt(st.fleetStrength), st.regiments], EmpireMessageType.GeneralWarning, true);
     if (st.owner !== null) onArkScoutContact(galaxy, st.owner); // Age 2: milestone 5 (a survivor ark's scout)
 }
 
@@ -971,6 +971,7 @@ function ultimatum(galaxy: Galaxy, st: GenShipsState): void {
         options,
         defaultOption: 'refuse',
         expiresDays: P.answerDays(galaxy),
+        popupMode: 'force',
         context: { substitute: sub !== null ? galaxy.habitats.indexOf(sub) : -1, index: st.index },
     });
 }
@@ -1098,6 +1099,32 @@ function directStrike(galaxy: Galaxy, st: GenShipsState): boolean {
         arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Strike', textTag: `${TAG} Strike News`, args: [st.faction!.name, st.owner?.name ?? '', stations.length] });
     }
     return true;
+}
+
+/**
+ * The target changed hands before the faction was settled (conquest, a handover, a coup): the new holder is the
+ * empire the faction will fight, so it is introduced as the first owner was: contact now and a fresh answer window
+ * (the full one before the war, a shorter one when the war is already on), and the old owner's pending question is
+ * withdrawn. Without this the new holder was never told, and the war hit it with no ultimatum.
+ */
+function syncOwner(galaxy: Galaxy, st: GenShipsState): void {
+    const target = st.target;
+    const holder = target?.empire ?? null;
+    if (target === null || holder === null || holder === st.owner || holder === st.faction || holder === galaxy.independentEmpire || !holder.active) return;
+    if (st.phase !== 'arrived' && st.phase !== 'contact' && st.phase !== 'ultimatum' && st.phase !== 'war') return;
+    if (st.retake != null) return; // a retarget: the fallback world is the old owner's, the war is already theirs
+    const warred = st.phase === 'war';
+    if (warred && obtainDiplomaticRelation(st.faction!, holder).locked) {
+        st.owner = holder; // already at war with it (declared elsewhere): nothing to introduce
+        return;
+    }
+    const before = st.owner;
+    withdrawScenarioDecisions(galaxy, DECISION_KIND, (d) => d.empire === before && d.context.index === st.index);
+    st.owner = holder;
+    st.answer = null;
+    st.answeredBy = null;
+    revealTo(galaxy, st, holder, KNOWLEDGE_CONFIRMED);
+    contact(galaxy, st, warred ? Math.min(P.ultimatumDays(galaxy), 3 * P.contactDays(galaxy)) : P.ultimatumDays(galaxy));
 }
 
 function directWar(galaxy: Galaxy, st: GenShipsState): void {
@@ -1828,6 +1855,7 @@ function driveInstance(galaxy: Galaxy, st: GenShipsState): void {
     }
     resupply(galaxy, st);
     if (st.worldShip !== null) limitWorldShip(galaxy, st, st.worldShip, false);
+    syncOwner(galaxy, st);
     const now = galaxyStarDate(galaxy);
     switch (st.phase) {
         case 'arrived': {
