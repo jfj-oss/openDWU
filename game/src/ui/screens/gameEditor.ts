@@ -8,6 +8,7 @@ import type { Galaxy } from '../../sim/galaxy';
 import type { Habitat } from '../../sim/types';
 import { PlanetaryFacilityType } from '../../sim/researchSystem';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
+import { finishableGreatWorks } from '../../sim/scenario/threats/giantworks/framework';
 import { ensureThreatTexts, spawnableThreats } from '../../sim/scenario/threats/framework';
 import { glassButton, openOriginalWindow, place, type OriginalWindow } from '../originalWindow';
 
@@ -59,6 +60,19 @@ export function toggleGameEditor(empire: Empire): void {
                     });
                     win.body.appendChild(place(b, 430, y, 110, 22));
                 }
+                y += 26;
+            }
+            y += 10;
+        }
+        // Finish a Great Work under construction now (its normal completion: for the Beacon, the countdown to the first beam).
+        const works = finishableGreatWorks(empire.galaxy as Galaxy);
+        if (works.length > 0) {
+            line('Finish a Great Work under construction:', y);
+            y += 28;
+            for (const w of works) {
+                line(w.label, y + 4);
+                const b = glassButton('Finish', { onClick: () => issuePlayerCommand(empire.galaxy as Galaxy, empire, 'editorFinishGreatWork', [w.id], render) });
+                win.body.appendChild(place(b, 430, y, 110, 22));
                 y += 26;
             }
             y += 10;

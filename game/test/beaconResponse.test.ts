@@ -18,7 +18,7 @@ import { BEACON_FINISHED_SPAWN, beaconComplete, beaconRolled } from '../src/sim/
 import { beaconPosition, isBeamCountdown, peekBeaconState, type BeaconState } from '../src/sim/scenario/threats/giantworks/beaconState';
 import { beginSeason, seasonBudget, startWar } from '../src/sim/scenario/threats/giantworks/beaconFleet';
 import { driveResponse, fleetCounts, patrolRoute, responseOf, responseShips, responseSummary } from '../src/sim/scenario/threats/giantworks/beaconResponse';
-import { greatWorks } from '../src/sim/scenario/threats/giantworks/framework';
+import { editorFinishGreatWork, finishableGreatWorks, greatWorks } from '../src/sim/scenario/threats/giantworks/framework';
 import { liveCores } from '../src/sim/scenario/threats/giantworks/beaconHarvest';
 
 let base: GameData;
@@ -273,6 +273,22 @@ describe('the Reclaimers\' response fleets and patrols', () => {
         expect(patrolRoute(g, [a, b, c, d], a, 2, 30)).toEqual([a, b]);
         expect(patrolRoute(g, [a, d], a, 4, 30)).toEqual([a]);
     });
+});
+
+describe('Game Editor: finish a Great Work under construction', () => {
+    it('lists the works being built and completes one through the normal path (the Beacon: the countdown starts)', () => {
+        const { g } = beaconGame();
+        expect(spawnThreatNow(g, g.playerEmpire!, 'giantworks:beacon')).toBe(true);
+        const work = greatWorks(g).find((w) => w.wonder === 'beacon')!;
+        expect(work.phase).toBe('building');
+        const list = finishableGreatWorks(g);
+        expect(list.map((x) => x.id)).toContain(work.id);
+        expect(editorFinishGreatWork(g, work.id)).toBe(true);
+        expect(work.phase).toBe('complete');
+        expect(peekBeaconState(g)!.phase).toBe('reclamation');
+        expect(finishableGreatWorks(g).some((x) => x.id === work.id)).toBe(false);
+        expect(editorFinishGreatWork(g, work.id)).toBe(false); // already finished
+    }, 600000);
 });
 
 describe('Game Editor: Great Work: beacon (finished)', () => {

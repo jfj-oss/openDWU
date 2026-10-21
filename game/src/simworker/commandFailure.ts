@@ -110,6 +110,7 @@ export const COMMAND_FAILURE: FailureTable = {
     scrapColonyFacility: () => 'rejected',
     editorRemovePirateFacilities: no,
     editorSpawnThreat: no,
+    editorFinishGreatWork: no,
     colonyTransferToTransport: no,
     disbandTroops: () => -1,
     garrisonTroops: zero,
