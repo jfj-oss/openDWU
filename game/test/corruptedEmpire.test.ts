@@ -129,6 +129,23 @@ const titlesOf = (e: Empire): string[] => empireMessages(e).map((m) => m.title);
 
 // ---------------------------------------------------------------------------------------------------------------
 describe('the choice', () => {
+    it('a human is never chosen: with only the players seated in the Diet (and a colony minimum they meet) nothing is corrupted', () => {
+        const { game } = createScenarioGame(base, { scenario: comboOverlayFs(ids), flags: FLAGS, options: age3 });
+        const g = game.galaxy;
+        g.scenario!.flags.gwHarvestCycle = true;
+        longNightState(g).age = AGE_PREPARATION;
+        g.scenario!.params.corruptMinColonies = 1;
+        const humans = g.empires.filter((e): e is Empire => e !== null && isHumanEmpire(g, e) && e.active);
+        expect(humans.length).toBeGreaterThan(0);
+        const cs = councilState(g);
+        cs.councils.push({ id: cs.nextId++, name: 'Interstellar Diet', foundedYear: 0, members: humans, chair: null, motion: null, results: [], blocs: [], coLosses: {}, losses: {}, sanctions: [], threats: [], recognised: [], condemned: {}, splitFrom: 0 });
+        dietState(g);
+        expect(pickCorrupted(g)).toBeNull();
+        expect(chooseCorrupted(g)).toBe(false);
+        expect(peekCorrupted(g)!.chosen).toBe(false);
+        expect(activeCorrupted(g)).toBeNull();
+    }, 600000);
+
     it('is an AI empire, never a human, and the seed decides it (the same galaxy picks the same empire)', () => {
         const s = setup();
         expect(isHumanEmpire(s.g, s.corrupt)).toBe(false);
