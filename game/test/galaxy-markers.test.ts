@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { civilianFadeAlpha } from '../src/render/builtObjectLayer';
+import { TERRITORY_ALPHA } from '../src/render/empireLayer';
 import {
     brighten,
     clickSelection,
@@ -16,6 +17,7 @@ import {
     perShipSymbolPx,
     pickDrawnSymbol,
     pickDrawnSymbolCycling,
+    PRESENCE_ALPHA,
     presenceBandAlpha,
     presenceDiscRadius,
     shipSymbolPx,
@@ -173,9 +175,10 @@ describe('alpha / style by zoom band', () => {
         expect(factionRingBandAlpha(151)).toBe(1); // method_250 5071: int_15 = 255, not the f - 70 ramp (0.07 here)
         expect(factionRingBandAlpha(2000)).toBe(1);
     });
-    it('presence discs at PRESENCE_ALPHA (raised from the original 0.25, user call) once past system zoom', () => {
+    it('presence discs at the territory alpha (0.25: the same shade as the empire territory) once past system zoom', () => {
         expect(presenceBandAlpha(50)).toBe(0);
-        expect(presenceBandAlpha(1000)).toBe(0.4);
+        expect(presenceBandAlpha(1000)).toBe(0.25);
+        expect(PRESENCE_ALPHA).toBe(TERRITORY_ALPHA);
     });
 });
 

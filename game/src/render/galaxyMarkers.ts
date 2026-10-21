@@ -94,8 +94,9 @@ export const SYSTEM_RING_MIN_FACTOR = 150;
 export const OUTLINE_SYMBOL_MAX_FACTOR = 10;
 /** Ring pen width in screen px (method_268: new Pen(color, 3f)). */
 export const FACTION_RING_WIDTH_PX = 3;
-/** method_236(0.25): the territory / system-influence layer's alpha (MainView.2.cs 241, 365). */
-export const PRESENCE_ALPHA = 0.4; // more noticeable (user call; the original's territory alpha is 0.25)
+/** Presence disc alpha: the territory layer's 0.25 (empireLayer TERRITORY_ALPHA; method_236(0.25), MainView.2.cs 241 / 365),
+ * so a disc has the same shade as the empire's territory. */
+export const PRESENCE_ALPHA = 0.25;
 /** CalculateEmpireSystemTerritory: num2 = 150000 * systemInfluenceSizeFactor (1.0), drawn (num2 + 0.5) * 1.1 across. */
 export const SYSTEM_INFLUENCE_RADIUS = (150000 * 1.1) / 2;
 /** Color.Gray: ResolveShipSymbolColor's colour for unowned / independent objects (MainView.2.cs:2160). */
@@ -288,7 +289,7 @@ export function factionRingBandAlpha(f: number): number {
 /** Dead Probe Swarm presence: a cold, dark slate (its derelict hulls' blue-grey). */
 const SWARM_SLATE = 0x4f5f74;
 
-/** Presence disc alpha: the territory layer's 0.25 once zoomed out past system level (the backdrop pass, f > 70). */
+/** Presence disc alpha once zoomed out past system level (the backdrop pass, f > 70), else 0. */
 export function presenceBandAlpha(f: number): number {
     return f > GALAXY_OVERLAY_MIN_FACTOR ? PRESENCE_ALPHA : 0;
 }
@@ -320,17 +321,15 @@ export const PRESENCE_SIZE_SCALE = 1.35;
 export const PRESENCE_MIN_SCREEN_PX = 6.75;
 /** The minimum radius (px, for one base / colony) once fully at galaxy zoom (user call; 0.75 x 13). */
 export const PRESENCE_GALAXY_MIN_SCREEN_PX = 9.75;
-/** Alpha of the vivid galaxy-zoom disc (its texture has a 0.55 fill and a full-alpha rim in the empire colour). */
-export const PRESENCE_GALAXY_ALPHA = 0.8;
-/** Zoom factors over which the discs blend from the soft system-level glow (t = 0) to the vivid galaxy look (t = 1). */
-export const PRESENCE_VIVID_FROM_FACTOR = 300;
-export const PRESENCE_VIVID_FULL_FACTOR = 2500;
+/** Zoom factors over which the minimum on-screen disc size grows from the sector size (t = 0) to the galaxy size (t = 1). */
+export const PRESENCE_GALAXY_FROM_FACTOR = 300;
+export const PRESENCE_GALAXY_FULL_FACTOR = 2500;
 
-/** 0 .. 1 share of the vivid galaxy-zoom look at zoom factor f: smoothstep over log f (user call, not in the original). */
+/** 0 .. 1 share of the galaxy-zoom minimum size at zoom factor f: smoothstep over log f (user call, not in the original). */
 export function presenceGalaxyBlend(f: number): number {
-    if (f <= PRESENCE_VIVID_FROM_FACTOR) return 0;
-    if (f >= PRESENCE_VIVID_FULL_FACTOR) return 1;
-    const u = Math.log(f / PRESENCE_VIVID_FROM_FACTOR) / Math.log(PRESENCE_VIVID_FULL_FACTOR / PRESENCE_VIVID_FROM_FACTOR);
+    if (f <= PRESENCE_GALAXY_FROM_FACTOR) return 0;
+    if (f >= PRESENCE_GALAXY_FULL_FACTOR) return 1;
+    const u = Math.log(f / PRESENCE_GALAXY_FROM_FACTOR) / Math.log(PRESENCE_GALAXY_FULL_FACTOR / PRESENCE_GALAXY_FROM_FACTOR);
     return u * u * (3 - 2 * u);
 }
 
@@ -765,31 +764,16 @@ async function buildSymbolAtlas(): Promise<{ frames: Texture[]; aspect: number[]
     return { frames, aspect };
 }
 
+/** The presence disc: a flat white disc (tinted per empire, drawn at PRESENCE_ALPHA) with an anti-aliased edge and
+ * nothing else: no glow and no rim, so it reads as a flat patch of the empire's territory shade. */
 function buildDiscFallback(): Texture {
-    // Two frames side by side (one texture source: a ParticleContainer draws from a single source).
-    const c = makeCanvas(2 * DISC_SIZE, DISC_SIZE);
+    const c = makeCanvas(DISC_SIZE, DISC_SIZE);
     const ctx = c.getContext('2d')!;
     const h = DISC_SIZE / 2;
-    const g = ctx.createRadialGradient(h, h, 0, h, h, h);
-    // Gaussian-like falloff to nothing at the rim: reads as a glow, never as a filled circle.
-    for (let i = 0; i <= 16; i++) {
-        const t = i / 16;
-        g.addColorStop(t, `rgba(255,255,255,${(Math.exp(-3.2 * t * t) * (1 - t * t)).toFixed(4)})`);
-    }
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, DISC_SIZE, DISC_SIZE);
-    // Frame 1 (x DISC_SIZE..2*DISC_SIZE): the vivid galaxy-zoom disc — a flat 0.55 fill easing to 0.4 towards the
-    // edge, then a crisp full-alpha rim (~7 % of the radius) with an anti-aliased outer edge.
-    const v = ctx.createRadialGradient(DISC_SIZE + h, h, 0, DISC_SIZE + h, h, h);
-    v.addColorStop(0, 'rgba(255,255,255,0.55)');
-    v.addColorStop(0.6, 'rgba(255,255,255,0.5)');
-    v.addColorStop(0.84, 'rgba(255,255,255,0.4)');
-    v.addColorStop(0.86, 'rgba(255,255,255,1)');
-    v.addColorStop(0.93, 'rgba(255,255,255,1)');
-    v.addColorStop(0.97, 'rgba(255,255,255,0)');
-    v.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = v;
-    ctx.fillRect(DISC_SIZE, 0, DISC_SIZE, DISC_SIZE);
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(h, h, h, 0, Math.PI * 2);
+    ctx.fill();
     const tex = textureFromCanvas(c);
     useMinifyingFilter(tex);
     return tex;
@@ -849,6 +833,9 @@ export class GalaxyMarkerLayer {
     readonly front = new Container();
     /** The presence discs: above the empire territory layer (and the rings), so the toggle works with territory on. */
     readonly top = new Container();
+    /** Presence colour per empire: the territory colour (EmpireLayer.colourOf, wired by MainView), so a disc has its
+     * empire's territory shade. */
+    discColor: (empire: Empire) => number = empireMarkerColor;
 
     /** Ship position for drawing / picking — swap in the interpolated render position when there is one. */
     positionOf: (bo: BuiltObject) => { x: number; y: number } = (bo) => ({ x: bo.xpos, y: bo.ypos });
@@ -889,7 +876,6 @@ export class GalaxyMarkerLayer {
     private readonly countLayer = new Container();
     /** The soft system-level glow and the vivid galaxy-zoom disc: two frames of one source (buildDiscFallback). */
     private discTex: Texture;
-    private discVividTex: Texture;
     private frames: Texture[] = [];
     private aspect: number[] = [];
     private icons: { capital: Texture | null; secondary: Texture | null; refuel: Texture | null } = { capital: null, secondary: null, refuel: null };
@@ -949,9 +935,7 @@ export class GalaxyMarkerLayer {
         /** World child to insert `back` beneath (the empire layer root), or null to append. */
         below: Container | null,
     ) {
-        const discSrc = buildDiscFallback().source;
-        this.discTex = new Texture({ source: discSrc, frame: new Rectangle(0, 0, DISC_SIZE, DISC_SIZE) });
-        this.discVividTex = new Texture({ source: discSrc, frame: new Rectangle(DISC_SIZE, 0, DISC_SIZE, DISC_SIZE) });
+        this.discTex = buildDiscFallback();
         const dyn = { position: true, vertex: true, rotation: false, uvs: true, color: true };
         this.discs = new ParticleContainer({ texture: this.discTex, dynamicProperties: dyn });
         this.symbols = new ParticleContainer({ texture: Texture.WHITE, dynamicProperties: dyn });
@@ -1208,11 +1192,9 @@ export class GalaxyMarkerLayer {
         k.z = z;
         k.x = cam.x;
         k.y = cam.y;
-        // Soft glow (the system-level look) cross-fading into the vivid filled disc with a crisp rim in the empire colour
-        // as the view widens to galaxy zoom (presenceGalaxyBlend); both are particles of the one container.
+        // Flat discs at the territory's alpha; their minimum on-screen size grows as the view widens (presenceGalaxyBlend).
         const t = presenceGalaxyBlend(f);
-        const softA = presenceBandAlpha(f) * (1 - t);
-        const vividA = PRESENCE_GALAXY_ALPHA * t;
+        const alpha = presenceBandAlpha(f);
         const out = this.discs.particleChildren;
         const prev = out.length;
         let n = 0;
@@ -1238,9 +1220,8 @@ export class GalaxyMarkerLayer {
             const cnt = isSwarm ? 1 : p.count; // the swarm marks the system, not the station count
             const r = Math.max(presenceDiscRadius(cnt), presenceMinScreenPx(cnt, t) / z);
             if (!boundsOnScreen(star.xpos, star.ypos, r, 0, cam.x, cam.y, cam.width, cam.height, z)) continue;
-            const tint = isSwarm ? SWARM_SLATE : empireMarkerColor(p.empire);
-            if (softA > 0.004) put(star.xpos, star.ypos, r, tint, softA, this.discTex);
-            if (vividA > 0.004) put(star.xpos, star.ypos, r, tint, vividA, this.discVividTex);
+            const tint = isSwarm ? SWARM_SLATE : this.discColor(p.empire);
+            if (alpha > 0.004) put(star.xpos, star.ypos, r, tint, alpha, this.discTex);
         }
         // Pooled particles keep their slot, so the container only needs a structural update when the count changes.
         if (prev !== n) {

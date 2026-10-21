@@ -1972,6 +1972,7 @@ export class MainView {
         // [galaxymarkers] symbols (and so their pick boxes) follow the render-interpolated ship: BuiltObjectLayer's
         // sample this frame, else (galaxy / sector zoom, where the ship art is not drawn) a sample taken here.
         this.galaxyMarkers.positionOf = (bo) => drawnBuiltObjectPos(this.motion, bo);
+        this.galaxyMarkers.discColor = (e) => this.empireLayer.colourOf(e); // [galaxymarkers] presence discs in the territory colour
         this.galaxyMarkers.drawnOffsetBound = (bo) => builtObjectDrawnOffsetBound(this.motion, bo);
         this.galaxyMarkers.index = this.builtObjectIndex;
         // Task 13a: ships/bases/pirates/traders on top of all map layers.

@@ -194,6 +194,12 @@ export class EmpireLayer {
         }
     }
 
+    /** Territory colour of an empire (the presence discs of galaxyMarkers are drawn in it). */
+    colourOf(empire: Empire): number {
+        const index = this.galaxy.empires.indexOf(empire);
+        return index < 0 ? toPixiColor(displayColorForEmpire(empire)) : this.territoryColor(index);
+    }
+
     /** Display colour of galaxy.empires[index]: the owner's MainColor (EmpireTerritory.cs 458), as colonyRingColor. */
     private territoryColor(index: number): number {
         const empire = this.galaxy.empires[index];
