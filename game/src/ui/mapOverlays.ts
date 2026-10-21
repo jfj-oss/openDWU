@@ -102,7 +102,7 @@ export type OverlayPanel = 'tradeFlows' | 'resources' | 'supplyShortages' | 'way
 export interface OverlayRow {
     key: OverlayKey;
     label: string;
-    /** One-line hover tooltip: what the overlay shows and at which zoom (TODO-PROSE: placeholder wording). */
+    /** One-line hover tooltip: what the overlay shows and at which zoom. */
     hint?: string;
     /** An addition to the original (rendered with a small "+" badge). */
     mod?: boolean;
