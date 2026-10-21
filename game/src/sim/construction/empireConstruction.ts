@@ -1006,6 +1006,7 @@ export function assignFleetRetrofit(galaxy: Galaxy, empire: Empire, fleet: ShipG
 /** Empire.6.cs 488-586 AssignScrapMission(builtObject[, allowImmediateScrappingIfYardsFull = true[, allowImmediateScrappingIfNoWarpSpeed = true]]). */
 export function assignScrapMission(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject, allowImmediateScrappingIfYardsFull = true, allowImmediateScrappingIfNoWarpSpeed = true): boolean {
     builtObject.retireForNextMission = false;
+    if (galaxy.scenario !== null && scenarioQuery(galaxy, 'builtObjectLocked', false, { builtObject })) return false; // mod layer (the Stillness Engine's base)
     if (builtObject.empire === null || (builtObject.empire === galaxy.independentEmpire && builtObject.pirateEmpireId === 0)) {
         builtObjectCompleteTeardown(galaxy, builtObject);
         return true;
@@ -1242,6 +1243,7 @@ function payForRetrofit(galaxy: Galaxy, builtObject: BuiltObject, cost: number):
 export function assignRetrofitMission(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject, design?: Design | null, location: StellarObject | null = null, forceUseOfYard = false): boolean {
     if (design === undefined) design = lineRetrofitDesign(galaxy, empire, builtObject, dlFindNewestCanBuild(empire.designs, builtObject.subRole, builtObject.parentHabitat), builtObject.parentHabitat); // [improvements]
     builtObject.retrofitForNextMission = false;
+    if (galaxy.scenario !== null && scenarioQuery(galaxy, 'builtObjectLocked', false, { builtObject })) return false; // mod layer (the Stillness Engine's base)
     if (builtObject.empire === null || (builtObject.empire === galaxy.independentEmpire && builtObject.pirateEmpireId === 0)) return false;
     if (builtObject.role !== BuiltObjectRole.Base && builtObject.topSpeed <= 0) return false;
     if (builtObject.builtAt !== null) return false;

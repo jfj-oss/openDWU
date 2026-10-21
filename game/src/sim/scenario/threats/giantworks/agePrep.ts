@@ -109,12 +109,12 @@ registerDietMotionKind({
     prepare: (_g, e) => ({ target: e, other: null, colony: null, resourceId: -1 }),
     text: () => T(`${TAG} Recognise`),
     effect: () => T(`${TAG} Recognise Effect`),
-    apply: (g, _st, _m, addLaw) => {
-        addLaw(LAW_RECOGNISE, null, null, null, -1);
+    apply: (g, _st, m, addLaw) => {
+        addLaw(LAW_RECOGNISE, m.proposer, null, null, -1);
         scenarioNews(g, null, T(`${TAG} Recognise News`));
     },
     voteScore: (g, _st, voter, m) => {
-        if (voter === m.proposer) return 100;
+        if (voter === m.proposer && m.id >= 0) return 100; // (a repeal vote weighs the law as a pseudo motion, id -1: no shortcut)
         const pr = personality(voter);
         return 3 + 24 * pr.caution + 6 * pr.friendliness + (ownsScar(g, voter) ? 8 : 0);
     },
@@ -127,12 +127,12 @@ registerDietMotionKind({
     proposable: (g) => on(g) && harvestRecognised(g) && lawInForce(peekDietState(g), LAW_GUARD) === null,
     text: () => T(`${TAG} Guard`),
     effect: () => T(`${TAG} Guard Effect`),
-    apply: (g, _st, _m, addLaw) => {
-        addLaw(LAW_GUARD, null, null, null, -1);
+    apply: (g, _st, m, addLaw) => {
+        addLaw(LAW_GUARD, m.proposer, null, null, -1);
         scenarioNews(g, null, T(`${TAG} Guard News`));
     },
     voteScore: (g, _st, voter, m) => {
-        if (voter === m.proposer) return 100;
+        if (voter === m.proposer && m.id >= 0) return 100; // (a repeal vote weighs the law as a pseudo motion, id -1: no shortcut)
         const pr = personality(voter);
         // The holders of Scar worlds gain by it; the covetous (aggressive) do not.
         return 2 + 12 * pr.caution + 8 * pr.friendliness - 14 * pr.aggression + (ownsScar(g, voter) ? 26 : 0);

@@ -15,6 +15,7 @@ import { PirateIncomeType } from '../pirates/pirateEconomy';
 import { galaxyStarDate } from '../tick/simTime';
 import { calculateBuiltObjectLootingValue, empireColonyIncomeFactor, empireLootingFactor } from '../combat/damage';
 import { applyCorruptionToIncome } from '../logistics/orders';
+import { scenarioEmit, scenarioQuery } from '../scenario/hooks';
 
 function queueOf(site: BuiltObject | Habitat): ConstructionQueue | null {
     return (site.constructionQueue as ConstructionQueue | null) ?? null;
@@ -85,6 +86,10 @@ export function scrapBuiltObjects(galaxy: Galaxy, empire: Empire, ships: readonl
         const builtObject = ships[i];
         if (builtObject == null || builtObject.hasBeenDestroyed) continue;
         if (builtObject.empire !== empire && builtObject.actualEmpire !== empire) continue;
+        if (galaxy.scenario !== null && scenarioQuery(galaxy, 'builtObjectLocked', false, { builtObject })) {
+            scenarioEmit(galaxy, 'lockedBaseOrder', { empire, builtObject, order: 'scrap' }); // mod layer (the Stillness Engine's base)
+            continue;
+        }
         const parentQueue = builtObject.parentHabitat !== null ? queueOf(builtObject.parentHabitat) : null;
         if (parentQueue !== null) {
             for (const constructionYard of parentQueue.constructionYards ?? []) {

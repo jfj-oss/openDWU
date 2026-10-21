@@ -279,6 +279,8 @@ export interface ScenarioEvents {
      * single kill under double-different payload shapes, and so rimTrade's raid-stats counter isn't double-counted.
      */
     builtObjectKilledBy: { builtObject: BuiltObject; destroyer: Empire | null };
+    /** The owner ordered a retrofit or a scrap of a locked base (builtObjectLocked): refused. */
+    lockedBaseOrder: { empire: Empire; builtObject: BuiltObject; order: 'scrap' | 'retrofit' };
     /** combat/ownership.ts takeOwnershipOfColony (after the stock capital reassignment): `empire` lost its capital `colony` to `capturer` (null: no new owner). */
     capitalLost: { empire: Empire; colony: Habitat; capturer: Empire | null };
     /** researchTick.ts performResearchProjects: `points` of `empire`'s research (one industry) were taken by the sink (researchSinkShare) instead of its projects. */
@@ -681,6 +683,8 @@ export interface ScenarioQueries {
     researchFrozen: { value: boolean; args: { empire: Empire; industry: number } };
     /** Factor on an empire's research output of one industry (the Interstellar Diet's research moratorium; 1 = unchanged). */
     researchPowerFactor: { value: number; args: { empire: Empire; industry: number } };
+    /** true = `builtObject` may be neither retrofitted nor scrapped, by the AI or by its owner (the Stillness Engine's base). Stock false. Pure. */
+    builtObjectLocked: { value: boolean; args: { builtObject: BuiltObject } };
     /** Factor on an empire's research output of one industry applied AFTER the scenario sink took its share, so the sink is not slowed (the Stillness Engine; 1 = unchanged). */
     researchSlowdownFactor: { value: number; args: { empire: Empire; industry: number } };
     /** The share (0..1) of an empire's research output of one industry a scenario sink takes (the Beacon's mega-station blueprint); 0 = none. */

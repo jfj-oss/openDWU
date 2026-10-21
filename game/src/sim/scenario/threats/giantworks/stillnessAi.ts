@@ -18,7 +18,7 @@ import type { BuiltObject } from '../../../builtObject';
 import { CharacterTraitType } from '../../../data/races';
 import { BuiltObjectRole } from '../../../data/designSpecifications';
 import { DiplomaticRelationType, obtainDiplomaticRelation, obtainEmpireEvaluation } from '../../../diplomacy';
-import { FleetPosture, declareWar } from '../../../diplomacyTick';
+import { FleetPosture, declareWar, endWarRequest, militaryPotency } from '../../../diplomacyTick';
 import { calculateOverallStrengthFactor } from '../../../combat/threats';
 import { findNearestAvailableFleet, obtainAvailableMilitaryShips } from '../../../fleets/militaryAI';
 import { empireShipGroups } from '../../../fleets/shipGroup';
@@ -40,7 +40,7 @@ import { resolveSectorDescription } from '../../../empireEvents';
 import { age2Random } from './age2World';
 import { shipsWithin } from './actions';
 import { HARVEST_CYCLE_FLAG } from './longNightState';
-import { SP, STILL_TAG, beaconFinished, demolishLegal, engineOf, enginePosition, startEngine, stillState, stillnessActive, stillnessPlayers, type EngineRec, type EngineSide } from './stillness';
+import { SP, STILL_TAG, beaconFinished, demolishLegal, engineOf, enginePosition, startEngine, stillState, stillnessActive, stillnessPlayers, type EngineRec, type EngineWar, type EngineSide } from './stillness';
 
 const p = (g: Galaxy, name: string, fallback: number): number => scenarioParam(g, name, fallback);
 export const AP = {
@@ -172,6 +172,21 @@ export function sendStrike(galaxy: Galaxy, e: Empire, base: BuiltObject, need: n
     return shipGroupAssignMission(galaxy, fleet, determineDestroyOrCaptureTargetForFleet(galaxy, e, fleet, base), base, null, BuiltObjectMissionPriority.High, true);
 }
 
+/** `a` declares war on `b` because of the Engine: listed first (the Diet's emergency case for a war on a member reads it: dietWarExcuse), unlisted again when the declaration is refused. */
+export function declareOverEngine(galaxy: Galaxy, a: Empire, b: Empire, kind: EngineWar['kind']): boolean {
+    const st = stillState(galaxy);
+    const list = (st.wars ??= []);
+    const rec: EngineWar = { a: a.empireId, b: b.empireId, kind, tries: 0 };
+    list.push(rec);
+    declareWar(galaxy, a, b);
+    if (obtainDiplomaticRelation(a, b).type === DiplomaticRelationType.War) {
+        st.stats.wars++;
+        return true;
+    }
+    list.splice(list.indexOf(rec), 1);
+    return false;
+}
+
 /** The attacker `e` goes after the Engine: war first when the Diet has not made it legal, then a strike. Returns whether a strike is on its way. */
 export function attackEngine(galaxy: Galaxy, e: Empire, owner: Empire, eng: EngineRec): boolean {
     const base = eng.base;
@@ -180,14 +195,8 @@ export function attackEngine(galaxy: Galaxy, e: Empire, owner: Empire, eng: Engi
     const atWar = obtainDiplomaticRelation(e, owner).type === DiplomaticRelationType.War;
     if (!atWar && !demolishLegal(galaxy, e)) {
         if (freeStrength(galaxy, e) < need) return false;
-        const listed = eng.warOver.includes(e.empireId);
-        if (!listed) eng.warOver.push(e.empireId); // before the declaration: the Diet's emergency case for a war on a member reads it (dietWarExcuse)
-        declareWar(galaxy, e, owner);
-        if (obtainDiplomaticRelation(e, owner).type !== DiplomaticRelationType.War) {
-            if (!listed) eng.warOver.splice(eng.warOver.indexOf(e.empireId), 1);
-            return false; // blocked (a truce, a rule): it goes no further
-        }
-        stillState(galaxy).stats.wars++;
+        if (!declareOverEngine(galaxy, e, owner, 'attack')) return false; // blocked (a truce, a rule): it goes no further
+        if (!eng.warOver.includes(e.empireId)) eng.warOver.push(e.empireId);
         scenarioNews(galaxy, null, T(`${STILL_TAG} War News`, e.name, owner.name, resolveSectorDescription(galaxy, base.xpos, base.ypos)), () => true, base);
     }
     return sendStrike(galaxy, e, base, need);
@@ -226,10 +235,70 @@ export function aiMaybeBuild(galaxy: Galaxy): boolean {
     return false;
 }
 
-/** The monthly review: sides, patrols, strikes (or, with no Engine, the builders). */
+/** The Engine no longer matters: it is gone (destroyed, taken, scrapped), or an AI owner's was silenced by the Diet (an AI never switches it back on). Pure. */
+export function engineEnded(galaxy: Galaxy): boolean {
+    const eng = engineOf(galaxy);
+    if (eng === null) return true;
+    const owner = getEmpireById(galaxy, eng.ownerId);
+    return eng.status === 'off' && owner !== null && !isHumanEmpire(galaxy, owner);
+}
+
+/**
+ * The wars the Engine started end with it: each month, while a war it started is still on, the declarer proposes an end (the stock EndWarRequest: an AI answers by its own
+ * ConsiderEndWar, a human gets the proposal to accept or not). A war is dropped from the list when it ends, or after twelve proposals (three to a human).
+ */
+export function peaceStep(galaxy: Galaxy): void {
+    const st = stillState(galaxy);
+    if (st.wars === undefined || st.wars.length === 0 || !engineEnded(galaxy)) return;
+    for (const rec of [...st.wars]) {
+        const a = getEmpireById(galaxy, rec.a);
+        const b = getEmpireById(galaxy, rec.b);
+        const drop = (): void => void st.wars!.splice(st.wars!.indexOf(rec), 1);
+        if (a === null || b === null || !a.active || !b.active || obtainDiplomaticRelation(a, b).type !== DiplomaticRelationType.War) {
+            drop();
+            continue;
+        }
+        if (rec.tries >= (isHumanEmpire(galaxy, a) || isHumanEmpire(galaxy, b) ? 3 : 12)) {
+            drop();
+            continue;
+        }
+        rec.tries++;
+        endWarRequest(galaxy, a, b);
+    }
+}
+
+/**
+ * Daily: an empire that actually shot at the base is answered by the protectors with a fleet guarding it (a patrol on the base, or ships near it): each declares war on it,
+ * once, with the reason in the news. Never on a mere declaration; never a protector already in two wars or weaker than the attacker by the strike margin.
+ */
+export function protectorsReact(galaxy: Galaxy): void {
+    const eng = engineOf(galaxy);
+    if (eng === null || eng.base === null || eng.base.hasBeenDestroyed || eng.struck === undefined) return;
+    const base = eng.base;
+    for (const id of eng.struck) {
+        const answered = (eng.answered ??= []);
+        if (answered.includes(id)) continue;
+        answered.push(id);
+        const attacker = getEmpireById(galaxy, id);
+        if (attacker === null || !attacker.active) continue;
+        const guards = defenders(galaxy, eng);
+        for (const e of aiPlayers(galaxy)) {
+            if (eng.sides[String(e.empireId)] !== 'protect' || e === attacker || e.empireId === eng.ownerId) continue;
+            if (!hasMissionOn(e, base, BuiltObjectMissionType.Patrol) && !guards.some((b) => b.actualEmpire === e)) continue;
+            if (obtainDiplomaticRelation(e, attacker).type === DiplomaticRelationType.War) continue;
+            if (determineEmpiresAtWarWith(galaxy, e).empires.length >= 2) continue;
+            if (militaryPotency(e) * AP.marginPct(galaxy) < militaryPotency(attacker) * 100) continue; // weaker than the attacker by the strike margin
+            if (!declareOverEngine(galaxy, e, attacker, 'protect')) continue;
+            scenarioNews(galaxy, null, T(`${STILL_TAG} Protect War News`, e.name, attacker.name, resolveSectorDescription(galaxy, base.xpos, base.ypos)), () => true, base);
+        }
+    }
+}
+
+/** The monthly review: the peace of finished wars, then sides, patrols, strikes (or, with no Engine, the builders). */
 export function stillnessReview(galaxy: Galaxy): void {
     if (!stillnessActive(galaxy)) return;
     const st = stillState(galaxy);
+    peaceStep(galaxy);
     const eng = engineOf(galaxy);
     if (eng === null) {
         aiMaybeBuild(galaxy);
@@ -256,6 +325,7 @@ export function stillnessReview(galaxy: Galaxy): void {
 }
 
 export function registerStillnessAi(): void {
+    registerScenarioFramePeriodic({ id: 'stillness.react', flag: HARVEST_CYCLE_FLAG, order: 31, periodDays: 1, run: (g) => protectorsReact(g) });
     registerScenarioFramePeriodic({ id: 'stillness.review', flag: HARVEST_CYCLE_FLAG, order: 30, periodDays: 30, run: (g) => stillnessReview(g) });
 }
 

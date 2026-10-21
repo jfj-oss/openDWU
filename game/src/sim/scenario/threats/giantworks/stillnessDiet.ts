@@ -39,8 +39,8 @@ export function demolishable(g: Galaxy): boolean {
 }
 
 /** The score of `voter` on a motion against the Engine: its lean (0.6 per point, less `bar`); the owner votes no. Pure. */
-function againstScore(g: Galaxy, voter: Empire, proposer: Empire, bar: number): number {
-    if (voter === proposer) return 100;
+function againstScore(g: Galaxy, voter: Empire, proposer: Empire, bar: number, real = true): number {
+    if (voter === proposer && real) return 100; // (a repeal vote weighs the law as a pseudo motion, id -1: no shortcut)
     const owner = engineOwner(g);
     if (owner === null) return 0;
     if (voter === owner) return -100;
@@ -57,7 +57,7 @@ registerDietMotionKind({
     apply: (g) => {
         if (silenceable(g)) switchEngine(g, false, null);
     },
-    voteScore: (g, _st, voter, m) => againstScore(g, voter, m.proposer, 6),
+    voteScore: (g, _st, voter, m) => againstScore(g, voter, m.proposer, 6, m.id >= 0),
     candidates: (g, _st, a) => {
         if (!silenceable(g) || !stillnessPlayer(g, a)) return [];
         const owner = engineOwner(g);
@@ -73,14 +73,14 @@ registerDietMotionKind({
     proposable: (g) => demolishable(g),
     text: () => T(`${STILL_TAG} Diet Demolish`),
     effect: () => T(`${STILL_TAG} Diet Demolish Effect`),
-    apply: (g, _st, _m, addLaw) => {
+    apply: (g, _st, m, addLaw) => {
         const st = stillState(g);
         const eng = engineOf(g);
         st.banned = true;
-        addLaw(LAW_DEMOLISH_STILL, null, null, null, -1);
+        addLaw(LAW_DEMOLISH_STILL, m.proposer, null, null, -1); // (the law names its mover: a repeal vote then weighs it for the others by interest)
         scenarioNews(g, null, T(`${STILL_TAG} Diet Demolish News`, eng === null ? '' : resolveSectorDescription(g, eng.x, eng.y)));
     },
-    voteScore: (g, _st, voter, m) => againstScore(g, voter, m.proposer, 12),
+    voteScore: (g, _st, voter, m) => againstScore(g, voter, m.proposer, 12, m.id >= 0),
     candidates: (g, _st, a) => {
         if (!demolishable(g) || !stillnessPlayer(g, a)) return [];
         const owner = engineOwner(g);
@@ -93,8 +93,7 @@ registerDietMotionKind({
 /** A war over the Engine is not an outrage for the Diet: no emergency case for the Regent. */
 export function registerStillnessDiet(): void {
     dietWarExcuse.fn = (g, attacker, target) => {
-        const eng = engineOf(g);
-        return eng !== null && eng.ownerId === target.empireId && eng.warOver.includes(attacker.empireId);
+        return stillState(g).wars?.some((w) => w.a === attacker.empireId && w.b === target.empireId) === true;
     };
 }
 

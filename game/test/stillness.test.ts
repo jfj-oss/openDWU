@@ -31,14 +31,18 @@ import { availableThreatActions, runThreatAction } from '../src/sim/scenario/thr
 import { longNightState } from '../src/sim/scenario/threats/giantworks/longNightState';
 import {
     ACTION_BUILD, ACTION_OFF, ACTION_ON, SP, beaconFinished, cannotBuild, engineOf, engineProgress, engineRunning, startEngine, stillState, stillnessActive,
-    LAW_DEMOLISH_STILL, STILL_KEY, demolishLegal, peekStill, stillnessFactor, stillnessKnowledgeRows, stillnessStep,
+    LAW_DEMOLISH_STILL, STILL_KEY, switchEngine, demolishLegal, peekStill, stillnessFactor, stillnessKnowledgeRows, stillnessStep,
 } from '../src/sim/scenario/threats/giantworks/stillness';
-import { AP, aiMaybeBuild, attackEngine, engineLean, isolationist, sendPatrol, sideOf, stillnessReview } from '../src/sim/scenario/threats/giantworks/stillnessAi';
+import { AP, aiMaybeBuild, attackEngine, engineEnded, engineLean, peaceStep, protectorsReact, isolationist, sendPatrol, sideOf, stillnessReview } from '../src/sim/scenario/threats/giantworks/stillnessAi';
+import { rebuildIndexes } from '../src/sim/indexRebuild';
+import { assignRetrofitMission, assignScrapMission } from '../src/sim/construction/empireConstruction';
+import { scrapBuiltObjects } from '../src/sim/player/yardOrders';
+import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { takeOwnershipOfBuiltObject } from '../src/sim/combat/ownership';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import { dietCouncil } from '../src/sim/scenario/charactersVictory/diet/diet';
 import { dietVoteScore } from '../src/sim/scenario/charactersVictory/diet/dietAi';
-import { MOTION_RECOGNISE, MOTION_GUARD, LAW_GUARD, harvestPledges, harvestRecognised, scarsGuarded, severanceVoteBonus } from '../src/sim/scenario/threats/giantworks/agePrep';
+import { MOTION_RECOGNISE, MOTION_GUARD, LAW_GUARD, LAW_RECOGNISE, harvestPledges, harvestRecognised, scarsGuarded, severanceVoteBonus } from '../src/sim/scenario/threats/giantworks/agePrep';
 import { MOTION_MEGA, peekMega } from '../src/sim/scenario/threats/giantworks/megaStation';
 import { partTradeAllowed } from '../src/sim/scenario/threats/giantworks/beaconComponents';
 import { reputationOn, reputationSum } from '../src/sim/scenario/reputation/ledger';
@@ -758,5 +762,159 @@ describe('a captured base', () => {
     takeOwnershipOfBuiltObject(s.g, faction, eng.base!, faction, false);
     stillnessStep(s.g);
     expect(engineOf(s.g)).toBeNull();
+  });
+});
+
+describe('the laws can be repealed', () => {
+  it('a repeal vote weighs each law by interest, not a fixed 100; the ban outlives the Demolish law', () => {
+    const s = setup();
+    const scars = withMemory(s);
+    void scars;
+    const [owner, a, b] = s.ais;
+    lean(a, 'destroy');
+    lean(b, 'protect');
+    standing(s.g, a, owner, -60);
+    standing(s.g, b, owner, 60);
+    runningEngine(s, owner);
+    pass(s.g, MOTION_DEMOLISH, a);
+    pass(s.g, MOTION_RECOGNISE, s.me);
+    pass(s.g, MOTION_GUARD, a);
+    const st = dietState(s.g);
+    const council = dietCouncil(s.g)!;
+    const repeal = (kind: string, voter: Empire): number => {
+      const law = lawInForce(st, kind)!;
+      const m = { id: 7, kind: 'repeal', proposer: s.me, target: null, other: null, colony: null, resourceId: law.id, text: '', votes: [], status: 'voting', yes: 0, no: 0 } as unknown as DietMotion;
+      return dietVoteScore(s.g, council, st, voter, m);
+    };
+    expect(repeal(LAW_DEMOLISH_STILL, owner)).toBeGreaterThan(50); // the owner wants it gone
+    expect(repeal(LAW_DEMOLISH_STILL, b)).toBeGreaterThan(5); // a protector votes to repeal it
+    expect(repeal(LAW_DEMOLISH_STILL, a)).toBe(-100); // its mover keeps it
+    expect(repeal(LAW_GUARD, b)).toBeLessThan(99);
+    expect(repeal(LAW_GUARD, b)).toBeGreaterThan(-99);
+    expect(repeal(LAW_RECOGNISE, b)).toBeGreaterThan(-99);
+    expect(repeal(LAW_RECOGNISE, b)).toBeLessThan(99);
+    // repealed: destroying is no longer legal, the ban stays
+    st.laws = st.laws.filter((l) => l.kind !== LAW_DEMOLISH_STILL);
+    expect(demolishLegal(s.g, a)).toBe(false);
+    expect(stillState(s.g).banned).toBe(true);
+  });
+});
+
+describe('the base is locked', () => {
+  it('is neither retrofitted nor scrapped by the AI, nor by its owner (a message); the name stays fixed', () => {
+    const s = setup();
+    startEngine(s.g, s.me, colonyOf(s.me));
+    const eng = engineOf(s.g)!;
+    const base = eng.base!;
+    expect(scenarioQuery(s.g, 'builtObjectLocked', false, { builtObject: base })).toBe(true);
+    expect(scenarioQuery(s.g, 'builtObjectLocked', false, { builtObject: s.me.builtObjects.find((b) => b !== base)! })).toBe(false);
+    const other = s.me.designs.find((d) => d !== null && d !== base.design && d.subRole === base.subRole) ?? s.me.designs.find((d) => d !== null && d !== base.design)!;
+    expect(assignRetrofitMission(s.g, s.me, base, other, null, true)).toBe(false);
+    expect(base.retrofitDesign).toBeNull();
+    expect(assignScrapMission(s.g, s.me, base)).toBe(false);
+    expect(base.hasBeenDestroyed).toBe(false);
+    expect(scrapBuiltObjects(s.g, s.me, [base])).toBe(0);
+    expect(base.hasBeenDestroyed).toBe(false);
+    expect(popups(s.me, 'The Stillness Engine cannot be altered').length).toBeGreaterThanOrEqual(1);
+    base.name = 'Renamed';
+    stillnessStep(s.g);
+    expect(base.name).toContain('Stillness Engine');
+  });
+});
+
+describe('wars over the Engine', () => {
+  it('end with it: the declarer proposes peace; a human gets the stock proposal, a few times at most', () => {
+    const s = setup();
+    const [x, a] = s.ais;
+    for (const o of [x, a]) for (const p of [s.me, x, a]) if (o !== p) obtainDiplomaticRelation(o, p).type = DiplomaticRelationType.None;
+    s.g.scenario!.params.stillnessAiStrikeMarginPct = 1;
+    startEngine(s.g, s.me, colonyOf(s.me));
+    const eng = engineOf(s.g)!;
+    expect(attackEngine(s.g, a, s.me, eng)).toBe(true);
+    const st = stillState(s.g);
+    expect(st.wars).toEqual([{ a: a.empireId, b: s.me.empireId, kind: 'attack', tries: 0 }]);
+    peaceStep(s.g); // the Engine stands: the war goes on
+    expect(st.wars![0].tries).toBe(0);
+    eng.base!.hasBeenDestroyed = true;
+    stillnessStep(s.g);
+    expect(engineEnded(s.g)).toBe(true);
+    advance(s.g, 400);
+    const before = s.me.proposedDiplomaticRelations.length;
+    peaceStep(s.g);
+    expect(st.wars![0].tries).toBe(1);
+    expect(s.me.proposedDiplomaticRelations.length).toBeGreaterThan(before);
+    expect(obtainDiplomaticRelation(a, s.me).type).toBe(DiplomaticRelationType.War); // an offer, not a forced peace
+    for (let i = 0; i < 5; i++) peaceStep(s.g);
+    expect(st.wars).toEqual([]); // three tries to a human, then dropped
+    // a war already ended is simply dropped
+    st.wars = [{ a: a.empireId, b: x.empireId, kind: 'attack', tries: 0 }];
+    obtainDiplomaticRelation(a, x).type = DiplomaticRelationType.None;
+    peaceStep(s.g);
+    expect(st.wars).toEqual([]);
+  });
+
+  it('an Engine silenced by the Diet (AI owner) ends them too; one switched off by a player does not', () => {
+    const s = setup();
+    runningEngine(s, s.ais[0]);
+    expect(engineEnded(s.g)).toBe(false);
+    switchEngine(s.g, false, null);
+    expect(engineEnded(s.g)).toBe(true);
+    const t = setup();
+    runningEngine(t, t.me);
+    switchEngine(t.g, false, t.me);
+    expect(engineEnded(t.g)).toBe(false);
+  });
+
+  it('protectors with a fleet at the base declare on an empire that actually strikes it, never on a mere declaration, under the caps', () => {
+    const s = setup();
+    const [x, a, b] = s.ais;
+    for (const o of [x, a, b, s.me]) for (const p of [x, a, b, s.me]) if (o !== p) obtainDiplomaticRelation(o, p).type = DiplomaticRelationType.None;
+    s.g.scenario!.params.stillnessAiStrikeMarginPct = 1;
+    startEngine(s.g, x, colonyOf(x));
+    const eng = engineOf(s.g)!;
+    eng.sides = { [String(b.empireId)]: 'protect', [String(a.empireId)]: 'destroy' };
+    const guard = b.builtObjects.find((o) => !o.hasBeenDestroyed && o.topSpeed > 0 && o.role === BuiltObjectRole.Military)!;
+    guard.xpos = eng.base!.xpos;
+    guard.ypos = eng.base!.ypos;
+    rebuildIndexes(s.g);
+    attackEngine(s.g, a, x, eng); // a declares on the owner: b does not follow
+    protectorsReact(s.g);
+    expect(obtainDiplomaticRelation(b, a).type).toBe(DiplomaticRelationType.None);
+    // the cap: already in two wars
+    obtainDiplomaticRelation(b, s.me).type = DiplomaticRelationType.War;
+    obtainDiplomaticRelation(b, x).type = DiplomaticRelationType.War;
+    eng.struck = [a.empireId];
+    s.g.scenario!.params.stillnessAiStrikeMarginPct = 1e9;
+    protectorsReact(s.g);
+    expect(obtainDiplomaticRelation(b, a).type).toBe(DiplomaticRelationType.None);
+    expect(eng.answered).toEqual([a.empireId]);
+    // free: a strikes, b answers
+    obtainDiplomaticRelation(b, s.me).type = DiplomaticRelationType.None;
+    obtainDiplomaticRelation(b, x).type = DiplomaticRelationType.None;
+    eng.answered = [];
+    const before = empireMessages(s.me).length;
+    protectorsReact(s.g);
+    expect(obtainDiplomaticRelation(b, a).type).toBe(DiplomaticRelationType.War);
+    expect(stillState(s.g).wars!.some((w) => w.a === b.empireId && w.b === a.empireId && w.kind === 'protect')).toBe(true);
+    expect(empireMessages(s.me).slice(before).some((m) => m.description.includes(`The ${b.name} have declared war on the ${a.name} for striking the Stillness Engine`))).toBe(true);
+    // too weak against the attacker: no
+    obtainDiplomaticRelation(b, a).type = DiplomaticRelationType.None;
+    stillState(s.g).wars = [];
+    eng.answered = [];
+    s.g.scenario!.params.stillnessAiStrikeMarginPct = 0;
+    protectorsReact(s.g);
+    expect(obtainDiplomaticRelation(b, a).type).toBe(DiplomaticRelationType.None);
+  });
+
+  it('the hit on the base is recorded as a strike by the attacking empire only', () => {
+    const s = setup();
+    const [x, a] = s.ais;
+    startEngine(s.g, x, colonyOf(x));
+    const eng = engineOf(s.g)!;
+    scenarioEmit(s.g, 'builtObjectAttacked', { builtObject: eng.base!, attacker: null, attackingEmpire: x });
+    expect(eng.struck ?? []).toEqual([]); // the owner itself
+    scenarioEmit(s.g, 'builtObjectAttacked', { builtObject: eng.base!, attacker: null, attackingEmpire: a });
+    scenarioEmit(s.g, 'builtObjectAttacked', { builtObject: eng.base!, attacker: null, attackingEmpire: a });
+    expect(eng.struck).toEqual([a.empireId]);
   });
 });

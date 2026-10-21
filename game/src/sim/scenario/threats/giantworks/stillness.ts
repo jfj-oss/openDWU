@@ -44,8 +44,8 @@ export const ACTION_OFF = 'stillnessOff';
 export const ACTION_ON = 'stillnessOn';
 /** The Diet law "Demolish the Stillness Engine": destroying it is legal (no war needed for a member). */
 export const LAW_DEMOLISH_STILL = 'stillnessDemolish';
-export const STILL_HANDLER_IDS = ['stillness.step', 'stillness.review', 'stillness.killed', 'stillness.owner'] as const;
-export const STILL_QUERY_IDS = ['stillness.slow'] as const;
+export const STILL_HANDLER_IDS = ['stillness.step', 'stillness.review', 'stillness.react', 'stillness.attacked', 'stillness.lockedOrder', 'stillness.killed'] as const;
+export const STILL_QUERY_IDS = ['stillness.slow', 'stillness.locked'] as const;
 
 const p = (g: Galaxy, name: string, fallback: number): number => scenarioParam(g, name, fallback);
 /** Parameters (scenario params; code defaults, none in the add-on manifest). */
@@ -82,6 +82,18 @@ export interface EngineRec {
     warOver: number[];
     /** Empire id -> star date a strike was last sent. */
     strikes: Record<string, number>;
+    /** Empire ids that actually attacked the base (shot at it), and those the protectors have answered. */
+    struck?: number[];
+    answered?: number[];
+}
+
+/** A war the Engine started: `a` declared on `b` because of it (kind 'attack': on the owner; 'protect': a protector on an attacker). It ends when the Engine is gone. */
+export interface EngineWar {
+    a: number;
+    b: number;
+    kind: 'attack' | 'protect';
+    /** Peace proposals made so far. */
+    tries: number;
 }
 
 export interface StillnessState {
@@ -90,6 +102,8 @@ export interface StillnessState {
     banned: boolean;
     /** The first star date the module ran in this galaxy. */
     start: number;
+    /** Wars the Engine started (absent in a save from before). */
+    wars?: EngineWar[];
     /** The AI stream's counter. */
     rolls: number;
     stats: { built: number; finished: number; lost: number; scrapped: number; silenced: number; wars: number };
@@ -287,6 +301,8 @@ export function stillnessStep(galaxy: Galaxy): void {
         return;
     }
     if (!followOwner(galaxy, st, eng)) return;
+    const fixed = baseNameFor(eng.status === 'building' ? engineProgress(galaxy, eng) : 1, eng.status !== 'building');
+    if (b.name !== fixed) b.name = fixed; // its name is fixed too
     if (eng.status !== 'building') return;
     const now = galaxyStarDate(galaxy);
     const progress = Math.max(0, Math.min(1, (now - eng.start) / (SP.years(galaxy) * YEAR_LENGTH)));
@@ -380,6 +396,13 @@ function registerActions(): void {
 // Events, the map, the queries
 // ---------------------------------------------------------------------------------------------------------------
 
+function onAttacked(galaxy: Galaxy, bo: BuiltObject, attacker: Empire | null): void {
+    const eng = engineOf(galaxy);
+    if (eng === null || eng.base !== bo || attacker === null || attacker.empireId === eng.ownerId || !stillnessPlayer(galaxy, attacker)) return;
+    const l = (eng.struck ??= []);
+    if (!l.includes(attacker.empireId)) l.push(attacker.empireId);
+}
+
 function onKilledBy(galaxy: Galaxy, bo: BuiltObject, destroyer: Empire | null): void {
     const eng = engineOf(galaxy);
     if (eng === null || eng.base !== bo) return;
@@ -438,6 +461,14 @@ export function stillnessKnowledgeRows(galaxy: Galaxy): StillnessRow[] {
 export function registerStillness(): void {
     registerActions();
     registerScenarioFramePeriodic({ id: 'stillness.step', flag: HARVEST_CYCLE_FLAG, order: 29, periodDays: 1, run: (g) => stillnessStep(g) });
+    registerScenarioEvent({ id: 'stillness.attacked', flag: HARVEST_CYCLE_FLAG, event: 'builtObjectAttacked', run: (g, e) => onAttacked(g, e.builtObject, e.attackingEmpire) });
+    registerScenarioQuery({ id: 'stillness.locked', flag: HARVEST_CYCLE_FLAG, query: 'builtObjectLocked', run: (g, v, a) => v || isEngineBase(g, a.builtObject) });
+    registerScenarioEvent({
+        id: 'stillness.lockedOrder',
+        flag: HARVEST_CYCLE_FLAG,
+        event: 'lockedBaseOrder',
+        run: (g, e) => tellHuman(g, e.empire, T(`${STILL_TAG} Locked Title`), T(`${STILL_TAG} Locked ${e.order === 'scrap' ? 'Scrap' : 'Retrofit'}`), { bad: true }),
+    });
     registerScenarioEvent({ id: 'stillness.killed', flag: HARVEST_CYCLE_FLAG, event: 'builtObjectKilledBy', run: (g, e) => onKilledBy(g, e.builtObject, e.destroyer) });
     registerScenarioQuery({ id: 'stillness.slow', flag: HARVEST_CYCLE_FLAG, query: 'researchSlowdownFactor', run: (g, v) => v * stillnessFactor(g) });
     registerScenarioMapFeatures('stillness', stillnessMapFeatures);

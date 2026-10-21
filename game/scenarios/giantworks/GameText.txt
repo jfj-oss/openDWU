@@ -670,7 +670,7 @@ Stillness War News;The {0} have declared war on the {1} over the Stillness Engin
 Stillness Diet Silence;Silence the Stillness Engine
 Stillness Diet Silence Effect;The Stillness Engine is switched off, whatever its owner wants.
 Stillness Diet Demolish;Demolish the Stillness Engine
-Stillness Diet Demolish Effect;Members may destroy the Stillness Engine without it being an act of war, and no Stillness Engine may ever be raised again.
+Stillness Diet Demolish Effect;Members may destroy the Stillness Engine without it being an act of war, and no Stillness Engine may ever be raised again. The ban stays even if this law is later repealed: repealing it only makes destroying the Engine a cause for war again.
 Stillness Diet Demolish News;The Diet has voted to demolish the Stillness Engine near {0}. Any member may destroy it without war, and none may ever be raised again.
 Stillness Row Engine;Stillness Engine
 Stillness Row Owner;Owner
@@ -691,3 +691,9 @@ Prep Recognise News;The Diet recognises the Harvest. Its members have agreed to 
 Prep Guard;Guard the Scars
 Prep Guard Effect;No member may attack another member's Harvest Scar worlds. A member who does breaks the Diet's law.
 Prep Guard News;The Diet has voted to guard the Harvest Scars. No member may attack another's Scar worlds.
+' Stillness Engine follow-ups: the locked base and the protectors' war.
+'TODO-PROSE (placeholder text for the author to polish): Stillness Locked Title, Stillness Locked Scrap, Stillness Locked Retrofit, Stillness Protect War News, and the changed Stillness Diet Demolish Effect (now says the ban survives a repeal)
+Stillness Locked Title;The Stillness Engine cannot be altered
+Stillness Locked Scrap;The Stillness Engine cannot be scrapped. If it must stop, switch it off.
+Stillness Locked Retrofit;The Stillness Engine's base cannot be retrofitted; it is built as it is.
+Stillness Protect War News;The {0} have declared war on the {1} for striking the Stillness Engine near {2}.

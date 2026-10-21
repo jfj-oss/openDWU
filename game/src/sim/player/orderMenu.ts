@@ -1925,7 +1925,7 @@ function builtObjectActionMenu(ctx: OrderMenuContext, builtObject6: BuiltObject,
                 const designs = getBuildableDesignsBySubRoles(empire.designs, list3, player, builtObject6.parentHabitat);
                 const at = designs.indexOf(builtObject6.design);
                 if (at >= 0) designs.splice(at, 1);
-                if (designs.length > 0 && builtObject6.retrofitDesign === null && builtObject6.builtAt === null) items.push(baseRetrofitMenu(ctx, builtObject6, designs));
+                if (designs.length > 0 && builtObject6.retrofitDesign === null && builtObject6.builtAt === null && !(ctx.galaxy.scenario !== null && scenarioQuery(ctx.galaxy, 'builtObjectLocked', false, { builtObject: builtObject6 }))) items.push(baseRetrofitMenu(ctx, builtObject6, designs));
                 items.push(scrapBaseMenu(ctx, builtObject6));
             }
         } else {

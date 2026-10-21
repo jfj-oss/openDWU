@@ -24,6 +24,7 @@ import { AutomationLevel, BUILD_COLONY_SHIP_POPULATION_REQUIREMENT } from '../em
 import type { BuiltObject } from '../builtObject';
 import { BuiltObject as BuiltObjectClass } from '../builtObject';
 import { BuiltObjectRole } from '../data/designSpecifications';
+import { scenarioEmit, scenarioQuery } from '../scenario/hooks';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
 import type { Design } from '../design';
 import { galaxyComponentCurrentPrices } from '../design';
@@ -471,6 +472,11 @@ function executeForFighter(ctx: Ctx, fighter: Fighter, action: ShipAction): void
 // ---------------------------------------------------------------------------------------------------------------
 
 function executeForBuiltObject(ctx: Ctx, builtObject: BuiltObject, action: ShipAction): ShipActionResult {
+    if (ctx.galaxy.scenario !== null && builtObject.role === BuiltObjectRole.Base && (action.missionType === BuiltObjectMissionType.Retire || action.missionType === BuiltObjectMissionType.Retrofit) && scenarioQuery(ctx.galaxy, 'builtObjectLocked', false, { builtObject })) {
+        // Mod layer (the Stillness Engine): its base is neither scrapped nor retrofitted, whoever orders it.
+        scenarioEmit(ctx.galaxy, 'lockedBaseOrder', { empire: ctx.empire, builtObject, order: action.missionType === BuiltObjectMissionType.Retire ? 'scrap' : 'retrofit' });
+        return ctx.result;
+    }
     if (builtObject.role !== BuiltObjectRole.Base && action.actionType === ShipActionType.ScenarioThreatAction) {
         // Mod layer (Giantworks): a scenario threat's player action on a ship that is not ours (landing troops on the Ark Engine).
         if (ctx.galaxy.scenario !== null && action.extraData !== null && action.extraData !== undefined) runThreatAction(ctx.galaxy, ctx.empire, action.extraData, builtObject);
